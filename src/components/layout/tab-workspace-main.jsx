@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { TabPaneRouterFreeze } from "@/components/layout/tab-pane-router-freeze";
+import { AppErrorBoundary } from "@/components/shared/app-error-boundary";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
 import { SCREEN_COMPONENTS } from "@/lib/screen-registry-components";
 import {
@@ -34,9 +35,11 @@ function RegisteredTabPane({ entry, paneHref, isActive }) {
       data-tab-registry={entry.id}
     >
       <TabPaneRouterFreeze href={paneHref}>
-        <Suspense fallback={<AppRouteLoading label="Loading page…" />}>
-          <Screen />
-        </Suspense>
+        <AppErrorBoundary>
+          <Suspense fallback={<AppRouteLoading label="Loading page…" />}>
+            <Screen />
+          </Suspense>
+        </AppErrorBoundary>
       </TabPaneRouterFreeze>
     </div>
   );

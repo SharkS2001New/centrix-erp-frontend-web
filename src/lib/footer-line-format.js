@@ -36,7 +36,15 @@ export function normalizeFooterLine(line) {
   if (!line || typeof line !== "object") {
     return { text: "", align: "left", bold: false, italic: false, size: "md" };
   }
-  const text = String(line.text ?? "");
+  const rawText = line.text;
+  const text =
+    typeof rawText === "string"
+      ? rawText
+      : rawText == null
+        ? ""
+        : typeof rawText === "object"
+          ? String(rawText.full_name ?? rawText.name ?? rawText.username ?? rawText.text ?? "")
+          : String(rawText);
   const align = ALIGNMENTS.has(line.align) ? line.align : "left";
   const size = SIZES.has(line.size) ? line.size : "md";
   return {

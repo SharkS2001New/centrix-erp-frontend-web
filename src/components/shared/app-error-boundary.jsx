@@ -4,6 +4,10 @@ import { Component } from "react";
 import { canSeeServerErrorDetail } from "@/lib/auth-storage";
 import { emitSystemIssue } from "@/lib/system-issue-dispatcher";
 import { logApiErrorIssue } from "@/lib/system-issue-reports";
+import {
+  isChunkLoadError,
+  reloadForChunkLoad,
+} from "@/components/chunk-load-recovery";
 
 async function reportClientError(error, context = {}) {
   const technical = canSeeServerErrorDetail();
@@ -35,27 +39,59 @@ async function reportClientError(error, context = {}) {
 export class AppErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, chunkError: false };
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error) {
+    return {
+      hasError: true,
+      chunkError: isChunkLoadError(error),
+    };
   }
 
   componentDidCatch(error, info) {
+    if (isChunkLoadError(error)) {
+      try {
+        const n = Number(sessionStorage.getItem("centrix_chunk_reload") || "0");
+        if (n < 2) {
+          sessionStorage.setItem("centrix_chunk_reload", String(n + 1));
+          reloadForChunkLoad();
+          return;
+        }
+      } catch {
+        /* fall through to UI */
+      }
+    }
+
     void reportClientError(error, {
       pageUrl: typeof window !== "undefined" ? window.location.pathname : null,
       componentStack: info?.componentStack ?? null,
+      chunkLoad: isChunkLoadError(error),
     });
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-[40vh] items-center justify-center p-8 text-center">
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 p-8 text-center">
           <p className="max-w-md text-sm text-slate-500">
-            Something went wrong loading this page. Use the dialog to report the issue or dismiss and try again.
+            {this.state.chunkError
+              ? "This page failed to load after an update. Reload to fetch the latest version."
+              : "Something went wrong loading this page. Use the dialog to report the issue or dismiss and try again."}
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (this.state.chunkError) {
+                reloadForChunkLoad({ resetCounter: true });
+                return;
+              }
+              this.setState({ hasError: false, chunkError: false });
+            }}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            {this.state.chunkError ? "Reload page" : "Try again"}
+          </button>
         </div>
       );
     }

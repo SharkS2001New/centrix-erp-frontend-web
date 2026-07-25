@@ -134,6 +134,14 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
+import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
+import {
+  completeOfflineCashSale,
+  loadOrCreateLocalPosCart,
+  summarizeLocalPosCart,
+  upsertLocalPosCartLine,
+} from "@/lib/pos-offline";
+import { newClientSaleUuid } from "@/lib/pos-offline-db";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { applyTheme, getTheme } from "@/lib/theme";
 import {
@@ -213,6 +221,26 @@ function sameLineId(a, b) {
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
 const POS_CHECKOUT_TIMEOUT_MS = 90_000;
 
+function presentLocalOfflineCart(local) {
+  if (!local) return null;
+  return {
+    ...local,
+    id: local.id || "active",
+    offline: true,
+    channel: "pos",
+    lines: (local.lines ?? []).map((line) => {
+      const qty = Number(line.quantity ?? 0);
+      const price = Number(line.unit_price ?? 0);
+      return {
+        ...line,
+        id: line.client_line_id,
+        update_code: line.client_line_id,
+        amount: Math.round(qty * price * 100) / 100,
+      };
+    }),
+  };
+}
+
 function withPosCheckoutTimeout(promise, message) {
   return Promise.race([
     promise,
@@ -227,6 +255,15 @@ export function PosScreen({ standalone = false }) {
   const confirm = useConfirm();
   const { user, capabilities, refreshCapabilities, organization, hasPermission } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
+  const {
+    offlineMode,
+    pendingSync,
+    orderNumbersLeft,
+    syncing: offlineSyncing,
+    lastSyncMessage,
+    searchOffline,
+    refreshCounts: refreshOfflineCounts,
+  } = usePosOfflineSupport({ enabled: standalone });
   const classicCurrencySettings = useMemo(
     () => mergeGeneralSettings(capabilities?.module_settings),
     [capabilities?.module_settings],
@@ -581,10 +618,6 @@ export function PosScreen({ standalone = false }) {
     () => getChannelWorkflow(capabilities, channel),
     [capabilities, channel],
   );
-
-  useEffect(() => {
-    refreshCapabilities().catch(() => {});
-  }, [refreshCapabilities]);
 
   useEffect(() => {
     if (posSalesConfig.perLineStockRouting) return;
@@ -1220,6 +1253,16 @@ export function PosScreen({ standalone = false }) {
 
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
+    if (standalone && offlineMode) {
+      const local = await loadOrCreateLocalPosCart({
+        branch_id: user.branch_id,
+        till_id: tillId,
+        float_session_id: floatSessionId,
+      });
+      const presented = presentLocalOfflineCart(local);
+      setCart(presented);
+      return presented;
+    }
     const body = { channel, order_source: standalone ? "pos" : "backoffice", branch_id: user.branch_id };
     if (tillId) body.till_id = tillId;
     if (usesRouteMarkup) {
@@ -1243,8 +1286,10 @@ export function PosScreen({ standalone = false }) {
   }, [
     channel,
     standalone,
+    offlineMode,
     user?.branch_id,
     tillId,
+    floatSessionId,
     showRouteOrderUi,
     usesRouteMarkup,
     selectedRouteId,
@@ -1301,6 +1346,10 @@ export function PosScreen({ standalone = false }) {
 
   const ensureCart = useCallback(async () => {
     const current = cartRef.current;
+    if (standalone && offlineMode) {
+      if (current?.offline && Array.isArray(current.lines)) return current;
+      return loadCashierCart();
+    }
     if (current?.id && current.channel === channel && Array.isArray(current.lines)) {
       return current;
     }
@@ -1308,7 +1357,7 @@ export function PosScreen({ standalone = false }) {
       return refreshCart(current.id);
     }
     return loadCashierCart();
-  }, [channel, loadCashierCart, refreshCart]);
+  }, [channel, loadCashierCart, refreshCart, standalone, offlineMode]);
 
   function enqueueCartCommit(task) {
     const run = cartCommitChainRef.current.then(task, task);
@@ -1367,6 +1416,19 @@ export function PosScreen({ standalone = false }) {
       }
       setSearching(true);
       try {
+        if (standalone && offlineMode) {
+          const list = (await searchOffline(trimmed, 40)).map((p) =>
+            enrichProductForLpo(p, uomMap, vatMap),
+          );
+          if (seq !== searchSeq.current) return;
+          setSearchResults(list);
+          setProductByCode((prev) => {
+            const next = { ...prev };
+            for (const p of list) next[p.product_code] = p;
+            return next;
+          });
+          return;
+        }
         const res = await apiRequest("/products", {
           searchParams: { per_page: 80, q: trimmed, fields: "lean", ...productBranchParams },
         });
@@ -1381,15 +1443,46 @@ export function PosScreen({ standalone = false }) {
         void ensureRetailPackages(list.map((p) => p.product_code));
       } catch (err) {
         if (seq !== searchSeq.current) return;
+        // Network drop mid-search: fall back to offline catalog when available.
+        if (standalone) {
+          try {
+            const list = (await searchOffline(trimmed, 40)).map((p) =>
+              enrichProductForLpo(p, uomMap, vatMap),
+            );
+            if (seq !== searchSeq.current) return;
+            setSearchResults(list);
+            setProductByCode((prev) => {
+              const next = { ...prev };
+              for (const p of list) next[p.product_code] = p;
+              return next;
+            });
+            if (list.length) {
+              setStatusMessage("Offline catalog — prices from last sync.");
+              return;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
         setSearchResults([]);
         if (err instanceof ApiError && err.status === 403) {
           setStatusMessage("You do not have permission to search products.");
+        } else if (standalone) {
+          setStatusMessage("Cannot reach server and no offline catalog match.");
         }
       } finally {
         if (seq === searchSeq.current) setSearching(false);
       }
     },
-    [uomById, vatById, productBranchParams, ensureRetailPackages],
+    [
+      uomById,
+      vatById,
+      productBranchParams,
+      ensureRetailPackages,
+      standalone,
+      offlineMode,
+      searchOffline,
+    ],
   );
 
   useEffect(() => {
@@ -1588,6 +1681,49 @@ export function PosScreen({ standalone = false }) {
         }),
       );
       return false;
+    }
+
+    if (standalone && offlineMode) {
+      const activeCart = await ensureCart();
+      const localLine = {
+        client_line_id:
+          editingId != null
+            ? String(editingRef ?? editingId)
+            : mergeTarget?.client_line_id ?? newClientSaleUuid(),
+        product_code: product.product_code,
+        product_name: product.product_name ?? product.description ?? product.product_code,
+        quantity: finalComputed.baseQty,
+        unit_price: finalComputed.unitPricePerBase,
+        display_unit_price: finalComputed.displayUnitPrice,
+        uom: finalComputed.uomLabel || product.package_name,
+        on_wholesale_retail: onWholesaleRetailFlag,
+        discount_given:
+          allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
+        vat_rate: Number(product.vat_rate ?? product.tax_rate ?? 0),
+      };
+      const nextLocal = await upsertLocalPosCartLine(
+        {
+          id: "active",
+          lines: (activeCart?.lines ?? []).map((l) => ({
+            ...l,
+            client_line_id: l.client_line_id ?? l.id,
+          })),
+          branch_id: user?.branch_id,
+          till_id: tillId,
+          float_session_id: floatSessionId,
+        },
+        localLine,
+      );
+      setCart(presentLocalOfflineCart(nextLocal));
+      setStatusMessage(
+        successMessage ??
+          (offlineMode
+            ? `Added offline (will sync when online). ${orderNumbersLeft} order # left.`
+            : "Line added."),
+      );
+      if (clearEntry) clearClassicEntryFields();
+      void refreshOfflineCounts();
+      return true;
     }
 
     const activeCart = await ensureCart();
@@ -2480,11 +2616,8 @@ export function PosScreen({ standalone = false }) {
       if (classicLayout && lineStockMessage) setStatusMessage(lineStockMessage);
       return;
     }
-    if (classicLayout) {
-      void handleAddLine();
-      return;
-    }
-    if (canEditManualLineDiscount()) {
+    // Qty Enter → discount (when editable) → unit price (when allowed) → add to cart.
+    if (showLineDiscountField && canEditManualLineDiscount()) {
       focusLineField(discountInputRef);
       return;
     }
@@ -3069,7 +3202,7 @@ export function PosScreen({ standalone = false }) {
   async function handleRefresh() {
     setBusy(true);
     try {
-      await refreshCapabilities();
+      await refreshCapabilities({ force: true });
       const { uomMap, vatMap } = await loadPosReferenceData();
       const activeCart = cart?.id ? await refreshCart(cart.id) : await loadCashierCart();
       await reloadCartProductMeta(activeCart?.lines, uomMap, vatMap);
@@ -3164,6 +3297,67 @@ export function PosScreen({ standalone = false }) {
       );
       return null;
     }
+
+    // Offline External POS: cash-only, real reserved order numbers, print, queue sync.
+    if (standalone && (offlineMode || activeCart.offline)) {
+      const method = String(body?.payment_method_code ?? "").toUpperCase();
+      const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
+      if (method && method !== "CASH") {
+        setPaymentError(
+          "Offline mode supports cash payments only. Reconnect for M-Pesa or other methods.",
+        );
+        return null;
+      }
+      if (body?.is_credit_sale) {
+        setPaymentError("Credit sales are not available offline.");
+        return null;
+      }
+      setBusy(true);
+      setPaymentError(null);
+      setReceiptPrintStatus(null);
+      try {
+        const local = {
+          id: "active",
+          lines: (activeCart.lines ?? []).map((l) => ({
+            ...l,
+            client_line_id: l.client_line_id ?? l.id,
+          })),
+          branch_id: activeCart.branch_id ?? user?.branch_id,
+          till_id: activeCart.till_id ?? tillId,
+          float_session_id: floatSessionId ?? activeCart.float_session_id,
+          customer_num: body?.customer_num ?? activeCart.customer_num,
+          customer_name_override:
+            body?.customer_name_override ?? activeCart.customer_name_override,
+        };
+        const { sale } = await completeOfflineCashSale({
+          cart: local,
+          user,
+          organization,
+          cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
+          floatSessionId,
+        });
+        setCompletedSale(sale);
+        rememberCompletedPosOrder(sale);
+        setCart(null);
+        setSelectedLineId(null);
+        clearPosUiDraft();
+        clearLineEntry();
+        setStatusMessage(
+          `Offline sale #${sale.order_num} saved — will sync when internet returns.`,
+        );
+        if (!options.skipPrint) {
+          schedulePosReceiptPrint(sale);
+        }
+        void refreshOfflineCounts();
+        return sale;
+      } catch (e) {
+        setPaymentError(e?.message ?? "Offline checkout failed.");
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    }
+
     setBusy(true);
     setPaymentError(null);
     setReceiptPrintStatus(null);
@@ -3255,7 +3449,7 @@ export function PosScreen({ standalone = false }) {
       window.clearTimeout(editAutosaveTimerRef.current);
     }
     editAutosaveTimerRef.current = window.setTimeout(() => {
-      void finalizeEditedOrder({ quiet: true, submitKra: false, skipPrint: true });
+      void finalizeEditedOrder({ quiet: true, submitKra: false });
     }, 650);
   }
 
@@ -3263,7 +3457,7 @@ export function PosScreen({ standalone = false }) {
   async function finalizeEditedOrder({
     quiet = true,
     submitKra = false,
-    skipPrint = true,
+    promptReprint = false,
   } = {}) {
     const activeCart = cartRef.current;
     const summary = cartSummaryRef.current;
@@ -3334,16 +3528,18 @@ export function PosScreen({ standalone = false }) {
           capabilities,
           total,
         );
-      const sale = await handleCheckout(body, { skipPrint, forceSubmitKra: kra });
+      // Never auto-print on edit finalize — explicit Complete asks below.
+      const sale = await handleCheckout(body, { skipPrint: true, forceSubmitKra: kra });
       if (!sale?.id) return null;
 
+      const orderLabel = sale.order_num ?? activeCart.held_order_num;
       setStatusMessage(
         quiet
-          ? `Order #${sale.order_num ?? activeCart.held_order_num} saved.`
-          : `Order #${sale.order_num ?? activeCart.held_order_num} saved under the same order number.`,
+          ? `Order #${orderLabel} saved.`
+          : `Order #${orderLabel} saved under the same order number.`,
       );
       if (!quiet && standalone) {
-        notifySuccess(`Order #${sale.order_num} saved.`);
+        notifySuccess(`Order #${orderLabel} saved.`);
       }
 
       if (quiet) {
@@ -3354,11 +3550,44 @@ export function PosScreen({ standalone = false }) {
           keepEditing: true,
         });
       } else {
-        // Explicit save (F10): finish edit session and prepare a fresh cart.
+        // Explicit save (F10 / Complete): finish edit session and prepare a fresh cart.
         skipEditAutosaveRef.current = true;
         await loadCashierCart();
         setEditOrderNo("");
         setCompletedSale(sale);
+
+        if (promptReprint) {
+          const reprint = await confirm({
+            title: "Reprint receipt?",
+            message: `Order #${orderLabel} was saved successfully. Reprint the receipt now?`,
+            confirmLabel: "Yes, reprint",
+            cancelLabel: "No",
+          });
+          if (reprint) {
+            setReceiptPrintStatus("pending");
+            try {
+              const result = await printSaleOrder(sale, {
+                capabilities,
+                organization,
+                organizationName: capabilities?.profile_label,
+                uomById,
+                user,
+                preparedBy: user?.full_name ?? user?.username ?? null,
+              });
+              if (!result) {
+                setReceiptPrintStatus("failed");
+                notifyError("Print cancelled or no format was selected.");
+              } else {
+                setReceiptPrintStatus("printed");
+                if (standalone) notifySuccess(`Receipt reprinted for order #${orderLabel}.`);
+                else setStatusMessage(`Receipt reprinted for order #${orderLabel}.`);
+              }
+            } catch (e) {
+              setReceiptPrintStatus("failed");
+              notifyError(e instanceof Error ? e.message : "Receipt print failed");
+            }
+          }
+        }
       }
       return sale;
     } finally {
@@ -3597,7 +3826,7 @@ export function PosScreen({ standalone = false }) {
         const saved = await finalizeEditedOrder({
           quiet: false,
           submitKra: false,
-          skipPrint: true,
+          promptReprint: false,
         });
         if (saved?.id) {
           const next = cartRef.current ?? (await loadCashierCart());
@@ -3992,7 +4221,7 @@ export function PosScreen({ standalone = false }) {
     }
     // Previous-order edit: write straight to sales under the same order # (no payment popup).
     if (cart?.held_order_num) {
-      void finalizeEditedOrder({ quiet: false, submitKra: true, skipPrint: false });
+      void finalizeEditedOrder({ quiet: false, submitKra: true, promptReprint: true });
       return;
     }
     setPaymentError(null);
@@ -4158,7 +4387,7 @@ export function PosScreen({ standalone = false }) {
           return;
         }
         if (state.isCartEditSession) {
-          void actions.finalizeEditedOrder({ quiet: false, submitKra: true, skipPrint: false });
+          void actions.finalizeEditedOrder({ quiet: false, submitKra: true, promptReprint: true });
         } else if (state.showCheckoutOnCreate) {
           setPaymentError(null);
           setPaymentOpen(true);
@@ -4507,6 +4736,22 @@ export function PosScreen({ standalone = false }) {
                 </span>
               ) : null}
             </div>
+            {standalone && (offlineMode || pendingSync > 0 || offlineSyncing) ? (
+              <p
+                className={`mt-2 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
+                  offlineMode
+                    ? "border-amber-200 bg-amber-50 text-amber-950"
+                    : "border-sky-200 bg-sky-50 text-sky-950"
+                }`}
+              >
+                {offlineMode
+                  ? `Offline mode — cash sales only. Reserved order # left: ${orderNumbersLeft}. Pending sync: ${pendingSync}.`
+                  : offlineSyncing
+                    ? "Syncing offline sales…"
+                    : lastSyncMessage ||
+                      `${pendingSync} offline sale(s) waiting to sync. Prices refreshing…`}
+              </p>
+            ) : null}
             {!standalone && statusMessage ? (
               <p className="theme-subtext mt-2 truncate text-xs">{statusMessage}</p>
             ) : null}
@@ -5532,6 +5777,7 @@ export function PosScreen({ standalone = false }) {
         receiptPrintStatus={receiptPrintStatus}
         onReprintReceipt={() => void handlePrintReceipt()}
         embedded={!standalone}
+        cashOnlyOffline={standalone && (offlineMode || Boolean(cart?.offline))}
       />
 
       <PosSaveOrderDialog

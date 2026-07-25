@@ -1,4 +1,5 @@
 import { isRouteOrderSale } from "@/lib/sales";
+import { stringifyPrintField } from "@/lib/sale-document-print-shared";
 
 export { sampleReceiptPreviewSale } from "@/lib/print-preview-samples";
 
@@ -19,18 +20,36 @@ export function normalizeReceiptPaymentDetails(details) {
     return { ...EMPTY_RECEIPT_PAYMENT_DETAILS, lines: [{ label: "", value: "" }] };
   }
 
-  const lines = (details.lines ?? [])
-    .map((line) => ({
-      label: String(line?.label ?? "").trim(),
-      value: String(line?.value ?? "").trim(),
-    }))
+  const rawLines = Array.isArray(details.lines) ? details.lines : [];
+  const lines = rawLines
+    .map((line) => {
+      if (typeof line === "string") {
+        const text = line.trim();
+        if (!text) return { label: "", value: "" };
+        const split = text.match(/^([^:]+):\s*(.*)$/);
+        if (split) {
+          return { label: split[1].trim(), value: split[2].trim() };
+        }
+        return { label: "", value: text };
+      }
+      if (Array.isArray(line)) {
+        return {
+          label: stringifyPrintField(line[0]),
+          value: stringifyPrintField(line[1]),
+        };
+      }
+      return {
+        label: stringifyPrintField(line?.label),
+        value: stringifyPrintField(line?.value),
+      };
+    })
     .filter((line) => line.label || line.value)
     .slice(0, 12);
 
   return {
-    title: String(details.title ?? "Payment details").trim() || "Payment details",
+    title: stringifyPrintField(details.title) || "Payment details",
     lines: lines.length ? lines : [{ label: "", value: "" }],
-    note: String(details.note ?? "").trim(),
+    note: stringifyPrintField(details.note),
   };
 }
 

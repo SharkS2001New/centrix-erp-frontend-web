@@ -37,7 +37,8 @@ export const APPROVAL_REQUEST_EVENTS = [
   {
     id: "cash_advance",
     label: "Cash advance submitted",
-    description: "Notifies users with HR → Cash advances → Approve or HR manage.",
+    description:
+      "Notifies the employee’s manager when they have Cash advances → Approve; otherwise all users with that approval right (or HR manage).",
     module: "hr_payroll",
   },
   {

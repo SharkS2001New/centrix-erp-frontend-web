@@ -12,17 +12,49 @@ import {
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
+import { printCashAdvanceVoucher } from "@/components/hr/cash-advance-voucher-print";
+import { notifySuccess } from "@/lib/notify";
+
+function statusLabel(status) {
+  switch (status) {
+    case "pending":
+      return "Pending approval";
+    case "open":
+      return "Open";
+    case "repaid":
+      return "Repaid";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return status || "—";
+  }
+}
 
 export function HrCashAdvancesScreen() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user, organization, generalSettings } = useAuth();
   const canApprove = canApproveCashAdvances({ hasPermission });
+
+  function printVoucher(advance, employees = []) {
+    const employee =
+      advance?.employee ??
+      employees.find((e) => Number(e.id) === Number(advance?.employee_id)) ??
+      null;
+    printCashAdvanceVoucher({
+      advance,
+      employee,
+      organization,
+      generalSettings: typeof generalSettings === "function" ? generalSettings() : generalSettings,
+      printedByUser: user,
+    });
+  }
 
   return (
     <HrCrudPage
       title="Cash advances"
-      subtitle="Salary advances recovered through payroll"
+      subtitle="Salary advances recovered through payroll — new advances go to a manager with approval rights"
       addButtonLabel="Add advance"
       drawerWide
+      drawerCreateTitle="Request cash advance"
       apiPath="/employee-cash-advances"
       loadExtra={async () => {
         const res = await apiRequest("/employees", {
@@ -30,12 +62,16 @@ export function HrCashAdvancesScreen() {
         });
         return { employees: res.data ?? [] };
       }}
+      onCreated={(created) => {
+        notifySuccess("Cash advance submitted for manager approval");
+        printVoucher(created, []);
+      }}
       columns={[
         {
           key: "employee_id",
           label: "Employee",
           render: (r, { employees = [] }) => {
-            const emp = employees.find((e) => e.id === r.employee_id);
+            const emp = r.employee ?? employees.find((e) => e.id === r.employee_id);
             return emp ? composeEmployeeDisplayName(emp) : "—";
           },
         },
@@ -70,9 +106,13 @@ export function HrCashAdvancesScreen() {
               : `${formatHrKesFull(r.repayment_amount)} / payroll`;
           },
         },
-        { key: "status", label: "Status" },
+        {
+          key: "status",
+          label: "Status",
+          render: (r) => statusLabel(r.status),
+        },
       ]}
-      renderRowActions={(row, { reload }) => {
+      renderRowActions={(row, { reload, employees }) => {
         const reminder = row.action_request?.can_remind ? (
           <ApprovalReminderButton
             actionRequestId={row.action_request.id}
@@ -106,12 +146,21 @@ export function HrCashAdvancesScreen() {
               </button>
             </>
           ) : null;
+        const printBtn = (
+          <button
+            type="button"
+            className="ml-3 text-slate-700 hover:underline"
+            onClick={() => printVoucher(row, employees)}
+          >
+            Print voucher
+          </button>
+        );
 
-        if (!reminder && !approval) return null;
         return (
           <>
             {reminder}
             {approval}
+            {printBtn}
           </>
         );
       }}
@@ -123,12 +172,10 @@ export function HrCashAdvancesScreen() {
         repayment_mode: row?.repayment_mode ?? "full_next_cycle",
         repayment_amount:
           row?.repayment_amount != null ? String(row.repayment_amount) : "",
-        status: row?.status ?? "open",
         notes: row?.notes ?? "",
       })}
       buildBody={(form, orgId) => {
         const amount = parseDecimalInput(form.amount);
-        // Balance tracks amount while typing; on edit it stays as loaded unless amount changes.
         const balance =
           form.balance !== "" ? parseDecimalInput(form.balance) : amount;
         return {
@@ -142,7 +189,6 @@ export function HrCashAdvancesScreen() {
             form.repayment_mode === "fixed_per_cycle" && form.repayment_amount
               ? parseDecimalInput(form.repayment_amount)
               : null,
-          status: form.status,
           notes: form.notes.trim() || null,
         };
       }}
@@ -187,7 +233,6 @@ export function HrCashAdvancesScreen() {
                 setForm((p) => ({
                   ...p,
                   amount: e.target.value,
-                  // Keep outstanding balance in sync — there is no separate balance input.
                   balance: e.target.value,
                 }))
               }
@@ -216,17 +261,22 @@ export function HrCashAdvancesScreen() {
               />
             </Field>
           )}
-          <HrSelectField
-            label="Status"
-            value={form.status}
-            onChange={(v) => setForm((p) => ({ ...p, status: v }))}
-            options={[
-              { value: "pending", label: "Pending approval" },
-              { value: "open", label: "Open" },
-              { value: "repaid", label: "Repaid" },
-              { value: "cancelled", label: "Cancelled" },
-            ]}
-          />
+          <Field label="Notes / reason">
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+              rows={3}
+              className={inputClassName()}
+              placeholder="Reason for the advance (shown on the voucher)"
+            />
+          </Field>
+          {!extra.editingRow ? (
+            <p className="text-xs text-slate-500">
+              This request will be sent for approval to the employee&apos;s manager (if they have
+              cash-advance approval rights), otherwise to all users with approval rights. A printable
+              voucher opens after save for wet-ink signature and stamp.
+            </p>
+          ) : null}
         </>
       )}
     />

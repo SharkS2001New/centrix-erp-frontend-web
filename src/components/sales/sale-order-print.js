@@ -363,6 +363,7 @@ export async function printSaleOrder(sale, options = {}) {
     await printSaleReceipt(saleForPrint, {
       ...printOptions,
       copies,
+      preparedBy: orderCreatorName,
       organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
       uomById: options.uomById ?? null,
     });

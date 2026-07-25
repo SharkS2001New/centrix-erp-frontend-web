@@ -45,6 +45,8 @@ export function HrCrudPage({
   renderRowActions,
   exportEnabled = true,
   exportFilename,
+  /** Called after a successful create with the API response body (if any). */
+  onCreated,
 }) {
   const { user, capabilities } = useAuth();
   const confirm = useConfirm();
@@ -127,7 +129,8 @@ export function HrCrudPage({
       if (editing) {
         await apiRequest(`${apiPath}/${editing.id}`, { method: "PUT", body });
       } else {
-        await apiRequest(apiPath, { method: "POST", body });
+        const created = await apiRequest(apiPath, { method: "POST", body });
+        onCreated?.(created);
       }
       setDrawerOpen(false);
       await load();
@@ -234,7 +237,7 @@ export function HrCrudPage({
                       </td>
                     ))}
                     <td className="px-4 py-3 text-right">
-                      {renderRowActions ? renderRowActions(row, { reload: load }) : null}
+                      {renderRowActions ? renderRowActions(row, { reload: load, ...tableExtra }) : null}
                       <button
                         type="button"
                         onClick={() => openEdit(row)}

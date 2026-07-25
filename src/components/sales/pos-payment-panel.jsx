@@ -149,6 +149,7 @@ export function PosPaymentPanel({
   receiptPrintStatus = null,
   onReprintReceipt,
   embedded = false,
+  cashOnlyOffline = false,
 }) {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState("payment");
@@ -709,6 +710,20 @@ export function PosPaymentPanel({
   }, [open, step]);
 
   useEffect(() => {
+    if (!open || !cashOnlyOffline) return;
+    setCashAmount(String(Math.ceil(Number(billTotal) || 0)));
+    setMpesaAmount("0");
+    setMpesaCode("");
+    setBankAmount("0");
+    setBankRef("");
+    setEquityAmount("0");
+    setKcbAmount("0");
+    setOtherBankAmount("0");
+    setChequeAmount("0");
+    setChequeNo("");
+  }, [open, cashOnlyOffline, billTotal]);
+
+  useEffect(() => {
     if (!open || step !== "confirm") return;
     const t = window.setTimeout(() => confirmYesRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
@@ -1120,6 +1135,11 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
           <PosField label="Cash amount (C)">
+            {cashOnlyOffline ? (
+              <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
+                Offline — cash only. Sale uses a reserved order number and syncs when internet returns.
+              </p>
+            ) : null}
             <input
               ref={cashAmountRef}
               type="number"
@@ -1131,7 +1151,7 @@ export function PosPaymentPanel({
               onKeyDown={(e) => handlePaymentAmountKeyDown(e, cashAmount, setCashAmount, { ceil: true })}
             />
           </PosField>
-          {cfg.enableMpesaAmount ? (
+          {!cashOnlyOffline && cfg.enableMpesaAmount ? (
             <PosField label="M-Pesa amount (M)">
               <input
                 ref={mpesaAmountRef}

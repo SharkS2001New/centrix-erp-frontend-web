@@ -127,7 +127,10 @@ export function getStoredMemberships() {
   }
 }
 
-/** Last capabilities payload — local cache so the shell renders before /erp/capabilities returns. */
+/**
+ * Last capabilities payload (module_settings, permissions, etc.).
+ * Written on login / ERP load; external POS prefers this cache until hard refresh.
+ */
 export function getStoredCapabilities() {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(CAPABILITIES_KEY);

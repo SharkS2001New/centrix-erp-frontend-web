@@ -13,6 +13,8 @@ export function DeleteProductDialog({ open, product, saving, error, onClose, onC
 
   if (!open || !mounted || !product) return null;
 
+  const alreadyInactive = Boolean(product.deleted_at);
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -25,15 +27,23 @@ export function DeleteProductDialog({ open, product, saving, error, onClose, onC
         aria-modal="true"
         className="w-full max-w-md theme-panel rounded-xl border p-5 shadow-xl"
       >
-        <h2 className="text-[15px] font-medium text-slate-900">Delete product?</h2>
+        <h2 className="text-[15px] font-medium text-slate-900">
+          {alreadyInactive ? "Permanently delete product?" : "Delete product?"}
+        </h2>
         <p className="mt-3 text-sm text-slate-600">
-          Are you sure you want to delete:
+          {alreadyInactive
+            ? "This inactive product will be permanently removed:"
+            : "Are you sure you want to delete:"}
         </p>
         <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900">
           &quot;{product.product_name}&quot;
         </p>
         <p className="mt-2 font-mono text-xs text-slate-500">{product.product_code}</p>
-        <p className="mt-3 text-sm text-slate-500">This action cannot be undone.</p>
+        <p className="mt-3 text-sm text-slate-500">
+          {alreadyInactive
+            ? "This cannot be undone."
+            : "The product will be marked inactive and can be restored later from Inactive products."}
+        </p>
 
         {error ? (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -54,7 +64,7 @@ export function DeleteProductDialog({ open, product, saving, error, onClose, onC
             onClick={onConfirm}
             className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
           >
-            {saving ? "Deleting…" : "Delete product"}
+            {saving ? "Deleting…" : alreadyInactive ? "Delete permanently" : "Delete product"}
           </button>
         </div>
       </div>

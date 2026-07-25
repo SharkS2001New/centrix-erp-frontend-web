@@ -35,10 +35,16 @@ export function applySalesFooterPlaceholders(
   { username = "—", organizationName = "", validDays = 7 } = {},
 ) {
   const org = String(organizationName ?? "").trim();
+  const servedBy =
+    typeof username === "string"
+      ? username.trim() || "—"
+      : username && typeof username === "object"
+        ? String(username.full_name ?? username.name ?? username.username ?? "—")
+        : "—";
   return String(line ?? "")
-    .replace(/\{username\}/gi, username)
-    .replace(/\{user\}/gi, username)
-    .replace(/\{cashier\}/gi, username)
+    .replace(/\{username\}/gi, servedBy)
+    .replace(/\{user\}/gi, servedBy)
+    .replace(/\{cashier\}/gi, servedBy)
     .replace(/\{\{organization\}\}/gi, org || "{{organization}}")
     .replace(/\{organization\}/gi, org || "the company")
     .replace(/\{org\}/gi, org || "the company")

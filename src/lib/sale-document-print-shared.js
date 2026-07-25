@@ -32,6 +32,23 @@ export function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+/** Coerce print field values — nested objects must never become "[object Object]". */
+export function stringifyPrintField(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    for (const key of ["full_name", "name", "username", "label", "value", "text", "title"]) {
+      if (value[key] != null && value[key] !== value) {
+        const nested = stringifyPrintField(value[key]);
+        if (nested) return nested;
+      }
+    }
+    return "";
+  }
+  return String(value).trim();
+}
+
 export function formatPrintAmount(value) {
   if (value == null || value === "") return "—";
   return Number(value).toLocaleString("en-KE", {
@@ -84,6 +101,7 @@ export function resolveSaleDocumentStoreContact({ showBranchOnReceipt, branch, s
 function firstNonEmptyString(...values) {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
   return null;
 }
@@ -108,6 +126,7 @@ export function resolveSaleOrderCreatorName(sale, preparedBy = null) {
       nameFromSaleUserRecord(sale.cashier_user),
       nameFromSaleUserRecord(sale.cashier),
       nameFromSaleUserRecord(sale.user),
+      typeof sale.created_by === "string" ? sale.created_by : null,
     ) ?? "—"
   );
 }

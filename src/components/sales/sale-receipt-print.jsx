@@ -123,6 +123,8 @@ export function buildSaleReceiptHtml(
     showPaymentInstructions = true,
     generalSettings = null,
     salesSettings = null,
+    preparedBy = null,
+    user = null,
   } = {},
 ) {
   if (!sale) return "";
@@ -148,7 +150,11 @@ export function buildSaleReceiptHtml(
     seller,
   });
   const tillNo = sale.pos_terminal_id ?? sale.branch_id ?? branch?.id ?? "1";
-  const cashierName = sale.cashier_name ?? sale.user?.full_name ?? "—";
+  const servedByName = (() => {
+    const fromSale = resolveSaleOrderCreatorName(sale, preparedBy);
+    if (fromSale !== "—") return fromSale;
+    return user?.full_name ?? user?.name ?? user?.username ?? "—";
+  })();
 
   const showDiscountColumn = shouldShowPrintDiscountColumn({
     moduleSettings,
@@ -217,7 +223,7 @@ export function buildSaleReceiptHtml(
   ].join("");
 
   const footerHtml = buildReceiptFooterHtml(documentFooterText, orgName, {
-    username: resolveSaleOrderCreatorName(sale),
+    username: servedByName,
   }, salesSettings);
 
   const html = `<!DOCTYPE html>
@@ -307,8 +313,7 @@ export function buildSaleReceiptHtml(
     <div class="meta-grid">
       <div class="meta-full"><span class="meta-label">Order No:</span> ${escapeHtml(orderNo)}</div>
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
-      <div><span class="meta-label">Cashier:</span> ${escapeHtml(cashierName)}</div>
-      <div class="meta-value"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
+      <div class="meta-full"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer:</span> ${escapeHtml(customerName)}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
     </div>

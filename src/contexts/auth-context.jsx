@@ -38,7 +38,10 @@ import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { useCookieAuth } from "@/lib/auth-config";
 import { invalidateReferenceDataCache } from "@/lib/reference-data-cache";
 import { invalidateReportBuilderTemplateCache } from "@/lib/report-builder-templates";
-import { capabilitiesVersionChanged } from "@/lib/capabilities-sync";
+import {
+  capabilitiesVersionChanged,
+  isBrowserReloadNavigation,
+} from "@/lib/capabilities-sync";
 import {
   clearLicenseWarningDismissed,
   licenseFromAuthState,
@@ -237,7 +240,19 @@ export function AuthProvider({ children }) {
     }
     setLoading(false);
 
-    refreshCapabilities()
+    const channel = getStoredLoginChannel() ?? WEB_LOGIN_CHANNEL;
+    const isPosSession = channel === POS_LOGIN_CHANNEL;
+    const isReload = isBrowserReloadNavigation();
+
+    // External POS: keep module settings (discount / unit price / etc.) in localStorage
+    // and skip online capabilities checks until hard refresh (or POS Refresh).
+    if (isPosSession && cachedCaps && !isReload) {
+      capabilitiesRefreshAt.current = Date.now();
+      syncStoredWorkspace(cachedCaps?.workspaces ?? []);
+      return;
+    }
+
+    refreshCapabilities({ force: Boolean(isPosSession && isReload) })
       .then((caps) => {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })
@@ -255,6 +270,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!hasAuthSession()) return undefined;
+    // External POS must not re-check capabilities on every focus/tab switch.
+    if (loginChannel === POS_LOGIN_CHANNEL) return undefined;
 
     const refreshOnFocus = () => {
       refreshCapabilities().catch(() => {});
@@ -273,7 +290,7 @@ export function AuthProvider({ children }) {
       window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [refreshCapabilities]);
+  }, [refreshCapabilities, loginChannel]);
 
   const switchWorkspace = useCallback(async (workspaceId) => {
     const res = await applyWorkspaceSession(workspaceId);

@@ -61,8 +61,7 @@ export function HrPayrollRunsIdScreen() {
   const [paymentReference, setPaymentReference] = useState("");
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [progressPct, setProgressPct] = useState(0);
-  const [progressMessage, setProgressMessage] = useState("");
+  const [emailing, setEmailing] = useState(false);
   const autoProcessStarted = useRef(false);
 
   const loadData = useCallback(async () => {
@@ -86,8 +85,6 @@ export function HrPayrollRunsIdScreen() {
   const runAutoProcess = useCallback(
     async (options = {}) => {
       setProcessing(true);
-      setProgressPct(2);
-      setProgressMessage("Starting payroll calculation…");
       setLines([]);
       try {
         await runQueuedTask(
@@ -98,15 +95,8 @@ export function HrPayrollRunsIdScreen() {
             }),
           {
             message: "Generating payroll…",
-            onProgress: (task) => {
-              setProgressPct(Number(task.progress ?? 0));
-              const msg = task.progress_message ?? task.payload?.progress_message;
-              if (msg) setProgressMessage(String(msg));
-            },
           },
         );
-        setProgressPct(100);
-        setProgressMessage("Loading payroll lines…");
         await loadData();
         notifySuccess("Payroll generated.");
       } catch (e) {
@@ -116,8 +106,6 @@ export function HrPayrollRunsIdScreen() {
         }
       } finally {
         setProcessing(false);
-        setProgressPct(0);
-        setProgressMessage("");
       }
     },
     [runId, runQueuedTask, loadData],
@@ -132,8 +120,6 @@ export function HrPayrollRunsIdScreen() {
 
     autoProcessStarted.current = true;
     setProcessing(true);
-    setProgressPct(2);
-    setProgressMessage("Starting payroll calculation…");
     let options = {};
     try {
       const raw = sessionStorage.getItem(AUTO_PROCESS_KEY(runId));
@@ -266,6 +252,53 @@ export function HrPayrollRunsIdScreen() {
     }
   }
 
+  async function emailAllReceipts() {
+    const ok = await confirm({
+      title: "Email payroll receipts",
+      message:
+        "Send a payslip PDF to each employee who has a work or personal email on file? Employees without email are skipped.",
+      confirmLabel: "Send emails",
+    });
+    if (!ok) return;
+    setEmailing(true);
+    try {
+      const res = await apiRequest(`/payroll/runs/${runId}/email-receipts`, { method: "POST" });
+      notifySuccess(res.message ?? "Payroll receipts emailed.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to email receipts");
+    } finally {
+      setEmailing(false);
+    }
+  }
+
+  async function emailLineReceipt() {
+    if (!breakdownLine?.id) return;
+    const employee = breakdownEmployee ?? breakdownLine.employee;
+    const defaultTo = employee?.email || employee?.personal_email || "";
+    if (!defaultTo) {
+      notifyError("This employee has no email on file. Add a work or personal email first.");
+      return;
+    }
+    const ok = await confirm({
+      title: "Email payroll receipt",
+      message: `Send this payslip PDF to ${defaultTo}?`,
+      confirmLabel: "Send email",
+    });
+    if (!ok) return;
+    setEmailing(true);
+    try {
+      const res = await apiRequest(`/payroll/runs/${runId}/lines/${breakdownLine.id}/email-receipt`, {
+        method: "POST",
+        body: { to: defaultTo },
+      });
+      notifySuccess(res.message ?? "Payroll receipt emailed.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to email receipt");
+    } finally {
+      setEmailing(false);
+    }
+  }
+
   const breakdownLine = lineDetail ?? selectedLine;
   const breakdownEmployee = breakdownLine?.employee;
   const employeeName =
@@ -285,41 +318,8 @@ export function HrPayrollRunsIdScreen() {
 
       {loading && !processing && !run ? (
         <p className="text-sm text-slate-500">Loading payroll run…</p>
-      ) : processing && !run ? (
-        <div className="mb-6 rounded-xl border border-[#185FA5]/25 bg-[#185FA5]/05 p-5">
-          <p className="text-sm font-medium text-slate-900">Generating payroll…</p>
-          <p className="mt-1 text-xs text-slate-600">
-            {progressMessage || "Calculating employee lines. Results appear when this finishes."}
-          </p>
-          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
-            <div
-              className="h-full rounded-full bg-[#185FA5] transition-[width] duration-300"
-              style={{ width: `${Math.max(4, Math.min(100, progressPct))}%` }}
-            />
-          </div>
-          <p className="mt-2 text-xs font-medium text-slate-700">
-            {Math.max(0, Math.min(100, Math.round(progressPct)))}%
-          </p>
-        </div>
       ) : run ? (
         <>
-          {processing ? (
-            <div className="mb-6 rounded-xl border border-[#185FA5]/25 bg-[#185FA5]/05 p-5">
-              <p className="text-sm font-medium text-slate-900">Generating payroll…</p>
-              <p className="mt-1 text-xs text-slate-600">
-                {progressMessage || "Calculating employee lines. Results appear when this finishes."}
-              </p>
-              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
-                <div
-                  className="h-full rounded-full bg-[#185FA5] transition-[width] duration-300"
-                  style={{ width: `${Math.max(4, Math.min(100, progressPct))}%` }}
-                />
-              </div>
-              <p className="mt-2 text-xs font-medium text-slate-700">
-                {Math.max(0, Math.min(100, Math.round(progressPct)))}%
-              </p>
-            </div>
-          ) : null}
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-medium text-slate-900">
@@ -391,20 +391,31 @@ export function HrPayrollRunsIdScreen() {
                   >
                     Print receipts
                   </button>
+                  <button
+                    type="button"
+                    disabled={emailing || processing}
+                    onClick={() => void emailAllReceipts()}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {emailing ? "Emailing…" : "Email receipts"}
+                  </button>
                   <Link
                     href={`/reports/bank-transfer?payroll_run_id=${run.id}`}
+                    prefetch={false}
                     className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Bank transfer report
                   </Link>
                   <Link
                     href={`/reports/nssf-remittance?payroll_run_id=${run.id}`}
+                    prefetch={false}
                     className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     NSSF remittance
                   </Link>
                   <Link
                     href={`/reports/other-deductions?payroll_run_id=${run.id}`}
+                    prefetch={false}
                     className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Other deductions
@@ -522,22 +533,32 @@ export function HrPayrollRunsIdScreen() {
             wide
             footer={
               breakdownLine && ["processed", "paid"].includes(run.status) ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    printPayrollReceipt({
-                      line: breakdownLine,
-                      employee: breakdownEmployee,
-                      run,
-                      period,
-                      organization,
-                      generalSettings: generalSettings(),
-                    })
-                  }
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Print receipt
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      printPayrollReceipt({
+                        line: breakdownLine,
+                        employee: breakdownEmployee,
+                        run,
+                        period,
+                        organization,
+                        generalSettings: generalSettings(),
+                      })
+                    }
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Print receipt
+                  </button>
+                  <button
+                    type="button"
+                    disabled={emailing}
+                    onClick={() => void emailLineReceipt()}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {emailing ? "Emailing…" : "Email receipt"}
+                  </button>
+                </div>
               ) : null
             }
           >
