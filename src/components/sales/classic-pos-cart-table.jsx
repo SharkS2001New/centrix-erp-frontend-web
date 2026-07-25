@@ -117,6 +117,7 @@ export function ClassicPosCartTable({
   orderNavError = null,
   showRetailModeHint = false,
   sellAtRetail = false,
+  onToggleRetailMode = null,
   replacingLineId = null,
   onScanCodeClick,
   busy = false,
@@ -163,15 +164,18 @@ export function ClassicPosCartTable({
       <div className="classic-pos-cart-caption">
         <div className="classic-pos-cart-caption-left">
           {showRetailModeHint ? (
-            <span
+            <button
+              type="button"
               className={`classic-pos-mode-hint${
                 sellAtRetail ? " classic-pos-mode-hint--retail" : ""
               }`}
+              onClick={() => onToggleRetailMode?.()}
+              title="Click or press F12 to switch wholesale / retail for new lines"
             >
               {sellAtRetail
-                ? "New lines: RETAIL — F2 for wholesale"
-                : "New lines: WHOLESALE — F2 for retail"}
-            </span>
+                ? "New lines: RETAIL — F12 for wholesale"
+                : "New lines: WHOLESALE — F12 for retail"}
+            </button>
           ) : null}
           <span className="classic-pos-cart-caption-text">{orderCaption}</span>
           {orderNavHint ? (

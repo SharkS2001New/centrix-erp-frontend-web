@@ -145,7 +145,7 @@ export function PosProductSearch({
 
   function pick(product) {
     onSelect?.(product);
-    // Classic auto-adds on select — clear scan immediately and close the list.
+    // Classic: clear scan box after pick; parent parks the product and focuses qty.
     if (classic) {
       onQueryChange("");
       setOpen(false);

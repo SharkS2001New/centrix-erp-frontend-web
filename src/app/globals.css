@@ -2686,6 +2686,17 @@ html[data-theme="dark"] .pos-workspace-classic {
   text-transform: uppercase;
   color: var(--classic-muted, #5c5340);
   white-space: nowrap;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.classic-pos-mode-hint:hover,
+.classic-pos-mode-hint:focus-visible {
+  text-decoration: underline;
+  outline: none;
 }
 
 .classic-pos-mode-hint--retail {

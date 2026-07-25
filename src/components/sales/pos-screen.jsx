@@ -22,6 +22,7 @@ import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import {
   cartLineEnteredDiscountPerUnit,
   cartLinePackQtyForDiscount,
+  snapshotUomForPrint,
 } from "@/lib/sale-line-items";
 import { uomWholesaleConversionExample } from "@/lib/uom-packaging";
 import {
@@ -228,6 +229,10 @@ function sameLineId(a, b) {
 
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
 const POS_CHECKOUT_TIMEOUT_MS = 90_000;
+
+function isServerPosCartId(id) {
+  return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
+}
 
 function presentLocalOfflineCart(local) {
   if (!local) return null;
@@ -1520,19 +1525,26 @@ export function PosScreen({ standalone = false }) {
       }
       return loadCashierCart();
     }
-    // Back online with a local cart still open — push lines to the server.
-    if (standalone && current?.offline && (current.lines?.length > 0 || current.held_order_num)) {
-      try {
-        return await materializeOfflineCartOnServer(current);
-      } catch (e) {
-        console.warn("Could not rehydrate offline cart after reconnect", e);
-        return current;
+    // Back online: never call the API with the local "active" cart id.
+    if (standalone && (current?.offline || (current && !isServerPosCartId(current.id)))) {
+      if (current?.lines?.length > 0 || current?.held_order_num) {
+        try {
+          return await materializeOfflineCartOnServer(current);
+        } catch (e) {
+          console.warn("Could not rehydrate offline cart after reconnect", e);
+          notifyError(
+            e instanceof Error
+              ? e.message
+              : "Could not restore cart online. Starting a fresh server cart.",
+          );
+        }
       }
+      return loadCashierCart();
     }
-    if (current?.id && current.channel === channel && Array.isArray(current.lines)) {
+    if (current?.id && isServerPosCartId(current.id) && current.channel === channel && Array.isArray(current.lines)) {
       return current;
     }
-    if (current?.id && current.channel === channel) {
+    if (current?.id && isServerPosCartId(current.id) && current.channel === channel) {
       return refreshCart(current.id);
     }
     return loadCashierCart();
@@ -2043,6 +2055,8 @@ export function PosScreen({ standalone = false }) {
         unit_price: finalComputed.unitPricePerBase,
         display_unit_price: finalComputed.displayUnitPrice,
         uom: finalComputed.uomLabel || product.package_name,
+        unit_id: product.unit_id ?? product.uom?.id ?? null,
+        unit: snapshotUomForPrint(product.uom ?? product.unit),
         on_wholesale_retail: onWholesaleRetailFlag,
         discount_given:
           allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
@@ -2379,12 +2393,6 @@ export function PosScreen({ standalone = false }) {
       prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
     );
 
-    // Classic: add qty 1 immediately — do not park the product in the entry "next row".
-    if (classicLayout && !replacingLineId) {
-      void quickAddOrIncrementProduct(product);
-      return;
-    }
-
     setSelectedProductCode(product.product_code);
     setSelectedProduct(product);
     setUnitPriceTouched(false);
@@ -2417,6 +2425,8 @@ export function PosScreen({ standalone = false }) {
       discount: String(computed.discountAmount ?? 0),
       unit_price: String(computed.displayUnitPrice),
     });
+    void ensureRetailPackages([product.product_code]);
+
     if (replaceLine) {
       if (String(replaceLine.product_code) === String(product.product_code)) {
         setStatusMessage("Choose a different product to replace this line.");
@@ -2445,6 +2455,12 @@ export function PosScreen({ standalone = false }) {
           setLineBusy(false);
         }
       })();
+      return;
+    }
+
+    // Classic search pick: park on entry row and focus qty so cashier can type quantity.
+    if (classicLayout) {
+      setStatusMessage(`Enter quantity for ${product.product_code}, then press Enter.`);
     }
   }
 
@@ -3025,6 +3041,11 @@ export function PosScreen({ standalone = false }) {
     if (!selectedProduct || busy || lineBusy) return;
     if (addLineBlocked) {
       if (classicLayout && lineStockMessage) setStatusMessage(lineStockMessage);
+      return;
+    }
+    // Classic entry row only edits qty — Enter adds the line.
+    if (classicLayout) {
+      void handleAddLine();
       return;
     }
     // Qty Enter → discount (when editable) → unit price (when allowed) → add to cart.
@@ -3729,6 +3750,7 @@ export function PosScreen({ standalone = false }) {
           organization,
           organizationName: capabilities?.profile_label,
           uomById,
+          productByCode,
           user,
           preparedBy: user?.full_name ?? user?.username ?? null,
           documentType,
@@ -3757,7 +3779,7 @@ export function PosScreen({ standalone = false }) {
           );
         });
     },
-    [posSalesConfig.showCheckoutOnCreate, capabilities, organization, uomById, user],
+    [posSalesConfig.showCheckoutOnCreate, capabilities, organization, uomById, productByCode, user],
   );
 
   async function handleCheckout(body, options = {}) {
@@ -4132,6 +4154,7 @@ export function PosScreen({ standalone = false }) {
                   organization,
                   organizationName: capabilities?.profile_label,
                   uomById,
+                  productByCode,
                   user,
                   preparedBy: user?.full_name ?? user?.username ?? null,
                   documentType:
@@ -4229,6 +4252,7 @@ export function PosScreen({ standalone = false }) {
               organization,
               organizationName: capabilities?.profile_label,
               uomById,
+              productByCode,
               user,
               preparedBy: user?.full_name ?? user?.username ?? null,
             });
@@ -4569,6 +4593,7 @@ export function PosScreen({ standalone = false }) {
           organization,
           organizationName: capabilities?.profile_label,
           uomById,
+          productByCode,
           user,
           preparedBy: user?.full_name ?? user?.username ?? null,
           documentType:
@@ -4982,6 +5007,26 @@ export function PosScreen({ standalone = false }) {
     editOrderNo,
   ]);
 
+  function toggleRetailWholesaleMode() {
+    if (!posSalesConfig.enableRetailPricing) {
+      flashPosShortcutMessage(
+        "Retail pricing is not enabled for this organization (Platform → Sales behaviour).",
+      );
+      return false;
+    }
+    setSellWholesale((prev) => {
+      const nextWholesale = !prev;
+      const label = nextWholesale ? "WHOLESALE" : "RETAIL";
+      setStatusMessage(`New lines: ${label} pricing (F12).`);
+      if (standalone) {
+        notifySuccess(`Switched to ${label} pricing.`);
+      }
+      return nextWholesale;
+    });
+    setUnitPriceTouched(false);
+    return true;
+  }
+
   function flashPosShortcutMessage(message, { error = true } = {}) {
     setStatusMessage(message);
     if (standalone) {
@@ -5043,12 +5088,14 @@ export function PosScreen({ standalone = false }) {
   };
   posShortcutActionsRef.current = {
     flashPosShortcutMessage,
+    toggleRetailWholesaleMode,
     cancelReplaceCartLine,
     focusProductSearch,
     handleNewOrder,
     startFreshWorkspace,
     handleRefresh,
     openSaveOrderDialog,
+    openCompletePayment,
     handlePrintReceipt,
     removeSelectedLine,
     finalizeEditedOrder,
@@ -5133,8 +5180,10 @@ export function PosScreen({ standalone = false }) {
       if (key === "F2" && (state.classicLayout || state.standalone)) {
         e.preventDefault();
         e.stopPropagation();
-        if (state.enableRetailPricing) {
-          setSellWholesale((prev) => !prev);
+        // Classic: F2 = find/focus search. Retail/wholesale is F12 (also click the mode hint).
+        // Modern standalone: F2 can also toggle when retail pricing is on.
+        if (state.enableRetailPricing && !state.classicLayout) {
+          actions.toggleRetailWholesaleMode();
         } else {
           actions.focusProductSearch();
         }
@@ -5159,32 +5208,16 @@ export function PosScreen({ standalone = false }) {
       if (key === "F10" && (state.classicLayout || state.standalone)) {
         e.preventDefault();
         e.stopPropagation();
-        if (!state.lineCount) {
-          actions.flashPosShortcutMessage("Add items before completing payment (F10).");
-          return;
-        }
-        if (state.cartStockBlocked) {
-          actions.flashPosShortcutMessage("Fix stock issues before completing payment.");
-          return;
-        }
-        if (state.checkoutBlocked) {
-          actions.flashPosShortcutMessage("Wait for cart lines to finish saving, then press F10.");
-          return;
-        }
-        if (state.isCartEditSession || state.modernOrderEditLocked) {
-          void actions.finalizeEditedOrder({ quiet: false, submitKra: true, promptReprint: true });
-        } else if (state.showCheckoutOnCreate) {
-          setPaymentError(null);
-          setPaymentOpen(true);
-        } else {
-          actions.openSaveOrderDialog("save");
-        }
+        // Same path as footer "F10 PAY" — always open payment / finalize edit.
+        actions.openCompletePayment();
         return;
       }
-      if (key === "F12" && state.enableRetailPricing && (state.classicLayout || state.standalone)) {
+      // F12: wholesale ↔ retail. Always handle on classic/standalone (feedback if retail disabled).
+      if (key === "F12" && (state.classicLayout || state.standalone)) {
         e.preventDefault();
         e.stopPropagation();
-        setSellWholesale((prev) => !prev);
+        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+        actions.toggleRetailWholesaleMode();
         return;
       }
       if (state.classicLayout && e.altKey && (e.key === "h" || e.key === "H")) {
@@ -5597,7 +5630,7 @@ export function PosScreen({ standalone = false }) {
                   <input
                     type="checkbox"
                     checked={!sellWholesale}
-                    onChange={(e) => setSellWholesale(!e.target.checked)}
+                    onChange={() => toggleRetailWholesaleMode()}
                   />
                   Sell at retail prices
                   <span className="theme-subtext text-[10px] font-normal">(F12)</span>
@@ -6043,6 +6076,7 @@ export function PosScreen({ standalone = false }) {
                 orderNavError={orderEditError}
                 showRetailModeHint={posSalesConfig.enableRetailPricing}
                 sellAtRetail={retailPricingSession}
+                onToggleRetailMode={() => toggleRetailWholesaleMode()}
                 replacingLineId={replacingLineId}
                 onScanCodeClick={(lineId) => beginReplaceCartLine(lineId)}
                 busy={busy}

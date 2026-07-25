@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import { saleLineProductName } from "@/lib/sale-line-items";
+import { enrichSaleLinesForQtyPrint, saleLineProductName, saleLineUom } from "@/lib/sale-line-items";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { mergeProcurementSettings } from "@/lib/procurement-settings";
 import { mergeSalesSettings } from "@/lib/sales-settings";
@@ -48,7 +48,7 @@ export function resolvePrintProcurementSettings(moduleSettings) {
   return mergeProcurementSettings(moduleSettings);
 }
 
-/** Ensure sale line items are present (with product names) before building receipt/invoice HTML. */
+/** Ensure sale line items are present (with product names + UOM) before building receipt/invoice HTML. */
 export async function ensureSaleForPrint(sale) {
   if (!sale?.id) return sale;
 
@@ -56,8 +56,11 @@ export async function ensureSaleForPrint(sale) {
   const missingProductNames =
     items.length > 0 &&
     items.some((line) => line?.product_code && !saleLineProductName(line));
+  const missingPackaging =
+    items.length > 0 &&
+    items.some((line) => line?.product_code && !saleLineUom(line, null));
 
-  if (items.length > 0 && !missingProductNames) return sale;
+  if (items.length > 0 && !missingProductNames && !missingPackaging) return sale;
 
   const isLegacy = Boolean(sale?.fulfillment_meta?.legacy_import);
   const endpoints = isLegacy

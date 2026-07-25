@@ -306,7 +306,6 @@ export function buildSaleReceiptHtml(
     ${branchName ? `<div class="company-meta">${escapeHtml(branchName)}</div>` : ""}
     ${storeAddress ? `<div class="company-meta">${escapeHtml(storeAddress)}</div>` : ""}
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
-    ${seller?.email ? `<div class="company-meta">Email: ${escapeHtml(seller.email)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="doc-title">Sales Receipt</div>
     <div class="divider"></div>

@@ -7,7 +7,7 @@ import {
   ensureSaleForPrint,
   fetchPrintModuleSettings,
 } from "@/lib/print-module-settings";
-import { saleLineProductName } from "@/lib/sale-line-items";
+import { enrichSaleLinesForQtyPrint, saleLineProductName } from "@/lib/sale-line-items";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
@@ -241,10 +241,14 @@ export async function printSaleOrder(sale, options = {}) {
       Array.isArray(sale.items) &&
       sale.items.length > 0 &&
       !sale.items.some((line) => line?.product_code && !saleLineProductName(line));
-    const saleForPrint =
+    const loadedSale =
       options.skipSaleRefresh && hasCompleteItems
         ? sale
         : await ensureSaleForPrint(sale);
+    const saleForPrint = enrichSaleLinesForQtyPrint(loadedSale, {
+      productByCode: options.productByCode ?? null,
+      uomById: options.uomById ?? null,
+    });
     const moduleSettings =
       options.skipSettingsRefresh && fallbackModuleSettings
         ? fallbackModuleSettings

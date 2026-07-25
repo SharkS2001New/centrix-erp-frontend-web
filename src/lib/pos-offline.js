@@ -23,6 +23,7 @@ import {
   idbTakeNextOrderNumber,
   newClientSaleUuid,
 } from "@/lib/pos-offline-db";
+import { snapshotUomForPrint } from "@/lib/sale-line-items";
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
@@ -184,6 +185,10 @@ export function serverCartLinesToLocal(lines) {
         display_unit_price:
           line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
         uom: line.uom ?? null,
+        unit_id: line.unit_id ?? line.product?.unit_id ?? line.product?.unit?.id ?? null,
+        unit:
+          snapshotUomForPrint(line.unit) ??
+          snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
         on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
         discount_given: Number(line.discount_given ?? 0),
         vat_rate: Number(line.vat_rate ?? line.tax_rate ?? line.product_vat ?? 0),
@@ -328,6 +333,42 @@ export async function completeOfflineCashSale({
     existingOutbox?.sale_payload?.completed_at ??
     nowIso;
 
+  const saleItems = [];
+  for (const [index, line] of (cart.lines ?? []).entries()) {
+    const catalog = line.product_code
+      ? await idbGetCatalogProduct(line.product_code)
+      : null;
+    const unit =
+      snapshotUomForPrint(line.unit) ??
+      snapshotUomForPrint(catalog?.uom ?? catalog?.unit) ??
+      null;
+    const unitId = line.unit_id ?? catalog?.unit_id ?? unit?.id ?? null;
+    saleItems.push({
+      id: index + 1,
+      product_code: line.product_code,
+      product_name:
+        line.product_name ??
+        catalog?.product_name ??
+        line.description ??
+        line.product_code,
+      quantity: Number(line.quantity),
+      unit_price: Number(line.unit_price),
+      amount: Math.round(Number(line.quantity) * Number(line.unit_price) * 100) / 100,
+      uom: line.uom ?? null,
+      unit_id: unitId,
+      unit,
+      on_wholesale_retail: Boolean(line.on_wholesale_retail),
+      discount_given: Number(line.discount_given ?? 0),
+      product: {
+        product_code: line.product_code,
+        product_name:
+          line.product_name ?? catalog?.product_name ?? line.product_code,
+        unit_id: unitId,
+        unit,
+      },
+    });
+  }
+
   const sale = {
     id: `offline:${clientSaleUuid}`,
     client_sale_uuid: clientSaleUuid,
@@ -353,17 +394,7 @@ export async function completeOfflineCashSale({
     customer_num: cart.customer_num ?? null,
     customer_name_override: cart.customer_name_override ?? null,
     offline_pending_sync: true,
-    items: (cart.lines ?? []).map((line, index) => ({
-      id: index + 1,
-      product_code: line.product_code,
-      product_name: line.product_name ?? line.description ?? line.product_code,
-      quantity: Number(line.quantity),
-      unit_price: Number(line.unit_price),
-      amount: Math.round(Number(line.quantity) * Number(line.unit_price) * 100) / 100,
-      uom: line.uom ?? null,
-      on_wholesale_retail: Boolean(line.on_wholesale_retail),
-      discount_given: Number(line.discount_given ?? 0),
-    })),
+    items: saleItems,
     payments: [
       {
         id: 1,

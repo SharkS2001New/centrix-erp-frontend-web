@@ -239,7 +239,7 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
             {showBranchSetting ? (
               <Toggle
                 label="Show selling branch on sales printouts"
-                description="When on, thermal receipts and A4 invoices print the order branch name, address, and phone from Admin → Branches below your company header. When off, those lines use your organization address and phone instead. Company logo, email, and tax PIN always come from organization settings."
+                description="When on, thermal receipts and A4 invoices print the order branch name, address, and phone from Admin → Branches below your company header. When off, those lines use your organization address and phone instead. Company logo and tax PIN always come from organization settings. Email appears on A4 invoices only."
                 checked={form.show_branch_on_receipt}
                 onChange={(v) => setForm((f) => ({ ...f, show_branch_on_receipt: v }))}
               />

@@ -16,10 +16,80 @@ import {
 import { fullPackageLabel, smallPackagingLabel } from "@/lib/uom-packaging";
 
 export function saleLineUom(line, uomById) {
-  if (line?.product?.unit_id != null && uomById?.get) {
-    return uomById.get(line.product.unit_id) ?? null;
+  const unitId = line?.product?.unit_id ?? line?.unit_id ?? null;
+  if (unitId != null && uomById?.get) {
+    const fromMap = uomById.get(unitId);
+    if (fromMap) return fromMap;
   }
-  return line?.product?.unit ?? line?.product?.uom ?? null;
+  // Nested product.unit / offline line.unit snapshot — never drop these when the map misses.
+  return line?.product?.unit ?? line?.product?.uom ?? line?.unit ?? null;
+}
+
+/**
+ * Attach product.unit (conversion factor + pack labels) so receipts can show
+ * "1 bag" instead of raw base qty "25 bag" when 1 bag = 25 kg.
+ */
+export function snapshotUomForPrint(uom) {
+  if (!uom || typeof uom !== "object") return null;
+  return {
+    id: uom.id ?? null,
+    conversion_factor: Number(uom.conversion_factor ?? 1) || 1,
+    full_name: uom.full_name ?? null,
+    measure_name: uom.measure_name ?? null,
+    small_packaging_label: uom.small_packaging_label ?? null,
+    middle_packaging_label: uom.middle_packaging_label ?? null,
+    middle_factor: uom.middle_factor ?? null,
+    uses_small_packaging: uom.uses_small_packaging,
+    uom_type: uom.uom_type ?? null,
+  };
+}
+
+export function enrichSaleLinesForQtyPrint(sale, { productByCode = null, uomById = null } = {}) {
+  const items = Array.isArray(sale?.items) ? sale.items : [];
+  if (!items.length) return sale;
+
+  const nextItems = items.map((line) => {
+    if (saleLineUom(line, uomById)) return line;
+
+    const fromCatalog = productByCode?.[line?.product_code] ?? null;
+    const unit =
+      fromCatalog?.uom ??
+      fromCatalog?.unit ??
+      line?.unit ??
+      null;
+    const unitId =
+      fromCatalog?.unit_id ??
+      unit?.id ??
+      line?.unit_id ??
+      line?.product?.unit_id ??
+      null;
+
+    if (!unit && unitId == null) return line;
+
+    const resolvedUnit =
+      unit ??
+      (unitId != null && uomById?.get ? uomById.get(unitId) : null);
+    if (!resolvedUnit) return line;
+
+    return {
+      ...line,
+      unit: resolvedUnit,
+      unit_id: unitId ?? resolvedUnit.id ?? line.unit_id ?? null,
+      product: {
+        ...(line.product ?? {}),
+        product_code: line.product_code ?? line.product?.product_code,
+        product_name:
+          line.product_name ??
+          line.product?.product_name ??
+          fromCatalog?.product_name ??
+          null,
+        unit_id: unitId ?? resolvedUnit.id ?? line.product?.unit_id ?? null,
+        unit: resolvedUnit,
+      },
+    };
+  });
+
+  return { ...sale, items: nextItems };
 }
 
 /** Product row with resolved UOM for POS-style qty entry. */
@@ -89,10 +159,13 @@ export function cartLineEnteredDiscountPerUnit(line, product, retailPackage) {
   return lineDiscountPerUnit(line.discount_given, cartLinePackQtyForDiscount(line, product, retailPackage));
 }
 
-/** Product display name from nested API relation or a code → product map. */
+/** Product display name from nested API relation, flat line fields, or a code → product map. */
 export function saleLineProductName(line, productByCode) {
   const fromRelation = line?.product?.product_name;
   if (fromRelation) return fromRelation;
+  // Offline / queued sales store the name on the line (no nested product).
+  const fromLine = String(line?.product_name ?? line?.description ?? "").trim();
+  if (fromLine) return fromLine;
   const code = line?.product_code;
   if (code && productByCode?.[code]?.product_name) {
     return productByCode[code].product_name;
@@ -331,11 +404,12 @@ export function saleLineQtyLabel(line, uomById, { legacyPrint = false, sale = nu
   const uom = saleLineUom(line, uomById);
 
   if (uom) {
+    // Collapses whole packs: 25 kg with factor 25 → "1 bag".
     return formatPosCartQty(line?.quantity, uom);
   }
 
   if (line?.uom) {
-    return `${line.quantity} ${line.uom}`;
+    return `${formatDisplayQty(line.quantity)} ${line.uom}`;
   }
 
   return formatMixedStockDisplay(line?.quantity, 1).text;
@@ -351,6 +425,7 @@ export function saleLinePrintQtyPackage(line, uomById, { legacyPrint = false, sa
   const baseQty = Number(line?.quantity ?? 0);
 
   if (uom) {
+    // Whole packs collapse to full package (25 kg with 1 bag=25kg → "1 bag").
     const parts = splitBaseToHierarchy(baseQty, uom).filter((p) => p.qty > 0.0001);
     if (parts.length) {
       return {
@@ -365,10 +440,14 @@ export function saleLinePrintQtyPackage(line, uomById, { legacyPrint = false, sa
     };
   }
 
+  // Without conversion metadata, never pair base qty with a pack label ("25 bag").
+  // Prefer the stored sold-unit label alone only when qty looks like pack counts (≤ base
+  // is unknown); show base qty with a neutral unit instead.
   if (line?.uom) {
+    const label = String(line.uom).trim();
     return {
       quantity: formatDisplayQty(baseQty),
-      package: String(line.uom),
+      package: label || "units",
     };
   }
 

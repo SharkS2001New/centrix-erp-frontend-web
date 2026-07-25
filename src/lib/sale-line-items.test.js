@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  enrichSaleLinesForQtyPrint,
+  saleLinePrintQtyPackage,
+  saleLineQtyLabel,
   saleLineSoldUnitPrice,
   saleLineDiscountTotalFromEntered,
   saleLineEnteredDiscountPerUnit,
   saleLineListRowAmount,
   saleLinePreviewRowAmount,
+  saleLineUom,
 } from "@/lib/sale-line-items";
 
 describe("sale line discount display qty", () => {
@@ -14,8 +18,10 @@ describe("sale line discount display qty", () => {
       {
         id: 1,
         conversion_factor: 25,
-        full_package_label: "BAG",
-        small_packaging_label: "KG",
+        full_name: "bag",
+        small_packaging_label: "kg",
+        uses_small_packaging: true,
+        uom_type: "bag",
       },
     ],
   ]);
@@ -120,6 +126,83 @@ describe("sale line discount display qty", () => {
         unit: uomById.get(1),
       },
     };
-    expect(saleLinePreviewRowAmount(pricedLine, "2", uomById)).toBe(4544);
+    expect(
+      saleLinePreviewRowAmount(pricedLine, "2", uomById, {
+        draftDiscount: 14,
+        discountEditEnabled: true,
+      }),
+    ).toBe(4544);
+  });
+});
+
+describe("sale line receipt packaging qty", () => {
+  const bagUom = {
+    id: 1,
+    conversion_factor: 25,
+    full_name: "bag",
+    small_packaging_label: "kg",
+    uses_small_packaging: true,
+    uom_type: "bag",
+  };
+  const uomById = new Map([[1, bagUom]]);
+
+  it("prints whole base qty as full packages (25 kg → 1 bag)", () => {
+    const line = {
+      product_code: "SUGAR25",
+      quantity: 25,
+      uom: "bag",
+      product: { unit_id: 1, unit: bagUom },
+    };
+    expect(saleLinePrintQtyPackage(line, uomById)).toEqual({
+      quantity: "1",
+      package: "bag",
+    });
+    expect(saleLineQtyLabel(line, uomById)).toBe("1 bag");
+  });
+
+  it("prints mixed packs and loose small units", () => {
+    const line = {
+      product_code: "SUGAR25",
+      quantity: 30,
+      product: { unit_id: 1, unit: bagUom },
+    };
+    expect(saleLinePrintQtyPackage(line, uomById)).toEqual({
+      quantity: "1, 5",
+      package: "bag, kg",
+    });
+  });
+
+  it("resolves UOM from productByCode enrichment when checkout omits product.unit", () => {
+    const bare = {
+      product_code: "SUGAR25",
+      quantity: 25,
+      uom: "bag",
+    };
+    expect(saleLineUom(bare, uomById)).toBeNull();
+    const enriched = enrichSaleLinesForQtyPrint(
+      { items: [bare] },
+      {
+        productByCode: {
+          SUGAR25: { product_code: "SUGAR25", unit_id: 1, uom: bagUom },
+        },
+        uomById,
+      },
+    );
+    expect(saleLinePrintQtyPackage(enriched.items[0], uomById)).toEqual({
+      quantity: "1",
+      package: "bag",
+    });
+  });
+
+  it("falls back to nested product.unit when uomById misses the id", () => {
+    const line = {
+      product_code: "SUGAR25",
+      quantity: 50,
+      product: { unit_id: 99, unit: bagUom },
+    };
+    expect(saleLinePrintQtyPackage(line, new Map())).toEqual({
+      quantity: "2",
+      package: "bag",
+    });
   });
 });
