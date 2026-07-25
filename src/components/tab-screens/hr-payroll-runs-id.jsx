@@ -34,6 +34,14 @@ import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 const AUTO_PROCESS_KEY = (id) => `payroll-auto-process-${id}`;
 
+function lineHasEmployeeEmail(line) {
+  const employee = line?.employee;
+  if (!employee) return false;
+  const work = String(employee.email ?? "").trim();
+  const personal = String(employee.personal_email ?? "").trim();
+  return work !== "" || personal !== "";
+}
+
 export function HrPayrollRunsIdScreen() {
   const params = useParams();
   const router = useRouter();
@@ -66,6 +74,7 @@ export function HrPayrollRunsIdScreen() {
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [emailing, setEmailing] = useState(false);
+  const [selectedLineIds, setSelectedLineIds] = useState(() => new Set());
   const autoProcessStarted = useRef(false);
 
   const loadData = useCallback(async () => {
@@ -79,6 +88,7 @@ export function HrPayrollRunsIdScreen() {
       ]);
       setRun(runData);
       setLines(linesRes.data ?? []);
+      setSelectedLineIds(new Set());
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load payroll run");
     } finally {
@@ -146,6 +156,90 @@ export function HrPayrollRunsIdScreen() {
   }, [run, lines]);
 
   const employeeCount = run?.employee_count ?? lines.length;
+
+  const lineIds = useMemo(() => lines.map((line) => String(line.id)), [lines]);
+  const selectedCount = selectedLineIds.size;
+  const allLinesSelected = lineIds.length > 0 && lineIds.every((id) => selectedLineIds.has(id));
+  const selectedLines = useMemo(
+    () => lines.filter((line) => selectedLineIds.has(String(line.id))),
+    [lines, selectedLineIds],
+  );
+  const canPrintOrEmailReceipts =
+    run && ["processed", "paid"].includes(run.status) && lines.length > 0;
+
+  function toggleLineSelected(lineId, checked) {
+    const key = String(lineId);
+    setSelectedLineIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  function toggleSelectAllLines(checked) {
+    setSelectedLineIds(checked ? new Set(lineIds) : new Set());
+  }
+
+  function printReceiptLines(targetLines, label) {
+    if (!targetLines.length) {
+      notifyError(`Select at least one employee to ${label}.`);
+      return;
+    }
+    printPayrollReceipts({
+      lines: targetLines,
+      run,
+      period,
+      organization,
+      generalSettings: generalSettings(),
+    });
+  }
+
+  async function emailReceiptLines(targetLines, { selected = false } = {}) {
+    if (!targetLines.length) {
+      notifyError("Select at least one employee to email.");
+      return;
+    }
+    const withEmail = targetLines.filter(lineHasEmployeeEmail).length;
+    const withoutEmail = targetLines.length - withEmail;
+    if (withEmail === 0) {
+      notifyError("None of these employees have a work or personal email on file.");
+      return;
+    }
+    const scope = selected ? `${targetLines.length} selected employee(s)` : "all employees on this run";
+    const ok = await confirm({
+      title: selected ? "Email selected receipts" : "Email payroll receipts",
+      message:
+        `Send payslip PDFs for ${scope}? ${withEmail} have email on file` +
+        (withoutEmail > 0 ? `; ${withoutEmail} without email will be skipped.` : "."),
+      confirmLabel: "Send emails",
+    });
+    if (!ok) return;
+
+    setEmailing(true);
+    try {
+      const body = selected
+        ? { line_ids: targetLines.map((line) => Number(line.id)).filter((id) => id > 0) }
+        : {};
+      const res = await apiRequest(`/payroll/runs/${runId}/email-receipts`, {
+        method: "POST",
+        body,
+      });
+      notifySuccess(res.message ?? "Payroll receipts emailed.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to email receipts");
+    } finally {
+      setEmailing(false);
+    }
+  }
+
+  async function emailAllReceipts() {
+    await emailReceiptLines(lines, { selected: false });
+  }
+
+  async function emailSelectedReceipts() {
+    await emailReceiptLines(selectedLines, { selected: true });
+  }
 
   async function openLineDetail(line) {
     setSelectedLine(line);
@@ -264,25 +358,6 @@ export function HrPayrollRunsIdScreen() {
     }
   }
 
-  async function emailAllReceipts() {
-    const ok = await confirm({
-      title: "Email payroll receipts",
-      message:
-        "Send a payslip PDF to each employee who has a work or personal email on file? Employees without email are skipped.",
-      confirmLabel: "Send emails",
-    });
-    if (!ok) return;
-    setEmailing(true);
-    try {
-      const res = await apiRequest(`/payroll/runs/${runId}/email-receipts`, { method: "POST" });
-      notifySuccess(res.message ?? "Payroll receipts emailed.");
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Failed to email receipts");
-    } finally {
-      setEmailing(false);
-    }
-  }
-
   async function emailLineReceipt() {
     if (!breakdownLine?.id) return;
     const employee = breakdownEmployee ?? breakdownLine.employee;
@@ -388,22 +463,22 @@ export function HrPayrollRunsIdScreen() {
                   Mark as paid
                 </PrimaryButton>
               ) : null}
-              {["processed", "paid"].includes(run.status) && lines.length > 0 ? (
+              {canPrintOrEmailReceipts ? (
                 <>
                   <button
                     type="button"
-                    onClick={() =>
-                      printPayrollReceipts({
-                        lines,
-                        run,
-                        period,
-                        organization,
-                        generalSettings: generalSettings(),
-                      })
-                    }
+                    onClick={() => printReceiptLines(lines, "print")}
                     className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    Print receipts
+                    Print all
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedCount === 0}
+                    onClick={() => printReceiptLines(selectedLines, "print")}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Print selected{selectedCount > 0 ? ` (${selectedCount})` : ""}
                   </button>
                   <button
                     type="button"
@@ -411,7 +486,17 @@ export function HrPayrollRunsIdScreen() {
                     onClick={() => void emailAllReceipts()}
                     className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
-                    {emailing ? "Emailing…" : "Email receipts"}
+                    {emailing ? "Emailing…" : "Email all"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={emailing || processing || selectedCount === 0}
+                    onClick={() => void emailSelectedReceipts()}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {emailing
+                      ? "Emailing…"
+                      : `Email selected${selectedCount > 0 ? ` (${selectedCount})` : ""}`}
                   </button>
                   <Link
                     href={`/reports/bank-transfer?payroll_run_id=${run.id}`}
@@ -473,13 +558,37 @@ export function HrPayrollRunsIdScreen() {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Employee payroll lines</h2>
               <p className="mt-0.5 text-xs text-slate-500">
-                Click a row or the view action to open the breakdown in the side panel.
+                Select rows to print or email receipts for chosen employees. Click a name or the view
+                action for the breakdown.
               </p>
+              {canPrintOrEmailReceipts && selectedCount > 0 ? (
+                <p className="mt-2 text-xs font-medium text-slate-700">
+                  {selectedCount} selected
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLineIds(new Set())}
+                    className="ml-2 text-[#185FA5] hover:underline"
+                  >
+                    Clear
+                  </button>
+                </p>
+              ) : null}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
+                    <th className="w-10 px-4 py-2.5">
+                      {canPrintOrEmailReceipts ? (
+                        <input
+                          type="checkbox"
+                          checked={allLinesSelected}
+                          onChange={(e) => toggleSelectAllLines(e.target.checked)}
+                          aria-label="Select all employees"
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                      ) : null}
+                    </th>
                     <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5 text-right">Gross</th>
                     <th className="px-4 py-2.5 text-right">PAYE</th>
@@ -491,13 +600,13 @@ export function HrPayrollRunsIdScreen() {
                 <tbody>
                   {processing ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                         Calculating employee lines… results will appear here when ready.
                       </td>
                     </tr>
                   ) : lines.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                         No payroll lines for this run.
                       </td>
                     </tr>
@@ -509,6 +618,8 @@ export function HrPayrollRunsIdScreen() {
                         emp?.full_name ||
                         `#${line.employee_id}`;
                       const isSelected = selectedLine?.id === line.id;
+                      const isChecked = selectedLineIds.has(String(line.id));
+                      const hasEmail = lineHasEmployeeEmail(line);
                       return (
                         <tr
                           key={line.id}
@@ -517,7 +628,25 @@ export function HrPayrollRunsIdScreen() {
                             isSelected ? "bg-[#E6F1FB]/40" : ""
                           }`}
                         >
-                          <td className="px-4 py-3 font-medium text-slate-900">{name}</td>
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            {canPrintOrEmailReceipts ? (
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => toggleLineSelected(line.id, e.target.checked)}
+                                aria-label={`Select ${name}`}
+                                className="h-4 w-4 rounded border-slate-300"
+                              />
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            <span>{name}</span>
+                            {canPrintOrEmailReceipts && !hasEmail ? (
+                              <span className="mt-0.5 block text-[11px] font-normal text-amber-700">
+                                No email on file
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="px-4 py-3 text-right">{formatHrKesFull(line.gross_pay)}</td>
                           <td className="px-4 py-3 text-right">{formatHrKesFull(line.paye)}</td>
                           <td className="px-4 py-3 text-right">
