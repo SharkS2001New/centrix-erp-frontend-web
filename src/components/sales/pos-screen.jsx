@@ -253,10 +253,11 @@ function withPosCheckoutTimeout(promise, message) {
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities, refreshCapabilities, organization, hasPermission } = useAuth();
+  const { user, capabilities, organization, hasPermission } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
   const {
     offlineMode,
+    networkStatus,
     pendingSync,
     orderNumbersLeft,
     syncing: offlineSyncing,
@@ -932,6 +933,8 @@ export function PosScreen({ standalone = false }) {
   function rememberCompletedPosOrder(sale) {
     if (!sale?.id || !enablePosOrderEdit) return;
     if (!isCheckoutCompleteStatus(sale.status, channelWorkflow, "pos")) return;
+    // Pending offline sales are not restoreable via API — keep them out of ← browse.
+    if (String(sale.id).startsWith("offline:") || sale.offline_pending_sync) return;
     const entry = { id: sale.id, order_num: sale.order_num };
     setSessionPosOrders((prev) => {
       // Same order # after edit replaces the previous sale id so ← opens the live receipt.
@@ -1045,6 +1048,20 @@ export function PosScreen({ standalone = false }) {
     if (!enablePosOrderEdit || !standalone) return;
     void loadCompletedPosOrders();
   }, [enablePosOrderEdit, standalone, loadCompletedPosOrders]);
+
+  useEffect(() => {
+    if (!standalone || !enablePosOrderEdit) return;
+    if (offlineSyncing) return;
+    if (!lastSyncMessage) return;
+    // After offline sync, refresh ← browse list with real server sale ids.
+    void loadCompletedPosOrders();
+  }, [
+    standalone,
+    enablePosOrderEdit,
+    offlineSyncing,
+    lastSyncMessage,
+    loadCompletedPosOrders,
+  ]);
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -3202,12 +3219,27 @@ export function PosScreen({ standalone = false }) {
   async function handleRefresh() {
     setBusy(true);
     try {
-      await refreshCapabilities({ force: true });
-      const { uomMap, vatMap } = await loadPosReferenceData();
-      const activeCart = cart?.id ? await refreshCart(cart.id) : await loadCashierCart();
-      await reloadCartProductMeta(activeCart?.lines, uomMap, vatMap);
+      // Refresh only clears the in-progress search/line entry and reloads product prices.
       clearLineEntry();
-      setStatusMessage("Refreshed — settings and products reloaded.");
+      const codes = [
+        ...new Set((cart?.lines ?? []).map((l) => l.product_code).filter(Boolean)),
+      ];
+      for (const code of codes) {
+        delete retailByCodeRef.current[code];
+      }
+      setRetailByCode({ ...retailByCodeRef.current });
+
+      if (codes.length) {
+        const { uomMap, vatMap } = await loadPosReferenceData();
+        await reloadCartProductMeta(
+          codes.map((product_code) => ({ product_code })),
+          uomMap,
+          vatMap,
+        );
+        await ensureRetailPackages(codes);
+      }
+
+      setStatusMessage("Refreshed — search cleared and prices updated.");
       window.requestAnimationFrame(() => {
         searchInputRef.current?.focus({ preventScroll: true });
       });
@@ -3298,8 +3330,17 @@ export function PosScreen({ standalone = false }) {
       return null;
     }
 
+    if (standalone && activeCart.held_order_num && offlineMode) {
+      setPaymentError(
+        "Reconnect to finish editing this previous order. Offline checkout cannot reuse the same order number.",
+      );
+      return null;
+    }
+
     // Offline External POS: cash-only, real reserved order numbers, print, queue sync.
-    if (standalone && (offlineMode || activeCart.offline)) {
+    // Never use this path while revising a previous order (held_order_num) — that must
+    // reconnect and finalize under the same order number.
+    if (standalone && (offlineMode || activeCart.offline) && !activeCart.held_order_num) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
       if (method && method !== "CASH") {
@@ -3924,6 +3965,14 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
+    if (String(saleId).startsWith("offline:")) {
+      const message =
+        "That sale is still pending offline sync. Wait for internet, then edit after it syncs.";
+      setOrderEditError(message);
+      setStatusMessage(message);
+      return;
+    }
+
     const hasOpenLines = (cart?.lines?.length ?? 0) > 0;
     if (hasOpenLines && !replace) {
       const ok = await confirm({
@@ -3958,9 +4007,13 @@ export function PosScreen({ standalone = false }) {
       if (orderNum != null) {
         setEditOrderNo(String(orderNum));
         // Sale is tombstoned while editing — drop it from ← list until checkout recreates it.
-        setSessionPosOrders((prev) =>
-          prev.filter((row) => String(row.id) !== String(saleId)),
-        );
+        setSessionPosOrders((prev) => {
+          const next = prev.filter((row) => String(row.id) !== String(saleId));
+          // Keep browse index aligned with the loaded order # (or clamp).
+          const idx = next.findIndex((row) => String(row.order_num) === String(orderNum));
+          setEditBrowseIndex(idx >= 0 ? idx : 0);
+          return next;
+        });
 
         let customerMemory = extractSaleCustomerMemory(saleSnapshot);
         if (!customerMemory.name && customerMemory.customerNum == null) {
@@ -4075,11 +4128,14 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const fromSession = sessionPosOrders.find((row) => String(row.order_num) === trimmed);
-    if (fromSession?.id != null) {
-      orderNoUserEditedRef.current = false;
-      await restoreOrderForEdit(fromSession.id);
+    if (fromSession?.id != null && String(fromSession.id).startsWith("offline:")) {
+      const message =
+        "That sale is still pending offline sync. Wait for internet, then edit after it syncs.";
+      setOrderEditError(message);
+      setStatusMessage(message);
       return;
     }
+    // Always resolve the live sale by order # (session ids can be stale after edits).
     orderNoUserEditedRef.current = false;
     await handleEditByOrderNumber(trimmed);
   }
@@ -4107,24 +4163,36 @@ export function PosScreen({ standalone = false }) {
     await restoreOrderForEdit(row.id, { saleSnapshot: row });
   }
 
-  function goPreviousOrder() {
-    if (!canGoPreviousOrder) return;
+  async function goPreviousOrder() {
+    if (!canGoPreviousOrder || busy) return;
     const nextIndex = editBrowseIndex + 1;
     const row = sessionPosOrders[nextIndex];
-    if (!row) return;
+    if (!row?.id) return;
+    if (String(row.id).startsWith("offline:")) {
+      setOrderEditError("Skip pending offline sales — wait for sync.");
+      return;
+    }
+    orderNoUserEditedRef.current = false;
     setEditBrowseIndex(nextIndex);
     setEditOrderNo(String(row.order_num));
     setOrderEditError(null);
+    await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
   }
 
-  function goNextOrder() {
-    if (!canGoNextOrder) return;
+  async function goNextOrder() {
+    if (!canGoNextOrder || busy) return;
     const nextIndex = editBrowseIndex - 1;
     const row = sessionPosOrders[nextIndex];
-    if (!row) return;
+    if (!row?.id) return;
+    if (String(row.id).startsWith("offline:")) {
+      setOrderEditError("Skip pending offline sales — wait for sync.");
+      return;
+    }
+    orderNoUserEditedRef.current = false;
     setEditBrowseIndex(nextIndex);
     setEditOrderNo(String(row.order_num));
     setOrderEditError(null);
+    await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
   }
 
   /** Classic caption arrows: load previous completed receipt / return toward new order. */
@@ -4141,38 +4209,43 @@ export function PosScreen({ standalone = false }) {
     }
 
     setStatusMessage("Loading completed POS orders…");
-    let orders = await loadCompletedPosOrders();
+    const orders = await loadCompletedPosOrders();
     const heldNum = cartRef.current?.held_order_num ?? cart?.held_order_num;
+    // Walk older than the order currently being edited (list is newest-first).
+    let startIndex = 0;
     if (heldNum != null) {
-      orders = orders.filter((row) => String(row.order_num) !== String(heldNum));
-      setSessionPosOrders(orders);
+      const heldIdx = orders.findIndex((row) => String(row.order_num) === String(heldNum));
+      startIndex = heldIdx >= 0 ? heldIdx + 1 : editBrowseIndex + 1;
+    } else {
+      startIndex = editBrowseIndex + 1;
     }
-    if (!orders.length) {
+    const row = orders[startIndex];
+    if (!row) {
       const message =
-        "No other completed POS orders found for this cashier. Save or finish this edit, then use ←.";
+        "No older completed POS orders found. Save or finish this edit, then use ←.";
       setOrderEditError(message);
       setStatusMessage(message);
       return;
     }
 
-    // Oldest direction: first entry in the refreshed list (newest completed besides current edit).
-    const row = orders[0];
-    if (!row) return;
     orderNoUserEditedRef.current = false;
-    setEditBrowseIndex(0);
+    setSessionPosOrders(orders);
+    setEditBrowseIndex(startIndex);
     setEditOrderNo(String(row.order_num));
-    await restoreOrderForEdit(row.id, { replace: true });
+    await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
   }
 
   async function classicGoNextOrder() {
     if (!classicCanGoNext || busy) return;
     if (editBrowseIndex > 0) {
       const nextIndex = editBrowseIndex - 1;
-      const row = sessionPosOrders[nextIndex];
+      const orders =
+        sessionPosOrders.length > 0 ? sessionPosOrders : await loadCompletedPosOrders();
+      const row = orders[nextIndex];
       if (!row) return;
       setEditBrowseIndex(nextIndex);
       setEditOrderNo(String(row.order_num));
-      await restoreOrderForEdit(row.id);
+      await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
       return;
     }
     await handleNewOrder();
@@ -4745,7 +4818,11 @@ export function PosScreen({ standalone = false }) {
                 }`}
               >
                 {offlineMode
-                  ? `Offline mode — cash sales only. Reserved order # left: ${orderNumbersLeft}. Pending sync: ${pendingSync}.`
+                  ? `${
+                      networkStatus === "slow"
+                        ? "Slow connection — selling from local cache (cash only)."
+                        : "Connection dropped — selling from local cache (cash only)."
+                    } Order # left: ${orderNumbersLeft}. Pending sync: ${pendingSync}.`
                   : offlineSyncing
                     ? "Syncing offline sales…"
                     : lastSyncMessage ||
@@ -4865,10 +4942,13 @@ export function PosScreen({ standalone = false }) {
                   enabled
                   busy={busy}
                   orderNo={editOrderNo}
-                  onOrderNoChange={setEditOrderNo}
+                  onOrderNoChange={(value) => {
+                    orderNoUserEditedRef.current = true;
+                    setEditOrderNo(value);
+                  }}
                   onSubmit={() => void handleEditSelectedOrder()}
-                  onPrevious={goPreviousOrder}
-                  onNext={goNextOrder}
+                  onPrevious={() => void goPreviousOrder()}
+                  onNext={() => void goNextOrder()}
                   canGoPrevious={canGoPreviousOrder}
                   canGoNext={canGoNextOrder}
                   hasOrders={hasSessionOrders}

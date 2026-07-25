@@ -12,21 +12,27 @@ import {
 } from "@/lib/pos-offline";
 
 /**
- * External POS offline readiness: catalog snapshot, reserved order numbers,
- * reconnect sync, and live online/offline flag.
+ * External POS short-outage bridge (not full offline / no service worker).
+ *
+ * While healthy: warm IndexedDB catalog + reserved order #s in the background.
+ * When the link drops or is very slow: sell from IndexedDB (cash), queue sync.
+ * Aimed at brief outages (~5 minutes); when the API is healthy again, flush outbox.
  */
 export function usePosOfflineSupport({ enabled = false } = {}) {
   const { status, browserOnline, apiOnline } = useNetworkStatus({
     enabled,
     reportOutages: false,
   });
-  const online = status === "online" || status === "slow";
+  /** Only fully healthy API — used for catalog warm / outbox sync. */
+  const fullyOnline = status === "online";
+  /** Sell locally when offline or too slow to complete API sales reliably. */
+  const offlineMode = enabled && status !== "online";
   const [pendingSync, setPendingSync] = useState(0);
   const [orderNumbersLeft, setOrderNumbersLeft] = useState(0);
   const [catalogReady, setCatalogReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncMessage, setLastSyncMessage] = useState(null);
-  const wasOnlineRef = useRef(online);
+  const wasFullyOnlineRef = useRef(fullyOnline);
   const syncingRef = useRef(false);
 
   const refreshCounts = useCallback(async () => {
@@ -45,7 +51,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   }, [enabled]);
 
   const prepare = useCallback(async () => {
-    if (!enabled || !online) return null;
+    if (!enabled || !fullyOnline) return null;
     try {
       const ready = await preparePosOfflineReady();
       setCatalogReady(ready.catalogCount > 0);
@@ -56,22 +62,27 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       console.warn("POS offline prepare failed", err);
       return null;
     }
-  }, [enabled, online]);
+  }, [enabled, fullyOnline]);
 
   const flushOutbox = useCallback(async () => {
-    if (!enabled || !online || syncingRef.current) return [];
+    if (!enabled || !fullyOnline || syncingRef.current) return [];
     syncingRef.current = true;
     setSyncing(true);
     try {
       const results = await syncPosOfflineOutbox();
       const failed = results.filter((r) => !r.ok);
       const ok = results.filter((r) => r.ok);
+      const reprints = ok.filter((r) => r.needs_reprint);
       if (ok.length) {
-        setLastSyncMessage(
-          failed.length
-            ? `Synced ${ok.length} offline sale(s); ${failed.length} failed.`
-            : `Synced ${ok.length} offline sale(s).`,
-        );
+        const base = failed.length
+          ? `Synced ${ok.length} offline sale(s); ${failed.length} failed.`
+          : `Synced ${ok.length} offline sale(s).`;
+        const reprintNote = reprints.length
+          ? ` ${reprints.length} receipt(s) need reprint (order # changed: ${reprints
+              .map((r) => `#${r.printed_order_num}→#${r.order_num}`)
+              .join(", ")}).`
+          : "";
+        setLastSyncMessage(`${base}${reprintNote}`);
         await warmPosOfflineCatalog({ force: true });
         await ensurePosOfflineOrderNumbers({ force: false });
       } else if (failed.length) {
@@ -83,7 +94,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, [enabled, online, refreshCounts]);
+  }, [enabled, fullyOnline, refreshCounts]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -93,23 +104,24 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
 
   useEffect(() => {
     if (!enabled) return undefined;
-    const wasOnline = wasOnlineRef.current;
-    wasOnlineRef.current = online;
-    if (!wasOnline && online) {
+    const wasFullyOnline = wasFullyOnlineRef.current;
+    wasFullyOnlineRef.current = fullyOnline;
+    if (!wasFullyOnline && fullyOnline) {
       void (async () => {
         await flushOutbox();
         await prepare();
       })();
     }
-  }, [enabled, online, flushOutbox, prepare]);
+  }, [enabled, fullyOnline, flushOutbox, prepare]);
 
   const searchOffline = useCallback(async (query, limit = 40) => {
     return searchPosOfflineCatalog(query, { limit });
   }, []);
 
   return {
-    offlineMode: enabled && !online,
-    online,
+    offlineMode,
+    networkStatus: status,
+    online: fullyOnline,
     browserOnline,
     apiOnline,
     pendingSync,

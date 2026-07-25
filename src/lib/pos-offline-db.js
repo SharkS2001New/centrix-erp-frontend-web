@@ -1,5 +1,6 @@
 /**
- * IndexedDB helpers for External POS offline sell (short outages).
+ * IndexedDB helpers for External POS short-outage sell (~5 minutes).
+ * Not a full offline app — no service worker; bridge while the till stays open.
  */
 
 const DB_NAME = "centrix-pos-offline-v1";
@@ -169,7 +170,7 @@ export async function idbCountPendingOutbox() {
   return pending.length;
 }
 
-export async function idbMarkOutboxSynced(uuid, serverSale) {
+export async function idbMarkOutboxSynced(uuid, serverSale, extras = {}) {
   const existing = await idbGetOutboxSale(uuid);
   if (!existing) return;
   await idbPutOutboxSale({
@@ -178,6 +179,10 @@ export async function idbMarkOutboxSynced(uuid, serverSale) {
     synced_at_ms: Date.now(),
     server_sale_id: serverSale?.id ?? null,
     server_order_num: serverSale?.order_num ?? existing.order_num,
+    printed_order_num: existing.order_num,
+    needs_reprint: Boolean(extras.needs_reprint),
+    order_num_changed: Boolean(extras.order_num_changed),
+    original_order_num: extras.original_order_num ?? existing.order_num,
   });
 }
 

@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import {
   productMatchesCatalogQuery,
   stripProductStockFields,
@@ -25,7 +25,10 @@ import {
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
+/** Re-warm catalog while healthy so a brief drop (~5 min) still has recent prices. */
 export const POS_OFFLINE_CATALOG_TTL_MS = 15 * 60 * 1000;
+/** Design target for drop/slow bridge — not a hard cutoff. */
+export const POS_OFFLINE_TARGET_OUTAGE_MS = 5 * 60 * 1000;
 
 function sortCatalog(products, query) {
   const q = String(query ?? "").trim().toLowerCase();
@@ -332,56 +335,123 @@ export async function getPosOfflinePendingCount() {
   return idbCountPendingOutbox();
 }
 
+function isDuplicateOrderNumError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  if (/order[_\s-]?num|duplicate|unique|already exists|1062/.test(msg)) {
+    return true;
+  }
+  if (err instanceof ApiError) {
+    const body = err.body;
+    const blob = JSON.stringify(body ?? {}).toLowerCase();
+    if (/order_num|duplicate|unique|1062/.test(blob)) return true;
+    if (err.status === 422 || err.status === 409) {
+      return /order/.test(msg) || /order/.test(blob);
+    }
+  }
+  return false;
+}
+
+async function allocateFreshOrderNumberForSync() {
+  // Prefer consuming a locally reserved number; otherwise reserve one now.
+  const local = await idbTakeNextOrderNumber();
+  if (local) return local;
+  const res = await apiRequest("/sales/order-numbers/reserve", {
+    method: "POST",
+    body: { count: 1 },
+    loading: false,
+    reportIssues: false,
+  });
+  const n = Array.isArray(res?.numbers) ? res.numbers[0] : res?.start;
+  if (!n) throw new Error("Could not allocate a replacement order number.");
+  return Number(n);
+}
+
+async function checkoutOutboxRow(row, orderNum) {
+  const cart = await apiRequest("/sales/carts", {
+    method: "POST",
+    body: {
+      channel: "pos",
+      branch_id: row.cart_seed?.branch_id ?? undefined,
+      till_id: row.cart_seed?.till_id ?? undefined,
+    },
+    loading: false,
+    reportIssues: false,
+  });
+  const cartId = cart?.id;
+  if (!cartId) throw new Error("Could not create sync cart.");
+
+  for (const line of row.lines ?? []) {
+    await apiRequest(`/sales/carts/${cartId}/lines`, {
+      method: "POST",
+      body: {
+        product_code: line.product_code,
+        quantity: line.quantity,
+        unit_price: line.unit_price,
+        uom: line.uom,
+        on_wholesale_retail: line.on_wholesale_retail,
+        discount_given: line.discount_given ?? 0,
+      },
+      loading: false,
+      reportIssues: false,
+    });
+  }
+
+  return apiRequest(`/sales/carts/${cartId}/checkout`, {
+    method: "POST",
+    body: {
+      ...row.checkout_body,
+      order_num: orderNum,
+    },
+    loading: false,
+    reportIssues: false,
+  });
+}
+
 /**
  * Replay pending offline cash sales to the server when connectivity returns.
+ * On duplicate order_num, allocates a new free number, syncs under it, and
+ * flags the sale for receipt reprint with the corrected number.
  */
 export async function syncPosOfflineOutbox({ onProgress } = {}) {
   const pending = await idbListPendingOutbox();
   const results = [];
   for (const row of pending) {
+    const printedOrderNum = Number(row.order_num);
     try {
-      onProgress?.({ phase: "syncing", order_num: row.order_num });
-      const cart = await apiRequest("/sales/carts", {
-        method: "POST",
-        body: {
-          channel: "pos",
-          branch_id: row.cart_seed?.branch_id ?? undefined,
-          till_id: row.cart_seed?.till_id ?? undefined,
-        },
-        loading: false,
-        reportIssues: false,
-      });
-      const cartId = cart?.id;
-      if (!cartId) throw new Error("Could not create sync cart.");
-
-      for (const line of row.lines ?? []) {
-        await apiRequest(`/sales/carts/${cartId}/lines`, {
-          method: "POST",
-          body: {
-            product_code: line.product_code,
-            quantity: line.quantity,
-            unit_price: line.unit_price,
-            uom: line.uom,
-            on_wholesale_retail: line.on_wholesale_retail,
-            discount_given: line.discount_given ?? 0,
-          },
-          loading: false,
-          reportIssues: false,
+      onProgress?.({ phase: "syncing", order_num: printedOrderNum });
+      let sale;
+      let usedOrderNum = printedOrderNum;
+      let needsReprint = false;
+      try {
+        sale = await checkoutOutboxRow(row, printedOrderNum);
+      } catch (firstErr) {
+        if (!isDuplicateOrderNumError(firstErr)) throw firstErr;
+        usedOrderNum = await allocateFreshOrderNumberForSync();
+        onProgress?.({
+          phase: "reallocate",
+          order_num: usedOrderNum,
+          original_order_num: printedOrderNum,
         });
+        sale = await checkoutOutboxRow(row, usedOrderNum);
+        needsReprint = usedOrderNum !== printedOrderNum;
       }
 
-      const sale = await apiRequest(`/sales/carts/${cartId}/checkout`, {
-        method: "POST",
-        body: row.checkout_body,
-        loading: false,
-        reportIssues: false,
+      await idbMarkOutboxSynced(row.client_sale_uuid, sale, {
+        needs_reprint: needsReprint,
+        order_num_changed: needsReprint,
+        original_order_num: printedOrderNum,
       });
-      await idbMarkOutboxSynced(row.client_sale_uuid, sale);
-      results.push({ ok: true, order_num: row.order_num, sale });
+      results.push({
+        ok: true,
+        order_num: Number(sale?.order_num ?? usedOrderNum),
+        printed_order_num: printedOrderNum,
+        needs_reprint: needsReprint,
+        sale,
+      });
     } catch (err) {
       const message = err?.message ?? "Sync failed";
       await idbMarkOutboxError(row.client_sale_uuid, message);
-      results.push({ ok: false, order_num: row.order_num, error: message });
+      results.push({ ok: false, order_num: printedOrderNum, error: message });
     }
   }
   return results;
