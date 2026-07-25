@@ -60,9 +60,14 @@ export function LpoProductSearchPanel({
     vatByIdRef.current = vatById;
   }, [uomById, vatById]);
 
+  const searchAbortRef = useRef(null);
+
   const searchProducts = useCallback(async (q) => {
     const trimmed = q.trim();
     const seq = ++searchSeq.current;
+    searchAbortRef.current?.abort();
+    const abort = new AbortController();
+    searchAbortRef.current = abort;
 
     if (trimmed.length < 1) {
       setResults([]);
@@ -74,19 +79,20 @@ export function LpoProductSearchPanel({
     setSearching(true);
     setSearchError(null);
     try {
-      const searchParams = { per_page: 80, q: trimmed, fields: "lean" };
+      const searchParams = { per_page: 40, q: trimmed, fields: "lean" };
       if (branchId) searchParams.branch_id = branchId;
       const res = await apiRequest("/products", {
         searchParams,
+        signal: abort.signal,
       });
-      if (seq !== searchSeq.current) return;
+      if (seq !== searchSeq.current || abort.signal.aborted) return;
 
       const list = (res.data ?? []).map((p) =>
         enrichProductForLpo(p, uomByIdRef.current, vatByIdRef.current),
       );
       setResults(list.slice(0, 40));
     } catch {
-      if (seq !== searchSeq.current) return;
+      if (abort.signal.aborted || seq !== searchSeq.current) return;
       setSearchError("Could not search products.");
       setResults([]);
     } finally {
@@ -95,7 +101,7 @@ export function LpoProductSearchPanel({
   }, [branchId]);
 
   useEffect(() => {
-    const t = setTimeout(() => searchProducts(query), 280);
+    const t = setTimeout(() => searchProducts(query), 220);
     return () => clearTimeout(t);
   }, [query, searchProducts]);
 

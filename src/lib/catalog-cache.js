@@ -125,8 +125,9 @@ export async function searchProductCatalogCached(organizationId, query, options 
 
   const searchParams = {
     q: trimmed,
-    per_page: Math.min(Math.max(limit, 1), 200),
+    per_page: Math.min(Math.max(limit, 1), 50),
     page: 1,
+    fields: "lean",
   };
   if (status !== "all") searchParams.status = status;
   if (options.subcategoryId != null) {
@@ -140,6 +141,7 @@ export async function searchProductCatalogCached(organizationId, query, options 
     searchParams,
     loading: false,
     reportIssues: false,
+    signal: options.signal,
   });
   const rows = (Array.isArray(res?.data) ? res.data : []).map(stripProductStockFields);
   return filterProductCatalogRows(rows, {

@@ -713,6 +713,7 @@ export function PosScreen({ standalone = false }) {
   const [searching, setSearching] = useState(false);
   const [selectedProductCode, setSelectedProductCode] = useState(null);
   const searchSeq = useRef(0);
+  const searchAbortRef = useRef(null);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [lineForm, setLineForm] = useState(EMPTY_LINE);
@@ -786,6 +787,8 @@ export function PosScreen({ standalone = false }) {
   const [lineBusy, setLineBusy] = useState(false);
   const [cartLineSaveFailed, setCartLineSaveFailed] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
+  /** Shown while copying cart between online server ↔ local offline storage. */
+  const [cartBridgeStatus, setCartBridgeStatus] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
   const [heldOrdersOpen, setHeldOrdersOpen] = useState(false);
@@ -1330,12 +1333,30 @@ export function PosScreen({ standalone = false }) {
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
     if (standalone && offlineMode) {
+      const current = cartRef.current;
+      // Mid-sale drop: keep in-memory online lines instead of loading an empty IDB cart.
+      if (
+        current &&
+        !current.offline &&
+        (current.lines?.length > 0 || current.held_order_num)
+      ) {
+        const local = await adoptOnlineCartForOffline(current, {
+          branch_id: user.branch_id,
+          till_id: tillId,
+          float_session_id: floatSessionId,
+        });
+        const presented = presentLocalOfflineCart(local);
+        cartRef.current = presented;
+        setCart(presented);
+        return presented;
+      }
       const local = await loadOrCreateLocalPosCart({
         branch_id: user.branch_id,
         till_id: tillId,
         float_session_id: floatSessionId,
       });
       const presented = presentLocalOfflineCart(local);
+      cartRef.current = presented;
       setCart(presented);
       return presented;
     }
@@ -1377,6 +1398,68 @@ export function PosScreen({ standalone = false }) {
     setCart(updated);
     return updated;
   }, []);
+
+  /** After reconnect, push a local offline cart onto a fresh server cart so lines survive. */
+  const materializeOfflineCartOnServer = useCallback(
+    async (localCart) => {
+      if (!user?.branch_id || !localCart?.lines?.length) {
+        return loadCashierCart();
+      }
+      const body = {
+        channel: "pos",
+        order_source: "pos",
+        branch_id: localCart.branch_id ?? user.branch_id,
+      };
+      if (localCart.till_id ?? tillId) body.till_id = localCart.till_id ?? tillId;
+      let serverCart = await apiRequest("/sales/carts", {
+        method: "POST",
+        body,
+        ...POS_CART_REQUEST,
+      });
+      if (!Array.isArray(serverCart?.lines)) {
+        serverCart = await apiRequest(`/sales/carts/${serverCart.id}`, POS_CART_REQUEST);
+      }
+
+      if (serverCart?.lines?.length) {
+        await apiRequest(`/sales/carts/${serverCart.id}/lines`, {
+          method: "DELETE",
+          ...POS_CART_REQUEST,
+        });
+        serverCart = { ...serverCart, lines: [] };
+      }
+
+      for (const line of localCart.lines) {
+        if (!line?.product_code || !(Number(line.quantity) > 0)) continue;
+        serverCart = await apiRequest(`/sales/carts/${serverCart.id}/lines`, {
+          method: "POST",
+          body: {
+            product_code: line.product_code,
+            quantity: Number(line.quantity),
+            unit_price: Number(line.unit_price ?? 0),
+            display_unit_price:
+              line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+            uom: line.uom ?? undefined,
+            on_wholesale_retail: line.on_wholesale_retail ? 1 : 0,
+            discount_given: Number(line.discount_given ?? 0) || 0,
+          },
+          ...POS_CART_REQUEST,
+        });
+      }
+
+      if (localCart.held_order_num && !localCart.offline_client_sale_uuid) {
+        serverCart = {
+          ...serverCart,
+          held_order_num: localCart.held_order_num,
+        };
+      }
+
+      await clearLocalPosCart();
+      cartRef.current = serverCart;
+      setCart(serverCart);
+      return serverCart;
+    },
+    [user?.branch_id, tillId, loadCashierCart],
+  );
 
   const applyAdvisedDiscountsToCart = useCallback(async () => {
     if (!cart?.id || !advisedDiscountLines.length || applyingAdvisedDiscounts) return;
@@ -1424,7 +1507,27 @@ export function PosScreen({ standalone = false }) {
     const current = cartRef.current;
     if (standalone && offlineMode) {
       if (current?.offline && Array.isArray(current.lines)) return current;
+      if (current && (current.lines?.length > 0 || current.held_order_num)) {
+        const local = await adoptOnlineCartForOffline(current, {
+          branch_id: user?.branch_id,
+          till_id: tillId,
+          float_session_id: floatSessionId,
+        });
+        const presented = presentLocalOfflineCart(local);
+        cartRef.current = presented;
+        setCart(presented);
+        return presented;
+      }
       return loadCashierCart();
+    }
+    // Back online with a local cart still open — push lines to the server.
+    if (standalone && current?.offline && (current.lines?.length > 0 || current.held_order_num)) {
+      try {
+        return await materializeOfflineCartOnServer(current);
+      } catch (e) {
+        console.warn("Could not rehydrate offline cart after reconnect", e);
+        return current;
+      }
     }
     if (current?.id && current.channel === channel && Array.isArray(current.lines)) {
       return current;
@@ -1433,7 +1536,17 @@ export function PosScreen({ standalone = false }) {
       return refreshCart(current.id);
     }
     return loadCashierCart();
-  }, [channel, loadCashierCart, refreshCart, standalone, offlineMode]);
+  }, [
+    channel,
+    loadCashierCart,
+    refreshCart,
+    standalone,
+    offlineMode,
+    user?.branch_id,
+    tillId,
+    floatSessionId,
+    materializeOfflineCartOnServer,
+  ]);
 
   function enqueueCartCommit(task) {
     const run = cartCommitChainRef.current.then(task, task);
@@ -1469,7 +1582,105 @@ export function PosScreen({ standalone = false }) {
     return () => {
       cancelled = true;
     };
-  }, [channel, user?.branch_id, loadCashierCart]);
+    // Only remount when channel/branch changes — not when offlineMode flips
+    // (that would wipe an open mid-sale cart). Offline adopt/materialize handles drops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [channel, user?.branch_id]);
+
+  // When the link drops mid-sale, immediately adopt the open cart into IndexedDB.
+  const wasOfflineModeRef = useRef(offlineMode);
+  useEffect(() => {
+    if (!standalone) return;
+    const wasOffline = wasOfflineModeRef.current;
+    wasOfflineModeRef.current = offlineMode;
+    if (!offlineMode || wasOffline) return;
+
+    const current = cartRef.current;
+    if (!current || current.offline) return;
+    if (!(current.lines?.length > 0 || current.held_order_num)) return;
+
+    let cancelled = false;
+    const lineCount = current.lines?.length ?? 0;
+    setCartBridgeStatus(
+      lineCount
+        ? `Saving your cart locally (${lineCount} item${lineCount === 1 ? "" : "s"})… Please wait.`
+        : "Switching to offline mode… Please wait.",
+    );
+    void (async () => {
+      try {
+        const local = await adoptOnlineCartForOffline(current, {
+          branch_id: user?.branch_id,
+          till_id: tillId,
+          float_session_id: floatSessionId,
+        });
+        if (cancelled) return;
+        const presented = presentLocalOfflineCart(local);
+        cartRef.current = presented;
+        setCart(presented);
+        const n = presented.lines?.length ?? 0;
+        setStatusMessage(
+          n
+            ? `Connection dropped — ${n} item(s) kept in cart (cash only).`
+            : "Connection dropped — selling from local cache (cash only).",
+        );
+        void refreshOfflineCounts();
+      } catch (e) {
+        console.warn("Failed to adopt cart for offline", e);
+        if (!cancelled) {
+          setStatusMessage("Connection dropped — could not copy cart locally. Check items before selling.");
+        }
+      } finally {
+        if (!cancelled) setCartBridgeStatus(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    standalone,
+    offlineMode,
+    user?.branch_id,
+    tillId,
+    floatSessionId,
+    refreshOfflineCounts,
+  ]);
+
+  // When the link returns with a local cart still open, push lines back to the server.
+  useEffect(() => {
+    if (!standalone || offlineMode) return;
+    const current = cartRef.current;
+    if (!current?.offline || !(current.lines?.length > 0 || current.held_order_num)) return;
+
+    let cancelled = false;
+    const lineCount = current.lines?.length ?? 0;
+    setCartBridgeStatus(
+      lineCount
+        ? `Restoring your cart online (${lineCount} item${lineCount === 1 ? "" : "s"})… Please wait.`
+        : "Reconnecting cart to the server… Please wait.",
+    );
+    void (async () => {
+      try {
+        const next = await materializeOfflineCartOnServer(current);
+        if (cancelled || !next) return;
+        const n = next.lines?.length ?? 0;
+        if (n) {
+          setStatusMessage(`Back online — ${n} item(s) restored to the server cart.`);
+        }
+      } catch (e) {
+        console.warn("Failed to rehydrate offline cart after reconnect", e);
+        if (!cancelled) {
+          setStatusMessage(
+            "Back online — could not restore cart to the server yet. Keep this screen open and try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) setCartBridgeStatus(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [standalone, offlineMode, materializeOfflineCartOnServer]);
 
   useEffect(() => {
     if (!cart?.route_id || !showRouteOrderUi || !routes.length) return;
@@ -1485,7 +1696,17 @@ export function PosScreen({ standalone = false }) {
       const vatMap = maps?.vatMap ?? vatById;
       const trimmed = q.trim();
       const seq = ++searchSeq.current;
+      searchAbortRef.current?.abort();
+      const abort = new AbortController();
+      searchAbortRef.current = abort;
+
       if (!trimmed) {
+        setSearchResults([]);
+        setSearching(false);
+        return;
+      }
+      // Name searches need at least 2 chars; code/barcode can be 1+ (handled by looksLike).
+      if (!looksLikeProductCodeQuery(trimmed) && trimmed.length < 2) {
         setSearchResults([]);
         setSearching(false);
         return;
@@ -1526,9 +1747,10 @@ export function PosScreen({ standalone = false }) {
         }
 
         const res = await apiRequest("/products", {
-          searchParams: { per_page: 80, q: trimmed, fields: "lean", ...productBranchParams },
+          searchParams: { per_page: 40, q: trimmed, fields: "lean", ...productBranchParams },
+          signal: abort.signal,
         });
-        if (seq !== searchSeq.current) return;
+        if (seq !== searchSeq.current || abort.signal.aborted) return;
         const list = (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap));
         setSearchResults(list.slice(0, 40));
         setProductByCode((prev) => {
@@ -1536,14 +1758,27 @@ export function PosScreen({ standalone = false }) {
           for (const p of list) next[p.product_code] = p;
           return next;
         });
-        // Classic defers package hydrate to keep search snappy; modern warms the list.
-        if (!classicLayout) {
-          void ensureRetailPackages(list.map((p) => p.product_code));
-        } else if (list.length) {
-          void ensureRetailPackages(list.slice(0, 5).map((p) => p.product_code));
+
+        // Lean list already embeds retail_package — seed cache to avoid a second round-trip.
+        let seeded = false;
+        for (const p of list) {
+          const code = p?.product_code;
+          if (!code || retailByCodeRef.current[code] != null) continue;
+          if (p.retail_package) {
+            retailByCodeRef.current[code] = p.retail_package;
+            seeded = true;
+          }
+        }
+        if (seeded) setRetailByCode({ ...retailByCodeRef.current });
+
+        const missingPkg = list
+          .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
+          .map((p) => p.product_code);
+        if (missingPkg.length) {
+          void ensureRetailPackages(classicLayout ? missingPkg.slice(0, 5) : missingPkg.slice(0, 15));
         }
       } catch (err) {
-        if (seq !== searchSeq.current) return;
+        if (abort.signal.aborted || seq !== searchSeq.current) return;
         // Network drop mid-search: fall back to offline catalog when available.
         if (standalone) {
           try {
@@ -1589,15 +1824,16 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     const trimmed = searchQuery.trim();
+    const codeLike = looksLikeProductCodeQuery(searchQuery);
+    // Debounce typing so we don't hit the API on every keystroke (especially long SKUs).
+    // Enter / barcode scan still resolves immediately via handleBarcodeEnter.
     const delay = !trimmed
       ? 0
-      : classicLayout
-        ? looksLikeProductCodeQuery(searchQuery)
-          ? 0
-          : 40
-        : looksLikeProductCodeQuery(searchQuery)
-          ? 0
-          : 280;
+      : codeLike
+        ? 100
+        : classicLayout
+          ? 150
+          : 250;
     const t = setTimeout(() => searchProducts(searchQuery), delay);
     return () => clearTimeout(t);
   }, [searchQuery, searchProducts, classicLayout]);
@@ -5292,6 +5528,15 @@ export function PosScreen({ standalone = false }) {
                 </span>
               ) : null}
             </div>
+            {standalone && cartBridgeStatus ? (
+              <p
+                className="mt-2 rounded-md border border-sky-300 bg-sky-100 px-2.5 py-2 text-xs font-semibold text-sky-950"
+                role="status"
+                aria-live="polite"
+              >
+                {cartBridgeStatus}
+              </p>
+            ) : null}
             {standalone && (offlineMode || pendingSync > 0 || offlineSyncing) ? (
               <p
                 className={`mt-2 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
@@ -6457,12 +6702,13 @@ export function PosScreen({ standalone = false }) {
             heldCount={heldOrdersCount}
             version="1.0.0"
             currencySettings={classicCurrencySettings}
-            statusMessage={statusMessage}
+            statusMessage={cartBridgeStatus || statusMessage}
             connectionStatus={networkStatus}
             onPayClick={() => openCompletePayment()}
             payDisabled={
               busy
               || lineBusy
+              || Boolean(cartBridgeStatus)
               || !cart?.lines?.length
               || cartStockBlocked
               || checkoutBlocked

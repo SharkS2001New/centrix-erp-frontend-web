@@ -166,7 +166,7 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
       ? "Distribution and mobile orders are on — loading sheets, picking lists, and trip chart lists are available."
       : sections.hasDistribution
         ? "Distribution is on — loading sheets, picking lists, and trip chart lists are available."
-        : "Mobile orders are on — loading sheets, picking lists, and trip chart lists are available for field sales."
+        : "Mobile / field sales are on — loading sheets, picking lists, and trip chart lists use General print footers and fonts (Distribution module not required)."
     : "Loading sheets, picking lists, and trip chart lists appear when Distribution is enabled or mobile orders are turned on.";
 
   return (
@@ -174,7 +174,7 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
       <div>
         <SectionHeading
           title="Printouts for this organization"
-          description="Tabs below match your org setup. Small shops usually only need A4 invoices; route documents unlock with Distribution or mobile orders."
+          description="Tabs below match your org setup. Receipts, invoices, and General branding work for backoffice wholesale and retail without Distribution."
         />
         <ul className="mt-3 space-y-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
           {availableKinds.length > 0 ? (
@@ -481,13 +481,24 @@ function LpoPrintoutsTab({ form, setForm }) {
   );
 }
 
-function LoadingSheetsTab({ form, setForm }) {
+function LoadingSheetsTab({ form, setForm, hasDistribution = false }) {
   return (
     <div className="space-y-3">
       <SectionHeading
         title="Loading sheets"
-        description="Route delivery loading lists for Distribution trips and mobile route orders. Column visibility can also be configured under Distribution → Trips & loading when Distribution is on."
+        description={
+          hasDistribution
+            ? "Route delivery loading lists for Distribution trips and mobile route orders. Column visibility can also be configured under Distribution → Trips & loading."
+            : "Field-sales loading lists. Document footers and fonts save under General. Column layout options require the Distribution module — defaults are used until then."
+        }
       />
+      {!hasDistribution ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          Distribution is not enabled for this organization. General / receipt / invoice printouts still
+          save normally. Loading-sheet column toggles below are preview-only until Distribution is turned
+          on.
+        </p>
+      ) : null}
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -591,7 +602,7 @@ export function PrintoutsSettingsPanel({
   const [activeTab, setActiveTab] = useState("general");
 
   const sections = resolvePrintoutSections(capabilities);
-  const { hasSales, hasProcurement, hasMobileSales, hasRoutePrintouts } = sections;
+  const { hasSales, hasProcurement, hasMobileSales, hasRoutePrintouts, hasDistribution } = sections;
   const orderFormat = form?.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
 
@@ -638,12 +649,14 @@ export function PrintoutsSettingsPanel({
     setLoading(true);
     setError(null);
     try {
+      // Distribution settings API requires the distribution module. Field sales /
+      // wholesale+retail may have route printouts (footers/fonts via general) without it.
       const [generalResult, salesResult, procurementResult, distributionResult] =
         await Promise.allSettled([
           apiRequest(settingsPath("general")),
           hasSales ? apiRequest(settingsPath("sales")) : Promise.resolve(null),
           hasProcurement ? apiRequest(settingsPath("procurement")) : Promise.resolve(null),
-          hasRoutePrintouts
+          hasDistribution
             ? apiRequest(settingsPath("distribution"))
             : Promise.resolve(null),
         ]);
@@ -674,7 +687,7 @@ export function PrintoutsSettingsPanel({
         generalResult.status === "rejected" ? "general" : null,
         salesResult.status === "rejected" ? "sales" : null,
         procurementResult.status === "rejected" ? "procurement" : null,
-        distributionResult.status === "rejected" ? "distribution" : null,
+        hasDistribution && distributionResult.status === "rejected" ? "distribution" : null,
       ].filter(Boolean);
 
       if (failures.length > 0) {
@@ -687,10 +700,14 @@ export function PrintoutsSettingsPanel({
             : firstError instanceof Error
               ? firstError.message
               : "Failed to load printout settings";
+        // General printouts should remain usable even if a module-specific section fails.
+        const generalOk = generalResult.status === "fulfilled";
         setError(
           failures.length === 1
             ? detail
-            : `Some printout settings could not be loaded (${failures.join(", ")}). ${detail}`,
+            : generalOk
+              ? `Some optional printout settings could not be loaded (${failures.join(", ")}). General printouts are still available. ${detail}`
+              : `Some printout settings could not be loaded (${failures.join(", ")}). ${detail}`,
         );
       }
     } catch (e) {
@@ -698,7 +715,7 @@ export function PrintoutsSettingsPanel({
     } finally {
       setLoading(false);
     }
-  }, [hasProcurement, hasRoutePrintouts, hasSales, setError, settingsPath]);
+  }, [hasDistribution, hasProcurement, hasSales, setError, settingsPath]);
 
   useEffect(() => {
     load();
@@ -740,7 +757,7 @@ export function PrintoutsSettingsPanel({
             }),
         });
       }
-      if (hasRoutePrintouts) {
+      if (hasDistribution) {
         steps.push({
           label: "distribution",
           run: () =>
@@ -798,7 +815,13 @@ export function PrintoutsSettingsPanel({
       return <LpoPrintoutsTab form={form} setForm={setForm} />;
     }
     if (activeTab === "loading_sheet" && hasRoutePrintouts) {
-      return <LoadingSheetsTab form={form} setForm={setForm} />;
+      return (
+        <LoadingSheetsTab
+          form={form}
+          setForm={setForm}
+          hasDistribution={hasDistribution}
+        />
+      );
     }
     if (activeTab === "picking_list" && hasRoutePrintouts) {
       return <PickingListsTab form={form} setForm={setForm} />;
