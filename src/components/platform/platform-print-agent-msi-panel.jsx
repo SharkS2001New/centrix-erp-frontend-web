@@ -18,11 +18,24 @@ const emptyForm = {
   github_repo: "",
   github_ref: "main",
   workflow_file: "build-print-agent-msi.yml",
+  github_token: "",
 };
+
+function looksLikeGithubToken(value) {
+  return /^(ghp_|github_pat_|gho_|ghu_|ghs_|ghr_)/i.test(String(value ?? "").trim());
+}
+
+function isValidGithubRepo(value) {
+  const repo = String(value ?? "").trim();
+  if (!repo || looksLikeGithubToken(repo)) return false;
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo);
+}
 
 export function PlatformPrintAgentMsiPanel() {
   const fileRef = useRef(null);
   const [form, setForm] = useState(emptyForm);
+  const [tokenHint, setTokenHint] = useState("");
+  const [tokenSet, setTokenSet] = useState(false);
   const [effective, setEffective] = useState(null);
   const [hints, setHints] = useState(null);
   const [meta, setMeta] = useState({
@@ -38,13 +51,17 @@ export function PlatformPrintAgentMsiPanel() {
 
   const applyPayload = useCallback((payload) => {
     const settings = payload?.settings ?? {};
+    const repo = settings.github_repo || "";
     setForm({
       object_key: settings.object_key || emptyForm.object_key,
       public_url: settings.public_url || "",
-      github_repo: settings.github_repo || "",
+      github_repo: looksLikeGithubToken(repo) ? "" : repo,
       github_ref: settings.github_ref || "main",
       workflow_file: settings.workflow_file || "build-print-agent-msi.yml",
+      github_token: "",
     });
+    setTokenSet(Boolean(settings.github_token_set || payload?.effective?.github_token_set));
+    setTokenHint(settings.github_token_hint || "");
     setEffective(payload?.effective ?? null);
     setHints(payload?.hints ?? null);
     setMeta({
@@ -75,23 +92,47 @@ export function PlatformPrintAgentMsiPanel() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function buildBody() {
+    const body = {
+      object_key: form.object_key.trim(),
+      public_url: form.public_url.trim(),
+      github_repo: form.github_repo.trim(),
+      github_ref: form.github_ref.trim() || "main",
+      workflow_file: form.workflow_file.trim() || "build-print-agent-msi.yml",
+    };
+    const token = form.github_token.trim();
+    if (token && !token.startsWith("••••")) {
+      body.github_token = token;
+    }
+    return body;
+  }
+
+  function validateBeforeSave() {
+    if (looksLikeGithubToken(form.github_repo)) {
+      notifyError(
+        "GitHub repo must be owner/name (e.g. acme/centrix-erp-frontend-web). Move the token into the GitHub token field.",
+      );
+      return false;
+    }
+    if (form.github_repo.trim() && !isValidGithubRepo(form.github_repo)) {
+      notifyError("GitHub repo must look like owner/repository.");
+      return false;
+    }
+    return true;
+  }
+
   async function handleSave(e) {
     e.preventDefault();
+    if (!validateBeforeSave()) return;
     setSaving(true);
     try {
       const res = await apiRequest("/admin/print-agent-msi", {
         method: "PUT",
-        body: {
-          object_key: form.object_key.trim(),
-          public_url: form.public_url.trim(),
-          github_repo: form.github_repo.trim(),
-          github_ref: form.github_ref.trim() || "main",
-          workflow_file: form.workflow_file.trim() || "build-print-agent-msi.yml",
-        },
+        body: buildBody(),
         loading: false,
       });
       applyPayload(res);
-      notifySuccess("Print Agent MSI path saved. Till downloads will use this URL.");
+      notifySuccess("Print Agent MSI settings saved.");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to save settings.");
     } finally {
@@ -100,18 +141,12 @@ export function PlatformPrintAgentMsiPanel() {
   }
 
   async function handleBuild() {
+    if (!validateBeforeSave()) return;
     setBuilding(true);
     try {
-      // Persist path first so the build lands where downloads expect.
       await apiRequest("/admin/print-agent-msi", {
         method: "PUT",
-        body: {
-          object_key: form.object_key.trim(),
-          public_url: form.public_url.trim(),
-          github_repo: form.github_repo.trim(),
-          github_ref: form.github_ref.trim() || "main",
-          workflow_file: form.workflow_file.trim() || "build-print-agent-msi.yml",
-        },
+        body: buildBody(),
         loading: false,
       });
       const res = await apiRequest("/admin/print-agent-msi/build", {
@@ -119,9 +154,11 @@ export function PlatformPrintAgentMsiPanel() {
         loading: false,
       });
       if (res?.settings) applyPayload(res.settings);
+      else await load();
       notifySuccess(res?.message || "MSI build queued on GitHub Actions.", { duration: 9000 });
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not start MSI build.");
+      void load();
     } finally {
       setBuilding(false);
     }
@@ -134,13 +171,7 @@ export function PlatformPrintAgentMsiPanel() {
     try {
       await apiRequest("/admin/print-agent-msi", {
         method: "PUT",
-        body: {
-          object_key: form.object_key.trim(),
-          public_url: form.public_url.trim(),
-          github_repo: form.github_repo.trim(),
-          github_ref: form.github_ref.trim() || "main",
-          workflow_file: form.workflow_file.trim() || "build-print-agent-msi.yml",
-        },
+        body: buildBody(),
         loading: false,
       });
       const res = await apiUploadForm("/admin/print-agent-msi/upload", { file }, "file");
@@ -161,8 +192,46 @@ export function PlatformPrintAgentMsiPanel() {
       notifyError("Set Cloudflare R2 public URL (Platform → Cloudflare R2) and an object key first.");
       return;
     }
+    if (base.includes("r2.cloudflarestorage.com")) {
+      notifyError(
+        "Platform → Cloudflare R2 “Public URL” is still the S3 API host. Set it to your public r2.dev (or custom domain) base, then click Fill again.",
+      );
+      return;
+    }
     updateField("public_url", `${base}/${key}`);
   }
+
+  const checklist = [
+    {
+      ok: Boolean(effective?.r2_configured),
+      label: "Cloudflare R2 configured",
+      detail: (
+        <>
+          <Link href="/platform/settings?tab=r2" className="font-medium underline">
+            Platform → Cloudflare R2
+          </Link>
+        </>
+      ),
+    },
+    {
+      ok: Boolean(tokenSet || form.github_token.trim()),
+      label: "GitHub token",
+      detail: "PAT with workflow scope — paste below (or API env PRINT_AGENT_MSI_GITHUB_TOKEN)",
+    },
+    {
+      ok: isValidGithubRepo(form.github_repo),
+      label: "GitHub repo owner/name",
+      detail: "e.g. your-org/centrix-erp-frontend-web — not a ghp_ token",
+    },
+    {
+      ok: Boolean(effective?.public_url_ok || (form.public_url.trim() && !form.public_url.includes("r2.cloudflarestorage.com"))),
+      label: "Public MSI download URL",
+      detail: "Full https://…/print-agent/CentrixPrintAgent.msi link (r2.dev / CDN), not the API endpoint alone",
+    },
+  ];
+
+  const buildReady = Boolean(effective?.r2_configured && effective?.build_configured);
+  const missing = Array.isArray(effective?.missing) ? effective.missing : [];
 
   if (loading) {
     return <p className="text-sm text-slate-500">Loading Print Agent MSI settings…</p>;
@@ -173,23 +242,37 @@ export function PlatformPrintAgentMsiPanel() {
       <div>
         <h2 className="text-sm font-semibold text-slate-900">Print Agent Windows MSI</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Host the till installer on the same Cloudflare R2 bucket as MySQL backups. Configure the object path
-          here — Administration → Local printing downloads from that URL.{" "}
+          Host the till installer on the same Cloudflare R2 bucket as MySQL backups. Tills download from the public
+          URL below.{" "}
           <Link href="/platform/settings?tab=r2" className="font-medium text-[#185FA5] hover:underline">
             R2 credentials
           </Link>
         </p>
       </div>
 
-      {!effective?.r2_configured ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Cloudflare R2 is not fully configured yet. Complete{" "}
-          <Link href="/platform/settings?tab=r2" className="font-medium underline">
-            Platform → Cloudflare R2
-          </Link>{" "}
-          before building or uploading.
-        </p>
-      ) : null}
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+        <p className="text-sm font-medium text-slate-800">Setup checklist</p>
+        <ul className="mt-2 space-y-1.5 text-xs text-slate-700">
+          {checklist.map((item) => (
+            <li key={item.label} className="flex gap-2">
+              <span className={item.ok ? "text-emerald-600" : "text-amber-700"} aria-hidden>
+                {item.ok ? "✓" : "○"}
+              </span>
+              <span>
+                <span className="font-medium">{item.label}</span>
+                <span className="text-slate-500"> — {item.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        {missing.length > 0 ? (
+          <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-950">
+            Still needed: {missing.join(" · ")}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-emerald-800">All set — you can build or upload the MSI.</p>
+        )}
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm sm:col-span-2">
@@ -220,7 +303,7 @@ export function PlatformPrintAgentMsiPanel() {
         </label>
       </div>
 
-      {effective?.public_url ? (
+      {effective?.public_url && effective?.public_url_ok ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           Active download URL:{" "}
           <a href={effective.public_url} className="break-all font-medium underline" target="_blank" rel="noreferrer">
@@ -228,23 +311,38 @@ export function PlatformPrintAgentMsiPanel() {
           </a>
         </p>
       ) : (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          No public URL yet — save a path (with R2 public URL set) or paste the full download link above.
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          No usable public MSI URL yet. In Cloudflare, enable a public{" "}
+          <code className="rounded bg-white px-1">r2.dev</code> domain (or custom domain) for the bucket, put that base
+          in Platform → Cloudflare R2 → Public URL, then click <strong>Fill from R2 public URL + path</strong>.
         </p>
       )}
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
         <p className="text-sm font-medium text-slate-800">Build & upload</p>
         <p className="mt-1 text-xs text-slate-500">{hints?.build}</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <label className="block text-xs sm:col-span-1">
-            <span className="font-medium text-slate-600">GitHub repo</span>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs sm:col-span-2">
+            <span className="font-medium text-slate-600">GitHub token (PAT)</span>
+            <input
+              type="password"
+              autoComplete="off"
+              className={`${inputClass} mt-1 font-mono`}
+              value={form.github_token}
+              onChange={(e) => updateField("github_token", e.target.value)}
+              placeholder={tokenSet ? tokenHint || "•••• token saved — leave blank to keep" : "ghp_… or github_pat_…"}
+            />
+            <span className="mt-1 block text-xs text-slate-500">{hints?.token}</span>
+          </label>
+          <label className="block text-xs sm:col-span-2">
+            <span className="font-medium text-slate-600">GitHub repo (owner/name)</span>
             <input
               className={`${inputClass} mt-1 font-mono`}
               value={form.github_repo}
               onChange={(e) => updateField("github_repo", e.target.value)}
               placeholder="owner/centrix-erp-frontend-web"
             />
+            <span className="mt-1 block text-xs text-slate-500">{hints?.repo}</span>
           </label>
           <label className="block text-xs">
             <span className="font-medium text-slate-600">Git ref</span>
@@ -265,17 +363,12 @@ export function PlatformPrintAgentMsiPanel() {
             />
           </label>
         </div>
-        {!effective?.build_configured ? (
-          <p className="mt-2 text-xs text-amber-800">
-            Set API env <code className="rounded bg-white px-1">PRINT_AGENT_MSI_GITHUB_TOKEN</code> (workflow scope)
-            and the GitHub repo above to enable the build button.
-          </p>
-        ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
           <PrimaryButton
             type="button"
             showIcon={false}
-            disabled={building || uploading || saving || !effective?.r2_configured}
+            disabled={building || uploading || saving || !buildReady}
+            title={!buildReady ? "Complete the checklist first" : undefined}
             onClick={() => void handleBuild()}
           >
             {building ? "Queuing build…" : "Build MSI & upload to R2"}
@@ -307,7 +400,7 @@ export function PlatformPrintAgentMsiPanel() {
 
       <div className="flex flex-wrap gap-2">
         <PrimaryButton type="submit" showIcon={false} disabled={saving || building || uploading}>
-          {saving ? "Saving…" : "Save path & URL"}
+          {saving ? "Saving…" : "Save settings"}
         </PrimaryButton>
         <button type="button" className={SECONDARY_BTN_CLASS} disabled={loading} onClick={() => void load()}>
           Refresh

@@ -13,6 +13,7 @@ export const PRINT_FOOTER_TYPES = {
   loading_sheet: "print_footer_loading_sheet",
   picking_list: "print_footer_picking_list",
   trip_chart: "print_footer_trip_chart",
+  payroll_receipt: "print_footer_payroll_receipt",
 };
 
 export const PRINT_FOOTER_FORM_KEYS = {
@@ -22,6 +23,7 @@ export const PRINT_FOOTER_FORM_KEYS = {
   loading_sheet: "print_footer_loading_sheet",
   picking_list: "print_footer_picking_list",
   trip_chart: "print_footer_trip_chart",
+  payroll_receipt: "print_footer_payroll_receipt",
 };
 
 export const PRINT_FOOTER_LABELS = {
@@ -31,6 +33,7 @@ export const PRINT_FOOTER_LABELS = {
   loading_sheet: "Loading sheet footer",
   picking_list: "Picking list footer",
   trip_chart: "Trip chart list footer",
+  payroll_receipt: "HR payroll receipt (payslip) footer",
 };
 
 export const RECEIPT_POWERED_BY_LINE = `Powered By: ${PRINT_POWERED_BY}`;
@@ -169,6 +172,7 @@ export function printFooterFormFromGeneral(general = {}) {
     print_footer_loading_sheet: footerEditorValueFromApi(general?.print_footer_loading_sheet),
     print_footer_picking_list: footerEditorValueFromApi(general?.print_footer_picking_list),
     print_footer_trip_chart: footerEditorValueFromApi(general?.print_footer_trip_chart),
+    print_footer_payroll_receipt: footerEditorValueFromApi(general?.print_footer_payroll_receipt),
   };
 }
 
@@ -185,5 +189,6 @@ export function printFooterPayloadFromForm(form = {}) {
     print_footer_loading_sheet: footerStorageValueFromForm(form?.print_footer_loading_sheet ?? ""),
     print_footer_picking_list: footerStorageValueFromForm(form?.print_footer_picking_list ?? ""),
     print_footer_trip_chart: footerStorageValueFromForm(form?.print_footer_trip_chart ?? ""),
+    print_footer_payroll_receipt: footerStorageValueFromForm(form?.print_footer_payroll_receipt ?? ""),
   };
 }

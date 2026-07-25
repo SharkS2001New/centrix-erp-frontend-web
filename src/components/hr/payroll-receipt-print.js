@@ -5,12 +5,18 @@ import {
   payrollBreakdownSections,
   periodLabel,
 } from "@/components/hr/hr-shared";
-import { resolveReportBranding } from "@/lib/reports/report-branding";
+import {
+  buildReportOrgHeaderHtml,
+  resolveReportBranding,
+} from "@/lib/reports/report-branding";
+import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
+
+const PAYROLL_PRINT_VARIANT = "payroll_receipt";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -22,6 +28,17 @@ function escapeHtml(value) {
 
 function formatAmount(value, generalSettings) {
   return formatHrKesFull(value, generalSettings);
+}
+
+function footerHtml(documentFooterText) {
+  const lines = String(documentFooterText ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return "";
+  return `<footer class="doc-footer">${lines
+    .map((line) => `<p>${escapeHtml(line)}</p>`)
+    .join("")}</footer>`;
 }
 
 function employeeSubtitle(employee) {
@@ -61,11 +78,13 @@ function buildAmountRows(rows, generalSettings, { hideZero = false } = {}) {
 function buildReceiptHtml(line, employee, options) {
   const {
     orgName,
+    orgHeaderHtml = "",
     periodText,
     generalSettings,
     paidAt,
     paymentReference,
     compact = true,
+    documentFooterText = "",
   } = options;
 
   const sections = payrollBreakdownSections(line, employee);
@@ -91,13 +110,17 @@ function buildReceiptHtml(line, employee, options) {
         }${paymentReference ? ` · Ref ${escapeHtml(paymentReference)}` : ""}</p>`
       : "";
 
-  return `
-    <article class="receipt">
-      <header class="receipt-head">
+  const head = orgHeaderHtml
+    ? `<header class="receipt-head branded">${orgHeaderHtml}<h2>Payroll receipt</h2><p class="period">${escapeHtml(periodText)}</p></header>`
+    : `<header class="receipt-head">
         <div class="org">${escapeHtml(orgName)}</div>
         <h2>Payroll receipt</h2>
         <p class="period">${escapeHtml(periodText)}</p>
-      </header>
+      </header>`;
+
+  return `
+    <article class="receipt">
+      ${head}
       <div class="employee">
         <div class="employee-name">${escapeHtml(name)}</div>
         ${subtitle ? `<div class="employee-meta">${escapeHtml(subtitle)}</div>` : ""}
@@ -120,6 +143,7 @@ function buildReceiptHtml(line, employee, options) {
         </table>
       </section>
       ${paidNote}
+      ${footerHtml(documentFooterText)}
       <footer class="cut-hint">Cut along dashed border</footer>
     </article>`;
 }
@@ -166,7 +190,7 @@ function buildReceiptPages(receiptsHtml, { single = false } = {}) {
 }
 
 function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
-  const variant = "a4";
+  const variant = PAYROLL_PRINT_VARIANT;
   const font = orgPrintFontFamilyFromSettings(generalSettings, variant);
   const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant, print });
   const ink = orgPrintInkStyles(generalSettings, variant);
@@ -182,6 +206,7 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
   const note = single ? px(10) : px(9);
   const net = single ? px(14) : px(12);
   const cut = single ? px(8) : px(8);
+  const footer = single ? px(10) : px(9);
 
   return `
     @page { size: A4; margin: 8mm; }
@@ -321,6 +346,37 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
       line-height: 1.35;
     }
     .note.paid { color: #0f766e; font-weight: 600; }
+    .doc-footer {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid #cbd5e1;
+      font-size: ${footer};
+      color: #475569;
+      line-height: 1.35;
+      text-align: center;
+    }
+    .doc-footer p { margin: 0 0 2px; }
+    .receipt-head.branded .org-header {
+      margin-bottom: 4px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #cbd5e1;
+      text-align: center;
+    }
+    .receipt-head.branded .org-logo {
+      display: block;
+      margin: 0 auto 4px;
+      max-height: ${single ? "36px" : "28px"};
+      max-width: 180px;
+      width: auto;
+      object-fit: contain;
+    }
+    .receipt-head.branded .org-name {
+      font-size: ${org};
+      font-weight: var(--print-w-header, 700);
+      margin: 0;
+      line-height: 1.2;
+      color: #0f172a;
+    }
     .cut-hint {
       margin-top: 4px;
       text-align: center;
@@ -350,22 +406,32 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
   `;
 }
 
-function buildPayrollReceiptDocument({
+export function buildPayrollReceiptDocument({
   receipts,
   organization,
   generalSettings,
   single = false,
+  documentFooterText = null,
 }) {
   const branding = resolveReportBranding({ organization, generalSettings });
   const orgName = branding.organizationName ?? organization?.org_name ?? "Organization";
+  const footerText =
+    documentFooterText != null
+      ? documentFooterText
+      : resolvePrintFooter(generalSettings ?? {}, "payroll_receipt");
+  const orgHeaderHtml = branding.showHeader
+    ? buildReportOrgHeaderHtml(branding)
+    : "";
   const receiptsHtml = receipts.map((r) =>
     buildReceiptHtml(r.line, r.employee, {
       orgName,
+      orgHeaderHtml,
       periodText: r.periodText,
       generalSettings,
       paidAt: r.paidAt,
       paymentReference: r.paymentReference,
       compact: !single,
+      documentFooterText: footerText,
     }),
   );
   const pages = buildReceiptPages(receiptsHtml, { single });
@@ -382,6 +448,39 @@ function buildPayrollReceiptDocument({
   ${pages}
 </body>
 </html>`;
+}
+
+/** Sample payslip for Admin → Printouts live preview. */
+export function samplePayrollReceiptPreviewData() {
+  return {
+    line: {
+      gross_pay: 85000,
+      net_pay: 68240.5,
+      nssf: 2160,
+      shif: 2340,
+      housing_levy: 1275,
+      paye: 9854.5,
+      other_deductions: 1130,
+      deductions: 16759.5,
+      statutory_meta: {
+        statutory_gross: 85000,
+        period_gross: 85000,
+        payroll: {
+          contract_gross_for_statutory: 85000,
+          deductions_detail: [{ name: "Cash advance", amount: 1130 }],
+        },
+      },
+    },
+    employee: {
+      full_name: "Jane Wanjiku",
+      employee_code: "EMP-014",
+      department_name: "Finance",
+      position_name: "Accountant",
+    },
+    periodText: "Mar 2026",
+    paidAt: null,
+    paymentReference: null,
+  };
 }
 
 function normalizeReceiptInput({ line, employee, run, period }) {

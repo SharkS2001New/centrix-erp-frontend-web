@@ -54,6 +54,7 @@ const VARIANT_BODY_BASE = {
   picking_list: { screen: 12, print: 16 },
   trip_chart: { screen: 12, print: 16 },
   thermal: { screen: 10, print: 11 },
+  payroll_receipt: { screen: 11, print: 12 },
   report: { screen: 12, print: 15 },
 };
 
@@ -65,6 +66,7 @@ const VARIANT_STANDARD_BODY_PX = {
   picking_list: 16,
   trip_chart: 16,
   thermal: 11,
+  payroll_receipt: 12,
   report: 14,
 };
 

@@ -31,6 +31,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   print_footer_loading_sheet: "",
   print_footer_picking_list: "",
   print_footer_trip_chart: "",
+  print_footer_payroll_receipt: "",
   order_document_type: "receipt",
   receipt_copies: "1",
   show_branch_on_receipt: true,
@@ -82,13 +83,7 @@ export const PRINTOUT_KIND_LABELS = {
  * Printouts that are catalogued but still need contrast / branding polish.
  * Shown under Admin → Printouts so they stay on the work list.
  */
-export const PRINTOUTS_NEEDS_WORK = [
-  {
-    kind: "payroll_receipt",
-    label: "HR payroll receipts (payslips)",
-    note: "Org name contrast improved; still needs full Admin Printouts settings (logo, footer, fonts) like sales receipts.",
-  },
-];
+export const PRINTOUTS_NEEDS_WORK = [];
 
 /** Which document footer keys apply for the configured order print format. */
 export function footerKeysForOrderPrintFormat(footerKeys, orderDocumentType) {
@@ -136,6 +131,7 @@ export function resolvePrintoutSections(capabilities) {
     if (key === "loading_sheet" || key === "picking_list" || key === "trip_chart") {
       return hasRoutePrintouts;
     }
+    if (key === "payroll_receipt") return hasHrPayroll;
     return false;
   });
 
@@ -146,6 +142,7 @@ export function resolvePrintoutSections(capabilities) {
     hasRoutePrintouts ? "loading_sheet" : null,
     hasRoutePrintouts ? "picking_list" : null,
     hasRoutePrintouts ? "trip_chart" : null,
+    hasHrPayroll ? "payroll_receipt" : null,
   ].filter(Boolean);
 
   const availableKinds = [

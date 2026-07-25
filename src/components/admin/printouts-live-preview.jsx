@@ -10,6 +10,10 @@ import {
   buildTripChartListHtml,
   sampleTripChartListPreviewData,
 } from "@/components/fulfillment/trip-chart-list-print";
+import {
+  buildPayrollReceiptDocument,
+  samplePayrollReceiptPreviewData,
+} from "@/components/hr/payroll-receipt-print";
 import { buildLpoPrintHtml, sampleLpoPreviewData } from "@/components/lpo/lpo-print-html";
 import { buildSaleInvoiceHtml } from "@/components/sales/sale-invoice-print";
 import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
@@ -40,6 +44,7 @@ const PREVIEW_OPTION_LABELS = {
   loading_sheet: "Loading sheet",
   picking_list: "Picking list",
   trip_chart: "Trip chart list",
+  payroll_receipt: "Payroll receipt (payslip)",
 };
 
 const PREVIEW_TYPOGRAPHY_VARIANT = {
@@ -49,6 +54,7 @@ const PREVIEW_TYPOGRAPHY_VARIANT = {
   loading_sheet: "loading_sheet",
   picking_list: "picking_list",
   trip_chart: "trip_chart",
+  payroll_receipt: "payroll_receipt",
 };
 
 function resolvePreviewSeller(organization) {
@@ -175,6 +181,17 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       printedBy: "Preview",
       distributionEnabled: Boolean(capabilities?.modules?.distribution),
       trip: sample.trip,
+    });
+  }
+
+  if (previewType === "payroll_receipt") {
+    const sample = samplePayrollReceiptPreviewData();
+    return buildPayrollReceiptDocument({
+      receipts: [sample],
+      organization,
+      generalSettings: general,
+      single: true,
+      documentFooterText: resolvePrintFooter(general, "payroll_receipt"),
     });
   }
 

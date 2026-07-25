@@ -43,6 +43,7 @@ const PRINTOUT_TABS = [
   { id: "loading_sheet", label: "Loading sheets", requiresRoutePrintouts: true },
   { id: "picking_list", label: "Picking lists", requiresRoutePrintouts: true },
   { id: "trip_chart", label: "Trip chart lists", requiresRoutePrintouts: true },
+  { id: "payroll_receipt", label: "Payroll receipts", requiresHrPayroll: true },
 ];
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -571,6 +572,32 @@ function TripChartListsTab({ form, setForm }) {
   );
 }
 
+function PayrollReceiptsTab({ form, setForm }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeading
+        title="HR payroll receipts (payslips)"
+        description="Printed and emailed payslips from payroll runs. Uses the same organization logo/header settings as other documents."
+      />
+      <PrintFontSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="payroll_receipt"
+        description="Font for payslip printouts. Falls back to A4 invoice fonts until you set these."
+      />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Optional closing text on payslips (for example bank details or HR contact)."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="payroll_receipt" form={form} setForm={setForm} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function previewTypeForTab(tabId, previewTypes = []) {
   if (
     tabId === "receipt" ||
@@ -578,7 +605,8 @@ function previewTypeForTab(tabId, previewTypes = []) {
     tabId === "lpo" ||
     tabId === "loading_sheet" ||
     tabId === "picking_list" ||
-    tabId === "trip_chart"
+    tabId === "trip_chart" ||
+    tabId === "payroll_receipt"
   ) {
     return tabId;
   }
@@ -602,7 +630,7 @@ export function PrintoutsSettingsPanel({
   const [activeTab, setActiveTab] = useState("general");
 
   const sections = resolvePrintoutSections(capabilities);
-  const { hasSales, hasProcurement, hasMobileSales, hasRoutePrintouts, hasDistribution } = sections;
+  const { hasSales, hasProcurement, hasMobileSales, hasRoutePrintouts, hasDistribution, hasHrPayroll } = sections;
   const orderFormat = form?.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
 
@@ -614,9 +642,10 @@ export function PrintoutsSettingsPanel({
         if (tab.id === "invoice" && (!hasSales || !showA4)) return false;
         if (tab.requiresProcurement && !hasProcurement) return false;
         if (tab.requiresRoutePrintouts && !hasRoutePrintouts) return false;
+        if (tab.requiresHrPayroll && !hasHrPayroll) return false;
         return true;
       }),
-    [hasProcurement, hasRoutePrintouts, hasSales, showA4, showThermal],
+    [hasHrPayroll, hasProcurement, hasRoutePrintouts, hasSales, showA4, showThermal],
   );
 
   useEffect(() => {
@@ -829,10 +858,13 @@ export function PrintoutsSettingsPanel({
     if (activeTab === "trip_chart" && hasRoutePrintouts) {
       return <TripChartListsTab form={form} setForm={setForm} />;
     }
+    if (activeTab === "payroll_receipt" && hasHrPayroll) {
+      return <PayrollReceiptsTab form={form} setForm={setForm} />;
+    }
 
     return (
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        Sales, procurement, and route printout options appear here when those features are enabled for
+        Sales, procurement, route, and payroll printout options appear here when those features are enabled for
         your organization.
       </p>
     );
