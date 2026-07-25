@@ -15,6 +15,7 @@ import {
   SearchInput,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { publishPlatformSystemIssuesSummary } from "@/lib/platform-system-issues-count";
 
 const KIND_LABELS = {
   error: "Error",
@@ -165,6 +166,7 @@ function adjustSummaryCounts(summary, fromStatus, toStatus) {
   if (toStatus === "open") inc("open");
   if (toStatus === "acknowledged") inc("acknowledged");
   if (toStatus === "resolved") inc("resolved");
+  publishPlatformSystemIssuesSummary(next);
   return next;
 }
 
@@ -217,6 +219,7 @@ export default function PlatformSystemIssuesPage() {
       setTotal(parsed.total);
       setTotalPages(parsed.totalPages);
       setSummary(summaryRes);
+      publishPlatformSystemIssuesSummary(summaryRes);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load system issues");
     } finally {

@@ -25,6 +25,10 @@ import {
   PLATFORM_MAIL_UNREAD_EVENT,
   publishPlatformMailUnread,
 } from "@/lib/platform-mailbox-unread";
+import {
+  PLATFORM_SYSTEM_ISSUES_COUNT_EVENT,
+  publishPlatformSystemIssuesSummary,
+} from "@/lib/platform-system-issues-count";
 
 const STORAGE_KEY = "sidebar-expanded-sections-v7";
 
@@ -322,6 +326,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
   const [customReportTemplates, setCustomReportTemplates] = useState([]);
   const [mailboxUnread, setMailboxUnread] = useState(0);
+  const [systemIssuesCount, setSystemIssuesCount] = useState(0);
 
   const navContext = useMemo(
     () => ({
@@ -345,6 +350,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   useEffect(() => {
     if (!platformAdmin) {
       setMailboxUnread(0);
+      setSystemIssuesCount(0);
       return undefined;
     }
 
@@ -360,6 +366,17 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
         const next = Number(res.unread_count || 0);
         setMailboxUnread(next);
         publishPlatformMailUnread(next);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    async function refreshSystemIssuesCount() {
+      try {
+        const res = await apiRequest("/admin/system-issue-reports/summary", { loading: false });
+        if (cancelled) return;
+        const next = publishPlatformSystemIssuesSummary(res);
+        setSystemIssuesCount(next);
       } catch {
         /* ignore */
       }
@@ -394,19 +411,27 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
     }
 
     void autoSyncOnce();
+    void refreshSystemIssuesCount();
 
     function onUnread(event) {
       const next = Number(event?.detail?.count);
       if (Number.isFinite(next)) setMailboxUnread(Math.max(0, next));
     }
+    function onSystemIssuesCount(event) {
+      const next = Number(event?.detail?.count);
+      if (Number.isFinite(next)) setSystemIssuesCount(Math.max(0, next));
+    }
     window.addEventListener(PLATFORM_MAIL_UNREAD_EVENT, onUnread);
+    window.addEventListener(PLATFORM_SYSTEM_ISSUES_COUNT_EVENT, onSystemIssuesCount);
     const interval = window.setInterval(() => {
       void refreshUnread();
+      void refreshSystemIssuesCount();
     }, 120000);
 
     return () => {
       cancelled = true;
       window.removeEventListener(PLATFORM_MAIL_UNREAD_EVENT, onUnread);
+      window.removeEventListener(PLATFORM_SYSTEM_ISSUES_COUNT_EVENT, onSystemIssuesCount);
       window.clearInterval(interval);
     };
   }, [platformAdmin]);
@@ -414,8 +439,9 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   const badgeByHref = useMemo(
     () => ({
       "/platform/mailbox": mailboxUnread,
+      "/platform/system-issues": systemIssuesCount,
     }),
-    [mailboxUnread],
+    [mailboxUnread, systemIssuesCount],
   );
 
   useEffect(() => {

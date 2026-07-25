@@ -41,13 +41,18 @@ function basename(path) {
 }
 
 function pickExpectedSqlFiles(fileList) {
+  const all = Array.from(fileList ?? []);
   const byName = new Map();
-  for (const file of Array.from(fileList ?? [])) {
+  for (const file of all) {
     const name = basename(file.name).toLowerCase();
     if (!EXPECTED_SET.has(name)) continue;
     if (!byName.has(name)) byName.set(name, file);
   }
-  return EXPECTED_FILES.map((n) => byName.get(n.toLowerCase())).filter(Boolean);
+  const picked = EXPECTED_FILES.map((n) => byName.get(n.toLowerCase())).filter(Boolean);
+  if (picked.length) return picked;
+
+  // One full dump (or any .sql) — converter indexes every INSERT table inside the file.
+  return all.filter((f) => basename(f.name).toLowerCase().endsWith(".sql"));
 }
 
 function downloadBlob(blob, filename) {
@@ -130,7 +135,7 @@ export default function LegacyImportConverterPage() {
       setFiles(picked);
       if (!picked.length) {
         notifyError(
-          "No matching LightStores dump files found in that folder. Expected names like superdb_product.sql.",
+          "No SQL dump files found in that folder. Use a full LightStores .sql dump, or files named like superdb_product.sql.",
         );
       }
       return;
@@ -197,17 +202,17 @@ export default function LegacyImportConverterPage() {
       <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">Convert SQL dumps to import files</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Upload one or more table dumps from the old LightStores system (e.g.{" "}
-          <code className="rounded bg-slate-100 px-1">superdb_product.sql</code>), or pick a whole dump
-          folder — the converter keeps only the tables Centrix needs. It parses{" "}
-          <code className="rounded bg-slate-100 px-1">INSERT INTO</code> rows and produces CSVs matching
-          Centrix advanced import templates (VAT, categories, UOM, routes, suppliers, customers,
-          products, retail packages).
+          Upload a <strong>single LightStores SQL dump</strong> (one file can contain many tables), or
+          separate table dumps such as{" "}
+          <code className="rounded bg-slate-100 px-1">superdb_product.sql</code>. The converter reads{" "}
+          <code className="rounded bg-slate-100 px-1">INSERT INTO</code> rows and builds one Centrix
+          import CSV per entity (VAT, categories, UOM, routes, suppliers, customers, products, retail
+          packages). Catalog pages still import <strong>one CSV at a time</strong>.
         </p>
 
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Tables selected from a folder
+            Optional per-table dump names (folder mode)
           </p>
           <ul className="mt-2 grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
             {EXPECTED_FILES.map((name) => {
@@ -227,7 +232,7 @@ export default function LegacyImportConverterPage() {
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-slate-700">SQL dump files</label>
+            <label className="block text-sm font-medium text-slate-700">SQL dump file(s)</label>
             <input
               ref={fileInputRef}
               type="file"
@@ -237,6 +242,9 @@ export default function LegacyImportConverterPage() {
               onChange={(e) => applyFileSelection(e.target.files)}
               disabled={converting}
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Prefer one full database dump. Multiple table dumps also work.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700">Or import a dump folder</label>
@@ -251,7 +259,8 @@ export default function LegacyImportConverterPage() {
               disabled={converting}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Chooses only the expected <code>superdb_*.sql</code> tables from the folder.
+              Prefers <code>superdb_*.sql</code> when present; otherwise uses any <code>.sql</code>{" "}
+              files in the folder.
             </p>
           </div>
         </div>
