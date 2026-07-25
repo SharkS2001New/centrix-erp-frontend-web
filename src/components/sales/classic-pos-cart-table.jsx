@@ -170,7 +170,7 @@ export function ClassicPosCartTable({
                 sellAtRetail ? " classic-pos-mode-hint--retail" : ""
               }`}
               onClick={() => onToggleRetailMode?.()}
-              title="Click or press F12 to switch wholesale / retail for new lines"
+              title="Click or press F12 (or Ctrl+F12 / Ctrl+Shift+U) to switch wholesale / retail for new lines"
             >
               {sellAtRetail
                 ? "New lines: RETAIL — F12 for wholesale"

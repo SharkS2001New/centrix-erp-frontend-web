@@ -157,7 +157,7 @@ export function ClassicPosStatusFooter({
               type="button"
               className="classic-pos-footer-pay"
               disabled={payDisabled}
-              title="Open payment. Mac: Fn+F10 or Ctrl+Enter."
+              title="Open payment (F10). If the browser captures F10: Ctrl+Enter or Ctrl+F10."
               onClick={() => onPayClick()}
             >
               F10 PAY

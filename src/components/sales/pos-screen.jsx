@@ -150,6 +150,11 @@ import {
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
 } from "@/lib/pos-offline";
+import {
+  claimPosFunctionKeyEvent,
+  isPosFunctionShortcutKey,
+  resolvePosShortcutKey,
+} from "@/lib/pos-keyboard-shortcuts";
 import { newClientSaleUuid } from "@/lib/pos-offline-db";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { applyTheme, getTheme } from "@/lib/theme";
@@ -5127,26 +5132,64 @@ export function PosScreen({ standalone = false }) {
       return el.isContentEditable;
     }
 
-    /** Normalize F-keys across browsers/OS (Mac often needs Fn; keyCode still fires). */
-    function shortcutKey(e) {
-      const key = String(e.key || "");
-      const code = String(e.code || "");
-      const keyCode = Number(e.keyCode || e.which || 0);
-      if (key === "F2" || code === "F2" || keyCode === 113) return "F2";
-      if (key === "F8" || code === "F8" || keyCode === 119) return "F8";
-      if (key === "F9" || code === "F9" || keyCode === 120) return "F9";
-      if (key === "F10" || code === "F10" || keyCode === 121) return "F10";
-      if (key === "F12" || code === "F12" || keyCode === 123) return "F12";
-      // Ctrl/Cmd+Enter = payment when OS/browser swallows F10 (common on Mac).
-      if ((e.ctrlKey || e.metaKey) && (key === "Enter" || code === "Enter" || keyCode === 13)) {
-        return "F10";
+    /** Keys handled on keydown — keyup only runs the action if the browser ate keydown. */
+    const handledOnKeyDownAt = {
+      F2: 0,
+      F8: 0,
+      F9: 0,
+      F10: 0,
+      F12: 0,
+    };
+
+    function runPosFunctionAction(key, state, actions) {
+      if (key === "F2") {
+        // Classic: F2 = find/focus search. Retail/wholesale is F12.
+        // Modern standalone: F2 can also toggle when retail pricing is on.
+        if (state.enableRetailPricing && !state.classicLayout) {
+          actions.toggleRetailWholesaleMode();
+        } else {
+          actions.focusProductSearch();
+        }
+        return;
       }
-      return key;
+      if (key === "F8") {
+        void (async () => {
+          await actions.startFreshWorkspace();
+          if (state.classicLayout) await actions.handleRefresh();
+          actions.focusProductSearch();
+        })();
+        return;
+      }
+      if (key === "F9") {
+        setPriceCheckerOpen(true);
+        return;
+      }
+      if (key === "F10") {
+        actions.openCompletePayment();
+        return;
+      }
+      if (key === "F12") {
+        actions.toggleRetailWholesaleMode();
+      }
     }
 
-    function onKeyDown(e) {
+    function onPosKeyEvent(e, phase) {
       const state = posShortcutStateRef.current;
       const actions = posShortcutActionsRef.current;
+      if (!state.classicLayout && !state.standalone) return;
+
+      // Same event can hit window + document capture — only handle once.
+      if (e.__centrixPosShortcutHandled) return;
+
+      const key = resolvePosShortcutKey(e);
+      const isFn = isPosFunctionShortcutKey(key);
+
+      // Always claim POS F-keys first so PWA/Chrome cannot open DevTools (F12) or the menu (F10).
+      if (isFn) {
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
+      }
+
       if (isModalOpen(state)) {
         if (e.key === "Escape" && state.priceCheckerOpen) {
           setPriceCheckerOpen(false);
@@ -5155,8 +5198,8 @@ export function PosScreen({ standalone = false }) {
       }
 
       if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
         if (state.replacingLineId) {
           actions.cancelReplaceCartLine();
           return;
@@ -5165,9 +5208,6 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const key = shortcutKey(e);
-      const isFn =
-        key === "F2" || key === "F8" || key === "F9" || key === "F10" || key === "F12";
       const classicShortcut =
         state.classicLayout &&
         (isFn ||
@@ -5177,52 +5217,22 @@ export function PosScreen({ standalone = false }) {
 
       if (!classicShortcut && !standaloneFn && isTypingTarget(e.target)) return;
 
-      if (key === "F2" && (state.classicLayout || state.standalone)) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Classic: F2 = find/focus search. Retail/wholesale is F12 (also click the mode hint).
-        // Modern standalone: F2 can also toggle when retail pricing is on.
-        if (state.enableRetailPricing && !state.classicLayout) {
-          actions.toggleRetailWholesaleMode();
+      if (isFn) {
+        if (phase === "keyup") {
+          // Bare F10/F12 sometimes only surface on keyup in PWAs after the shell ate keydown.
+          if (Date.now() - (handledOnKeyDownAt[key] || 0) < 900) return;
         } else {
-          actions.focusProductSearch();
+          handledOnKeyDownAt[key] = Date.now();
         }
+        runPosFunctionAction(key, state, actions);
         return;
       }
-      if (key === "F8" && (state.classicLayout || state.standalone)) {
-        e.preventDefault();
-        e.stopPropagation();
-        void (async () => {
-          await actions.startFreshWorkspace();
-          if (state.classicLayout) await actions.handleRefresh();
-          actions.focusProductSearch();
-        })();
-        return;
-      }
-      if (key === "F9" && (state.classicLayout || state.standalone)) {
-        e.preventDefault();
-        e.stopPropagation();
-        setPriceCheckerOpen(true);
-        return;
-      }
-      if (key === "F10" && (state.classicLayout || state.standalone)) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Same path as footer "F10 PAY" — always open payment / finalize edit.
-        actions.openCompletePayment();
-        return;
-      }
-      // F12: wholesale ↔ retail. Always handle on classic/standalone (feedback if retail disabled).
-      if (key === "F12" && (state.classicLayout || state.standalone)) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
-        actions.toggleRetailWholesaleMode();
-        return;
-      }
+
+      if (phase === "keyup") return;
+
       if (state.classicLayout && e.altKey && (e.key === "h" || e.key === "H")) {
-        e.preventDefault();
-        e.stopPropagation();
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
         if (!state.lineCount || state.cartStockBlocked) return;
         void (async () => {
           const ok = await actions.confirm({
@@ -5235,27 +5245,43 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       if (state.classicLayout && e.altKey && (e.key === "f" || e.key === "F")) {
-        e.preventDefault();
-        e.stopPropagation();
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
         if (state.activeSession) setFloatDetailsOpen(true);
         return;
       }
       if (state.classicLayout && e.altKey && (e.key === "p" || e.key === "P")) {
-        e.preventDefault();
-        e.stopPropagation();
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
         void actions.handlePrintReceipt();
         return;
       }
       if (state.classicLayout && e.key === "Delete" && state.selectedLineId) {
-        e.preventDefault();
-        e.stopPropagation();
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
         void actions.removeSelectedLine();
       }
     }
 
-    // Prefer window capture so we see F-keys before React root / inputs.
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
+    function onKeyDown(e) {
+      onPosKeyEvent(e, "keydown");
+    }
+    function onKeyUp(e) {
+      onPosKeyEvent(e, "keyup");
+    }
+
+    // passive: false is required — otherwise preventDefault is ignored and F12 opens DevTools.
+    const opts = { capture: true, passive: false };
+    window.addEventListener("keydown", onKeyDown, opts);
+    window.addEventListener("keyup", onKeyUp, opts);
+    document.addEventListener("keydown", onKeyDown, opts);
+    document.addEventListener("keyup", onKeyUp, opts);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, opts);
+      window.removeEventListener("keyup", onKeyUp, opts);
+      document.removeEventListener("keydown", onKeyDown, opts);
+      document.removeEventListener("keyup", onKeyUp, opts);
+    };
   }, []);
 
   return (
