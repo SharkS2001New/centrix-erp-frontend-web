@@ -16,6 +16,7 @@ import {
   savePrintAgentConfig,
 } from "@/lib/print-agent";
 import {
+  checkPrintAgentMsiAvailable,
   downloadPrintAgentInstaller,
   downloadPrintAgentMsi,
   printAgentInstallerHelp,
@@ -47,6 +48,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const [testPrinting, setTestPrinting] = useState(false);
   const [downloadingInstaller, setDownloadingInstaller] = useState(false);
   const [downloadingMsi, setDownloadingMsi] = useState(false);
+  const [msiAvailable, setMsiAvailable] = useState(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -55,6 +57,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     setReady(true);
     void import("@/components/sales/sale-receipt-print");
     void import("@/lib/print-preview-samples");
+    void checkPrintAgentMsiAvailable().then((result) => setMsiAvailable(result.available));
   }, []);
 
   const refreshHealth = useCallback(async (config = form, { quick = false } = {}) => {
@@ -287,10 +290,19 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           <button
             type="button"
             onClick={() => void handleDownloadMsi()}
-            disabled={downloadingMsi || downloadingInstaller}
+            disabled={downloadingMsi || downloadingInstaller || msiAvailable === false}
             className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+            title={
+              msiAvailable === false
+                ? "MSI is not packaged on this deployment yet. Use the script installer."
+                : undefined
+            }
           >
-            {downloadingMsi ? "Downloading MSI…" : "Download Windows MSI installer"}
+            {downloadingMsi
+              ? "Downloading MSI…"
+              : msiAvailable === false
+                ? "Windows MSI (not packaged yet)"
+                : "Download Windows MSI installer"}
           </button>
           <button
             type="button"
@@ -301,6 +313,13 @@ export function PrintAgentSettingsPanel({ compact = false }) {
             {downloadingInstaller ? "Preparing…" : "Download script installer (fallback)"}
           </button>
         </div>
+        {msiAvailable === false ? (
+          <p className="mt-2 text-xs text-amber-800">
+            The MSI is not configured yet. Platform admins: open{" "}
+            <strong>Platform → Settings → Print Agent MSI</strong> to set the R2 path and build/upload the installer.
+            Until then, use the script installer.
+          </p>
+        ) : null}
         <p className="theme-subtext mt-2 text-xs">
           <strong>MSI:</strong> copy to the workstation (or USB), double-click, Next → Install. Includes Node.js,
           Chromium, and auto-start. <strong>Script:</strong> {installerHelp}

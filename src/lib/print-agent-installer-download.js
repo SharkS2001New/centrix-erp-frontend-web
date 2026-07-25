@@ -3,6 +3,8 @@
  * Browsers cannot execute installers directly — user opens the downloaded file once.
  */
 
+import { apiRequest } from "@/lib/api";
+
 function detectInstallerPlatform() {
   if (typeof navigator === "undefined") return "windows";
   const ua = navigator.userAgent.toLowerCase();
@@ -18,21 +20,7 @@ function installerFilename(platform) {
     : "centrix-install-print-agent.sh";
 }
 
-/**
- * Download the Windows MSI installer when deployed on the server.
- */
-export async function downloadPrintAgentMsi() {
-  const res = await fetch("/api/print-agent/msi", { cache: "no-store" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? "MSI installer is not available on this server.");
-  }
-
-  const blob = await res.blob();
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename="([^"]+)"/i);
-  const filename = match?.[1] ?? "CentrixPrintAgent.msi";
-
+function triggerBrowserDownload(blob, filename) {
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
@@ -42,8 +30,92 @@ export async function downloadPrintAgentMsi() {
   link.click();
   link.remove();
   URL.revokeObjectURL(objectUrl);
+}
 
-  return { filename };
+function filenameFromUrl(url) {
+  try {
+    const path = new URL(url).pathname;
+    const base = path.split("/").filter(Boolean).at(-1);
+    return base && base.toLowerCase().endsWith(".msi") ? base : "CentrixPrintAgent.msi";
+  } catch {
+    return "CentrixPrintAgent.msi";
+  }
+}
+
+/** @returns {Promise<{ available: boolean, filename?: string, publicUrl?: string }>} */
+export async function checkPrintAgentMsiAvailable() {
+  try {
+    const settings = await apiRequest("/print-agent-msi", { loading: false, reportIssues: false });
+    const publicUrl = String(settings?.public_url || "").trim();
+    if (publicUrl) {
+      return { available: true, publicUrl, filename: filenameFromUrl(publicUrl) };
+    }
+  } catch {
+    /* fall through to local Next route */
+  }
+
+  try {
+    const res = await fetch("/api/print-agent/msi", { method: "HEAD", cache: "no-store" });
+    if (!res.ok) return { available: false };
+    const filename = res.headers.get("X-Print-Agent-Msi") || undefined;
+    return { available: true, filename: filename === "external" ? undefined : filename };
+  } catch {
+    return { available: false };
+  }
+}
+
+/**
+ * Download the Windows MSI installer from the platform-configured R2 URL (preferred),
+ * or the local Next.js /api/print-agent/msi fallback.
+ */
+export async function downloadPrintAgentMsi() {
+  let publicUrl = "";
+  try {
+    const settings = await apiRequest("/print-agent-msi", { loading: false, reportIssues: false });
+    publicUrl = String(settings?.public_url || "").trim();
+  } catch {
+    publicUrl = "";
+  }
+
+  if (publicUrl) {
+    const res = await fetch(publicUrl, { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error(
+        `Could not download MSI from the configured URL (${res.status}). Check Platform → Print Agent MSI.`,
+      );
+    }
+    const blob = await res.blob();
+    const filename = filenameFromUrl(publicUrl);
+    triggerBrowserDownload(blob, filename);
+    return { filename, source: "r2" };
+  }
+
+  const res = await fetch("/api/print-agent/msi", { cache: "no-store", redirect: "follow" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(
+      body.message ??
+        "MSI installer is not configured yet. Open Platform → Print Agent MSI to set the R2 path or build/upload the installer.",
+    );
+  }
+
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? "MSI installer is not available on this server.");
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/i);
+  const headerName = res.headers.get("X-Print-Agent-Msi");
+  const filename =
+    match?.[1] ??
+    (headerName && headerName !== "external" ? headerName : null) ??
+    "CentrixPrintAgent.msi";
+
+  triggerBrowserDownload(blob, filename);
+  return { filename, source: "local" };
 }
 
 /**
@@ -70,15 +142,7 @@ export async function downloadPrintAgentInstaller(opts = {}) {
 
   const blob = await res.blob();
   const filename = installerFilename(platform);
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = filename;
-  link.rel = "noopener";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(objectUrl);
+  triggerBrowserDownload(blob, filename);
 
   return { platform, filename };
 }

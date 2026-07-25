@@ -5,6 +5,16 @@ on:
   push:
     paths:
       - "print-agent/**"
+      - ".github/workflows/build-print-agent-msi.yml"
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: write
+
+env:
+  MSI_OBJECT_KEY: print-agent/CentrixPrintAgent.msi
+  MSI_VERSION: "0.1.0.0"
 
 jobs:
   build-msi:
@@ -30,7 +40,7 @@ jobs:
       - name: Build MSI
         shell: pwsh
         working-directory: print-agent
-        run: ./scripts/build-msi.ps1 -Version "0.1.0.0"
+        run: ./scripts/build-msi.ps1 -Version "${{ env.MSI_VERSION }}"
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
@@ -38,3 +48,196 @@ jobs:
           name: CentrixPrintAgent-msi
           path: print-agent/dist/*.msi
           if-no-files-found: error
+          retention-days: 30
+
+  publish-r2:
+    needs: build-msi
+    runs-on: ubuntu-latest
+    outputs:
+      public_url: ${{ steps.upload.outputs.public_url }}
+    steps:
+      - name: Download MSI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CentrixPrintAgent-msi
+          path: msi-dist
+
+      - name: Resolve MSI file
+        id: file
+        run: |
+          MSI=$(ls msi-dist/*.msi | head -n 1)
+          if [ -z "$MSI" ]; then
+            echo "No MSI found in artifact"
+            exit 1
+          fi
+          echo "path=$MSI" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$MSI")" >> "$GITHUB_OUTPUT"
+          ls -lh "$MSI"
+
+      - name: Upload MSI to Cloudflare R2
+        id: upload
+        env:
+          # Same credentials as MySQL backup (BACKUP_R2_*).
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.BACKUP_R2_REGION }}
+          R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.BACKUP_R2_ENDPOINT }}
+          R2_PUBLIC_URL: ${{ secrets.BACKUP_R2_PUBLIC_URL }}
+          MSI_PATH: ${{ steps.file.outputs.path }}
+          MSI_NAME: ${{ steps.file.outputs.name }}
+        run: |
+          set -euo pipefail
+          export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}"
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -z "${R2_BUCKET:-}" ] || [ -z "${R2_ENDPOINT:-}" ]; then
+            echo "::error::Missing backup R2 secrets. Set the same BACKUP_R2_* values used for MySQL backups: BACKUP_R2_ACCESS_KEY_ID, BACKUP_R2_SECRET_ACCESS_KEY, BACKUP_R2_BUCKET, BACKUP_R2_ENDPOINT (and BACKUP_R2_PUBLIC_URL for downloads)."
+            exit 1
+          fi
+
+          # Same bucket as backups; separate prefix from backups/database.
+          STABLE_KEY="${{ env.MSI_OBJECT_KEY }}"
+          VERSIONED_KEY="print-agent/${MSI_NAME}"
+
+          aws s3 cp "$MSI_PATH" "s3://${R2_BUCKET}/${STABLE_KEY}" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/octet-stream" \
+            --cache-control "public, max-age=300"
+
+          aws s3 cp "$MSI_PATH" "s3://${R2_BUCKET}/${VERSIONED_KEY}" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/octet-stream" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          PUBLIC_BASE="${R2_PUBLIC_URL%/}"
+          if [ -z "$PUBLIC_BASE" ]; then
+            echo "::warning::BACKUP_R2_PUBLIC_URL is empty. Uploaded to R2, but PRINT_AGENT_MSI_URL cannot be derived. Set the same public/custom domain URL used (or intended) for backup object links."
+            echo "public_url=" >> "$GITHUB_OUTPUT"
+          else
+            PUBLIC_URL="${PUBLIC_BASE}/${STABLE_KEY}"
+            echo "public_url=${PUBLIC_URL}" >> "$GITHUB_OUTPUT"
+            echo "MSI public URL: ${PUBLIC_URL}"
+            {
+              echo "## Centrix Print Agent MSI"
+              echo ""
+              echo "- Bucket: \`${R2_BUCKET}\` (same as MySQL backups)"
+              echo "- Object: \`s3://${R2_BUCKET}/${STABLE_KEY}\`"
+              echo "- Public URL: ${PUBLIC_URL}"
+              echo "- Frontend env \`PRINT_AGENT_MSI_URL=${PUBLIC_URL}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  publish-release:
+    needs: [build-msi, publish-r2]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download MSI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CentrixPrintAgent-msi
+          path: msi-dist
+
+      - name: Write release notes
+        env:
+          PUBLIC_URL: ${{ needs.publish-r2.outputs.public_url }}
+        run: |
+          {
+            echo "Windows installer for Centrix Print Agent (silent till printing)."
+            echo "Built from \`${GITHUB_SHA}\`."
+            echo ""
+            echo "Hosted on **Cloudflare R2** (not baked into the Docker image)."
+            echo ""
+            if [ -n "${PUBLIC_URL}" ]; then
+              echo "Download: ${PUBLIC_URL}"
+              echo ""
+              echo "Frontend env:"
+              echo '```'
+              echo "PRINT_AGENT_MSI_URL=${PUBLIC_URL}"
+              echo '```'
+            else
+              echo "Set secret \`BACKUP_R2_PUBLIC_URL\` (same as MySQL backup R2 public/custom domain URL) to expose a download link."
+            fi
+          } > release-notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: print-agent-msi
+          name: Centrix Print Agent MSI
+          body_path: release-notes.md
+          files: msi-dist/*.msi
+          fail_on_unmatched_files: true
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-helm-msi-url:
+    needs: publish-r2
+    if: needs.publish-r2.outputs.public_url != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out pitchpredk3ssetup
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository_owner }}/pitchpredk3ssetup
+          path: pitchpredk3ssetup
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Set PRINT_AGENT_MSI_URL in Helm values
+        env:
+          PUBLIC_URL: ${{ needs.publish-r2.outputs.public_url }}
+        run: |
+          set -euo pipefail
+          FILE="pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml")
+          text = path.read_text()
+          url = os.environ["PUBLIC_URL"].strip()
+          marker = "PRINT_AGENT_MSI_URL:"
+          if marker in text:
+              lines = []
+              for line in text.splitlines(True):
+                  if line.lstrip().startswith(marker):
+                      indent = line[: len(line) - len(line.lstrip())]
+                      lines.append(f'{indent}PRINT_AGENT_MSI_URL: "{url}"\n')
+                  else:
+                      lines.append(line)
+              path.write_text("".join(lines))
+          else:
+              if not text.endswith("\n"):
+                  text += "\n"
+              text += (
+                  "\n# Runtime env for Next.js API routes (not baked at image build)\n"
+                  "env:\n"
+                  f'  PRINT_AGENT_MSI_URL: "{url}"\n'
+              )
+              path.write_text(text)
+          print(f"Updated {path} -> PRINT_AGENT_MSI_URL={url}")
+          PY
+
+      - name: Commit and push Helm values
+        run: |
+          cd pitchpredk3ssetup
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add centrix-erp-frontend-web/values.yaml
+          if git diff --staged --quiet; then
+            echo "PRINT_AGENT_MSI_URL already up to date."
+            exit 0
+          fi
+          git commit -m "chore(centrix-erp-frontend-web): point PRINT_AGENT_MSI_URL at R2 MSI"
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin master
+            if git push origin HEAD:master; then
+              echo "Push succeeded on attempt ${attempt}."
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}); retrying after rebase…"
+            sleep $((attempt * 2))
+          done
+          echo "Failed to push pitchpredk3ssetup after 5 attempts."
+          exit 1

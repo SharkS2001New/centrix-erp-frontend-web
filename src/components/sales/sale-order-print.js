@@ -36,6 +36,15 @@ import {
   showPrintPreparing,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
+import { isPrintAgentEnabled } from "@/lib/print-agent";
+
+function isOfflineSalePrint(sale, options = {}) {
+  return (
+    Boolean(options.skipNetworkLookups) ||
+    Boolean(sale?.offline_pending_sync) ||
+    String(sale?.id ?? "").startsWith("offline:")
+  );
+}
 
 async function fetchOrganizationForPrint(organizationId) {
   if (!organizationId) return null;
@@ -214,12 +223,16 @@ export async function printSaleOrder(sale, options = {}) {
   }
 
   let printWindow = options.printWindow ?? null;
-  if (!printWindow) {
+  // Offline: prefer local print agent (localhost) — avoid opening a blank iframe
+  // before enrichment, and skip WAN lookups that hang on a dropped/slow link.
+  const offlineSale = isOfflineSalePrint(sale, options);
+  const deferPrintWindow = offlineSale && !printWindow && isPrintAgentEnabled();
+  if (!printWindow && !deferPrintWindow) {
     printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
     if (!printWindow) {
       throw new Error(PRINT_BLOCKED_MESSAGE);
     }
-  } else {
+  } else if (printWindow) {
     showPrintPreparing(printWindow);
   }
 
@@ -245,10 +258,12 @@ export async function printSaleOrder(sale, options = {}) {
 
     const copies = Math.max(1, Number(options.copies ?? sales.receipt_copies ?? 1) || 1);
 
+    const skipNetworkLookups = offlineSale || isOfflineSalePrint(saleForPrint, options);
+
     const organizationAlreadyUsable =
       Boolean(options.organization?.name) || Boolean(options.organizationName);
     const fetchedOrganization =
-      options.skipOrganizationRefresh && organizationAlreadyUsable
+      skipNetworkLookups || (options.skipOrganizationRefresh && organizationAlreadyUsable)
         ? null
         : organizationId
           ? await fetchOrganizationForPrint(organizationId)
@@ -258,9 +273,21 @@ export async function printSaleOrder(sale, options = {}) {
       : options.organization ?? null;
 
     const [branch, customer, route] = await Promise.all([
-      options.branch ? Promise.resolve(options.branch) : fetchBranch(saleForPrint.branch_id),
-      options.customer ? Promise.resolve(options.customer) : fetchCustomer(saleForPrint.customer_num),
-      options.route ? Promise.resolve(options.route) : fetchRoute(saleForPrint.route_id),
+      options.branch
+        ? Promise.resolve(options.branch)
+        : skipNetworkLookups
+          ? Promise.resolve(null)
+          : fetchBranch(saleForPrint.branch_id),
+      options.customer
+        ? Promise.resolve(options.customer)
+        : skipNetworkLookups
+          ? Promise.resolve(null)
+          : fetchCustomer(saleForPrint.customer_num),
+      options.route
+        ? Promise.resolve(options.route)
+        : skipNetworkLookups
+          ? Promise.resolve(null)
+          : fetchRoute(saleForPrint.route_id),
     ]);
 
     const seller =
@@ -274,9 +301,10 @@ export async function printSaleOrder(sale, options = {}) {
       generalSettings: general,
       organizationNameFallback: seller.name ?? options.organizationName ?? "",
     });
-    const logoDataUrl = options.skipLogoFetch
-      ? null
-      : await fetchOrganizationLogoDataUrl(organization);
+    const logoDataUrl =
+      options.skipLogoFetch || skipNetworkLookups
+        ? null
+        : await fetchOrganizationLogoDataUrl(organization);
     if (logoDataUrl) {
       branding = { ...branding, logoUrl: logoDataUrl };
     }
@@ -284,7 +312,9 @@ export async function printSaleOrder(sale, options = {}) {
     let kraData = null;
     let kraQrDataUrl = null;
     try {
-      kraData = await resolveKraReceiptDataForSale(saleForPrint, options.kraReceipt);
+      kraData = skipNetworkLookups
+        ? extractKraReceiptData(saleForPrint, options.kraReceipt)
+        : await resolveKraReceiptDataForSale(saleForPrint, options.kraReceipt);
       kraQrDataUrl =
         kraData?.signatureLink != null
           ? await kraReceiptQrDataUrl(kraData.signatureLink, {

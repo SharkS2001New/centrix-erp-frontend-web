@@ -9,6 +9,7 @@ import { PlatformEmailDeliveryPanel } from "@/components/platform/platform-email
 import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-screen";
 import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-alert-notifications-panel";
 import { PlatformR2BackupSettingsPanel } from "@/components/platform/platform-r2-backup-settings-panel";
+import { PlatformPrintAgentMsiPanel } from "@/components/platform/platform-print-agent-msi-panel";
 import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-credentials-screen";
 import { PlatformKenyaPayrollSettingsPanel } from "@/components/platform/platform-kenya-payroll-settings-panel";
 import { PlatformPayrollScheduleSettingsPanel } from "@/components/platform/platform-payroll-schedule-settings-panel";
@@ -20,6 +21,7 @@ const TABS = [
   { id: "alerts", label: "Alert notifications" },
   { id: "payroll", label: "Payroll" },
   { id: "r2", label: "Cloudflare R2" },
+  { id: "print-agent-msi", label: "Print Agent MSI" },
 ];
 
 function resolveTab(tabId, fallback = "email") {
@@ -73,9 +75,11 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
           ? "OpenAI API key and model for platform-admin AI tools (email assist, training console)."
           : activeTab === "r2"
             ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
-            : activeTab === "payroll"
-              ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
-              : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
+            : activeTab === "print-agent-msi"
+              ? "Build or upload the Windows till installer to R2 and set the download path."
+              : activeTab === "payroll"
+                ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
+                : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
 
   return (
     <CatalogPageShell title="Platform settings" subtitle={subtitle}>
@@ -101,6 +105,7 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
         </div>
       ) : null}
       {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
+      {activeTab === "print-agent-msi" ? <PlatformPrintAgentMsiPanel /> : null}
     </CatalogPageShell>
   );
 }

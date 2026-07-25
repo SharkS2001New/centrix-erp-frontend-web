@@ -16,7 +16,7 @@ import {
  *
  * While healthy: warm IndexedDB catalog + reserved order #s in the background.
  * When the link drops or is very slow: sell from IndexedDB (cash), queue sync.
- * Aimed at brief outages (~5 minutes); when the API is healthy again, flush outbox.
+ * Aimed at brief outages (~15 minutes); when the API is healthy again, flush outbox.
  */
 export function usePosOfflineSupport({ enabled = false } = {}) {
   const { status, browserOnline, apiOnline } = useNetworkStatus({

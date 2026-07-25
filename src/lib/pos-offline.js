@@ -12,6 +12,7 @@ import {
   idbGetCatalogProduct,
   idbGetLocalCart,
   idbGetMeta,
+  idbGetOutboxSale,
   idbListPendingOutbox,
   idbMarkOutboxError,
   idbMarkOutboxSynced,
@@ -25,10 +26,10 @@ import {
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
-/** Re-warm catalog while healthy so a brief drop (~5 min) still has recent prices. */
+/** Re-warm catalog while healthy so a brief drop (~15 min) still has recent prices. */
 export const POS_OFFLINE_CATALOG_TTL_MS = 15 * 60 * 1000;
 /** Design target for drop/slow bridge — not a hard cutoff. */
-export const POS_OFFLINE_TARGET_OUTAGE_MS = 5 * 60 * 1000;
+export const POS_OFFLINE_TARGET_OUTAGE_MS = 15 * 60 * 1000;
 
 function sortCatalog(products, query) {
   const q = String(query ?? "").trim().toLowerCase();
@@ -223,6 +224,7 @@ export function summarizeLocalPosCart(cart) {
 
 /**
  * Complete an offline cash sale: consume reserved order #, queue outbox, clear cart.
+ * When revising a pending offline sale, reuse the same client uuid + order number.
  * @returns {Promise<{ sale: object, outbox: object }>}
  */
 export async function completeOfflineCashSale({
@@ -236,16 +238,39 @@ export async function completeOfflineCashSale({
   if (!summary.lineCount) {
     throw new Error("Cart is empty.");
   }
-  const orderNum = await takePosOfflineOrderNumber();
-  if (!orderNum) {
-    throw new Error(
-      "No reserved order numbers left for offline selling. Reconnect briefly to reserve more.",
-    );
+
+  const editingUuid =
+    cart.offline_client_sale_uuid != null && String(cart.offline_client_sale_uuid).trim()
+      ? String(cart.offline_client_sale_uuid).trim()
+      : null;
+  const reuseOrderNum =
+    cart.held_order_num != null && Number(cart.held_order_num) > 0
+      ? Number(cart.held_order_num)
+      : null;
+
+  let orderNum = reuseOrderNum;
+  let clientSaleUuid = editingUuid;
+  if (editingUuid && reuseOrderNum) {
+    // Revising a queued offline sale — keep printed order # and outbox identity.
+  } else if (editingUuid || reuseOrderNum) {
+    throw new Error("Offline edit is missing its original order number. Cancel and reopen the sale.");
+  } else {
+    orderNum = await takePosOfflineOrderNumber();
+    if (!orderNum) {
+      throw new Error(
+        "No reserved order numbers left for offline selling. Reconnect briefly to reserve more.",
+      );
+    }
+    clientSaleUuid = newClientSaleUuid();
   }
 
   const payNow = Math.max(Number(cashAmount ?? summary.amountDue), summary.amountDue);
-  const clientSaleUuid = newClientSaleUuid();
   const nowIso = new Date().toISOString();
+  const existingOutbox = editingUuid ? await idbGetOutboxSale(editingUuid) : null;
+  const createdAtIso =
+    existingOutbox?.sale_payload?.created_at ??
+    existingOutbox?.sale_payload?.completed_at ??
+    nowIso;
 
   const sale = {
     id: `offline:${clientSaleUuid}`,
@@ -256,6 +281,7 @@ export async function completeOfflineCashSale({
     till_id: cart.till_id ?? null,
     float_session_id: floatSessionId ?? cart.float_session_id ?? null,
     cashier_id: user?.id ?? null,
+    created_by: user?.id ?? null,
     channel: "pos",
     order_source: "pos",
     status: "completed",
@@ -265,8 +291,9 @@ export async function completeOfflineCashSale({
     order_total: summary.total,
     total_vat: summary.vat,
     amount_paid: payNow,
+    cash: payNow,
     completed_at: nowIso,
-    created_at: nowIso,
+    created_at: createdAtIso,
     customer_num: cart.customer_num ?? null,
     customer_name_override: cart.customer_name_override ?? null,
     offline_pending_sync: true,
@@ -295,7 +322,8 @@ export async function completeOfflineCashSale({
     client_sale_uuid: clientSaleUuid,
     order_num: orderNum,
     sync_status: "pending",
-    created_at_ms: Date.now(),
+    created_at_ms: existingOutbox?.created_at_ms ?? Date.now(),
+    updated_at_ms: Date.now(),
     sale_payload: sale,
     checkout_body: {
       order_num: orderNum,
@@ -323,12 +351,106 @@ export async function completeOfflineCashSale({
       uom: item.uom,
       on_wholesale_retail: item.on_wholesale_retail,
       discount_given: item.discount_given,
+      product_name: item.product_name,
     })),
   };
 
   await idbPutOutboxSale(outbox);
   await clearLocalPosCart();
   return { sale, outbox };
+}
+
+export function parseOfflineSaleUuid(saleId) {
+  const raw = String(saleId ?? "");
+  if (raw.startsWith("offline:")) return raw.slice("offline:".length);
+  return raw || null;
+}
+
+/** Pending offline sales that can be reopened for edit (newest first). */
+export async function listOfflinePendingSalesForEdit() {
+  const pending = await idbListPendingOutbox();
+  return pending
+    .map((row) => {
+      const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
+      return {
+        ...sale,
+        id: `offline:${row.client_sale_uuid}`,
+        order_num: row.order_num,
+        status: sale.status ?? "completed",
+        offline_pending_sync: true,
+      };
+    })
+    .sort((a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0));
+}
+
+/**
+ * Load a pending offline sale into the local cart for edit (same order #).
+ * Marks the outbox row as `editing` so sync will not replay it mid-edit.
+ */
+export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
+  const uuid = parseOfflineSaleUuid(saleId);
+  if (!uuid) throw new Error("Invalid offline sale.");
+  const row = await idbGetOutboxSale(uuid);
+  if (!row) {
+    throw new Error("That offline sale is no longer in the local queue.");
+  }
+  if (row.sync_status === "synced") {
+    throw new Error("That sale already synced. Reopen it with its server order number.");
+  }
+
+  const sale = row.sale_payload ?? {};
+  const lines = (row.lines?.length ? row.lines : sale.items ?? []).map((line) => {
+    const clientLineId = line.client_line_id ?? newClientSaleUuid();
+    return {
+      ...line,
+      client_line_id: clientLineId,
+      product_code: line.product_code,
+      product_name: line.product_name ?? line.description ?? line.product_code,
+      quantity: Number(line.quantity),
+      unit_price: Number(line.unit_price),
+      uom: line.uom ?? null,
+      on_wholesale_retail: Boolean(line.on_wholesale_retail),
+      discount_given: Number(line.discount_given ?? 0),
+    };
+  });
+
+  const localCart = {
+    id: "active",
+    offline: true,
+    channel: "pos",
+    held_order_num: Number(row.order_num),
+    offline_client_sale_uuid: row.client_sale_uuid,
+    offline_edit_snapshot: row,
+    branch_id: row.cart_seed?.branch_id ?? sale.branch_id ?? seed.branch_id ?? null,
+    till_id: row.cart_seed?.till_id ?? sale.till_id ?? seed.till_id ?? null,
+    float_session_id:
+      row.cart_seed?.float_session_id ?? sale.float_session_id ?? seed.float_session_id ?? null,
+    customer_num: sale.customer_num ?? null,
+    customer_name_override: sale.customer_name_override ?? null,
+    lines,
+    updated_at_ms: Date.now(),
+  };
+
+  await idbPutOutboxSale({ ...row, sync_status: "editing" });
+  await idbPutLocalCart(localCart);
+  return { cart: localCart, sale: { ...sale, id: `offline:${uuid}`, order_num: row.order_num } };
+}
+
+/** Put a mid-edit offline sale back on the sync queue without applying cart changes. */
+export async function abandonOfflineSaleEdit(cart) {
+  const snapshot = cart?.offline_edit_snapshot;
+  if (snapshot?.client_sale_uuid) {
+    await idbPutOutboxSale({
+      ...snapshot,
+      sync_status: "pending",
+    });
+  } else if (cart?.offline_client_sale_uuid) {
+    const existing = await idbGetOutboxSale(cart.offline_client_sale_uuid);
+    if (existing) {
+      await idbPutOutboxSale({ ...existing, sync_status: "pending" });
+    }
+  }
+  await clearLocalPosCart();
 }
 
 export async function getPosOfflinePendingCount() {

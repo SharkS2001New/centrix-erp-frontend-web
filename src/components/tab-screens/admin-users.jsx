@@ -56,6 +56,7 @@ import {
   batchDeleteWithConfirm,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
+import { suggestNextTillDefaults, tillDisplayName } from "@/lib/pos-till";
 
 const EMPTY_FORM = {
   full_name: "",
@@ -68,6 +69,7 @@ const EMPTY_FORM = {
   access_scope: "branch",
   login_channels: [],
   assigned_route_id: "",
+  till_id: "auto",
   is_active: true,
 };
 
@@ -99,6 +101,7 @@ export function AdminUsersScreen() {
   const [branches, setBranches] = useState([]);
   const [roles, setRoles] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [tills, setTills] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [permissionApplications, setPermissionApplications] = useState([]);
@@ -142,6 +145,42 @@ export function AdminUsersScreen() {
   const matrix = permissionGroups;
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
+  const showPosTillField = posEnabled && form.login_channels.includes("pos");
+  const tillOptionsForForm = useMemo(() => {
+    if (!showPosTillField) return [];
+    const branchId = form.branch_id ? Number(form.branch_id) : null;
+    const editingUserId = editing?.id != null ? Number(editing.id) : null;
+    const branchTills = (tills ?? []).filter((till) => {
+      if (branchId != null && Number(till.branch_id) !== branchId) return false;
+      return till.is_active !== false;
+    });
+    const nextLabel = suggestNextTillDefaults(branchTills).till_name;
+    const options = [
+      { value: "auto", label: `Create next till (${nextLabel})` },
+      { value: "", label: "No till assigned" },
+    ];
+    for (const till of branchTills) {
+      const assignedToOther =
+        till.cashier_id != null &&
+        editingUserId != null &&
+        Number(till.cashier_id) !== editingUserId;
+      const assignedToOtherNew =
+        till.cashier_id != null && editingUserId == null;
+      if (assignedToOther || assignedToOtherNew) continue;
+      options.push({
+        value: String(till.id),
+        label: tillDisplayName(till),
+      });
+    }
+    // Keep the currently selected till visible even if filters would hide it.
+    if (form.till_id && form.till_id !== "auto" && !options.some((o) => o.value === form.till_id)) {
+      const current = tills.find((t) => String(t.id) === String(form.till_id));
+      if (current) {
+        options.push({ value: String(current.id), label: tillDisplayName(current) });
+      }
+    }
+    return options;
+  }, [showPosTillField, form.branch_id, form.till_id, tills, editing?.id]);
 
   const loadReferenceData = useCallback(async () => {
     if (!organizationId) return;
@@ -151,7 +190,7 @@ export function AdminUsersScreen() {
         apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } }),
         apiRequest(adminPath("/roles/permissions/matrix")),
       ];
-
+      const routeReqIndex = mobileAppEnabled ? requests.length : -1;
       if (mobileAppEnabled) {
         requests.push(
           apiRequest(adminPath("/routes"), {
@@ -159,9 +198,19 @@ export function AdminUsersScreen() {
           }),
         );
       }
+      const tillReqIndex = posEnabled ? requests.length : -1;
+      if (posEnabled) {
+        requests.push(
+          apiRequest(adminPath("/tills"), {
+            searchParams: { per_page: 200, ...orgListParams(organizationId) },
+          }),
+        );
+      }
 
       const results = await Promise.allSettled(requests);
-      const [branchRes, roleRes, matrixRes, routeRes] = results;
+      const [branchRes, roleRes, matrixRes] = results;
+      const routeRes = routeReqIndex >= 0 ? results[routeReqIndex] : null;
+      const tillRes = tillReqIndex >= 0 ? results[tillReqIndex] : null;
 
       if (branchRes.status === "rejected") {
         throw branchRes.reason;
@@ -188,12 +237,23 @@ export function AdminUsersScreen() {
       } else {
         setRoutes([]);
       }
+
+      if (posEnabled) {
+        if (tillRes?.status === "fulfilled") {
+          const tillRows = tillRes.value?.data ?? tillRes.value ?? [];
+          setTills(filterByOrganization(Array.isArray(tillRows) ? tillRows : [], organizationId));
+        } else {
+          setTills([]);
+        }
+      } else {
+        setTills([]);
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load users");
     } finally {
       setLoading(false);
     }
-  }, [organizationId, adminPath, mobileAppEnabled]);
+  }, [organizationId, adminPath, mobileAppEnabled, posEnabled]);
 
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;
@@ -315,6 +375,7 @@ export function AdminUsersScreen() {
       access_scope: row.access_scope ?? "branch",
       login_channels: normalizeLoginChannels(row.login_channels, allowedLoginChannelSet),
       assigned_route_id: row.assigned_route_id ? String(row.assigned_route_id) : "",
+      till_id: row.till_id != null ? String(row.till_id) : "",
       is_active: row.is_active !== false,
     });
     setFormError(null);
@@ -524,6 +585,23 @@ export function AdminUsersScreen() {
         body.assigned_route_id = form.assigned_route_id
           ? Number(form.assigned_route_id)
           : null;
+      }
+      if (posEnabled && form.login_channels.includes("pos")) {
+        if (!form.branch_id && (form.till_id === "auto" || form.till_id)) {
+          setFormError("Branch is required to assign a POS till.");
+          setSaving(false);
+          return;
+        }
+        if (form.till_id === "auto") {
+          body.till_id = "auto";
+        } else if (form.till_id) {
+          body.till_id = Number(form.till_id);
+        } else {
+          body.till_id = null;
+        }
+      } else if (posEnabled && editing) {
+        // Clearing POS channel also clears till assignment.
+        body.till_id = null;
       }
       if (!editing || !isProtectedUserAccount(editing, user?.id)) {
         body.is_active = form.is_active;
@@ -792,13 +870,20 @@ export function AdminUsersScreen() {
               <option value="branch">Single branch only</option>
             </select>
           </Field>
-          <Field label="Branch" required={form.access_scope === "branch"}>
+          <Field label="Branch" required={form.access_scope === "branch" || showPosTillField}>
             <HrSearchableSelect
               value={form.branch_id}
-              onChange={(v) => setForm((f) => ({ ...f, branch_id: v }))}
+              onChange={(v) =>
+                setForm((f) => ({
+                  ...f,
+                  branch_id: v,
+                  // Reset till when branch changes — till options are branch-scoped.
+                  till_id: f.login_channels.includes("pos") ? "auto" : f.till_id,
+                }))
+              }
               options={branches.map((b) => ({ value: String(b.id), label: b.branch_name }))}
               placeholder={form.access_scope === "branch" ? "Select branch" : "Optional home branch"}
-              required={form.access_scope === "branch"}
+              required={form.access_scope === "branch" || showPosTillField}
             />
           </Field>
           <Field label="Role">
@@ -856,6 +941,20 @@ export function AdminUsersScreen() {
               />
               <p className="mt-1 text-xs text-slate-500">
                 Leave empty to let the rep work on multiple routes. When set, the rep is locked to that route only.
+              </p>
+            </Field>
+          ) : null}
+          {showPosTillField ? (
+            <Field label="Assigned till">
+              <HrSearchableSelect
+                value={form.till_id}
+                onChange={(v) => setForm((f) => ({ ...f, till_id: v }))}
+                options={tillOptionsForForm}
+                placeholder="Select till"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Each cashier should have their own till (Cashier 1 → Till01, Cashier 2 → Till02).
+                Choose an existing free till or create the next one automatically.
               </p>
             </Field>
           ) : null}

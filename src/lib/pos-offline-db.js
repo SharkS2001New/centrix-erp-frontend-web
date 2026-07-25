@@ -1,5 +1,5 @@
 /**
- * IndexedDB helpers for External POS short-outage sell (~5 minutes).
+ * IndexedDB helpers for External POS short-outage sell (~15 minutes).
  * Not a full offline app — no service worker; bridge while the till stays open.
  */
 

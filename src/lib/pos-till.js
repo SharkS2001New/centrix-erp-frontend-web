@@ -168,15 +168,23 @@ export async function createBranchTill({ branchId, existingTills = [], suggested
   for (let attempt = 0; attempt < 8; attempt += 1) {
     if (!isDuplicateTillCode(existingTills, branchId, next.till_number)) {
       try {
-        return await apiRequest("/tills", {
+        const created = await apiRequest("/tills", {
           method: "POST",
           body: {
             branch_id: branchId,
             till_number: next.till_number,
             till_name: next.till_name,
             is_active: true,
+            ...(cashierId != null ? { cashier_id: cashierId } : {}),
           },
         });
+        if (cashierId != null && created?.id && Number(created.cashier_id) !== Number(cashierId)) {
+          return await apiRequest(`/tills/${created.id}`, {
+            method: "PUT",
+            body: { cashier_id: cashierId },
+          });
+        }
+        return created;
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (!message.toLowerCase().includes("already exists") || attempt >= 7) {

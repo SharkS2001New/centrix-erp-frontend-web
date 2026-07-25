@@ -44,6 +44,32 @@ Login: **admin** / **password** (demo seeder).
 | `NEXT_PUBLIC_REVERB_PORT` | WebSocket port (default `8080` local, `443` HTTPS) |
 | `NEXT_PUBLIC_REVERB_SCHEME` | `http` or `https` |
 | `NEXT_PUBLIC_APP_URL` | Public ERP URL (e.g. `https://erp.example.com`) — used by print-agent installers when the server sees `localhost` behind a proxy |
+| `PRINT_AGENT_MSI_URL` | Public URL of the Windows MSI on Cloudflare R2 (302 redirect). Synced by **Build Print Agent MSI** when R2 secrets are set. |
+| `PRINT_AGENT_MSI_PATH` | Optional absolute path to a mounted `.msi` (PVC) — usually unnecessary when using R2 |
+| `PRINT_AGENT_MSI_DIR` | Optional directory to scan for `*.msi` |
+| `PRINT_AGENT_MSI_GITHUB_REPO` | Optional fallback: `owner/repo` for private GitHub Release proxy |
+| `PRINT_AGENT_MSI_GITHUB_TOKEN` | Optional fallback token for that release proxy |
+
+### Print Agent MSI on Cloudflare R2
+
+Do **not** bake the ~400MB MSI into the Docker image. CI uploads it to the **same R2 bucket** used for MySQL backups (`BACKUP_R2_*`), under prefix `print-agent/`.
+
+GitHub Actions secrets (frontend repo) — mirror Platform → Database backups / API `BACKUP_R2_*`:
+
+| Secret | Same as |
+|--------|---------|
+| `BACKUP_R2_ACCESS_KEY_ID` | Backup R2 access key |
+| `BACKUP_R2_SECRET_ACCESS_KEY` | Backup R2 secret |
+| `BACKUP_R2_BUCKET` | Backup R2 bucket |
+| `BACKUP_R2_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `BACKUP_R2_PUBLIC_URL` | Backup R2 public/custom domain (no trailing slash) |
+| `BACKUP_R2_REGION` | Optional; default `auto` |
+| `PERSONAL_ACCESS_TOKEN` | Already used by Docker Publish; syncs `PRINT_AGENT_MSI_URL` into Helm |
+
+Object key (stable): `print-agent/CentrixPrintAgent.msi`  
+Public URL: `{BACKUP_R2_PUBLIC_URL}/print-agent/CentrixPrintAgent.msi`
+
+Ensure the bucket allows public reads for that prefix (or the whole public domain), then run **Build Print Agent MSI**.
 
 ### Real-time notifications (optional)
 

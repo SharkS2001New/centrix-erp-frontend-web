@@ -18,7 +18,9 @@ npm run build:msi
 
 Output: `print-agent/dist/CentrixPrintAgent-0.1.0.0.msi` (~300–400 MB).
 
-Or trigger **GitHub Actions → Build Print Agent MSI** to build in the cloud and download the artifact.
+Or trigger **GitHub Actions → Build Print Agent MSI**. That builds on Windows, uploads to **Cloudflare R2**, and sets frontend `PRINT_AGENT_MSI_URL` (Helm) so **Administration → Local printing → Download Windows MSI** redirects to R2. The MSI is **not** baked into the Docker image.
+
+Required repo secrets (same as MySQL backup R2): `BACKUP_R2_ACCESS_KEY_ID`, `BACKUP_R2_SECRET_ACCESS_KEY`, `BACKUP_R2_BUCKET`, `BACKUP_R2_ENDPOINT`, `BACKUP_R2_PUBLIC_URL` (plus `PERSONAL_ACCESS_TOKEN` for Helm sync). MSI objects use prefix `print-agent/` in that bucket.
 
 ### Deploy to till PCs
 

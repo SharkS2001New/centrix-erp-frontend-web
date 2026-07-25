@@ -214,19 +214,25 @@ export function OpenSessionModal({
 
   useEffect(() => {
     if (!open) return;
-    const branchTills = tills.filter((t) => t.branch_id === user?.branch_id && t.is_active !== false);
     const preferred = preferredTillId
       ? tills.find((t) => String(t.id) === String(preferredTillId))
       : null;
-    const first = preferred ?? branchTills[0] ?? tills[0];
-    if (first) {
-      setTillId(String(first.id));
-    } else {
+    if (preferred) {
+      // Cashier's assigned / available till from POS picker.
+      setTillId(String(preferred.id));
+    } else if (autoAssignTill) {
+      // Do NOT fall back to Till01 — create the next till (Till02+) on save when needed.
       setTillId("");
+    } else {
+      const branchTills = tills.filter(
+        (t) => t.branch_id === user?.branch_id && t.is_active !== false,
+      );
+      const first = branchTills[0] ?? tills[0];
+      setTillId(first ? String(first.id) : "");
     }
     setFloatAmount("");
     setPaymentType("CASH");
-  }, [open, tills, user?.branch_id, preferredTillId]);
+  }, [open, tills, user?.branch_id, preferredTillId, autoAssignTill]);
 
   const selectedTill = tills.find((t) => String(t.id) === tillId);
   const existingOpen = selectedTill && openByTill?.get?.(selectedTill.id);
