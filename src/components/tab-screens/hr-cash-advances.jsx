@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { canApproveCashAdvances } from "@/lib/approval-permissions";
 import {
   Field,
+  IconButton,
   formatShortDate,
   inputClassName,
   parseDecimalInput,
@@ -14,6 +15,24 @@ import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 import { printCashAdvanceVoucher } from "@/components/hr/cash-advance-voucher-print";
 import { notifySuccess } from "@/lib/notify";
+
+function PrintIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+    >
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  );
+}
 
 function statusLabel(status) {
   switch (status) {
@@ -45,6 +64,8 @@ export function HrCashAdvancesScreen() {
       organization,
       generalSettings: typeof generalSettings === "function" ? generalSettings() : generalSettings,
       printedByUser: user,
+      preparedByName: advance?.prepared_by_name || user?.full_name || user?.username,
+      approvedByName: advance?.approved_by_name || null,
     });
   }
 
@@ -147,13 +168,11 @@ export function HrCashAdvancesScreen() {
             </>
           ) : null;
         const printBtn = (
-          <button
-            type="button"
-            className="ml-3 text-slate-700 hover:underline"
-            onClick={() => printVoucher(row, employees)}
-          >
-            Print voucher
-          </button>
+          <span className="ml-3 inline-flex align-middle">
+            <IconButton label="Print voucher" onClick={() => printVoucher(row, employees)}>
+              <PrintIcon />
+            </IconButton>
+          </span>
         );
 
         return (

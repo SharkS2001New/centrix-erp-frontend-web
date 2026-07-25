@@ -533,6 +533,29 @@ export function HrDeductionsScreen() {
             apiPath="/payroll-deduction-types"
             onSaved={bumpTypes}
             loadExtra={loadEmployeesExtra}
+            exportTitle="Other deductions"
+            exportFilename="other-deductions"
+            exportColumns={[
+              { key: "deduction_code", label: "Code" },
+              { key: "name", label: "Type" },
+              { key: "when", label: "When" },
+              { key: "scope", label: "Scope" },
+              { key: "calculation", label: "Calculation" },
+              { key: "default_display", label: "Default", align: "right" },
+            ]}
+            getExportRows={({ filtered }) =>
+              filtered.map((r) => ({
+                deduction_code: r.deduction_code ?? "",
+                name: r.name ?? "",
+                when: r.frequency === "one_time" ? "One-time" : "Every cycle",
+                scope: r.applies_to_all ? "All employees" : "Template / assigned",
+                calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+                default_display:
+                  r.calc_type === "percentage"
+                    ? `${r.default_percentage ?? 0}%`
+                    : formatHrKesFull(r.default_amount),
+              }))
+            }
             columns={[
               { key: "deduction_code", label: "Code" },
               { key: "name", label: "Type" },
@@ -588,6 +611,39 @@ export function HrDeductionsScreen() {
             drawerWide
             apiPath="/employee-deductions"
             loadExtra={loadAssignExtra}
+            exportTitle="Employee deductions"
+            exportFilename="employee-deductions"
+            exportColumns={[
+              { key: "employee", label: "Employee" },
+              { key: "name", label: "Type" },
+              { key: "when", label: "When" },
+              { key: "calculation", label: "Calculation" },
+              { key: "amount_display", label: "Amount", align: "right" },
+            ]}
+            getExportRows={({ filtered, extra }) => {
+              const employees = extra.employees ?? [];
+              return filtered.map((r) => {
+                const emp =
+                  employees.find((e) => e.id === r.employee_id) ?? r.employee ?? null;
+                const when = r.payroll_run_id
+                  ? "One-time (applied)"
+                  : r.frequency === "one_time"
+                    ? "One-time"
+                    : "Every cycle";
+                return {
+                  employee: emp
+                    ? composeEmployeeDisplayName(emp)
+                    : String(r.employee_id ?? ""),
+                  name: r.name ?? "",
+                  when,
+                  calculation: r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+                  amount_display:
+                    r.calc_type === "percentage"
+                      ? `${r.percentage}% of gross`
+                      : formatHrKesFull(r.amount),
+                };
+              });
+            }}
             columns={[
               {
                 key: "employee_id",

@@ -10,6 +10,7 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { canApprovePayrollRuns } from "@/lib/approval-permissions";
 import { P } from "@/lib/permission-codes";
 import { useQueuedTask } from "@/lib/use-queued-task";
+import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { Field, DetailDrawer, IconButton, PrimaryButton, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   PayrollBreakdownPanel,
@@ -38,6 +39,9 @@ export function HrPayrollRunsIdScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
+  const { runBlockingTask, overlayNode: deleteWaitOverlay, busy: deleteBusy } = useBlockingWait(
+    "Deleting payroll…",
+  );
   const { runQueuedTask } = useQueuedTask("Generating payroll…");
   const { user, hasPermission, capabilities, organization, generalSettings } = useAuth();
   const admin = isAdminUser(user);
@@ -232,6 +236,7 @@ export function HrPayrollRunsIdScreen() {
     null;
 
   async function deleteRun() {
+    if (deleteBusy) return;
     if (!payrollRunCanDelete(run)) {
       notifyError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
       return;
@@ -245,7 +250,14 @@ export function HrPayrollRunsIdScreen() {
     });
     if (!ok) return;
     try {
-      await apiRequest(`/payroll-runs/${runId}`, { method: "DELETE" });
+      await runBlockingTask(
+        () => apiRequest(`/payroll-runs/${runId}`, { method: "DELETE" }),
+        {
+          message: "Deleting payroll run…",
+          detail: "Reopening attendance and deductions for that cycle. Please wait.",
+        },
+      );
+      notifySuccess("Payroll run deleted.");
       router.push("/hr/payroll");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
@@ -308,6 +320,8 @@ export function HrPayrollRunsIdScreen() {
     "Employee";
 
   return (
+    <>
+    {deleteWaitOverlay}
     <div className="theme-workspace min-h-full">
       <AppBreadcrumb
         items={[
@@ -426,9 +440,10 @@ export function HrPayrollRunsIdScreen() {
                 <button
                   type="button"
                   onClick={deleteRun}
-                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                  disabled={deleteBusy}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Delete run
+                  {deleteBusy ? "Deleting…" : "Delete run"}
                 </button>
               ) : admin ? (
                 <p className="max-w-xs text-right text-xs text-slate-500">
@@ -615,6 +630,7 @@ export function HrPayrollRunsIdScreen() {
         </>
       ) : null}
     </div>
+    </>
   );
 }
 

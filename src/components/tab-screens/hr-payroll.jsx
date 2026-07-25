@@ -1,11 +1,12 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useBlockingWait } from "@/lib/use-blocking-wait";
 import {
   CatalogPageShell,
   Field,
@@ -49,6 +50,9 @@ export function HrPayrollScreen() {
   const { user, capabilities } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const admin = isAdminUser(user);
+  const { runBlockingTask, overlayNode: deleteWaitOverlay, busy: deleteBusy } = useBlockingWait(
+    "Deleting payroll…",
+  );
 
   const [tab, setTab] = useState("runs");
   const [runs, setRuns] = useState([]);
@@ -67,6 +71,8 @@ export function HrPayrollScreen() {
   const [periodSaving, setPeriodSaving] = useState(false);
   const [periodError, setPeriodError] = useState(null);
   const [runSchedule, setRunSchedule] = useState(null);
+  const [deletingRunId, setDeletingRunId] = useState(null);
+  const [deletingPeriodId, setDeletingPeriodId] = useState(null);
 
   const hrSettings = useMemo(
     () => mergeHrPayrollSettings(capabilities?.module_settings),
@@ -258,6 +264,7 @@ export function HrPayrollScreen() {
   }
 
   async function deletePeriod(period) {
+    if (deleteBusy) return;
     const runsCount = period.payroll_runs_count ?? 0;
     if (runsCount > 0) {
       notifyError(
@@ -272,15 +279,26 @@ export function HrPayrollScreen() {
       destructive: true,
     });
     if (!ok) return;
+    setDeletingPeriodId(period.id);
     try {
-      await apiRequest(`/pay-periods/${period.id}`, { method: "DELETE" });
+      await runBlockingTask(
+        () => apiRequest(`/pay-periods/${period.id}`, { method: "DELETE" }),
+        {
+          message: "Deleting pay period…",
+          detail: "Please wait — do not click again.",
+        },
+      );
+      notifySuccess("Pay period deleted.");
       await loadData();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to delete pay period");
+    } finally {
+      setDeletingPeriodId(null);
     }
   }
 
   async function deleteRun(run) {
+    if (deleteBusy) return;
     if (!payrollRunCanDelete(run)) {
       notifyError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
       return;
@@ -294,11 +312,21 @@ export function HrPayrollScreen() {
       destructive: true,
     });
     if (!ok) return;
+    setDeletingRunId(run.id);
     try {
-      await apiRequest(`/payroll-runs/${run.id}`, { method: "DELETE" });
+      await runBlockingTask(
+        () => apiRequest(`/payroll-runs/${run.id}`, { method: "DELETE" }),
+        {
+          message: "Deleting payroll run…",
+          detail: "Reopening attendance and deductions for that cycle. Please wait.",
+        },
+      );
+      notifySuccess("Payroll run deleted.");
       await loadData();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
+    } finally {
+      setDeletingRunId(null);
     }
   }
 
@@ -377,6 +405,8 @@ export function HrPayrollScreen() {
   }
 
   return (
+    <>
+    {deleteWaitOverlay}
     <CatalogPageShell
       title="Payroll"
       subtitle="Runs, pay periods, and employee payroll lines"
@@ -550,7 +580,11 @@ export function HrPayrollScreen() {
                               <ViewIcon />
                             </IconButton>
                             {admin && payrollRunCanDelete(run) && (
-                              <IconButton label="Delete run" onClick={() => deleteRun(run)}>
+                              <IconButton
+                                label={deletingRunId === run.id ? "Deleting…" : "Delete run"}
+                                disabled={deleteBusy}
+                                onClick={() => deleteRun(run)}
+                              >
                                 <TrashIcon />
                               </IconButton>
                             )}
@@ -626,7 +660,8 @@ export function HrPayrollScreen() {
                           <td className="px-4 py-3">
                             {canDeletePeriod ? (
                               <IconButton
-                                label="Delete pay period"
+                                label={deletingPeriodId === period.id ? "Deleting…" : "Delete pay period"}
+                                disabled={deleteBusy}
                                 onClick={() => deletePeriod(period)}
                               >
                                 <TrashIcon />
@@ -823,6 +858,7 @@ export function HrPayrollScreen() {
         </Field>
       </FormDrawer>
     </CatalogPageShell>
+    </>
   );
 }
 

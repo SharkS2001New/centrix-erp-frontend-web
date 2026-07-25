@@ -361,7 +361,9 @@ export const KRA_RESPONSE_EXPORT_COLUMNS = [
   { key: "error_message", label: "Error" },
 ];
 
-/** Derive export columns from HrCrudPage column defs (skips computed render-only columns). */
+/** Derive export columns from HrCrudPage column defs (skips render-only columns).
+ * Prefer passing explicit `exportColumns` + `getExportRows` when columns use `render`.
+ */
 export function exportColumnsFromHrCrud(columns) {
   return (columns ?? [])
     .filter((col) => col.key && !col.render)

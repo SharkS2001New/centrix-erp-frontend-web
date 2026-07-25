@@ -79,6 +79,7 @@ export function ClassicPosStatusFooter({
   statusMessage = null,
   onPayClick = null,
   payDisabled = false,
+  connectionStatus = "online",
 }) {
   const [now, setNow] = useState(() => new Date());
   const barRef = useRef(null);
@@ -92,6 +93,12 @@ export function ClassicPosStatusFooter({
   }, []);
 
   const userLabel = String(user?.full_name ?? user?.username ?? "—").toUpperCase();
+  const connectionLabel =
+    connectionStatus === "offline"
+      ? "OFFLINE"
+      : connectionStatus === "slow"
+        ? "SLOW"
+        : "ONLINE";
 
   return (
     <footer className="classic-pos-footer">
@@ -116,6 +123,16 @@ export function ClassicPosStatusFooter({
         <span>
           <span className="classic-pos-footer-label">CURRENT USER:</span>{" "}
           <strong className="classic-pos-footer-value">{userLabel}</strong>
+        </span>
+        <span>
+          <span className="classic-pos-footer-label">LINK:</span>{" "}
+          <strong
+            className={`classic-pos-footer-value classic-pos-footer-link classic-pos-footer-link--${
+              connectionStatus === "online" ? "ok" : connectionStatus === "slow" ? "slow" : "down"
+            }`}
+          >
+            {connectionLabel}
+          </strong>
         </span>
         <span>
           <span className="classic-pos-footer-label">HELD:</span>{" "}

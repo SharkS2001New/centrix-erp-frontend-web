@@ -145,8 +145,14 @@ export function PosProductSearch({
 
   function pick(product) {
     onSelect?.(product);
-    // Classic auto-adds on select — clear the scan field so we do not re-search by code.
-    onQueryChange(classic ? "" : (product.product_name ?? ""));
+    // Classic auto-adds on select — clear scan immediately and close the list.
+    if (classic) {
+      onQueryChange("");
+      setOpen(false);
+      setHighlight(-1);
+      return;
+    }
+    onQueryChange(product.product_name ?? "");
     setOpen(false);
   }
 

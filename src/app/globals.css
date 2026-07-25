@@ -2623,6 +2623,18 @@ html[data-theme="dark"] .pos-workspace-classic {
   font-weight: 800;
 }
 
+.classic-pos-footer-link--ok {
+  color: #0b7a2b;
+}
+
+.classic-pos-footer-link--slow {
+  color: #a15c00;
+}
+
+.classic-pos-footer-link--down {
+  color: #a10000;
+}
+
 .classic-pos-cart-table-wrap {
   min-height: 0;
   flex: 1 1 auto;

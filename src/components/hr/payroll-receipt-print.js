@@ -6,7 +6,11 @@ import {
   periodLabel,
 } from "@/components/hr/hr-shared";
 import { resolveReportBranding } from "@/lib/reports/report-branding";
-import { orgPrintFontFamilyFromSettings } from "@/lib/print-typography";
+import {
+  orgPrintFontFamilyFromSettings,
+  orgPrintInkStyles,
+  orgPrintPx,
+} from "@/lib/print-typography";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -134,6 +138,9 @@ function chunkReceipts(items, size) {
   return chunks;
 }
 
+/** Batch print: 2 readable slips per A4 page (side by side). */
+const BATCH_RECEIPTS_PER_PAGE = 2;
+
 function buildReceiptPages(receiptsHtml, { single = false } = {}) {
   if (single) {
     return receiptsHtml
@@ -145,10 +152,10 @@ function buildReceiptPages(receiptsHtml, { single = false } = {}) {
       .join("");
   }
 
-  return chunkReceipts(receiptsHtml, 4)
+  return chunkReceipts(receiptsHtml, BATCH_RECEIPTS_PER_PAGE)
     .map((pageReceipts) => {
       const cells = [];
-      for (let i = 0; i < 4; i += 1) {
+      for (let i = 0; i < BATCH_RECEIPTS_PER_PAGE; i += 1) {
         cells.push(pageReceipts[i] ?? `<div class="receipt receipt-empty" aria-hidden="true"></div>`);
       }
       return `<div class="page page-grid">
@@ -159,12 +166,25 @@ function buildReceiptPages(receiptsHtml, { single = false } = {}) {
 }
 
 function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
-  const font = orgPrintFontFamilyFromSettings(generalSettings);
-  const bodySize = single ? "11px" : "8.5px";
-  const headSize = single ? "13px" : "10px";
+  const variant = "a4";
+  const font = orgPrintFontFamilyFromSettings(generalSettings, variant);
+  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant, print });
+  const ink = orgPrintInkStyles(generalSettings, variant);
+
+  // Readable floors — single slip is larger; batch (2-up) still stays ≥ ~10–11px.
+  const body = single ? px(12) : px(11);
+  const org = single ? px(16) : px(13);
+  const title = single ? px(14) : px(12);
+  const period = single ? px(11) : px(10);
+  const employee = single ? px(13) : px(12);
+  const meta = single ? px(11) : px(10);
+  const section = single ? px(10) : px(9);
+  const note = single ? px(10) : px(9);
+  const net = single ? px(14) : px(12);
+  const cut = single ? px(8) : px(8);
 
   return `
-    @page { size: A4; margin: 6mm; }
+    @page { size: A4; margin: 8mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -172,47 +192,42 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
       color: #0f172a;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      ${ink}
     }
     .page {
       width: 100%;
-      min-height: 285mm;
+      min-height: 281mm;
       page-break-after: always;
     }
     .page:last-child { page-break-after: auto; }
     .page-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;
+      grid-template-rows: 1fr;
       gap: 0;
       width: 100%;
-      height: 285mm;
+      height: 281mm;
     }
     .page-single {
       display: flex;
       align-items: flex-start;
       justify-content: center;
-      padding-top: 12mm;
+      padding-top: 10mm;
     }
     .single-wrap {
-      width: 88mm;
+      width: 110mm;
       max-width: 100%;
     }
-    .single-wrap .receipt {
-      min-height: auto;
-      font-size: ${bodySize};
-      padding: 10px 12px;
-    }
-    .single-wrap h2 { font-size: ${headSize}; }
     .receipt {
-      border: 1px dashed #94a3b8;
-      padding: 7px 8px 6px;
+      border: 1px dashed #64748b;
+      padding: ${single ? "14px 16px 12px" : "12px 14px 10px"};
       min-height: 0;
       overflow: hidden;
-      font-size: ${bodySize};
-      line-height: 1.25;
+      font-size: ${body};
+      line-height: 1.4;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
     }
     .receipt-empty {
       border-color: transparent;
@@ -220,69 +235,66 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
     }
     .receipt-head { text-align: center; }
     .org {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #0f172a;
-      font-weight: 700;
-    }
-    .single-wrap .org { font-size: 14px; }
-    h2 {
-      margin: 2px 0 0;
-      font-size: 9.5px;
-      font-weight: 700;
+      font-size: ${org};
       text-transform: uppercase;
       letter-spacing: 0.04em;
       color: #0f172a;
+      font-weight: 700;
+      line-height: 1.25;
     }
-    .single-wrap h2 { font-size: ${headSize}; }
+    h2 {
+      margin: 4px 0 0;
+      font-size: ${title};
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #0f172a;
+    }
     .period {
-      margin: 1px 0 0;
-      font-size: 8px;
+      margin: 3px 0 0;
+      font-size: ${period};
       color: #1e293b;
     }
-    .single-wrap .period { font-size: 10px; }
-    .employee { margin-top: 2px; }
+    .employee { margin-top: 4px; }
     .employee-name {
-      font-size: 9px;
+      font-size: ${employee};
       font-weight: 700;
       color: #0f172a;
     }
-    .single-wrap .employee-name { font-size: 12px; }
     .employee-meta {
-      font-size: 7px;
-      color: #64748b;
-      margin-top: 1px;
+      font-size: ${meta};
+      color: #475569;
+      margin-top: 2px;
     }
-    .single-wrap .employee-meta { font-size: 9px; }
     section h3 {
-      margin: 3px 0 1px;
-      font-size: 6.5px;
+      margin: 6px 0 3px;
+      font-size: ${section};
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #64748b;
-      border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 1px;
+      letter-spacing: 0.05em;
+      color: #334155;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 2px;
     }
-    .single-wrap section h3 { font-size: 8.5px; }
     .amt-table {
       width: 100%;
       border-collapse: collapse;
+      font-size: ${body};
     }
     .amt-table td {
-      padding: 1px 0;
+      padding: 2px 0;
       vertical-align: top;
     }
     .amt-table .label {
-      color: #334155;
-      padding-right: 6px;
+      color: #1e293b;
+      padding-right: 8px;
     }
     .amt-table .amt {
       text-align: right;
       white-space: nowrap;
       font-weight: 600;
       color: #0f172a;
+      font-variant-numeric: tabular-nums;
     }
     .amt-table tr.emphasis .label,
     .amt-table tr.emphasis .amt {
@@ -290,32 +302,42 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
     }
     .amt-table tr.muted .label,
     .amt-table tr.muted .amt {
-      color: #94a3b8;
+      color: #64748b;
     }
     .net-section {
       margin-top: auto;
-      border-top: 1px solid #cbd5e1;
-      padding-top: 3px;
+      border-top: 1.5px solid #64748b;
+      padding-top: 6px;
     }
-    .net .amt { font-size: 9px; }
-    .single-wrap .net .amt { font-size: 12px; }
+    .net .label,
+    .net .amt {
+      font-size: ${net};
+      font-weight: 700;
+    }
     .note {
-      margin: 0;
-      font-size: 6.5px;
-      color: #64748b;
-      line-height: 1.3;
+      margin: 0 0 2px;
+      font-size: ${note};
+      color: #475569;
+      line-height: 1.35;
     }
-    .single-wrap .note { font-size: 8.5px; }
-    .note.paid { color: #0f766e; }
+    .note.paid { color: #0f766e; font-weight: 600; }
     .cut-hint {
-      margin-top: 2px;
+      margin-top: 4px;
       text-align: center;
-      font-size: 6px;
-      color: #cbd5e1;
+      font-size: ${cut};
+      color: #94a3b8;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
     .page-single .cut-hint { display: none; }
+    @media print {
+      .receipt { font-size: ${single ? px(12, true) : px(11, true)}; }
+      .org { font-size: ${single ? px(16, true) : px(13, true)}; }
+      h2 { font-size: ${single ? px(14, true) : px(12, true)}; }
+      .employee-name { font-size: ${single ? px(13, true) : px(12, true)}; }
+      .net .label,
+      .net .amt { font-size: ${single ? px(14, true) : px(12, true)}; }
+    }
     @media screen {
       body { background: #f1f5f9; padding: 12px; }
       .page {
@@ -373,7 +395,7 @@ function normalizeReceiptInput({ line, employee, run, period }) {
   };
 }
 
-/** Print all employee receipts for a payroll run (4 per A4 page). */
+/** Print all employee receipts for a payroll run (2 per A4 page). */
 export function printPayrollReceipts({
   lines,
   run,
@@ -392,7 +414,7 @@ export function printPayrollReceipts({
     generalSettings,
     single: false,
   });
-  openPrintWindow(html, "width=860,height=960");
+  openPrintWindow(html, "width=900,height=1000");
 }
 
 /** Print a single employee payroll receipt (full page). */
@@ -412,5 +434,5 @@ export function printPayrollReceipt({
     generalSettings,
     single: true,
   });
-  openPrintWindow(html, "width=520,height=720");
+  openPrintWindow(html, "width=560,height=780");
 }

@@ -616,14 +616,20 @@ export async function uploadOrganizationLogo(organizationId, file, options = {})
   return apiUpload(path, file);
 }
 
-/** Multipart upload of multiple files; returns a Blob (e.g. ZIP download). */
-export async function apiUploadFilesForBlob(path, files, fieldName = "files") {
+/** Multipart upload of multiple files; returns a Blob (e.g. ZIP download).
+ *  Handles 202 queued responses by returning `{ queued: true, task_id }` instead of saving JSON as a ZIP.
+ */
+export async function apiUploadFilesForBlob(path, files, fieldName = "files", extraFields = {}) {
   const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
   const token = getToken();
   const formData = new FormData();
   for (const file of files) {
     const uploadFile = await compressImageFileIfNeeded(file);
     formData.append(`${fieldName}[]`, uploadFile);
+  }
+  for (const [key, value] of Object.entries(extraFields)) {
+    if (value === undefined || value === null) continue;
+    formData.append(key, String(value));
   }
 
   const headers = { Accept: "application/zip, application/json" };
@@ -636,6 +642,29 @@ export async function apiUploadFilesForBlob(path, files, fieldName = "files") {
     body: formData,
   });
 
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+
+  if (res.status === 202 || contentType.includes("application/json")) {
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    if (!res.ok) {
+      throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
+    }
+    if (data?.queued && data?.task_id) {
+      return { queued: true, task_id: String(data.task_id), message: data.message };
+    }
+    throw new ApiError(
+      formatApiErrorMessage(data, "Unexpected JSON response from converter."),
+      res.status,
+      data,
+    );
+  }
+
   if (!res.ok) {
     const text = await res.text();
     let data = null;
@@ -647,7 +676,18 @@ export async function apiUploadFilesForBlob(path, files, fieldName = "files") {
     throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
   }
 
-  return res.blob();
+  const blob = await res.blob();
+  const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+  const isZip = header[0] === 0x50 && header[1] === 0x4b;
+  if (!isZip) {
+    throw new ApiError(
+      "Converter did not return a valid ZIP file. Try again or use fewer/smaller dump files.",
+      res.status,
+      null,
+    );
+  }
+
+  return blob;
 }
 
 export function organizationLogoFileUrl(organizationId, options = {}) {

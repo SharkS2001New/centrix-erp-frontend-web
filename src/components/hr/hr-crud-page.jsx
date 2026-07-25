@@ -45,6 +45,16 @@ export function HrCrudPage({
   renderRowActions,
   exportEnabled = true,
   exportFilename,
+  /** Report title for PDF/CSV (defaults to page title). */
+  exportTitle,
+  /** Override auto-derived export columns (needed when table columns use render). */
+  exportColumns: exportColumnsProp,
+  /**
+   * Map loaded rows into export-ready objects keyed by exportColumns.
+   * When set, export uses these rows instead of re-fetching the API (keeps display values).
+   * @type {((ctx: { rows: object[], filtered: object[], extra: object }) => object[] | Promise<object[]>) | undefined}
+   */
+  getExportRows,
   /** Called after a successful create with the API response body (if any). */
   onCreated,
 }) {
@@ -159,7 +169,22 @@ export function HrCrudPage({
     ? `Edit ${title ?? "record"}`
     : (drawerCreateTitle ?? `Add ${title ?? "record"}`);
   const submitLabel = editing ? "Save changes" : addButtonLabel;
-  const exportColumns = useMemo(() => exportColumnsFromHrCrud(columns), [columns]);
+  const exportColumns = useMemo(
+    () => (exportColumnsProp?.length ? exportColumnsProp : exportColumnsFromHrCrud(columns)),
+    [columns, exportColumnsProp],
+  );
+  const resolvedExportTitle = exportTitle ?? title ?? "Records";
+  const getInlineExportRows = useMemo(() => {
+    if (!getExportRows) return undefined;
+    return () =>
+      Promise.resolve(
+        getExportRows({
+          rows,
+          filtered,
+          extra,
+        }),
+      );
+  }, [getExportRows, rows, filtered, extra]);
 
   const content = (
     <>
@@ -188,12 +213,13 @@ export function HrCrudPage({
           </PrimaryButton>
           {embedded && exportEnabled && exportColumns.length > 0 ? (
             <CatalogListExport
-              title={title ?? "Records"}
-              filename={exportFilename ?? title}
+              title={resolvedExportTitle}
+              filename={exportFilename ?? resolvedExportTitle}
               apiPath={apiPath}
               columns={exportColumns}
-              totalCount={rows.length}
+              totalCount={filtered.length}
               getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
+              getInlineRows={getInlineExportRows}
               disabled={loading}
             />
           ) : null}
@@ -295,12 +321,13 @@ export function HrCrudPage({
       action={
         exportEnabled && exportColumns.length > 0 ? (
           <CatalogListExport
-            title={title ?? "Records"}
-            filename={exportFilename ?? title}
+            title={resolvedExportTitle}
+            filename={exportFilename ?? resolvedExportTitle}
             apiPath={apiPath}
             columns={exportColumns}
-            totalCount={rows.length}
+            totalCount={filtered.length}
             getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
+            getInlineRows={getInlineExportRows}
             disabled={loading}
           />
         ) : null

@@ -137,6 +137,7 @@ import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
 import {
   completeOfflineCashSale,
+  getPosOfflineProduct,
   loadOrCreateLocalPosCart,
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
@@ -767,6 +768,8 @@ export function PosScreen({ standalone = false }) {
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  /** Sale loaded for POS order edit — used for reprint while Complete/Hold are locked. */
+  const [editSourceSale, setEditSourceSale] = useState(null);
   const [receiptPrintStatus, setReceiptPrintStatus] = useState(null);
   const [orderEditError, setOrderEditError] = useState(null);
   const [sessionPosOrders, setSessionPosOrders] = useState([]);
@@ -864,6 +867,10 @@ export function PosScreen({ standalone = false }) {
 
   const isCartEditSession = Boolean(cart?.held_order_num);
   const isEditableResubmit = Boolean(cart?.discount_resubmit && isCartEditSession);
+  /** Modern POS: revising a completed order — edit lines + reprint only (no hold/complete). */
+  const modernOrderEditLocked = Boolean(
+    standalone && !classicLayout && isCartEditSession && !isEditableResubmit,
+  );
 
   /** New-order mode: keep the # box on the next order number until the user edits or opens a receipt. */
   useEffect(() => {
@@ -1446,6 +1453,26 @@ export function PosScreen({ standalone = false }) {
           });
           return;
         }
+
+        // Classic: paint warmed IndexedDB catalog immediately, then refresh from API.
+        if (standalone && classicLayout) {
+          try {
+            const local = await searchOffline(trimmed, 40);
+            if (seq === searchSeq.current && local.length) {
+              const list = local.map((p) => enrichProductForLpo(p, uomMap, vatMap));
+              setSearchResults(list);
+              setSearching(false);
+              setProductByCode((prev) => {
+                const next = { ...prev };
+                for (const p of list) next[p.product_code] = p;
+                return next;
+              });
+            }
+          } catch {
+            /* fall through to API */
+          }
+        }
+
         const res = await apiRequest("/products", {
           searchParams: { per_page: 80, q: trimmed, fields: "lean", ...productBranchParams },
         });
@@ -1457,7 +1484,12 @@ export function PosScreen({ standalone = false }) {
           for (const p of list) next[p.product_code] = p;
           return next;
         });
-        void ensureRetailPackages(list.map((p) => p.product_code));
+        // Classic defers package hydrate to keep search snappy; modern warms the list.
+        if (!classicLayout) {
+          void ensureRetailPackages(list.map((p) => p.product_code));
+        } else if (list.length) {
+          void ensureRetailPackages(list.slice(0, 5).map((p) => p.product_code));
+        }
       } catch (err) {
         if (seq !== searchSeq.current) return;
         // Network drop mid-search: fall back to offline catalog when available.
@@ -1497,16 +1529,26 @@ export function PosScreen({ standalone = false }) {
       productBranchParams,
       ensureRetailPackages,
       standalone,
+      classicLayout,
       offlineMode,
       searchOffline,
     ],
   );
 
   useEffect(() => {
-    const delay = looksLikeProductCodeQuery(searchQuery) ? 0 : 280;
+    const trimmed = searchQuery.trim();
+    const delay = !trimmed
+      ? 0
+      : classicLayout
+        ? looksLikeProductCodeQuery(searchQuery)
+          ? 0
+          : 40
+        : looksLikeProductCodeQuery(searchQuery)
+          ? 0
+          : 280;
     const t = setTimeout(() => searchProducts(searchQuery), delay);
     return () => clearTimeout(t);
-  }, [searchQuery, searchProducts]);
+  }, [searchQuery, searchProducts, classicLayout]);
 
   function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
     if (retailLine != null) return retailLine;
@@ -1743,6 +1785,11 @@ export function PosScreen({ standalone = false }) {
       return true;
     }
 
+    // Classic unlock: clear entry before any network so the next-row never shows this SKU.
+    if (unlockUiEarly && clearEntry) {
+      clearClassicEntryFields();
+    }
+
     const activeCart = await ensureCart();
     const lineBody = {
       product_code: product.product_code,
@@ -1848,6 +1895,7 @@ export function PosScreen({ standalone = false }) {
     cartRef.current = optimisticCart;
     setCart(optimisticCart);
 
+    // Already cleared above when unlockUiEarly; keep a second clear for safety if flags change.
     if (unlockUiEarly && clearEntry) {
       clearClassicEntryFields();
     }
@@ -1916,6 +1964,9 @@ export function PosScreen({ standalone = false }) {
     if (computed.baseQty <= 0) return;
 
     if (classicLayout) {
+      // Clear scan + entry row immediately so the next-row never parks this product.
+      clearClassicEntryFields();
+      void ensureRetailPackages([product.product_code]);
       void enqueueCartCommit(async () => {
         const mergeTarget = findMergeableCartLine(
           cartRef.current?.lines,
@@ -1966,7 +2017,23 @@ export function PosScreen({ standalone = false }) {
 
   async function handleBarcodeEnter(code) {
     if (!enableBarcodeScanner) return false;
-    const product = await resolveProductByCode(code);
+    const trimmed = String(code ?? "").trim();
+    if (!trimmed) return false;
+
+    let product = null;
+    if (classicLayout || offlineMode) {
+      try {
+        const local = await getPosOfflineProduct(trimmed);
+        if (local) {
+          product = enrichProductForLpo(local, uomById, vatById);
+        }
+      } catch {
+        /* fall through to API */
+      }
+    }
+    if (!product) {
+      product = await resolveProductByCode(trimmed);
+    }
     if (!product) {
       setStatusMessage("Barcode not found — search by name or code.");
       return false;
@@ -3797,6 +3864,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   function openSaveOrderDialog(mode) {
+    if (mode === "hold" && (modernOrderEditLocked || isCartEditSession)) {
+      flashPosShortcutMessage("Cannot hold while editing a previous order.");
+      return;
+    }
     setSaveOrderError(null);
     // Org setting off → hold/save immediately as Walk-in (no customer prompt).
     if (!posSalesConfig.enableCheckoutCustomerName) {
@@ -3850,6 +3921,7 @@ export function PosScreen({ standalone = false }) {
     setPaymentOpen(false);
     setPaymentError(null);
     setCompletedSale(null);
+    setEditSourceSale(null);
     setCartLineSaveFailed(false);
     setReplacingLineId(null);
     setSelectedLineId(null);
@@ -3922,9 +3994,12 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handlePrintReceipt() {
-    const sale = completedSale;
+    const sale =
+      modernOrderEditLocked && editSourceSale?.id ? editSourceSale : completedSale;
     if (!sale?.id) {
-      const message = "No completed order to print. Complete payment first (F10).";
+      const message = modernOrderEditLocked
+        ? "No receipt available for this order yet."
+        : "No completed order to print. Complete payment first (F10).";
       if (standalone) notifyError(message);
       else setStatusMessage(message);
       return;
@@ -4002,6 +4077,11 @@ export function PosScreen({ standalone = false }) {
       setReplacingLineId(null);
       setPaymentOpen(false);
       setCompletedSale(null);
+      setEditSourceSale(
+        saleSnapshot?.id
+          ? saleSnapshot
+          : { id: saleId, order_num: restoredCart?.held_order_num ?? null },
+      );
       orderNoUserEditedRef.current = false;
       const orderNum = restoredCart?.held_order_num ?? restoredCart?.next_order_num;
       if (orderNum != null) {
@@ -4280,6 +4360,12 @@ export function PosScreen({ standalone = false }) {
   }
 
   function openCompletePayment() {
+    if (modernOrderEditLocked) {
+      flashPosShortcutMessage(
+        "Editing a previous order — use Edit for lines and Reprint for the receipt. Press F8 when done.",
+      );
+      return;
+    }
     if (!cart?.lines?.length) {
       flashPosShortcutMessage("Add items before completing payment (F10).");
       return;
@@ -4292,7 +4378,7 @@ export function PosScreen({ standalone = false }) {
       flashPosShortcutMessage("Wait for cart lines to finish saving, then press F10.");
       return;
     }
-    // Previous-order edit: write straight to sales under the same order # (no payment popup).
+    // Previous-order edit (classic / discount resubmit): write under the same order #.
     if (cart?.held_order_num) {
       void finalizeEditedOrder({ quiet: false, submitKra: true, promptReprint: true });
       return;
@@ -4324,6 +4410,7 @@ export function PosScreen({ standalone = false }) {
     enableRetailPricing: posSalesConfig.enableRetailPricing,
     showCheckoutOnCreate: posSalesConfig.showCheckoutOnCreate,
     isCartEditSession: Boolean(cart?.held_order_num),
+    modernOrderEditLocked,
     lineCount: cart?.lines?.length ?? 0,
     cartStockBlocked,
     checkoutBlocked,
@@ -4459,7 +4546,11 @@ export function PosScreen({ standalone = false }) {
           actions.flashPosShortcutMessage("Wait for cart lines to finish saving, then press F10.");
           return;
         }
-        if (state.isCartEditSession) {
+        if (state.modernOrderEditLocked) {
+          actions.flashPosShortcutMessage(
+            "Editing a previous order — use Edit for lines and Reprint for the receipt. Press F8 when done.",
+          );
+        } else if (state.isCartEditSession) {
           void actions.finalizeEditedOrder({ quiet: false, submitKra: true, promptReprint: true });
         } else if (state.showCheckoutOnCreate) {
           setPaymentError(null);
@@ -4581,11 +4672,18 @@ export function PosScreen({ standalone = false }) {
                 </button>
                 <button
                   type="button"
-                  disabled={busy || !completedSale?.id}
+                  disabled={
+                    busy ||
+                    !(modernOrderEditLocked ? editSourceSale?.id : completedSale?.id)
+                  }
                   title={
-                    completedSale?.order_num
-                      ? `Reprint order #${completedSale.order_num}`
-                      : "Complete an order first"
+                    modernOrderEditLocked
+                      ? editSourceSale?.order_num
+                        ? `Reprint order #${editSourceSale.order_num}`
+                        : "Reprint this order"
+                      : completedSale?.order_num
+                        ? `Reprint order #${completedSale.order_num}`
+                        : "Complete an order first"
                   }
                   onClick={() => void handlePrintReceipt()}
                   className={posHeaderBtnClassName}
@@ -5231,7 +5329,9 @@ export function PosScreen({ standalone = false }) {
               {isCartEditSession && !isEditableResubmit ? (
                 <div className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950">
                   <p className="text-xs leading-relaxed">
-                    Editing order #{cart.held_order_num}. Line changes save to this order automatically — no payment step.
+                    Editing order #{cart.held_order_num}. Line changes save automatically.
+                    Hold and Complete are disabled — use Edit for lines, Reprint for the receipt,
+                    or F8 to save and start a new order.
                   </p>
                 </div>
               ) : null}
@@ -5790,13 +5890,35 @@ export function PosScreen({ standalone = false }) {
               />
               <PosActionButton
                 label="Hold"
-                title="Hold order (Alt+H)"
+                title={
+                  modernOrderEditLocked || isCartEditSession
+                    ? "Cannot hold while editing a previous order"
+                    : "Hold order (Alt+H)"
+                }
                 icon="⏸"
                 iconClass="pos-cart-action-icon--warn"
-                disabled={busy || !cart?.lines?.length || cartStockBlocked}
+                disabled={
+                  busy
+                  || !cart?.lines?.length
+                  || cartStockBlocked
+                  || modernOrderEditLocked
+                  || isCartEditSession
+                }
                 onClick={() => openSaveOrderDialog("hold")}
               />
-              {posSalesConfig.showCheckoutOnCreate ? (
+              {modernOrderEditLocked ? (
+                <PosActionButton
+                  label="Reprint"
+                  title={
+                    editSourceSale?.order_num
+                      ? `Reprint order #${editSourceSale.order_num}`
+                      : "Reprint this order"
+                  }
+                  icon="🖨"
+                  disabled={busy || !editSourceSale?.id}
+                  onClick={() => void handlePrintReceipt()}
+                />
+              ) : posSalesConfig.showCheckoutOnCreate ? (
                 <PosActionButton
                   label="Complete"
                   title={
@@ -5956,6 +6078,7 @@ export function PosScreen({ standalone = false }) {
             version="1.0.0"
             currencySettings={classicCurrencySettings}
             statusMessage={statusMessage}
+            connectionStatus={networkStatus}
             onPayClick={() => openCompletePayment()}
             payDisabled={
               busy

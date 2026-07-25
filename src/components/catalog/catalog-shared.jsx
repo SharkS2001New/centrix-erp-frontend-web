@@ -335,6 +335,7 @@ export function IconButton({ label, onClick, danger, disabled, children }) {
   return (
     <button
       type="button"
+      title={label}
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
