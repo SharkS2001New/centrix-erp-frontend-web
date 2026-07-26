@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, revokeServerAuthSession, isSessionConflictError } from "@/lib/api";
+import { endServerAuthSession } from "@/lib/end-auth-session";
 import {
   clearSession,
   getStoredCapabilities,
@@ -20,6 +21,7 @@ import {
   getStoredOrganization,
   getStoredUser,
   getStoredWorkspace,
+  getToken,
   hasAuthSession,
   isScreenLocked,
   patchStoredUser,
@@ -501,16 +503,11 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async (options = {}) => {
     const reason = options.reason ? String(options.reason) : null;
-    try {
-      if (hasAuthSession()) {
-        await revokeServerAuthSession();
-        if (!useCookieAuth) {
-          await apiRequest("/auth/logout", { method: "POST" });
-        }
-      }
-    } catch {
-      /* ignore */
-    }
+    const hadSession = hasAuthSession();
+    // Capture credentials before local clear so the server revoke can authenticate.
+    const token = getToken();
+
+    // 1) Local logout first — UI / guards treat the user as signed out immediately.
     clearSession();
     clearStoredActiveSession();
     invalidateReferenceDataCache();
@@ -522,6 +519,14 @@ export function AuthProvider({ children }) {
     setMemberships([]);
     setCapabilities(null);
     setLoginChannel(null);
+
+    // 2) Server logout — must run (cookie and/or bearer). keepalive survives navigation;
+    //    we still wait briefly so Soft Router nav doesn't cancel a non-keepalive path.
+    if (hadSession) {
+      await endServerAuthSession({ token });
+    }
+
+    // 3) Login page after local clear + server revoke attempt.
     router.replace(reason ? `/login?reason=${encodeURIComponent(reason)}` : "/login");
   }, [router]);
 

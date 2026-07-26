@@ -33,7 +33,6 @@ describe("local-print-provider (org settings)", () => {
         local_printing: {
           provider: "qz",
           printer_name: "Star TSP143",
-          fallback_to_browser: false,
         },
       },
     });

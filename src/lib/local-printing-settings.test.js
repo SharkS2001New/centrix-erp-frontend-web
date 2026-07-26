@@ -27,4 +27,16 @@ describe("local-printing-settings", () => {
       useSigning: true,
     });
   });
+
+  it("always keeps browser fallback on", () => {
+    const merged = mergeLocalPrintingSettings({
+      local_printing: {
+        provider: "qz",
+        fallback_to_browser: false,
+        require_qz: true,
+      },
+    });
+    expect(merged.fallback_to_browser).toBe(true);
+    expect(merged.require_qz).toBe(false);
+  });
 });

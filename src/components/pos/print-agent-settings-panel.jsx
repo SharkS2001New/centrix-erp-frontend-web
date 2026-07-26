@@ -310,20 +310,10 @@ export function PrintAgentSettingsPanel({ compact = false }) {
               Click <strong>Test connection</strong> after starting QZ Tray to load installed printers.
             </p>
           ) : null}
-          <Toggle
-            checked={qzForm.fallbackToBrowser}
-            onChange={(v) => updateQz("fallbackToBrowser", v)}
-            disabled={!canEdit}
-            label="Fallback to browser print dialog"
-            description="If QZ Tray is offline, open the normal print dialog instead of blocking checkout."
-          />
-          <Toggle
-            checked={qzForm.requireQz}
-            onChange={(v) => updateQz("requireQz", v)}
-            disabled={!canEdit}
-            label="Require QZ Tray (strict mode)"
-            description="Block print when QZ Tray is unavailable — use when every sale must print silently."
-          />
+          <p className="theme-subtext text-xs">
+            If QZ Tray is not installed or offline on a till, Centrix automatically opens the browser print dialog
+            instead.
+          </p>
           <Toggle
             checked={qzForm.useSigning}
             onChange={(v) => updateQz("useSigning", v)}

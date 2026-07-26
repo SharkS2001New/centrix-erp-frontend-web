@@ -18,7 +18,7 @@ export const LOCAL_PRINT_PROVIDERS = [
     id: "qz",
     label: "QZ Tray",
     description:
-      "Install QZ Tray on Windows or macOS for local silent printing from the PWA (Chrome / Edge).",
+      "Install QZ Tray on Windows or macOS for silent printing. Falls back to the browser print dialog if QZ Tray is not available.",
   },
 ];
 

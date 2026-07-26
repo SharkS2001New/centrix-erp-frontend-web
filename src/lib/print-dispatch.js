@@ -12,6 +12,7 @@ import {
 
 /**
  * Route a print job to QZ Tray or the browser dialog (org settings).
+ * If QZ Tray is selected but not installed/reachable, falls back to the browser print dialog.
  *
  * @returns {Promise<{ mode: "qz" | "browser", ok: boolean, printer?: string }>}
  */
@@ -46,10 +47,8 @@ export async function dispatchPrintJob({
           config: { ...config, enabled: true },
         });
         return { mode: "qz", ok: true, printer: result.printer };
-      } catch (error) {
-        if (config.requireQz || config.fallbackToBrowser === false) {
-          throw error;
-        }
+      } catch {
+        // QZ Tray missing/offline → browser dialog
       }
     }
   }

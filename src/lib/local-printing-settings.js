@@ -27,11 +27,9 @@ export function normalizeLocalPrintingSettings(raw = {}) {
     provider,
     printer_name: String(raw.printer_name ?? raw.printerName ?? "").trim(),
     copies: Math.max(1, Math.min(10, Number(raw.copies) || 1)),
-    fallback_to_browser:
-      raw.fallback_to_browser !== undefined
-        ? Boolean(raw.fallback_to_browser)
-        : raw.fallbackToBrowser !== false,
-    require_qz: Boolean(raw.require_qz ?? raw.requireQz),
+    // Always fall back to the browser dialog when QZ Tray is missing/offline.
+    fallback_to_browser: true,
+    require_qz: false,
     use_signing: Boolean(raw.use_signing ?? raw.useSigning),
   };
 }
@@ -83,8 +81,6 @@ export function localPrintingFromQzForm(provider, qzForm) {
     provider,
     printer_name: qzForm?.printerName,
     copies: qzForm?.copies,
-    fallback_to_browser: qzForm?.fallbackToBrowser,
-    require_qz: qzForm?.requireQz,
     use_signing: qzForm?.useSigning,
   });
 }

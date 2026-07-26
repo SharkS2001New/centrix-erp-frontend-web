@@ -2,6 +2,7 @@ import { getToken, clearSession, isScreenLocked, canSeeServerErrorDetail } from 
 import { isLicenseExpiredApiCode } from "./organization-license";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 import { apiV1BaseUrl } from "./api-base-url";
+import { endServerAuthSession } from "./end-auth-session";
 import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-loading";
 import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
@@ -15,20 +16,15 @@ const baseUrl = () => apiV1BaseUrl();
 
 export { apiV1BaseUrl };
 
-/** Clear HttpOnly session cookie on the API (cookie-auth mode only). */
+/**
+ * Clear HttpOnly session cookie on the API (cookie-auth mode only).
+ * Prefer {@link endServerAuthSession} when a bearer token may also need revoking.
+ */
 export async function revokeServerAuthSession() {
-  if (!useCookieAuth || typeof window === "undefined") {
+  if (!useCookieAuth) {
     return;
   }
-  try {
-    await fetch(`${baseUrl()}/auth/logout`, {
-      method: "POST",
-      credentials: apiFetchCredentials(),
-      headers: { Accept: "application/json" },
-    });
-  } catch {
-    /* ignore */
-  }
+  await endServerAuthSession();
 }
 
 function isAuthEndpoint(path) {
