@@ -9,7 +9,7 @@ export function AdminTillPrintingScreen() {
   return (
     <CatalogPageShell
       title={LOCAL_PRINTING_ADMIN_LABEL}
-      subtitle="Install QZ Tray or Centrix Print Agent for silent receipts and thermal printing on this workstation"
+      subtitle="Organization-wide browser print or QZ Tray for silent receipts and thermal printing"
       banner={
         <AdminBreadcrumb
           items={[

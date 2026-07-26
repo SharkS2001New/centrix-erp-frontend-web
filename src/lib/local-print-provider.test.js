@@ -4,36 +4,39 @@ import {
   normalizeLocalPrintProvider,
   saveLocalPrintProvider,
 } from "@/lib/local-print-provider";
+import {
+  setCachedLocalPrintingSettings,
+  syncLocalPrintingFromCapabilities,
+} from "@/lib/local-printing-settings";
 
-describe("local-print-provider", () => {
+describe("local-print-provider (org settings)", () => {
   beforeEach(() => {
-    const store = new Map();
-    const localStorage = {
-      getItem: (key) => (store.has(key) ? store.get(key) : null),
-      setItem: (key, value) => store.set(key, String(value)),
-      removeItem: (key) => store.delete(key),
-      clear: () => store.clear(),
-    };
-    vi.stubGlobal("window", { localStorage });
-    vi.stubGlobal("localStorage", localStorage);
+    setCachedLocalPrintingSettings({ provider: "browser" });
   });
 
   it("normalizes provider aliases", () => {
     expect(normalizeLocalPrintProvider("qz-tray")).toBe("qz");
-    expect(normalizeLocalPrintProvider("print-agent")).toBe("centrix");
-    expect(normalizeLocalPrintProvider("anything")).toBe("browser");
+    expect(normalizeLocalPrintProvider("print-agent")).toBe("browser");
+    expect(normalizeLocalPrintProvider("centrix")).toBe("browser");
   });
 
-  it("persists the selected provider", () => {
-    expect(saveLocalPrintProvider("qz")).toBe("qz");
+  it("reads provider from the org cache", () => {
+    setCachedLocalPrintingSettings({ provider: "qz", printer_name: "TM-T20" });
     expect(getLocalPrintProvider()).toBe("qz");
+    expect(saveLocalPrintProvider("browser")).toBe("browser");
+    expect(getLocalPrintProvider()).toBe("browser");
   });
 
-  it("migrates from an enabled Centrix agent config", () => {
-    localStorage.setItem(
-      "centrix_print_agent_v1",
-      JSON.stringify({ enabled: true, baseUrl: "http://127.0.0.1:9247" }),
-    );
-    expect(getLocalPrintProvider()).toBe("centrix");
+  it("syncs from capabilities module_settings", () => {
+    syncLocalPrintingFromCapabilities({
+      module_settings: {
+        local_printing: {
+          provider: "qz",
+          printer_name: "Star TSP143",
+          fallback_to_browser: false,
+        },
+      },
+    });
+    expect(getLocalPrintProvider()).toBe("qz");
   });
 });

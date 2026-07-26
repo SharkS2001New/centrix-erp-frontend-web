@@ -5,7 +5,6 @@ import { useAuth } from "@/contexts/auth-context";
 import { canApproveCashAdvances } from "@/lib/approval-permissions";
 import {
   Field,
-  IconButton,
   formatShortDate,
   inputClassName,
   parseDecimalInput,
@@ -168,11 +167,14 @@ export function HrCashAdvancesScreen() {
             </>
           ) : null;
         const printBtn = (
-          <span className="ml-3 inline-flex align-middle">
-            <IconButton label="Print voucher" onClick={() => printVoucher(row, employees)}>
-              <PrintIcon />
-            </IconButton>
-          </span>
+          <button
+            type="button"
+            className="ml-3 inline-flex items-center gap-1.5 text-slate-700 hover:underline"
+            onClick={() => printVoucher(row, employees)}
+          >
+            <PrintIcon />
+            Print
+          </button>
         );
 
         return (

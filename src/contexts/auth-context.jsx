@@ -46,6 +46,7 @@ import {
   clearLicenseWarningDismissed,
   licenseFromAuthState,
 } from "@/lib/organization-license";
+import { syncLocalPrintingFromCapabilities } from "@/lib/local-printing-settings";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
 const CAPABILITIES_REFRESH_MS = 90_000;
@@ -106,6 +107,7 @@ export function AuthProvider({ children }) {
         const versionBumped = capabilitiesVersionChanged(cached, caps);
         setCapabilities(caps);
         setStoredCapabilities(caps);
+        syncLocalPrintingFromCapabilities(caps);
         capabilitiesRefreshAt.current = Date.now();
         if (versionBumped) {
           invalidateReferenceDataCache();
@@ -158,6 +160,7 @@ export function AuthProvider({ children }) {
     if (res?.capabilities) {
       setCapabilities(res.capabilities);
       setStoredCapabilities(res.capabilities);
+      syncLocalPrintingFromCapabilities(res.capabilities);
       return res.capabilities;
     }
     if (res?.password_expiry) {
@@ -211,6 +214,7 @@ export function AuthProvider({ children }) {
         (await apiRequest("/erp/capabilities", { loading: false, reportIssues: false }));
       setCapabilities(caps);
       setStoredCapabilities(caps);
+      syncLocalPrintingFromCapabilities(caps);
       return caps;
     } catch (e) {
       await revokeServerAuthSession();
@@ -237,6 +241,7 @@ export function AuthProvider({ children }) {
     const cachedCaps = getStoredCapabilities();
     if (cachedCaps) {
       setCapabilities(cachedCaps);
+      syncLocalPrintingFromCapabilities(cachedCaps);
     }
     setLoading(false);
 

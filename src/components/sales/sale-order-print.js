@@ -37,6 +37,7 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import { isPrintAgentEnabled } from "@/lib/print-agent";
+import { isQzTrayEnabled } from "@/lib/qz-tray-print";
 
 function isOfflineSalePrint(sale, options = {}) {
   return (
@@ -223,10 +224,11 @@ export async function printSaleOrder(sale, options = {}) {
   }
 
   let printWindow = options.printWindow ?? null;
-  // Offline: prefer local print agent (localhost) — avoid opening a blank iframe
+  // Offline: prefer QZ Tray / local agent — avoid opening a blank iframe
   // before enrichment, and skip WAN lookups that hang on a dropped/slow link.
   const offlineSale = isOfflineSalePrint(sale, options);
-  const deferPrintWindow = offlineSale && !printWindow && isPrintAgentEnabled();
+  const deferPrintWindow =
+    offlineSale && !printWindow && (isQzTrayEnabled() || isPrintAgentEnabled());
   if (!printWindow && !deferPrintWindow) {
     printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
     if (!printWindow) {
