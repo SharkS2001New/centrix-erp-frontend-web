@@ -31,12 +31,22 @@ export function formatOrgNumber(value, settings, options = {}) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "—";
 
+  // Corrupted stock/cost figures can exceed JS safe formatting (toFixed → scientific at 1e21+).
+  if (Math.abs(num) >= 1e15) return "—";
+
   const sep = thousandsSeparator(general);
-  const [whole, fraction = ""] = Math.abs(num).toFixed(decimals).split(".");
+  // Build fixed decimals without toFixed scientific notation for large magnitudes.
+  const negative = num < 0;
+  const abs = Math.abs(num);
+  const factor = 10 ** decimals;
+  const rounded = Math.round(abs * factor) / factor;
+  let [whole, fraction = ""] = rounded.toFixed(decimals).split(".");
+  // Guard: some engines still emit scientific notation for huge toFixed results.
+  if (/e/i.test(whole) || /e/i.test(fraction)) return "—";
   const withSep = sep ? whole.replace(/\B(?=(\d{3})+(?!\d))/g, sep) : whole;
   const formatted = decimals > 0 ? `${withSep}.${fraction}` : withSep;
 
-  return num < 0 ? `-${formatted}` : formatted;
+  return negative ? `-${formatted}` : formatted;
 }
 
 export function formatOrgCurrency(value, settings) {

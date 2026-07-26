@@ -396,7 +396,8 @@ export function PosScreen({ standalone = false }) {
   const canManageTillSession = hasPosTill || (standalone && requireTillFloat);
   const salesWorkspace = standalone ? "pos" : "backoffice";
   const enablePosOrderEdit = standalone && posSalesConfig.enablePosOrderEdit;
-  const enablePosCashRounding = standalone && posSalesConfig.enablePosCashRounding;
+  // Cash rounding (Light Stores last-digit) — external POS and backoffice Create order.
+  const enablePosCashRounding = posSalesConfig.enablePosCashRounding;
   const blindTillClose = posSalesConfig.blindTillClose;
   const canChooseOrderType = addRouteMarkupPrices && posOrderTypeMode === "toggle";
   const lockedToRouteOrder = addRouteMarkupPrices && posOrderTypeMode === "route";

@@ -79,7 +79,7 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
         ) : null}
         {resolveEnablePosCashRounding(capabilities?.module_settings) ? (
           <li>
-            <span className="font-medium">External POS cash rounding:</span> Enabled
+            <span className="font-medium">POS / Create order cash rounding:</span> Enabled
           </li>
         ) : null}
         {pipeline.length > 0 ? (

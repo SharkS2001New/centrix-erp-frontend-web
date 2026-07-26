@@ -513,8 +513,8 @@ export function OrganizationPlatformSalesSettings({
             onChange={(v) => patch({ require_pos_till_float: v })}
           />
           <Toggle
-            label="Cash rounding on external POS"
-            description="When on, external POS (/pos) rounds line and order amounts with last-digit rules (0–1→0, 2–6→5, 7–9→10). Applies to both Modern and Classic layouts. Backoffice Create order is unchanged."
+            label="Cash rounding on POS and Create order"
+            description="When on, external POS (/pos) and Sales → Create order round line and order amounts with last-digit rules (e.g. 105.4 → 106; 0–1→0, 2–6→5, 7–9→10). Applies to Modern and Classic POS layouts."
             checked={Boolean(salesPlatform?.enable_pos_cash_rounding)}
             onChange={(v) => patch({ enable_pos_cash_rounding: v })}
           />

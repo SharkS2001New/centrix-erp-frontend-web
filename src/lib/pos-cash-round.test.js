@@ -1,0 +1,35 @@
+import { describe, expect, it } from "vitest";
+import { finalizePosLineAmount, roundLightStoresAmount } from "@/lib/pos-cash-round";
+
+describe("roundLightStoresAmount", () => {
+  it("rounds 105.4 to 106 (legacy last-digit on decimal string)", () => {
+    expect(roundLightStoresAmount(105.4)).toBe(106);
+  });
+
+  it("applies ones-digit rules to whole shilling amounts", () => {
+    expect(roundLightStoresAmount(101)).toBe(100);
+    expect(roundLightStoresAmount(102)).toBe(105);
+    expect(roundLightStoresAmount(105)).toBe(105);
+    expect(roundLightStoresAmount(106)).toBe(105);
+    expect(roundLightStoresAmount(107)).toBe(110);
+    expect(roundLightStoresAmount(109)).toBe(110);
+    expect(roundLightStoresAmount(110)).toBe(110);
+  });
+
+  it("returns 0 for empty or non-finite values", () => {
+    expect(roundLightStoresAmount(0)).toBe(0);
+    expect(roundLightStoresAmount(-5)).toBe(0);
+    expect(roundLightStoresAmount(Number.NaN)).toBe(0);
+  });
+});
+
+describe("finalizePosLineAmount", () => {
+  it("uses cent rounding when cash rounding is off", () => {
+    expect(finalizePosLineAmount(105.4, { cashRound: false })).toBe(105.4);
+    expect(finalizePosLineAmount(105.456, { cashRound: false })).toBe(105.46);
+  });
+
+  it("uses Light Stores rounding when cash rounding is on", () => {
+    expect(finalizePosLineAmount(105.4, { cashRound: true })).toBe(106);
+  });
+});
