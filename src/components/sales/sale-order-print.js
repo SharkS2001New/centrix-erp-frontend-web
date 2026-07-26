@@ -224,7 +224,7 @@ export async function printSaleOrder(sale, options = {}) {
   }
 
   let printWindow = options.printWindow ?? null;
-  // Offline: prefer QZ Tray / local agent — avoid opening a blank iframe
+  // Offline: prefer QZ Tray / Centrix Print Agent — avoid opening a blank iframe
   // before enrichment, and skip WAN lookups that hang on a dropped/slow link.
   const offlineSale = isOfflineSalePrint(sale, options);
   const deferPrintWindow =

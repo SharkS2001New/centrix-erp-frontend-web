@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   getLocalPrintProvider,
   normalizeLocalPrintProvider,
@@ -16,7 +16,9 @@ describe("local-print-provider (org settings)", () => {
 
   it("normalizes provider aliases", () => {
     expect(normalizeLocalPrintProvider("qz-tray")).toBe("qz");
-    expect(normalizeLocalPrintProvider("print-agent")).toBe("browser");
+    expect(normalizeLocalPrintProvider("print-agent")).toBe("agent");
+    expect(normalizeLocalPrintProvider("print_agent")).toBe("agent");
+    expect(normalizeLocalPrintProvider("agent")).toBe("agent");
     expect(normalizeLocalPrintProvider("centrix")).toBe("browser");
   });
 
@@ -27,15 +29,15 @@ describe("local-print-provider (org settings)", () => {
     expect(getLocalPrintProvider()).toBe("browser");
   });
 
-  it("syncs from capabilities module_settings", () => {
+  it("syncs agent from capabilities module_settings", () => {
     syncLocalPrintingFromCapabilities({
       module_settings: {
         local_printing: {
-          provider: "qz",
+          provider: "agent",
           printer_name: "Star TSP143",
         },
       },
     });
-    expect(getLocalPrintProvider()).toBe("qz");
+    expect(getLocalPrintProvider()).toBe("agent");
   });
 });

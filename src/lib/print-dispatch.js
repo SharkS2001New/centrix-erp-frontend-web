@@ -4,6 +4,12 @@ import {
   saveLocalPrintProvider,
 } from "@/lib/local-print-provider";
 import {
+  getPrintAgentConfig,
+  isPrintAgentEnabled,
+  printViaAgent,
+  savePrintAgentConfig,
+} from "@/lib/print-agent";
+import {
   getQzTrayConfig,
   isQzTrayEnabled,
   printViaQzTray,
@@ -11,10 +17,10 @@ import {
 } from "@/lib/qz-tray-print";
 
 /**
- * Route a print job to QZ Tray or the browser dialog (org settings).
- * If QZ Tray is selected but not installed/reachable, falls back to the browser print dialog.
+ * Route a print job to Centrix Print Agent, QZ Tray, or the browser dialog (org settings).
+ * Silent providers fall back to the browser dialog when offline.
  *
- * @returns {Promise<{ mode: "qz" | "browser", ok: boolean, printer?: string }>}
+ * @returns {Promise<{ mode: "agent" | "qz" | "browser", ok: boolean, printer?: string, jobId?: string }>}
  */
 export async function dispatchPrintJob({
   html,
@@ -23,6 +29,7 @@ export async function dispatchPrintJob({
   printWindow = null,
   windowFeatures = "width=420,height=720",
   qzConfig = getQzTrayConfig(),
+  agentConfig = getPrintAgentConfig(),
   provider = getLocalPrintProvider(),
 }) {
   if (!html?.trim()) {
@@ -35,6 +42,28 @@ export async function dispatchPrintJob({
   }
 
   const activeProvider = provider;
+
+  if (activeProvider === "agent" || (activeProvider === "browser" && isPrintAgentEnabled())) {
+    const config = activeProvider === "agent" ? { ...agentConfig, enabled: true } : agentConfig;
+    if (config.enabled || activeProvider === "agent") {
+      try {
+        const result = await printViaAgent({
+          html,
+          copies,
+          jobType,
+          config: { ...config, enabled: true },
+        });
+        return {
+          mode: "agent",
+          ok: true,
+          printer: config.printerName || undefined,
+          jobId: result.jobId ?? undefined,
+        };
+      } catch {
+        // Agent missing/offline → browser dialog (fallback always on in org settings)
+      }
+    }
+  }
 
   if (activeProvider === "qz" || (activeProvider === "browser" && isQzTrayEnabled())) {
     const config = activeProvider === "qz" ? { ...qzConfig, enabled: true } : qzConfig;
@@ -66,9 +95,15 @@ export function applyLocalPrintProviderSelection(provider) {
 
   if (next === "qz") {
     saveQzTrayConfig({ ...getQzTrayConfig(), enabled: true });
+    savePrintAgentConfig({ ...getPrintAgentConfig(), enabled: false });
+  } else if (next === "agent") {
+    savePrintAgentConfig({ ...getPrintAgentConfig(), enabled: true });
+    saveQzTrayConfig({ ...getQzTrayConfig(), enabled: false });
   } else {
     saveQzTrayConfig({ ...getQzTrayConfig(), enabled: false });
+    savePrintAgentConfig({ ...getPrintAgentConfig(), enabled: false });
   }
 
-  return next;
+  // Re-assert provider — save*Config must not clobber agent/qz when disabling the other.
+  return saveLocalPrintProvider(next);
 }

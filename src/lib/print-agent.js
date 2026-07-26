@@ -1,11 +1,16 @@
 /**
  * Centrix Print Agent client — silent thermal printing at tills.
- * Config is stored per browser/device (localStorage), not org-wide.
+ * Org settings (provider, printer) live in module_settings.local_printing.
  *
  * Agent API contract: see /print-agent/README.md
  */
 
-const STORAGE_KEY = "centrix_print_agent_v1";
+import {
+  agentConfigFromLocalPrinting,
+  getCachedLocalPrintingSettings,
+  setCachedLocalPrintingSettings,
+} from "@/lib/local-printing-settings";
+
 const DEFAULT_BASE_URL = "http://127.0.0.1:9247";
 const HEALTH_TIMEOUT_MS = 1200;
 const QUICK_HEALTH_TIMEOUT_MS = 500;
@@ -17,6 +22,7 @@ export const PRINT_AGENT_DEFAULTS = {
   printerName: "",
   requireAgent: false,
   fallbackToBrowser: true,
+  copies: 1,
 };
 
 export function normalizePrintAgentConfig(raw = {}) {
@@ -26,26 +32,25 @@ export function normalizePrintAgentConfig(raw = {}) {
     printerName: String(raw.printerName ?? "").trim(),
     requireAgent: Boolean(raw.requireAgent),
     fallbackToBrowser: raw.fallbackToBrowser !== false,
+    copies: Math.max(1, Number(raw.copies) || 1),
   };
 }
 
 export function getPrintAgentConfig() {
-  if (typeof window === "undefined") return normalizePrintAgentConfig();
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return normalizePrintAgentConfig();
-    return normalizePrintAgentConfig(JSON.parse(stored));
-  } catch {
-    return normalizePrintAgentConfig();
-  }
+  return agentConfigFromLocalPrinting(getCachedLocalPrintingSettings());
 }
 
 export function savePrintAgentConfig(next) {
   const config = normalizePrintAgentConfig(next);
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-  }
-  return config;
+  const current = getCachedLocalPrintingSettings();
+  setCachedLocalPrintingSettings({
+    ...current,
+    ...(config.enabled ? { provider: "agent" } : {}),
+    printer_name: config.printerName,
+    copies: config.copies,
+    fallback_to_browser: config.fallbackToBrowser,
+  });
+  return getPrintAgentConfig();
 }
 
 function agentUrl(config, path) {

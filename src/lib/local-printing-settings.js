@@ -14,20 +14,25 @@ export const LOCAL_PRINTING_DEFAULTS = {
   use_signing: false,
 };
 
+const PRINT_AGENT_DEFAULT_BASE_URL = "http://127.0.0.1:9247";
+
 let cachedSettings = null;
 
+export function normalizeLocalPrintProviderKey(value) {
+  const key = String(value ?? "").trim().toLowerCase();
+  if (key === "qz" || key === "qz-tray" || key === "qz_tray") return "qz";
+  if (key === "agent" || key === "print-agent" || key === "print_agent") return "agent";
+  return "browser";
+}
+
 export function normalizeLocalPrintingSettings(raw = {}) {
-  const providerKey = String(raw.provider ?? "").trim().toLowerCase();
-  const provider =
-    providerKey === "qz" || providerKey === "qz-tray" || providerKey === "qz_tray"
-      ? "qz"
-      : "browser";
+  const provider = normalizeLocalPrintProviderKey(raw.provider);
 
   return {
     provider,
     printer_name: String(raw.printer_name ?? raw.printerName ?? "").trim(),
     copies: Math.max(1, Math.min(10, Number(raw.copies) || 1)),
-    // Always fall back to the browser dialog when QZ Tray is missing/offline.
+    // Always fall back to the browser dialog when the silent provider is missing/offline.
     fallback_to_browser: true,
     require_qz: false,
     use_signing: Boolean(raw.use_signing ?? raw.useSigning),
@@ -76,13 +81,31 @@ export function qzConfigFromLocalPrinting(settings = getCachedLocalPrintingSetti
   };
 }
 
-export function localPrintingFromQzForm(provider, qzForm) {
+/** Centrix Print Agent client config shape used by print-agent.js */
+export function agentConfigFromLocalPrinting(settings = getCachedLocalPrintingSettings()) {
+  const s = normalizeLocalPrintingSettings(settings);
+  return {
+    enabled: s.provider === "agent",
+    baseUrl: PRINT_AGENT_DEFAULT_BASE_URL,
+    printerName: s.printer_name,
+    copies: s.copies,
+    fallbackToBrowser: s.fallback_to_browser,
+    requireAgent: false,
+  };
+}
+
+export function localPrintingFromProviderForm(provider, form = {}) {
   return normalizeLocalPrintingSettings({
     provider,
-    printer_name: qzForm?.printerName,
-    copies: qzForm?.copies,
-    use_signing: qzForm?.useSigning,
+    printer_name: form.printerName,
+    copies: form.copies,
+    use_signing: form.useSigning,
   });
+}
+
+/** @deprecated Prefer {@link localPrintingFromProviderForm} */
+export function localPrintingFromQzForm(provider, qzForm) {
+  return localPrintingFromProviderForm(provider, qzForm);
 }
 
 export async function fetchLocalPrintingSettings() {

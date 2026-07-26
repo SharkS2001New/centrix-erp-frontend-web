@@ -44,7 +44,8 @@ export function saveQzTrayConfig(next) {
   const current = getCachedLocalPrintingSettings();
   setCachedLocalPrintingSettings({
     ...current,
-    provider: config.enabled ? "qz" : current.provider === "qz" ? "qz" : "browser",
+    // Only switch provider to QZ when enabling; do not overwrite agent/browser.
+    ...(config.enabled ? { provider: "qz" } : {}),
     printer_name: config.printerName,
     copies: config.copies,
     fallback_to_browser: config.fallbackToBrowser,
