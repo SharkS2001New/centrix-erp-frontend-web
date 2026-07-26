@@ -107,6 +107,14 @@ function waitForQzReady(qz, timeoutMs = 15000) {
 function friendlyQzError(error) {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const lower = message.toLowerCase();
+  if (
+    lower.includes("qz certificate") ||
+    lower.includes("qz private key") ||
+    lower.includes("qz_not_configured") ||
+    lower.includes("not configured") && lower.includes("qz")
+  ) {
+    return "Server certificate signing is on, but QZ_CERTIFICATE / QZ_PRIVATE_KEY are not set on the API. For testing, turn off “Use server certificate signing” in Local printing, save, then try again. For silent production print, configure those env vars (see qz.io/docs/signing).";
+  }
   if (lower.includes("senddata is not a function")) {
     return "QZ Tray was still connecting. Try Test connection again in a moment.";
   }

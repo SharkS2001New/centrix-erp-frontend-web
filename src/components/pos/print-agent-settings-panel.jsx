@@ -319,7 +319,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
             onChange={(v) => updateQz("useSigning", v)}
             disabled={!canEdit}
             label="Use server certificate signing"
-            description="Production silent print without recurring trust prompts. Requires QZ_CERTIFICATE and QZ_PRIVATE_KEY on the API."
+            description="Leave off while testing — QZ will ask you to trust this site. Turn on only for production silent print after QZ_CERTIFICATE and QZ_PRIVATE_KEY are set on the API (qz.io/docs/signing)."
           />
           <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
             <p className="theme-heading font-medium">Install QZ Tray</p>
