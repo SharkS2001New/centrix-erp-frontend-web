@@ -10,8 +10,8 @@ import {
 } from "@/lib/print-typography";
 import { resolveOrgPrintFontSettings } from "@/lib/print-font-settings";
 import {
-  THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
+  THERMAL_SIDE_MARGIN_MM,
 } from "@/lib/thermal-receipt-layout";
 
 const sampleSale = {
@@ -158,7 +158,8 @@ describe("org print typography settings", () => {
     expect(html).toContain('class="meta-cell meta-cell--sale"');
     expect(html).toContain("Cash Sales #:");
     expect(html).toContain("S1001");
-    expect(html).toContain(`width: ${THERMAL_CONTENT_WIDTH_MM}mm`);
+    expect(html).toContain(`padding-left: ${THERMAL_SIDE_MARGIN_MM}mm`);
+    expect(html).toContain(".receipt { width: 100%");
     expect(html).toContain(`size: ${THERMAL_PAPER_WIDTH_MM}mm auto`);
     expect(html).not.toContain("overflow: hidden");
     expect(html).toContain("font-variant-numeric: tabular-nums");

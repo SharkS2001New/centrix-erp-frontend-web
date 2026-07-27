@@ -27,8 +27,8 @@ import {
   orgPrintInkStyles,
 } from "@/lib/print-typography";
 import {
-  THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
+  THERMAL_SIDE_MARGIN_MM,
 } from "@/lib/thermal-receipt-layout";
 
 function buildUsedPaymentRows(sale, orderTotal) {
@@ -258,7 +258,8 @@ export function buildSaleReceiptHtml(
     * { box-sizing: border-box; }
     html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; margin: 0 auto; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
-    .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; }
+    body.centrix-print-thermal { padding-left: ${THERMAL_SIDE_MARGIN_MM}mm; padding-right: ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
+    .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
     .company-name,
     .org-name { text-align: center; font-size: ${hpx(14)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; margin-bottom: 4px; }
     .company-meta { text-align: center; font-size: ${hpx(10)}; color: #000; line-height: 1.45; font-weight: var(--print-w-header, 600); word-break: break-word; }
@@ -313,9 +314,10 @@ export function buildSaleReceiptHtml(
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; word-break: break-word; text-transform: none; }
     .center { text-align: center; }
     @media print {
-      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; }
+      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; margin-left: auto !important; margin-right: auto !important; padding: 0 !important; }
+      body.centrix-print-thermal { padding-left: ${THERMAL_SIDE_MARGIN_MM}mm !important; padding-right: ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; }
       body { font-size: ${px(10, true)}; }
-      .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; }
+      .receipt { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
       .company-name,
       .org-name { font-size: ${hpx(14, true)}; }
       .company-meta { font-size: ${hpx(10, true)}; }
