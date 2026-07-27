@@ -4,7 +4,7 @@ namespace Centrix.PrintAgent.Services;
 
 /// <summary>
 /// Renders receipt HTML and sends it to a Windows printer.
-/// Prefers wkhtmltopdf (Windows service safe), then WebView2 or Edge/Chrome when interactive.
+/// Prefers wkhtmltopdf (Windows service safe), then Edge/Chrome headless as fallback.
 /// </summary>
 public sealed class HtmlPrintService
 {
@@ -121,24 +121,6 @@ public sealed class HtmlPrintService
             errors.Add("wkhtmltopdf: not installed (re-run BUILD-AND-INSTALL.bat)");
         }
 
-        if (CanUseInteractiveRenderer())
-        {
-            var profileDir = Path.Combine(workDir, "webview2-profile");
-            try
-            {
-                TryDelete(pdfPath);
-                await WebView2PdfRenderer.RenderAsync(html, pdfPath, profileDir, cancellationToken);
-                if (File.Exists(pdfPath))
-                {
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                errors.Add($"WebView2: {ex.Message}");
-            }
-        }
-
         var pdfPathNorm = ToForwardSlashPath(Path.GetFullPath(pdfPath));
         var htmlPathNorm = ToForwardSlashPath(Path.GetFullPath(htmlPath));
         var htmlUri = new Uri(htmlPathNorm).AbsoluteUri;
@@ -229,9 +211,6 @@ public sealed class HtmlPrintService
             joined +
             " Re-run BUILD-AND-INSTALL.bat as Administrator (installs wkhtmltopdf for the Windows service).");
     }
-
-    private static bool CanUseInteractiveRenderer() =>
-        Environment.UserInteractive || Environment.GetEnvironmentVariable("CENTRIX_PRINT_AGENT_FORCE_WEBVIEW2") == "1";
 
     private static async Task PrintPdfAsync(string pdfPath, string? printerName, CancellationToken cancellationToken)
     {

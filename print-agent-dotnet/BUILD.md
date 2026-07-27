@@ -77,7 +77,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 | Scripts are disabled / cannot be loaded | Use `BUILD-AND-INSTALL.bat` (bypasses policy) or `Set-ExecutionPolicy -Scope Process Bypass` |
 | `dotnet` is not recognized | Install .NET 8 **SDK**, close terminals, retry |
 | `Unexpected token ')'` in `build-and-install.ps1` | You have an **old** build package. Download **build package (source)** again from Centrix (Administration → Local printing). The script must use `Step 1.` lines, not `1)` |
-| `Unexpected token ')'` in `install-user-session.ps1` | Same as above - re-download the source zip. Scripts must be plain ASCII (no smart quotes or em-dashes) |
+| `NU1101` / WebView2 package error | Re-download the source zip (0.2.2+ no longer needs WebView2). Only .NET 8 SDK is required |
 | `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
