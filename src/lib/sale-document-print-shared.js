@@ -49,12 +49,20 @@ export function stringifyPrintField(value) {
   return String(value).trim();
 }
 
-export function formatPrintAmount(value) {
+export function formatPrintAmount(value, { decimals = 2 } = {}) {
   if (value == null || value === "") return "—";
-  return Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "—";
+  const normalized = decimals === 0 ? Math.round(num) : num;
+  return normalized.toLocaleString("en-KE", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   });
+}
+
+/** Thermal receipt — whole shillings without .00 (matches classic roll printers). */
+export function formatThermalPrintAmount(value) {
+  return formatPrintAmount(value, { decimals: 0 });
 }
 
 /** Line Disc column — only when discounts are enabled in sales settings. */
@@ -235,17 +243,17 @@ export function buildSaleDocumentLineRows(
           return `<tr>
           <td class="desc">${description}</td>
           <td class="qty">${qtyCell}</td>
-          <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
-          <td class="disc">${escapeHtml(formatPrintAmount(discount))}</td>
-          <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
+          <td class="price">${escapeHtml(formatThermalPrintAmount(unitPrice))}</td>
+          <td class="disc">${escapeHtml(formatThermalPrintAmount(discount))}</td>
+          <td class="amount">${escapeHtml(formatThermalPrintAmount(amount))}</td>
         </tr>`;
         }
 
         return `<tr>
           <td class="desc">${description}</td>
           <td class="qty">${qtyCell}</td>
-          <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
-          <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
+          <td class="price">${escapeHtml(formatThermalPrintAmount(unitPrice))}</td>
+          <td class="amount">${escapeHtml(formatThermalPrintAmount(amount))}</td>
         </tr>`;
       }
 

@@ -12,7 +12,7 @@ import {
   buildSaleDocumentOrgHeaderHtml,
   buildSaleDocumentTableHead,
   escapeHtml,
-  formatPrintAmount,
+  formatThermalPrintAmount,
   resolveSaleDocumentStoreContact,
   resolveSaleOrderCreatorName,
   saleDocumentDiscountTotals,
@@ -80,7 +80,7 @@ function formatReceiptDateTime(value) {
 }
 
 function paymentDetailRow(label, value, { plain = false } = {}) {
-  const display = plain ? String(value ?? "—") : formatPrintAmount(value);
+  const display = plain ? String(value ?? "—") : formatThermalPrintAmount(value);
   return `<tr><td class="amount-label">${escapeHtml(label)}</td><td class="amount-value">${escapeHtml(display)}</td></tr>`;
 }
 
@@ -226,8 +226,8 @@ export function buildSaleReceiptHtml(
   ].join("");
 
   const totalsHtml = [
-    ...(showDiscountTotal ? [totalsLineRow("Discount", formatPrintAmount(totalDiscount))] : []),
-    totalsLineRow("Total", formatPrintAmount(orderTotal), { grand: true }),
+    ...(showDiscountTotal ? [totalsLineRow("Discount", formatThermalPrintAmount(totalDiscount))] : []),
+    totalsLineRow("Total", formatThermalPrintAmount(orderTotal), { grand: true }),
   ].join("");
 
   const footerHtml = buildReceiptFooterHtml(documentFooterText, orgName, {
@@ -240,7 +240,7 @@ export function buildSaleReceiptHtml(
           const vatRate = subtotalExVat > 0 ? Math.round((vatAmount / subtotalExVat) * 100) : 16;
           return `<div class="divider"></div>${wrapSummaryTable(
             `<tr><td class="amount-label">VAT RATE</td><td class="amount-label amount-value">VAT CHARGED</td></tr>
-            <tr><td>${vatRate} %</td><td class="amount-value">${escapeHtml(formatPrintAmount(vatAmount))}</td></tr>`,
+            <tr><td>${vatRate} %</td><td class="amount-value">${escapeHtml(formatThermalPrintAmount(vatAmount))}</td></tr>`,
           )}<p class="vat-note">Prices inclusive of VAT where applicable</p>`;
         })()
       : "";
@@ -272,28 +272,23 @@ export function buildSaleReceiptHtml(
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; table-layout: fixed; }
-    .table col.col-desc { width: 42%; }
-    .table col.col-qty { width: 8%; }
-    .table col.col-price { width: 19%; }
-    .table col.col-amount { width: 31%; }
-    .table.has-disc col.col-desc { width: 32%; }
-    .table.has-disc col.col-qty { width: 8%; }
-    .table.has-disc col.col-price { width: 16%; }
+    .table col.col-desc { width: 43%; }
+    .table col.col-qty { width: 12%; }
+    .table col.col-price { width: 20%; }
+    .table col.col-amount { width: 25%; }
+    .table.has-disc col.col-desc { width: 34%; }
+    .table.has-disc col.col-qty { width: 11%; }
+    .table.has-disc col.col-price { width: 17%; }
     .table.has-disc col.col-disc { width: 13%; }
-    .table.has-disc col.col-amount { width: 31%; }
+    .table.has-disc col.col-amount { width: 25%; }
     .table thead th { padding: 2px 0; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(7)}; letter-spacing: 0; }
-    .table thead th.qty,
-    .table thead th.price,
-    .table thead th.disc,
-    .table thead th.amount { text-align: right; padding-left: 0; padding-right: 0; letter-spacing: -0.03em; }
-    .table thead th.amount { font-size: ${px(6.5)}; }
-    .table th.desc, .table td.desc { padding-right: 0; word-break: break-word; overflow-wrap: anywhere; }
+    .table th.desc, .table td.desc { padding-right: 2px; word-break: break-word; overflow-wrap: anywhere; }
     .table tbody tr { border-top: 1px dashed #000; }
-    .table td { padding: 2px 0; vertical-align: top; }
-    .table td.qty { text-align: right; white-space: nowrap; line-height: 1.15; font-size: ${px(8)}; padding-left: 0; padding-right: 0; }
+    .table td { padding: 2px 0; vertical-align: top; text-align: left; }
+    .table td.qty { white-space: nowrap; line-height: 1.15; font-size: ${px(8)}; }
     .table td.price,
     .table td.disc,
-    .table td.amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0; padding-right: 0; }
+    .table td.amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
     .summary-table col.col-label { width: 52%; }
     .summary-table col.col-value { width: 48%; }
