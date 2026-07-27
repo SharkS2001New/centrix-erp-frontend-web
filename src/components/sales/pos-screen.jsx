@@ -412,7 +412,7 @@ export function PosScreen({ standalone = false }) {
   const focusSearchAfterAdd = useRef(false);
   const appliedRouteMarkupRef = useRef(0);
   const [sellFromShop, setSellFromShop] = useState(true);
-  const [sellWholesale, setSellWholesale] = useState(true);
+  const [sellWholesale, setSellWholesale] = useState(false);
   const [isRouteOrder, setIsRouteOrder] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState("");
   const [routes, setRoutes] = useState([]);
@@ -778,7 +778,7 @@ export function PosScreen({ standalone = false }) {
       return (
         isEmptyPosLineForm(value.lineForm) &&
         value.sellFromShop === true &&
-        value.sellWholesale === true &&
+        value.sellWholesale === false &&
         Boolean(value.isRouteOrder) === Boolean(lockedToRouteOrder) &&
         !value.selectedRouteId
       );
