@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   resolveCustomerReturnStatuses,
@@ -75,8 +76,11 @@ export function CreditNoteForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [invoiceHint, setInvoiceHint] = useState(null);
+  const [productPick, setProductPick] = useState("");
+  const [pickedProduct, setPickedProduct] = useState(null);
 
   const totalCredit = useMemo(() => totalCreditAmount(lines), [lines]);
+  const canSubmit = Boolean(saleId) && lines.some((line) => Number(line.credit_amount) > 0);
 
   useEffect(() => {
     const q = invoiceQuery.trim();
@@ -178,13 +182,48 @@ export function CreditNoteForm({
     }
   }, [invoiceQuery, saleOptions, loadSale, returnSearchStatuses]);
 
+  function addManualProductLine() {
+    if (!pickedProduct?.product_code) return;
+    const code = String(pickedProduct.product_code);
+    if (lines.some((line) => String(line.product_code) === code)) {
+      setError("That product is already on the credit note.");
+      return;
+    }
+    setError(null);
+    setLines((prev) => [
+      ...prev,
+      {
+        sale_item_id: null,
+        product_code: code,
+        product_name: pickedProduct.product_name ?? code,
+        uom: pickedProduct.uom ?? null,
+        quantity_sold: 0,
+        line_total: null,
+        max_credit_amount: null,
+        credit_amount: 0,
+        line_no: null,
+        manual: true,
+      },
+    ]);
+    setProductPick("");
+    setPickedProduct(null);
+  }
+
+  function removeLine(index) {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function updateCreditAmount(index, rawValue) {
     const parsed = rawValue === "" ? 0 : Number(rawValue);
     setLines((prev) =>
       prev.map((line, i) => {
         if (i !== index) return line;
         const max = Number(line.max_credit_amount ?? line.line_total ?? 0);
-        const creditAmount = Number.isFinite(parsed) ? Math.max(0, Math.min(parsed, max)) : 0;
+        const creditAmount = Number.isFinite(parsed)
+          ? max > 0
+            ? Math.max(0, Math.min(parsed, max))
+            : Math.max(0, parsed)
+          : 0;
         return { ...line, credit_amount: creditAmount };
       }),
     );
@@ -364,6 +403,35 @@ export function CreditNoteForm({
         />
       </Field>
 
+      <div className="mt-4 rounded-lg border border-dashed border-slate-200 p-4">
+        <p className="mb-2 text-sm font-medium text-slate-800">Add product manually</p>
+        <p className="mb-3 text-xs text-slate-500">
+          Search the catalogue to add products that are not on the invoice, or to credit without loading an invoice line first.
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[240px] flex-1">
+            <ProductSearchSelect
+              value={productPick}
+              onChange={setProductPick}
+              onProductSelect={(product) => {
+                setProductPick(product.product_code);
+                setPickedProduct(product);
+              }}
+              excludeCodes={lines.map((line) => line.product_code)}
+              placeholder="Search product name or code…"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={addManualProductLine}
+            disabled={!pickedProduct}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Add product
+          </button>
+        </div>
+      </div>
+
       {lines.length > 0 ? (
         <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -372,6 +440,7 @@ export function CreditNoteForm({
                 <th className="px-3 py-2">Product</th>
                 <th className="px-3 py-2 text-right">Line total</th>
                 <th className="px-3 py-2 text-right">Credit amount</th>
+                <th className="px-3 py-2 w-12" />
               </tr>
             </thead>
             <tbody>
@@ -382,26 +451,35 @@ export function CreditNoteForm({
                     <div className="text-xs text-slate-500">{line.product_code}</div>
                   </td>
                   <td className="px-3 py-2 text-right text-slate-700">
-                    {formatSaleKes(line.line_total)}
+                    {line.line_total != null ? formatSaleKes(line.line_total) : "—"}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <input
                       type="number"
                       min="0"
                       step="0.01"
-                      max={line.max_credit_amount}
+                      max={line.max_credit_amount ?? undefined}
                       className={`${inputClassName()} w-32 text-right`}
                       value={line.credit_amount || ""}
                       onChange={(e) => updateCreditAmount(index, e.target.value)}
                       placeholder="0.00"
                     />
                   </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => removeLine(index)}
+                      className="text-xs text-red-600 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="border-t border-slate-200 bg-slate-50">
-                <td colSpan={2} className="px-3 py-2 text-right font-medium text-slate-700">
+                <td colSpan={3} className="px-3 py-2 text-right font-medium text-slate-700">
                   Total credit
                 </td>
                 <td className="px-3 py-2 text-right font-semibold text-slate-900">
@@ -416,7 +494,7 @@ export function CreditNoteForm({
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
       <div className="mt-6 flex flex-wrap gap-2">
-        <PrimaryButton type="submit" disabled={saving || !saleId || loadingSale}>
+        <PrimaryButton type="submit" disabled={saving || loadingSale || !canSubmit}>
           {saving ? "Saving…" : "Create credit note"}
         </PrimaryButton>
         <button

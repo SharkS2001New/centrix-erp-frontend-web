@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { CreditNoteForm } from "@/components/sales/credit-note-form";
+import { CreditNotesCreateTabs } from "@/components/sales/credit-notes-create-tabs";
 
 function NewCreditNoteContent() {
   const searchParams = useSearchParams();
@@ -10,6 +11,7 @@ function NewCreditNoteContent() {
 
   return (
     <div className="theme-workspace min-h-full">
+      <CreditNotesCreateTabs active="customer" />
       <CreditNoteForm initialSaleId={initialSaleId} />
     </div>
   );

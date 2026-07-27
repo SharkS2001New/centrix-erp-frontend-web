@@ -16,6 +16,7 @@ import {
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
+import { CENTRIX_POS_COMPLETE_PAYMENT_EVENT } from "@/lib/pos-keyboard-shortcuts";
 
 function PosField({ label, children }) {
   return (
@@ -189,6 +190,7 @@ export function PosPaymentPanel({
   const bankAmountRef = useRef(null);
   const creditTriggerRef = useRef(null);
   const enterActionRef = useRef(() => {});
+  const completeFromKeyboardRef = useRef(() => {});
   const prevOpenRef = useRef(false);
 
   const cfg = paymentConfig ?? {};
@@ -572,6 +574,7 @@ export function PosPaymentPanel({
     }
     handleRequestComplete();
   }
+  completeFromKeyboardRef.current = requestCompleteFromKeyboard;
 
   function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false } = {}) {
     if (step !== "payment" || saving) return;
@@ -765,6 +768,15 @@ export function PosPaymentPanel({
       }
     };
   });
+
+  useEffect(() => {
+    if (!open) return;
+    function onF10Complete() {
+      completeFromKeyboardRef.current();
+    }
+    window.addEventListener(CENTRIX_POS_COMPLETE_PAYMENT_EVENT, onF10Complete);
+    return () => window.removeEventListener(CENTRIX_POS_COMPLETE_PAYMENT_EVENT, onF10Complete);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

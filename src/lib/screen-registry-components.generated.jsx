@@ -9,6 +9,9 @@ import { lazy } from "react";
 
 /** @type {Record<string, import("react").ComponentType>} */
 export const SCREEN_COMPONENTS = {
+  "sales-credit-notes-supplier-new": lazy(() =>
+    import("@/components/tab-screens/sales-credit-notes-supplier-new").then((m) => ({ default: m.SalesCreditNotesSupplierNewScreen })),
+  ),
   "fulfillment-trips-id-close": lazy(() =>
     import("@/components/tab-screens/fulfillment-trips-id-close").then((m) => ({ default: m.FulfillmentTripsIdCloseScreen })),
   ),
@@ -59,6 +62,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "sales-credit-notes-new": lazy(() =>
     import("@/components/tab-screens/sales-credit-notes-new").then((m) => ({ default: m.SalesCreditNotesNewScreen })),
+  ),
+  "sales-credit-notes-supplier": lazy(() =>
+    import("@/components/tab-screens/sales-credit-notes-supplier").then((m) => ({ default: m.SalesCreditNotesSupplierScreen })),
   ),
   "sales-legacy-returns-new": lazy(() =>
     import("@/components/tab-screens/sales-legacy-returns-new").then((m) => ({ default: m.SalesLegacyReturnsNewScreen })),

@@ -26,6 +26,15 @@ export const CREDIT_NOTE_REASONS = [
   "Other",
 ];
 
+export const SUPPLIER_CREDIT_NOTE_REASONS = [
+  "Billing error",
+  "Overcharge",
+  "Price adjustment",
+  "Duplicate invoice",
+  "Damaged goods credit",
+  "Other",
+];
+
 export const RETURN_REASON_OTHER = "Other";
 
 /** @returns {{ preset: string, other: string }} */

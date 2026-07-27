@@ -1,5 +1,7 @@
 "use client";
 
+import { isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
+
 import { useEffect, useState } from "react";
 
 function ClassicLineQtyCell({
@@ -57,8 +59,7 @@ function ClassicLineQtyCell({
         onFocus={(e) => e.target.select()}
         onBlur={commit}
         onKeyDown={(e) => {
-          // Let POS F-key shortcuts (F8/F10/…) reach the window capture listener.
-          if (/^F\d+$/.test(e.key) || e.code?.startsWith("F")) return;
+          if (isPosFunctionKeyEvent(e)) return;
           e.stopPropagation();
           if (e.key === "Enter") {
             e.preventDefault();
@@ -231,6 +232,7 @@ export function ClassicPosCartTable({
               onClick={() => onOrderNoClick?.()}
               onChange={(e) => onOrderNoChange?.(e.target.value)}
               onKeyDown={(e) => {
+                if (isPosFunctionKeyEvent(e)) return;
                 if (e.key === "Enter") {
                   e.preventDefault();
                   onOrderNoSubmit?.();

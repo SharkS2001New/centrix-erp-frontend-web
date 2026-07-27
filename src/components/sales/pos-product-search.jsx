@@ -2,6 +2,7 @@
 
 import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
 import {
@@ -86,12 +87,12 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   useEffect(() => {
     if (!classic) return undefined;
     function onFunctionKey(e) {
-      if (!/^F([1-9]|1[0-2])$/i.test(e.key)) return;
+      if (!isPosFunctionKeyEvent(e)) return;
       setOpen(false);
       setHighlight(-1);
     }
-    window.addEventListener("keydown", onFunctionKey, true);
-    return () => window.removeEventListener("keydown", onFunctionKey, true);
+    window.addEventListener("keydown", onFunctionKey, { capture: true, passive: true });
+    return () => window.removeEventListener("keydown", onFunctionKey, { capture: true, passive: true });
   }, [classic]);
 
   // Keep parent searchInputRef in sync without mutating props during render.
@@ -192,6 +193,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }
 
   async function handleInputKeyDown(e) {
+    // Let POS shortcuts (F2/F8/F10/F12, …) reach the window capture listener.
+    if (isPosFunctionKeyEvent(e)) return;
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       e.stopPropagation();
@@ -204,12 +208,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       e.stopPropagation();
       setOpen(true);
       moveHighlight(-1);
-      return;
-    }
-    if (e.key === "F2" && classic) {
-      e.preventDefault();
-      e.stopPropagation();
-      setOpen(true);
       return;
     }
     if (e.key === "Enter") {

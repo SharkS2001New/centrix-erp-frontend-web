@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
+  isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
   resolvePosShortcutKey,
 } from "@/lib/pos-keyboard-shortcuts";
@@ -67,5 +69,11 @@ describe("claimPosFunctionKeyEvent", () => {
   it("recognizes POS function shortcut keys", () => {
     expect(isPosFunctionShortcutKey("F10")).toBe(true);
     expect(isPosFunctionShortcutKey("Enter")).toBe(false);
+  });
+
+  it("detects function key events for input passthrough", () => {
+    expect(isPosFunctionKeyEvent(fakeEvent({ key: "F8", code: "F8" }))).toBe(true);
+    expect(isPosFunctionKeyEvent(fakeEvent({ key: "a", code: "KeyA" }))).toBe(false);
+    expect(CENTRIX_POS_COMPLETE_PAYMENT_EVENT).toBe("centrix:pos-complete-payment");
   });
 });

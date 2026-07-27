@@ -6,6 +6,10 @@ import { normalizeTabHref } from "@/lib/tab-workspace";
 
 /** @typedef {{ id: string, title: string, match: (pathname: string) => boolean, route: string }} RegistryScreenDef */
 
+function match_sales_credit_notes_supplier_new(pathname) {
+  return pathname === "/sales/credit-notes/supplier/new";
+}
+
 function match_fulfillment_trips_id_close(pathname) {
   const m = pathname.match("^/fulfillment/trips/([^/]+)/close$");
   if (!m) return false;
@@ -93,6 +97,10 @@ function match_inventory_transfers_new(pathname) {
 
 function match_sales_credit_notes_new(pathname) {
   return pathname === "/sales/credit-notes/new";
+}
+
+function match_sales_credit_notes_supplier(pathname) {
+  return pathname === "/sales/credit-notes/supplier";
 }
 
 function match_sales_legacy_returns_new(pathname) {
@@ -828,6 +836,12 @@ function match_vats(pathname) {
 /** @type {RegistryScreenDef[]} */
 export const SCREEN_REGISTRY = [
   {
+    id: "sales-credit-notes-supplier-new",
+    title: "New",
+    route: "/sales/credit-notes/supplier/new",
+    match: match_sales_credit_notes_supplier_new,
+  },
+  {
     id: "fulfillment-trips-id-close",
     title: "Close",
     route: "/fulfillment/trips/[id]/close",
@@ -928,6 +942,12 @@ export const SCREEN_REGISTRY = [
     title: "New",
     route: "/sales/credit-notes/new",
     match: match_sales_credit_notes_new,
+  },
+  {
+    id: "sales-credit-notes-supplier",
+    title: "Supplier",
+    route: "/sales/credit-notes/supplier",
+    match: match_sales_credit_notes_supplier,
   },
   {
     id: "sales-legacy-returns-new",

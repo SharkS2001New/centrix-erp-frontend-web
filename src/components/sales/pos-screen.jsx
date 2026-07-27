@@ -151,7 +151,9 @@ import {
   upsertLocalPosCartLine,
 } from "@/lib/pos-offline";
 import {
+  CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
+  isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
   resolvePosShortcutKey,
 } from "@/lib/pos-keyboard-shortcuts";
@@ -4476,9 +4478,13 @@ export function PosScreen({ standalone = false }) {
     setSaveOrderOpen(true);
   }
 
-  const focusProductSearch = useCallback(() => {
+  const focusProductSearchRef = useRef(() => {});
+  focusProductSearchRef.current = () => {
     clearLineEntry();
     focusClassicProductSearch();
+  };
+  const focusProductSearch = useCallback(() => {
+    focusProductSearchRef.current();
   }, []);
 
   /** F8 / empty-space double-click: clear workspace and focus scan for a new order. */
@@ -5195,7 +5201,6 @@ export function PosScreen({ standalone = false }) {
     function onPosKeyEvent(e, phase) {
       const state = posShortcutStateRef.current;
       const actions = posShortcutActionsRef.current;
-      if (!state.classicLayout && !state.standalone) return;
 
       // Same event can hit window + document capture — only handle once.
       if (e.__centrixPosShortcutHandled) return;
@@ -5203,10 +5208,31 @@ export function PosScreen({ standalone = false }) {
       const key = resolvePosShortcutKey(e);
       const isFn = isPosFunctionShortcutKey(key);
 
-      // Always claim POS F-keys first so PWA/Chrome cannot open DevTools (F12) or the menu (F10).
       if (isFn) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
+
+        if (phase === "keyup") {
+          // Bare F10/F12 sometimes only surface on keyup in PWAs after the shell ate keydown.
+          if (Date.now() - (handledOnKeyDownAt[key] || 0) < 900) return;
+        } else {
+          handledOnKeyDownAt[key] = Date.now();
+        }
+
+        if (state.paymentOpen && key === "F10") {
+          window.dispatchEvent(new CustomEvent(CENTRIX_POS_COMPLETE_PAYMENT_EVENT));
+          return;
+        }
+
+        if (isModalOpen(state)) {
+          if (e.key === "Escape" && state.priceCheckerOpen) {
+            setPriceCheckerOpen(false);
+          }
+          return;
+        }
+
+        runPosFunctionAction(key, state, actions);
+        return;
       }
 
       if (isModalOpen(state)) {
@@ -5229,23 +5255,10 @@ export function PosScreen({ standalone = false }) {
 
       const classicShortcut =
         state.classicLayout &&
-        (isFn ||
-          (e.altKey && ["h", "H", "f", "F", "p", "P"].includes(e.key)) ||
+        ((e.altKey && ["h", "H", "f", "F", "p", "P"].includes(e.key)) ||
           (e.key === "Delete" && state.selectedLineId));
-      const standaloneFn = state.standalone && isFn;
 
-      if (!classicShortcut && !standaloneFn && isTypingTarget(e.target)) return;
-
-      if (isFn) {
-        if (phase === "keyup") {
-          // Bare F10/F12 sometimes only surface on keyup in PWAs after the shell ate keydown.
-          if (Date.now() - (handledOnKeyDownAt[key] || 0) < 900) return;
-        } else {
-          handledOnKeyDownAt[key] = Date.now();
-        }
-        runPosFunctionAction(key, state, actions);
-        return;
-      }
+      if (!classicShortcut && isTypingTarget(e.target)) return;
 
       if (phase === "keyup") return;
 
@@ -6278,6 +6291,7 @@ export function PosScreen({ standalone = false }) {
                   setLineForm((p) => ({ ...p, quantity: value }))
                 }
                 onEntryQtyKeyDown={(e) => {
+                  if (isPosFunctionKeyEvent(e)) return;
                   if (e.key === "Enter") {
                     e.preventDefault();
                     handleQuantityEnter();

@@ -20,6 +20,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { canManageSalesReturns } from "@/lib/approval-permissions";
+import { CreditNotesTabs } from "@/components/sales/credit-notes-tabs";
 import { CustomerReturnActionDialog } from "@/components/sales/customer-return-actions";
 import { CustomerReturnDetailModal } from "@/components/sales/customer-return-detail-modal";
 import { printCustomerReturn } from "@/components/sales/credit-note-print";
@@ -286,6 +287,8 @@ export function SalesCreditNotesScreen() {
 
   return (
     <div className="theme-workspace min-h-full">
+      <CreditNotesTabs active="customer" />
+
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Credit notes</h1>

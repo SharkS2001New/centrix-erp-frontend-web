@@ -6,6 +6,15 @@
 
 export const POS_FN_KEYS = new Set(["F2", "F8", "F9", "F10", "F12"]);
 
+/** Dispatched when F10 is pressed while the payment dialog is already open. */
+export const CENTRIX_POS_COMPLETE_PAYMENT_EVENT = "centrix:pos-complete-payment";
+
+export function isPosFunctionKeyEvent(e) {
+  const key = String(e?.key ?? "");
+  const code = String(e?.code ?? "");
+  return /^F([1-9]|1[0-2])$/i.test(key) || /^F\d+$/i.test(code);
+}
+
 /** Normalize F-keys / payment aliases across browsers, OS, and PWA shells. */
 export function resolvePosShortcutKey(e) {
   const key = String(e?.key || "");
