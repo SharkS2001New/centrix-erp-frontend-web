@@ -240,10 +240,10 @@ export function buildSaleInvoiceHtml(
     .totals-box { min-width: 280px; text-align: right; font-size: ${px(12)}; font-weight: 600; }
     .totals-box p { margin: 3px 0; }
     .totals-box .grand { font-weight: 700; font-size: ${px(13)}; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
-    .served-by { margin: 10px 0 8px; font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; }
+    .served-by { margin: 10px 0 8px; font-size: ${px(11)}; font-weight: 700; text-transform: none; }
     .body-footer-block { margin: 10px 0 8px; font-size: ${px(11)}; }
-    .body-footer-line { margin: 6px 0; font-weight: 700; }
-    .goods-note { margin: 8px 0 4px; font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; }
+    .body-footer-line { margin: 6px 0; font-weight: 700; text-transform: none; }
+    .goods-note { margin: 8px 0 4px; font-size: ${px(11)}; font-weight: 700; text-transform: none; }
     .goods-note-sub { margin: 0 0 0; font-weight: 700; }
     .receive-signatures { margin: 14px 0 0; font-size: ${px(11)}; max-width: 420px; }
     .sig-row { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; }

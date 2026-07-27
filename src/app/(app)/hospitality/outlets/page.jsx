@@ -1,12 +1,11 @@
 "use client";
 
-import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { HospitalityOutletsScreen } from "@/components/tab-screens/hospitality-outlets";
 
+/** Tab workspace hosts this screen from the registry when enabled. */
 export default function Page() {
-  return (
-    <HospitalityPlaceholderScreen
-      title="Outlets & floor"
-      description="Bars, restaurants, and floor tables for Hotel & Bar POS."
-    />
-  );
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <HospitalityOutletsScreen />;
 }

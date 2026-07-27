@@ -1,12 +1,11 @@
 "use client";
 
-import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { HospitalityFoliosScreen } from "@/components/tab-screens/hospitality-folios";
 
+/** Tab workspace hosts this screen from the registry when enabled. */
 export default function Page() {
-  return (
-    <HospitalityPlaceholderScreen
-      title="Guest folios"
-      description="Open folios, room charges, and folio payments."
-    />
-  );
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <HospitalityFoliosScreen />;
 }

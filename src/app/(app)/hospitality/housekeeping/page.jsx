@@ -1,12 +1,11 @@
 "use client";
 
-import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { HospitalityHousekeepingScreen } from "@/components/tab-screens/hospitality-housekeeping";
 
+/** Tab workspace hosts this screen from the registry when enabled. */
 export default function Page() {
-  return (
-    <HospitalityPlaceholderScreen
-      title="Housekeeping"
-      description="Room status and turnaround tasks."
-    />
-  );
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <HospitalityHousekeepingScreen />;
 }

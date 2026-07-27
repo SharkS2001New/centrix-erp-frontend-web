@@ -1,12 +1,11 @@
 "use client";
 
-import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { HospitalityRoomsScreen } from "@/components/tab-screens/hospitality-rooms";
 
+/** Tab workspace hosts this screen from the registry when enabled. */
 export default function Page() {
-  return (
-    <HospitalityPlaceholderScreen
-      title="Rooms"
-      description="Room types, room status, and occupancy board."
-    />
-  );
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <HospitalityRoomsScreen />;
 }

@@ -18,6 +18,14 @@ export const RETURN_REASONS = [
   "Other",
 ];
 
+export const CREDIT_NOTE_REASONS = [
+  "Billing error",
+  "Price adjustment",
+  "Overcharge",
+  "Duplicate charge",
+  "Other",
+];
+
 export const RETURN_REASON_OTHER = "Other";
 
 /** @returns {{ preset: string, other: string }} */

@@ -74,6 +74,7 @@ export function CustomerReturnActionDialog({
   error,
   onClose,
   onConfirm,
+  variant = "return",
 }) {
   const [mounted, setMounted] = useState(false);
 
@@ -85,31 +86,52 @@ export function CustomerReturnActionDialog({
 
   const approved = normalizeReturnStatus(row.status) === "approved";
   const returnNo = row.return_no ?? `#${row.id}`;
+  const isCreditNote = variant === "credit_note";
 
   const config =
     type === "approve"
       ? {
-          title: "Approve customer return?",
-          message: `Approve ${returnNo}? Stock will be restocked, the order adjusted, and a credit note issued.`,
-          confirmLabel: "Approve return",
+          title: isCreditNote ? "Approve credit note?" : "Approve customer return?",
+          message: isCreditNote
+            ? `Approve ${returnNo}? The order will be adjusted and a credit note issued.`
+            : `Approve ${returnNo}? Stock will be restocked, the order adjusted, and a credit note issued.`,
+          confirmLabel: isCreditNote ? "Approve credit note" : "Approve return",
           confirmClass: "bg-emerald-600 hover:bg-emerald-700 text-white",
         }
       : type === "reject"
         ? {
-            title: approved ? "Reject approved return?" : "Reject customer return?",
+            title: approved
+              ? isCreditNote
+                ? "Reject approved credit note?"
+                : "Reject approved return?"
+              : isCreditNote
+                ? "Reject credit note?"
+                : "Reject customer return?",
             message: approved
-              ? `Reject ${returnNo}? Restocked quantities and order adjustments will be reversed.`
-              : `Reject ${returnNo}? No stock or order changes will be applied.`,
-            confirmLabel: "Reject return",
+              ? isCreditNote
+                ? `Reject ${returnNo}? Order adjustments will be reversed.`
+                : `Reject ${returnNo}? Restocked quantities and order adjustments will be reversed.`
+              : isCreditNote
+                ? `Reject ${returnNo}? No order changes will be applied.`
+                : `Reject ${returnNo}? No stock or order changes will be applied.`,
+            confirmLabel: isCreditNote ? "Reject credit note" : "Reject return",
             confirmClass: "bg-red-600 hover:bg-red-700 text-white",
           }
         : type === "delete"
           ? {
-              title: approved ? "Delete approved return?" : "Delete customer return?",
+              title: approved
+                ? isCreditNote
+                  ? "Delete approved credit note?"
+                  : "Delete approved return?"
+                : isCreditNote
+                  ? "Delete credit note?"
+                  : "Delete customer return?",
               message: approved
-                ? `Delete ${returnNo}? Restocked quantities will be reversed. This cannot be undone.`
+                ? isCreditNote
+                  ? `Delete ${returnNo}? Order adjustments will be reversed. This cannot be undone.`
+                  : `Delete ${returnNo}? Restocked quantities will be reversed. This cannot be undone.`
                 : `Delete ${returnNo}? This cannot be undone.`,
-              confirmLabel: "Delete return",
+              confirmLabel: isCreditNote ? "Delete credit note" : "Delete return",
               confirmClass: "bg-red-600 hover:bg-red-700 text-white",
             }
           : null;

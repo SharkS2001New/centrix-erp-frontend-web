@@ -170,7 +170,7 @@ function sizeStyle(size) {
 }
 
 function lineInlineStyle(line) {
-  const parts = [alignStyle(line.align)];
+  const parts = [alignStyle(line.align), "text-transform:none"];
   if (line.bold) parts.push("font-weight:700");
   if (line.italic) parts.push("font-style:italic");
   const size = sizeStyle(line.size);

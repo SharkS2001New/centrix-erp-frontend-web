@@ -1,12 +1,11 @@
 "use client";
 
-import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { HospitalityNightAuditScreen } from "@/components/tab-screens/hospitality-night-audit";
 
+/** Tab workspace hosts this screen from the registry when enabled. */
 export default function Page() {
-  return (
-    <HospitalityPlaceholderScreen
-      title="Night audit"
-      description="Day close, occupancy snapshot, and cashier variances."
-    />
-  );
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <HospitalityNightAuditScreen />;
 }

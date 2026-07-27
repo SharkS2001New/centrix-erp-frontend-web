@@ -278,7 +278,13 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       {
         href: "/sales/returns",
-        label: "Returns & credit notes",
+        label: "Returns",
+        module: "sales.backend",
+        permission: P.sales.returns.view,
+      },
+      {
+        href: "/sales/credit-notes",
+        label: "Credit notes",
         module: "sales.backend",
         permission: P.sales.returns.view,
       },

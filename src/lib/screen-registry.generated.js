@@ -91,6 +91,10 @@ function match_inventory_transfers_new(pathname) {
   return pathname === "/inventory/transfers/new";
 }
 
+function match_sales_credit_notes_new(pathname) {
+  return pathname === "/sales/credit-notes/new";
+}
+
 function match_sales_legacy_returns_new(pathname) {
   return pathname === "/sales/legacy-returns/new";
 }
@@ -415,6 +419,38 @@ function match_fulfillment_vehicles(pathname) {
   return pathname === "/fulfillment/vehicles";
 }
 
+function match_hospitality_folios(pathname) {
+  return pathname === "/hospitality/folios";
+}
+
+function match_hospitality_front_desk(pathname) {
+  return pathname === "/hospitality/front-desk";
+}
+
+function match_hospitality_housekeeping(pathname) {
+  return pathname === "/hospitality/housekeeping";
+}
+
+function match_hospitality_night_audit(pathname) {
+  return pathname === "/hospitality/night-audit";
+}
+
+function match_hospitality_outlets(pathname) {
+  return pathname === "/hospitality/outlets";
+}
+
+function match_hospitality_reservations(pathname) {
+  return pathname === "/hospitality/reservations";
+}
+
+function match_hospitality_rooms(pathname) {
+  return pathname === "/hospitality/rooms";
+}
+
+function match_hospitality_settings(pathname) {
+  return pathname === "/hospitality/settings";
+}
+
 function match_hr_allowances(pathname) {
   return pathname === "/hr/allowances";
 }
@@ -537,6 +573,10 @@ function match_reports_supplier_statement(pathname) {
 
 function match_routes_new(pathname) {
   return pathname === "/routes/new";
+}
+
+function match_sales_credit_notes(pathname) {
+  return pathname === "/sales/credit-notes";
 }
 
 function match_sales_end_of_day(pathname) {
@@ -703,6 +743,10 @@ function match_expenses(pathname) {
 
 function match_fulfillment(pathname) {
   return pathname === "/fulfillment";
+}
+
+function match_hospitality(pathname) {
+  return pathname === "/hospitality";
 }
 
 function match_hr(pathname) {
@@ -878,6 +922,12 @@ export const SCREEN_REGISTRY = [
     title: "New",
     route: "/inventory/transfers/new",
     match: match_inventory_transfers_new,
+  },
+  {
+    id: "sales-credit-notes-new",
+    title: "New",
+    route: "/sales/credit-notes/new",
+    match: match_sales_credit_notes_new,
   },
   {
     id: "sales-legacy-returns-new",
@@ -1276,6 +1326,54 @@ export const SCREEN_REGISTRY = [
     match: match_fulfillment_vehicles,
   },
   {
+    id: "hospitality-folios",
+    title: "Folios",
+    route: "/hospitality/folios",
+    match: match_hospitality_folios,
+  },
+  {
+    id: "hospitality-front-desk",
+    title: "Front Desk",
+    route: "/hospitality/front-desk",
+    match: match_hospitality_front_desk,
+  },
+  {
+    id: "hospitality-housekeeping",
+    title: "Housekeeping",
+    route: "/hospitality/housekeeping",
+    match: match_hospitality_housekeeping,
+  },
+  {
+    id: "hospitality-night-audit",
+    title: "Night Audit",
+    route: "/hospitality/night-audit",
+    match: match_hospitality_night_audit,
+  },
+  {
+    id: "hospitality-outlets",
+    title: "Outlets",
+    route: "/hospitality/outlets",
+    match: match_hospitality_outlets,
+  },
+  {
+    id: "hospitality-reservations",
+    title: "Reservations",
+    route: "/hospitality/reservations",
+    match: match_hospitality_reservations,
+  },
+  {
+    id: "hospitality-rooms",
+    title: "Rooms",
+    route: "/hospitality/rooms",
+    match: match_hospitality_rooms,
+  },
+  {
+    id: "hospitality-settings",
+    title: "Settings",
+    route: "/hospitality/settings",
+    match: match_hospitality_settings,
+  },
+  {
     id: "hr-allowances",
     title: "Allowances",
     route: "/hr/allowances",
@@ -1460,6 +1558,12 @@ export const SCREEN_REGISTRY = [
     title: "New",
     route: "/routes/new",
     match: match_routes_new,
+  },
+  {
+    id: "sales-credit-notes",
+    title: "Credit Notes",
+    route: "/sales/credit-notes",
+    match: match_sales_credit_notes,
   },
   {
     id: "sales-end-of-day",
@@ -1682,6 +1786,12 @@ export const SCREEN_REGISTRY = [
     title: "Fulfillment",
     route: "/fulfillment",
     match: match_fulfillment,
+  },
+  {
+    id: "hospitality",
+    title: "Hospitality",
+    route: "/hospitality",
+    match: match_hospitality,
   },
   {
     id: "hr",

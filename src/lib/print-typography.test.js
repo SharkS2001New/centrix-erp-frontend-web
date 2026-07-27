@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSaleInvoiceHtml } from "@/components/sales/sale-invoice-print";
 import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
 import { buildLpoPrintHtml } from "@/components/lpo/lpo-print-html";
+import { serializeFooterLines } from "@/lib/footer-line-format";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   createOrgPrintPx,
@@ -116,6 +117,45 @@ describe("org print typography settings", () => {
     expect(html).toContain("Courier");
     expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal").body(10)}`);
     expect(html).not.toContain('style="font-size:14px;font-weight:700');
+  });
+
+  it("preserves footer line casing on thermal receipts", () => {
+    const footerText = serializeFooterLines(
+      [
+        {
+          text: "You were served by: {username}",
+          align: "left",
+          bold: false,
+          italic: false,
+          size: "md",
+        },
+        {
+          text: "Thankyou for shopping with us",
+          align: "left",
+          bold: false,
+          italic: false,
+          size: "md",
+        },
+      ],
+      { forEditor: true },
+    );
+
+    const html = buildSaleReceiptHtml(
+      { ...sampleSale, cashier_name: "Preview cashier" },
+      {
+        seller: { name: "Test Org" },
+        branding: { showHeader: false, display: "name", organizationName: "Test Org" },
+        documentFooterText: footerText,
+        preparedBy: "Preview cashier",
+      },
+    );
+
+    expect(html).toContain("You were served by: Preview cashier");
+    expect(html).toContain("Thankyou for shopping with us");
+    expect(html).not.toContain("YOU WERE SERVED BY");
+    expect(html).not.toContain("THANKYOU FOR SHOPPING WITH US");
+    expect(html).toMatch(/\.footer-text\s*\{[^}]*text-transform:\s*none/);
+    expect(html).not.toMatch(/\.footer-text\s*\{[^}]*text-transform:\s*uppercase/);
   });
 
   it("embeds org LPO font family from printout settings", () => {

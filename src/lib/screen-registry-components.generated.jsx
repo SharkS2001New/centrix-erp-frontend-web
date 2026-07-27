@@ -57,6 +57,9 @@ export const SCREEN_COMPONENTS = {
   "inventory-transfers-new": lazy(() =>
     import("@/components/tab-screens/inventory-transfers-new").then((m) => ({ default: m.InventoryTransfersNewScreen })),
   ),
+  "sales-credit-notes-new": lazy(() =>
+    import("@/components/tab-screens/sales-credit-notes-new").then((m) => ({ default: m.SalesCreditNotesNewScreen })),
+  ),
   "sales-legacy-returns-new": lazy(() =>
     import("@/components/tab-screens/sales-legacy-returns-new").then((m) => ({ default: m.SalesLegacyReturnsNewScreen })),
   ),
@@ -255,6 +258,30 @@ export const SCREEN_COMPONENTS = {
   "fulfillment-vehicles": lazy(() =>
     import("@/components/tab-screens/fulfillment-vehicles").then((m) => ({ default: m.FulfillmentVehiclesScreen })),
   ),
+  "hospitality-folios": lazy(() =>
+    import("@/components/tab-screens/hospitality-folios").then((m) => ({ default: m.HospitalityFoliosScreen })),
+  ),
+  "hospitality-front-desk": lazy(() =>
+    import("@/components/tab-screens/hospitality-front-desk").then((m) => ({ default: m.HospitalityFrontDeskScreen })),
+  ),
+  "hospitality-housekeeping": lazy(() =>
+    import("@/components/tab-screens/hospitality-housekeeping").then((m) => ({ default: m.HospitalityHousekeepingScreen })),
+  ),
+  "hospitality-night-audit": lazy(() =>
+    import("@/components/tab-screens/hospitality-night-audit").then((m) => ({ default: m.HospitalityNightAuditScreen })),
+  ),
+  "hospitality-outlets": lazy(() =>
+    import("@/components/tab-screens/hospitality-outlets").then((m) => ({ default: m.HospitalityOutletsScreen })),
+  ),
+  "hospitality-reservations": lazy(() =>
+    import("@/components/tab-screens/hospitality-reservations").then((m) => ({ default: m.HospitalityReservationsScreen })),
+  ),
+  "hospitality-rooms": lazy(() =>
+    import("@/components/tab-screens/hospitality-rooms").then((m) => ({ default: m.HospitalityRoomsScreen })),
+  ),
+  "hospitality-settings": lazy(() =>
+    import("@/components/tab-screens/hospitality-settings").then((m) => ({ default: m.HospitalitySettingsScreen })),
+  ),
   "hr-allowances": lazy(() =>
     import("@/components/tab-screens/hr-allowances").then((m) => ({ default: m.HrAllowancesScreen })),
   ),
@@ -347,6 +374,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "routes-new": lazy(() =>
     import("@/components/tab-screens/routes-new").then((m) => ({ default: m.RoutesNewScreen })),
+  ),
+  "sales-credit-notes": lazy(() =>
+    import("@/components/tab-screens/sales-credit-notes").then((m) => ({ default: m.SalesCreditNotesScreen })),
   ),
   "sales-end-of-day": lazy(() =>
     import("@/components/tab-screens/sales-end-of-day").then((m) => ({ default: m.SalesEndOfDayScreen })),
@@ -456,6 +486,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "fulfillment": lazy(() =>
     import("@/components/tab-screens/fulfillment").then((m) => ({ default: m.FulfillmentScreen })),
+  ),
+  "hospitality": lazy(() =>
+    import("@/components/tab-screens/hospitality").then((m) => ({ default: m.HospitalityScreen })),
   ),
   "hr": lazy(() =>
     import("@/components/tab-screens/hr").then((m) => ({ default: m.HrScreen })),

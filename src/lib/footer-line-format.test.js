@@ -12,6 +12,7 @@ describe("footer line format", () => {
       { layout: "thermal" },
     );
     expect(html).toContain('style="text-align:left');
+    expect(html).toContain("text-transform:none");
     expect(html).not.toContain('text-align:center');
   });
 
