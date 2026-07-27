@@ -20,16 +20,27 @@ internal static class WkhtmlPdfRenderer
         {
             Path.Combine(baseDir, "tools", "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
             Path.Combine(baseDir, "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "wkhtmltopdf", "bin", "wkhtmltopdf.exe"),
         };
 
-        return candidates.FirstOrDefault(File.Exists);
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        var pathExe = FindOnPath("wkhtmltopdf.exe");
+        return pathExe;
     }
 
     public static async Task RenderAsync(string htmlPath, string pdfPath, CancellationToken cancellationToken)
     {
         var executable = FindExecutable()
             ?? throw new InvalidOperationException(
-                "wkhtmltopdf is missing. Re-run BUILD-AND-INSTALL.bat as Administrator to download it.");
+                "wkhtmltopdf is missing. Install it manually, then re-run install-windows-service.ps1 or set WKHTMLTOPDF_PATH.");
 
         var args = new[]
         {
@@ -63,6 +74,33 @@ internal static class WkhtmlPdfRenderer
                 : stderr.Trim();
             throw new InvalidOperationException(detail);
         }
+    }
+
+    private static string? FindOnPath(string fileName)
+    {
+        var pathValue = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathValue))
+        {
+            return null;
+        }
+
+        foreach (var dir in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(dir.Trim(), fileName);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+            catch
+            {
+                // ignore invalid PATH entries
+            }
+        }
+
+        return null;
     }
 
     private static async Task<(int ExitCode, string StdErr)> RunProcessAsync(

@@ -14,6 +14,11 @@ Do this on a **Windows 10/11 x64** PC.
 6. Click **Yes** if Windows asks for Administrator permission
 7. Wait until it says **SUCCESS**
 
+The installer **does not download wkhtmltopdf** by default. Install it once yourself (link below), or the build will pick it up from `Program Files\wkhtmltopdf` automatically.
+
+**wkhtmltopdf (one-time, for receipt rendering):**  
+https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe
+
 If Windows blocks the script, right‑click `BUILD-AND-INSTALL.bat` → **Run as administrator**.
 
 ---
@@ -82,7 +87,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
 | `Could not render receipt HTML to PDF` | Re-run `BUILD-AND-INSTALL.bat` as Administrator. Version **0.2.3+** installs **wkhtmltopdf** for the Windows service. Check http://127.0.0.1:9247/v1/health shows `"wkhtmltopdf_available": true` |
-| wkhtmltopdf download `Not Found` | Re-download the source zip (0.2.3 uses the official `.exe` installer, not a `.zip`) |
+| wkhtmltopdf download slow / hangs | Install wkhtmltopdf manually (link above). Re-run `BUILD-AND-INSTALL.bat` - it copies from `Program Files\wkhtmltopdf` and skips download |
+| Force download during install | `.\scripts\install-windows-service.ps1 -DownloadWkhtml` |
 | Print dialog flashes / not silent | Install [SumatraPDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), pick your receipt printer in Centrix -> Local printing -> Save |
 
 ---

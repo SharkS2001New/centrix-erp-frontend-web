@@ -34,6 +34,7 @@ describe("resolvePosShortcutKey", () => {
     expect(resolvePosShortcutKey(fakeEvent({ key: "F10", code: "F10", keyCode: 121 }))).toBe("F10");
     expect(resolvePosShortcutKey(fakeEvent({ key: "F12", code: "F12", keyCode: 123 }))).toBe("F12");
     expect(resolvePosShortcutKey(fakeEvent({ key: "F2", keyCode: 113 }))).toBe("F2");
+    expect(resolvePosShortcutKey(fakeEvent({ key: "", code: "", keyCode: 121 }))).toBe("F10");
   });
 
   it("maps payment aliases when F10 is swallowed", () => {
@@ -73,6 +74,7 @@ describe("claimPosFunctionKeyEvent", () => {
 
   it("detects function key events for input passthrough", () => {
     expect(isPosFunctionKeyEvent(fakeEvent({ key: "F8", code: "F8" }))).toBe(true);
+    expect(isPosFunctionKeyEvent(fakeEvent({ key: "", code: "", keyCode: 123 }))).toBe(true);
     expect(isPosFunctionKeyEvent(fakeEvent({ key: "a", code: "KeyA" }))).toBe(false);
     expect(CENTRIX_POS_COMPLETE_PAYMENT_EVENT).toBe("centrix:pos-complete-payment");
   });

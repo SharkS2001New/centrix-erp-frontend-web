@@ -5202,13 +5202,14 @@ export function PosScreen({ standalone = false }) {
       const state = posShortcutStateRef.current;
       const actions = posShortcutActionsRef.current;
 
-      // Same event can hit window + document capture — only handle once.
+      // Same event can hit multiple capture targets — only handle once.
       if (e.__centrixPosShortcutHandled) return;
 
       const key = resolvePosShortcutKey(e);
       const isFn = isPosFunctionShortcutKey(key);
 
       if (isFn) {
+        // Claim immediately so Chromium/PWA shells cannot open DevTools (F12) or menu (F10).
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
 
@@ -5224,13 +5225,7 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        if (isModalOpen(state)) {
-          if (e.key === "Escape" && state.priceCheckerOpen) {
-            setPriceCheckerOpen(false);
-          }
-          return;
-        }
-
+        // Function keys always run — never block behind modal/dialog guards.
         runPosFunctionAction(key, state, actions);
         return;
       }
@@ -5304,15 +5299,16 @@ export function PosScreen({ standalone = false }) {
 
     // passive: false is required — otherwise preventDefault is ignored and F12 opens DevTools.
     const opts = { capture: true, passive: false };
-    window.addEventListener("keydown", onKeyDown, opts);
-    window.addEventListener("keyup", onKeyUp, opts);
-    document.addEventListener("keydown", onKeyDown, opts);
-    document.addEventListener("keyup", onKeyUp, opts);
+    const captureTargets = [document.documentElement, window, document];
+    for (const target of captureTargets) {
+      target.addEventListener("keydown", onKeyDown, opts);
+      target.addEventListener("keyup", onKeyUp, opts);
+    }
     return () => {
-      window.removeEventListener("keydown", onKeyDown, opts);
-      window.removeEventListener("keyup", onKeyUp, opts);
-      document.removeEventListener("keydown", onKeyDown, opts);
-      document.removeEventListener("keyup", onKeyUp, opts);
+      for (const target of captureTargets) {
+        target.removeEventListener("keydown", onKeyDown, opts);
+        target.removeEventListener("keyup", onKeyUp, opts);
+      }
     };
   }, []);
 
