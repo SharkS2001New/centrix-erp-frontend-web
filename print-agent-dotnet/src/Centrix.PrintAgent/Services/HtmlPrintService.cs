@@ -4,7 +4,7 @@ namespace Centrix.PrintAgent.Services;
 
 /// <summary>
 /// Renders receipt HTML and sends it to a Windows printer.
-/// Prefers WebView2 for HTML to PDF, then Edge/Chrome headless fallbacks.
+/// Prefers wkhtmltopdf (Windows service safe), then WebView2 or Edge/Chrome when interactive.
 /// </summary>
 public sealed class HtmlPrintService
 {
@@ -99,19 +99,44 @@ public sealed class HtmlPrintService
         CancellationToken cancellationToken)
     {
         var errors = new List<string>();
-        var profileDir = Path.Combine(workDir, "webview2-profile");
 
-        try
+        if (WkhtmlPdfRenderer.FindExecutable() is not null)
         {
-            await WebView2PdfRenderer.RenderAsync(html, pdfPath, profileDir, cancellationToken);
-            if (File.Exists(pdfPath))
+            try
             {
-                return;
+                TryDelete(pdfPath);
+                await WkhtmlPdfRenderer.RenderAsync(htmlPath, pdfPath, cancellationToken);
+                if (File.Exists(pdfPath))
+                {
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"wkhtmltopdf: {ex.Message}");
             }
         }
-        catch (Exception ex)
+        else
         {
-            errors.Add($"WebView2: {ex.Message}");
+            errors.Add("wkhtmltopdf: not installed (re-run BUILD-AND-INSTALL.bat)");
+        }
+
+        if (CanUseInteractiveRenderer())
+        {
+            var profileDir = Path.Combine(workDir, "webview2-profile");
+            try
+            {
+                TryDelete(pdfPath);
+                await WebView2PdfRenderer.RenderAsync(html, pdfPath, profileDir, cancellationToken);
+                if (File.Exists(pdfPath))
+                {
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"WebView2: {ex.Message}");
+            }
         }
 
         var pdfPathNorm = ToForwardSlashPath(Path.GetFullPath(pdfPath));
@@ -198,12 +223,15 @@ public sealed class HtmlPrintService
             }
         }
 
-        var joined = errors.Count > 0 ? string.Join(" | ", errors.Take(4)) : "unknown renderer error";
+        var joined = errors.Count > 0 ? string.Join(" | ", errors.Take(5)) : "unknown renderer error";
         throw new InvalidOperationException(
             "Could not render receipt HTML to PDF. " +
             joined +
-            " Ensure Microsoft Edge is installed and the Print Agent is running while you are logged in to this till.");
+            " Re-run BUILD-AND-INSTALL.bat as Administrator (installs wkhtmltopdf for the Windows service).");
     }
+
+    private static bool CanUseInteractiveRenderer() =>
+        Environment.UserInteractive || Environment.GetEnvironmentVariable("CENTRIX_PRINT_AGENT_FORCE_WEBVIEW2") == "1";
 
     private static async Task PrintPdfAsync(string pdfPath, string? printerName, CancellationToken cancellationToken)
     {

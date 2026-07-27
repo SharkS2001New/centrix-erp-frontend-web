@@ -228,7 +228,7 @@ export function buildSaleDocumentLineRows(
           linePrintOptions,
         );
         const qtyCell = packageLabel
-          ? `<span class="qty-val">${escapeHtml(quantity)}</span><span class="qty-pkg">${escapeHtml(packageLabel)}</span>`
+          ? `${escapeHtml(quantity)} ${escapeHtml(packageLabel)}`
           : escapeHtml(quantity);
 
         if (showDiscountColumn) {

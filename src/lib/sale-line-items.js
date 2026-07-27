@@ -414,7 +414,7 @@ export function saleLineQtyLabel(line, uomById, { legacyPrint = false, sale = nu
   return formatMixedStockDisplay(line?.quantity, 1).text;
 }
 
-/** Thermal receipt — quantity count and packaging label as separate right-aligned columns. */
+/** Thermal receipt — quantity count and packaging label for a single QTY cell. */
 export function saleLinePrintQtyPackage(line, uomById, { legacyPrint = false, sale = null } = {}) {
   if (isLegacySaleLine(line, { legacyPrint, sale })) {
     return legacySaleLinePrintQtyPackage(line);

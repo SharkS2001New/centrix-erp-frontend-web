@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 const string DefaultHost = "127.0.0.1";
 const int DefaultPort = 9247;
-const string Version = "0.2.1";
+const string Version = "0.2.2";
 
 var host = Environment.GetEnvironmentVariable("PRINT_AGENT_HOST") ?? DefaultHost;
 var port = int.TryParse(Environment.GetEnvironmentVariable("PRINT_AGENT_PORT"), out var parsedPort)
@@ -51,6 +51,8 @@ app.MapGet("/v1/health", async (PrinterDiscovery printers) =>
         ok = true,
         version = Version,
         platform = "win32",
+        running_as_service = !Environment.UserInteractive,
+        wkhtmltopdf_available = WkhtmlPdfRenderer.FindExecutable() is not null,
         default_printer = defaultPrinter,
         printers = list,
     });

@@ -288,9 +288,7 @@ export function buildSaleReceiptHtml(
     .table th.desc, .table td.desc { padding-right: 1px; word-break: break-word; overflow-wrap: anywhere; }
     .table tbody tr { border-top: 1px dashed #000; }
     .table td { padding: 2px 0; vertical-align: top; }
-    .table td.qty { text-align: right; white-space: normal; line-height: 1.15; font-size: ${px(8)}; padding-left: 0; padding-right: 0; }
-    .table td.qty .qty-val { display: block; }
-    .table td.qty .qty-pkg { display: block; font-size: 0.92em; line-height: 1.1; }
+    .table td.qty { text-align: right; white-space: nowrap; line-height: 1.15; font-size: ${px(8)}; padding-left: 0; padding-right: 0; }
     .table td.price,
     .table td.disc,
     .table td.amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0; padding-right: 0; }
@@ -338,7 +336,7 @@ export function buildSaleReceiptHtml(
   <div class="receipt">
     ${orgHeader}
     ${branchName ? `<div class="company-meta">${escapeHtml(branchName)}</div>` : ""}
-    ${storeAddress ? `<div class="company-meta">${escapeHtml(storeAddress)}</div>` : ""}
+    ${storeAddress ? `<div class="company-meta">Address: ${escapeHtml(storeAddress)}</div>` : ""}
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">

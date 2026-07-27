@@ -67,8 +67,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "Step 2/2 - Installing print agent (user session)..." -ForegroundColor Cyan
-& (Join-Path $PSScriptRoot "install-user-session.ps1")
+Write-Host "Step 2/2 - Installing Windows service..." -ForegroundColor Cyan
+& (Join-Path $PSScriptRoot "install-windows-service.ps1")
 if ($LASTEXITCODE -ne 0) {
     Fail "Install failed. Scroll up for the service error."
 }
