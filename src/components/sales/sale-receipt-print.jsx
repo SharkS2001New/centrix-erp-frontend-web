@@ -240,7 +240,7 @@ export function buildSaleReceiptHtml(
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; word-break: break-word; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; table-layout: fixed; }
-    .table thead th { padding: 3px 1px; border-bottom: 1px solid #000; font-weight: 700; text-align: left; font-size: ${px(8)}; }
+    .table thead th { padding: 3px 1px; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(8)}; }
     .table thead th.qty,
     .table thead th.price,
     .table thead th.disc,
@@ -272,7 +272,7 @@ export function buildSaleReceiptHtml(
     }
     .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; }
     .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; min-width: 4.5rem; justify-self: end; }
-    .amount-line-grand { font-size: ${px(11)}; font-weight: 700; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
+    .amount-line-grand { font-size: ${px(11)}; font-weight: 700; margin-top: 0; padding-top: 0; }
     .amount-line-grand .amount-value { font-weight: 700; }
     .payment-title { text-align: left; font-weight: 700; letter-spacing: .04em; margin: 0 0 6px; font-size: ${px(9)}; }
     .pay-instructions { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #000; font-size: ${px(9)}; text-align: left; }

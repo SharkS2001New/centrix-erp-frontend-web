@@ -119,6 +119,18 @@ describe("org print typography settings", () => {
     expect(html).not.toContain('style="font-size:14px;font-weight:700');
   });
 
+  it("uses dotted separators instead of solid lines before totals and under column headers", () => {
+    const html = buildSaleReceiptHtml(sampleSale, {
+      seller: { name: "Test Org" },
+      branding: { showHeader: false, display: "name", organizationName: "Test Org" },
+    });
+
+    expect(html).not.toMatch(/\.amount-line-grand\s*\{[^}]*border-top:\s*1px solid/);
+    expect(html).not.toMatch(/\.table thead th\s*\{[^}]*border-bottom:\s*1px solid/);
+    expect(html).toContain(".divider { border-top: 1px dashed #000;");
+    expect(html).toContain(".table tbody tr { border-top: 1px dashed #000; }");
+  });
+
   it("preserves footer line casing on thermal receipts", () => {
     const footerText = serializeFooterLines(
       [
