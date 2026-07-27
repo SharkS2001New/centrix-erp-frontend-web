@@ -19,6 +19,8 @@ The installer **does not download wkhtmltopdf** by default. Install it once your
 **wkhtmltopdf (one-time, for receipt rendering):**  
 https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe
 
+**SumatraPDF (silent PDF to printer):** installed automatically by the build, or run `scripts\configure-sumatra.ps1` as Administrator on an existing install.
+
 If Windows blocks the script, right‑click `BUILD-AND-INSTALL.bat` → **Run as administrator**.
 
 ---
@@ -86,7 +88,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
-| `Could not render receipt HTML to PDF` | Re-run `BUILD-AND-INSTALL.bat` as Administrator. Version **0.2.3+** installs **wkhtmltopdf** for the Windows service. Check http://127.0.0.1:9247/v1/health shows `"wkhtmltopdf_available": true` |
+| `Could not render receipt HTML to PDF` | Install wkhtmltopdf manually (link above), re-run install. Health must show `"wkhtmltopdf_available": true` |
+| Test sent but nothing prints | Run `.\scripts\configure-sumatra.ps1` as Administrator. Health must show `"sumatra_available": true`. USB printers: service Log On -> this Windows user |
+| Configure Sumatra only | `.\scripts\configure-sumatra.ps1` (bundles portable SumatraPDF + sets SUMATRA_PATH on the service) |
 | wkhtmltopdf download slow / hangs | Install wkhtmltopdf manually (link above). Re-run `BUILD-AND-INSTALL.bat` - it copies from `Program Files\wkhtmltopdf` and skips download |
 | Force download during install | `.\scripts\install-windows-service.ps1 -DownloadWkhtml` |
 | Print dialog flashes / not silent | Install [SumatraPDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), pick your receipt printer in Centrix -> Local printing -> Save |

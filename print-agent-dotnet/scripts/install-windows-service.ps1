@@ -4,10 +4,13 @@ param(
     [string]$ServiceName = "CentrixPrintAgent",
     [string]$TaskName = "CentrixPrintAgent",
     [string]$DisplayName = "Centrix Print Agent",
-    [switch]$DownloadWkhtml
+    [switch]$DownloadWkhtml,
+    [switch]$SkipSumatraDownload
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "sumatra-setup.ps1")
 
 $sourceDir = Split-Path -Parent $PSScriptRoot
 $publishDir = Join-Path $sourceDir "publish"
@@ -134,6 +137,17 @@ $installedExe = Join-Path $InstallDir "Centrix.PrintAgent.exe"
 
 Ensure-WkhtmlTopdf -TargetInstallDir $InstallDir | Out-Null
 
+$sumatraPath = Ensure-SumatraPdf -TargetInstallDir $InstallDir -SkipDownload:$SkipSumatraDownload
+$wkhtmlPath = Join-Path $InstallDir "tools\wkhtmltopdf\bin\wkhtmltopdf.exe"
+if (-not (Test-Path $wkhtmlPath)) {
+    $wkhtmlPath = Find-WkhtmlTopdfSystemBin
+    if ($wkhtmlPath) {
+        $wkhtmlPath = Join-Path $wkhtmlPath "wkhtmltopdf.exe"
+    } else {
+        $wkhtmlPath = $null
+    }
+}
+
 $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existingTask) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
@@ -158,11 +172,20 @@ New-Service `
     -Description "Centrix ERP silent receipt printing for POS tills (http://127.0.0.1:9247)" `
     -StartupType Automatic | Out-Null
 
+Set-PrintAgentServiceEnvironment `
+    -ServiceName $ServiceName `
+    -InstallDir $InstallDir `
+    -SumatraPath $sumatraPath `
+    -WkhtmlPath $(if (Test-Path $wkhtmlPath) { $wkhtmlPath } else { $null })
+
 Start-Service -Name $ServiceName
 
 Write-Host ""
 Write-Host "Centrix Print Agent installed and started as a Windows service." -ForegroundColor Green
 Write-Host "Health check: http://127.0.0.1:9247/v1/health"
-Write-Host "Install SumatraPDF for fully silent thermal printing:"
-Write-Host "  https://www.sumatrapdfreader.org/download-free-pdf-viewer"
+if (-not $sumatraPath) {
+    Write-Host "SumatraPDF is missing. Run scripts\configure-sumatra.ps1 as Administrator." -ForegroundColor Yellow
+} else {
+    Write-Host ("SumatraPDF: {0}" -f $sumatraPath)
+}
 Write-Host "In Centrix: Administration -> Local printing -> Centrix Print Agent -> Test connection -> Save."

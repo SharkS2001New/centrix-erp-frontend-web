@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 const string DefaultHost = "127.0.0.1";
 const int DefaultPort = 9247;
-const string Version = "0.2.4";
+const string Version = "0.2.6";
 
 var host = Environment.GetEnvironmentVariable("PRINT_AGENT_HOST") ?? DefaultHost;
 var port = int.TryParse(Environment.GetEnvironmentVariable("PRINT_AGENT_PORT"), out var parsedPort)
@@ -53,6 +53,8 @@ app.MapGet("/v1/health", async (PrinterDiscovery printers) =>
         platform = "win32",
         running_as_service = !Environment.UserInteractive,
         wkhtmltopdf_available = WkhtmlPdfRenderer.FindExecutable() is not null,
+        sumatra_available = HtmlPrintService.IsSumatraAvailable(),
+        sumatra_path = HtmlPrintService.SumatraExecutablePath(),
         default_printer = defaultPrinter,
         printers = list,
     });
@@ -70,14 +72,14 @@ app.MapPost("/v1/print", async (PrintRequest request, HtmlPrintService printer, 
 
     try
     {
-        var jobId = await printer.PrintHtmlAsync(
+        var (jobId, printerUsed) = await printer.PrintHtmlAsync(
             request.Html,
             request.Printer,
             copies,
             documentId,
             ct);
 
-        return Results.Json(new { ok = true, job_id = jobId });
+        return Results.Json(new { ok = true, job_id = jobId, printer = printerUsed });
     }
     catch (Exception ex)
     {

@@ -535,16 +535,9 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                     </p>
                   </li>
                   <li>
-                    Optional: install{" "}
-                    <a
-                      href="https://www.sumatrapdfreader.org/"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline"
-                    >
-                      SumatraPDF
-                    </a>{" "}
-                    for fully silent thermal printing.
+                    SumatraPDF (silent printing) is configured automatically during install. If test print does not
+                    reach the printer, run <code className="text-[11px]">scripts\configure-sumatra.ps1</code> as
+                    Administrator on the till PC.
                   </li>
                   <li>Back here: Test connection → pick printer → Save.</li>
                 </ol>

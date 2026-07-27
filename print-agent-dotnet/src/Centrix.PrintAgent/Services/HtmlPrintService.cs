@@ -16,7 +16,7 @@ public sealed class HtmlPrintService
         _printers = printers;
     }
 
-    public async Task<string> PrintHtmlAsync(
+    public async Task<(string JobId, string? Printer)> PrintHtmlAsync(
         string html,
         string? printerName,
         int copies,
@@ -47,7 +47,7 @@ public sealed class HtmlPrintService
                     await PrintPdfAsync(pdfPath, targetPrinter, cancellationToken);
                 }
 
-                return $"{documentId}-{stamp}";
+                return ($"{documentId}-{stamp}", targetPrinter);
             }
             finally
             {
@@ -212,35 +212,30 @@ public sealed class HtmlPrintService
             " Re-run BUILD-AND-INSTALL.bat as Administrator (installs wkhtmltopdf for the Windows service).");
     }
 
+    public static bool IsSumatraAvailable() => FindSumatraExecutable() is not null;
+
+    public static string? SumatraExecutablePath() => FindSumatraExecutable();
+
     private static async Task PrintPdfAsync(string pdfPath, string? printerName, CancellationToken cancellationToken)
     {
-        var sumatra = FindSumatraExecutable();
-        if (sumatra is not null)
-        {
-            var args = string.IsNullOrWhiteSpace(printerName)
-                ? new[] { "-print-to-default", "-silent", pdfPath }
-                : new[] { "-print-to", printerName, "-silent", pdfPath };
-
-            var (exitCode, _) = await RunProcessAsync(sumatra, args, cancellationToken);
-            if (exitCode == 0)
-            {
-                return;
-            }
-        }
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = pdfPath,
-            Verb = "Print",
-            UseShellExecute = true,
-            CreateNoWindow = true,
-        };
-
-        using var process = Process.Start(psi)
+        var sumatra = FindSumatraExecutable()
             ?? throw new InvalidOperationException(
-                "Could not start the system print dialog for the PDF. Install SumatraPDF for silent printing: https://www.sumatrapdfreader.org/");
+                "SumatraPDF is required to print from the Windows service. Run scripts\\configure-sumatra.ps1 as Administrator, or install from https://www.sumatrapdfreader.org/download-free-pdf-viewer");
 
-        await process.WaitForExitAsync(cancellationToken);
+        var args = string.IsNullOrWhiteSpace(printerName)
+            ? new[] { "-print-to-default", "-silent", "-exit-when-done", pdfPath }
+            : new[] { "-print-to", printerName, "-silent", "-exit-when-done", pdfPath };
+
+        var (exitCode, stderr) = await RunProcessAsync(sumatra, args, cancellationToken);
+        if (exitCode != 0)
+        {
+            var target = string.IsNullOrWhiteSpace(printerName) ? "the Windows default printer" : $"\"{printerName}\"";
+            var detail = string.IsNullOrWhiteSpace(stderr) ? $"SumatraPDF exit code {exitCode}." : stderr.Trim();
+            throw new InvalidOperationException(
+                $"Could not print to {target}. {detail} " +
+                "Check the printer name in Centrix Local printing, set the Windows default printer, " +
+                "or in services.msc set Centrix Print Agent to log on as this Windows user (USB receipt printers often need that).");
+        }
     }
 
     private static string? FindEdgeExecutable()
@@ -273,8 +268,10 @@ public sealed class HtmlPrintService
             return env;
         }
 
+        var baseDir = AppContext.BaseDirectory;
         var candidates = new[]
         {
+            Path.Combine(baseDir, "tools", "SumatraPDF", "SumatraPDF.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SumatraPDF", "SumatraPDF.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "SumatraPDF", "SumatraPDF.exe"),
         };
