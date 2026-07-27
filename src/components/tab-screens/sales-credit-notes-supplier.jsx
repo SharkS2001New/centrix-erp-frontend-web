@@ -1,8 +1,7 @@
 "use client";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { SalesCreditNotesSupplierScreen } from "@/components/tab-screens/sales-credit-notes-supplier";
+import { SalesSupplierCreditNotesScreen } from "@/components/tab-screens/sales-supplier-credit-notes";
 
 export function SalesCreditNotesSupplierScreen() {
-  return <SalesCreditNotesSupplierScreen />;
+  return <SalesSupplierCreditNotesScreen />;
 }

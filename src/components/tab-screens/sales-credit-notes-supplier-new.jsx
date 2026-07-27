@@ -1,7 +1,7 @@
 "use client";
 
-import { SalesCreditNotesSupplierNewScreen } from "@/components/tab-screens/sales-credit-notes-supplier-new";
+import { SalesSupplierCreditNotesNewScreen } from "@/components/tab-screens/sales-supplier-credit-notes-new";
 
 export function SalesCreditNotesSupplierNewScreen() {
-  return <SalesCreditNotesSupplierNewScreen />;
+  return <SalesSupplierCreditNotesNewScreen />;
 }
