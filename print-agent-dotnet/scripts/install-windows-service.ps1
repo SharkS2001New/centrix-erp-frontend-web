@@ -17,6 +17,22 @@ if (-not (Test-Path $exe)) {
     exit 1
 }
 
+function Find-WkhtmlTopdfInstallBin {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "wkhtmltopdf\bin"),
+        (Join-Path ${env:ProgramFiles(x86)} "wkhtmltopdf\bin")
+    )
+
+    foreach ($candidate in $candidates) {
+        $exePath = Join-Path $candidate "wkhtmltopdf.exe"
+        if (Test-Path $exePath) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 function Ensure-WkhtmlTopdf {
     param([string]$TargetInstallDir)
 
@@ -28,33 +44,33 @@ function Ensure-WkhtmlTopdf {
     }
 
     $toolsDir = Join-Path $TargetInstallDir "tools"
-    $zipPath = Join-Path $toolsDir "wkhtmltopdf.zip"
-    $extractDir = Join-Path $toolsDir "wkhtmltopdf-extract"
-    $url = "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.zip"
+    $installerPath = Join-Path $toolsDir "wkhtmltox-installer.exe"
+    $url = "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe"
 
     New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
     Write-Host "Downloading wkhtmltopdf (headless HTML to PDF for Windows service)..."
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+    Invoke-WebRequest -Uri $url -OutFile $installerPath -UseBasicParsing
 
-    if (Test-Path $extractDir) {
-        Remove-Item -Path $extractDir -Recurse -Force
+    Write-Host "Installing wkhtmltopdf silently..."
+    $installProcess = Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait -PassThru
+    if ($installProcess.ExitCode -ne 0) {
+        throw ("wkhtmltopdf installer failed with exit code {0}." -f $installProcess.ExitCode)
     }
-    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
-    $found = Get-ChildItem -Path $extractDir -Recurse -Filter "wkhtmltopdf.exe" | Select-Object -First 1
-    if (-not $found) {
-        throw "wkhtmltopdf.exe was not found inside the downloaded archive."
+    Start-Sleep -Seconds 2
+    $sourceBin = Find-WkhtmlTopdfInstallBin
+    if (-not $sourceBin) {
+        throw "wkhtmltopdf installed but wkhtmltopdf.exe was not found under Program Files."
     }
 
     New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-    Copy-Item -Path (Join-Path $found.DirectoryName "*") -Destination $binDir -Force
+    Copy-Item -Path (Join-Path $sourceBin "*") -Destination $binDir -Force
 
-    Remove-Item -Path $zipPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
 
     if (-not (Test-Path $wkhtmlExe)) {
-        throw "Failed to install wkhtmltopdf."
+        throw "Failed to copy wkhtmltopdf into the Print Agent folder."
     }
 
     Write-Host ("wkhtmltopdf installed: {0}" -f $wkhtmlExe)

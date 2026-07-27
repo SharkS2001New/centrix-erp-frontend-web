@@ -81,7 +81,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
-| `Could not render receipt HTML to PDF` | Re-run `BUILD-AND-INSTALL.bat` as Administrator. Version **0.2.2+** installs **wkhtmltopdf** for the Windows service. Check http://127.0.0.1:9247/v1/health shows `"wkhtmltopdf_available": true` |
+| `Could not render receipt HTML to PDF` | Re-run `BUILD-AND-INSTALL.bat` as Administrator. Version **0.2.3+** installs **wkhtmltopdf** for the Windows service. Check http://127.0.0.1:9247/v1/health shows `"wkhtmltopdf_available": true` |
+| wkhtmltopdf download `Not Found` | Re-download the source zip (0.2.3 uses the official `.exe` installer, not a `.zip`) |
 | Print dialog flashes / not silent | Install [SumatraPDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), pick your receipt printer in Centrix -> Local printing -> Save |
 
 ---
