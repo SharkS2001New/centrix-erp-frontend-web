@@ -97,6 +97,15 @@ function wrapSummaryTable(rows) {
   </table>`;
 }
 
+/** VAT RATE / VAT CHARGED needs a wider value column than totals (80/20). */
+function wrapVatSummaryTable(rows) {
+  if (!rows) return "";
+  return `<table class="summary-table vat-table">
+    <colgroup><col class="col-vat-rate" /><col class="col-vat-amt" /></colgroup>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
 function buildReceiptFooterHtml(documentFooterText, organizationName, context = {}, salesSettings = null) {
   const footerSettings = salesDocumentFooterSettings(
     documentFooterText ? { print_footer_receipt: documentFooterText } : {},
@@ -237,13 +246,13 @@ export function buildSaleReceiptHtml(
   const vatHtml = (() => {
     const groups = buildThermalVatChargeGroups(items, { totalVat: vatAmount });
     const rows = [
-      `<tr><td class="amount-label">VAT RATE</td><td class="amount-label amount-value">VAT CHARGED</td></tr>`,
+      `<tr><td class="amount-label">VAT RATE</td><td class="amount-label vat-charged-label">VAT CHARGED</td></tr>`,
       ...groups.map(
         (group) =>
           `<tr><td>${escapeHtml(group.label)}</td><td class="amount-value">${escapeHtml(formatThermalPrintAmount(group.amount))}</td></tr>`,
       ),
     ].join("");
-    return `<div class="divider"></div>${wrapSummaryTable(rows)}<p class="vat-note">Prices inclusive of VAT where applicable</p>`;
+    return `<div class="divider"></div>${wrapVatSummaryTable(rows)}<p class="vat-note">Prices inclusive of VAT where applicable</p>`;
   })();
 
   const tableColgroup = showDiscountColumn
@@ -257,7 +266,7 @@ export function buildSaleReceiptHtml(
   <style>
     @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
-    html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
     .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
@@ -294,9 +303,14 @@ export function buildSaleReceiptHtml(
     /* Align values under the AMOUNT column (ITEMS 45% + QTY 17.5% + PRICE 17.5% = 80%). */
     .summary-table col.col-label { width: 80%; }
     .summary-table col.col-value { width: 20%; }
+    .summary-table.vat-table col.col-vat-rate { width: 48%; }
+    .summary-table.vat-table col.col-vat-amt { width: 52%; }
     .summary-table td { padding: 2px 0; vertical-align: top; }
     .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .summary-table.vat-table .amount-label,
+    .summary-table.vat-table .vat-charged-label { font-size: ${px(8)}; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+    .summary-table.vat-table .amount-value { text-align: left; }
     .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
     .vat-note { margin: 4px 0 0; font-size: 0.85em; line-height: 1.35; }
@@ -312,7 +326,7 @@ export function buildSaleReceiptHtml(
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; word-break: break-word; text-transform: none; }
     .center { text-align: center; }
     @media print {
-      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; margin: 0 !important; padding: 0 !important; }
+      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
       body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; }
       body { font-size: ${px(10, true)}; }
       .receipt { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
@@ -324,6 +338,8 @@ export function buildSaleReceiptHtml(
       .table { font-size: ${px(9, true)}; }
       .table thead th { font-size: ${px(8, true)}; }
       .summary-table { font-size: ${px(9, true)}; }
+      .summary-table.vat-table .amount-label,
+      .summary-table.vat-table .vat-charged-label { font-size: ${px(8, true)}; }
       .summary-table tr.amount-line-grand td { font-size: ${px(11, true)}; }
       .payment-title, .pay-instructions { font-size: ${px(9, true)}; }
       .pay-instructions .pay-note { font-size: ${px(8, true)}; }

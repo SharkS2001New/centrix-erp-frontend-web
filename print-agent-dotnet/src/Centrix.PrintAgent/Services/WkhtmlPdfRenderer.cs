@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Centrix.PrintAgent.Services;
 
@@ -42,6 +43,11 @@ internal static class WkhtmlPdfRenderer
             ?? throw new InvalidOperationException(
                 "wkhtmltopdf is missing. Install it manually, then re-run install-windows-service.ps1 or set WKHTMLTOPDF_PATH.");
 
+        // Fixed tall pages (e.g. 300mm) make thermal printers feed a huge blank before/after content.
+        // Size the PDF page to roughly match receipt content so Sumatra only advances that much paper.
+        var html = await File.ReadAllTextAsync(htmlPath, cancellationToken);
+        var pageHeightMm = EstimateThermalPageHeightMm(html);
+
         var args = new[]
         {
             "--quiet",
@@ -51,9 +57,9 @@ internal static class WkhtmlPdfRenderer
             "--page-width",
             "80mm",
             "--page-height",
-            "300mm",
+            $"{pageHeightMm}mm",
             "--margin-top",
-            "2mm",
+            "0",
             "--margin-bottom",
             "2mm",
             "--margin-left",
@@ -74,6 +80,40 @@ internal static class WkhtmlPdfRenderer
                 : stderr.Trim();
             throw new InvalidOperationException(detail);
         }
+    }
+
+    /// <summary>
+    /// Rough mm height for an 80mm thermal receipt. Slightly oversizes to avoid clipping.
+    /// </summary>
+    internal static int EstimateThermalPageHeightMm(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return 80;
+        }
+
+        static int Count(string source, string token) =>
+            Regex.Matches(source, token, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Count;
+
+        var trCount = Count(html, "<tr\\b");
+        var divCount = Count(html, "<div\\b");
+        var pCount = Count(html, "<p\\b");
+        var brCount = Count(html, "<br\\b");
+        var imgCount = Count(html, "<img\\b");
+        var preCount = Count(html, "<pre\\b");
+
+        // Header/meta ~30mm, rows ~6mm, misc blocks ~2–4mm, QR/images ~28mm each.
+        var mm = 30
+            + trCount * 6
+            + Math.Max(0, divCount - 8) * 2
+            + pCount * 4
+            + brCount * 3
+            + imgCount * 28
+            + preCount * 20;
+
+        // Small buffer so bottom lines (footer / powered-by) are not clipped.
+        mm = (int)Math.Ceiling(mm * 1.06) + 6;
+        return Math.Clamp(mm, 55, 500);
     }
 
     private static string? FindOnPath(string fileName)
