@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
@@ -43,7 +43,8 @@ function assignRef(ref, value) {
   }
 }
 
-export function PosProductSearch({
+export const PosProductSearch = forwardRef(function PosProductSearch(
+  {
   query,
   onQueryChange,
   results,
@@ -62,7 +63,9 @@ export function PosProductSearch({
   inputRef = null,
   /** "classic" = embedded column dropdown (no label, Light Stores columns). */
   variant = "modern",
-}) {
+},
+  ref,
+) {
   const listId = useId();
   const rootRef = useRef(null);
   const listRef = useRef(null);
@@ -72,6 +75,24 @@ export function PosProductSearch({
   const [highlight, setHighlight] = useState(-1);
   const [menuBox, setMenuBox] = useState(null);
   const classic = variant === "classic";
+
+  useImperativeHandle(ref, () => ({
+    closeDropdown() {
+      setOpen(false);
+      setHighlight(-1);
+    },
+  }));
+
+  useEffect(() => {
+    if (!classic) return undefined;
+    function onFunctionKey(e) {
+      if (!/^F([1-9]|1[0-2])$/i.test(e.key)) return;
+      setOpen(false);
+      setHighlight(-1);
+    }
+    window.addEventListener("keydown", onFunctionKey, true);
+    return () => window.removeEventListener("keydown", onFunctionKey, true);
+  }, [classic]);
 
   // Keep parent searchInputRef in sync without mutating props during render.
   useLayoutEffect(() => {
@@ -145,9 +166,8 @@ export function PosProductSearch({
 
   function pick(product) {
     onSelect?.(product);
-    // Classic: clear scan box after pick; parent parks the product and focuses qty.
+    // Classic: parent parks the product on the entry row and sets the scan field to item code.
     if (classic) {
-      onQueryChange("");
       setOpen(false);
       setHighlight(-1);
       return;
@@ -446,4 +466,4 @@ export function PosProductSearch({
       ) : null}
     </div>
   );
-}
+});

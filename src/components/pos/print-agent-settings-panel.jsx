@@ -505,13 +505,13 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                 <code className="text-[11px]">print-agent-dotnet</code> folder included.
               </p>
             ) : (
-              <div className="theme-subtext mt-3 space-y-2 text-xs">
+                              <div className="theme-subtext mt-3 space-y-2 text-xs">
                 <p className="theme-heading text-xs font-medium text-[var(--theme-heading)]">
                   How to build (Windows PC)
                 </p>
                 <ol className="list-decimal space-y-1.5 pl-4">
                   <li>
-                    Download the build package above and unzip it → folder{" "}
+                    Click <strong>Download build package (source)</strong> and unzip it. Open the folder{" "}
                     <code className="text-[11px]">print-agent-dotnet</code>.
                   </li>
                   <li>
@@ -523,19 +523,16 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                       className="underline"
                     >
                       .NET 8 SDK (Windows x64)
-                    </a>
-                    , then open a <strong>new</strong> PowerShell and run{" "}
-                    <code className="text-[11px]">dotnet --version</code>.
+                    </a>{" "}
+                    once, then close all terminals.
                   </li>
                   <li>
-                    In PowerShell:
-                    <pre className="mt-1 overflow-x-auto rounded border border-[var(--theme-border)] bg-white/70 p-2 text-[11px] leading-5">
-{`cd path\\to\\print-agent-dotnet
-.\\scripts\\publish.ps1
-.\\scripts\\install-windows-service.ps1`}
-                    </pre>
-                    Use Administrator for the install script. Full rules are in{" "}
-                    <code className="text-[11px]">BUILD.md</code> inside the zip.
+                    <strong>Double‑click <code className="text-[11px]">BUILD-AND-INSTALL.bat</code></strong> and
+                    allow Administrator. Wait for <strong>SUCCESS</strong>.
+                    <p className="mt-1">
+                      Do <strong>not</strong> type <code className="text-[11px]">cd path\to\...</code> — that was
+                      only a placeholder. The bat file runs from the unzipped folder.
+                    </p>
                   </li>
                   <li>
                     Optional: install{" "}
@@ -551,6 +548,9 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                   </li>
                   <li>Back here: Test connection → pick printer → Save.</li>
                 </ol>
+                <p>
+                  Full rules are in <code className="text-[11px]">BUILD.md</code> inside the zip.
+                </p>
                 {!dotnetAvailable ? (
                   <p>
                     After you build once, put{" "}

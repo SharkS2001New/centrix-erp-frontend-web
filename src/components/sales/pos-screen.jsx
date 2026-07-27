@@ -406,6 +406,7 @@ export function PosScreen({ standalone = false }) {
   const discountInputRef = useRef(null);
   const unitPriceRef = useRef(null);
   const searchInputRef = useRef(null);
+  const productSearchRef = useRef(null);
   const focusSearchAfterAdd = useRef(false);
   const appliedRouteMarkupRef = useRef(0);
   const [sellFromShop, setSellFromShop] = useState(true);
@@ -1572,6 +1573,18 @@ export function PosScreen({ standalone = false }) {
     return run;
   }
 
+  function closeProductSearchDropdown() {
+    productSearchRef.current?.closeDropdown?.();
+  }
+
+  function focusClassicProductSearch() {
+    closeProductSearchDropdown();
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select?.();
+    });
+  }
+
   function clearClassicEntryFields() {
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
@@ -1582,6 +1595,7 @@ export function PosScreen({ standalone = false }) {
     setEditingLineId(null);
     setEditingLineRef(null);
     setSelectedLineId(null);
+    closeProductSearchDropdown();
     focusSearchAfterAdd.current = true;
     window.requestAnimationFrame(() => {
       if (!focusSearchAfterAdd.current) return;
@@ -2464,8 +2478,9 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    // Classic search pick: park on entry row and focus qty so cashier can type quantity.
+    // Classic search/scan pick: park on entry row, show item code, focus qty.
     if (classicLayout) {
+      setSearchQuery(product.product_code ?? "");
       setStatusMessage(`Enter quantity for ${product.product_code}, then press Enter.`);
     }
   }
@@ -4346,13 +4361,13 @@ export function PosScreen({ standalone = false }) {
       } else {
         setStatusMessage(null);
       }
-      window.requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-      });
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to start next order");
     } finally {
       setBusy(false);
+      if (classicLayout) {
+        focusClassicProductSearch();
+      }
     }
   }
 
@@ -4463,10 +4478,7 @@ export function PosScreen({ standalone = false }) {
 
   const focusProductSearch = useCallback(() => {
     clearLineEntry();
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-      searchInputRef.current?.select?.();
-    });
+    focusClassicProductSearch();
   }, []);
 
   /** F8 / empty-space double-click: clear workspace and focus scan for a new order. */
@@ -4619,6 +4631,9 @@ export function PosScreen({ standalone = false }) {
       const message = `Reprinting order #${sale.order_num}.`;
       if (standalone) notifySuccess(message);
       else setStatusMessage(message);
+      if (classicLayout) {
+        focusClassicProductSearch();
+      }
     } catch (e) {
       setReceiptPrintStatus("failed");
       const message = e instanceof Error ? e.message : "Receipt print failed";
@@ -5060,6 +5075,7 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     setPaymentError(null);
+    closeProductSearchDropdown();
     setPaymentOpen(true);
   }
 
@@ -5097,6 +5113,7 @@ export function PosScreen({ standalone = false }) {
     toggleRetailWholesaleMode,
     cancelReplaceCartLine,
     focusProductSearch,
+    closeProductSearchDropdown,
     handleNewOrder,
     startFreshWorkspace,
     handleRefresh,
@@ -5143,6 +5160,7 @@ export function PosScreen({ standalone = false }) {
     };
 
     function runPosFunctionAction(key, state, actions) {
+      actions.closeProductSearchDropdown?.();
       if (key === "F2") {
         // Classic: F2 = find/focus search. Retail/wholesale is F12.
         // Modern standalone: F2 can also toggle when retail pricing is on.
@@ -5747,6 +5765,7 @@ export function PosScreen({ standalone = false }) {
             <div className="col-span-2 space-y-4">
               {classicLayout ? null : (
                 <PosProductSearch
+                  ref={productSearchRef}
                   inputRef={searchInputRef}
                   query={searchQuery}
                   onQueryChange={setSearchQuery}
@@ -6190,6 +6209,7 @@ export function PosScreen({ standalone = false }) {
                 }
                 scanSearch={
                   <PosProductSearch
+                    ref={productSearchRef}
                     variant="classic"
                     inputRef={searchInputRef}
                     query={searchQuery}
