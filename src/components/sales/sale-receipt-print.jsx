@@ -67,15 +67,12 @@ function formatReceiptDateTime(value) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+  const day = d.getDate();
+  const month = d.toLocaleDateString("en-US", { month: "long" });
+  const year = d.getFullYear();
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toLowerCase();
+  return `${weekday}, ${day} ${month} ${year}. ${time}`;
 }
 
 function paymentDetailRow(label, value, { plain = false } = {}) {
@@ -156,15 +153,16 @@ export function buildSaleReceiptHtml(
     return user?.full_name ?? user?.name ?? user?.username ?? "—";
   })();
 
-  const showDiscountColumn = shouldShowPrintDiscountColumn({
-    moduleSettings,
-    allowDiscounts: productDiscountsEnabled || orderDiscountEnabled,
-  });
   const discountTotals = saleDocumentDiscountTotals({
     items,
     sale,
     orderDiscountEnabled,
   });
+  const showDiscountColumn =
+    shouldShowPrintDiscountColumn({
+      moduleSettings,
+      allowDiscounts: productDiscountsEnabled || orderDiscountEnabled,
+    }) && discountTotals.lineDiscountTotal > 0.0001;
 
   const orderTotal = Number(sale.order_total ?? 0);
   const vatAmount = Number(sale.total_vat ?? 0);
@@ -216,10 +214,8 @@ export function buildSaleReceiptHtml(
   ].join("");
 
   const totalsHtml = [
-    totalsLineRow("Sub total", formatPrintAmount(subtotalExVat)),
     ...(showDiscountTotal ? [totalsLineRow("Discount", formatPrintAmount(totalDiscount))] : []),
-    totalsLineRow("VAT", formatPrintAmount(vatAmount)),
-    totalsLineRow("Amount", formatPrintAmount(orderTotal), { grand: true }),
+    totalsLineRow("Total", formatPrintAmount(orderTotal), { grand: true }),
   ].join("");
 
   const footerHtml = buildReceiptFooterHtml(documentFooterText, orgName, {
@@ -245,15 +241,13 @@ export function buildSaleReceiptHtml(
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; }
     .table thead th { padding: 4px 0; border-bottom: 1px solid #000; font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(8)}; }
     .table thead th.qty,
-    .table thead th.pkg,
     .table thead th.price,
     .table thead th.disc,
     .table thead th.amount { text-align: right; }
     .table tbody tr { border-top: 1px dashed #000; }
     .table td { padding: 4px 0; vertical-align: top; }
     .table td.desc { padding-right: 6px; }
-    .table td.qty,
-    .table td.pkg { text-align: right; white-space: nowrap; }
+    .table td.qty { text-align: right; white-space: nowrap; }
     .table td.price,
     .table td.disc,
     .table td.amount { text-align: right; white-space: nowrap; }
@@ -307,14 +301,12 @@ export function buildSaleReceiptHtml(
     ${storeAddress ? `<div class="company-meta">${escapeHtml(storeAddress)}</div>` : ""}
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
-    <div class="doc-title">Sales Receipt</div>
-    <div class="divider"></div>
     <div class="meta-grid">
-      <div class="meta-full"><span class="meta-label">Order No:</span> ${escapeHtml(orderNo)}</div>
-      <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
-      <div class="meta-full"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
-      ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer:</span> ${escapeHtml(customerName)}</div>` : ""}
+      <div><span class="meta-label">TILL NO:</span> ${escapeHtml(String(tillNo))}</div>
+      <div style="text-align:right"><span class="meta-label">CASH SALES #:</span> ${escapeHtml(orderNo)}</div>
+      ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">CUSTOMER NAME:</span> ${escapeHtml(customerName)}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
+      <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
     </div>
     <div class="divider"></div>
     <table class="table">
@@ -323,9 +315,11 @@ export function buildSaleReceiptHtml(
     </table>
     <div class="divider"></div>
     <div class="amount-lines totals">${totalsHtml}</div>
-    ${paymentDetailsHtml ? `<div class="divider"></div><div class="payment-title">Amount tendered</div><div class="amount-lines payments">${paymentDetailsHtml}</div>` : ""}
+    ${paymentDetailsHtml ? `<div class="divider"></div><div class="amount-lines payments">${paymentDetailsHtml}</div>` : ""}
+    ${vatAmount > 0 ? (() => { const vatRate = subtotalExVat > 0 ? Math.round((vatAmount / subtotalExVat) * 100) : 16; return `<div class="divider"></div><div class="amount-lines vat-section"><div class="amount-line"><span class="amount-label">VAT RATE</span><span class="amount-label" style="text-align:right">VAT CHARGED</span></div><div class="amount-line"><span class="amount-value">${vatRate} %</span><span class="amount-value">${escapeHtml(formatPrintAmount(vatAmount))}</span></div><div class="amount-line" style="grid-column:1/-1;font-size:0.85em;margin-top:4px;">PRICES INCLUSIVE OF VAT WHERE APPLICABLE</div></div>`; })() : ""}
     ${paymentInstructionsHtml ? paymentInstructionsHtml : ""}
     ${kraQrHtml}
+    <div class="divider"></div>
     ${footerHtml}
   </div>
 </body>

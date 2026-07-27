@@ -79,6 +79,16 @@ function lineIsPlain(line) {
  * @returns {FooterLine[]}
  */
 export function parseFooterLines(raw, { includeEmpty = false } = {}) {
+  if (Array.isArray(raw)) {
+    const normalized = normalizeFooterLinesForEditor(raw);
+    return includeEmpty ? normalized : normalized.filter((line) => line.text.trim());
+  }
+
+  if (raw && typeof raw === "object") {
+    const normalized = normalizeFooterLinesForEditor([raw]);
+    return includeEmpty ? normalized : normalized.filter((line) => line.text.trim());
+  }
+
   const text = String(raw ?? "");
   if (!text.trim()) return [];
 

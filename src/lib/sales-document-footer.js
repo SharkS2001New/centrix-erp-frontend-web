@@ -11,8 +11,9 @@ export const SALES_FOOTER_PLACEHOLDER_HINT =
 
 export const DEFAULT_RECEIPT_BODY_FOOTER_LINES = [
   "You were served by: {username}",
-  "Thank you for your business!",
-  "Goods once sold are not returnable.",
+  "Thankyou For Shopping With Us",
+  "Please Confirm Your Goods",
+  "(Goods once sold are not refundable)",
 ];
 
 export const DEFAULT_INVOICE_BODY_FOOTER_LINES = [
@@ -89,7 +90,7 @@ export function resolveSalesDocumentBodyFooterLines(
       : DEFAULT_RECEIPT_BODY_FOOTER_LINES;
 
   if (!parsed.length) {
-    parsed = defaults.map((text) => ({ text, align: "left", bold: false }));
+    parsed = defaults.map((text) => ({ text, align: "center", bold: false }));
   }
   if (documentType === "receipt") {
     parsed = parsed.filter((line) => !isPoweredByFooterLine(line.text));
@@ -170,7 +171,8 @@ export function buildSalesDocumentBodyFooterHtml(lines, { layout = "a4" } = {}) 
 }
 
 function isPoweredByFooterLine(line) {
-  return /^Powered\s+By\s*:/i.test(String(line ?? "").trim());
+  const s = String(line ?? "").trim();
+  return /^Powered\s+By\s*:/i.test(s) || /^Designed\s+&\s+Developed\s+By\b/i.test(s);
 }
 
 function stripPoweredByFooterLines(lines) {

@@ -28,8 +28,9 @@ import {
 } from "@/lib/print-agent";
 import {
   checkPrintAgentDotnetAvailable,
+  checkPrintAgentSourceAvailable,
   downloadPrintAgentDotnet,
-  printAgentInstallerHelp,
+  downloadPrintAgentSource,
 } from "@/lib/print-agent-installer-download";
 import {
   checkQzTrayHealth,
@@ -75,7 +76,9 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [dotnetAvailable, setDotnetAvailable] = useState(false);
+  const [sourceAvailable, setSourceAvailable] = useState(true);
   const [downloadingDotnet, setDownloadingDotnet] = useState(false);
+  const [downloadingSource, setDownloadingSource] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,9 +111,13 @@ export function PrintAgentSettingsPanel({ compact = false }) {
 
   useEffect(() => {
     let cancelled = false;
-    void checkPrintAgentDotnetAvailable().then((info) => {
-      if (!cancelled) setDotnetAvailable(Boolean(info?.available));
-    });
+    void Promise.all([checkPrintAgentDotnetAvailable(), checkPrintAgentSourceAvailable()]).then(
+      ([dotnet, source]) => {
+        if (cancelled) return;
+        setDotnetAvailable(Boolean(dotnet?.available));
+        setSourceAvailable(Boolean(source?.available));
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -296,6 +303,21 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     }
   }
 
+  async function handleDownloadSource() {
+    setDownloadingSource(true);
+    try {
+      const result = await downloadPrintAgentSource();
+      notifySuccess(
+        `Downloaded ${result.filename}. Unzip it and open BUILD.md — follow the numbered steps on a Windows PC.`,
+        { duration: 12000 },
+      );
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : "Could not download build package.");
+    } finally {
+      setDownloadingSource(false);
+    }
+  }
+
   const shellClass = compact
     ? "theme-panel rounded-xl border p-4 shadow-sm"
     : "theme-panel rounded-xl border p-6 shadow-sm";
@@ -455,45 +477,96 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           </p>
           <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
             <p className="theme-heading font-medium">Install Windows print service</p>
-            <ol className="theme-subtext mt-2 list-decimal space-y-1 pl-4 text-xs">
-              <li>Download the zip below (or build from print-agent-dotnet on a dev PC).</li>
-              <li>Unzip on the till and run <code className="text-[11px]">install-windows-service.ps1</code> as Administrator.</li>
-              <li>
-                Optional: install{" "}
-                <a href="https://www.sumatrapdfreader.org/" target="_blank" rel="noreferrer" className="underline">
-                  SumatraPDF
-                </a>{" "}
-                for fully silent thermal printing.
-              </li>
-              <li>Click Test connection, pick a printer, then Save.</li>
-            </ol>
-            <p className="theme-subtext mt-2 text-xs">{printAgentInstallerHelp("windows")}</p>
+
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void handleDownloadDotnet()}
-                disabled={downloadingDotnet || !dotnetAvailable}
+                onClick={() => void handleDownloadSource()}
+                disabled={downloadingSource || !sourceAvailable}
                 className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
-                title={
-                  dotnetAvailable
-                    ? "Download CentrixPrintAgent-win-x64.zip"
-                    : "Build print-agent-dotnet (scripts/publish.ps1) and host the zip, or set PRINT_AGENT_DOTNET_URL"
-                }
               >
-                {downloadingDotnet
-                  ? "Downloading…"
-                  : dotnetAvailable
-                    ? "Download Windows print service"
-                    : "Windows print service (build required)"}
+                {downloadingSource ? "Downloading…" : "Download build package (source)"}
               </button>
+              {dotnetAvailable ? (
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadDotnet()}
+                  disabled={downloadingDotnet}
+                  className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  {downloadingDotnet ? "Downloading…" : "Download ready installer (zip)"}
+                </button>
+              ) : null}
             </div>
-            {!dotnetAvailable ? (
-              <p className="theme-subtext mt-2 text-xs">
-                On a Windows dev PC: <code className="text-[11px]">cd print-agent-dotnet &amp;&amp; .\scripts\publish.ps1</code>
-                . Upload <code className="text-[11px]">CentrixPrintAgent-win-x64.zip</code> or set{" "}
-                <code className="text-[11px]">PRINT_AGENT_DOTNET_URL</code> on the server.
+
+            {!sourceAvailable ? (
+              <p className="theme-subtext mt-2 text-xs text-amber-800">
+                Source package is missing from this deployment. Redeploy the frontend with the{" "}
+                <code className="text-[11px]">print-agent-dotnet</code> folder included.
               </p>
-            ) : null}
+            ) : (
+              <div className="theme-subtext mt-3 space-y-2 text-xs">
+                <p className="theme-heading text-xs font-medium text-[var(--theme-heading)]">
+                  How to build (Windows PC)
+                </p>
+                <ol className="list-decimal space-y-1.5 pl-4">
+                  <li>
+                    Download the build package above and unzip it → folder{" "}
+                    <code className="text-[11px]">print-agent-dotnet</code>.
+                  </li>
+                  <li>
+                    Install the{" "}
+                    <a
+                      href="https://dotnet.microsoft.com/download/dotnet/8.0"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      .NET 8 SDK (Windows x64)
+                    </a>
+                    , then open a <strong>new</strong> PowerShell and run{" "}
+                    <code className="text-[11px]">dotnet --version</code>.
+                  </li>
+                  <li>
+                    In PowerShell:
+                    <pre className="mt-1 overflow-x-auto rounded border border-[var(--theme-border)] bg-white/70 p-2 text-[11px] leading-5">
+{`cd path\\to\\print-agent-dotnet
+.\\scripts\\publish.ps1
+.\\scripts\\install-windows-service.ps1`}
+                    </pre>
+                    Use Administrator for the install script. Full rules are in{" "}
+                    <code className="text-[11px]">BUILD.md</code> inside the zip.
+                  </li>
+                  <li>
+                    Optional: install{" "}
+                    <a
+                      href="https://www.sumatrapdfreader.org/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      SumatraPDF
+                    </a>{" "}
+                    for fully silent thermal printing.
+                  </li>
+                  <li>Back here: Test connection → pick printer → Save.</li>
+                </ol>
+                {!dotnetAvailable ? (
+                  <p>
+                    After you build once, put{" "}
+                    <code className="text-[11px]">CentrixPrintAgent-win-x64.zip</code> on the server (
+                    <code className="text-[11px]">PRINT_AGENT_DOTNET_URL</code> or{" "}
+                    <code className="text-[11px]">print-agent-dotnet/publish/</code>) so other tills can use{" "}
+                    <strong>Download ready installer</strong> without rebuilding.
+                  </p>
+                ) : (
+                  <p>
+                    A ready installer is already on this server — use{" "}
+                    <strong>Download ready installer (zip)</strong> on other tills (no .NET SDK needed).
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : null}

@@ -49,22 +49,22 @@ Login: **admin** / **password** (demo seeder).
 | `PRINT_AGENT_MSI_DIR` | Optional directory to scan for `*.msi` |
 | `PRINT_AGENT_MSI_GITHUB_REPO` | Optional fallback: `owner/repo` for private GitHub Release proxy |
 | `PRINT_AGENT_MSI_GITHUB_TOKEN` | Optional fallback token for that release proxy |
-| `PRINT_AGENT_DOTNET_URL` | Public URL of `CentrixPrintAgent-win-x64.zip` (recommended Windows till installer) |
-| `PRINT_AGENT_DOTNET_PATH` | Optional absolute path to the zip on the server |
+| `PRINT_AGENT_DOTNET_URL` | Public URL of ready `CentrixPrintAgent-win-x64.zip` (optional; after first build) |
+| `PRINT_AGENT_DOTNET_PATH` | Optional absolute path to that zip on the server |
 | `PRINT_AGENT_DOTNET_DIR` | Optional directory to scan for `*.zip` (default: `print-agent-dotnet/publish`) |
 
-### Windows print service (.NET, recommended)
+### Windows print service (.NET)
 
-For Windows tills, use **Centrix Print Agent** — a small .NET Windows service in `print-agent-dotnet/` (~15–25 MB self-contained zip). No Node.js, no QZ Tray, no 400MB MSI.
+**Always available from Centrix:** Administration → Local printing → **Download build package (source)**  
+(`GET /api/print-agent/dotnet-source` → `CentrixPrintAgent-source.zip` including `BUILD.md`).
 
-Build on a Windows PC:
+Build once on Windows (see `print-agent-dotnet/BUILD.md`):
 
-```powershell
-cd print-agent-dotnet
-.\scripts\publish.ps1
-```
+1. Unzip the source package  
+2. Install [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)  
+3. `.\scripts\publish.ps1` then `.\scripts\install-windows-service.ps1` (Administrator)
 
-Host `publish/CentrixPrintAgent-win-x64.zip` via `PRINT_AGENT_DOTNET_URL` or copy into `print-agent-dotnet/publish/` on the server.
+Then host `publish/CentrixPrintAgent-win-x64.zip` via `PRINT_AGENT_DOTNET_URL` or `print-agent-dotnet/publish/` so other tills get **Download ready installer**.
 
 ### Print Agent MSI on Cloudflare R2 (legacy)
 

@@ -43,6 +43,7 @@ function filenameFromUrl(url) {
 }
 
 const DEFAULT_DOTNET_ZIP = "CentrixPrintAgent-win-x64.zip";
+const DEFAULT_SOURCE_ZIP = "CentrixPrintAgent-source.zip";
 
 /** @returns {Promise<{ available: boolean, filename?: string, publicUrl?: string }>} */
 export async function checkPrintAgentDotnetAvailable() {
@@ -51,6 +52,17 @@ export async function checkPrintAgentDotnetAvailable() {
     if (!res.ok) return { available: false };
     const filename = res.headers.get("X-Print-Agent-Dotnet") || undefined;
     return { available: true, filename: filename === "external" ? DEFAULT_DOTNET_ZIP : filename };
+  } catch {
+    return { available: false };
+  }
+}
+
+/** Source package is built from the deployed frontend repo — should always be available. */
+export async function checkPrintAgentSourceAvailable() {
+  try {
+    const res = await fetch("/api/print-agent/dotnet-source", { method: "HEAD", cache: "no-store" });
+    if (!res.ok) return { available: false };
+    return { available: true, filename: DEFAULT_SOURCE_ZIP };
   } catch {
     return { available: false };
   }
@@ -65,7 +77,7 @@ export async function downloadPrintAgentDotnet() {
     const body = await res.json().catch(() => ({}));
     throw new Error(
       body.message ??
-        "Windows print service is not available yet. Build print-agent-dotnet on a Windows PC (scripts/publish.ps1) and upload the zip.",
+        "Ready-made Windows print service is not on this server yet. Use Download build package (source) and follow BUILD.md.",
     );
   }
 
@@ -86,6 +98,22 @@ export async function downloadPrintAgentDotnet() {
 
   triggerBrowserDownload(blob, filename);
   return { filename, source: "dotnet" };
+}
+
+/** Download source + BUILD.md so a Windows PC can build the installer. */
+export async function downloadPrintAgentSource() {
+  const res = await fetch("/api/print-agent/dotnet-source", { cache: "no-store" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? "Could not download the print agent build package.");
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/i);
+  const filename = match?.[1] ?? DEFAULT_SOURCE_ZIP;
+  triggerBrowserDownload(blob, filename);
+  return { filename, source: "dotnet-source" };
 }
 
 /** @returns {Promise<{ available: boolean, filename?: string, publicUrl?: string }>} */

@@ -36,13 +36,14 @@ export const PRINT_FOOTER_LABELS = {
   payroll_receipt: "HR payroll receipt (payslip) footer",
 };
 
-export const RECEIPT_POWERED_BY_LINE = `Powered By: ${PRINT_POWERED_BY}`;
+export const RECEIPT_POWERED_BY_LINE = `Designed & Developed By ${PRINT_POWERED_BY}`;
 
 /** Editable receipt footer lines shown when nothing is configured (excludes vendor credit). */
 const DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES = DEFAULT_RECEIPT_BODY_FOOTER_LINES;
 
 export function isPoweredByFooterLine(line) {
-  return /^Powered\s+By\s*:/i.test(String(line ?? "").trim());
+  const s = String(line ?? "").trim();
+  return /^Powered\s+By\s*:/i.test(s) || /^Designed\s+&\s+Developed\s+By\b/i.test(s);
 }
 
 function receiptFooterLinesFromText(text) {
@@ -115,7 +116,7 @@ export function resolveReceiptFooterLines(settings = {}, organizationName = "") 
   );
   const editable = configured.length
     ? configured.filter((line) => !isPoweredByFooterLine(line.text))
-    : DEFAULT_RECEIPT_BODY_FOOTER_LINES.map((text) => ({ text, align: "left", bold: false }));
+    : DEFAULT_RECEIPT_BODY_FOOTER_LINES.map((text) => ({ text, align: "center", bold: false }));
 
   const org = String(organizationName ?? "").trim();
   const resolvedEditable = editable.map((line) => ({
