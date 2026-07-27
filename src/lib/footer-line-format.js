@@ -10,6 +10,7 @@ import { escapeHtml } from "@/lib/sale-document-print-shared";
  * @property {boolean} [bold]
  * @property {boolean} [italic]
  * @property {FooterLineSize} [size]
+ * @property {boolean} [dividerAfter]
  */
 
 const ALIGNMENTS = new Set(["left", "center", "right"]);
@@ -31,10 +32,24 @@ export { escapeFooterLineHtml };
 /** @param {unknown} line */
 export function normalizeFooterLine(line) {
   if (typeof line === "string") {
-    return { text: String(line), align: "left", bold: false, italic: false, size: "md" };
+    return {
+      text: String(line),
+      align: "left",
+      bold: false,
+      italic: false,
+      size: "md",
+      dividerAfter: false,
+    };
   }
   if (!line || typeof line !== "object") {
-    return { text: "", align: "left", bold: false, italic: false, size: "md" };
+    return {
+      text: "",
+      align: "left",
+      bold: false,
+      italic: false,
+      size: "md",
+      dividerAfter: false,
+    };
   }
   const rawText = line.text;
   const text =
@@ -43,7 +58,7 @@ export function normalizeFooterLine(line) {
       : rawText == null
         ? ""
         : typeof rawText === "object"
-          ? String(rawText.full_name ?? rawText.name ?? rawText.username ?? rawText.text ?? "")
+          ? String(rawText.username ?? rawText.login ?? rawText.user_name ?? rawText.text ?? "")
           : String(rawText);
   const align = ALIGNMENTS.has(line.align) ? line.align : "left";
   const size = SIZES.has(line.size) ? line.size : "md";
@@ -53,6 +68,7 @@ export function normalizeFooterLine(line) {
     bold: Boolean(line.bold),
     italic: Boolean(line.italic),
     size,
+    dividerAfter: Boolean(line.dividerAfter),
   };
 }
 
@@ -69,7 +85,13 @@ export function normalizeFooterLinesForEditor(lines) {
 }
 
 function lineIsPlain(line) {
-  return line.align === "left" && !line.bold && !line.italic && line.size === "md";
+  return (
+    line.align === "left" &&
+    !line.bold &&
+    !line.italic &&
+    line.size === "md" &&
+    !line.dividerAfter
+  );
 }
 
 /**
@@ -110,6 +132,7 @@ export function parseFooterLines(raw, { includeEmpty = false } = {}) {
     bold: false,
     italic: false,
     size: "md",
+    dividerAfter: false,
   }));
 }
 
@@ -170,7 +193,14 @@ export function buildStyledFooterLinesHtml(lines, { layout = "a4", tag } = {}) {
   return normalized
     .map((line) => {
       const style = lineInlineStyle(line);
-      return `<${useTag} class="${className}" style="${style}">${escapeFooterLineHtml(line.text)}</${useTag}>`;
+      let html = `<${useTag} class="${className}" style="${style}">${escapeFooterLineHtml(line.text)}</${useTag}>`;
+      if (line.dividerAfter) {
+        html +=
+          layout === "thermal"
+            ? '<div class="divider footer-line-divider"></div>'
+            : '<hr class="footer-line-divider" />';
+      }
+      return html;
     })
     .join("");
 }

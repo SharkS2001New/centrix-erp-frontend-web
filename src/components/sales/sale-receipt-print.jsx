@@ -150,7 +150,7 @@ export function buildSaleReceiptHtml(
   const servedByName = (() => {
     const fromSale = resolveSaleOrderCreatorName(sale, preparedBy);
     if (fromSale !== "—") return fromSale;
-    return user?.full_name ?? user?.name ?? user?.username ?? "—";
+    return user?.username ?? user?.login ?? "—";
   })();
 
   const discountTotals = saleDocumentDiscountTotals({
@@ -272,7 +272,8 @@ export function buildSaleReceiptHtml(
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { font-weight: var(--print-w-body, 600); }
     .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #000; font-size: ${px(8)}; line-height: 1.35; font-weight: var(--print-w-body, 600); }
-    .footer-text { text-align: center; font-size: ${fpx(8)}; color: #000; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; font-weight: var(--print-w-footer, 700); }
+    .footer-text { font-size: ${fpx(8)}; color: #000; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; font-weight: var(--print-w-footer, 700); }
+    .footer-line-divider { margin: 4px 0; }
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
     .center { text-align: center; }
     @media print {

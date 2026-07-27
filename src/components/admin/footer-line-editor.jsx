@@ -21,7 +21,14 @@ const SIZE_OPTIONS = [
   { value: "lg", label: "Large" },
 ];
 
-const EMPTY_LINE = { text: "", align: "left", bold: false, italic: false, size: "md" };
+const EMPTY_LINE = {
+  text: "",
+  align: "left",
+  bold: false,
+  italic: false,
+  size: "md",
+  dividerAfter: false,
+};
 
 function ToolbarButton({ active, onClick, title, children, className = "" }) {
   return (
@@ -163,6 +170,14 @@ export function FooterLineEditor({
                   </option>
                 ))}
               </select>
+              <ToolbarButton
+                title="Show dashed line after this row"
+                active={line.dividerAfter}
+                onClick={() => updateLine(index, { dividerAfter: !line.dividerAfter })}
+                className="min-w-[2.75rem] font-mono text-[10px]"
+              >
+                ---
+              </ToolbarButton>
               <button
                 type="button"
                 title="Remove line"
@@ -207,9 +222,14 @@ export function FooterLineEditor({
             <p className="text-xs text-slate-400">Styled footer lines appear here as you edit…</p>
           ) : (
             normalizeFooterLines(lines).map((line, index) => (
-              <p key={index} className={`whitespace-pre-wrap ${previewLineClass(line)}`}>
-                {line.text}
-              </p>
+              <div key={index}>
+                <p className={`whitespace-pre-wrap ${previewLineClass(line)}`}>{line.text}</p>
+                {line.dividerAfter ? (
+                  <p className="my-1 text-center font-mono text-xs tracking-widest text-slate-400">
+                    ----------------------
+                  </p>
+                ) : null}
+              </div>
             ))
           )}
         </div>

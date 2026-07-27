@@ -3758,7 +3758,7 @@ export function PosScreen({ standalone = false }) {
           uomById,
           productByCode,
           user,
-          preparedBy: user?.full_name ?? user?.username ?? null,
+          preparedBy: user?.username ?? null,
           documentType,
           // Checkout already returned the sale — skip redundant print setup round-trips.
           skipSaleRefresh: true,
@@ -4162,7 +4162,7 @@ export function PosScreen({ standalone = false }) {
                   uomById,
                   productByCode,
                   user,
-                  preparedBy: user?.full_name ?? user?.username ?? null,
+                  preparedBy: user?.username ?? null,
                   documentType:
                     resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
                 }),
@@ -4260,7 +4260,7 @@ export function PosScreen({ standalone = false }) {
               uomById,
               productByCode,
               user,
-              preparedBy: user?.full_name ?? user?.username ?? null,
+              preparedBy: user?.username ?? null,
             });
             if (!result) {
               setReceiptPrintStatus("failed");
@@ -4601,7 +4601,7 @@ export function PosScreen({ standalone = false }) {
           uomById,
           productByCode,
           user,
-          preparedBy: user?.full_name ?? user?.username ?? null,
+          preparedBy: user?.username ?? null,
           documentType:
             resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
           skipSaleRefresh: true,

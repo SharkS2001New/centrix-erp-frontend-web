@@ -146,8 +146,8 @@ function DocumentFooterField({ footerKey, form, setForm }) {
         </p>
       ) : null}
       <p className="mt-2 text-xs text-slate-500">
-        Each line has its own alignment (Left / Center / Right), size, bold, and italic. Styling is saved
-        automatically and applied on printed documents.
+        Each line has its own alignment (Left / Center / Right), size, bold, italic, and optional dashed
+        separator (---) after the row. Styling is saved automatically and applied on printed documents.
       </p>
     </Field>
   );

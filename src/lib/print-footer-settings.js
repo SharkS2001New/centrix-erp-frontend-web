@@ -4,6 +4,8 @@ import {
   DEFAULT_RECEIPT_BODY_FOOTER_LINES,
   defaultInvoiceBodyFooterForAdmin,
   defaultReceiptBodyFooterForAdmin,
+  defaultReceiptFooterLinesForEditor,
+  isLegacyUnconfiguredReceiptFooter,
 } from "@/lib/sales-document-footer";
 
 export const PRINT_FOOTER_TYPES = {
@@ -97,6 +99,21 @@ export function footerContentForAdmin(text) {
   return footerEditorValueFromApi(raw);
 }
 
+/** Receipt footer value for the admin editor — prefills the full template when unset or legacy. */
+export function receiptFooterEditorValueFromApi(value) {
+  const raw = coerceFooterField(value);
+  if (!raw.trim()) return defaultReceiptBodyFooterForAdmin();
+
+  const lines = parseFooterLines(raw, { includeEmpty: true }).filter(
+    (line) => !isPoweredByFooterLine(line.text),
+  );
+  if (isLegacyUnconfiguredReceiptFooter(lines)) {
+    return defaultReceiptBodyFooterForAdmin();
+  }
+
+  return footerEditorValueFromApi(raw);
+}
+
 /** Receipt footer text for admin forms — vendor credit line is never editable. */
 export function receiptFooterForAdmin(text) {
   const raw = coerceFooterField(text);
@@ -105,6 +122,9 @@ export function receiptFooterForAdmin(text) {
   const lines = parseFooterLines(raw, { includeEmpty: true }).filter(
     (line) => !isPoweredByFooterLine(line.text),
   );
+  if (isLegacyUnconfiguredReceiptFooter(lines)) {
+    return defaultReceiptBodyFooterForAdmin();
+  }
   const stored = footerStorageValueFromForm(lines);
   if (stored) return stored;
   return defaultReceiptBodyFooterForAdmin();
@@ -114,9 +134,14 @@ export function resolveReceiptFooterLines(settings = {}, organizationName = "") 
   const configured = parseFooterLines(
     settings?.print_footer_receipt ?? settings?.document_footer_text ?? "",
   );
-  const editable = configured.length
-    ? configured.filter((line) => !isPoweredByFooterLine(line.text))
-    : DEFAULT_RECEIPT_BODY_FOOTER_LINES.map((text) => ({ text, align: "center", bold: false }));
+  const editable = (() => {
+    const withoutPoweredBy = configured.filter((line) => !isPoweredByFooterLine(line.text));
+    if (isLegacyUnconfiguredReceiptFooter(withoutPoweredBy)) {
+      return defaultReceiptFooterLinesForEditor();
+    }
+    if (withoutPoweredBy.length) return withoutPoweredBy;
+    return defaultReceiptFooterLinesForEditor();
+  })();
 
   const org = String(organizationName ?? "").trim();
   const resolvedEditable = editable.map((line) => ({
@@ -165,9 +190,7 @@ export function resolvePrintFooter(settings = {}, documentType = "receipt") {
 
 export function printFooterFormFromGeneral(general = {}) {
   return {
-    print_footer_receipt: footerEditorValueFromApi(general?.print_footer_receipt, {
-      fallback: defaultReceiptBodyFooterForAdmin(),
-    }),
+    print_footer_receipt: receiptFooterEditorValueFromApi(general?.print_footer_receipt),
     print_footer_a4_invoice: footerEditorValueFromApi(general?.print_footer_a4_invoice),
     print_footer_lpo: footerEditorValueFromApi(general?.print_footer_lpo),
     print_footer_loading_sheet: footerEditorValueFromApi(general?.print_footer_loading_sheet),

@@ -7,6 +7,7 @@ import {
 import { lpoPrintFormFromApi, lpoPrintPayloadFromForm } from "@/lib/lpo-print-settings";
 import { loadingSheetPrintFormFromApi, loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
 import { printFooterFormFromGeneral, printFooterPayloadFromForm } from "@/lib/print-footer-settings";
+import { defaultReceiptBodyFooterForAdmin } from "@/lib/sales-document-footer";
 import {
   printFontFormDefaults,
   printFontFormFromGeneral,
@@ -25,7 +26,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   show_organization_on_documents: true,
   document_header_display: "auto",
   ...printFontFormDefaults(),
-  print_footer_receipt: "",
+  print_footer_receipt: defaultReceiptBodyFooterForAdmin(),
   print_footer_a4_invoice: "",
   print_footer_lpo: "",
   print_footer_loading_sheet: "",

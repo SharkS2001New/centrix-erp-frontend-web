@@ -106,12 +106,13 @@ function firstNonEmptyString(...values) {
   return null;
 }
 
-function nameFromSaleUserRecord(user) {
+function usernameFromSaleUserRecord(user) {
   if (!user || typeof user !== "object") return null;
-  return firstNonEmptyString(user.full_name, user.name, user.username);
+  // Receipt "You were served by" uses login username, not display/full name.
+  return firstNonEmptyString(user.username, user.login, user.user_name);
 }
 
-/** User who created/placed the order — used for A4 "You were served by" and similar. */
+/** Login username for receipt/invoice "You were served by" (not full name). */
 export function resolveSaleOrderCreatorName(sale, preparedBy = null) {
   const explicit = typeof preparedBy === "string" ? preparedBy.trim() : "";
   if (explicit) return explicit;
@@ -119,14 +120,18 @@ export function resolveSaleOrderCreatorName(sale, preparedBy = null) {
 
   return (
     firstNonEmptyString(
+      sale.created_by_username,
+      sale.cashier_username,
+      sale.placed_by_username,
+      usernameFromSaleUserRecord(sale.created_by_user),
+      usernameFromSaleUserRecord(sale.cashier_user),
+      usernameFromSaleUserRecord(sale.cashier),
+      usernameFromSaleUserRecord(sale.user),
+      typeof sale.created_by === "string" ? sale.created_by : null,
+      // Legacy fields may store display names — only used when username is unavailable.
       sale.created_by_name,
       sale.cashier_name,
       sale.placed_by_name,
-      nameFromSaleUserRecord(sale.created_by_user),
-      nameFromSaleUserRecord(sale.cashier_user),
-      nameFromSaleUserRecord(sale.cashier),
-      nameFromSaleUserRecord(sale.user),
-      typeof sale.created_by === "string" ? sale.created_by : null,
     ) ?? "—"
   );
 }

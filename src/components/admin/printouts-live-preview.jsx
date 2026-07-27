@@ -118,7 +118,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       paymentInstructions,
       showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "invoice"),
       showBranchOnReceipt,
-      preparedBy: "Preview cashier",
+      preparedBy: "preview",
       generalSettings: general,
       salesSettings: sales,
     });

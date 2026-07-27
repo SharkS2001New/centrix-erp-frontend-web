@@ -4,6 +4,7 @@ import {
   escapeFooterLineHtml,
   normalizeFooterLine,
   parseFooterLines,
+  serializeFooterLines,
 } from "@/lib/footer-line-format";
 
 export const SALES_FOOTER_PLACEHOLDER_HINT =
@@ -24,11 +25,44 @@ export const DEFAULT_INVOICE_BODY_FOOTER_LINES = [
   "Signature: _________________________",
 ];
 
-function linesFromMultilineText(text) {
-  return String(text ?? "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
+export function defaultReceiptFooterLinesForEditor() {
+  return DEFAULT_RECEIPT_BODY_FOOTER_LINES.map((text) => ({
+    text,
+    align: "center",
+    bold: false,
+    italic: false,
+    size: "md",
+    dividerAfter: false,
+  }));
+}
+
+export function defaultInvoiceFooterLinesForEditor() {
+  return DEFAULT_INVOICE_BODY_FOOTER_LINES.map((text) => ({
+    text,
+    align: "left",
+    bold: false,
+    italic: false,
+    size: "md",
+    dividerAfter: false,
+  }));
+}
+
+/** True when stored receipt footer is empty or still on a legacy minimal template. */
+export function isLegacyUnconfiguredReceiptFooter(lines) {
+  const texts = (Array.isArray(lines) ? lines : [])
+    .map((line) => normalizeFooterLine(line).text.trim().toLowerCase())
     .filter(Boolean);
+  if (!texts.length) return true;
+  if (texts.length === 1 && texts[0] === "you were served by: {username}") return true;
+  const oldThreeLine = [
+    "you were served by: {username}",
+    "thank you for your business!",
+    "goods once sold are not returnable.",
+  ];
+  if (texts.length === oldThreeLine.length && texts.every((text, index) => text === oldThreeLine[index])) {
+    return true;
+  }
+  return false;
 }
 
 export function applySalesFooterPlaceholders(
@@ -40,7 +74,7 @@ export function applySalesFooterPlaceholders(
     typeof username === "string"
       ? username.trim() || "—"
       : username && typeof username === "object"
-        ? String(username.full_name ?? username.name ?? username.username ?? "—")
+        ? String(username.username ?? username.login ?? username.user_name ?? "—").trim() || "—"
         : "—";
   return String(line ?? "")
     .replace(/\{username\}/gi, servedBy)
@@ -86,11 +120,13 @@ export function resolveSalesDocumentBodyFooterLines(
   let parsed = parseFooterLines(raw);
   const defaults =
     documentType === "invoice"
-      ? DEFAULT_INVOICE_BODY_FOOTER_LINES
-      : DEFAULT_RECEIPT_BODY_FOOTER_LINES;
+      ? defaultInvoiceFooterLinesForEditor()
+      : defaultReceiptFooterLinesForEditor();
 
-  if (!parsed.length) {
-    parsed = defaults.map((text) => ({ text, align: "center", bold: false }));
+  if (documentType === "receipt" && isLegacyUnconfiguredReceiptFooter(parsed)) {
+    parsed = defaultReceiptFooterLinesForEditor();
+  } else if (!parsed.length) {
+    parsed = defaults;
   }
   if (documentType === "receipt") {
     parsed = parsed.filter((line) => !isPoweredByFooterLine(line.text));
@@ -107,14 +143,18 @@ function formatBodyFooterLineHtml(line, layout) {
   const text = styled.text;
   if (!text.trim()) return "";
 
-  const hasExplicitStyle =
-    styled.align !== "left" || styled.bold || styled.italic || styled.size !== "md";
-  if (hasExplicitStyle) {
+  if (layout === "thermal") {
     return buildStyledFooterLinesHtml([styled], { layout });
   }
 
-  if (layout === "thermal") {
-    return `<div class="footer-text">${escapeFooterLineHtml(text)}</div>`;
+  const hasExplicitStyle =
+    styled.align !== "left" ||
+    styled.bold ||
+    styled.italic ||
+    styled.size !== "md" ||
+    styled.dividerAfter;
+  if (hasExplicitStyle) {
+    return buildStyledFooterLinesHtml([styled], { layout });
   }
 
   const lower = text.toLowerCase();
@@ -188,9 +228,9 @@ export function receiptBodyFooterForAdmin(text) {
 }
 
 export function defaultReceiptBodyFooterForAdmin() {
-  return DEFAULT_RECEIPT_BODY_FOOTER_LINES.join("\n");
+  return serializeFooterLines(defaultReceiptFooterLinesForEditor(), { forEditor: true });
 }
 
 export function defaultInvoiceBodyFooterForAdmin() {
-  return DEFAULT_INVOICE_BODY_FOOTER_LINES.join("\n");
+  return serializeFooterLines(defaultInvoiceFooterLinesForEditor(), { forEditor: true });
 }

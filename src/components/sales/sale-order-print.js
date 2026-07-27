@@ -137,11 +137,11 @@ async function fetchRoute(routeId) {
   }
 }
 
-async function fetchUserDisplayName(userId) {
+async function fetchUserLoginUsername(userId) {
   if (userId == null || userId === "") return null;
   try {
     const user = await apiRequest(`/users/${userId}`, { loading: false, reportIssues: false });
-    return user.full_name ?? user.name ?? user.username ?? null;
+    return user.username ?? user.login ?? user.user_name ?? null;
   } catch {
     return null;
   }
@@ -151,16 +151,15 @@ async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
   const fromSale = resolveSaleOrderCreatorName(sale, options.preparedBy);
   if (fromSale !== "—") return fromSale;
 
-  const sessionName =
-    options.user?.full_name ?? options.user?.name ?? options.user?.username ?? null;
-  if (sessionName) return String(sessionName);
+  const sessionUsername = options.user?.username ?? options.user?.login ?? null;
+  if (sessionUsername) return String(sessionUsername);
 
   // POS channel may block user lookups for some ID shapes — never fail the print.
-  const createdByName = await fetchUserDisplayName(sale?.created_by);
-  if (createdByName) return createdByName;
+  const createdByUsername = await fetchUserLoginUsername(sale?.created_by);
+  if (createdByUsername) return createdByUsername;
 
-  const cashierName = await fetchUserDisplayName(sale?.cashier_id);
-  if (cashierName) return cashierName;
+  const cashierUsername = await fetchUserLoginUsername(sale?.cashier_id);
+  if (cashierUsername) return cashierUsername;
 
   return "—";
 }
