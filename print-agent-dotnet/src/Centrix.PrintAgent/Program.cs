@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 const string DefaultHost = "127.0.0.1";
 const int DefaultPort = 9247;
-const string Version = "0.2.6";
+const string Version = "0.2.7";
 
 var host = Environment.GetEnvironmentVariable("PRINT_AGENT_HOST") ?? DefaultHost;
 var port = int.TryParse(Environment.GetEnvironmentVariable("PRINT_AGENT_PORT"), out var parsedPort)

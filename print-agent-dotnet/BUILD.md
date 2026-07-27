@@ -90,7 +90,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
 | `Could not render receipt HTML to PDF` | Install wkhtmltopdf manually (link above), re-run install. Health must show `"wkhtmltopdf_available": true` |
 | Test sent but nothing prints | Run `.\scripts\configure-sumatra.ps1` as Administrator. Health must show `"sumatra_available": true`. USB printers: service Log On -> this Windows user |
-| Configure Sumatra only | `.\scripts\configure-sumatra.ps1` (bundles portable SumatraPDF + sets SUMATRA_PATH on the service) |
+| Configure Sumatra only | `.\scripts\configure-sumatra.ps1` (bundles SumatraPDF + sets SUMATRA_PATH). If already installed manually: `.\scripts\configure-sumatra.ps1 -SkipDownload` |
+| Sumatra download 404 | Fixed in latest scripts (URL is `/dl/rel/3.6.1/...` not `/dl/rel/SumatraPDF-3.6.1-64.zip`). Or install Sumatra manually and run with `-SkipDownload` |
 | wkhtmltopdf download slow / hangs | Install wkhtmltopdf manually (link above). Re-run `BUILD-AND-INSTALL.bat` - it copies from `Program Files\wkhtmltopdf` and skips download |
 | Force download during install | `.\scripts\install-windows-service.ps1 -DownloadWkhtml` |
 | Print dialog flashes / not silent | Install [SumatraPDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), pick your receipt printer in Centrix -> Local printing -> Save |

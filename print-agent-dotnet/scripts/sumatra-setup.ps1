@@ -1,6 +1,14 @@
 $ErrorActionPreference = "Stop"
 
-$script:SumatraPortableUrl = "https://www.sumatrapdfreader.org/dl/rel/SumatraPDF-3.6.1-64.zip"
+$script:SumatraZipUrls = @(
+    "https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64.zip",
+    "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.zip"
+)
+
+$script:SumatraInstallerUrls = @(
+    "https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64-install.exe",
+    "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64-install.exe"
+)
 
 function Find-SumatraPdf {
     param([string]$TargetInstallDir)
@@ -26,6 +34,87 @@ function Find-SumatraPdf {
     }
 
     return $null
+}
+
+function Invoke-SumatraFileDownload {
+    param(
+        [string[]]$Urls,
+        [string]$OutFile
+    )
+
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    foreach ($url in $Urls) {
+        try {
+            Write-Host ("Trying download: {0}" -f $url)
+            Invoke-WebRequest -Uri $url -OutFile $OutFile -UseBasicParsing -TimeoutSec 600 -MaximumRedirection 10
+            if ((Test-Path $OutFile) -and ((Get-Item $OutFile).Length -gt 100000)) {
+                return $true
+            }
+        } catch {
+            Write-Host ("  failed: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+            if (Test-Path $OutFile) {
+                Remove-Item -Path $OutFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    return $false
+}
+
+function Install-SumatraFromZip {
+    param(
+        [string]$ZipPath,
+        [string]$TargetExe
+    )
+
+    $extractDir = Join-Path (Split-Path $TargetExe) "..\SumatraPDF-extract"
+    $extractDir = [System.IO.Path]::GetFullPath($extractDir)
+
+    if (Test-Path $extractDir) {
+        Remove-Item -Path $extractDir -Recurse -Force
+    }
+
+    Expand-Archive -Path $ZipPath -DestinationPath $extractDir -Force
+
+    $found = Get-ChildItem -Path $extractDir -Recurse -Filter "SumatraPDF.exe" | Select-Object -First 1
+    if (-not $found) {
+        throw "SumatraPDF.exe was not found in the downloaded zip."
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path $TargetExe) | Out-Null
+    Copy-Item -Path $found.FullName -Destination $TargetExe -Force
+    Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Install-SumatraFromInstallerExtract {
+    param(
+        [string]$InstallerPath,
+        [string]$TargetExe
+    )
+
+    $extractDir = Join-Path (Split-Path $TargetExe) "..\SumatraPDF-extract"
+    $extractDir = [System.IO.Path]::GetFullPath($extractDir)
+
+    if (Test-Path $extractDir) {
+        Remove-Item -Path $extractDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+
+    Write-Host ("Extracting SumatraPDF from installer to {0}..." -f $extractDir)
+    $process = Start-Process -FilePath $InstallerPath -ArgumentList @("-x", "-d", $extractDir) -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+        throw ("SumatraPDF installer extract failed with exit code {0}." -f $process.ExitCode)
+    }
+
+    $found = Get-ChildItem -Path $extractDir -Recurse -Filter "SumatraPDF.exe" | Select-Object -First 1
+    if (-not $found) {
+        throw "SumatraPDF.exe was not found after installer extract."
+    }
+
+    New-Item -ItemType Directory -Force -Path (Split-Path $TargetExe) | Out-Null
+    Copy-Item -Path $found.FullName -Destination $TargetExe -Force
+    Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 function Ensure-SumatraPdf {
@@ -54,29 +143,27 @@ function Ensure-SumatraPdf {
     }
 
     $toolsDir = Join-Path $TargetInstallDir "tools"
-    $zipPath = Join-Path $toolsDir "SumatraPDF.zip"
-    $extractDir = Join-Path $toolsDir "SumatraPDF-extract"
-
     New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
-    Write-Host "Downloading SumatraPDF portable..."
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri $script:SumatraPortableUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 300
 
-    if (Test-Path $extractDir) {
-        Remove-Item -Path $extractDir -Recurse -Force
+    $zipPath = Join-Path $toolsDir "SumatraPDF.zip"
+    $installerPath = Join-Path $toolsDir "SumatraPDF-installer.exe"
+
+    Write-Host "Downloading SumatraPDF portable zip..."
+    if (Invoke-SumatraFileDownload -Urls $script:SumatraZipUrls -OutFile $zipPath) {
+        Install-SumatraFromZip -ZipPath $zipPath -TargetExe $targetExe
+        Remove-Item -Path $zipPath -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-Host "Zip download failed. Trying SumatraPDF installer extract..."
+        if (-not (Invoke-SumatraFileDownload -Urls $script:SumatraInstallerUrls -OutFile $installerPath)) {
+            throw "Could not download SumatraPDF. Install manually from https://www.sumatrapdfreader.org/download-free-pdf-viewer then re-run configure-sumatra.ps1 -SkipDownload"
+        }
+        Install-SumatraFromInstallerExtract -InstallerPath $installerPath -TargetExe $targetExe
+        Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
     }
-    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
-    $found = Get-ChildItem -Path $extractDir -Recurse -Filter "SumatraPDF.exe" | Select-Object -First 1
-    if (-not $found) {
-        throw "SumatraPDF.exe was not found in the downloaded archive."
+    if (-not (Test-Path $targetExe)) {
+        throw "Failed to install SumatraPDF into the Print Agent folder."
     }
-
-    New-Item -ItemType Directory -Force -Path (Split-Path $targetExe) | Out-Null
-    Copy-Item -Path $found.FullName -Destination $targetExe -Force
-
-    Remove-Item -Path $zipPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
 
     Write-Host ("SumatraPDF installed: {0}" -f $targetExe)
     return $targetExe

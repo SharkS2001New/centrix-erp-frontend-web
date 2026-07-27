@@ -12,6 +12,9 @@ $ErrorActionPreference = "Stop"
 Write-Host ""
 Write-Host "Centrix Print Agent - Configure SumatraPDF" -ForegroundColor Cyan
 Write-Host ("Install folder: {0}" -f $InstallDir)
+if ($SkipDownload) {
+    Write-Host "Download skipped - using an existing SumatraPDF install only."
+}
 Write-Host ""
 
 $sumatraPath = Ensure-SumatraPdf -TargetInstallDir $InstallDir -SkipDownload:$SkipDownload
