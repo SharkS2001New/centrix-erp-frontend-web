@@ -21,6 +21,7 @@ import {
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 import { isLegacySale } from "@/lib/sale-line-items";
+import { buildThermalVatChargeGroups } from "@/lib/sales-vat";
 import {
   createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
@@ -178,7 +179,6 @@ export function buildSaleReceiptHtml(
 
   const orderTotal = Number(sale.order_total ?? 0);
   const vatAmount = Number(sale.total_vat ?? 0);
-  const subtotalExVat = Math.max(0, orderTotal - vatAmount);
   const cashAmount = Number(sale.cash ?? 0);
   const mpesaAmount = Number(sale.mpesa_amount ?? 0);
   const equityAmount = Number(sale.equity_amount ?? 0);
@@ -234,16 +234,17 @@ export function buildSaleReceiptHtml(
     username: servedByName,
   }, salesSettings);
 
-  const vatHtml =
-    vatAmount > 0
-      ? (() => {
-          const vatRate = subtotalExVat > 0 ? Math.round((vatAmount / subtotalExVat) * 100) : 16;
-          return `<div class="divider"></div>${wrapSummaryTable(
-            `<tr><td class="amount-label">VAT RATE</td><td class="amount-label amount-value">VAT CHARGED</td></tr>
-            <tr><td>${vatRate} %</td><td class="amount-value">${escapeHtml(formatThermalPrintAmount(vatAmount))}</td></tr>`,
-          )}<p class="vat-note">Prices inclusive of VAT where applicable</p>`;
-        })()
-      : "";
+  const vatHtml = (() => {
+    const groups = buildThermalVatChargeGroups(items, { totalVat: vatAmount });
+    const rows = [
+      `<tr><td class="amount-label">VAT RATE</td><td class="amount-label amount-value">VAT CHARGED</td></tr>`,
+      ...groups.map(
+        (group) =>
+          `<tr><td>${escapeHtml(group.label)}</td><td class="amount-value">${escapeHtml(formatThermalPrintAmount(group.amount))}</td></tr>`,
+      ),
+    ].join("");
+    return `<div class="divider"></div>${wrapSummaryTable(rows)}<p class="vat-note">Prices inclusive of VAT where applicable</p>`;
+  })();
 
   const tableColgroup = showDiscountColumn
     ? `<colgroup><col class="col-desc" /><col class="col-qty" /><col class="col-price" /><col class="col-disc" /><col class="col-amount" /></colgroup>`
@@ -290,11 +291,12 @@ export function buildSaleReceiptHtml(
     .table td.disc,
     .table td.amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
-    .summary-table col.col-label { width: 52%; }
-    .summary-table col.col-value { width: 48%; }
+    /* Align values under the AMOUNT column (ITEMS 45% + QTY 17.5% + PRICE 17.5% = 80%). */
+    .summary-table col.col-label { width: 80%; }
+    .summary-table col.col-value { width: 20%; }
     .summary-table td { padding: 2px 0; vertical-align: top; }
     .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
-    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
     .vat-note { margin: 4px 0 0; font-size: 0.85em; line-height: 1.35; }
@@ -340,7 +342,7 @@ export function buildSaleReceiptHtml(
     <div class="meta-grid">
       <div class="meta-cell"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
       <div class="meta-cell meta-cell--sale"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
-      ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(customerName)}</div>` : ""}
+      ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(String(customerName).toUpperCase())}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
     </div>

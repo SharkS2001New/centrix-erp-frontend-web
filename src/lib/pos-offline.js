@@ -359,12 +359,21 @@ export async function completeOfflineCashSale({
       unit,
       on_wholesale_retail: Boolean(line.on_wholesale_retail),
       discount_given: Number(line.discount_given ?? 0),
+      vat_rate: Number(line.vat_rate ?? line.tax_rate ?? catalog?.vat_rate ?? catalog?.vat?.vat_percentage ?? 0),
+      product_vat: (() => {
+        const amount = Math.round(Number(line.quantity) * Number(line.unit_price) * 100) / 100;
+        const rate = Number(line.vat_rate ?? line.tax_rate ?? catalog?.vat_rate ?? catalog?.vat?.vat_percentage ?? 0);
+        if (rate <= 0) return 0;
+        return Math.round(((amount * rate) / (100 + rate)) * 100) / 100;
+      })(),
       product: {
         product_code: line.product_code,
         product_name:
           line.product_name ?? catalog?.product_name ?? line.product_code,
         unit_id: unitId,
         unit,
+        vat_rate: Number(line.vat_rate ?? line.tax_rate ?? catalog?.vat_rate ?? catalog?.vat?.vat_percentage ?? 0),
+        vat: catalog?.vat ?? null,
       },
     });
   }
