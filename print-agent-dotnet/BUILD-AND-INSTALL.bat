@@ -1,11 +1,11 @@
 @echo off
 setlocal EnableExtensions
-title Centrix Print Agent — Build and Install
+title Centrix Print Agent - Build and Install
 
 cd /d "%~dp0"
 
 echo.
-echo  Centrix Print Agent — Build and Install
+echo  Centrix Print Agent - Build and Install
 echo  --------------------------------------
 echo  Folder: %CD%
 echo.
