@@ -497,8 +497,8 @@ export function LegacyArchiveReportScreen() {
         <AdminBreadcrumb items={[{ label: "Reports", href: "/reports" }, { label: "Legacy archive" }]} />
         <h1 className="text-2xl font-semibold text-slate-900">Legacy sales archive</h1>
         <p className="mt-4 rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">
-          Legacy archive is not enabled for this organization. A platform administrator can turn it on under
-          Organization settings → Legacy archive.
+          Legacy archive is not enabled for this organization. A platform administrator can turn it on from
+          Platform → Tenant organization → Legacy archive.
         </p>
       </div>
     );

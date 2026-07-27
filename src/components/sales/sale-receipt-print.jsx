@@ -77,11 +77,19 @@ function formatReceiptDateTime(value) {
 
 function paymentDetailRow(label, value, { plain = false } = {}) {
   const display = plain ? String(value ?? "—") : formatPrintAmount(value);
-  return `<div class="amount-line"><span class="amount-label">${escapeHtml(label)}</span><span class="amount-value">${escapeHtml(display)}</span></div>`;
+  return `<tr><td class="amount-label">${escapeHtml(label)}</td><td class="amount-value">${escapeHtml(display)}</td></tr>`;
 }
 
 function totalsLineRow(label, value, { grand = false } = {}) {
-  return `<div class="amount-line${grand ? " amount-line-grand" : ""}"><span class="amount-label">${escapeHtml(label)}</span><span class="amount-value">${escapeHtml(value)}</span></div>`;
+  return `<tr class="${grand ? "amount-line-grand" : ""}"><td class="amount-label">${escapeHtml(label)}</td><td class="amount-value">${escapeHtml(value)}</td></tr>`;
+}
+
+function wrapSummaryTable(rows) {
+  if (!rows) return "";
+  return `<table class="summary-table">
+    <colgroup><col class="col-label" /><col class="col-value" /></colgroup>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 function buildReceiptFooterHtml(documentFooterText, organizationName, context = {}, salesSettings = null) {
@@ -222,58 +230,75 @@ export function buildSaleReceiptHtml(
     username: servedByName,
   }, salesSettings);
 
+  const vatHtml =
+    vatAmount > 0
+      ? (() => {
+          const vatRate = subtotalExVat > 0 ? Math.round((vatAmount / subtotalExVat) * 100) : 16;
+          return `<div class="divider"></div>${wrapSummaryTable(
+            `<tr><td class="amount-label">VAT RATE</td><td class="amount-label amount-value">VAT CHARGED</td></tr>
+            <tr><td>${vatRate} %</td><td class="amount-value">${escapeHtml(formatPrintAmount(vatAmount))}</td></tr>`,
+          )}<p class="vat-note">Prices inclusive of VAT where applicable</p>`;
+        })()
+      : "";
+
+  const tableColgroup = showDiscountColumn
+    ? `<colgroup><col class="col-desc" /><col class="col-qty" /><col class="col-price" /><col class="col-disc" /><col class="col-amount" /></colgroup>`
+    : `<colgroup><col class="col-desc" /><col class="col-qty" /><col class="col-price" /><col class="col-amount" /></colgroup>`;
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <title>Receipt ${escapeHtml(orderNo)}</title>
   <style>
     * { box-sizing: border-box; }
-    body { font-family: ${font}; margin: 0; padding: 4px 6px; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
-    .receipt { width: 72mm; max-width: 100%; margin: 0 auto; overflow: visible; }
+    body { font-family: ${font}; margin: 0; padding: 0; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
+    .receipt { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 0 1.5mm; overflow: hidden; box-sizing: border-box; }
     .company-name,
     .org-name { text-align: center; font-size: ${hpx(14)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; margin-bottom: 4px; }
     .company-meta { text-align: center; font-size: ${hpx(10)}; color: #000; line-height: 1.45; font-weight: var(--print-w-header, 600); word-break: break-word; }
     .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .08em; margin: 10px 0 8px; }
     .divider { border-top: 1px dashed #000; margin: 6px 0; }
-    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 6px; font-size: ${px(9)}; line-height: 1.4; }
+    .meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 4px; font-size: ${px(9)}; line-height: 1.4; }
+    .meta-cell { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .meta-cell--sale { text-align: right; }
     .meta-label { font-weight: 700; }
     .meta-value { text-align: right; }
-    .meta-full { grid-column: 1 / -1; word-break: break-word; }
+    .meta-full { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; table-layout: fixed; }
-    .table thead th { padding: 3px 1px; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(8)}; }
+    .table col.col-desc { width: 38%; }
+    .table col.col-qty { width: 13%; }
+    .table col.col-price { width: 24%; }
+    .table col.col-amount { width: 25%; }
+    .table.has-disc col.col-desc { width: 30%; }
+    .table.has-disc col.col-qty { width: 11%; }
+    .table.has-disc col.col-price { width: 20%; }
+    .table.has-disc col.col-disc { width: 14%; }
+    .table.has-disc col.col-amount { width: 25%; }
+    .table thead th { padding: 2px 0; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(7)}; letter-spacing: 0; }
     .table thead th.qty,
     .table thead th.price,
     .table thead th.disc,
     .table thead th.amount { text-align: right; }
-    .table th.desc, .table td.desc { width: 36%; padding-right: 4px; word-break: break-word; overflow-wrap: anywhere; }
-    .table th.qty, .table td.qty { width: 18%; }
-    .table th.price, .table td.price { width: 20%; }
-    .table th.disc, .table td.disc { width: 14%; }
-    .table th.amount, .table td.amount { width: 26%; }
-    .table.has-disc th.desc, .table.has-disc td.desc { width: 30%; }
-    .table.has-disc th.qty, .table.has-disc td.qty { width: 16%; }
-    .table.has-disc th.price, .table.has-disc td.price { width: 18%; }
-    .table.has-disc th.amount, .table.has-disc td.amount { width: 22%; }
+    .table th.desc, .table td.desc { padding-right: 2px; word-break: break-word; overflow-wrap: anywhere; }
     .table tbody tr { border-top: 1px dashed #000; }
-    .table td { padding: 3px 1px; vertical-align: top; }
-    .table td.qty { text-align: right; white-space: nowrap; }
+    .table td { padding: 2px 0; vertical-align: top; }
+    .table td.qty { text-align: right; white-space: normal; line-height: 1.15; font-size: ${px(8)}; }
+    .table td.qty .qty-val { display: block; }
+    .table td.qty .qty-pkg { display: block; font-size: 0.92em; line-height: 1.1; }
     .table td.price,
     .table td.disc,
-    .table td.amount { text-align: right; white-space: nowrap; overflow: visible; }
-    .totals { margin-top: 6px; font-size: ${px(9)}; }
-    .amount-lines { margin: 0; font-size: ${px(9)}; width: 100%; }
-    .amount-line {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      column-gap: 8px;
-      align-items: baseline;
-      margin: 3px 0;
-      width: 100%;
-    }
-    .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; }
-    .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; min-width: 4.5rem; justify-self: end; }
-    .amount-line-grand { font-size: ${px(11)}; font-weight: 700; margin-top: 0; padding-top: 0; }
-    .amount-line-grand .amount-value { font-weight: 700; }
+    .table td.amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 1px; }
+    .table td.price { padding-right: 2px; }
+    .table td.amount { padding-right: 0; }
+    .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
+    .summary-table col.col-label { width: 50%; }
+    .summary-table col.col-value { width: 50%; }
+    .summary-table td { padding: 2px 0; vertical-align: top; }
+    .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
+    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
+    .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
+    .vat-note { margin: 4px 0 0; font-size: 0.85em; line-height: 1.35; }
     .payment-title { text-align: left; font-weight: 700; letter-spacing: .04em; margin: 0 0 6px; font-size: ${px(9)}; }
     .pay-instructions { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #000; font-size: ${px(9)}; text-align: left; }
     .pay-instructions .pay-lines { margin: 0; }
@@ -286,8 +311,8 @@ export function buildSaleReceiptHtml(
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; word-break: break-word; text-transform: none; }
     .center { text-align: center; }
     @media print {
-      body { font-size: ${px(10, true)}; padding: 2mm !important; }
-      .receipt { width: 100%; max-width: 72mm; }
+      body { font-size: ${px(10, true)}; padding: 1mm 0 !important; }
+      .receipt { width: 72mm !important; max-width: 72mm !important; margin: 0 auto; }
       .company-name,
       .org-name { font-size: ${hpx(14, true)}; }
       .company-meta { font-size: ${hpx(10, true)}; }
@@ -295,13 +320,12 @@ export function buildSaleReceiptHtml(
       .meta-grid { font-size: ${px(9, true)}; }
       .table { font-size: ${px(9, true)}; }
       .table thead th { font-size: ${px(8, true)}; }
-      .totals, .amount-lines { font-size: ${px(9, true)}; }
-      .amount-line-grand { font-size: ${px(11, true)}; }
+      .summary-table { font-size: ${px(9, true)}; }
+      .summary-table tr.amount-line-grand td { font-size: ${px(11, true)}; }
       .payment-title, .pay-instructions { font-size: ${px(9, true)}; }
       .pay-instructions .pay-note { font-size: ${px(8, true)}; }
       .footer-text { font-size: ${fpx(8, true)}; }
       .footer-powered-by { font-size: ${fpx(7, true)}; }
-      .receipt { margin: 0 auto; }
     }
   </style>
 </head>
@@ -313,21 +337,22 @@ export function buildSaleReceiptHtml(
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">
-      <div><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
-      <div style="text-align:right"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
+      <div class="meta-cell"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
+      <div class="meta-cell meta-cell--sale"><span class="meta-label">Sale #:</span> ${escapeHtml(orderNo)}</div>
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(customerName)}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
     </div>
     <div class="divider"></div>
     <table class="table${showDiscountColumn ? " has-disc" : ""}">
+      ${tableColgroup}
       <thead>${tableHead}</thead>
       <tbody>${itemRows}</tbody>
     </table>
     <div class="divider"></div>
-    <div class="amount-lines totals">${totalsHtml}</div>
-    ${paymentDetailsHtml ? `<div class="divider"></div><div class="amount-lines payments">${paymentDetailsHtml}</div>` : ""}
-    ${vatAmount > 0 ? (() => { const vatRate = subtotalExVat > 0 ? Math.round((vatAmount / subtotalExVat) * 100) : 16; return `<div class="divider"></div><div class="amount-lines vat-section"><div class="amount-line"><span class="amount-label">VAT RATE</span><span class="amount-label" style="text-align:right">VAT CHARGED</span></div><div class="amount-line"><span class="amount-value" style="justify-self:start;text-align:left">${vatRate} %</span><span class="amount-value">${escapeHtml(formatPrintAmount(vatAmount))}</span></div><div class="amount-line" style="grid-template-columns:1fr;font-size:0.85em;margin-top:4px;"><span>Prices inclusive of VAT where applicable</span></div></div>`; })() : ""}
+    <div class="totals">${wrapSummaryTable(totalsHtml)}</div>
+    ${paymentDetailsHtml ? `<div class="divider"></div><div class="payments">${wrapSummaryTable(paymentDetailsHtml)}</div>` : ""}
+    ${vatHtml}
     ${paymentInstructionsHtml ? paymentInstructionsHtml : ""}
     ${kraQrHtml}
     <div class="divider"></div>

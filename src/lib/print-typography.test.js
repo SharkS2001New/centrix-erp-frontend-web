@@ -126,9 +126,37 @@ describe("org print typography settings", () => {
     });
 
     expect(html).not.toMatch(/\.amount-line-grand\s*\{[^}]*border-top:\s*1px solid/);
+    expect(html).not.toMatch(/min-width:\s*4\.5rem/);
+    expect(html).toContain('class="summary-table"');
     expect(html).not.toMatch(/\.table thead th\s*\{[^}]*border-bottom:\s*1px solid/);
     expect(html).toContain(".divider { border-top: 1px dashed #000;");
     expect(html).toContain(".table tbody tr { border-top: 1px dashed #000; }");
+  });
+
+  it("uses compact thermal table columns and wraps sale number in meta grid", () => {
+    const html = buildSaleReceiptHtml(
+      {
+        ...sampleSale,
+        order_num: 1001,
+        order_total: 12820,
+        cash: 5000,
+        mpesa_amount: 7820,
+      },
+      {
+        seller: { name: "Test Org" },
+        branding: { showHeader: false, display: "name", organizationName: "Test Org" },
+      },
+    );
+
+    expect(html).toContain("<colgroup>");
+    expect(html).toContain('col class="col-amount"');
+    expect(html).toContain(">AMT</th>");
+    expect(html).toContain('class="meta-cell meta-cell--sale"');
+    expect(html).toContain("Sale #:");
+    expect(html).toContain("S1001");
+    expect(html).toContain("font-variant-numeric: tabular-nums");
+    expect(html).toContain('<td class="amount-label">Total</td>');
+    expect(html).toContain('<td class="amount-label">Cash</td>');
   });
 
   it("preserves footer line casing on thermal receipts", () => {

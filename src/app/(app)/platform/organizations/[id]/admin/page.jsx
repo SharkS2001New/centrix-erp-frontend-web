@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { PlatformAdminShell } from "@/components/platform/platform-admin-shell";
-import { PLATFORM_ADMIN_LINKS, platformAdminHref, platformOrgSettingsHref } from "@/lib/platform-admin-nav";
+import { PLATFORM_ADMIN_LINKS, platformAdminHref, platformOrgLegacyArchiveHref, platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 
 export default function PlatformOrganizationAdminPage() {
   const params = useParams();
@@ -19,7 +19,7 @@ export default function PlatformOrganizationAdminPage() {
         {PLATFORM_ADMIN_LINKS.map((item) => (
           <Link
             key={item.href}
-            href={platformAdminHref(orgId, item.href)}
+            href={item.external ? platformOrgLegacyArchiveHref(orgId) : platformAdminHref(orgId, item.href)}
             className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm transition hover:border-[#185FA5]/40"
           >
             <p className="theme-heading text-sm font-medium">{item.label}</p>

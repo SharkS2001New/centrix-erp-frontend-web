@@ -169,14 +169,14 @@ export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout 
       <th class="qty">QTY</th>
       <th class="price">PRICE</th>
       <th class="disc">Disc</th>
-      <th class="amount">AMOUNT</th>
+      <th class="amount">AMT</th>
     </tr>`;
     }
     return `<tr>
       <th class="desc">ITEMS</th>
       <th class="qty">QTY</th>
       <th class="price">PRICE</th>
-      <th class="amount">AMOUNT</th>
+      <th class="amount">AMT</th>
     </tr>`;
   }
 
@@ -227,12 +227,14 @@ export function buildSaleDocumentLineRows(
           uomById,
           linePrintOptions,
         );
-        const qty = [quantity, packageLabel].filter(Boolean).join(" ");
+        const qtyCell = packageLabel
+          ? `<span class="qty-val">${escapeHtml(quantity)}</span><span class="qty-pkg">${escapeHtml(packageLabel)}</span>`
+          : escapeHtml(quantity);
 
         if (showDiscountColumn) {
           return `<tr>
           <td class="desc">${description}</td>
-          <td class="qty">${escapeHtml(qty)}</td>
+          <td class="qty">${qtyCell}</td>
           <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
           <td class="disc">${escapeHtml(formatPrintAmount(discount))}</td>
           <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
@@ -241,7 +243,7 @@ export function buildSaleDocumentLineRows(
 
         return `<tr>
           <td class="desc">${description}</td>
-          <td class="qty">${escapeHtml(qty)}</td>
+          <td class="qty">${qtyCell}</td>
           <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
           <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
         </tr>`;

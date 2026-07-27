@@ -228,8 +228,8 @@ export default function ManageOrganizationPage() {
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
             <p className="font-medium">Organization settings</p>
             <p className="mt-1 text-xs text-slate-600">
-              Configure checkout, finance, distribution, legacy archive, notifications, security, and other
-              operational preferences for this tenant from the platform.
+              Configure checkout, finance, distribution, notifications, security, and other operational
+              preferences for this tenant from the platform.
             </p>
             <Link
               href={`/platform/organizations/${orgId}/settings`}
@@ -245,6 +245,19 @@ export default function ManageOrganizationPage() {
                 Platform admin
               </Link>
             ) : null}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
+            <p className="font-medium">Legacy archive</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Enable read-only LightStores sales history and set the cutover date for Reports → Legacy archive.
+            </p>
+            <Link
+              href={`/platform/organizations/${orgId}/legacy-archive`}
+              className="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100"
+            >
+              Configure legacy archive
+            </Link>
           </div>
 
           {!administrationEnabled ? (

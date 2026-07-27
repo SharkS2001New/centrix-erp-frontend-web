@@ -35,7 +35,6 @@ export const ORG_SETTINGS_TAB_MODULES = {
   hr: ["hr_payroll"],
   notifications: ["admin"],
   security: ["admin"],
-  "legacy-archive": ["admin"],
 };
 
 /** Tabs always available on tenant Administration → Organization settings. */
@@ -45,7 +44,7 @@ export const TENANT_CORE_SETTINGS_TABS = new Set(["general", "printouts", "notif
 export const PLATFORM_MANAGED_ADMIN_TABS = new Set(["general", "printouts", "notifications", "security"]);
 
 /** Tabs only platform super-admins may configure (not exposed on tenant /admin/settings). */
-export const PLATFORM_ONLY_ORG_SETTINGS_TABS = new Set(["legacy-archive"]);
+export const PLATFORM_ONLY_ORG_SETTINGS_TABS = new Set();
 
 function moduleEnabled(capabilities, moduleKey) {
   return Boolean(capabilities?.modules?.[moduleKey]);
@@ -115,9 +114,6 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
 
     case "hr":
       return moduleEnabled(capabilities, "hr_payroll");
-
-    case "legacy-archive":
-      return platformManaged;
 
     default: {
       const required = ORG_SETTINGS_TAB_MODULES[tabId] ?? ["admin"];

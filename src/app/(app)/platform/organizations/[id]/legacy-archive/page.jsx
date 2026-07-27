@@ -1,23 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { OrganizationSettingsContent } from "@/components/admin/organization-settings-content";
+import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
 import { SettingsApiProvider } from "@/contexts/settings-api-context";
-import { capabilitiesFromOrganizationPayload } from "@/lib/org-settings-tabs";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
 
-export default function PlatformOrganizationSettingsPage() {
+export default function PlatformOrganizationLegacyArchivePage() {
   const params = useParams();
   const orgId = params?.id;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [organization, setOrganization] = useState(null);
-  const [orgPayload, setOrgPayload] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -26,7 +26,6 @@ export default function PlatformOrganizationSettingsPage() {
     try {
       const res = await apiRequest(`/admin/organizations/${orgId}`);
       setOrganization(res.organization ?? null);
-      setOrgPayload(res);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load organization.");
     } finally {
@@ -38,23 +37,27 @@ export default function PlatformOrganizationSettingsPage() {
     load();
   }, [load]);
 
-  const capabilities = useMemo(
-    () => capabilitiesFromOrganizationPayload(orgPayload ?? {}),
-    [orgPayload],
-  );
-
   const apiPrefix = orgId ? `/admin/organizations/${orgId}/settings` : "/erp/settings";
+
+  const panelProps = {
+    saving,
+    setSaving,
+    setError: toastErrorSetter,
+    setMessage: toastMessageSetter,
+    onAfterSave: load,
+    platformManaged: true,
+  };
 
   return (
     <CatalogPageShell
-      title={organization ? `${organization.org_name} — settings` : "Organization settings"}
-      subtitle="Platform configuration for module provisioning, order workflow, and integration gates. Tenants manage operational module preferences under Administration → Organization settings."
+      title={organization ? `${organization.org_name} — legacy archive` : "Legacy archive"}
+      subtitle="Enable LightStores historical sales for this tenant and configure the cutover date shown in Reports → Legacy archive."
     >
       <AdminBreadcrumb
         items={[
           { label: "Platform", href: "/platform" },
           { label: organization?.org_name ?? "Organization", href: `/platform/organizations/${orgId}` },
-          { label: "Organization settings" },
+          { label: "Legacy archive" },
         ]}
       />
 
@@ -65,11 +68,10 @@ export default function PlatformOrganizationSettingsPage() {
       ) : (
         <>
           <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
-            <p className="font-medium">Platform-managed organization settings</p>
+            <p className="font-medium">Platform-managed legacy archive</p>
             <p className="mt-1 text-xs text-slate-600">
-              Module provisioning, checkout flow, mobile orders, order pipeline, accounting books setup,
-              and M-Pesa/KRA/AI feature toggles are maintained here. Tab workspace is configured on Tenant profile. Tenants manage
-              day-to-day module preferences under Administration → Organization settings.
+              Turn on read-only LightStores sales history for this organization. Tenants browse imported sales
+              under Reports → Legacy archive once enabled.
             </p>
             <Link
               href={`/platform/organizations/${orgId}`}
@@ -80,13 +82,7 @@ export default function PlatformOrganizationSettingsPage() {
           </div>
 
           <SettingsApiProvider apiPrefix={apiPrefix}>
-            <OrganizationSettingsContent
-              capabilities={capabilities}
-              platformManaged
-              onAfterSave={load}
-              breadcrumbItems={null}
-              showShell={false}
-            />
+            <LegacyArchiveSettingsPanel {...panelProps} />
           </SettingsApiProvider>
         </>
       )}

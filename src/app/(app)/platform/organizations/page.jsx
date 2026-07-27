@@ -124,6 +124,12 @@ export default function PlatformOrganizationsPage() {
                         >
                           Organization settings
                         </Link>
+                        <Link
+                          href={`/platform/organizations/${org.id}/legacy-archive`}
+                          className="text-xs font-medium text-slate-600 hover:underline"
+                        >
+                          Legacy archive
+                        </Link>
                       </div>
                     </td>
                   </tr>

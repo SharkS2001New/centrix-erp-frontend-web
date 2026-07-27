@@ -8,7 +8,7 @@ import { AdminApiProvider } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PlatformAdminNav } from "@/components/platform/platform-admin-nav";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
-import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
+import { platformOrgLegacyArchiveHref, platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 
 export function PlatformAdminShell({
   title,
@@ -82,6 +82,9 @@ export function PlatformAdminShell({
               </Link>
               <Link href={platformOrgSettingsHref(orgId)} className="text-[#185FA5] hover:underline">
                 Organization settings
+              </Link>
+              <Link href={platformOrgLegacyArchiveHref(orgId)} className="text-[#185FA5] hover:underline">
+                Legacy archive
               </Link>
             </div>
           </div>

@@ -14,7 +14,6 @@ import { ProcurementSettingsPanel } from "@/components/admin/procurement-setting
 import { PrintoutsSettingsPanel } from "@/components/admin/printouts-settings-panel";
 import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
-import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
 import { SalesSettingsPanel } from "@/components/admin/sales-settings-panel";
 import { ManagerApprovalsSettingsPanel } from "@/components/admin/manager-approvals-settings-panel";
 import { PlatformAccountingSettingsPanel } from "@/components/admin/platform-accounting-settings-panel";
@@ -42,7 +41,6 @@ const TABS = [
   { id: "hr", label: "HR & Payroll" },
   { id: "notifications", label: "Messaging" },
   { id: "security", label: "Security" },
-  { id: "legacy-archive", label: "Legacy archive" },
 ];
 
 export function OrganizationSettingsContent({
@@ -55,7 +53,7 @@ export function OrganizationSettingsContent({
   title = "Organization settings",
   subtitle = tenantSelfService
     ? TENANT_ORG_SETTINGS_SUBTITLE
-    : "Platform configuration for module provisioning, workflows, accounting books setup, integration gates, and legacy archive. Tenants manage day-to-day module preferences under Administration → Organization settings.",
+    : "Platform configuration for module provisioning, workflows, accounting books setup, and integration gates. Tenants manage day-to-day module preferences under Administration → Organization settings.",
 }) {
   const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
@@ -142,7 +140,6 @@ export function OrganizationSettingsContent({
           {tab === "hr" ? <HrSettingsPanel {...panelProps} /> : null}
           {tab === "notifications" ? <NotificationsSettingsPanel {...panelProps} /> : null}
           {tab === "security" ? <SecuritySettingsPanel {...panelProps} /> : null}
-          {tab === "legacy-archive" ? <LegacyArchiveSettingsPanel {...panelProps} /> : null}
         </div>
           </>
         )}

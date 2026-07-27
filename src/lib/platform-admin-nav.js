@@ -10,6 +10,12 @@ export const PLATFORM_ADMIN_LINKS = [
   { href: "vats", label: "VAT rates", description: "Tax codes and percentages used on products." },
   { href: "kra-responses", label: "KRA device log", description: "Fiscal receipt submissions and retry status." },
   { href: "audit", label: "Audit log", description: "Who changed what across this organization." },
+  {
+    href: "legacy-archive",
+    label: "Legacy archive",
+    description: "Enable LightStores historical sales and set the cutover date.",
+    external: true,
+  },
 ];
 
 /** @param {string|number} orgId */
@@ -21,6 +27,11 @@ export function platformAdminHref(orgId, segment) {
 /** @param {string|number} orgId */
 export function platformOrgSettingsHref(orgId) {
   return `/platform/organizations/${orgId}/settings`;
+}
+
+/** @param {string|number} orgId */
+export function platformOrgLegacyArchiveHref(orgId) {
+  return `/platform/organizations/${orgId}/legacy-archive`;
 }
 
 /** @param {string|number} orgId */

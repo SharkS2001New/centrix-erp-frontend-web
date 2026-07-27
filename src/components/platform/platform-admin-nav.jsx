@@ -5,6 +5,7 @@ import { useParams, usePathname } from "next/navigation";
 import {
   PLATFORM_ADMIN_LINKS,
   platformAdminHref,
+  platformOrgLegacyArchiveHref,
   platformOrgSettingsHref,
 } from "@/lib/platform-admin-nav";
 
@@ -22,7 +23,7 @@ export function PlatformAdminNav() {
   const tabs = [
     { href: hubPath, label: "Overview", exact: true },
     ...PLATFORM_ADMIN_LINKS.map((item) => ({
-      href: platformAdminHref(orgId, item.href),
+      href: item.external ? platformOrgLegacyArchiveHref(orgId) : platformAdminHref(orgId, item.href),
       label: item.label,
       exact: false,
     })),
