@@ -15,15 +15,15 @@ describe("local-printing-settings", () => {
     });
   });
 
-  it("merges module_settings.local_printing for qz", () => {
+  it("maps legacy QZ settings to browser", () => {
     const merged = mergeLocalPrintingSettings({
       local_printing: { provider: "qz", printer_name: "EPSON", use_signing: true },
     });
-    expect(merged.provider).toBe("qz");
+    expect(merged.provider).toBe("browser");
     expect(merged.printer_name).toBe("EPSON");
     expect(merged.use_signing).toBe(true);
     expect(qzConfigFromLocalPrinting(merged)).toMatchObject({
-      enabled: true,
+      enabled: false,
       printerName: "EPSON",
       useSigning: true,
     });
@@ -45,7 +45,7 @@ describe("local-printing-settings", () => {
   it("always keeps browser fallback on", () => {
     const merged = mergeLocalPrintingSettings({
       local_printing: {
-        provider: "qz",
+        provider: "agent",
         fallback_to_browser: false,
         require_qz: true,
       },

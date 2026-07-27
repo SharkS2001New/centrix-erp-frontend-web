@@ -15,7 +15,8 @@ describe("local-print-provider (org settings)", () => {
   });
 
   it("normalizes provider aliases", () => {
-    expect(normalizeLocalPrintProvider("qz-tray")).toBe("qz");
+    expect(normalizeLocalPrintProvider("qz-tray")).toBe("browser");
+    expect(normalizeLocalPrintProvider("qz")).toBe("browser");
     expect(normalizeLocalPrintProvider("print-agent")).toBe("agent");
     expect(normalizeLocalPrintProvider("print_agent")).toBe("agent");
     expect(normalizeLocalPrintProvider("agent")).toBe("agent");
@@ -23,8 +24,8 @@ describe("local-print-provider (org settings)", () => {
   });
 
   it("reads provider from the org cache", () => {
-    setCachedLocalPrintingSettings({ provider: "qz", printer_name: "TM-T20" });
-    expect(getLocalPrintProvider()).toBe("qz");
+    setCachedLocalPrintingSettings({ provider: "agent", printer_name: "TM-T20" });
+    expect(getLocalPrintProvider()).toBe("agent");
     expect(saveLocalPrintProvider("browser")).toBe("browser");
     expect(getLocalPrintProvider()).toBe("browser");
   });

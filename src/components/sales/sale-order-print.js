@@ -37,7 +37,6 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import { isPrintAgentEnabled } from "@/lib/print-agent";
-import { isQzTrayEnabled } from "@/lib/qz-tray-print";
 
 function isOfflineSalePrint(sale, options = {}) {
   return (
@@ -223,12 +222,11 @@ export async function printSaleOrder(sale, options = {}) {
   }
 
   let printWindow = options.printWindow ?? null;
-  // Offline: prefer QZ Tray / Centrix Print Agent — avoid opening a blank iframe
-  // before enrichment, and skip WAN lookups that hang on a dropped/slow link.
+  // Prefer Centrix Print Agent — avoid opening a blank iframe before enrichment,
+  // and skip WAN lookups that hang on a dropped/slow link.
   const offlineSale = isOfflineSalePrint(sale, options);
-  // Skip the browser print iframe when silent printing is configured (agent or QZ).
-  const deferPrintWindow =
-    !printWindow && (isQzTrayEnabled() || isPrintAgentEnabled());
+  // Skip the browser print iframe when Centrix Print Agent is configured.
+  const deferPrintWindow = !printWindow && isPrintAgentEnabled();
   if (!printWindow && !deferPrintWindow) {
     printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
     if (!printWindow) {

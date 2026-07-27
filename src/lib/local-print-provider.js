@@ -15,23 +15,17 @@ export const LOCAL_PRINT_PROVIDERS = [
     description: "Uses the normal system print dialog. No extra software.",
   },
   {
-    id: "qz",
-    label: "QZ Tray",
-    description:
-      "Install QZ Tray on Windows or macOS for silent printing. Falls back to the browser print dialog if QZ Tray is not available.",
-  },
-  {
     id: "agent",
     label: "Centrix Print Agent (Windows)",
     description:
-      "Recommended on Windows: a small .NET service on the till (~15 MB). No QZ Tray or Node.js. Falls back to the browser print dialog if offline.",
+      "Recommended on Windows tills: a small .NET service (~15 MB) for silent receipt printing. Falls back to the browser print dialog if offline.",
   },
 ];
 
 export function normalizeLocalPrintProvider(value) {
   const key = String(value ?? "").trim().toLowerCase();
-  if (key === "qz" || key === "qz-tray" || key === "qz_tray") return "qz";
   if (key === "agent" || key === "print-agent" || key === "print_agent") return "agent";
+  // Legacy QZ Tray orgs → browser until an admin selects Print Agent.
   return "browser";
 }
 

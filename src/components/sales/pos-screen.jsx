@@ -180,6 +180,7 @@ import {
   rememberPosOrderCustomer,
   rememberPosOrderCustomerName,
 } from "@/lib/pos-customer-name-memory";
+import { readPosLastReceipt, rememberPosLastReceipt } from "@/lib/pos-last-receipt";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
 import {
   clearAutoHeldOrder,
@@ -268,6 +269,32 @@ function isOfflinePendingSaleId(saleId) {
   return String(saleId ?? "").startsWith("offline:");
 }
 
+/** Newest order # first — used for classic ← / → sequential browse. */
+function sortPosOrdersByNumberDesc(orders) {
+  return [...(orders ?? [])].sort(
+    (a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0),
+  );
+}
+
+/** Immediate older completed order (next lower order #). */
+function findOlderPosOrder(orders, currentOrderNum) {
+  const current = Number(currentOrderNum);
+  if (!Number.isFinite(current)) return null;
+  return (
+    sortPosOrdersByNumberDesc(orders).find((row) => Number(row.order_num) < current) ?? null
+  );
+}
+
+/** Immediate newer completed order (next higher order #). */
+function findNewerPosOrder(orders, currentOrderNum) {
+  const current = Number(currentOrderNum);
+  if (!Number.isFinite(current)) return null;
+  const ascending = [...(orders ?? [])].sort(
+    (a, b) => Number(a.order_num ?? 0) - Number(b.order_num ?? 0),
+  );
+  return ascending.find((row) => Number(row.order_num) > current) ?? null;
+}
+
 function offlinePrintOptions(sale, base = {}) {
   const offline =
     Boolean(sale?.offline_pending_sync) || isOfflinePendingSaleId(sale?.id);
@@ -283,9 +310,17 @@ function offlinePrintOptions(sale, base = {}) {
 }
 
 /** Prefer the loaded previous order while editing; otherwise the last completed sale. */
-function resolvePosReprintSale({ isCartEditSession, editSourceSale, completedSale }) {
+function resolvePosReprintSale({
+  isCartEditSession,
+  editSourceSale,
+  completedSale,
+  sessionPosOrders,
+  lastReceiptFallback,
+}) {
   if (isCartEditSession && editSourceSale?.id) return editSourceSale;
   if (completedSale?.id) return completedSale;
+  if (sessionPosOrders?.[0]?.id) return sessionPosOrders[0];
+  if (lastReceiptFallback?.id) return lastReceiptFallback;
   return null;
 }
 
@@ -945,14 +980,22 @@ export function PosScreen({ standalone = false }) {
   const modernOrderEditLocked = Boolean(
     standalone && !classicLayout && isCartEditSession && !isEditableResubmit,
   );
+  const lastReceiptFallback = useMemo(
+    () => readPosLastReceipt(user?.id, user?.branch_id),
+    // Re-read when user identity changes; completedSale updates also refresh via remember.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: seed from storage once per user/branch
+    [user?.id, user?.branch_id, completedSale?.id],
+  );
   const reprintSale = useMemo(
     () =>
       resolvePosReprintSale({
         isCartEditSession,
         editSourceSale,
         completedSale,
+        sessionPosOrders,
+        lastReceiptFallback,
       }),
-    [isCartEditSession, editSourceSale, completedSale],
+    [isCartEditSession, editSourceSale, completedSale, sessionPosOrders, lastReceiptFallback],
   );
   const reprintReceiptLabel = reprintSale?.order_num
     ? `Reprint receipt #${reprintSale.order_num}`
@@ -1024,25 +1067,37 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   function rememberCompletedPosOrder(sale) {
-    if (!sale?.id || !enablePosOrderEdit) return;
-    if (!isCheckoutCompleteStatus(sale.status, channelWorkflow, "pos") && !sale.offline_pending_sync) {
+    if (!sale?.id) return;
+    rememberPosLastReceipt(user?.id, user?.branch_id, sale);
+    if (!enablePosOrderEdit) return;
+    if (
+      !isCheckoutCompleteStatus(sale.status, channelWorkflow, "pos") &&
+      !sale.offline_pending_sync
+    ) {
       return;
     }
     const entry = { id: sale.id, order_num: sale.order_num };
     setSessionPosOrders((prev) => {
       // Same order # after edit replaces the previous sale id so ← opens the live receipt.
-      const next = [
+      const next = sortPosOrdersByNumberDesc([
         entry,
         ...prev.filter(
           (row) =>
             String(row.id) !== String(entry.id) &&
             String(row.order_num) !== String(entry.order_num),
         ),
-      ];
+      ]);
       return next.slice(0, 15);
     });
     setEditBrowseIndex(0);
     setEditOrderNo(String(sale.order_num ?? ""));
+  }
+
+  /** Keep Reprint enabled across clear-workspace / remount. */
+  function markSaleForReprint(sale) {
+    if (!sale?.id) return;
+    setCompletedSale(sale);
+    rememberCompletedPosOrder(sale);
   }
 
   const loadCompletedPosOrders = useCallback(async () => {
@@ -1135,7 +1190,7 @@ export function PosScreen({ standalone = false }) {
       }
 
       const offlineNums = new Set(offlineOrders.map((row) => String(row.order_num)));
-      const orders = [
+      const orders = sortPosOrdersByNumberDesc([
         ...offlineOrders.map((row) => ({
           id: row.id,
           order_num: row.order_num,
@@ -1143,9 +1198,21 @@ export function PosScreen({ standalone = false }) {
           offline_pending_sync: true,
         })),
         ...serverOrders.filter((row) => !offlineNums.has(String(row.order_num))),
-      ].slice(0, 15);
+      ]).slice(0, 15);
 
       setSessionPosOrders(orders);
+      // Restore Reprint target after remount when React state was wiped.
+      setCompletedSale((prev) => {
+        if (prev?.id) return prev;
+        if (!orders[0]?.id) return prev;
+        return orders[0];
+      });
+      if (orders[0]?.id) {
+        const remembered = readPosLastReceipt(user?.id, user?.branch_id);
+        if (!remembered?.id) {
+          rememberPosLastReceipt(user?.id, user?.branch_id, orders[0]);
+        }
+      }
       setEditOrderNo((current) => {
         if (String(current ?? "").trim()) return current;
         return orders.length ? String(orders[0].order_num) : current;
@@ -1158,7 +1225,16 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(message);
       return [];
     }
-  }, [enablePosOrderEdit, standalone, channelWorkflow, user?.id]);
+  }, [enablePosOrderEdit, standalone, channelWorkflow, user?.id, user?.branch_id]);
+
+  // Hydrate last receipt for Reprint when returning to POS (module switch / remount).
+  useEffect(() => {
+    if (!standalone || !user?.id) return;
+    setCompletedSale((prev) => {
+      if (prev?.id) return prev;
+      return readPosLastReceipt(user.id, user.branch_id);
+    });
+  }, [standalone, user?.id, user?.branch_id]);
 
   useEffect(() => {
     if (!enablePosOrderEdit || !standalone) return;
@@ -3805,16 +3881,31 @@ export function PosScreen({ standalone = false }) {
       setSelectedProduct(product);
       setSearchQuery(product.product_name ?? line.product_code);
       setUnitPriceTouched(true);
-      const baseQty = Number(line.quantity ?? 0);
+      const entryQty = posEntryQtyFromCartLine(line, product, retailPackage);
       const perUnitDiscount = cartLineEnteredDiscountPerUnit(line, product, retailPackage);
+      // Retail Price field is wholesale/kg (markup on amount). Prefer stored display;
+      // fall back to catalog wholesale so amortized unit_price is never used as override.
+      const retailUnit =
+        Number(line.display_unit_price) > 0
+          ? Number(line.display_unit_price)
+          : applyComputedPrice(
+              product,
+              entryQty,
+              String(perUnitDiscount),
+              null,
+              isRetailLine,
+              !isRetailLine,
+            ).displayUnitPrice;
       setLineForm({
         product_code: line.product_code,
         description: line.product_name ?? product.product_name ?? "",
         package: line.uom ?? "",
-        quantity: posEntryQtyFromCartLine(line, product, retailPackage),
+        quantity: entryQty,
         discount: String(perUnitDiscount),
         unit_price: String(
-          cartLineDisplayUnitPrice(line, product.uom, isRetailLine),
+          isRetailLine
+            ? retailUnit
+            : cartLineDisplayUnitPrice(line, product.uom, isRetailLine),
         ),
       });
       setStatusMessage(`Editing line #${line.line_no ?? line.id} (${posCartLineTypeLabel(line)}).`);
@@ -4031,8 +4122,7 @@ export function PosScreen({ standalone = false }) {
           cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
           floatSessionId,
         });
-        setCompletedSale(sale);
-        rememberCompletedPosOrder(sale);
+        markSaleForReprint(sale);
         setCart(null);
         setSelectedLineId(null);
         clearPosUiDraft();
@@ -4104,8 +4194,7 @@ export function PosScreen({ standalone = false }) {
             checkoutRequest(),
             "Checkout timed out. Check that the API is running and try again.",
           );
-      setCompletedSale(sale);
-      rememberCompletedPosOrder(sale);
+      markSaleForReprint(sale);
       setCart(null);
       setSelectedLineId(null);
       clearPosUiDraft();
@@ -4307,7 +4396,7 @@ export function PosScreen({ standalone = false }) {
         skipEditAutosaveRef.current = true;
         await loadCashierCart();
         setEditOrderNo("");
-        setCompletedSale(sale);
+        markSaleForReprint(sale);
         setEditSourceSale(null);
         void refreshOfflineCounts();
         void loadCompletedPosOrders();
@@ -4410,7 +4499,7 @@ export function PosScreen({ standalone = false }) {
       skipEditAutosaveRef.current = true;
       await loadCashierCart();
       setEditOrderNo("");
-      setCompletedSale(sale);
+      markSaleForReprint(sale);
       setEditSourceSale(null);
 
       if (promptReprint) {
@@ -4578,7 +4667,7 @@ export function PosScreen({ standalone = false }) {
         method: "POST",
         body: checkoutBody,
       });
-      setCompletedSale(sale);
+      markSaleForReprint(sale);
       setSaveOrderOpen(false);
       clearPosUiDraft();
       clearLineEntry();
@@ -4678,7 +4767,7 @@ export function PosScreen({ standalone = false }) {
 
     setPaymentOpen(false);
     setPaymentError(null);
-    setCompletedSale(null);
+    // Keep completedSale / last receipt — clearing workspace must not disable Reprint.
     setEditSourceSale(null);
     setCartLineSaveFailed(false);
     setReplacingLineId(null);
@@ -4739,6 +4828,8 @@ export function PosScreen({ standalone = false }) {
       isCartEditSession,
       editSourceSale,
       completedSale,
+      sessionPosOrders,
+      lastReceiptFallback: readPosLastReceipt(user?.id, user?.branch_id),
     });
     if (!sale?.id) {
       const message = isCartEditSession
@@ -4829,16 +4920,32 @@ export function PosScreen({ standalone = false }) {
         setEditingLineRef(null);
         setReplacingLineId(null);
         setPaymentOpen(false);
-        setCompletedSale(null);
         setEditSourceSale(saleSnapshot?.id ? saleSnapshot : sale);
         orderNoUserEditedRef.current = false;
         const orderNum = restoredCart?.held_order_num;
         if (orderNum != null) {
           setEditOrderNo(String(orderNum));
           setSessionPosOrders((prev) => {
-            const next = prev.filter((row) => String(row.id) !== String(saleId));
-            const idx = next.findIndex((row) => String(row.order_num) === String(orderNum));
-            setEditBrowseIndex(idx >= 0 ? idx : 0);
+            const entry = {
+              id: saleId,
+              order_num: orderNum,
+              status: sale?.status ?? saleSnapshot?.status,
+              offline_pending_sync: true,
+            };
+            const next = sortPosOrdersByNumberDesc([
+              entry,
+              ...prev.filter(
+                (row) =>
+                  String(row.id) !== String(saleId) &&
+                  String(row.order_num) !== String(orderNum),
+              ),
+            ]);
+            setEditBrowseIndex(
+              Math.max(
+                0,
+                next.findIndex((row) => String(row.order_num) === String(orderNum)),
+              ),
+            );
             return next;
           });
           const customerMemory = extractSaleCustomerMemory(saleSnapshot ?? sale);
@@ -4906,7 +5013,6 @@ export function PosScreen({ standalone = false }) {
       setEditingLineRef(null);
       setReplacingLineId(null);
       setPaymentOpen(false);
-      setCompletedSale(null);
       const sourceSale =
         fetchedSale?.id
           ? fetchedSale

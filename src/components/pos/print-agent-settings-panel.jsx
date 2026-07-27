@@ -16,7 +16,6 @@ import {
   agentConfigFromLocalPrinting,
   fetchLocalPrintingSettings,
   localPrintingFromProviderForm,
-  qzConfigFromLocalPrinting,
   saveLocalPrintingSettings,
   syncLocalPrintingFromCapabilities,
 } from "@/lib/local-printing-settings";
@@ -32,43 +31,17 @@ import {
   downloadPrintAgentDotnet,
   downloadPrintAgentSource,
 } from "@/lib/print-agent-installer-download";
-import {
-  checkQzTrayHealth,
-  normalizeQzTrayConfig,
-  printViaQzTray,
-} from "@/lib/qz-tray-print";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { P } from "@/lib/permission-codes";
 
-function Toggle({ checked, onChange, label, description, disabled = false }) {
-  return (
-    <label
-      className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 ${disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
-    >
-      <input
-        type="checkbox"
-        className="mt-1"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span>
-        <span className="theme-heading block text-sm font-medium">{label}</span>
-        {description ? <span className="theme-subtext mt-0.5 block text-xs">{description}</span> : null}
-      </span>
-    </label>
-  );
-}
-
-/** Organization local printing — browser, QZ Tray, or Centrix Print Agent. */
+/** Organization local printing — browser or Centrix Print Agent. */
 export function PrintAgentSettingsPanel({ compact = false }) {
   const { capabilities, refreshCapabilities, hasPermission } = useAuth();
   const canEdit = hasPermission?.(P.admin.till_printing.edit) ?? true;
 
   const [ready, setReady] = useState(false);
   const [provider, setProvider] = useState("browser");
-  const [qzForm, setQzForm] = useState(() => normalizeQzTrayConfig());
   const [agentForm, setAgentForm] = useState(() => normalizePrintAgentConfig());
   const [health, setHealth] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -88,7 +61,6 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         const settings = await fetchLocalPrintingSettings();
         if (cancelled) return;
         setProvider(settings.provider);
-        setQzForm(qzConfigFromLocalPrinting(settings));
         setAgentForm(agentConfigFromLocalPrinting(settings));
         applyLocalPrintProviderSelection(settings.provider);
       } catch {
@@ -96,7 +68,6 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         syncLocalPrintingFromCapabilities(capabilities);
         const providerFallback = getLocalPrintProvider();
         setProvider(providerFallback);
-        setQzForm(qzConfigFromLocalPrinting());
         setAgentForm(agentConfigFromLocalPrinting());
       } finally {
         if (!cancelled) setReady(true);
@@ -126,40 +97,35 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const refreshHealth = useCallback(async () => {
     setChecking(true);
     try {
-      if (provider === "qz") {
-        const result = await checkQzTrayHealth({ ...qzForm, enabled: true });
+      if (provider !== "agent") {
+        setHealth(null);
+        return null;
+      }
+      const status = await checkPrintAgentHealth({ ...agentForm, enabled: true });
+      if (!status) {
+        const result = {
+          ok: false,
+          printers: [],
+          error: "Print agent is not running. Install the Windows print service on this PC, then try again.",
+        };
         setHealth(result);
         return result;
       }
-      if (provider === "agent") {
-        const status = await checkPrintAgentHealth({ ...agentForm, enabled: true });
-        if (!status) {
-          const result = {
-            ok: false,
-            printers: [],
-            error: "Print agent is not running. Install the Windows print service on this PC, then try again.",
-          };
-          setHealth(result);
-          return result;
-        }
-        const result = { ...status, ok: Boolean(status.ok), error: undefined };
-        setHealth(result);
-        return result;
-      }
-      setHealth(null);
-      return null;
+      const result = { ...status, ok: Boolean(status.ok), error: undefined };
+      setHealth(result);
+      return result;
     } finally {
       setChecking(false);
     }
-  }, [provider, qzForm, agentForm]);
+  }, [provider, agentForm]);
 
   useEffect(() => {
-    if (!ready || (provider !== "qz" && provider !== "agent")) return undefined;
+    if (!ready || provider !== "agent") return undefined;
     const timer = window.setTimeout(() => {
       void refreshHealth();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [ready, provider, qzForm.printerName, qzForm.useSigning, agentForm.printerName, refreshHealth]);
+  }, [ready, provider, agentForm.printerName, refreshHealth]);
 
   function selectProvider(next) {
     if (!canEdit) return;
@@ -167,14 +133,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     setProvider(next);
     setHealth(null);
     applyLocalPrintProviderSelection(next);
-    if (next === "qz") setQzForm((prev) => ({ ...prev, enabled: true }));
     if (next === "agent") setAgentForm((prev) => ({ ...prev, enabled: true }));
-  }
-
-  function updateQz(key, value) {
-    if (!canEdit) return;
-    setSaved(false);
-    setQzForm((prev) => normalizeQzTrayConfig({ ...prev, [key]: value }));
   }
 
   function updateAgent(key, value) {
@@ -191,19 +150,16 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       const form =
         provider === "agent"
           ? { ...agentForm, enabled: true }
-          : provider === "qz"
-            ? { ...qzForm, enabled: true }
-            : { printerName: "", copies: 1, useSigning: false };
+          : { printerName: "", copies: 1, useSigning: false };
       const payload = localPrintingFromProviderForm(provider, form);
       const savedSettings = await saveLocalPrintingSettings(payload);
       setProvider(savedSettings.provider);
-      setQzForm(qzConfigFromLocalPrinting(savedSettings));
       setAgentForm(agentConfigFromLocalPrinting(savedSettings));
       applyLocalPrintProviderSelection(savedSettings.provider);
       await refreshCapabilities?.({ force: true });
       setSaved(true);
       notifySuccess("Local print settings saved for this organization.");
-      if (savedSettings.provider === "qz" || savedSettings.provider === "agent") {
+      if (savedSettings.provider === "agent") {
         await refreshHealth();
       }
     } catch (error) {
@@ -221,15 +177,10 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           ? `Connected. Printers available — default: ${result.defaultPrinter}`
           : "Connected.",
       );
-    } else if (provider === "agent") {
-      notifyError(
-        result?.error ||
-          "Print agent is not reachable. Install Centrix Print Agent on this PC and leave it running.",
-      );
     } else {
       notifyError(
         result?.error ||
-          "QZ Tray is not reachable. Install QZ Tray from qz.io, start it, then allow this site when prompted.",
+          "Print agent is not reachable. Install Centrix Print Agent on this PC and leave it running.",
       );
     }
   }
@@ -243,9 +194,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       }
       if (!status?.ok) {
         notifyError(
-          provider === "agent"
-            ? "Print agent is not running. Download and install the Windows print service on this PC, then try again."
-            : "QZ Tray is not running. Install from https://qz.io/download/ and start it on this PC.",
+          "Print agent is not running. Download and install the Windows print service on this PC, then try again.",
         );
         return;
       }
@@ -261,26 +210,15 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         productDiscountsEnabled: true,
       });
 
-      if (provider === "agent") {
-        await printViaAgent({
-          html,
-          copies: 1,
-          jobType: "receipt",
-          config: { ...agentForm, enabled: true },
-        });
-        notifySuccess(
-          `Test receipt sent via Centrix Print Agent${agentForm.printerName ? ` → ${agentForm.printerName}` : ""}.`,
-        );
-        return;
-      }
-
-      const result = await printViaQzTray({
+      await printViaAgent({
         html,
         copies: 1,
         jobType: "receipt",
-        config: { ...qzForm, enabled: true },
+        config: { ...agentForm, enabled: true },
       });
-      notifySuccess(`Test receipt sent via QZ Tray${result.printer ? ` → ${result.printer}` : ""}.`);
+      notifySuccess(
+        `Test receipt sent via Centrix Print Agent${agentForm.printerName ? ` → ${agentForm.printerName}` : ""}.`,
+      );
     } catch (error) {
       notifyError(error instanceof Error ? error.message : "Test print failed.");
     } finally {
@@ -334,19 +272,9 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     ? "Checking…"
     : provider === "browser"
       ? "Browser print"
-      : provider === "agent"
-        ? health?.ok
-          ? "Print agent connected"
-          : "Print agent offline"
-        : health?.ok
-          ? "QZ Tray connected"
-          : "QZ Tray offline";
-
-  const printerForm = provider === "agent" ? agentForm : qzForm;
-  const updatePrinter =
-    provider === "agent"
-      ? (value) => updateAgent("printerName", value)
-      : (value) => updateQz("printerName", value);
+      : health?.ok
+        ? "Print agent connected"
+        : "Print agent offline";
 
   return (
     <form onSubmit={handleSave} className={shellClass}>
@@ -354,15 +282,15 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         <div>
           <h2 className="theme-heading text-lg font-medium">{LOCAL_PRINTING_ADMIN_LABEL}</h2>
           <p className="theme-subtext mt-1 text-sm">
-            Organization-wide print method for tills using this company. Choose browser print, QZ Tray, or the
-            Centrix Print Agent MSI.
+            Organization-wide print method for tills using this company. Choose browser print or the Centrix
+            Print Agent for silent Windows printing.
           </p>
         </div>
         <span
           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
             health?.ok
               ? "bg-emerald-100 text-emerald-800"
-              : provider === "qz" || provider === "agent"
+              : provider === "agent"
                 ? "bg-amber-100 text-amber-900"
                 : "bg-slate-100 text-slate-600"
           }`}
@@ -397,57 +325,6 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           </label>
         ))}
       </div>
-
-      {provider === "qz" ? (
-        <div className="mt-5 space-y-4">
-          <Field label="Preferred printer">
-            <select
-              className={inputClassName()}
-              value={printerForm.printerName}
-              disabled={!canEdit}
-              onChange={(e) => updatePrinter(e.target.value)}
-            >
-              <option value="">System / first available</option>
-              {(health?.printers ?? []).map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {!health?.printers?.length ? (
-            <p className="theme-subtext text-xs">
-              Click <strong>Test connection</strong> after starting QZ Tray to load installed printers.
-            </p>
-          ) : null}
-          <p className="theme-subtext text-xs">
-            If QZ Tray is not installed or offline on a till, Centrix automatically opens the browser print dialog
-            instead.
-          </p>
-          <Toggle
-            checked={qzForm.useSigning}
-            onChange={(v) => updateQz("useSigning", v)}
-            disabled={!canEdit}
-            label="Use server certificate signing"
-            description="Leave off while testing — QZ will ask you to trust this site. Turn on only for production silent print after QZ_CERTIFICATE and QZ_PRIVATE_KEY are set on the API (qz.io/docs/signing)."
-          />
-          <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
-            <p className="theme-heading font-medium">Install QZ Tray</p>
-            <ol className="theme-subtext mt-2 list-decimal space-y-1 pl-4 text-xs">
-              <li>
-                Download from{" "}
-                <a href="https://qz.io/download/" target="_blank" rel="noreferrer" className="underline">
-                  qz.io/download
-                </a>{" "}
-                (Windows or macOS).
-              </li>
-              <li>Install and leave QZ Tray running in the system tray.</li>
-              <li>Open Centrix POS (PWA or browser) and allow this site when QZ asks.</li>
-              <li>Select your receipt printer above and save for the organization.</li>
-            </ol>
-          </div>
-        </div>
-      ) : null}
 
       {provider === "agent" ? (
         <div className="mt-5 space-y-4">
@@ -505,7 +382,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                 <code className="text-[11px]">print-agent-dotnet</code> folder included.
               </p>
             ) : (
-                              <div className="theme-subtext mt-3 space-y-2 text-xs">
+              <div className="theme-subtext mt-3 space-y-2 text-xs">
                 <p className="theme-heading text-xs font-medium text-[var(--theme-heading)]">
                   How to build (Windows PC)
                 </p>
@@ -527,8 +404,10 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                     once, then close all terminals.
                   </li>
                   <li>
-                    <strong>Double‑click <code className="text-[11px]">BUILD-AND-INSTALL.bat</code></strong> and
-                    allow Administrator. Wait for <strong>SUCCESS</strong>.
+                    <strong>
+                      Double‑click <code className="text-[11px]">BUILD-AND-INSTALL.bat</code>
+                    </strong>{" "}
+                    and allow Administrator. Wait for <strong>SUCCESS</strong>.
                     <p className="mt-1">
                       Do <strong>not</strong> type <code className="text-[11px]">cd path\to\...</code> — that was
                       only a placeholder. The bat file runs from the unzipped folder.
@@ -570,7 +449,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
             {saving ? "Saving…" : saved ? "Saved" : "Save settings"}
           </PrimaryButton>
         ) : null}
-        {provider === "qz" || provider === "agent" ? (
+        {provider === "agent" ? (
           <>
             <button
               type="button"

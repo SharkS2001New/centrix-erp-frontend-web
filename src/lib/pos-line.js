@@ -2,14 +2,11 @@ import {
   linePrice,
   linePriceForTier,
   normalizeTierPriceMode,
-  retailPriceAtMeasureLevel,
   tierForQuantity,
   tiersForRetailPackage,
   tiersWithPriceMode,
-  wholesalePriceAtMeasureLevel,
   wholesalePricePerSmallUnit,
   wholesaleTierBaseAtMeasureLevel,
-  smallUnitsPerLevel,
 } from "@/lib/retail-pricing";
 import { formatSaleKes } from "@/lib/sales";
 import {
@@ -154,12 +151,14 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
     };
   }
 
-  const tier = tierForQuantity(tiers, qty);
+  const tierExact = tierForQuantity(tiers, qty);
   const baseQty = qty;
   const packQty = factor > 1 ? baseToDisplayQty(baseQty, factor) : qty;
 
   const tierQty = qty > 0 ? qty : 1;
-  const activeTier = tier ?? tierForQuantity(tiers, tierQty);
+  const activeTier =
+    tierExact ??
+    tierForQuantity(tiers, tierQty, { extendPastMax: true });
 
   if (!activeTier) {
     const measureLevel = factor > 1 ? "full" : "small";
@@ -176,15 +175,17 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
   }
 
   const measureLevel = activeTier.measure_level || "small";
-  const inTier = Boolean(tier);
+  // Past the last capped tier (e.g. 75kg when max is 50) still retail-prices with
+  // accumulated markup — same extendPastMax behaviour as linePrice().
+  const inRetailPricing = Boolean(activeTier);
   return {
     baseQty,
     packQty,
     measureLevel,
     packagingLabel: measureLevelLabel(uom, measureLevel),
     tier: activeTier,
-    isRetail: inTier,
-    pricingRetail: inTier,
+    isRetail: inRetailPricing,
+    pricingRetail: inRetailPricing,
     retailSession: true,
   };
 }
@@ -215,7 +216,12 @@ function applyRouteMarkupToLine({
   return lineAmount + routeMarkup * wholesaleQty;
 }
 
-/** Derive the unit price shown in POS / receipts from the final line amount. */
+/**
+ * Derive the unit price shown in POS / receipts.
+ * Retail: always per small unit (kg). Do not scale by pack measure level — that
+ * baked markup into a pack-sized "unit" and made totals look like unit×qty with
+ * markup inside the unit. Wholesale packs: per pack from line amount.
+ */
 export function reversePosDisplayUnitPrice(
   lineAmount,
   uom,
@@ -228,12 +234,20 @@ export function reversePosDisplayUnitPrice(
     return amount / packQty;
   }
 
-  const smallPerLevel = smallUnitsPerLevel(uom, measureLevel || "small");
+  // Retail (and simple UOMs): per small / base unit from the priced amount.
   if (baseQty > 0) {
-    return (amount / baseQty) * smallPerLevel;
+    return amount / baseQty;
   }
 
   return amount;
+}
+
+/**
+ * Cashier-facing retail unit price: catalog wholesale per small unit only.
+ * Tier / route markups stay on the line amount — never folded into this unit.
+ */
+export function retailDisplayWholesaleUnitPrice(catalogUnitPrice, uom) {
+  return Math.round(wholesalePricePerSmallUnit(catalogUnitPrice, uom) * 100) / 100;
 }
 
 /** Unit price field label — retail/markup/route breakdown when applicable. */
@@ -250,21 +264,16 @@ export function posUnitPriceFieldLabel(
 
   const uom = product?.uom ?? null;
   const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellWholesale);
-  const level = resolved.measureLevel || "small";
   const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
   const retailRouteLine = isRetailRouteLine(sellWholesale, retailLine);
   const parts = [];
 
   if (usesPosRetailPricing(sellWholesale, product, retailPackage) && resolved.tier && resolved.pricingRetail) {
-    const wholesaleAtLevel = wholesalePriceAtMeasureLevel(
-      Number(product.unit_price ?? 0),
-      uom,
-      resolved.tier.measure_level || "small",
-    );
-    parts.push(`Retail price ${formatSaleKes(wholesaleAtLevel)}`);
+    const wholesalePerSmall = wholesalePricePerSmallUnit(Number(product.unit_price ?? 0), uom);
+    parts.push(`Wholesale ${formatSaleKes(wholesalePerSmall)}`);
     const markup = Number(resolved.tier.markup_price ?? 0);
     if (markup > 0) {
-      parts.push(`Markup ${formatSaleKes(markup)}`);
+      parts.push(`Amount markup ${formatSaleKes(markup)}`);
     }
   } else if (resolved.tier && normalizeTierPriceMode(resolved.tier) === "wholesale") {
     const wholesaleAtLevel = wholesaleTierBaseAtMeasureLevel(
@@ -353,9 +362,17 @@ export function computePosLine({
   const wholesaleMarkup = Number(retailPackage?.wholesale_markup_price ?? 0);
 
   let lineAmount;
+  const override =
+    unitPriceOverride != null && Number(unitPriceOverride) > 0
+      ? Number(unitPriceOverride)
+      : null;
 
-  if (unitPriceOverride != null && Number(unitPriceOverride) > 0) {
-    const override = Number(unitPriceOverride);
+  if (override != null && retailSession && resolved.tier && pricingRetail && baseQty > 0) {
+    // Override is wholesale per small unit; markup still accumulates on amount.
+    // e.g. 125/kg × 25kg + 30 = 3155 (never 130×25 with markup inside the unit).
+    const catalogFromOverride = factor > 1 ? override * factor : override;
+    lineAmount = linePrice(catalogFromOverride, tiers, baseQty, true, uom);
+  } else if (override != null) {
     if (retailSession || factor <= 1) {
       lineAmount = baseQty * override;
     } else {
@@ -388,15 +405,22 @@ export function computePosLine({
   const discountNum = Math.max(0, Number(discount ?? 0));
   lineAmount = Math.max(0, lineAmount - discountNum);
 
-  // Gross sold-unit price (before line discount) so markups stay visible in Price.
-  const displayUnitPrice = reversePosDisplayUnitPrice(lineAmountBeforeDiscount, uom, {
-    retailSession,
-    factor,
-    baseQty,
-    packQty,
-    measureLevel: resolved.measureLevel,
-  });
+  // Retail Price field: wholesale per kg only. Markup lives on amount.
+  // Wholesale: pack unit from priced amount (includes flat line markup).
+  const displayUnitPrice =
+    retailSession && pricingRetail
+      ? override != null
+        ? Math.round(override * 100) / 100
+        : retailDisplayWholesaleUnitPrice(catalogUnitPrice, uom)
+      : reversePosDisplayUnitPrice(lineAmountBeforeDiscount, uom, {
+          retailSession,
+          factor,
+          baseQty,
+          packQty,
+          measureLevel: resolved.measureLevel,
+        });
   const roundedLineAmount = finalizePosLineAmount(lineAmount, { cashRound });
+  // Per-base average for API trust path (amount ÷ qty); includes markup share.
   const unitPricePerBase = baseQty > 0 ? roundedLineAmount / baseQty : 0;
 
   return {
@@ -446,11 +470,18 @@ export function lineDiscountTotal(perUnitDiscount, packQty) {
   return Math.round(perUnit * q * 100) / 100;
 }
 
-/** Cart grid unit price — per retail measure unit or per wholesale pack. */
+/** Cart grid unit price — retail: wholesale per small (display_unit_price); wholesale: per pack. */
 export function cartLineDisplayUnitPrice(line, uom, isRetailLine = false) {
+  if (isRetailLine) {
+    const stored = Number(line?.display_unit_price);
+    if (Number.isFinite(stored) && stored > 0) {
+      return stored;
+    }
+    return Number(line?.unit_price ?? 0);
+  }
   const perBase = Number(line?.unit_price ?? 0);
   const factor = uomConversionFactor(uom);
-  if (isRetailLine || factor <= 1) {
+  if (factor <= 1) {
     return perBase;
   }
   return Math.round(perBase * factor * 100) / 100;

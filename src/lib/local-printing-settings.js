@@ -20,8 +20,8 @@ let cachedSettings = null;
 
 export function normalizeLocalPrintProviderKey(value) {
   const key = String(value ?? "").trim().toLowerCase();
-  if (key === "qz" || key === "qz-tray" || key === "qz_tray") return "qz";
   if (key === "agent" || key === "print-agent" || key === "print_agent") return "agent";
+  // Legacy QZ Tray settings map to browser (Print Agent is the silent path now).
   return "browser";
 }
 
