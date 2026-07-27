@@ -17,7 +17,7 @@ if (-not (Test-Path $exe)) {
     exit 1
 }
 
-Write-Host "Installing Centrix Print Agent to $InstallDir (user session — required for receipt printing)..."
+Write-Host ("Installing Centrix Print Agent to {0} (user session - required for receipt printing)..." -f $InstallDir)
 
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
@@ -38,10 +38,10 @@ if ($existing) {
 }
 
 $startCmd = Join-Path $InstallDir "start-print-agent.cmd"
-@"
-@echo off
-start /min "" "$installedExe"
-"@ | Set-Content -Path $startCmd -Encoding ASCII
+Set-Content -Path $startCmd -Encoding ASCII -Value @(
+    '@echo off'
+    ('start /min "" "{0}"' -f $installedExe)
+)
 
 $existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existingTask) {
@@ -56,6 +56,7 @@ $Settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -ExecutionTimeLimit ([TimeSpan]::Zero)
 $Principal = New-ScheduledTaskPrincipal -GroupId "Users" -RunLevel Limited
+$taskDescription = "{0} - silent receipt printing at http://127.0.0.1:9247" -f $DisplayName
 
 Register-ScheduledTask `
     -TaskName $TaskName `
@@ -63,9 +64,8 @@ Register-ScheduledTask `
     -Trigger $Trigger `
     -Settings $Settings `
     -Principal $Principal `
-    -Description "$DisplayName — silent receipt printing at http://127.0.0.1:9247" | Out-Null
+    -Description $taskDescription | Out-Null
 
-# Start now for the current session (after stopping any stray instance on the port).
 Get-Process -Name "Centrix.PrintAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Process -FilePath $installedExe -WindowStyle Minimized
 
