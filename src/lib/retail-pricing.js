@@ -72,12 +72,20 @@ export function tierForMeasureLevel(tiers, level, priceMode = null) {
   return matches[0] ?? null;
 }
 
-export function tierForQuantity(tiers, quantity) {
+export function tierForQuantity(tiers, quantity, { extendPastMax = false } = {}) {
   const qty = Number(quantity ?? 0);
-  for (const tier of tiers) {
+  for (const tier of tiers ?? []) {
     if (qty + 0.0001 < tier.min_qty) continue;
     if (tier.max_qty != null && qty > tier.max_qty + 0.0001) continue;
     return tier;
+  }
+
+  if (!extendPastMax || !tiers?.length) return null;
+
+  // Qty above every capped tier — keep the highest band so retail markups still apply.
+  const sorted = [...tiers].sort((a, b) => a.min_qty - b.min_qty);
+  for (let i = sorted.length - 1; i >= 0; i -= 1) {
+    if (qty + 0.0001 >= sorted[i].min_qty) return sorted[i];
   }
   return null;
 }
@@ -90,15 +98,30 @@ export function wholesalePricePerSmallUnit(baseUnitPrice, uom) {
   return base / factor;
 }
 
+/**
+ * Middle-pack size in small units. Explicit middle_factor wins; otherwise half a full
+ * pack when conversion is even (e.g. 50kg bag → 25kg), so retail markups accumulate
+ * per half-bag when the tier is measured as middle/full.
+ */
+export function resolvedMiddleFactor(uom) {
+  if (uomHasMiddlePack(uom)) {
+    return Number(uom.middle_factor);
+  }
+  const factor = uomConversionFactor(uom);
+  if (factor >= 2) {
+    return factor / 2;
+  }
+  return 1;
+}
+
 /** Wholesale price for exactly one unit at full / middle / small level. */
 export function wholesalePriceAtMeasureLevel(baseUnitPrice, uom, level) {
   const base = Number(baseUnitPrice ?? 0);
   const factor = uomConversionFactor(uom);
   if (factor <= 1) return base;
   if (level === "full") return base;
-  if (level === "middle" && uomHasMiddlePack(uom)) {
-    const mid = Number(uom.middle_factor ?? 1);
-    return (base / factor) * mid;
+  if (level === "middle") {
+    return (base / factor) * resolvedMiddleFactor(uom);
   }
   return base / factor;
 }
@@ -151,21 +174,60 @@ export function unitPricePerSmallForTier(baseUnitPrice, tier, uom) {
   return priceAtLevel / smallPerLevel;
 }
 
-export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom) {
+/** Small units represented by one count at a packaging level. */
+export function smallUnitsPerLevel(uom, level) {
+  const factor = uomConversionFactor(uom);
+  if (level === "full") return factor > 1 ? factor : 1;
+  if (level === "middle") {
+    return resolvedMiddleFactor(uom);
+  }
+  return 1;
+}
+
+/**
+ * How many markup applications a quantity earns for a wholesale-mode (flat) tier.
+ * Retail sells need markups to accumulate when qty grows (25+25+25 → 3× markup).
+ * Full-pack wholesale tiers without an explicit middle use half-pack chunks.
+ */
+export function retailMarkupApplications(quantityInSmall, tier, uom) {
   const qty = Number(quantityInSmall ?? 0);
-  const wholesaleBase = wholesaleTierBaseAtMeasureLevel(baseUnitPrice, tier, uom);
+  if (qty <= 0) return 0;
+
+  const level = tier?.measure_level || "small";
+  const factor = uomConversionFactor(uom);
+  let unitSize = smallUnitsPerLevel(uom, level);
+
+  if (
+    normalizeTierPriceMode(tier) === "wholesale" &&
+    level === "full" &&
+    factor > 1
+  ) {
+    // One markup per half pack so repeated retail adds accumulate (not once per line).
+    unitSize = resolvedMiddleFactor(uom);
+  }
+
+  if (!(unitSize > 0)) unitSize = 1;
+  return qty / unitSize;
+}
+
+export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom, { scaleMarkup = null } = {}) {
+  const qty = Number(quantityInSmall ?? 0);
   const markup = Number(tier?.markup_price ?? 0);
   const smallPerLevel = smallUnitsPerLevel(uom, tier.measure_level ?? "small");
   const mode = normalizeTierPriceMode(tier);
+  const stableBase = wholesalePricePerSmallUnit(baseUnitPrice, uom) * qty;
+  const shouldScale =
+    scaleMarkup == null ? mode === "retail" : Boolean(scaleMarkup);
 
   if (mode === "wholesale") {
-    const measureUnits = smallPerLevel > 0 ? qty / smallPerLevel : qty;
-    const baseTotal = wholesaleBase * measureUnits;
-    return Math.round((baseTotal + markup) * 100) / 100;
+    const apps = shouldScale ? retailMarkupApplications(qty, tier, uom) : 1;
+    return Math.round((stableBase + markup * apps) * 100) / 100;
   }
 
+  // Retail mode: wholesale base + markup per measured unit.
+  const wholesaleBase = wholesaleTierBaseAtMeasureLevel(baseUnitPrice, tier, uom);
   const priceAtLevel = wholesaleBase + markup;
-  const perSmall = priceAtLevel / smallPerLevel;
+  const perSmall = priceAtLevel / Math.max(smallPerLevel, 1);
   return Math.round(perSmall * qty * 100) / 100;
 }
 
@@ -177,23 +239,16 @@ export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true
   }
 
   const applicableTiers = isRetail ? tiers : tiersWithPriceMode(tiers, "wholesale");
-  const tier = tierForQuantity(applicableTiers, qty);
+  const tier = tierForQuantity(applicableTiers, qty, { extendPastMax: isRetail });
   if (!tier) {
     const perSmall = wholesalePricePerSmallUnit(baseUnitPrice, uom);
     return Math.round(perSmall * qty * 100) / 100;
   }
 
-  return linePriceForTier(baseUnitPrice, tier, qty, uom);
-}
-
-/** Small units represented by one count at a packaging level. */
-export function smallUnitsPerLevel(uom, level) {
-  const factor = uomConversionFactor(uom);
-  if (level === "full") return factor > 1 ? factor : 1;
-  if (level === "middle" && uomHasMiddlePack(uom)) {
-    return Number(uom.middle_factor ?? 1);
-  }
-  return 1;
+  // Retail session: always accumulate markups as qty grows (25+25 → 2× markup).
+  return linePriceForTier(baseUnitPrice, tier, qty, uom, {
+    scaleMarkup: isRetail ? true : normalizeTierPriceMode(tier) === "retail",
+  });
 }
 
 /** Selling price for exactly one unit at full / middle / small level. */

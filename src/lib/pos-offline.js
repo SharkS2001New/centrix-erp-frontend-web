@@ -27,10 +27,10 @@ import { snapshotUomForPrint } from "@/lib/sale-line-items";
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
-/** Re-warm catalog while healthy so a brief drop (~15 min) still has recent prices. */
-export const POS_OFFLINE_CATALOG_TTL_MS = 15 * 60 * 1000;
+/** Re-warm catalog while healthy so a brief drop (~30 min) still has recent prices. */
+export const POS_OFFLINE_CATALOG_TTL_MS = 30 * 60 * 1000;
 /** Design target for drop/slow bridge — not a hard cutoff. */
-export const POS_OFFLINE_TARGET_OUTAGE_MS = 15 * 60 * 1000;
+export const POS_OFFLINE_TARGET_OUTAGE_MS = 30 * 60 * 1000;
 
 function sortCatalog(products, query) {
   const q = String(query ?? "").trim().toLowerCase();

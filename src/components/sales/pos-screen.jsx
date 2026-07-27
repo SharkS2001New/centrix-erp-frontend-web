@@ -282,6 +282,35 @@ function offlinePrintOptions(sale, base = {}) {
   };
 }
 
+/** Prefer the loaded previous order while editing; otherwise the last completed sale. */
+function resolvePosReprintSale({ isCartEditSession, editSourceSale, completedSale }) {
+  if (isCartEditSession && editSourceSale?.id) return editSourceSale;
+  if (completedSale?.id) return completedSale;
+  return null;
+}
+
+function saleHasPrintableItems(sale) {
+  return (
+    Array.isArray(sale?.items) &&
+    sale.items.length > 0 &&
+    !sale.items.some((line) => line?.product_code && !line?.product_name && !line?.name)
+  );
+}
+
+/** Fast POS reprint: skip redundant settings/org round-trips when capabilities are warm. */
+function fastPosPrintOptions(sale, base = {}) {
+  const offline = offlinePrintOptions(sale, base);
+  if (offline !== base) return offline;
+  return {
+    ...base,
+    skipSaleRefresh: saleHasPrintableItems(sale),
+    skipSettingsRefresh: true,
+    skipOrganizationRefresh: Boolean(
+      base.organization?.name || base.organizationName || base.capabilities?.profile_label,
+    ),
+  };
+}
+
 function withPosCheckoutTimeout(promise, message) {
   return Promise.race([
     promise,
@@ -813,7 +842,7 @@ export function PosScreen({ standalone = false }) {
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
-  /** Sale loaded for POS order edit — used for Reprint last receipt while revising. */
+  /** Sale loaded for POS order edit — used for Reprint receipt while revising. */
   const [editSourceSale, setEditSourceSale] = useState(null);
   const [receiptPrintStatus, setReceiptPrintStatus] = useState(null);
   const [orderEditError, setOrderEditError] = useState(null);
@@ -916,6 +945,18 @@ export function PosScreen({ standalone = false }) {
   const modernOrderEditLocked = Boolean(
     standalone && !classicLayout && isCartEditSession && !isEditableResubmit,
   );
+  const reprintSale = useMemo(
+    () =>
+      resolvePosReprintSale({
+        isCartEditSession,
+        editSourceSale,
+        completedSale,
+      }),
+    [isCartEditSession, editSourceSale, completedSale],
+  );
+  const reprintReceiptLabel = reprintSale?.order_num
+    ? `Reprint receipt #${reprintSale.order_num}`
+    : "Reprint receipt";
 
   /** New-order mode: keep the # box on the next order number until the user edits or opens a receipt. */
   useEffect(() => {
@@ -998,7 +1039,7 @@ export function PosScreen({ standalone = false }) {
             String(row.order_num) !== String(entry.order_num),
         ),
       ];
-      return next.slice(0, 40);
+      return next.slice(0, 15);
     });
     setEditBrowseIndex(0);
     setEditOrderNo(String(sale.order_num ?? ""));
@@ -1018,11 +1059,9 @@ export function PosScreen({ standalone = false }) {
       ]),
     ).join(",");
 
-    const fromDate = (() => {
-      const d = new Date();
-      d.setDate(d.getDate() - 90);
-      return d.toISOString().slice(0, 10);
-    })();
+    // Previous-order browse: today only, this cashier, last 15.
+    const today = new Date().toISOString().slice(0, 10);
+    const cashierId = user?.id != null ? Number(user.id) : null;
 
     async function fetchRows(searchParams) {
       const res = await apiRequest("/sales", { searchParams });
@@ -1032,21 +1071,26 @@ export function PosScreen({ standalone = false }) {
     try {
       let rows = [];
       try {
+        const baseExtra = {
+          for_pos_order_edit: 1,
+          channel: "pos",
+          order_source: "pos",
+          with_items: 0,
+          sort: "order_num",
+          sort_dir: "desc",
+          from_date: today,
+          to_date: today,
+          date_field: "placed",
+          ...(cashierId != null ? { cashier_id: cashierId } : {}),
+        };
         rows = await fetchRows(
           buildPageParams({
             page: 1,
-            perPage: 40,
+            perPage: 15,
             extra: {
-              for_pos_order_edit: 1,
-              channel: "pos",
-              order_source: "pos",
-              with_items: 0,
+              ...baseExtra,
               status_in: statusIn,
               exclude_statuses: "held,draft,cancelled,expired",
-              sort: "order_num",
-              sort_dir: "desc",
-              from_date: fromDate,
-              date_field: "placed",
             },
           }),
         );
@@ -1055,17 +1099,8 @@ export function PosScreen({ standalone = false }) {
           rows = await fetchRows(
             buildPageParams({
               page: 1,
-              perPage: 40,
-              extra: {
-                for_pos_order_edit: 1,
-                channel: "pos",
-                order_source: "pos",
-                with_items: 0,
-                sort: "order_num",
-                sort_dir: "desc",
-                from_date: fromDate,
-                date_field: "placed",
-              },
+              perPage: 15,
+              extra: baseExtra,
             }),
           );
         }
@@ -1079,13 +1114,18 @@ export function PosScreen({ standalone = false }) {
         .filter((row) => Number(row.order_num) < TOMBSTONE_MIN)
         .filter((row) => !row?.fulfillment_meta?.superseded_by_edit)
         .filter((row) => {
+          if (cashierId != null) {
+            const rowCashier = row.cashier_id ?? row.created_by;
+            if (rowCashier != null && Number(rowCashier) !== cashierId) return false;
+          }
           const source = String(row.order_source ?? row.channel ?? "pos").toLowerCase();
           if (source && source !== "pos") return false;
           const status = String(row.status ?? "").toLowerCase();
           if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
           return true;
         })
-        .map((row) => ({ id: row.id, order_num: row.order_num, status: row.status }));
+        .map((row) => ({ id: row.id, order_num: row.order_num, status: row.status }))
+        .slice(0, 15);
 
       let offlineOrders = [];
       try {
@@ -1103,7 +1143,7 @@ export function PosScreen({ standalone = false }) {
           offline_pending_sync: true,
         })),
         ...serverOrders.filter((row) => !offlineNums.has(String(row.order_num))),
-      ];
+      ].slice(0, 15);
 
       setSessionPosOrders(orders);
       setEditOrderNo((current) => {
@@ -1118,7 +1158,7 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(message);
       return [];
     }
-  }, [enablePosOrderEdit, standalone, channelWorkflow]);
+  }, [enablePosOrderEdit, standalone, channelWorkflow, user?.id]);
 
   useEffect(() => {
     if (!enablePosOrderEdit || !standalone) return;
@@ -4026,19 +4066,19 @@ export function PosScreen({ standalone = false }) {
         held_order_num: activeCart.held_order_num,
         superseded_sale_id: activeCart.superseded_sale_id,
       };
-      for (const lineRef of serverLineRefs) {
-        const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${lineRef}`, {
-          method: "DELETE",
-          ...POS_CART_REQUEST,
-        });
-        const normalized = applyCartMutationResponse(nextCart, updated);
+      if (serverLineRefs.length) {
+        // Parallel deletes — sequential was N round-trips and made Complete feel stuck.
+        await Promise.all(
+          serverLineRefs.map((lineRef) =>
+            apiRequest(`/sales/carts/${activeCart.id}/lines/${lineRef}`, {
+              method: "DELETE",
+              ...POS_CART_REQUEST,
+            }),
+          ),
+        );
         nextCart = {
-          ...(normalized ?? {
-            ...nextCart,
-            lines: (nextCart.lines ?? []).filter(
-              (line) => String(line.update_code ?? line.id) !== lineRef,
-            ),
-          }),
+          ...nextCart,
+          lines: [],
           held_order_num: activeCart.held_order_num,
           superseded_sale_id: activeCart.superseded_sale_id,
         };
@@ -4172,7 +4212,7 @@ export function PosScreen({ standalone = false }) {
             try {
               const result = await printSaleOrder(
                 sale,
-                offlinePrintOptions(sale, {
+                fastPosPrintOptions(sale, {
                   capabilities,
                   organization,
                   organizationName: capabilities?.profile_label,
@@ -4259,6 +4299,7 @@ export function PosScreen({ standalone = false }) {
       await loadCashierCart();
       setEditOrderNo("");
       setCompletedSale(sale);
+      setEditSourceSale(null);
 
       if (promptReprint) {
         const reprint = await confirm({
@@ -4270,15 +4311,20 @@ export function PosScreen({ standalone = false }) {
         if (reprint) {
           setReceiptPrintStatus("pending");
           try {
-            const result = await printSaleOrder(sale, {
-              capabilities,
-              organization,
-              organizationName: capabilities?.profile_label,
-              uomById,
-              productByCode,
-              user,
-              preparedBy: user?.username ?? null,
-            });
+            const result = await printSaleOrder(
+              sale,
+              fastPosPrintOptions(sale, {
+                capabilities,
+                organization,
+                organizationName: capabilities?.profile_label,
+                uomById,
+                productByCode,
+                user,
+                preparedBy: user?.username ?? null,
+                documentType:
+                  resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
+              }),
+            );
             if (!result) {
               setReceiptPrintStatus("failed");
               notifyError("Print cancelled or no format was selected.");
@@ -4598,10 +4644,13 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handlePrintReceipt() {
-    const sale =
-      modernOrderEditLocked && editSourceSale?.id ? editSourceSale : completedSale;
+    const sale = resolvePosReprintSale({
+      isCartEditSession,
+      editSourceSale,
+      completedSale,
+    });
     if (!sale?.id) {
-      const message = modernOrderEditLocked
+      const message = isCartEditSession
         ? "No receipt available for this order yet."
         : "No completed order to print. Complete payment first (F10).";
       if (standalone) notifyError(message);
@@ -4612,7 +4661,7 @@ export function PosScreen({ standalone = false }) {
     try {
       const result = await printSaleOrder(
         sale,
-        offlinePrintOptions(sale, {
+        fastPosPrintOptions(sale, {
           capabilities,
           organization,
           organizationName: capabilities?.profile_label,
@@ -4622,9 +4671,6 @@ export function PosScreen({ standalone = false }) {
           preparedBy: user?.username ?? null,
           documentType:
             resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
-          skipSaleRefresh: true,
-          skipSettingsRefresh: true,
-          skipOrganizationRefresh: Boolean(organization?.name || capabilities?.profile_label),
         }),
       );
       if (!result) {
@@ -4746,10 +4792,22 @@ export function PosScreen({ standalone = false }) {
     setBusy(true);
     setOrderEditError(null);
     try {
-      const restoredCart = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
-        method: "POST",
-        body: { replace },
-      });
+      const needSaleDetail = !(
+        saleSnapshot?.id &&
+        (saleSnapshot.items?.length ||
+          saleSnapshot.customer_name ||
+          saleSnapshot.customer_name_override ||
+          saleSnapshot.customer_num != null)
+      );
+      const [restoredCart, fetchedSale] = await Promise.all([
+        apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
+          method: "POST",
+          body: { replace },
+        }),
+        needSaleDetail
+          ? apiRequest(`/sales/${saleId}`, { loading: false, reportIssues: false }).catch(() => null)
+          : Promise.resolve(saleSnapshot),
+      ]);
       cartRef.current = restoredCart;
       setCart(restoredCart);
       setSelectedLineId(null);
@@ -4758,11 +4816,13 @@ export function PosScreen({ standalone = false }) {
       setReplacingLineId(null);
       setPaymentOpen(false);
       setCompletedSale(null);
-      setEditSourceSale(
-        saleSnapshot?.id
-          ? saleSnapshot
-          : { id: saleId, order_num: restoredCart?.held_order_num ?? null },
-      );
+      const sourceSale =
+        fetchedSale?.id
+          ? fetchedSale
+          : saleSnapshot?.id
+            ? saleSnapshot
+            : { id: saleId, order_num: restoredCart?.held_order_num ?? null };
+      setEditSourceSale(sourceSale);
       orderNoUserEditedRef.current = false;
       const orderNum = restoredCart?.held_order_num ?? restoredCart?.next_order_num;
       if (orderNum != null) {
@@ -4776,15 +4836,7 @@ export function PosScreen({ standalone = false }) {
           return next;
         });
 
-        let customerMemory = extractSaleCustomerMemory(saleSnapshot);
-        if (!customerMemory.name && customerMemory.customerNum == null) {
-          try {
-            const sale = await apiRequest(`/sales/${saleId}`);
-            customerMemory = extractSaleCustomerMemory(sale);
-          } catch {
-            customerMemory = { name: "", customerNum: null };
-          }
-        }
+        const customerMemory = extractSaleCustomerMemory(sourceSale);
         if (customerMemory.name || customerMemory.customerNum != null) {
           rememberPosOrderCustomer(orderNum, customerMemory);
         }
@@ -4916,8 +4968,11 @@ export function PosScreen({ standalone = false }) {
     if (!enablePosOrderEdit || busy) return;
     if (isCartEditSession) return;
 
-    setStatusMessage("Loading completed POS orders…");
-    const orders = await loadCompletedPosOrders();
+    let orders = sessionPosOrders;
+    if (!orders.length) {
+      setStatusMessage("Loading completed POS orders…");
+      orders = await loadCompletedPosOrders();
+    }
     if (!orders.length) {
       const message =
         "No completed POS order to open yet. Complete a sale first, then click the order # to reopen it.";
@@ -4971,8 +5026,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    setStatusMessage("Loading completed POS orders…");
-    const orders = await loadCompletedPosOrders();
+    let orders = sessionPosOrders;
+    if (!orders.length) {
+      setStatusMessage("Loading completed POS orders…");
+      orders = await loadCompletedPosOrders();
+    }
     const heldNum = cartRef.current?.held_order_num ?? cart?.held_order_num;
     // Walk older than the order currently being edited (list is newest-first).
     let startIndex = 0;
@@ -5380,23 +5438,18 @@ export function PosScreen({ standalone = false }) {
                 </button>
                 <button
                   type="button"
-                  disabled={
-                    busy ||
-                    !(modernOrderEditLocked ? editSourceSale?.id : completedSale?.id)
-                  }
+                  disabled={busy || !reprintSale?.id}
                   title={
-                    modernOrderEditLocked
-                      ? editSourceSale?.order_num
-                        ? `Reprint order #${editSourceSale.order_num}`
-                        : "Reprint this order"
-                      : completedSale?.order_num
-                        ? `Reprint order #${completedSale.order_num}`
+                    reprintSale?.order_num
+                      ? `Reprint receipt #${reprintSale.order_num}`
+                      : isCartEditSession
+                        ? "Reprint this order"
                         : "Complete an order first"
                   }
                   onClick={() => void handlePrintReceipt()}
                   className={posHeaderBtnClassName}
                 >
-                  Reprint last receipt
+                  {reprintReceiptLabel}
                 </button>
                 {showStandaloneTillActions && requireTillFloat ? (
                   <>
