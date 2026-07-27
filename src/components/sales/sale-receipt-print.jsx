@@ -271,31 +271,29 @@ export function buildSaleReceiptHtml(
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; table-layout: fixed; }
-    .table col.col-desc { width: 42%; }
-    .table col.col-qty { width: 14%; }
-    .table col.col-price { width: 22%; }
-    .table col.col-amount { width: 22%; }
-    .table.has-disc col.col-desc { width: 34%; }
-    .table.has-disc col.col-qty { width: 12%; }
-    .table.has-disc col.col-price { width: 18%; }
+    .table col.col-desc { width: 50%; }
+    .table col.col-qty { width: 10%; }
+    .table col.col-price { width: 20%; }
+    .table col.col-amount { width: 20%; }
+    .table.has-disc col.col-desc { width: 38%; }
+    .table.has-disc col.col-qty { width: 9%; }
+    .table.has-disc col.col-price { width: 17%; }
     .table.has-disc col.col-disc { width: 14%; }
     .table.has-disc col.col-amount { width: 22%; }
     .table thead th { padding: 2px 0; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(7)}; letter-spacing: 0; }
     .table thead th.qty,
     .table thead th.price,
     .table thead th.disc,
-    .table thead th.amount { text-align: right; }
-    .table th.desc, .table td.desc { padding-right: 2px; word-break: break-word; overflow-wrap: anywhere; }
+    .table thead th.amount { text-align: right; padding-left: 0; padding-right: 0; letter-spacing: -0.02em; }
+    .table th.desc, .table td.desc { padding-right: 1px; word-break: break-word; overflow-wrap: anywhere; }
     .table tbody tr { border-top: 1px dashed #000; }
     .table td { padding: 2px 0; vertical-align: top; }
-    .table td.qty { text-align: right; white-space: normal; line-height: 1.15; font-size: ${px(8)}; }
+    .table td.qty { text-align: right; white-space: normal; line-height: 1.15; font-size: ${px(8)}; padding-left: 0; padding-right: 0; }
     .table td.qty .qty-val { display: block; }
     .table td.qty .qty-pkg { display: block; font-size: 0.92em; line-height: 1.1; }
     .table td.price,
     .table td.disc,
-    .table td.amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 1px; }
-    .table td.price { padding-right: 2px; }
-    .table td.amount { padding-right: 0; }
+    .table td.amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0; padding-right: 0; }
     .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
     .summary-table col.col-label { width: 52%; }
     .summary-table col.col-value { width: 48%; }

@@ -79,7 +79,9 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `Unexpected token ')'` in `build-and-install.ps1` | You have an **old** build package. Download **build package (source)** again from Centrix (Administration → Local printing). The script must use `Step 1.` lines, not `1)` |
 | `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
-| Port / health fails | `Get-Service CentrixPrintAgent` — must be Running |
+| Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
+| `Could not render receipt HTML to PDF` | The agent must run **while a user is logged in**, not as an old Windows service. Re-run `BUILD-AND-INSTALL.bat`, or run `C:\Program Files\Centrix\PrintAgent\Centrix.PrintAgent.exe` manually. Install **Microsoft Edge** and **SumatraPDF** |
+| Print dialog flashes / not silent | Install [SumatraPDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), pick your receipt printer in Centrix → Local printing → Save |
 
 ---
 

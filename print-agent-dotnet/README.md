@@ -2,6 +2,8 @@
 
 Silent receipt printing for Windows POS tills. Same API as before (`http://127.0.0.1:9247`).
 
+Runs in the **logged-in user session** (not a Windows service) so Microsoft Edge can render receipts.
+
 ## For till / office staff
 
 1. In Centrix open **Administration → Local printing**
@@ -20,7 +22,7 @@ Quick publish (Windows + .NET 8 SDK):
 ```powershell
 cd print-agent-dotnet
 .\scripts\publish.ps1
-.\scripts\install-windows-service.ps1
+.\scripts\install-user-session.ps1
 ```
 
 Host `publish/CentrixPrintAgent-win-x64.zip` via `PRINT_AGENT_DOTNET_URL` or `print-agent-dotnet/publish/` so tills can download the ready zip.

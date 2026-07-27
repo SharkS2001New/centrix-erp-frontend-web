@@ -38,7 +38,7 @@ public sealed class HtmlPrintService
 
             try
             {
-                await RenderPdfAsync(htmlPath, pdfPath, cancellationToken);
+                await RenderPdfAsync(htmlPath, pdfPath, workDir, cancellationToken);
 
                 var targetPrinter = ResolvePrinter(printerName);
                 for (var copy = 0; copy < copies; copy++)
@@ -71,23 +71,48 @@ public sealed class HtmlPrintService
         return _printers.DefaultPrinter();
     }
 
-    private static async Task RenderPdfAsync(string htmlPath, string pdfPath, CancellationToken cancellationToken)
+    private static async Task RenderPdfAsync(
+        string htmlPath,
+        string pdfPath,
+        string workDir,
+        CancellationToken cancellationToken)
     {
         var edge = FindEdgeExecutable();
         if (edge is null)
         {
             throw new InvalidOperationException(
-                "Microsoft Edge is required to render receipts. Install Edge or use browser print as fallback.");
+                "Microsoft Edge is required to render receipts. Install Edge from https://www.microsoft.com/edge or use browser print as fallback.");
         }
 
-        var htmlUri = new Uri(htmlPath).AbsoluteUri;
-        var args =
-            $"--headless --disable-gpu --no-pdf-header-footer --print-to-pdf=\"{pdfPath}\" \"{htmlUri}\"";
+        var profileDir = Path.Combine(workDir, "edge-profile");
+        Directory.CreateDirectory(profileDir);
 
-        var exitCode = await RunProcessAsync(edge, args, cancellationToken);
+        var htmlUri = new Uri(htmlPath).AbsoluteUri;
+        var args = string.Join(
+            " ",
+            new[]
+            {
+                "--headless=new",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                $"--user-data-dir=\"{profileDir}\"",
+                "--no-pdf-header-footer",
+                $"--print-to-pdf=\"{pdfPath}\"",
+                $"\"{htmlUri}\"",
+            });
+
+        var (exitCode, stderr) = await RunProcessAsync(edge, args, cancellationToken);
         if (exitCode != 0 || !File.Exists(pdfPath))
         {
-            throw new InvalidOperationException("Could not render receipt HTML to PDF.");
+            var detail = string.IsNullOrWhiteSpace(stderr)
+                ? $"Edge exited with code {exitCode}."
+                : stderr.Trim();
+            throw new InvalidOperationException(
+                "Could not render receipt HTML to PDF. " +
+                detail +
+                " If the Print Agent runs as a Windows service, reinstall with BUILD-AND-INSTALL.bat " +
+                "(user session) or run Centrix.PrintAgent.exe while logged in to this till.");
         }
     }
 
@@ -100,7 +125,7 @@ public sealed class HtmlPrintService
                 ? $"-print-to-default -silent \"{pdfPath}\""
                 : $"-print-to \"{printerName}\" -silent \"{pdfPath}\"";
 
-            var exitCode = await RunProcessAsync(sumatra, args, cancellationToken);
+            var (exitCode, _) = await RunProcessAsync(sumatra, args, cancellationToken);
             if (exitCode == 0)
             {
                 return;
@@ -117,7 +142,8 @@ public sealed class HtmlPrintService
         };
 
         using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Could not start the system print dialog for the PDF.");
+            ?? throw new InvalidOperationException(
+                "Could not start the system print dialog for the PDF. Install SumatraPDF for silent printing: https://www.sumatrapdfreader.org/");
 
         await process.WaitForExitAsync(cancellationToken);
     }
@@ -150,7 +176,10 @@ public sealed class HtmlPrintService
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    private static async Task<int> RunProcessAsync(string fileName, string arguments, CancellationToken cancellationToken)
+    private static async Task<(int ExitCode, string StdErr)> RunProcessAsync(
+        string fileName,
+        string arguments,
+        CancellationToken cancellationToken)
     {
         var psi = new ProcessStartInfo
         {
@@ -165,8 +194,10 @@ public sealed class HtmlPrintService
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException($"Could not start process: {fileName}");
 
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
-        return process.ExitCode;
+        var stderr = await stderrTask;
+        return (process.ExitCode, stderr);
     }
 
     private static void TryDelete(string path)

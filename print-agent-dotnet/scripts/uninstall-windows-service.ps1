@@ -1,6 +1,7 @@
 #Requires -RunAsAdministrator
 param(
     [string]$ServiceName = "CentrixPrintAgent",
+    [string]$TaskName = "CentrixPrintAgent",
     [string]$InstallDir = "C:\Program Files\Centrix\PrintAgent"
 )
 
@@ -13,6 +14,13 @@ if ($existing) {
     }
     sc.exe delete $ServiceName | Out-Null
 }
+
+$existingTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($existingTask) {
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+}
+
+Get-Process -Name "Centrix.PrintAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 if (Test-Path $InstallDir) {
     Remove-Item -Path $InstallDir -Recurse -Force
