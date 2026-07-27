@@ -334,6 +334,55 @@ export function formatPosCartQty(baseQty, uom) {
   return parts.map((p) => `${formatDisplayQty(p.qty)} ${p.label}`).join(", ");
 }
 
+/**
+ * Sale/cart/receipt qty by retail vs wholesale mode.
+ * Retail: small units (e.g. 75 kg). Wholesale: pack count (e.g. 1.5 bag).
+ */
+export function formatSaleLineQtyDisplay(baseQty, uom, { isRetailLine = false } = {}) {
+  const base = Number(baseQty ?? 0);
+  if (!uom) {
+    return formatMixedStockDisplay(base, 1).text;
+  }
+  const factor = uomConversionFactor(uom);
+  if (isRetailLine) {
+    return `${formatDisplayQty(base)} ${smallPackagingLabel(uom)}`;
+  }
+  if (factor > 1) {
+    return `${formatDisplayQty(baseToDisplayQty(base, factor))} ${fullPackageLabel(uom)}`;
+  }
+  return formatPosCartQty(base, uom);
+}
+
+/** Thermal receipt qty + package columns for a saved sale line. */
+export function saleLineQtyPartsForPrint(baseQty, uom, { isRetailLine = false } = {}) {
+  const base = Number(baseQty ?? 0);
+  if (!uom) {
+    const fallback = formatMixedStockDisplay(base, 1);
+    return { quantity: formatDisplayQty(fallback.display), package: fallback.unit };
+  }
+  const factor = uomConversionFactor(uom);
+  if (isRetailLine) {
+    return { quantity: formatDisplayQty(base), package: smallPackagingLabel(uom) };
+  }
+  if (factor > 1) {
+    return {
+      quantity: formatDisplayQty(baseToDisplayQty(base, factor)),
+      package: fullPackageLabel(uom),
+    };
+  }
+  const parts = splitBaseToHierarchy(base, uom).filter((p) => p.qty > 0.0001);
+  if (parts.length) {
+    return {
+      quantity: parts.map((p) => formatDisplayQty(p.qty)).join(", "),
+      package: parts.map((p) => p.label).join(", "),
+    };
+  }
+  return {
+    quantity: formatDisplayQty(0),
+    package: smallPackagingLabel(uom),
+  };
+}
+
 /** @deprecated use formatPosCartQty */
 export function formatSmallUnitTotal(baseQty, uom) {
   return formatPosCartQty(baseQty, uom);

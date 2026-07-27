@@ -42,7 +42,7 @@ import {
   posUnitPriceFieldLabel,
   usesPosRetailPricing,
 } from "@/lib/pos-line";
-import { formatMixedStockDisplay, formatPosCartQty } from "@/lib/stock-uom";
+import { formatMixedStockDisplay, formatSaleLineQtyDisplay } from "@/lib/stock-uom";
 import {
   computeProductLineDiscount,
   formatProductDiscountLabel,
@@ -6113,7 +6113,9 @@ export function PosScreen({ standalone = false }) {
                   const productMeta = productByCode[line.product_code];
                   const uom = productMeta?.uom;
                   return uom
-                    ? formatPosCartQty(line.quantity, uom)
+                    ? formatSaleLineQtyDisplay(line.quantity, uom, {
+                        isRetailLine: Number(line.on_wholesale_retail) === 1,
+                      })
                     : formatMixedStockDisplay(line.quantity, 1).text;
                 }}
                 lineEntryQty={(line) => {
@@ -6364,7 +6366,9 @@ export function PosScreen({ standalone = false }) {
                             </button>
                             <span className="theme-heading min-w-[3.5rem] text-center text-[11px] font-medium">
                               {uom
-                                ? formatPosCartQty(line.quantity, uom)
+                                ? formatSaleLineQtyDisplay(line.quantity, uom, {
+                                    isRetailLine: Number(line.on_wholesale_retail) === 1,
+                                  })
                                 : formatMixedStockDisplay(line.quantity, 1).text}
                             </span>
                             <button

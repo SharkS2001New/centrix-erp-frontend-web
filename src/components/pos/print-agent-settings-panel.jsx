@@ -27,9 +27,8 @@ import {
   printViaAgent,
 } from "@/lib/print-agent";
 import {
-  checkPrintAgentMsiAvailable,
-  downloadPrintAgentInstaller,
-  downloadPrintAgentMsi,
+  checkPrintAgentDotnetAvailable,
+  downloadPrintAgentDotnet,
   printAgentInstallerHelp,
 } from "@/lib/print-agent-installer-download";
 import {
@@ -75,9 +74,8 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const [testPrinting, setTestPrinting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [msiAvailable, setMsiAvailable] = useState(false);
-  const [downloadingMsi, setDownloadingMsi] = useState(false);
-  const [downloadingScript, setDownloadingScript] = useState(false);
+  const [dotnetAvailable, setDotnetAvailable] = useState(false);
+  const [downloadingDotnet, setDownloadingDotnet] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,8 +108,8 @@ export function PrintAgentSettingsPanel({ compact = false }) {
 
   useEffect(() => {
     let cancelled = false;
-    void checkPrintAgentMsiAvailable().then((info) => {
-      if (!cancelled) setMsiAvailable(Boolean(info?.available));
+    void checkPrintAgentDotnetAvailable().then((info) => {
+      if (!cancelled) setDotnetAvailable(Boolean(info?.available));
     });
     return () => {
       cancelled = true;
@@ -132,7 +130,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           const result = {
             ok: false,
             printers: [],
-            error: "Print agent is not running. Install the MSI on this PC, then try again.",
+            error: "Print agent is not running. Install the Windows print service on this PC, then try again.",
           };
           setHealth(result);
           return result;
@@ -239,7 +237,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       if (!status?.ok) {
         notifyError(
           provider === "agent"
-            ? "Print agent is not running. Install the MSI on this PC, then try again."
+            ? "Print agent is not running. Download and install the Windows print service on this PC, then try again."
             : "QZ Tray is not running. Install from https://qz.io/download/ and start it on this PC.",
         );
         return;
@@ -283,27 +281,18 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     }
   }
 
-  async function handleDownloadMsi() {
-    setDownloadingMsi(true);
+  async function handleDownloadDotnet() {
+    setDownloadingDotnet(true);
     try {
-      const result = await downloadPrintAgentMsi();
-      notifySuccess(`Downloaded ${result.filename}. Run the MSI on each till PC (admin required).`);
+      const result = await downloadPrintAgentDotnet();
+      notifySuccess(
+        `Downloaded ${result.filename}. Unzip on the till PC and run install-windows-service.ps1 as Administrator.`,
+        { duration: 10000 },
+      );
     } catch (error) {
-      notifyError(error instanceof Error ? error.message : "Could not download MSI.");
+      notifyError(error instanceof Error ? error.message : "Could not download Windows print service.");
     } finally {
-      setDownloadingMsi(false);
-    }
-  }
-
-  async function handleDownloadScript() {
-    setDownloadingScript(true);
-    try {
-      const result = await downloadPrintAgentInstaller();
-      notifySuccess(printAgentInstallerHelp(result.platform));
-    } catch (error) {
-      notifyError(error instanceof Error ? error.message : "Could not download installer.");
-    } finally {
-      setDownloadingScript(false);
+      setDownloadingDotnet(false);
     }
   }
 
@@ -465,39 +454,44 @@ export function PrintAgentSettingsPanel({ compact = false }) {
             Centrix opens the browser print dialog instead.
           </p>
           <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
-            <p className="theme-heading font-medium">Install Centrix Print Agent</p>
+            <p className="theme-heading font-medium">Install Windows print service</p>
             <ol className="theme-subtext mt-2 list-decimal space-y-1 pl-4 text-xs">
-              <li>Download the Windows MSI (recommended) or the script installer below.</li>
-              <li>Run once on each till PC (admin required for MSI).</li>
-              <li>The agent auto-starts and stays in the background.</li>
+              <li>Download the zip below (or build from print-agent-dotnet on a dev PC).</li>
+              <li>Unzip on the till and run <code className="text-[11px]">install-windows-service.ps1</code> as Administrator.</li>
+              <li>
+                Optional: install{" "}
+                <a href="https://www.sumatrapdfreader.org/" target="_blank" rel="noreferrer" className="underline">
+                  SumatraPDF
+                </a>{" "}
+                for fully silent thermal printing.
+              </li>
               <li>Click Test connection, pick a printer, then Save.</li>
             </ol>
+            <p className="theme-subtext mt-2 text-xs">{printAgentInstallerHelp("windows")}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void handleDownloadMsi()}
-                disabled={downloadingMsi || !msiAvailable}
-                className="theme-btn-secondary rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                onClick={() => void handleDownloadDotnet()}
+                disabled={downloadingDotnet || !dotnetAvailable}
+                className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
                 title={
-                  msiAvailable
-                    ? "Download CentrixPrintAgent.msi"
-                    : "MSI not configured yet — open Platform → Print Agent MSI"
+                  dotnetAvailable
+                    ? "Download CentrixPrintAgent-win-x64.zip"
+                    : "Build print-agent-dotnet (scripts/publish.ps1) and host the zip, or set PRINT_AGENT_DOTNET_URL"
                 }
               >
-                {downloadingMsi ? "Downloading…" : "Download Windows MSI"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDownloadScript()}
-                disabled={downloadingScript}
-                className="theme-btn-secondary rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-              >
-                {downloadingScript ? "Downloading…" : "Download script installer"}
+                {downloadingDotnet
+                  ? "Downloading…"
+                  : dotnetAvailable
+                    ? "Download Windows print service"
+                    : "Windows print service (build required)"}
               </button>
             </div>
-            {!msiAvailable ? (
+            {!dotnetAvailable ? (
               <p className="theme-subtext mt-2 text-xs">
-                MSI link is configured under Platform → Print Agent MSI. Until then, use the script installer.
+                On a Windows dev PC: <code className="text-[11px]">cd print-agent-dotnet &amp;&amp; .\scripts\publish.ps1</code>
+                . Upload <code className="text-[11px]">CentrixPrintAgent-win-x64.zip</code> or set{" "}
+                <code className="text-[11px]">PRINT_AGENT_DOTNET_URL</code> on the server.
               </p>
             ) : null}
           </div>

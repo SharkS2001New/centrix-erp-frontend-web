@@ -406,7 +406,11 @@ export function computePosLine({
     lineAmount: roundedLineAmount,
     displayUnitPrice: Math.round(displayUnitPrice * 100) / 100,
     unitPricePerBase: Math.round(unitPricePerBase * 10000) / 10000,
-    qtyLabel: formatPosCartQty(baseQty, uom),
+    qtyLabel: retailSession
+      ? `${formatDisplayQty(baseQty)} ${smallPackagingLabel(uom)}`
+      : factor > 1
+        ? `${formatDisplayQty(packQty)} ${fullPackageLabel(uom)}`
+        : formatPosCartQty(baseQty, uom),
     uomLabel: resolved.packagingLabel,
   };
 }

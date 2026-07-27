@@ -9,11 +9,10 @@ import {
 import {
   formatDisplayQty,
   formatMixedStockDisplay,
-  formatPosCartQty,
-  splitBaseToHierarchy,
+  formatSaleLineQtyDisplay,
+  saleLineQtyPartsForPrint,
   uomConversionFactor,
 } from "@/lib/stock-uom";
-import { fullPackageLabel, smallPackagingLabel } from "@/lib/uom-packaging";
 
 export function saleLineUom(line, uomById) {
   const unitId = line?.product?.unit_id ?? line?.unit_id ?? null;
@@ -402,10 +401,10 @@ export function saleLineQtyLabel(line, uomById, { legacyPrint = false, sale = nu
   }
 
   const uom = saleLineUom(line, uomById);
+  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
 
   if (uom) {
-    // Collapses whole packs: 25 kg with factor 25 → "1 bag".
-    return formatPosCartQty(line?.quantity, uom);
+    return formatSaleLineQtyDisplay(line?.quantity, uom, { isRetailLine });
   }
 
   if (line?.uom) {
@@ -423,21 +422,10 @@ export function saleLinePrintQtyPackage(line, uomById, { legacyPrint = false, sa
 
   const uom = saleLineUom(line, uomById);
   const baseQty = Number(line?.quantity ?? 0);
+  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
 
   if (uom) {
-    // Whole packs collapse to full package (25 kg with 1 bag=25kg → "1 bag").
-    const parts = splitBaseToHierarchy(baseQty, uom).filter((p) => p.qty > 0.0001);
-    if (parts.length) {
-      return {
-        quantity: parts.map((p) => formatDisplayQty(p.qty)).join(", "),
-        package: parts.map((p) => p.label).join(", "),
-      };
-    }
-    const factor = uomConversionFactor(uom);
-    return {
-      quantity: formatDisplayQty(0),
-      package: factor > 1 ? fullPackageLabel(uom) : smallPackagingLabel(uom),
-    };
+    return saleLineQtyPartsForPrint(baseQty, uom, { isRetailLine });
   }
 
   // Without conversion metadata, never pair base qty with a pack label ("25 bag").

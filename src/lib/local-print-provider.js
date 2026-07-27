@@ -22,9 +22,9 @@ export const LOCAL_PRINT_PROVIDERS = [
   },
   {
     id: "agent",
-    label: "Centrix Print Agent",
+    label: "Centrix Print Agent (Windows)",
     description:
-      "Install the Centrix Print Agent MSI on Windows tills for silent printing via a local service. Falls back to the browser print dialog if the agent is offline.",
+      "Recommended on Windows: a small .NET service on the till (~15 MB). No QZ Tray or Node.js. Falls back to the browser print dialog if offline.",
   },
 ];
 

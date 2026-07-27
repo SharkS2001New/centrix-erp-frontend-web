@@ -42,6 +42,52 @@ function filenameFromUrl(url) {
   }
 }
 
+const DEFAULT_DOTNET_ZIP = "CentrixPrintAgent-win-x64.zip";
+
+/** @returns {Promise<{ available: boolean, filename?: string, publicUrl?: string }>} */
+export async function checkPrintAgentDotnetAvailable() {
+  try {
+    const res = await fetch("/api/print-agent/dotnet", { method: "HEAD", cache: "no-store" });
+    if (!res.ok) return { available: false };
+    const filename = res.headers.get("X-Print-Agent-Dotnet") || undefined;
+    return { available: true, filename: filename === "external" ? DEFAULT_DOTNET_ZIP : filename };
+  } catch {
+    return { available: false };
+  }
+}
+
+/**
+ * Download the .NET Windows print service zip (recommended for Windows tills).
+ */
+export async function downloadPrintAgentDotnet() {
+  const res = await fetch("/api/print-agent/dotnet", { cache: "no-store", redirect: "follow" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(
+      body.message ??
+        "Windows print service is not available yet. Build print-agent-dotnet on a Windows PC (scripts/publish.ps1) and upload the zip.",
+    );
+  }
+
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? "Windows print service is not available.");
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/i);
+  const headerName = res.headers.get("X-Print-Agent-Dotnet");
+  const filename =
+    match?.[1] ??
+    (headerName && headerName !== "external" ? headerName : null) ??
+    DEFAULT_DOTNET_ZIP;
+
+  triggerBrowserDownload(blob, filename);
+  return { filename, source: "dotnet" };
+}
+
 /** @returns {Promise<{ available: boolean, filename?: string, publicUrl?: string }>} */
 export async function checkPrintAgentMsiAvailable() {
   try {
@@ -149,7 +195,7 @@ export async function downloadPrintAgentInstaller(opts = {}) {
 
 export function printAgentInstallerHelp(platform = detectInstallerPlatform()) {
   if (platform === "windows") {
-    return "Open the downloaded centrix-install-print-agent.bat file (double-click). Node.js 20+ is installed automatically if needed. Run once on each till PC.";
+    return "Unzip CentrixPrintAgent-win-x64.zip, then run install-windows-service.ps1 as Administrator. Optional: install SumatraPDF for fully silent thermal printing.";
   }
   return "Run the downloaded centrix-install-print-agent.sh in Terminal (chmod +x first). Node.js 20+ is installed automatically if needed.";
 }

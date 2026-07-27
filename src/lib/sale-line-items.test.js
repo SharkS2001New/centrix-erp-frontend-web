@@ -146,10 +146,11 @@ describe("sale line receipt packaging qty", () => {
   };
   const uomById = new Map([[1, bagUom]]);
 
-  it("prints whole base qty as full packages (25 kg → 1 bag)", () => {
+  it("prints whole base qty as full packages (25 kg → 1 bag wholesale)", () => {
     const line = {
       product_code: "SUGAR25",
       quantity: 25,
+      on_wholesale_retail: 0,
       uom: "bag",
       product: { unit_id: 1, unit: bagUom },
     };
@@ -160,15 +161,44 @@ describe("sale line receipt packaging qty", () => {
     expect(saleLineQtyLabel(line, uomById)).toBe("1 bag");
   });
 
-  it("prints mixed packs and loose small units", () => {
+  it("prints retail merged kg as small units (75 kg retail)", () => {
     const line = {
       product_code: "SUGAR25",
-      quantity: 30,
+      quantity: 75,
+      on_wholesale_retail: 1,
       product: { unit_id: 1, unit: bagUom },
     };
     expect(saleLinePrintQtyPackage(line, uomById)).toEqual({
-      quantity: "1, 5",
-      package: "bag, kg",
+      quantity: "75",
+      package: "kg",
+    });
+    expect(saleLineQtyLabel(line, uomById)).toBe("75 kg");
+  });
+
+  it("prints wholesale fractional packs (37.5 kg → 1.5 bag)", () => {
+    const line = {
+      product_code: "SUGAR25",
+      quantity: 37.5,
+      on_wholesale_retail: 0,
+      product: { unit_id: 1, unit: bagUom },
+    };
+    expect(saleLinePrintQtyPackage(line, uomById)).toEqual({
+      quantity: "1.5",
+      package: "bag",
+    });
+    expect(saleLineQtyLabel(line, uomById)).toBe("1.5 bag");
+  });
+
+  it("prints wholesale as pack count not loose hierarchy", () => {
+    const line = {
+      product_code: "SUGAR25",
+      quantity: 30,
+      on_wholesale_retail: 0,
+      product: { unit_id: 1, unit: bagUom },
+    };
+    expect(saleLinePrintQtyPackage(line, uomById)).toEqual({
+      quantity: "1.2",
+      package: "bag",
     });
   });
 
