@@ -220,7 +220,7 @@ public sealed class HtmlPrintService
     {
         var sumatra = FindSumatraExecutable()
             ?? throw new InvalidOperationException(
-                "SumatraPDF is required to print from the Windows service. Run scripts\\configure-sumatra.ps1 as Administrator, or install from https://www.sumatrapdfreader.org/download-free-pdf-viewer");
+                "SumatraPDF is required to print from the Windows service. Run scripts\\configure-sumatra.ps1 -SkipDownload as Administrator (copies Sumatra into the Print Agent folder).");
 
         var args = string.IsNullOrWhiteSpace(printerName)
             ? new[] { "-print-to-default", "-silent", "-exit-when-done", pdfPath }
@@ -269,14 +269,70 @@ public sealed class HtmlPrintService
         }
 
         var baseDir = AppContext.BaseDirectory;
-        var candidates = new[]
+        var candidates = new List<string>
         {
             Path.Combine(baseDir, "tools", "SumatraPDF", "SumatraPDF.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SumatraPDF", "SumatraPDF.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "SumatraPDF", "SumatraPDF.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SumatraPDF", "SumatraPDF.exe"),
         };
 
-        return candidates.FirstOrDefault(File.Exists);
+        var systemDrive = Path.GetPathRoot(Environment.SystemDirectory);
+        if (!string.IsNullOrWhiteSpace(systemDrive))
+        {
+            var usersRoot = Path.Combine(systemDrive, "Users");
+            if (Directory.Exists(usersRoot))
+            {
+                try
+                {
+                    foreach (var userDir in Directory.EnumerateDirectories(usersRoot))
+                    {
+                        candidates.Add(Path.Combine(userDir, "AppData", "Local", "SumatraPDF", "SumatraPDF.exe"));
+                    }
+                }
+                catch
+                {
+                    // ignore profile scan errors
+                }
+            }
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return FindOnPath("SumatraPDF.exe");
+    }
+
+    private static string? FindOnPath(string fileName)
+    {
+        var pathValue = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathValue))
+        {
+            return null;
+        }
+
+        foreach (var dir in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(dir.Trim(), fileName);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+            catch
+            {
+                // ignore invalid PATH entries
+            }
+        }
+
+        return null;
     }
 
     private static string ToForwardSlashPath(string path) =>

@@ -10,30 +10,68 @@ $script:SumatraInstallerUrls = @(
     "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64-install.exe"
 )
 
+function Get-SumatraSearchPaths {
+    $paths = @()
+
+    if ($env:SUMATRA_PATH) {
+        $paths += $env:SUMATRA_PATH
+    }
+
+    $paths += @(
+        (Join-Path $env:ProgramFiles "SumatraPDF\SumatraPDF.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "SumatraPDF\SumatraPDF.exe"),
+        (Join-Path $env:LOCALAPPDATA "SumatraPDF\SumatraPDF.exe")
+    )
+
+    $usersRoot = Join-Path $env:SystemDrive "Users"
+    if (Test-Path $usersRoot) {
+        $profileMatches = Get-ChildItem -Path $usersRoot -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "AppData\Local\SumatraPDF\SumatraPDF.exe" }
+        $paths += $profileMatches
+    }
+
+    $where = Get-Command SumatraPDF.exe -ErrorAction SilentlyContinue
+    if ($where -and $where.Source) {
+        $paths += $where.Source
+    }
+
+    return $paths | Select-Object -Unique
+}
+
 function Find-SumatraPdf {
-    param([string]$TargetInstallDir)
+    param(
+        [string]$TargetInstallDir,
+        [string]$ExplicitPath = $null
+    )
 
     $bundled = Join-Path $TargetInstallDir "tools\SumatraPDF\SumatraPDF.exe"
     if (Test-Path $bundled) {
         return $bundled
     }
 
-    if ($env:SUMATRA_PATH -and (Test-Path $env:SUMATRA_PATH)) {
-        return $env:SUMATRA_PATH
+    if ($ExplicitPath -and (Test-Path $ExplicitPath)) {
+        return (Resolve-Path $ExplicitPath).Path
     }
 
-    $candidates = @(
-        (Join-Path $env:ProgramFiles "SumatraPDF\SumatraPDF.exe"),
-        (Join-Path ${env:ProgramFiles(x86)} "SumatraPDF\SumatraPDF.exe")
-    )
-
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) {
-            return $candidate
+    foreach ($candidate in Get-SumatraSearchPaths) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return (Resolve-Path $candidate).Path
         }
     }
 
     return $null
+}
+
+function Copy-SumatraToBundle {
+    param(
+        [string]$SourceExe,
+        [string]$TargetInstallDir
+    )
+
+    $targetExe = Join-Path $TargetInstallDir "tools\SumatraPDF\SumatraPDF.exe"
+    New-Item -ItemType Directory -Force -Path (Split-Path $targetExe) | Out-Null
+    Copy-Item -Path $SourceExe -Destination $targetExe -Force
+    return $targetExe
 }
 
 function Invoke-SumatraFileDownload {
@@ -120,7 +158,8 @@ function Install-SumatraFromInstallerExtract {
 function Ensure-SumatraPdf {
     param(
         [string]$TargetInstallDir,
-        [switch]$SkipDownload
+        [switch]$SkipDownload,
+        [string]$ExplicitPath = $null
     )
 
     $targetExe = Join-Path $TargetInstallDir "tools\SumatraPDF\SumatraPDF.exe"
@@ -129,16 +168,23 @@ function Ensure-SumatraPdf {
         return $targetExe
     }
 
-    $existing = Find-SumatraPdf -TargetInstallDir $TargetInstallDir
+    $existing = Find-SumatraPdf -TargetInstallDir $TargetInstallDir -ExplicitPath $ExplicitPath
     if ($existing) {
-        Write-Host ("Using existing SumatraPDF: {0}" -f $existing)
-        New-Item -ItemType Directory -Force -Path (Split-Path $targetExe) | Out-Null
-        Copy-Item -Path $existing -Destination $targetExe -Force
-        return $targetExe
+        Write-Host ("Found SumatraPDF: {0}" -f $existing)
+        Write-Host "Copying into Print Agent folder for the Windows service..."
+        return Copy-SumatraToBundle -SourceExe $existing -TargetInstallDir $TargetInstallDir
     }
 
     if ($SkipDownload) {
-        Write-Host "SumatraPDF not found. Install manually or re-run without -SkipDownload." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "SumatraPDF was not found automatically." -ForegroundColor Yellow
+        Write-Host "Common locations checked:"
+        foreach ($candidate in Get-SumatraSearchPaths) {
+            Write-Host ("  {0}" -f $candidate)
+        }
+        Write-Host ""
+        Write-Host "Re-run with the full path, for example:"
+        Write-Host '  .\scripts\configure-sumatra.ps1 -SkipDownload -SumatraPath "C:\Users\YOU\AppData\Local\SumatraPDF\SumatraPDF.exe"'
         return $null
     }
 

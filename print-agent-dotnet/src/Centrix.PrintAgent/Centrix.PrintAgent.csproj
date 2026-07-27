@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Centrix.PrintAgent</RootNamespace>
     <AssemblyName>Centrix.PrintAgent</AssemblyName>
-    <Version>0.2.7</Version>
+    <Version>0.2.8</Version>
     <Description>Centrix ERP local print service for Windows tills</Description>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>

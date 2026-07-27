@@ -272,15 +272,15 @@ export function buildSaleReceiptHtml(
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; table-layout: fixed; }
-    .table col.col-desc { width: 43%; }
-    .table col.col-qty { width: 12%; }
-    .table col.col-price { width: 20%; }
-    .table col.col-amount { width: 25%; }
-    .table.has-disc col.col-desc { width: 34%; }
-    .table.has-disc col.col-qty { width: 11%; }
-    .table.has-disc col.col-price { width: 17%; }
-    .table.has-disc col.col-disc { width: 13%; }
-    .table.has-disc col.col-amount { width: 25%; }
+    .table col.col-desc { width: 45%; }
+    .table col.col-qty { width: 17.5%; }
+    .table col.col-price { width: 17.5%; }
+    .table col.col-amount { width: 20%; }
+    .table.has-disc col.col-desc { width: 45%; }
+    .table.has-disc col.col-qty { width: 14%; }
+    .table.has-disc col.col-price { width: 14%; }
+    .table.has-disc col.col-disc { width: 7%; }
+    .table.has-disc col.col-amount { width: 20%; }
     .table thead th { padding: 2px 0; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(7)}; letter-spacing: 0; }
     .table th.desc, .table td.desc { padding-right: 2px; word-break: break-word; overflow-wrap: anywhere; }
     .table tbody tr { border-top: 1px dashed #000; }

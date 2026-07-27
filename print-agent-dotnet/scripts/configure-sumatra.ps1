@@ -2,7 +2,8 @@
 param(
     [string]$InstallDir = "C:\Program Files\Centrix\PrintAgent",
     [string]$ServiceName = "CentrixPrintAgent",
-    [switch]$SkipDownload
+    [switch]$SkipDownload,
+    [string]$SumatraPath = $null
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,14 +16,13 @@ Write-Host ("Install folder: {0}" -f $InstallDir)
 if ($SkipDownload) {
     Write-Host "Download skipped - using an existing SumatraPDF install only."
 }
+if ($SumatraPath) {
+    Write-Host ("Using Sumatra path: {0}" -f $SumatraPath)
+}
 Write-Host ""
 
-$sumatraPath = Ensure-SumatraPdf -TargetInstallDir $InstallDir -SkipDownload:$SkipDownload
+$sumatraPath = Ensure-SumatraPdf -TargetInstallDir $InstallDir -SkipDownload:$SkipDownload -ExplicitPath $SumatraPath
 if (-not $sumatraPath) {
-    Write-Host ""
-    Write-Host "SumatraPDF was not configured." -ForegroundColor Red
-    Write-Host "Install manually from https://www.sumatrapdfreader.org/download-free-pdf-viewer"
-    Write-Host "Then re-run this script with -SkipDownload"
     exit 1
 }
 
