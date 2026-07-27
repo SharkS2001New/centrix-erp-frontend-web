@@ -39,9 +39,8 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
       page: centrix-thermal;
       width: ${THERMAL_PAPER_WIDTH_MM}mm !important;
       max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important;
-      margin-left: auto !important;
-      margin-right: auto !important;
-      padding: 2mm ${THERMAL_SIDE_MARGIN_MM}mm 0 !important;
+      margin: 0 !important;
+      padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important;
       box-sizing: border-box !important;
     }
     .doc-print-edge-footer {
