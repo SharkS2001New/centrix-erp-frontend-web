@@ -76,6 +76,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `path\to` not found | You copied the placeholder. Use double‑click `BUILD-AND-INSTALL.bat` instead |
 | Scripts are disabled / cannot be loaded | Use `BUILD-AND-INSTALL.bat` (bypasses policy) or `Set-ExecutionPolicy -Scope Process Bypass` |
 | `dotnet` is not recognized | Install .NET 8 **SDK**, close terminals, retry |
+| `Unexpected token ')'` in `build-and-install.ps1` | You have an **old** build package. Download **build package (source)** again from Centrix (Administration → Local printing). The script must use `Step 1.` lines, not `1)` |
 | `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
 | Port / health fails | `Get-Service CentrixPrintAgent` — must be Running |

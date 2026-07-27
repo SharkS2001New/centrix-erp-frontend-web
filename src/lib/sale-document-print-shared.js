@@ -169,14 +169,14 @@ export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout 
       <th class="qty">QTY</th>
       <th class="price">PRICE</th>
       <th class="disc">Disc</th>
-      <th class="amount">AMT</th>
+      <th class="amount">AMOUNT</th>
     </tr>`;
     }
     return `<tr>
       <th class="desc">ITEMS</th>
       <th class="qty">QTY</th>
       <th class="price">PRICE</th>
-      <th class="amount">AMT</th>
+      <th class="amount">AMOUNT</th>
     </tr>`;
   }
 

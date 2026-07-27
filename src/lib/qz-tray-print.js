@@ -13,6 +13,7 @@ import {
   qzConfigFromLocalPrinting,
   setCachedLocalPrintingSettings,
 } from "@/lib/local-printing-settings";
+import { THERMAL_QZ_PAGE_WIDTH_IN } from "@/lib/thermal-receipt-layout";
 
 export const QZ_TRAY_DEFAULTS = {
   enabled: false,
@@ -231,7 +232,7 @@ export async function checkQzTrayHealth(config = getQzTrayConfig()) {
 function pageOptionsForJob(jobType) {
   // Approximate widths in inches for QZ HTML pixel rendering.
   if (jobType === "receipt" || jobType === "thermal") {
-    return { pageWidth: 2.83 }; // ~72 mm / common 80mm roll content width
+    return { pageWidth: THERMAL_QZ_PAGE_WIDTH_IN };
   }
   if (jobType === "label") {
     return { pageWidth: 2.25 };

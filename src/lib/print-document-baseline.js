@@ -3,6 +3,7 @@ import {
   DOCUMENT_PRINT_EDGE_BODY_SIDES,
   DOCUMENT_PRINT_EDGE_BODY_TOP,
 } from "@/lib/document-print-edge-footer";
+import { THERMAL_PAPER_WIDTH_MM } from "@/lib/thermal-receipt-layout";
 
 /** Injected last into every print document — suppresses browser URL/date headers. */
 export const PRINT_DOCUMENT_BASELINE_HTML = `
@@ -16,6 +17,10 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
   }
   @page centrix-edge {
     margin: 0 0 ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} 0 !important;
+  }
+  @page centrix-thermal {
+    size: ${THERMAL_PAPER_WIDTH_MM}mm auto;
+    margin: 0 !important;
   }
   @media print {
     html, body {
@@ -31,8 +36,8 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
       box-sizing: border-box;
     }
     body.centrix-print-thermal {
-      page: auto;
-      padding: 3mm 2mm !important;
+      page: centrix-thermal;
+      padding: 2mm 0 !important;
       box-sizing: border-box;
     }
     .doc-print-edge-footer {

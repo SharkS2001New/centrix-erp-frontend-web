@@ -26,6 +26,10 @@ import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
 } from "@/lib/print-typography";
+import {
+  THERMAL_CONTENT_WIDTH_MM,
+  THERMAL_PAPER_WIDTH_MM,
+} from "@/lib/thermal-receipt-layout";
 
 function buildUsedPaymentRows(sale, orderTotal) {
   const rows = [];
@@ -250,9 +254,11 @@ export function buildSaleReceiptHtml(
 <head>
   <title>Receipt ${escapeHtml(orderNo)}</title>
   <style>
+    @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
-    body { font-family: ${font}; margin: 0; padding: 0; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
-    .receipt { width: 72mm; max-width: 72mm; margin: 0 auto; padding: 0 1.5mm; overflow: hidden; box-sizing: border-box; }
+    html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; margin: 0 auto; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
+    .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; }
     .company-name,
     .org-name { text-align: center; font-size: ${hpx(14)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; margin-bottom: 4px; }
     .company-meta { text-align: center; font-size: ${hpx(10)}; color: #000; line-height: 1.45; font-weight: var(--print-w-header, 600); word-break: break-word; }
@@ -265,15 +271,15 @@ export function buildSaleReceiptHtml(
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; table-layout: fixed; }
-    .table col.col-desc { width: 38%; }
-    .table col.col-qty { width: 13%; }
-    .table col.col-price { width: 24%; }
-    .table col.col-amount { width: 25%; }
-    .table.has-disc col.col-desc { width: 30%; }
-    .table.has-disc col.col-qty { width: 11%; }
-    .table.has-disc col.col-price { width: 20%; }
+    .table col.col-desc { width: 42%; }
+    .table col.col-qty { width: 14%; }
+    .table col.col-price { width: 22%; }
+    .table col.col-amount { width: 22%; }
+    .table.has-disc col.col-desc { width: 34%; }
+    .table.has-disc col.col-qty { width: 12%; }
+    .table.has-disc col.col-price { width: 18%; }
     .table.has-disc col.col-disc { width: 14%; }
-    .table.has-disc col.col-amount { width: 25%; }
+    .table.has-disc col.col-amount { width: 22%; }
     .table thead th { padding: 2px 0; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(7)}; letter-spacing: 0; }
     .table thead th.qty,
     .table thead th.price,
@@ -291,8 +297,8 @@ export function buildSaleReceiptHtml(
     .table td.price { padding-right: 2px; }
     .table td.amount { padding-right: 0; }
     .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
-    .summary-table col.col-label { width: 50%; }
-    .summary-table col.col-value { width: 50%; }
+    .summary-table col.col-label { width: 52%; }
+    .summary-table col.col-value { width: 48%; }
     .summary-table td { padding: 2px 0; vertical-align: top; }
     .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -311,8 +317,9 @@ export function buildSaleReceiptHtml(
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; word-break: break-word; text-transform: none; }
     .center { text-align: center; }
     @media print {
-      body { font-size: ${px(10, true)}; padding: 1mm 0 !important; }
-      .receipt { width: 72mm !important; max-width: 72mm !important; margin: 0 auto; }
+      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; }
+      body { font-size: ${px(10, true)}; }
+      .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; }
       .company-name,
       .org-name { font-size: ${hpx(14, true)}; }
       .company-meta { font-size: ${hpx(10, true)}; }
@@ -338,7 +345,7 @@ export function buildSaleReceiptHtml(
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">
       <div class="meta-cell"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
-      <div class="meta-cell meta-cell--sale"><span class="meta-label">Sale #:</span> ${escapeHtml(orderNo)}</div>
+      <div class="meta-cell meta-cell--sale"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(customerName)}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
