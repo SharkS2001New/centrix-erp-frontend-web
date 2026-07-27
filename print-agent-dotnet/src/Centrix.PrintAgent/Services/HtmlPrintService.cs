@@ -1,11 +1,10 @@
 using System.Diagnostics;
-using System.Drawing.Printing;
 
 namespace Centrix.PrintAgent.Services;
 
 /// <summary>
 /// Renders receipt HTML and sends it to a Windows printer.
-/// Uses Microsoft Edge headless for HTML→PDF, then silent print when SumatraPDF is installed.
+/// Prefers WebView2 for HTML to PDF, then Edge/Chrome headless fallbacks.
 /// </summary>
 public sealed class HtmlPrintService
 {
@@ -28,17 +27,18 @@ public sealed class HtmlPrintService
         try
         {
             var stamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var workDir = Path.Combine(Path.GetTempPath(), "centrix-print-agent");
-            Directory.CreateDirectory(workDir);
+            var workDir = GetWorkDirectory();
+            var jobDir = Path.Combine(workDir, $"{SanitizeFileName(documentId)}-{stamp}");
+            Directory.CreateDirectory(jobDir);
 
-            var htmlPath = Path.Combine(workDir, $"{documentId}-{stamp}.html");
-            var pdfPath = Path.Combine(workDir, $"{documentId}-{stamp}.pdf");
+            var htmlPath = Path.Combine(jobDir, "receipt.html");
+            var pdfPath = Path.Combine(jobDir, "receipt.pdf");
 
             await File.WriteAllTextAsync(htmlPath, html, cancellationToken);
 
             try
             {
-                await RenderPdfAsync(htmlPath, pdfPath, workDir, cancellationToken);
+                await RenderPdfAsync(html, htmlPath, pdfPath, jobDir, cancellationToken);
 
                 var targetPrinter = ResolvePrinter(printerName);
                 for (var copy = 0; copy < copies; copy++)
@@ -53,12 +53,32 @@ public sealed class HtmlPrintService
             {
                 TryDelete(htmlPath);
                 TryDelete(pdfPath);
+                TryDeleteDirectory(jobDir);
             }
         }
         finally
         {
             PrintLock.Release();
         }
+    }
+
+    private static string GetWorkDirectory()
+    {
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Centrix",
+            "PrintAgent",
+            "spool");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = value.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray();
+        var cleaned = new string(chars).Trim();
+        return string.IsNullOrWhiteSpace(cleaned) ? "job" : cleaned;
     }
 
     private string? ResolvePrinter(string? requested)
@@ -72,48 +92,117 @@ public sealed class HtmlPrintService
     }
 
     private static async Task RenderPdfAsync(
+        string html,
         string htmlPath,
         string pdfPath,
         string workDir,
         CancellationToken cancellationToken)
     {
-        var edge = FindEdgeExecutable();
-        if (edge is null)
+        var errors = new List<string>();
+        var profileDir = Path.Combine(workDir, "webview2-profile");
+
+        try
         {
-            throw new InvalidOperationException(
-                "Microsoft Edge is required to render receipts. Install Edge from https://www.microsoft.com/edge or use browser print as fallback.");
+            await WebView2PdfRenderer.RenderAsync(html, pdfPath, profileDir, cancellationToken);
+            if (File.Exists(pdfPath))
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"WebView2: {ex.Message}");
         }
 
-        var profileDir = Path.Combine(workDir, "edge-profile");
-        Directory.CreateDirectory(profileDir);
+        var pdfPathNorm = ToForwardSlashPath(Path.GetFullPath(pdfPath));
+        var htmlPathNorm = ToForwardSlashPath(Path.GetFullPath(htmlPath));
+        var htmlUri = new Uri(htmlPathNorm).AbsoluteUri;
+        var edgeProfileDir = ToForwardSlashPath(Path.Combine(workDir, "edge-profile"));
 
-        var htmlUri = new Uri(htmlPath).AbsoluteUri;
-        var args = string.Join(
-            " ",
+        var browsers = new[]
+        {
+            ("Microsoft Edge", FindEdgeExecutable()),
+            ("Google Chrome", FindChromeExecutable()),
+        };
+
+        var argumentSets = new[]
+        {
+            new[]
+            {
+                "--headless=old",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--no-pdf-header-footer",
+                "--run-all-compositor-stages-before-draw",
+                "--virtual-time-budget=10000",
+                $"--print-to-pdf={pdfPathNorm}",
+                htmlUri,
+            },
+            new[]
+            {
+                "--headless=old",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--no-pdf-header-footer",
+                "--run-all-compositor-stages-before-draw",
+                "--virtual-time-budget=10000",
+                $"--print-to-pdf={pdfPathNorm}",
+                htmlPathNorm,
+            },
             new[]
             {
                 "--headless=new",
                 "--disable-gpu",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                $"--user-data-dir=\"{profileDir}\"",
+                "--smartscreen-disable",
+                $"--user-data-dir={edgeProfileDir}",
                 "--no-pdf-header-footer",
-                $"--print-to-pdf=\"{pdfPath}\"",
-                $"\"{htmlUri}\"",
-            });
+                "--run-all-compositor-stages-before-draw",
+                "--virtual-time-budget=10000",
+                $"--print-to-pdf={pdfPathNorm}",
+                htmlUri,
+            },
+        };
 
-        var (exitCode, stderr) = await RunProcessAsync(edge, args, cancellationToken);
-        if (exitCode != 0 || !File.Exists(pdfPath))
+        foreach (var (label, browserPath) in browsers)
         {
-            var detail = string.IsNullOrWhiteSpace(stderr)
-                ? $"Edge exited with code {exitCode}."
-                : stderr.Trim();
-            throw new InvalidOperationException(
-                "Could not render receipt HTML to PDF. " +
-                detail +
-                " If the Print Agent runs as a Windows service, reinstall with BUILD-AND-INSTALL.bat " +
-                "(user session) or run Centrix.PrintAgent.exe while logged in to this till.");
+            if (string.IsNullOrWhiteSpace(browserPath))
+            {
+                continue;
+            }
+
+            foreach (var argumentSet in argumentSets)
+            {
+                try
+                {
+                    TryDelete(pdfPath);
+                    var (exitCode, stderr) = await RunProcessAsync(browserPath, argumentSet, cancellationToken);
+                    var created = await WaitForFileAsync(pdfPath, cancellationToken);
+                    if (created)
+                    {
+                        return;
+                    }
+
+                    var detail = string.IsNullOrWhiteSpace(stderr)
+                        ? $"exit code {exitCode}"
+                        : stderr.Trim();
+                    errors.Add($"{label} ({argumentSet[0]}): {detail}");
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{label}: {ex.Message}");
+                }
+            }
         }
+
+        var joined = errors.Count > 0 ? string.Join(" | ", errors.Take(4)) : "unknown renderer error";
+        throw new InvalidOperationException(
+            "Could not render receipt HTML to PDF. " +
+            joined +
+            " Ensure Microsoft Edge is installed and the Print Agent is running while you are logged in to this till.");
     }
 
     private static async Task PrintPdfAsync(string pdfPath, string? printerName, CancellationToken cancellationToken)
@@ -122,8 +211,8 @@ public sealed class HtmlPrintService
         if (sumatra is not null)
         {
             var args = string.IsNullOrWhiteSpace(printerName)
-                ? $"-print-to-default -silent \"{pdfPath}\""
-                : $"-print-to \"{printerName}\" -silent \"{pdfPath}\"";
+                ? new[] { "-print-to-default", "-silent", pdfPath }
+                : new[] { "-print-to", printerName, "-silent", pdfPath };
 
             var (exitCode, _) = await RunProcessAsync(sumatra, args, cancellationToken);
             if (exitCode == 0)
@@ -132,7 +221,6 @@ public sealed class HtmlPrintService
             }
         }
 
-        // Fallback: Windows print verb (may flash spooler UI briefly).
         var psi = new ProcessStartInfo
         {
             FileName = pdfPath,
@@ -159,6 +247,17 @@ public sealed class HtmlPrintService
         return candidates.FirstOrDefault(File.Exists);
     }
 
+    private static string? FindChromeExecutable()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
     private static string? FindSumatraExecutable()
     {
         var env = Environment.GetEnvironmentVariable("SUMATRA_PATH");
@@ -176,20 +275,43 @@ public sealed class HtmlPrintService
         return candidates.FirstOrDefault(File.Exists);
     }
 
+    private static string ToForwardSlashPath(string path) =>
+        Path.GetFullPath(path).Replace('\\', '/');
+
+    private static async Task<bool> WaitForFileAsync(string path, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.Exists(path) && new FileInfo(path).Length > 0)
+            {
+                return true;
+            }
+
+            await Task.Delay(125, cancellationToken);
+        }
+
+        return File.Exists(path) && new FileInfo(path).Length > 0;
+    }
+
     private static async Task<(int ExitCode, string StdErr)> RunProcessAsync(
         string fileName,
-        string arguments,
+        IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
-            Arguments = arguments,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+
+        foreach (var argument in arguments)
+        {
+            psi.ArgumentList.Add(argument);
+        }
 
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException($"Could not start process: {fileName}");
@@ -207,6 +329,21 @@ public sealed class HtmlPrintService
             if (File.Exists(path))
             {
                 File.Delete(path);
+            }
+        }
+        catch
+        {
+            // ignore temp cleanup errors
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
             }
         }
         catch

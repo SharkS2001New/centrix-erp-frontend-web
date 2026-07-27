@@ -81,7 +81,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `#Requires -RunAsAdministrator` | Right‑click → Run as administrator |
 | Publish failed | Stay on Windows x64; ensure SDK 8 is installed |
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
-| `Could not render receipt HTML to PDF` | The agent must run **while a user is logged in**, not as an old Windows service. Re-run `BUILD-AND-INSTALL.bat`, or run `C:\Program Files\Centrix\PrintAgent\Centrix.PrintAgent.exe` manually. Install **Microsoft Edge** and **SumatraPDF** |
+| `Could not render receipt HTML to PDF` | Re-run `BUILD-AND-INSTALL.bat` to get Print Agent **0.2.1+** (uses WebView2 instead of broken Edge headless). Agent must run while logged in. Install **SumatraPDF** for silent printing |
 | Print dialog flashes / not silent | Install [SumatraPDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), pick your receipt printer in Centrix → Local printing → Save |
 
 ---
