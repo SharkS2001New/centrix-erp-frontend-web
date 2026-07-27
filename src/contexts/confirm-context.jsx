@@ -29,6 +29,9 @@ export function ConfirmProvider({ children }) {
     setOptions(null);
   }, []);
 
+  const handleConfirm = useCallback(() => finish(true), [finish]);
+  const handleCancel = useCallback(() => finish(false), [finish]);
+
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
@@ -40,8 +43,8 @@ export function ConfirmProvider({ children }) {
           confirmLabel={options.confirmLabel}
           cancelLabel={options.cancelLabel}
           destructive={options.destructive}
-          onConfirm={() => finish(true)}
-          onCancel={() => finish(false)}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
         />
       ) : null}
     </ConfirmContext.Provider>

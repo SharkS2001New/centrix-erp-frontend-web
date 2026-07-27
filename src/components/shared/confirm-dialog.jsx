@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 /**
  * Themed confirmation modal — replaces window.confirm for destructive actions.
+ * Confirm is focused by default so Enter accepts; Escape cancels.
  */
 export function ConfirmDialog({
   open,
@@ -17,21 +18,41 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
+  const confirmBtnRef = useRef(null);
+
   useEffect(() => {
     if (!open) return undefined;
 
+    // Prefer Start/Confirm so cashiers can press Enter immediately.
+    const focusTimer = window.setTimeout(() => {
+      confirmBtnRef.current?.focus();
+    }, 0);
+
     function onKeyDown(event) {
-      if (event.key === "Escape" && !busy) onCancel();
+      if (busy) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        onConfirm();
+      }
     }
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", onKeyDown);
+    // Capture so POS/global shortcuts (F8, Escape, etc.) do not steal the keys.
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open, busy, onCancel]);
+  }, [open, busy, onConfirm, onCancel]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -66,6 +87,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </button>
           <button
+            ref={confirmBtnRef}
             type="button"
             disabled={busy}
             onClick={onConfirm}

@@ -2005,6 +2005,8 @@ export function PosScreen({ standalone = false }) {
   async function resolveProductByCode(code) {
     const trimmed = String(code ?? "").trim();
     if (!trimmed) return null;
+    // Prefer cache first — previous-order qty edits must not wait on retail-package fetch.
+    if (productByCodeRef.current[trimmed]) return productByCodeRef.current[trimmed];
     await ensureRetailPackages([trimmed]);
     if (productByCodeRef.current[trimmed]) return productByCodeRef.current[trimmed];
     const fromResults = searchResults.find(
@@ -2366,9 +2368,9 @@ export function PosScreen({ standalone = false }) {
     const computed = applyComputedPrice(product, "1", 0);
     if (computed.baseQty <= 0) return;
 
-    if (classicLayout) {
+    if (classicLayout || cartRef.current?.held_order_num || cartRef.current?.offline) {
       // Clear scan + entry row immediately so the next-row never parks this product.
-      clearClassicEntryFields();
+      if (classicLayout) clearClassicEntryFields();
       void ensureRetailPackages([product.product_code]);
       void enqueueCartCommit(async () => {
         const mergeTarget = findMergeableCartLine(
@@ -2496,23 +2498,32 @@ export function PosScreen({ standalone = false }) {
       }
       setStatusMessage(`Replacing ${replaceLine.product_code} → ${product.product_code}…`);
       void (async () => {
+        const runReplace = async () => {
+          try {
+            const ok = await replaceCartLineWithProduct(
+              replaceLine,
+              product,
+              quantity,
+              0,
+              null,
+            );
+            if (ok) {
+              setReplacingLineId(null);
+              setStatusMessage(
+                `Replaced ${replaceLine.product_code} with ${product.product_code}.`,
+              );
+            }
+          } catch (e) {
+            setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+          }
+        };
+        if (cartRef.current?.held_order_num || cartRef.current?.offline) {
+          await enqueueCartCommit(runReplace);
+          return;
+        }
         setLineBusy(true);
         try {
-          const ok = await replaceCartLineWithProduct(
-            replaceLine,
-            product,
-            quantity,
-            0,
-            null,
-          );
-          if (ok) {
-            setReplacingLineId(null);
-            setStatusMessage(
-              `Replaced ${replaceLine.product_code} with ${product.product_code}.`,
-            );
-          }
-        } catch (e) {
-          setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+          await runReplace();
         } finally {
           setLineBusy(false);
         }
@@ -2587,6 +2598,27 @@ export function PosScreen({ standalone = false }) {
     if (!lineRef) {
       setStatusMessage("Could not resolve the line to replace.");
       return false;
+    }
+
+    const activeCart = cartRef.current ?? cart;
+    // Previous-order / offline: swap locally until Complete flushes.
+    if (activeCart?.held_order_num || activeCart?.offline) {
+      const without = (activeCart.lines ?? []).filter(
+        (l) => String(cartLineRef(l)) !== String(lineRef) && !sameLineId(l.id, line.id),
+      );
+      let nextCart = { ...activeCart, lines: without };
+      cartRef.current = nextCart;
+      setCart(nextCart);
+      return commitCartLine({
+        product,
+        computed,
+        incrementBaseQty: computed.baseQty,
+        discount,
+        override,
+        clearEntry: true,
+        successMessage: null,
+        lineRetailStockFlagOverride: isRetailLine,
+      });
     }
 
     const removed = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
@@ -2820,7 +2852,9 @@ export function PosScreen({ standalone = false }) {
     [cart?.lines, productByCode, sellFromShop, posSalesConfig, allowNegativeStock],
   );
 
-  const checkoutBlocked = lineBusy || cartHasOptimisticLines(cart);
+  // Previous-order drafts never wait on line API saves — only live carts do.
+  const checkoutBlocked =
+    !isCartEditSession && (lineBusy || cartHasOptimisticLines(cart));
 
   const addLineBlocked =
     !selectedProduct ||
@@ -3008,23 +3042,32 @@ export function PosScreen({ standalone = false }) {
         setStatusMessage("Choose a different product to replace this line.");
         return;
       }
+      const runReplace = async () => {
+        try {
+          const ok = await replaceCartLineWithProduct(
+            replaceLine,
+            selectedProduct,
+            lineForm.quantity,
+            discount,
+            override,
+          );
+          if (ok) {
+            setReplacingLineId(null);
+            setStatusMessage(
+              `Replaced ${replaceLine.product_code} with ${selectedProduct.product_code}.`,
+            );
+          }
+        } catch (e) {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+        }
+      };
+      if (cartRef.current?.held_order_num || cartRef.current?.offline) {
+        void enqueueCartCommit(runReplace);
+        return;
+      }
       setLineBusy(true);
       try {
-        const ok = await replaceCartLineWithProduct(
-          replaceLine,
-          selectedProduct,
-          lineForm.quantity,
-          discount,
-          override,
-        );
-        if (ok) {
-          setReplacingLineId(null);
-          setStatusMessage(
-            `Replaced ${replaceLine.product_code} with ${selectedProduct.product_code}.`,
-          );
-        }
-      } catch (e) {
-        setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+        await runReplace();
       } finally {
         setLineBusy(false);
       }
@@ -3052,31 +3095,43 @@ export function PosScreen({ standalone = false }) {
           sellWholesale,
         );
 
-    setLineBusy(true);
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
+    const run = async () => {
+      try {
+        const ok = await commitCartLine({
+          product: selectedProduct,
+          computed,
+          incrementBaseQty: computed.baseQty,
+          mergeTarget,
+          editingId: editingLineId,
+          editingRef: editingLineRef ?? cartLineRef(editingLine),
+          discount,
+          override,
+          successMessage: null,
+          unlockUiEarly: classicLayout,
+        });
+        if (!ok) return;
+      } catch (e) {
+        setStatusMessage(
+          e instanceof ApiError
+            ? e.message
+            : wasEditing
+              ? "Failed to update line"
+              : "Failed to add line",
+        );
+      }
+    };
+
+    // Previous-order / classic: local queue — never freeze F10 behind lineBusy.
+    if (classicLayout || cartRef.current?.held_order_num || cartRef.current?.offline) {
+      void enqueueCartCommit(run);
+      return;
+    }
+
+    setLineBusy(true);
     try {
-      const ok = await commitCartLine({
-        product: selectedProduct,
-        computed,
-        incrementBaseQty: computed.baseQty,
-        mergeTarget,
-        editingId: editingLineId,
-        editingRef: editingLineRef ?? cartLineRef(editingLine),
-        discount,
-        override,
-        successMessage: null,
-        unlockUiEarly: classicLayout,
-      });
-      if (!ok) return;
-    } catch (e) {
-      setStatusMessage(
-        e instanceof ApiError
-          ? e.message
-          : wasEditing
-            ? "Failed to update line"
-            : "Failed to add line",
-      );
+      await run();
     } finally {
       setLineBusy(false);
     }
@@ -3195,29 +3250,34 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function adjustCartLineQuantity(line, delta) {
-    if (!line || !cart?.id || busy || lineBusy || !delta) return;
-    setLineBusy(true);
-    try {
+    if (!line || !cart?.id || !delta) return;
+    const localDraftEdit = Boolean(cartRef.current?.held_order_num || cartRef.current?.offline);
+    // Live cart still blocks while another line request is in flight.
+    if (!localDraftEdit && (busy || lineBusy)) return;
+
+    const run = async () => {
+      const activeCart = cartRef.current ?? cart;
       const product =
-        productByCode[line.product_code] ?? (await resolveProductByCode(line.product_code));
+        productByCodeRef.current[line.product_code] ??
+        (await resolveProductByCode(line.product_code));
       if (!product) {
         setStatusMessage("Product not found for this cart line.");
         return;
       }
 
       const retailPackage = getRetailPackage(line.product_code);
-      // Keep each line's original wholesale/retail flag — F2 only affects new lines.
+      // Keep each line's original wholesale/retail flag — F12 only affects new lines.
       const isRetailLine = cartLineRetailStockFlag(line);
       const adjustCheck = canAdjustCartLineQuantity({
         line,
         product,
         retailPackage,
         delta,
-        cartLines: cart?.lines,
+        cartLines: activeCart?.lines,
         sellFromShop,
         posSalesConfig,
         allowNegativeStock,
-        productByCode,
+        productByCode: productByCodeRef.current,
       });
 
       if (!adjustCheck.ok) {
@@ -3237,16 +3297,36 @@ export function PosScreen({ standalone = false }) {
       if (adjustCheck.willRemove || nextBaseQty <= 0) {
         const lineRef = cartLineRef(line);
         if (!lineRef) return;
-        const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
+
+        // Previous-order / offline: remove locally (same as add — flush on Complete).
+        if (activeCart?.held_order_num || activeCart?.offline) {
+          const nextLines = (activeCart.lines ?? []).filter(
+            (l) => String(cartLineRef(l)) !== String(lineRef) && !sameLineId(l.id, line.id),
+          );
+          let nextCart = { ...activeCart, lines: nextLines };
+          if (activeCart.offline) {
+            const saved = await saveLocalPosCart({
+              ...nextCart,
+              lines: nextLines.map((l) => ({
+                ...l,
+                client_line_id: l.client_line_id ?? l.id,
+              })),
+            });
+            nextCart = presentLocalOfflineCart(saved);
+          }
+          cartRef.current = nextCart;
+          setCart(nextCart);
+          if (sameLineId(editingLineId, line.id)) clearLineEntry();
+          if (sameLineId(selectedLineId, line.id)) setSelectedLineId(null);
+          return;
+        }
+
+        const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${lineRef}`, {
           method: "DELETE",
         });
         setCart(updated);
-        if (sameLineId(editingLineId, line.id)) {
-          clearLineEntry();
-        }
-        if (sameLineId(selectedLineId, line.id)) {
-          setSelectedLineId(null);
-        }
+        if (sameLineId(editingLineId, line.id)) clearLineEntry();
+        if (sameLineId(selectedLineId, line.id)) setSelectedLineId(null);
         return;
       }
 
@@ -3277,9 +3357,24 @@ export function PosScreen({ standalone = false }) {
         successMessage: null,
         lineRetailStockFlagOverride: isRetailLine,
       });
-      if (ok) {
-        setSelectedLineId(line.id);
-      }
+      if (ok) setSelectedLineId(line.id);
+    };
+
+    // Match fast new-order adds: don't freeze the grid while a local draft updates.
+    if (localDraftEdit) {
+      void enqueueCartCommit(async () => {
+        try {
+          await run();
+        } catch (e) {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
+        }
+      });
+      return;
+    }
+
+    setLineBusy(true);
+    try {
+      await run();
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
     } finally {
@@ -3289,16 +3384,20 @@ export function PosScreen({ standalone = false }) {
 
   /** Classic: type an absolute entry qty — keeps this line's wholesale/retail price mode. */
   async function setCartLineEntryQuantity(line, entryQtyRaw) {
-    if (!line || !cart?.id || busy || lineBusy) return;
+    if (!line || !cart?.id) return;
+    const localDraftEdit = Boolean(cartRef.current?.held_order_num || cartRef.current?.offline);
+    if (!localDraftEdit && (busy || lineBusy)) return;
     const entryQty = parseDecimalInput(entryQtyRaw);
     if (!(entryQty > 0)) {
       setStatusMessage("Enter a quantity greater than zero, or use − to remove the line.");
       return;
     }
-    setLineBusy(true);
-    try {
+
+    const run = async () => {
+      const activeCart = cartRef.current ?? cart;
       const product =
-        productByCode[line.product_code] ?? (await resolveProductByCode(line.product_code));
+        productByCodeRef.current[line.product_code] ??
+        (await resolveProductByCode(line.product_code));
       if (!product) {
         setStatusMessage("Product not found for this cart line.");
         return;
@@ -3333,12 +3432,12 @@ export function PosScreen({ standalone = false }) {
         const stockCheck = posStockAvailability({
           product,
           baseQty: computed.baseQty,
-          cartLines: cart?.lines,
+          cartLines: activeCart?.lines,
           sellFromShop,
           posSalesConfig,
           allowNegativeStock,
           stockAsRetail: cartLineStockAsRetail(line, product),
-          productByCode,
+          productByCode: productByCodeRef.current,
           excludeLineId: line?.id ?? line?.update_code,
         });
         if (!stockCheck.ok) {
@@ -3365,9 +3464,23 @@ export function PosScreen({ standalone = false }) {
         successMessage: null,
         lineRetailStockFlagOverride: isRetailLine,
       });
-      if (ok) {
-        setSelectedLineId(line.id);
-      }
+      if (ok) setSelectedLineId(line.id);
+    };
+
+    if (localDraftEdit) {
+      void enqueueCartCommit(async () => {
+        try {
+          await run();
+        } catch (e) {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
+        }
+      });
+      return;
+    }
+
+    setLineBusy(true);
+    try {
+      await run();
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
     } finally {
@@ -3380,14 +3493,14 @@ export function PosScreen({ standalone = false }) {
     const line = cart.lines.find((l) => sameLineId(l.id, selectedLineId));
     const lineRef = cartLineRef(line);
     if (!lineRef) return;
-    setBusy(true);
     setStatusMessage(null);
-    try {
-      // Previous-order edit / offline cart: remove locally until Complete flushes + saves.
-      if (cart.held_order_num || cart.offline) {
-        const nextLines = (cart.lines ?? []).filter((l) => !sameLineId(l.id, selectedLineId));
-        let nextCart = { ...cart, lines: nextLines };
-        if (cart.offline) {
+
+    // Previous-order edit / offline: remove locally without freezing the POS.
+    if (cart.held_order_num || cart.offline) {
+      const nextLines = (cart.lines ?? []).filter((l) => !sameLineId(l.id, selectedLineId));
+      let nextCart = { ...cart, lines: nextLines };
+      if (cart.offline) {
+        try {
           const saved = await saveLocalPosCart({
             ...nextCart,
             lines: nextLines.map((l) => ({
@@ -3396,24 +3509,26 @@ export function PosScreen({ standalone = false }) {
             })),
           });
           nextCart = presentLocalOfflineCart(saved);
+        } catch (e) {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to remove line");
+          return;
         }
-        cartRef.current = nextCart;
-        setCart(nextCart);
-        if (sameLineId(editingLineId, selectedLineId)) {
-          clearLineEntry();
-        }
-        setSelectedLineId(null);
-        return;
       }
+      cartRef.current = nextCart;
+      setCart(nextCart);
+      if (sameLineId(editingLineId, selectedLineId)) clearLineEntry();
+      setSelectedLineId(null);
+      return;
+    }
 
+    setBusy(true);
+    try {
       const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
         method: "DELETE",
       });
       cartRef.current = updated;
       setCart(updated);
-      if (sameLineId(editingLineId, selectedLineId)) {
-        clearLineEntry();
-      }
+      if (sameLineId(editingLineId, selectedLineId)) clearLineEntry();
       setSelectedLineId(null);
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to remove line");
@@ -4093,6 +4208,7 @@ export function PosScreen({ standalone = false }) {
       cartRef.current = nextCart;
       setCart(nextCart);
 
+      // Sequential POSTs — each response is the full cart; parallel races would drop lines.
       for (const line of draftLines) {
         const qty = Math.max(0.0001, Number(line.quantity) || 0);
         const unitPrice = Number(line.unit_price ?? line.price ?? 0);
@@ -4146,12 +4262,8 @@ export function PosScreen({ standalone = false }) {
       flashPosShortcutMessage("Add items before completing this order.");
       return null;
     }
-    if (cartStockBlocked || busy || lineBusy) {
-      flashPosShortcutMessage(
-        lineBusy || busy
-          ? "Wait a moment, then try Complete again."
-          : "Fix stock issues before completing this order.",
-      );
+    if (cartStockBlocked) {
+      flashPosShortcutMessage("Fix stock issues before completing this order.");
       return null;
     }
     if (editAutosaveInFlightRef.current) return null;
@@ -4290,9 +4402,9 @@ export function PosScreen({ standalone = false }) {
       if (!sale?.id) return null;
 
       const orderLabel = sale.order_num ?? orderNum;
-      setStatusMessage(`Order #${orderLabel} updated. Complete again after any further edits.`);
+      setStatusMessage(`Order #${orderLabel} updated.`);
       if (!quiet && standalone) {
-        notifySuccess(`Order #${orderLabel} saved.`);
+        notifySuccess(`Order #${orderLabel} updated.`);
       }
 
       skipEditAutosaveRef.current = true;
@@ -4526,6 +4638,7 @@ export function PosScreen({ standalone = false }) {
 
   const focusProductSearchRef = useRef(() => {});
   focusProductSearchRef.current = () => {
+    // Keep cart lines; only reset the entry/scan row and focus Scan code.
     clearLineEntry();
     focusClassicProductSearch();
   };
@@ -4545,15 +4658,17 @@ export function PosScreen({ standalone = false }) {
     const hasLines = (cartRef.current?.lines?.length ?? cart?.lines?.length ?? 0) > 0;
     const activeCart = cartRef.current ?? cart;
     const editingPrevious = Boolean(activeCart?.held_order_num);
+    const isOfflineCart = Boolean(activeCart?.offline || activeCart?.offline_client_sale_uuid);
 
-    if (hasLines || editingPrevious) {
+    if (hasLines || editingPrevious || isOfflineCart) {
       const ok = await confirm({
         title: "New order",
         message: editingPrevious
-          ? "Save changes to this order and start a new order?"
+          ? "Clear this order from the workspace and start a new order? Unsaved changes will be discarded."
           : "Clear this workspace and start a new order?",
-        confirmLabel: editingPrevious ? "Save & new order" : "Start new order",
-        destructive: !editingPrevious,
+        confirmLabel: "Start New Order",
+        cancelLabel: "Cancel",
+        destructive: true,
       });
       if (!ok) {
         skipEditAutosaveRef.current = false;
@@ -4576,40 +4691,16 @@ export function PosScreen({ standalone = false }) {
     clearLineEntry();
     setStatusMessage(null);
     try {
-      // Mid-edit: checkout under the same order # so ← can open it again, then start fresh.
-      // Do this before setBusy — finalizeEditedOrder bails when busy is already true.
-      if (editingPrevious && (activeCart?.lines?.length ?? 0) > 0) {
-        const saved = await finalizeEditedOrder({
-          quiet: false,
-          submitKra: false,
-          promptReprint: false,
-        });
-        if (saved?.id) {
-          const next = cartRef.current ?? (await loadCashierCart());
-          cartRef.current = next;
-          orderNoUserEditedRef.current = false;
-          if (next?.next_order_num != null) {
-            setEditOrderNo(String(next.next_order_num));
-          } else {
-            setEditOrderNo("");
-          }
-          setStatusMessage("New order — scan or search a product.");
-          if (standalone) notifySuccess("Order saved — ready for a new order.");
-          focusProductSearch();
-          return;
-        }
-        // Fall through to clear/reinstate if save failed.
-      }
-
       setBusy(true);
-      if (activeCart?.offline || activeCart?.offline_client_sale_uuid) {
-        // Abandon offline edit without saving line changes — reinstate queued sale.
-        if (activeCart.held_order_num) {
+      // Always abandon/clear — including offline previous orders. Do not try to save first.
+      if (isOfflineCart) {
+        if (activeCart.held_order_num || activeCart.offline_client_sale_uuid) {
           await abandonOfflineSaleEdit(activeCart);
         } else {
           await clearLocalPosCart();
         }
       } else if (activeCart?.id && (hasLines || activeCart.held_order_num)) {
+        // Bulk DELETE reinstates a previous-order edit tombstone on the server.
         await apiRequest(`/sales/carts/${activeCart.id}/lines`, { method: "DELETE" });
       }
       const next = await loadCashierCart();
@@ -5129,6 +5220,7 @@ export function PosScreen({ standalone = false }) {
       flashPosShortcutMessage("Fix stock issues before completing payment.");
       return;
     }
+    // Live cart only — previous-order drafts are local until this Complete/F10.
     if (checkoutBlocked) {
       flashPosShortcutMessage("Wait for cart lines to finish saving, then press F10.");
       return;
@@ -5300,8 +5392,8 @@ export function PosScreen({ standalone = false }) {
         e.__centrixPosShortcutHandled = true;
         if (state.replacingLineId) {
           actions.cancelReplaceCartLine();
-          return;
         }
+        // Always return focus to Scan code on the open workspace.
         actions.focusProductSearch();
         return;
       }
@@ -6095,16 +6187,8 @@ export function PosScreen({ standalone = false }) {
             ) : null}
           </div>
           ) : null}
-          {isCartEditSession || isEditableResubmit ? (
+          {isEditableResubmit || cartResubmitMessage ? (
             <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
-              {isCartEditSession && !isEditableResubmit ? (
-                <div className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950">
-                  <p className="text-xs leading-relaxed">
-                    Editing order #{cart.held_order_num}. Add, change, or remove items freely —
-                    nothing is saved until you Complete (F10). Hold is disabled while editing.
-                  </p>
-                </div>
-              ) : null}
               {cartResubmitMessage ? (
                 <div
                   className={`mb-3 rounded-lg border px-3 py-2.5 text-sm ${
@@ -6341,6 +6425,12 @@ export function PosScreen({ standalone = false }) {
                 }
                 onEntryQtyKeyDown={(e) => {
                   if (isPosFunctionKeyEvent(e)) return;
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    focusProductSearch();
+                    return;
+                  }
                   if (e.key === "Enter") {
                     e.preventDefault();
                     handleQuantityEnter();
@@ -6697,10 +6787,9 @@ export function PosScreen({ standalone = false }) {
                   iconClass="pos-cart-action-icon--complete"
                   disabled={
                     busy
-                    || lineBusy
                     || !cart?.lines?.length
                     || cartStockBlocked
-                    || (!modernOrderEditLocked && checkoutBlocked)
+                    || (!modernOrderEditLocked && (lineBusy || checkoutBlocked))
                   }
                   onClick={() => openCompletePayment()}
                 />
@@ -6855,12 +6944,10 @@ export function PosScreen({ standalone = false }) {
             onPayClick={() => openCompletePayment()}
             payDisabled={
               busy
-              || lineBusy
               || Boolean(cartBridgeStatus)
               || !cart?.lines?.length
               || cartStockBlocked
-              || checkoutBlocked
-              || editAutosaveInFlightRef.current
+              || (!isCartEditSession && (lineBusy || checkoutBlocked))
             }
           />
         ) : (

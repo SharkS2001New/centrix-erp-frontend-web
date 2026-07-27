@@ -229,7 +229,17 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     }
     if (e.key === "Escape") {
       e.preventDefault();
-      setOpen(false);
+      e.stopPropagation();
+      if (open) {
+        setOpen(false);
+        setHighlight(-1);
+      }
+      // Keep focus on Scan code and select text for the next scan.
+      window.requestAnimationFrame(() => {
+        const el = localInputRef.current;
+        el?.focus({ preventScroll: true });
+        el?.select?.();
+      });
     }
   }
 

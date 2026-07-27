@@ -35,8 +35,30 @@ describe("retail markup accumulation", () => {
   });
 
   it("prices one 25kg retail add as half bag + one markup", () => {
-    // 6250/2 + 30 = 3155
+    // 6250/2 + 30 = 3155 — never 3185 (double markup from a 12.5 middle factor)
     expect(linePrice(6250, sugarTiers, 25, true, sugarUom)).toBe(3155);
+  });
+
+  it("does not double markup when UOM middle_factor is 12.5", () => {
+    const uomWithBadMiddle = { ...sugarUom, middle_factor: 12.5, middle_package_name: "half" };
+    const retailMiddleTier = [
+      {
+        min_qty: 1,
+        max_qty: 12.5,
+        measure_level: "small",
+        price_mode: "retail",
+        markup_price: 5,
+      },
+      {
+        min_qty: 13,
+        max_qty: 50,
+        measure_level: "middle",
+        price_mode: "retail",
+        markup_price: 30,
+      },
+    ];
+    expect(linePrice(6250, retailMiddleTier, 25, true, uomWithBadMiddle)).toBe(3155);
+    expect(linePrice(6250, retailMiddleTier, 50, true, uomWithBadMiddle)).toBe(6310);
   });
 
   it("accumulates markup when qty grows 25 → 50 → 75", () => {

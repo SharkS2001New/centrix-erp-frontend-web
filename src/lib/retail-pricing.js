@@ -185,50 +185,57 @@ export function smallUnitsPerLevel(uom, level) {
 }
 
 /**
- * How many markup applications a quantity earns for a wholesale-mode (flat) tier.
- * Retail sells need markups to accumulate when qty grows (25+25+25 → 3× markup).
- * Full-pack wholesale tiers without an explicit middle use half-pack chunks.
+ * How many markup applications a quantity earns in a retail sale.
+ * - Small retail tiers: markup is per kg / piece (chunk = 1).
+ * - Middle/full / wholesale-mode tiers on pack products: one markup per half pack
+ *   (e.g. 50kg bag → 25kg chunk), so 25/50/75kg → 1×/2×/3× markup.
  */
 export function retailMarkupApplications(quantityInSmall, tier, uom) {
   const qty = Number(quantityInSmall ?? 0);
   if (qty <= 0) return 0;
 
-  const level = tier?.measure_level || "small";
-  const factor = uomConversionFactor(uom);
-  let unitSize = smallUnitsPerLevel(uom, level);
+  const chunk = retailMarkupChunkSize(tier, uom);
+  return qty / chunk;
+}
 
-  if (
-    normalizeTierPriceMode(tier) === "wholesale" &&
-    level === "full" &&
-    factor > 1
-  ) {
-    // One markup per half pack so repeated retail adds accumulate (not once per line).
-    unitSize = resolvedMiddleFactor(uom);
+/** Chunk size (in small units) that earns one tier markup in retail selling. */
+export function retailMarkupChunkSize(tier, uom) {
+  const level = tier?.measure_level || "small";
+  const mode = normalizeTierPriceMode(tier);
+  const factor = uomConversionFactor(uom);
+
+  // Per-kg / per-piece retail tiers.
+  if (mode === "retail" && level === "small") {
+    return 1;
   }
 
-  if (!(unitSize > 0)) unitSize = 1;
-  return qty / unitSize;
+  // Pack products: accumulate markup per half pack (25kg of a 50kg bag).
+  // Do not use a spurious middle_factor (e.g. 12.5 from the small-tier ceiling)
+  // — that doubles markup on a 25kg sale (3185 instead of 3155).
+  if (factor >= 2) {
+    return factor / 2;
+  }
+
+  return Math.max(1, smallUnitsPerLevel(uom, level));
 }
 
 export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom, { scaleMarkup = null } = {}) {
   const qty = Number(quantityInSmall ?? 0);
   const markup = Number(tier?.markup_price ?? 0);
-  const smallPerLevel = smallUnitsPerLevel(uom, tier.measure_level ?? "small");
   const mode = normalizeTierPriceMode(tier);
   const stableBase = wholesalePricePerSmallUnit(baseUnitPrice, uom) * qty;
   const shouldScale =
     scaleMarkup == null ? mode === "retail" : Boolean(scaleMarkup);
 
-  if (mode === "wholesale") {
-    const apps = shouldScale ? retailMarkupApplications(qty, tier, uom) : 1;
-    return Math.round((stableBase + markup * apps) * 100) / 100;
+  // Wholesale POS session: one flat markup on the line (legacy behaviour).
+  if (mode === "wholesale" && !shouldScale) {
+    return Math.round((stableBase + markup) * 100) / 100;
   }
 
-  // Retail mode: wholesale base + markup per measured unit.
-  const wholesaleBase = wholesaleTierBaseAtMeasureLevel(baseUnitPrice, tier, uom);
-  const priceAtLevel = wholesaleBase + markup;
-  const perSmall = priceAtLevel / Math.max(smallPerLevel, 1);
-  return Math.round(perSmall * qty * 100) / 100;
+  // Retail selling (and scaled wholesale-mode tiers): base + markup × chunks.
+  // Sugar 25kg @ 6250/50 bag + 30 → 3125 + 30 = 3155 (not 3185).
+  const apps = retailMarkupApplications(qty, tier, uom);
+  return Math.round((stableBase + markup * apps) * 100) / 100;
 }
 
 export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true, uom = null) {
