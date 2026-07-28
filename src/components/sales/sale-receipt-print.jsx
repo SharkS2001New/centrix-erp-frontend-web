@@ -358,8 +358,8 @@ export function buildSaleReceiptHtml(
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">
-      <div class="meta-cell"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
-      <div class="meta-cell meta-cell--sale"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
+      <div class="meta-full"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
+      <div class="meta-full"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(String(customerName).toUpperCase())}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
