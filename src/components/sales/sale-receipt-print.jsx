@@ -269,7 +269,7 @@ export function buildSaleReceiptHtml(
     html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
-    .receipt { width: 100%; max-width: 100%; margin: -8mm 0 0; padding: 0; box-sizing: border-box; }
+    .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
     .org-brand,
     .org-header { margin: 0; padding: 0; }
     .org-logo { display: block; margin: 0 auto 2px; max-height: 34px; max-width: 140px; object-fit: contain; }
@@ -333,7 +333,7 @@ export function buildSaleReceiptHtml(
       html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
       body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; }
       body { font-size: ${px(10, true)}; }
-      .receipt { width: 100% !important; max-width: 100% !important; margin: -8mm 0 0 !important; padding: 0 !important; }
+      .receipt { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
       .org-brand,
       .org-header { margin: 0 !important; padding: 0 !important; }
       .org-logo { margin: 0 auto 2px !important; max-height: 34px !important; max-width: 140px !important; }

@@ -61,7 +61,7 @@ internal static class WkhtmlPdfRenderer
             "--margin-top",
             "0",
             "--margin-bottom",
-            "2mm",
+            "0",
             "--margin-left",
             "1mm",
             "--margin-right",
@@ -102,17 +102,19 @@ internal static class WkhtmlPdfRenderer
         var imgCount = Count(html, "<img\\b");
         var preCount = Count(html, "<pre\\b");
 
-        // Header/meta ~30mm, rows ~6mm, misc blocks ~2–4mm, QR/images ~28mm each.
-        var mm = 30
-            + trCount * 6
+        // Keep the estimate snug: too much safety buffer shows up as blank feed before
+        // the next receipt's org name on thermal printers.
+        // Header/meta ~24mm, rows ~5mm, misc blocks ~2–3mm, QR/images ~22mm each.
+        var mm = 24
+            + trCount * 5
             + Math.Max(0, divCount - 8) * 2
-            + pCount * 4
+            + pCount * 3
             + brCount * 3
-            + imgCount * 28
-            + preCount * 20;
+            + imgCount * 22
+            + preCount * 16;
 
-        // Small buffer so bottom lines (footer / powered-by) are not clipped.
-        mm = (int)Math.Ceiling(mm * 1.06) + 6;
+        // Keep only a very small buffer so footer lines are not clipped.
+        mm = (int)Math.Ceiling(mm * 1.02) + 2;
         return Math.Clamp(mm, 55, 500);
     }
 
