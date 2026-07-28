@@ -11,13 +11,13 @@ import {
 } from "./uom-packaging";
 import { splitBaseToHierarchy, uomConversionFactor } from "./stock-uom";
 
-export function tiersForRetailPackage(retailPackage, uom = null) {
+export function tiersForRetailPackage(retailPackage) {
   if (!retailPackage) return [];
   const raw = coercePricingTiersInput(retailPackage.pricing_tiers);
   if (raw.length > 0) {
     return pricingTiersToNormalized(raw);
   }
-  return legacyTiersFromPackage(retailPackage, uom);
+  return legacyTiersFromPackage(retailPackage);
 }
 
 function pricingTiersToNormalized(tiers) {
@@ -33,21 +33,14 @@ function pricingTiersToNormalized(tiers) {
     .sort((a, b) => a.min_qty - b.min_qty);
 }
 
-/**
- * Legacy retail_package_settings rows (max_qty_measure + markup_price).
- * Pack products: markup is on the line aggregate per half-bag chunk (3125+30),
- * not per-kg retail markup (130×25). Matches schema: base×qty + markup.
- */
-function legacyTiersFromPackage(rps, uom = null) {
-  const factor = uomConversionFactor(uom);
-  const isPack = factor > 1;
+function legacyTiersFromPackage(rps) {
   const tiers = [];
   if (Number(rps.max_qty_measure ?? 0) > 0) {
     tiers.push({
       min_qty: 1,
       max_qty: Number(rps.max_qty_measure),
-      measure_level: isPack ? "full" : "small",
-      price_mode: isPack ? "wholesale" : "retail",
+      measure_level: "small",
+      price_mode: "retail",
       markup_price: Number(rps.markup_price ?? 0),
     });
   }
@@ -55,7 +48,7 @@ function legacyTiersFromPackage(rps, uom = null) {
     tiers.push({
       min_qty: Number(rps.max_qty_measure ?? 0) + 0.001,
       max_qty: Number(rps.wholesale_qty_measure),
-      measure_level: isPack ? "middle" : "small",
+      measure_level: "middle",
       price_mode: "wholesale",
       markup_price: Number(rps.wholesale_markup_price ?? 0),
     });
@@ -192,38 +185,38 @@ export function smallUnitsPerLevel(uom, level) {
 }
 
 /**
- * How many times the tier markup from retail_package_settings applies.
- * Formula: (unit_price/conversion × qty) + markup × applications.
- * - Small qty band on pack products (max ≤ half bag): markup per kg.
- * - Larger band on pack products: markup per half-bag chunk (25 kg of a 50 kg bag).
+ * How many markup applications a quantity earns in a retail sale.
+ * - Small retail tiers: markup is per kg / piece (chunk = 1).
+ * - Middle/full / wholesale-mode tiers on pack products: one markup per half pack
+ *   (e.g. 50kg bag → 25kg chunk), so 25/50/75kg → 1×/2×/3× markup.
  */
 export function retailMarkupApplications(quantityInSmall, tier, uom) {
   const qty = Number(quantityInSmall ?? 0);
   if (qty <= 0) return 0;
 
   const chunk = retailMarkupChunkSize(tier, uom);
-  if (chunk <= 1) return qty;
-  return Math.ceil(qty / chunk - 1e-9);
+  return qty / chunk;
 }
 
 /** Chunk size (in small units) that earns one tier markup in retail selling. */
 export function retailMarkupChunkSize(tier, uom) {
+  const level = tier?.measure_level || "small";
+  const mode = normalizeTierPriceMode(tier);
   const factor = uomConversionFactor(uom);
-  const maxQty = tier?.max_qty != null ? Number(tier.max_qty) : null;
-  const halfPack = factor >= 2 ? factor / 2 : 1;
 
-  // Small retail band on pack products (e.g. 1–12 kg): markup per kg from table.
-  if (factor >= 2 && maxQty != null && maxQty <= halfPack) {
+  // Per-kg / per-piece retail tiers.
+  if (mode === "retail" && level === "small") {
     return 1;
   }
 
-  // Larger retail band on pack products (e.g. 12.5–50 kg): markup per half-bag chunk.
+  // Pack products: accumulate markup per half pack (25kg of a 50kg bag).
+  // Do not use a spurious middle_factor (e.g. 12.5 from the small-tier ceiling)
+  // — that doubles markup on a 25kg sale (3185 instead of 3155).
   if (factor >= 2) {
-    return halfPack;
+    return factor / 2;
   }
 
-  // Count / single-unit products: markup per piece.
-  return 1;
+  return Math.max(1, smallUnitsPerLevel(uom, level));
 }
 
 export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom, { scaleMarkup = null } = {}) {

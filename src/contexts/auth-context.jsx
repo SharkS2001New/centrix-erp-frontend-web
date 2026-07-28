@@ -52,6 +52,7 @@ import { syncLocalPrintingFromCapabilities } from "@/lib/local-printing-settings
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
 const CAPABILITIES_REFRESH_MS = 90_000;
+const POS_CAPABILITIES_REFRESH_MS = 15_000;
 
 function getClientId() {
   if (typeof window === "undefined") return "";
@@ -88,13 +89,13 @@ export function AuthProvider({ children }) {
   const capabilitiesRefreshAt = useRef(0);
   const capabilitiesRefreshPromise = useRef(null);
 
-  const refreshCapabilities = useCallback(async ({ force = false } = {}) => {
+  const refreshCapabilities = useCallback(async ({ force = false, maxAgeMs = CAPABILITIES_REFRESH_MS } = {}) => {
     const now = Date.now();
     const cached = getStoredCapabilities();
     if (
       !force &&
       capabilitiesRefreshPromise.current == null &&
-      now - capabilitiesRefreshAt.current < CAPABILITIES_REFRESH_MS
+      now - capabilitiesRefreshAt.current < maxAgeMs
     ) {
       return cached;
     }
@@ -251,11 +252,16 @@ export function AuthProvider({ children }) {
     const isPosSession = channel === POS_LOGIN_CHANNEL;
     const isReload = isBrowserReloadNavigation();
 
-    // External POS: keep module settings (discount / unit price / etc.) in localStorage
-    // and skip online capabilities checks until hard refresh (or POS Refresh).
+    // External POS: start from cached capabilities for instant boot, but refresh important
+    // org settings in the background so toggles like KRA take effect without hard reload.
     if (isPosSession && cachedCaps && !isReload) {
       capabilitiesRefreshAt.current = Date.now();
       syncStoredWorkspace(cachedCaps?.workspaces ?? []);
+      refreshCapabilities({ maxAgeMs: POS_CAPABILITIES_REFRESH_MS })
+        .then((caps) => {
+          syncStoredWorkspace(caps?.workspaces ?? []);
+        })
+        .catch(() => {});
       return;
     }
 
@@ -277,11 +283,11 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!hasAuthSession()) return undefined;
-    // External POS must not re-check capabilities on every focus/tab switch.
-    if (loginChannel === POS_LOGIN_CHANNEL) return undefined;
-
+    const isPosSession = loginChannel === POS_LOGIN_CHANNEL;
     const refreshOnFocus = () => {
-      refreshCapabilities().catch(() => {});
+      refreshCapabilities({
+        maxAgeMs: isPosSession ? POS_CAPABILITIES_REFRESH_MS : CAPABILITIES_REFRESH_MS,
+      }).catch(() => {});
     };
 
     const onVisibilityChange = () => {
@@ -297,6 +303,17 @@ export function AuthProvider({ children }) {
       window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
+  }, [refreshCapabilities, loginChannel]);
+
+  useEffect(() => {
+    if (!hasAuthSession() || loginChannel !== POS_LOGIN_CHANNEL) return undefined;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      refreshCapabilities({ maxAgeMs: POS_CAPABILITIES_REFRESH_MS }).catch(() => {});
+    }, POS_CAPABILITIES_REFRESH_MS);
+
+    return () => window.clearInterval(interval);
   }, [refreshCapabilities, loginChannel]);
 
   const switchWorkspace = useCallback(async (workspaceId) => {

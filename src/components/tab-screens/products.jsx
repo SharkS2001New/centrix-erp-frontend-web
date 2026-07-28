@@ -164,8 +164,8 @@ function locationStockStatus(qty, reorderPoint) {
 
 function vatTreatment(vat) {
   if (!vat) return "—";
-  const code = String(vat.vat_code ?? "").toUpperCase();
-  if (code === "V") return "Vatable";
+  const rate = Number(vat.vat_percentage ?? 0);
+  if (Number.isFinite(rate) && rate > 0) return "Vatable";
   return "Invatable";
 }
 
@@ -1446,7 +1446,7 @@ function VatBadge({ treatment }) {
   const vatable = treatment === "Vatable";
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${
+      className={`inline-flex rounded-full px-1.5 py-px text-[11px] font-medium leading-4 ring-1 ${
         vatable
           ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
           : "bg-[var(--theme-surface-muted)] text-[var(--theme-text-muted)] ring-[var(--theme-border)]"

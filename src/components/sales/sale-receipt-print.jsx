@@ -269,7 +269,7 @@ export function buildSaleReceiptHtml(
     html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
-    .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+    .receipt { width: 100%; max-width: 100%; margin: -10mm 0 0; padding: 0; box-sizing: border-box; }
     .org-brand,
     .org-header { margin: 0; padding: 0; }
     .org-logo { display: block; margin: 0 auto 2px; max-height: 34px; max-width: 140px; object-fit: contain; }
@@ -306,14 +306,14 @@ export function buildSaleReceiptHtml(
     /* Align values under the AMOUNT column (ITEMS 45% + QTY 17.5% + PRICE 17.5% = 80%). */
     .summary-table col.col-label { width: 80%; }
     .summary-table col.col-value { width: 20%; }
-    .summary-table.vat-table col.col-vat-rate { width: 76%; }
-    .summary-table.vat-table col.col-vat-amt { width: 24%; }
+    .summary-table.vat-table col.col-vat-rate { width: 68%; }
+    .summary-table.vat-table col.col-vat-amt { width: 32%; }
     .summary-table td { padding: 2px 0; vertical-align: top; }
     .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table.vat-table .amount-label,
     .summary-table.vat-table .vat-charged-label { font-size: ${px(8)}; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
-    .summary-table.vat-table .vat-charged-label { padding-left: 0; text-align: right; }
+    .summary-table.vat-table .vat-charged-label { padding-left: 0; text-align: right; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
     .summary-table.vat-table .amount-value { text-align: right; }
     .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
@@ -333,7 +333,7 @@ export function buildSaleReceiptHtml(
       html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
       body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; }
       body { font-size: ${px(10, true)}; }
-      .receipt { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+      .receipt { width: 100% !important; max-width: 100% !important; margin: -10mm 0 0 !important; padding: 0 !important; }
       .org-brand,
       .org-header { margin: 0 !important; padding: 0 !important; }
       .org-logo { margin: 0 auto 2px !important; max-height: 34px !important; max-width: 140px !important; }
@@ -347,7 +347,7 @@ export function buildSaleReceiptHtml(
       .summary-table { font-size: ${px(9, true)}; }
       .summary-table.vat-table .amount-label,
       .summary-table.vat-table .vat-charged-label { font-size: ${px(8, true)}; }
-      .summary-table.vat-table .vat-charged-label { padding-left: 0; text-align: right; }
+      .summary-table.vat-table .vat-charged-label { padding-left: 0; text-align: right; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
       .summary-table tr.amount-line-grand td { font-size: ${px(11, true)}; }
       .payment-title, .pay-instructions { font-size: ${px(9, true)}; }
       .pay-instructions .pay-note { font-size: ${px(8, true)}; }
@@ -381,9 +381,9 @@ export function buildSaleReceiptHtml(
     ${paymentDetailsHtml ? `<div class="divider"></div><div class="payments">${wrapSummaryTable(paymentDetailsHtml)}</div>` : ""}
     ${vatHtml}
     ${paymentInstructionsHtml ? paymentInstructionsHtml : ""}
-    ${kraQrHtml}
     <div class="divider"></div>
     ${footerHtml}
+    ${kraQrHtml}
   </div>
 </body>
 </html>`;

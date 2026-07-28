@@ -97,14 +97,14 @@ export function buildKraDocumentQrHtml(
   if (!kra?.signatureLink || !qrDataUrl) return "";
 
   const isThermal = layout === "thermal";
-  const fontSize = isThermal ? "9px" : "10px";
-  const padding = isThermal ? "10px 0" : "12px 0";
-  const margin = isThermal ? "10px 0" : "14px 0";
+  const fontSize = isThermal ? "8px" : "10px";
+  const padding = isThermal ? "6px 0" : "12px 0";
+  const margin = isThermal ? "6px 0" : "14px 0";
   const border = isThermal ? "1px dashed #64748b" : "1px dashed #999";
 
   return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:${border};text-align:center;">
       <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;" />
-      <div style="margin-top:8px;font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.45;">
+      <div style="margin-top:${isThermal ? "5px" : "8px"};font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.35;">
         Scan to verify this invoice on KRA eTIMS platform
       </div>
     </div>`;
@@ -112,7 +112,7 @@ export function buildKraDocumentQrHtml(
 
 /** Centered KRA eTIMS QR for thermal receipts (before the thank-you footer). */
 export function buildKraThermalQrHtml(kra, qrDataUrl) {
-  return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 100, layout: "thermal" });
+  return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 72, layout: "thermal" });
 }
 
 /** Load KRA fiscal data for a sale (checkout relation, embedded payload, or API lookup). */
