@@ -266,7 +266,10 @@ export function summarizeLocalPosCart(cart) {
   for (const line of lines) {
     const qty = Number(line.quantity ?? 0);
     const price = Number(line.unit_price ?? 0);
-    const amount = Math.round(qty * price * 100) / 100;
+    const amount =
+      line.amount != null && Number.isFinite(Number(line.amount))
+        ? Math.round(Number(line.amount) * 100) / 100
+        : Math.round(qty * price * 100) / 100;
     total += amount;
     const rate = Number(line.vat_rate ?? line.tax_rate ?? 0);
     if (rate > 0) {
@@ -343,6 +346,10 @@ export async function completeOfflineCashSale({
       snapshotUomForPrint(catalog?.uom ?? catalog?.unit) ??
       null;
     const unitId = line.unit_id ?? catalog?.unit_id ?? unit?.id ?? null;
+    const lineAmount =
+      line.amount != null && Number.isFinite(Number(line.amount))
+        ? Math.round(Number(line.amount) * 100) / 100
+        : Math.round(Number(line.quantity) * Number(line.unit_price) * 100) / 100;
     saleItems.push({
       id: index + 1,
       product_code: line.product_code,
@@ -353,7 +360,7 @@ export async function completeOfflineCashSale({
         line.product_code,
       quantity: Number(line.quantity),
       unit_price: Number(line.unit_price),
-      amount: Math.round(Number(line.quantity) * Number(line.unit_price) * 100) / 100,
+      amount: lineAmount,
       uom: line.uom ?? null,
       unit_id: unitId,
       unit,
@@ -361,10 +368,9 @@ export async function completeOfflineCashSale({
       discount_given: Number(line.discount_given ?? 0),
       vat_rate: Number(line.vat_rate ?? line.tax_rate ?? catalog?.vat_rate ?? catalog?.vat?.vat_percentage ?? 0),
       product_vat: (() => {
-        const amount = Math.round(Number(line.quantity) * Number(line.unit_price) * 100) / 100;
         const rate = Number(line.vat_rate ?? line.tax_rate ?? catalog?.vat_rate ?? catalog?.vat?.vat_percentage ?? 0);
         if (rate <= 0) return 0;
-        return Math.round(((amount * rate) / (100 + rate)) * 100) / 100;
+        return Math.round(((lineAmount * rate) / (100 + rate)) * 100) / 100;
       })(),
       product: {
         product_code: line.product_code,

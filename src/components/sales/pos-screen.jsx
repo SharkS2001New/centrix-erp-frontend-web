@@ -898,7 +898,27 @@ export function PosScreen({ standalone = false }) {
   function getRetailPackage(code) {
     if (!code) return null;
     const cached = retailByCodeRef.current[code];
+    if (cached) return cached;
+    // Prefer the item's embedded retail package settings (product list / show).
+    const embedded = productByCodeRef.current[code]?.retail_package;
+    if (embedded) {
+      retailByCodeRef.current[code] = embedded;
+      return embedded;
+    }
     return cached !== undefined ? cached : null;
+  }
+
+  /** Ensure this SKU's retail_package_settings row is loaded before pricing. */
+  async function ensureRetailPackageForProduct(product) {
+    const code = product?.product_code;
+    if (!code) return null;
+    if (product.retail_package && !retailByCodeRef.current[code]) {
+      retailByCodeRef.current[code] = product.retail_package;
+    }
+    if (retailByCodeRef.current[code] === undefined) {
+      await ensureRetailPackages([code]);
+    }
+    return getRetailPackage(code);
   }
   const cartCommitChainRef = useRef(Promise.resolve());
   const editAutosaveTimerRef = useRef(null);
@@ -2082,22 +2102,30 @@ export function PosScreen({ standalone = false }) {
     const trimmed = String(code ?? "").trim();
     if (!trimmed) return null;
     // Prefer cache first — previous-order qty edits must not wait on retail-package fetch.
-    if (productByCodeRef.current[trimmed]) return productByCodeRef.current[trimmed];
-    await ensureRetailPackages([trimmed]);
-    if (productByCodeRef.current[trimmed]) return productByCodeRef.current[trimmed];
+    if (productByCodeRef.current[trimmed]) {
+      await ensureRetailPackageForProduct(productByCodeRef.current[trimmed]);
+      return productByCodeRef.current[trimmed];
+    }
     const fromResults = searchResults.find(
       (p) => p.product_code.toLowerCase() === trimmed.toLowerCase(),
     );
-    if (fromResults) return fromResults;
+    if (fromResults) {
+      productByCodeRef.current[fromResults.product_code] = fromResults;
+      await ensureRetailPackageForProduct(fromResults);
+      return fromResults;
+    }
     try {
       const row = await apiRequest(`/products/${encodeURIComponent(trimmed)}`, {
         searchParams: productBranchParams,
       });
       const enriched = enrichProductForLpo(row, uomById, vatById);
+      productByCodeRef.current[enriched.product_code] = enriched;
       setProductByCode((prev) => ({ ...prev, [enriched.product_code]: enriched }));
+      await ensureRetailPackageForProduct(enriched);
       return enriched;
     } catch {
-      return null;
+      await ensureRetailPackages([trimmed]);
+      return productByCodeRef.current[trimmed] ?? null;
     }
   }
 
@@ -2194,6 +2222,8 @@ export function PosScreen({ standalone = false }) {
         quantity: finalComputed.baseQty,
         unit_price: finalComputed.unitPricePerBase,
         display_unit_price: finalComputed.displayUnitPrice,
+        // Persist priced amount (aggregate + RPS markup), not unit×qty alone.
+        amount: finalComputed.lineAmount,
         uom: finalComputed.uomLabel || product.package_name,
         unit_id: product.unit_id ?? product.uom?.id ?? null,
         unit: snapshotUomForPrint(product.uom ?? product.unit),
@@ -2440,14 +2470,17 @@ export function PosScreen({ standalone = false }) {
     setProductByCode((prev) =>
       prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
     );
+    productByCodeRef.current[product.product_code] =
+      productByCodeRef.current[product.product_code] ?? product;
 
+    // Retail markup comes from retail_package_settings for this item — load before pricing.
+    await ensureRetailPackageForProduct(product);
     const computed = applyComputedPrice(product, "1", 0);
     if (computed.baseQty <= 0) return;
 
     if (classicLayout || cartRef.current?.held_order_num || cartRef.current?.offline) {
       // Clear scan + entry row immediately so the next-row never parks this product.
       if (classicLayout) clearClassicEntryFields();
-      void ensureRetailPackages([product.product_code]);
       void enqueueCartCommit(async () => {
         const mergeTarget = findMergeableCartLine(
           cartRef.current?.lines,
@@ -2527,15 +2560,18 @@ export function PosScreen({ standalone = false }) {
     return true;
   }
 
-  function pickProduct(product) {
+  async function pickProduct(product) {
     if (!product) return;
     setProductByCode((prev) =>
       prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
     );
+    productByCodeRef.current[product.product_code] =
+      productByCodeRef.current[product.product_code] ?? product;
 
     setSelectedProductCode(product.product_code);
     setSelectedProduct(product);
     setUnitPriceTouched(false);
+    await ensureRetailPackageForProduct(product);
     const retailPackage = getRetailPackage(product.product_code);
     const replaceLine = replacingLineId
       ? (cart?.lines ?? []).find((line) => sameLineId(line.id, replacingLineId))
@@ -2565,7 +2601,6 @@ export function PosScreen({ standalone = false }) {
       discount: String(computed.discountAmount ?? 0),
       unit_price: String(computed.displayUnitPrice),
     });
-    void ensureRetailPackages([product.product_code]);
 
     if (replaceLine) {
       if (String(replaceLine.product_code) === String(product.product_code)) {
@@ -3106,8 +3141,21 @@ export function PosScreen({ standalone = false }) {
     }
     if (!assertRouteReadyForAdd()) return;
 
+    await ensureRetailPackageForProduct(selectedProduct);
+
     const discount = parseDecimalInput(lineForm.discount);
-    const override = unitPriceTouched ? parseDecimalInput(lineForm.unit_price) : null;
+    const retailPackage = getRetailPackage(selectedProduct.product_code);
+    // Retail totals come from package settings: aggregate wholesale + markup.
+    // Do not treat the Price field as unit×qty override (that drops/doubles the add-on).
+    const retailPricing = usesPosRetailPricing(
+      sellWholesale,
+      selectedProduct,
+      retailPackage,
+    );
+    const override =
+      unitPriceTouched && !retailPricing
+        ? parseDecimalInput(lineForm.unit_price)
+        : null;
 
     const replaceLine = replacingLineId
       ? (cart?.lines ?? []).find((line) => sameLineId(line.id, replacingLineId))

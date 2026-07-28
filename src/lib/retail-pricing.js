@@ -223,19 +223,20 @@ export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom, { sc
   const qty = Number(quantityInSmall ?? 0);
   const markup = Number(tier?.markup_price ?? 0);
   const mode = normalizeTierPriceMode(tier);
-  const stableBase = wholesalePricePerSmallUnit(baseUnitPrice, uom) * qty;
+  // Aggregate wholesale for the sold qty (e.g. 125/kg × 25kg = 3125).
+  const aggregateWholesale = wholesalePricePerSmallUnit(baseUnitPrice, uom) * qty;
   const shouldScale =
     scaleMarkup == null ? mode === "retail" : Boolean(scaleMarkup);
 
-  // Wholesale POS session: one flat markup on the line (legacy behaviour).
+  // Wholesale POS session: one flat markup on the aggregate (legacy behaviour).
   if (mode === "wholesale" && !shouldScale) {
-    return Math.round((stableBase + markup) * 100) / 100;
+    return Math.round((aggregateWholesale + markup) * 100) / 100;
   }
 
-  // Retail selling (and scaled wholesale-mode tiers): base + markup × chunks.
-  // Sugar 25kg @ 6250/50 bag + 30 → 3125 + 30 = 3155 (not 3185).
+  // Retail selling: add package markup onto the aggregate (not into unit price).
+  // Sugar 25kg @ 6250/50 bag + 30 → 3125 + 30 = 3155.
   const apps = retailMarkupApplications(qty, tier, uom);
-  return Math.round((stableBase + markup * apps) * 100) / 100;
+  return Math.round((aggregateWholesale + markup * apps) * 100) / 100;
 }
 
 export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true, uom = null) {
