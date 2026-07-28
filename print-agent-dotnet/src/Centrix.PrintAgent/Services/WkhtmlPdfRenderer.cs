@@ -59,7 +59,7 @@ internal static class WkhtmlPdfRenderer
             "--page-height",
             $"{pageHeightMm}mm",
             "--margin-top",
-            "0",
+            "-10",
             "--margin-bottom",
             "0",
             "--margin-left",

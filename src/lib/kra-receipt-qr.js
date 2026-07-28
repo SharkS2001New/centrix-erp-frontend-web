@@ -120,7 +120,7 @@ export function buildKraFiscalBlockHtml(
   if (qrDataUrl && kra.signatureLink) {
     html += `<div style="margin:10px 0 6px;">
       <img src="${qrDataUrl}" alt="KRA verification QR code" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
-      <div style="font-size:${isThermal ? "8px" : "9px"};margin-top:4px;color:#475569;">Scan to verify on KRA eTIMS</div>
+      <div style="font-size:${isThermal ? "9px" : "9px"};margin-top:4px;color:#000;font-weight:700;line-height:1.35;">Scan to verify on KRA eTIMS</div>
     </div>`;
   } else if (kra.signatureLink) {
     html += `<div style="font-size:8px;word-break:break-all;margin-top:6px;">${escapeKraHtml(kra.signatureLink)}</div>`;
@@ -146,14 +146,18 @@ export function buildKraDocumentQrHtml(
   if (!kra?.signatureLink || !qrDataUrl) return "";
 
   const isThermal = layout === "thermal";
-  const fontSize = isThermal ? "8px" : "10px";
+  const fontSize = isThermal ? "9px" : "10px";
   const padding = isThermal ? "4px 0" : "12px 0";
   const margin = isThermal ? "4px 0 0" : "14px 0";
-  const border = isThermal ? "1px dashed #64748b" : "1px dashed #999";
+  const border = isThermal ? "1px dashed #000" : "1px dashed #999";
+  const captionClass = isThermal ? "kra-etims-caption" : "";
+  const captionStyle = isThermal
+    ? ""
+    : `margin-top:8px;font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.35;`;
 
   return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;">
       <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;" />
-      <div style="margin-top:${isThermal ? "4px" : "8px"};font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.3;">
+      <div class="${captionClass}" style="${captionStyle}">
         Scan to verify this invoice on KRA eTIMS platform
       </div>
     </div>`;

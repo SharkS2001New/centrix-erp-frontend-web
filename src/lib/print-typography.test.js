@@ -155,7 +155,8 @@ describe("org print typography settings", () => {
     expect(html).toContain("<colgroup>");
     expect(html).toContain('col class="col-amount"');
     expect(html).toContain(">AMOUNT</th>");
-    expect(html).toContain('class="meta-cell meta-cell--sale"');
+    expect(html).toContain('<div class="meta-full"><span class="meta-label">Till No:</span>');
+    expect(html).toContain('<div class="meta-full"><span class="meta-label">Cash Sales #:</span>');
     expect(html).toContain("Cash Sales #:");
     expect(html).toContain("S1001");
     expect(html).toContain(`padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm`);

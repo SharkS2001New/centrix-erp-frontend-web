@@ -337,6 +337,7 @@ export function buildSaleReceiptHtml(
     .footer-line-divider { margin: 3px 0; }
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 2px; letter-spacing: normal; line-height: 1.25; word-break: break-word; text-transform: none; }
     .kra-etims-block { page-break-inside: avoid; break-inside: avoid; }
+    .kra-etims-caption { margin-top: 4px; font-size: ${px(9)}; font-weight: 700; color: #000; line-height: 1.35; text-align: center; }
     .center { text-align: center; }
     @media print {
       html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
@@ -362,6 +363,7 @@ export function buildSaleReceiptHtml(
       .pay-instructions .pay-note { font-size: ${px(8, true)}; }
       .footer-text { font-size: ${fpx(8, true)}; }
       .footer-powered-by { font-size: ${fpx(7, true)}; }
+      .kra-etims-caption { font-size: ${px(9, true)}; }
     }
   </style>
 </head>
@@ -373,8 +375,8 @@ export function buildSaleReceiptHtml(
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">
-      <div class="meta-cell"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
-      <div class="meta-cell meta-cell--sale"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
+      <div class="meta-full"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
+      <div class="meta-full"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(String(customerName).toUpperCase())}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
