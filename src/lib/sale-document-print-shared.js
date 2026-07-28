@@ -154,7 +154,7 @@ export function buildSaleDocumentOrgHeaderHtml(
   if (header?.trim()) {
     if (layout === "thermal") {
       // Font size comes from receipt CSS (.org-name / .company-name) so org print settings apply.
-      return `<div class="org-brand" style="text-align:center;margin-bottom:8px;">${header}</div>`;
+      return `<div class="org-brand" style="text-align:center;margin-bottom:3px;">${header}</div>`;
     }
     return `<div class="org-brand" style="text-align:center;margin-bottom:10px;">${header}</div>`;
   }
@@ -163,7 +163,7 @@ export function buildSaleDocumentOrgHeaderHtml(
   if (!name) return "";
 
   if (layout === "thermal") {
-    return `<div class="org-brand" style="text-align:center;margin-bottom:8px;"><div class="company-name">${escapeHtml(name)}</div></div>`;
+    return `<div class="org-brand" style="text-align:center;margin-bottom:3px;"><div class="company-name">${escapeHtml(name)}</div></div>`;
   }
 
   return `<div class="org-brand" style="text-align:center;margin-bottom:10px;"><div class="brand-name">${escapeHtml(name)}</div></div>`;

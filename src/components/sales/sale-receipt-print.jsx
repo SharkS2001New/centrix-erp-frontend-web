@@ -270,9 +270,12 @@ export function buildSaleReceiptHtml(
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
     .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+    .org-brand,
+    .org-header { margin: 0; padding: 0; }
+    .org-logo { display: block; margin: 0 auto 2px; max-height: 34px; max-width: 140px; object-fit: contain; }
     .company-name,
-    .org-name { text-align: center; font-size: ${hpx(14)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; margin-bottom: 4px; }
-    .company-meta { text-align: center; font-size: ${hpx(10)}; color: #000; line-height: 1.45; font-weight: var(--print-w-header, 600); word-break: break-word; }
+    .org-name { text-align: center; font-size: ${hpx(13)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.12; margin: 0 0 2px; }
+    .company-meta { text-align: center; font-size: ${hpx(9)}; color: #000; line-height: 1.18; margin: 0; font-weight: var(--print-w-header, 600); word-break: break-word; }
     .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .08em; margin: 10px 0 8px; }
     .divider { border-top: 1px dashed #000; margin: 6px 0; }
     .meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 4px; font-size: ${px(9)}; line-height: 1.4; }
@@ -331,9 +334,12 @@ export function buildSaleReceiptHtml(
       body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; }
       body { font-size: ${px(10, true)}; }
       .receipt { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+      .org-brand,
+      .org-header { margin: 0 !important; padding: 0 !important; }
+      .org-logo { margin: 0 auto 2px !important; max-height: 34px !important; max-width: 140px !important; }
       .company-name,
-      .org-name { font-size: ${hpx(14, true)}; }
-      .company-meta { font-size: ${hpx(10, true)}; }
+      .org-name { font-size: ${hpx(13, true)}; }
+      .company-meta { font-size: ${hpx(9, true)}; }
       .doc-title { font-size: ${px(11, true)}; }
       .meta-grid { font-size: ${px(9, true)}; }
       .table { font-size: ${px(9, true)}; }
