@@ -967,6 +967,7 @@ export function PosScreen({ standalone = false }) {
   const floatModalDismissedRef = useRef(false);
   const cartRef = useRef(null);
   const cartSummaryRef = useRef(null);
+  const lineBusyRef = useRef(false);
   const productByCodeRef = useRef({});
   const retailByCodeRef = useRef({});
   function getRetailPackage(code) {
@@ -1333,6 +1334,10 @@ export function PosScreen({ standalone = false }) {
       return readPosLastReceipt(user.id, user.branch_id);
     });
   }, [standalone, user?.id, user?.branch_id]);
+
+  useEffect(() => {
+    lineBusyRef.current = lineBusy;
+  }, [lineBusy]);
 
   useEffect(() => {
     if (!enablePosOrderEdit || !standalone) return;
@@ -1799,6 +1804,22 @@ export function PosScreen({ standalone = false }) {
     const run = cartCommitChainRef.current.then(task, task);
     cartCommitChainRef.current = run.catch(() => {});
     return run;
+  }
+
+  async function waitForCartLineSavesToFinish() {
+    await cartCommitChainRef.current.catch(() => {});
+    if (!lineBusyRef.current) return;
+    await new Promise((resolve) => {
+      const startedAt = Date.now();
+      const tick = () => {
+        if (!lineBusyRef.current || Date.now() - startedAt > 5000) {
+          resolve();
+          return;
+        }
+        window.setTimeout(tick, 40);
+      };
+      tick();
+    });
   }
 
   function closeProductSearchDropdown() {
@@ -4416,6 +4437,7 @@ export function PosScreen({ standalone = false }) {
       setSelectedLineId(null);
       clearPosUiDraft();
       clearLineEntry();
+      setStatusMessage(`Order #${sale.order_num} completed.`);
       if (activeCart?.held_order_num) {
         setEditSourceSale(null);
       }
@@ -5352,8 +5374,10 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       if (lineBusy) {
-        flashPosShortcutMessage("Wait for cart lines to finish saving, then press F10.");
-        return;
+        await runBlockingTask(waitForCartLineSavesToFinish, {
+          message: "Saving cart changes…",
+          detail: "Please wait while the current line finishes saving.",
+        });
       }
 
       setBusy(true);
@@ -5380,10 +5404,12 @@ export function PosScreen({ standalone = false }) {
       flashPosShortcutMessage("Fix stock issues before completing payment.");
       return;
     }
-    // Live cart only — wait for line API saves before opening payment.
+    // Live cart only — if a line save is in flight, wait and then continue.
     if (checkoutBlocked) {
-      flashPosShortcutMessage("Wait for cart lines to finish saving, then press F10.");
-      return;
+      await runBlockingTask(waitForCartLineSavesToFinish, {
+        message: "Saving cart changes…",
+        detail: "Please wait while the current line finishes saving.",
+      });
     }
     setPaymentError(null);
     closeProductSearchDropdown();

@@ -310,6 +310,7 @@ export function buildSaleReceiptHtml(
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table.vat-table .amount-label,
     .summary-table.vat-table .vat-charged-label { font-size: ${px(8)}; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+    .summary-table.vat-table .vat-charged-label { padding-left: 6px; }
     .summary-table.vat-table .amount-value { text-align: left; }
     .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
@@ -340,6 +341,7 @@ export function buildSaleReceiptHtml(
       .summary-table { font-size: ${px(9, true)}; }
       .summary-table.vat-table .amount-label,
       .summary-table.vat-table .vat-charged-label { font-size: ${px(8, true)}; }
+      .summary-table.vat-table .vat-charged-label { padding-left: 6px; }
       .summary-table tr.amount-line-grand td { font-size: ${px(11, true)}; }
       .payment-title, .pay-instructions { font-size: ${px(9, true)}; }
       .pay-instructions .pay-note { font-size: ${px(8, true)}; }
