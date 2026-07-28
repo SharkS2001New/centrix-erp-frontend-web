@@ -303,15 +303,15 @@ export function buildSaleReceiptHtml(
     /* Align values under the AMOUNT column (ITEMS 45% + QTY 17.5% + PRICE 17.5% = 80%). */
     .summary-table col.col-label { width: 80%; }
     .summary-table col.col-value { width: 20%; }
-    .summary-table.vat-table col.col-vat-rate { width: 48%; }
-    .summary-table.vat-table col.col-vat-amt { width: 52%; }
+    .summary-table.vat-table col.col-vat-rate { width: 76%; }
+    .summary-table.vat-table col.col-vat-amt { width: 24%; }
     .summary-table td { padding: 2px 0; vertical-align: top; }
     .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table.vat-table .amount-label,
     .summary-table.vat-table .vat-charged-label { font-size: ${px(8)}; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
-    .summary-table.vat-table .vat-charged-label { padding-left: 6px; }
-    .summary-table.vat-table .amount-value { text-align: left; }
+    .summary-table.vat-table .vat-charged-label { padding-left: 0; text-align: right; }
+    .summary-table.vat-table .amount-value { text-align: right; }
     .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
     .vat-note { margin: 4px 0 0; font-size: 0.85em; line-height: 1.35; }
@@ -341,7 +341,7 @@ export function buildSaleReceiptHtml(
       .summary-table { font-size: ${px(9, true)}; }
       .summary-table.vat-table .amount-label,
       .summary-table.vat-table .vat-charged-label { font-size: ${px(8, true)}; }
-      .summary-table.vat-table .vat-charged-label { padding-left: 6px; }
+      .summary-table.vat-table .vat-charged-label { padding-left: 0; text-align: right; }
       .summary-table tr.amount-line-grand td { font-size: ${px(11, true)}; }
       .payment-title, .pay-instructions { font-size: ${px(9, true)}; }
       .pay-instructions .pay-note { font-size: ${px(8, true)}; }
