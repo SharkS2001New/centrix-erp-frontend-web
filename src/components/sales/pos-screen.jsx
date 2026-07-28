@@ -5692,6 +5692,7 @@ export function PosScreen({ standalone = false }) {
       if (state.classicLayout && isPosAltLetterShortcut(e, "h")) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
+        actions.closeProductSearchDropdown?.();
         if (state.modernOrderEditLocked || state.isCartEditSession) {
           actions.flashPosShortcutMessage("Cannot hold while editing a previous order.");
           return;
@@ -5717,18 +5718,21 @@ export function PosScreen({ standalone = false }) {
       if (state.classicLayout && isPosAltLetterShortcut(e, "f")) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
+        actions.closeProductSearchDropdown?.();
         if (state.activeSession) setFloatDetailsOpen(true);
         return;
       }
       if (state.classicLayout && isPosAltLetterShortcut(e, "p")) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
+        actions.closeProductSearchDropdown?.();
         void actions.handlePrintReceipt();
         return;
       }
       if (state.classicLayout && e.key === "Delete" && (state.selectedLineId || state.selectedLineCount > 0)) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
+        actions.closeProductSearchDropdown?.();
         void actions.removeSelectedLines();
       }
     }
