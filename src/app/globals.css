@@ -2593,6 +2593,10 @@ html[data-theme="dark"] .pos-workspace-classic {
   cursor: pointer;
 }
 
+.classic-pos-footer-pay + .classic-pos-footer-pay {
+  margin-left: 0.35rem;
+}
+
 .classic-pos-footer-pay:hover:not(:disabled) {
   background: var(--classic-status-bar, #f0f0f0);
 }
@@ -2862,6 +2866,28 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
 
 .classic-pos-cart-table col.classic-pos-col-amt {
   width: 10%;
+}
+
+.classic-pos-cart-table col.classic-pos-col-select {
+  width: 1.75rem;
+}
+
+.classic-pos-cart-table th.classic-pos-col-select,
+.classic-pos-cart-table td.classic-pos-col-select {
+  width: 1.75rem;
+  min-width: 1.75rem;
+  max-width: 1.75rem;
+  padding: 0.15rem 0.2rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.classic-pos-cart-table td.classic-pos-col-select input[type="checkbox"],
+.classic-pos-cart-table th.classic-pos-col-select input[type="checkbox"] {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0;
+  cursor: pointer;
 }
 
 .classic-pos-cart-table th.classic-pos-col-scan,

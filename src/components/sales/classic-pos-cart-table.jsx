@@ -1,8 +1,9 @@
 "use client";
 
 import { isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
+import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function ClassicLineQtyCell({
   line,
@@ -96,12 +97,39 @@ function ClassicLineQtyCell({
   );
 }
 
+function ClassicSelectAllHeader({ checked, indeterminate, onChange }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+
+  return (
+    <th className="classic-pos-col-select" aria-label="Select all lines">
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange?.(e.target.checked)}
+        className={TABLE_ROW_CHECKBOX_CLASS}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </th>
+  );
+}
+
 /**
  * Classic External POS cart — Light Stores style grid with in-cell scan lookup dropdown.
  */
 export function ClassicPosCartTable({
   lines = [],
   selectedLineId,
+  selectionEnabled = false,
+  selectedLineIds,
+  allLinesSelected = false,
+  someLinesSelected = false,
+  onToggleAllLines,
+  onToggleLineSelect,
   onSelectLine,
   orderCaption = "New Order",
   showOrderNav = false,
@@ -275,6 +303,7 @@ export function ClassicPosCartTable({
           {showLineDiscount ? <col className="classic-pos-col-disc" /> : null}
           <col className="classic-pos-col-vat" />
           <col className="classic-pos-col-amt" />
+          {selectionEnabled ? <col className="classic-pos-col-select" /> : null}
         </colgroup>
         <thead>
           <tr>
@@ -289,11 +318,19 @@ export function ClassicPosCartTable({
             ) : null}
             <th className="classic-pos-col-vat">VAT</th>
             <th className="classic-pos-col-amt">Amount</th>
+            {selectionEnabled ? (
+              <ClassicSelectAllHeader
+                checked={allLinesSelected}
+                indeterminate={someLinesSelected}
+                onChange={onToggleAllLines}
+              />
+            ) : null}
           </tr>
         </thead>
         <tbody>
           {lines.map((line, index) => {
             const selected = String(selectedLineId) === String(line.id);
+            const checked = selectedLineIds?.has(String(line.id)) ?? false;
             const replacing = String(replacingLineId) === String(line.id);
             const qtyAdjust = lineQtyAdjust?.(line) ?? {
               canDecrease: false,
@@ -354,6 +391,21 @@ export function ClassicPosCartTable({
                 <td className="classic-pos-col-amt tabular-nums font-semibold">
                   {lineAmount?.(line)}
                 </td>
+                {selectionEnabled ? (
+                  <td
+                    className="classic-pos-col-select"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      className={TABLE_ROW_CHECKBOX_CLASS}
+                      aria-label={`Select ${line.product_name ?? line.product_code}`}
+                      onChange={() => onToggleLineSelect?.(line.id)}
+                    />
+                  </td>
+                ) : null}
               </tr>
             );
           })}
@@ -400,6 +452,7 @@ export function ClassicPosCartTable({
             <td className="classic-pos-col-amt tabular-nums font-semibold classic-pos-cart-entry-muted">
               {entryReady ? formatMoney?.(entryAmount) : ""}
             </td>
+            {selectionEnabled ? <td className="classic-pos-col-select" aria-hidden="true" /> : null}
           </tr>
         </tbody>
       </table>
