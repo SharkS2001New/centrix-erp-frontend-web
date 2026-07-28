@@ -89,8 +89,18 @@ describe("claimPosFunctionKeyEvent", () => {
       isPosAltLetterShortcut(fakeEvent({ key: "˙", code: "KeyH", altKey: true }), "h"),
     ).toBe(true);
     expect(isPosClassicAltShortcut(fakeEvent({ key: "P", code: "KeyP", altKey: true }))).toBe(true);
-    expect(isPosAltLetterShortcut(fakeEvent({ key: "h", code: "KeyH", altKey: true, ctrlKey: true }), "h")).toBe(
-      false,
-    );
+    // Right Alt is AltGr on many keyboards (ctrl+alt) — must still match.
+    expect(
+      isPosAltLetterShortcut(
+        fakeEvent({ key: "h", code: "KeyH", altKey: true, ctrlKey: true }),
+        "h",
+      ),
+    ).toBe(true);
+    expect(
+      isPosAltLetterShortcut(
+        fakeEvent({ key: "h", code: "KeyH", altKey: true, metaKey: true }),
+        "h",
+      ),
+    ).toBe(false);
   });
 });

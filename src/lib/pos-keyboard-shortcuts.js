@@ -88,7 +88,9 @@ export function isPosFunctionShortcutKey(key) {
 
 /** Alt+letter classic POS shortcuts — use e.code so Option/Alt layers still match (e.g. Mac scan field). */
 export function isPosAltLetterShortcut(e, letter) {
-  if (!e?.altKey || e.ctrlKey || e.metaKey) return false;
+  // Do not require !ctrlKey: Right Alt is AltGr on many layouts (ctrl+alt together).
+  // Still ignore Cmd/Win chords.
+  if (!e?.altKey || e.metaKey) return false;
   const upper = String(letter ?? "")
     .trim()
     .toUpperCase();

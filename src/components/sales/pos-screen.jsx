@@ -148,12 +148,15 @@ import {
   adoptOnlineCartForOffline,
   beginOfflineSaleEdit,
   clearLocalPosCart,
+  clearPreviousOrderEditDraft,
   completeOfflineCashSale,
   getPosOfflineProduct,
   listOfflinePendingSalesForEdit,
   loadOrCreateLocalPosCart,
+  loadPreviousOrderEditDraft,
   parseOfflineSaleUuid,
   saveLocalPosCart,
+  savePreviousOrderEditDraft,
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
 } from "@/lib/pos-offline";
@@ -259,6 +262,18 @@ function editedOrderHasLocalDraftChanges(cart) {
 function withEditDraftDirty(cart) {
   if (!cart?.held_order_num) return cart;
   return { ...cart, _editDraftDirty: true };
+}
+
+function stripPreviousOrderDraftMarkers(cart) {
+  if (!cart) return cart;
+  const { _editDraftDirty: _omitDirty, ...rest } = cart;
+  return {
+    ...rest,
+    lines: (rest.lines ?? []).map((line) => {
+      const { _draftEdit: _omitDraft, _optimistic: _omitOpt, ...lineRest } = line;
+      return lineRest;
+    }),
+  };
 }
 
 /** Ensure restored edit carts carry displayable lines (API cart or sale snapshot). */
@@ -1620,6 +1635,40 @@ export function PosScreen({ standalone = false }) {
     const full = Array.isArray(created?.lines)
       ? created
       : await apiRequest(`/sales/carts/${created.id}`);
+
+    // Resume a previous-order edit draft from local cache (lines edited before refresh).
+    try {
+      const draft = await loadPreviousOrderEditDraft();
+      if (
+        draft?.server_cart_id &&
+        String(draft.server_cart_id) === String(full?.id) &&
+        draft.held_order_num &&
+        Array.isArray(draft.lines) &&
+        draft.lines.length > 0
+      ) {
+        const resumed = {
+          ...full,
+          held_order_num: draft.held_order_num,
+          superseded_sale_id: draft.superseded_sale_id ?? full.superseded_sale_id,
+          order_discount: draft.order_discount ?? full.order_discount,
+          lines: draft.lines,
+          ...(draft._editDraftDirty ? { _editDraftDirty: true } : {}),
+        };
+        cartRef.current = resumed;
+        setCart(resumed);
+        if (showRouteOrderUi && resumed?.route_id) {
+          const route = routes.find((r) => r.id === resumed.route_id);
+          appliedRouteMarkupRef.current = Number(route?.route_markup_price ?? 0);
+        } else {
+          appliedRouteMarkupRef.current = 0;
+        }
+        return resumed;
+      }
+    } catch {
+      // Ignore draft restore failures — fall through to server cart.
+    }
+
+    cartRef.current = full;
     setCart(full);
     if (showRouteOrderUi && full?.route_id) {
       const route = routes.find((r) => r.id === full.route_id);
@@ -1816,6 +1865,13 @@ export function PosScreen({ standalone = false }) {
     const next = withEditDraftDirty(current);
     cartRef.current = next;
     setCart(next);
+  }
+
+  function persistPreviousOrderLocalDraft(nextCart) {
+    if (!nextCart?.held_order_num || nextCart.offline || nextCart.offline_client_sale_uuid) {
+      return;
+    }
+    void savePreviousOrderEditDraft(nextCart).catch(() => {});
   }
 
   async function waitForCartLineSavesToFinish() {
@@ -2522,6 +2578,7 @@ export function PosScreen({ standalone = false }) {
       const draftCart = withEditDraftDirty({ ...optimisticCart, lines: draftLines });
       cartRef.current = draftCart;
       setCart(draftCart);
+      persistPreviousOrderLocalDraft(draftCart);
       setCartLineSaveFailed(false);
       if (successMessage) setStatusMessage(successMessage);
       if (clearEntry && !unlockUiEarly) {
@@ -3819,6 +3876,9 @@ export function PosScreen({ standalone = false }) {
       }
       cartRef.current = nextCart;
       setCart(nextCart);
+      if (cart.held_order_num && !cart.offline) {
+        persistPreviousOrderLocalDraft(nextCart);
+      }
       if (clearsEditing) clearLineEntry();
       clearClassicLineSelection();
       if (cart.held_order_num) {
@@ -3896,6 +3956,9 @@ export function PosScreen({ standalone = false }) {
         }
         cartRef.current = nextCart;
         setCart(nextCart);
+        if (cart.held_order_num && !cart.offline) {
+          persistPreviousOrderLocalDraft(nextCart);
+        }
         clearLineEntry();
         setSelectedLineId(null);
         setStatusMessage(
@@ -4406,6 +4469,21 @@ export function PosScreen({ standalone = false }) {
     setPaymentError(null);
     setReceiptPrintStatus(null);
     try {
+      // Previous-order edits stay local until pay — flush once here (one PUT), then checkout.
+      if (
+        activeCart.held_order_num &&
+        !activeCart.offline &&
+        !activeCart.offline_client_sale_uuid &&
+        editedOrderHasLocalDraftChanges(activeCart)
+      ) {
+        const flushed = await flushEditedOrderDraftToServer();
+        if (!flushed?.id) {
+          setPaymentError("Could not save order changes before checkout. Try again.");
+          return null;
+        }
+      }
+
+      const liveCart = cartRef.current ?? activeCart;
       const submitKra =
         options.forceSubmitKra != null
           ? Boolean(options.forceSubmitKra)
@@ -4414,14 +4492,14 @@ export function PosScreen({ standalone = false }) {
               capabilities,
               summary?.total,
             );
-      if (activeCart?.held_order_num) {
+      if (liveCart?.held_order_num) {
         if (body.customer_num) {
-          rememberPosOrderCustomer(activeCart.held_order_num, {
+          rememberPosOrderCustomer(liveCart.held_order_num, {
             name: body.customer_name_override,
             customerNum: body.customer_num,
           });
         } else if (body.customer_name_override) {
-          rememberPosOrderCustomerName(activeCart.held_order_num, body.customer_name_override);
+          rememberPosOrderCustomerName(liveCart.held_order_num, body.customer_name_override);
         }
       }
 
@@ -4433,7 +4511,7 @@ export function PosScreen({ standalone = false }) {
         ...checkoutInput,
         sales_workspace: salesWorkspace,
         ...(submitKra ? { submit_kra: true } : {}),
-        ...(activeCart?.held_order_num ? { order_num: activeCart.held_order_num } : {}),
+        ...(liveCart?.held_order_num ? { order_num: liveCart.held_order_num } : {}),
         ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
       });
       if (!checkoutBody) {
@@ -4441,7 +4519,7 @@ export function PosScreen({ standalone = false }) {
         return null;
       }
       const checkoutRequest = () =>
-        apiRequest(`/sales/carts/${activeCart.id}/checkout`, {
+        apiRequest(`/sales/carts/${liveCart.id}/checkout`, {
           method: "POST",
           body: checkoutBody,
         });
@@ -4459,8 +4537,9 @@ export function PosScreen({ standalone = false }) {
       setSelectedLineId(null);
       clearPosUiDraft();
       clearLineEntry();
+      void clearPreviousOrderEditDraft().catch(() => {});
       setStatusMessage(`Order #${sale.order_num} completed.`);
-      if (activeCart?.held_order_num) {
+      if (liveCart?.held_order_num) {
         setEditSourceSale(null);
       }
       if (!options.skipPrint) {
@@ -4497,7 +4576,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * Push draft cart lines to the open edit cart on the server (clear, then POST draft lines).
+   * Push draft cart lines to the open edit cart on the server in one PUT.
    * Returns the refreshed cart, or null on failure.
    */
   async function flushEditedOrderDraftToServer() {
@@ -4511,87 +4590,42 @@ export function PosScreen({ standalone = false }) {
       return null;
     }
 
-    const isServerLineId = (id) => {
-      const s = String(id ?? "");
-      return s !== "" && !s.startsWith("pending-") && !s.startsWith("opt-");
-    };
-
     setLineBusy(true);
     try {
-      // Read live server lines first — local deletes are not on the API yet.
-      // Delete line-by-line (bulk DELETE clears held_order_num and reinstates the old sale).
-      const liveCart =
-        (await apiRequest(`/sales/carts/${activeCart.id}`, POS_CART_REQUEST)) ?? activeCart;
-      const serverLineRefs = [
-        ...new Set(
-          (liveCart.lines ?? [])
-            .filter((line) => isServerLineId(line?.id) || isServerLineId(line?.update_code))
-            .map((line) => String(line.update_code ?? line.id)),
-        ),
-      ];
-      let nextCart = {
-        ...liveCart,
+      const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
+        method: "PUT",
+        body: {
+          lines: draftLines.map((line) => {
+            const qty = Math.max(0.0001, Number(line.quantity) || 0);
+            const unitPrice = Number(line.unit_price ?? line.price ?? 0);
+            return {
+              product_code: line.product_code,
+              quantity: qty,
+              unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
+              display_unit_price:
+                line.display_unit_price != null
+                  ? Number(line.display_unit_price)
+                  : undefined,
+              uom: line.uom ?? undefined,
+              on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
+              discount_given: Number(line.discount_given ?? 0) || 0,
+              product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+              amount: line.amount != null ? Number(line.amount) : undefined,
+            };
+          }),
+          order_discount: Number(activeCart.order_discount ?? 0) || 0,
+        },
+        ...POS_CART_REQUEST,
+      });
+      const nextCart = stripPreviousOrderDraftMarkers({
+        ...applyCartMutationResponse(activeCart, updated),
         held_order_num: activeCart.held_order_num,
         superseded_sale_id: activeCart.superseded_sale_id,
-      };
-      if (serverLineRefs.length) {
-        // Parallel deletes — sequential was N round-trips and made Complete feel stuck.
-        await Promise.all(
-          serverLineRefs.map((lineRef) =>
-            apiRequest(`/sales/carts/${activeCart.id}/lines/${lineRef}`, {
-              method: "DELETE",
-              ...POS_CART_REQUEST,
-            }),
-          ),
-        );
-        nextCart = {
-          ...nextCart,
-          lines: [],
-          held_order_num: activeCart.held_order_num,
-          superseded_sale_id: activeCart.superseded_sale_id,
-        };
-      }
-
-      nextCart = {
-        ...nextCart,
-        lines: [],
-        held_order_num: activeCart.held_order_num,
-        superseded_sale_id: activeCart.superseded_sale_id,
-      };
+      });
       cartRef.current = nextCart;
       setCart(nextCart);
-
-      // Sequential POSTs — each response is the full cart; parallel races would drop lines.
-      for (const line of draftLines) {
-        const qty = Math.max(0.0001, Number(line.quantity) || 0);
-        const unitPrice = Number(line.unit_price ?? line.price ?? 0);
-        const body = {
-          product_code: line.product_code,
-          quantity: qty,
-          unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
-          display_unit_price:
-            line.display_unit_price != null
-              ? Number(line.display_unit_price)
-              : undefined,
-          uom: line.uom ?? undefined,
-          on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
-          discount_given: Number(line.discount_given ?? 0) || 0,
-          product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
-        };
-        const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
-          method: "POST",
-          body,
-          ...POS_CART_REQUEST,
-        });
-        nextCart = {
-          ...applyCartMutationResponse(nextCart, updated),
-          held_order_num: activeCart.held_order_num,
-          superseded_sale_id: activeCart.superseded_sale_id,
-        };
-        cartRef.current = nextCart;
-        setCart(nextCart);
-      }
-      return cartRef.current ?? nextCart;
+      void clearPreviousOrderEditDraft().catch(() => {});
+      return nextCart;
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Could not save order changes");
       return null;
@@ -4843,6 +4877,7 @@ export function PosScreen({ standalone = false }) {
         // Bulk DELETE reinstates a previous-order edit tombstone on the server.
         await apiRequest(`/sales/carts/${activeCart.id}/lines`, { method: "DELETE" });
       }
+      void clearPreviousOrderEditDraft().catch(() => {});
       const next = await loadCashierCart();
       cartRef.current = next;
       orderNoUserEditedRef.current = false;
@@ -5156,6 +5191,7 @@ export function PosScreen({ standalone = false }) {
       const restoredCart = presentRestoredEditCart(restoredRaw, sourceSale);
       cartRef.current = restoredCart;
       setCart(restoredCart);
+      persistPreviousOrderLocalDraft(restoredCart);
       setSelectedLineId(null);
       setEditingLineId(null);
       setEditingLineRef(null);
@@ -5460,7 +5496,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function openCompletePayment() {
-    // Finish queued add/qty/edit commits before dirty check + flush (classic/previous-order
+    // Finish queued add/qty/edit commits before dirty check (classic/previous-order
     // edits enqueue without lineBusy, so F10 right after a scan must wait here).
     await runBlockingTask(waitForCartLineSavesToFinish, {
       message: "Saving cart changes…",
@@ -5479,16 +5515,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      setBusy(true);
-      try {
-        if (!activeCart.offline && !activeCart.offline_client_sale_uuid) {
-          const flushed = await flushEditedOrderDraftToServer();
-          if (!flushed?.id) return;
-        }
-      } finally {
-        setBusy(false);
-      }
-
+      // Keep edits local — flush to server only when payment confirms (handleCheckout).
       setPaymentError(null);
       closeProductSearchDropdown();
       setPaymentOpen(true);
@@ -5662,6 +5689,49 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
+      // Classic Alt+H/F/P: claim immediately (like F-keys) so the browser menu / scan
+      // field cannot swallow them. Right Alt is often AltGr (ctrl+alt).
+      const isClassicAlt = state.classicLayout && isPosClassicAltShortcut(e);
+      if (isClassicAlt) {
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
+        if (phase === "keyup") return;
+        if (isModalOpen(state)) return;
+
+        actions.closeProductSearchDropdown?.();
+        if (isPosAltLetterShortcut(e, "h")) {
+          if (state.modernOrderEditLocked || state.isCartEditSession) {
+            actions.flashPosShortcutMessage("Cannot hold while editing a previous order.");
+            return;
+          }
+          if (!state.lineCount) {
+            actions.flashPosShortcutMessage("Add items before holding (Alt+H).");
+            return;
+          }
+          if (state.cartStockBlocked) {
+            actions.flashPosShortcutMessage("Fix stock issues before holding.");
+            return;
+          }
+          void (async () => {
+            const ok = await actions.confirm({
+              title: "HOLD ORDERS",
+              message: "Are you sure you want to hold this order?",
+              confirmLabel: "Hold order",
+            });
+            if (ok) actions.openSaveOrderDialog("hold");
+          })();
+          return;
+        }
+        if (isPosAltLetterShortcut(e, "f")) {
+          if (state.activeSession) setFloatDetailsOpen(true);
+          return;
+        }
+        if (isPosAltLetterShortcut(e, "p")) {
+          void actions.handlePrintReceipt();
+        }
+        return;
+      }
+
       if (isModalOpen(state)) {
         if (e.key === "Escape" && state.priceCheckerOpen) {
           setPriceCheckerOpen(false);
@@ -5680,56 +5750,16 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const classicShortcut =
+      const classicDelete =
         state.classicLayout &&
-        (isPosClassicAltShortcut(e) ||
-          (e.key === "Delete" && (state.selectedLineId || state.selectedLineCount > 0)));
+        e.key === "Delete" &&
+        (state.selectedLineId || state.selectedLineCount > 0);
 
-      if (!classicShortcut && isTypingTarget(e.target)) return;
+      if (!classicDelete && isTypingTarget(e.target)) return;
 
       if (phase === "keyup") return;
 
-      if (state.classicLayout && isPosAltLetterShortcut(e, "h")) {
-        claimPosFunctionKeyEvent(e);
-        e.__centrixPosShortcutHandled = true;
-        actions.closeProductSearchDropdown?.();
-        if (state.modernOrderEditLocked || state.isCartEditSession) {
-          actions.flashPosShortcutMessage("Cannot hold while editing a previous order.");
-          return;
-        }
-        if (!state.lineCount) {
-          actions.flashPosShortcutMessage("Add items before holding (Alt+H).");
-          return;
-        }
-        if (state.cartStockBlocked) {
-          actions.flashPosShortcutMessage("Fix stock issues before holding.");
-          return;
-        }
-        void (async () => {
-          const ok = await actions.confirm({
-            title: "HOLD ORDERS",
-            message: "Are you sure you want to hold this order?",
-            confirmLabel: "Hold order",
-          });
-          if (ok) actions.openSaveOrderDialog("hold");
-        })();
-        return;
-      }
-      if (state.classicLayout && isPosAltLetterShortcut(e, "f")) {
-        claimPosFunctionKeyEvent(e);
-        e.__centrixPosShortcutHandled = true;
-        actions.closeProductSearchDropdown?.();
-        if (state.activeSession) setFloatDetailsOpen(true);
-        return;
-      }
-      if (state.classicLayout && isPosAltLetterShortcut(e, "p")) {
-        claimPosFunctionKeyEvent(e);
-        e.__centrixPosShortcutHandled = true;
-        actions.closeProductSearchDropdown?.();
-        void actions.handlePrintReceipt();
-        return;
-      }
-      if (state.classicLayout && e.key === "Delete" && (state.selectedLineId || state.selectedLineCount > 0)) {
+      if (classicDelete) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
         actions.closeProductSearchDropdown?.();

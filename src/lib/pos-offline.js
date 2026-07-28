@@ -164,6 +164,78 @@ export async function saveLocalPosCart(cart) {
   return next;
 }
 
+const PREVIOUS_ORDER_EDIT_DRAFT_ID = "previous_order_edit";
+
+/**
+ * Persist an online previous-order edit draft locally (does not mark the cart offline).
+ * Edits stay fast; F10/checkout flushes to the server cart in one shot.
+ */
+export async function savePreviousOrderEditDraft(cart) {
+  if (!cart?.held_order_num || !isServerPosCartId(cart?.id)) return null;
+  if (cart.offline || cart.offline_client_sale_uuid) return null;
+
+  const lines = (cart.lines ?? [])
+    .map((line) => {
+      const qty = Number(line.quantity ?? 0);
+      if (!line?.product_code || !(qty > 0)) return null;
+      return {
+        client_line_id: String(
+          line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
+        ),
+        id: line.id,
+        update_code: line.update_code ?? line.id,
+        product_code: line.product_code,
+        product_name: line.product_name ?? line.description ?? line.product_code,
+        quantity: qty,
+        unit_price: Number(line.unit_price ?? line.price ?? 0),
+        display_unit_price:
+          line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+        amount: line.amount != null ? Number(line.amount) : undefined,
+        uom: line.uom ?? null,
+        on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
+        discount_given: Number(line.discount_given ?? 0),
+        product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+        vat_rate: Number(line.vat_rate ?? line.tax_rate ?? 0),
+        _draftEdit: true,
+      };
+    })
+    .filter(Boolean);
+
+  const draft = {
+    id: PREVIOUS_ORDER_EDIT_DRAFT_ID,
+    previous_order_edit: true,
+    offline: false,
+    server_cart_id: cart.id,
+    held_order_num: cart.held_order_num,
+    superseded_sale_id: cart.superseded_sale_id ?? null,
+    order_discount: Number(cart.order_discount ?? 0) || 0,
+    update_no: cart.update_no ?? null,
+    branch_id: cart.branch_id ?? null,
+    till_id: cart.till_id ?? null,
+    customer_num: cart.customer_num ?? null,
+    customer_name_override: cart.customer_name_override ?? null,
+    lines,
+    _editDraftDirty: Boolean(cart._editDraftDirty),
+    updated_at_ms: Date.now(),
+  };
+  await idbPutLocalCart(draft);
+  return draft;
+}
+
+export async function loadPreviousOrderEditDraft() {
+  const draft = await idbGetLocalCart(PREVIOUS_ORDER_EDIT_DRAFT_ID);
+  if (!draft?.previous_order_edit || !draft?.server_cart_id) return null;
+  return draft;
+}
+
+export async function clearPreviousOrderEditDraft() {
+  await idbClearLocalCart(PREVIOUS_ORDER_EDIT_DRAFT_ID);
+}
+
+function isServerPosCartId(id) {
+  return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
+}
+
 export async function clearLocalPosCart() {
   await idbClearLocalCart("active");
 }
