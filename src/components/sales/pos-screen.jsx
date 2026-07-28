@@ -2756,7 +2756,6 @@ export function PosScreen({ standalone = false }) {
     // Classic search/scan pick: park on entry row, show item code, focus qty.
     if (classicLayout) {
       setSearchQuery(product.product_code ?? "");
-      setStatusMessage(`Enter quantity for ${product.product_code}, then press Enter.`);
     }
   }
 
