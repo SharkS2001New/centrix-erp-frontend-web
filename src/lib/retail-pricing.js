@@ -11,13 +11,13 @@ import {
 } from "./uom-packaging";
 import { splitBaseToHierarchy, uomConversionFactor } from "./stock-uom";
 
-export function tiersForRetailPackage(retailPackage) {
+export function tiersForRetailPackage(retailPackage, uom = null) {
   if (!retailPackage) return [];
   const raw = coercePricingTiersInput(retailPackage.pricing_tiers);
   if (raw.length > 0) {
     return pricingTiersToNormalized(raw);
   }
-  return legacyTiersFromPackage(retailPackage);
+  return legacyTiersFromPackage(retailPackage, uom);
 }
 
 function pricingTiersToNormalized(tiers) {
@@ -33,14 +33,19 @@ function pricingTiersToNormalized(tiers) {
     .sort((a, b) => a.min_qty - b.min_qty);
 }
 
-function legacyTiersFromPackage(rps) {
+function legacyTiersFromPackage(rps, uom = null) {
   const tiers = [];
+  const factor = uomConversionFactor(uom);
+  const legacyRetailMax = Number(rps.max_qty_measure ?? 0);
+  const legacyLooksLikePackMarkup = factor > 1 && legacyRetailMax > Math.max(1, factor / 2);
   if (Number(rps.max_qty_measure ?? 0) > 0) {
     tiers.push({
       min_qty: 1,
       max_qty: Number(rps.max_qty_measure),
-      measure_level: "small",
-      price_mode: "retail",
+      // Legacy pack settings stored only one markup band; on bag products that markup
+      // is applied on the aggregate per half-pack chunk, not per kg.
+      measure_level: legacyLooksLikePackMarkup ? "full" : "small",
+      price_mode: legacyLooksLikePackMarkup ? "wholesale" : "retail",
       markup_price: Number(rps.markup_price ?? 0),
     });
   }
