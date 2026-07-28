@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
+import { isPosClassicAltShortcut, isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
 import {
@@ -193,8 +193,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }
 
   async function handleInputKeyDown(e) {
-    // Let POS shortcuts (F2/F8/F10/F12, …) reach the window capture listener.
-    if (isPosFunctionKeyEvent(e)) return;
+    // Let POS shortcuts (F2/F8/F10/F12, Alt+H/F/P, …) reach the window capture listener.
+    if (isPosFunctionKeyEvent(e) || (classic && isPosClassicAltShortcut(e))) return;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();

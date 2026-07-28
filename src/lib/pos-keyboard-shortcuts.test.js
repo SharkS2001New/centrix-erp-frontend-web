@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
+  isPosAltLetterShortcut,
+  isPosClassicAltShortcut,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
   resolvePosShortcutKey,
@@ -77,5 +79,18 @@ describe("claimPosFunctionKeyEvent", () => {
     expect(isPosFunctionKeyEvent(fakeEvent({ key: "", code: "", keyCode: 123 }))).toBe(true);
     expect(isPosFunctionKeyEvent(fakeEvent({ key: "a", code: "KeyA" }))).toBe(false);
     expect(CENTRIX_POS_COMPLETE_PAYMENT_EVENT).toBe("centrix:pos-complete-payment");
+  });
+
+  it("detects classic Alt+letter shortcuts via key or code", () => {
+    expect(isPosAltLetterShortcut(fakeEvent({ key: "h", code: "KeyH", altKey: true }), "h")).toBe(
+      true,
+    );
+    expect(
+      isPosAltLetterShortcut(fakeEvent({ key: "˙", code: "KeyH", altKey: true }), "h"),
+    ).toBe(true);
+    expect(isPosClassicAltShortcut(fakeEvent({ key: "P", code: "KeyP", altKey: true }))).toBe(true);
+    expect(isPosAltLetterShortcut(fakeEvent({ key: "h", code: "KeyH", altKey: true, ctrlKey: true }), "h")).toBe(
+      false,
+    );
   });
 });

@@ -160,6 +160,8 @@ import {
 import {
   CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
+  isPosAltLetterShortcut,
+  isPosClassicAltShortcut,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
   resolvePosShortcutKey,
@@ -5587,17 +5589,28 @@ export function PosScreen({ standalone = false }) {
 
       const classicShortcut =
         state.classicLayout &&
-        ((e.altKey && ["h", "H", "f", "F", "p", "P"].includes(e.key)) ||
-          (e.key === "Delete" && state.selectedLineId));
+        (isPosClassicAltShortcut(e) ||
+          (e.key === "Delete" && (state.selectedLineId || state.selectedLineCount > 0)));
 
       if (!classicShortcut && isTypingTarget(e.target)) return;
 
       if (phase === "keyup") return;
 
-      if (state.classicLayout && e.altKey && (e.key === "h" || e.key === "H")) {
+      if (state.classicLayout && isPosAltLetterShortcut(e, "h")) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
-        if (!state.lineCount || state.cartStockBlocked) return;
+        if (state.modernOrderEditLocked || state.isCartEditSession) {
+          actions.flashPosShortcutMessage("Cannot hold while editing a previous order.");
+          return;
+        }
+        if (!state.lineCount) {
+          actions.flashPosShortcutMessage("Add items before holding (Alt+H).");
+          return;
+        }
+        if (state.cartStockBlocked) {
+          actions.flashPosShortcutMessage("Fix stock issues before holding.");
+          return;
+        }
         void (async () => {
           const ok = await actions.confirm({
             title: "HOLD ORDERS",
@@ -5608,13 +5621,13 @@ export function PosScreen({ standalone = false }) {
         })();
         return;
       }
-      if (state.classicLayout && e.altKey && (e.key === "f" || e.key === "F")) {
+      if (state.classicLayout && isPosAltLetterShortcut(e, "f")) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
         if (state.activeSession) setFloatDetailsOpen(true);
         return;
       }
-      if (state.classicLayout && e.altKey && (e.key === "p" || e.key === "P")) {
+      if (state.classicLayout && isPosAltLetterShortcut(e, "p")) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
         void actions.handlePrintReceipt();

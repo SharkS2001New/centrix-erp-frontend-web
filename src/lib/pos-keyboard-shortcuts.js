@@ -85,3 +85,23 @@ export function claimPosFunctionKeyEvent(e) {
 export function isPosFunctionShortcutKey(key) {
   return POS_FN_KEYS.has(key);
 }
+
+/** Alt+letter classic POS shortcuts — use e.code so Option/Alt layers still match (e.g. Mac scan field). */
+export function isPosAltLetterShortcut(e, letter) {
+  if (!e?.altKey || e.ctrlKey || e.metaKey) return false;
+  const upper = String(letter ?? "")
+    .trim()
+    .toUpperCase();
+  if (!upper || upper.length !== 1 || !/[A-Z]/.test(upper)) return false;
+  const key = String(e.key ?? "");
+  const code = String(e.code ?? "");
+  const lower = upper.toLowerCase();
+  return key === lower || key === upper || code === `Key${upper}`;
+}
+
+/** Classic external POS: Alt+H hold, Alt+F float, Alt+P reprint. */
+export function isPosClassicAltShortcut(e) {
+  return isPosAltLetterShortcut(e, "h")
+    || isPosAltLetterShortcut(e, "f")
+    || isPosAltLetterShortcut(e, "p");
+}

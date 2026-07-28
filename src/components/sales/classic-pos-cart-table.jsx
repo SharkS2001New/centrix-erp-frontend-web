@@ -1,6 +1,6 @@
 "use client";
 
-import { isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
+import { isPosClassicAltShortcut, isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 
 import { useEffect, useRef, useState } from "react";
@@ -60,7 +60,7 @@ function ClassicLineQtyCell({
         onFocus={(e) => e.target.select()}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (isPosFunctionKeyEvent(e)) return;
+          if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
           e.stopPropagation();
           if (e.key === "Enter") {
             e.preventDefault();
