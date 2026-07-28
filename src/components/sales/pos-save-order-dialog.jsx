@@ -153,7 +153,9 @@ export function PosSaveOrderDialog({
   }
 
   const handleSaveRef = useRef(handleSave);
-  handleSaveRef.current = handleSave;
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
 
   useEffect(() => {
     if (!open) return undefined;
