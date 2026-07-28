@@ -1,5 +1,5 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { buildKraThermalQrHtml } from "@/lib/kra-receipt-qr";
+import { buildKraFiscalBlockHtml, buildKraThermalQrHtml } from "@/lib/kra-receipt-qr";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
 import { RECEIPT_POWERED_BY_LINE } from "@/lib/print-footer-settings";
 import {
@@ -221,7 +221,15 @@ export function buildSaleReceiptHtml(
     fallbackName: orgName,
   });
 
-  const kraQrHtml = buildKraThermalQrHtml(kraData, kraQrDataUrl);
+  // Fiscal thermal receipts: QR below Designed & Developed. Fall back to CU text if QR image failed.
+  const kraQrHtml = kraData
+    ? buildKraThermalQrHtml(kraData, kraQrDataUrl) ||
+      buildKraFiscalBlockHtml(kraData, {
+        layout: "thermal",
+        qrDataUrl: kraQrDataUrl,
+        title: "KRA eTIMS",
+      })
+    : "";
 
   const paymentInstructionsHtml =
     showPaymentInstructions && paymentInstructions
@@ -269,22 +277,22 @@ export function buildSaleReceiptHtml(
     html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
-    .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+    .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; }
     .org-brand,
     .org-header { margin: 0; padding: 0; }
     .org-logo { display: block; margin: 0 auto 2px; max-height: 34px; max-width: 140px; object-fit: contain; }
     .company-name,
     .org-name { text-align: center; font-size: ${hpx(13)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.12; margin: 0 0 2px; }
-    .company-meta { text-align: center; font-size: ${hpx(9)}; color: #000; line-height: 1.18; margin: 0; font-weight: var(--print-w-header, 600); word-break: break-word; }
+    .company-meta { text-align: center; font-size: ${hpx(9)}; color: #000; line-height: 1.15; margin: 0; font-weight: var(--print-w-header, 600); word-break: break-word; }
     .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .08em; margin: 10px 0 8px; }
-    .divider { border-top: 1px dashed #000; margin: 6px 0; }
-    .meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 4px; font-size: ${px(9)}; line-height: 1.4; }
+    .divider { border-top: 1px dashed #000; margin: 4px 0; }
+    .meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 4px; font-size: ${px(9)}; line-height: 1.25; }
     .meta-cell { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .meta-cell--sale { text-align: right; }
     .meta-label { font-weight: 700; }
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
-    .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; table-layout: fixed; }
+    .table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: ${px(9)}; table-layout: fixed; }
     .table col.col-desc { width: 45%; }
     .table col.col-qty { width: 17.5%; }
     .table col.col-price { width: 17.5%; }
@@ -325,9 +333,10 @@ export function buildSaleReceiptHtml(
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { font-weight: var(--print-w-body, 600); }
     .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #000; font-size: ${px(8)}; line-height: 1.35; font-weight: var(--print-w-body, 600); word-break: break-word; }
-    .footer-text { font-size: ${fpx(8)}; color: #000; margin-top: 6px; letter-spacing: normal; line-height: 1.45; font-weight: var(--print-w-footer, 700); word-break: break-word; text-transform: none; }
-    .footer-line-divider { margin: 4px 0; }
-    .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; word-break: break-word; text-transform: none; }
+    .footer-text { font-size: ${fpx(8)}; color: #000; margin-top: 3px; letter-spacing: normal; line-height: 1.3; font-weight: var(--print-w-footer, 700); word-break: break-word; text-transform: none; }
+    .footer-line-divider { margin: 3px 0; }
+    .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 2px; letter-spacing: normal; line-height: 1.25; word-break: break-word; text-transform: none; }
+    .kra-etims-block { page-break-inside: avoid; break-inside: avoid; }
     .center { text-align: center; }
     @media print {
       html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
@@ -364,8 +373,8 @@ export function buildSaleReceiptHtml(
     ${storePhones ? `<div class="company-meta">TEL: ${escapeHtml(storePhones)}</div>` : ""}
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">
-      <div class="meta-full"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
-      <div class="meta-full"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
+      <div class="meta-cell"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
+      <div class="meta-cell meta-cell--sale"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(String(customerName).toUpperCase())}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>

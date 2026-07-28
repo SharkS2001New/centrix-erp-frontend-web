@@ -83,13 +83,15 @@ internal static class WkhtmlPdfRenderer
     }
 
     /// <summary>
-    /// Rough mm height for an 80mm thermal receipt. Slightly oversizes to avoid clipping.
+    /// Rough mm height for an 80mm thermal receipt.
+    /// Too tall (e.g. fixed 300mm) wastes blank feed; too short creates a 2nd PDF page
+    /// and thermal printers print that as a second slip (footer/QR alone).
     /// </summary>
     internal static int EstimateThermalPageHeightMm(string html)
     {
         if (string.IsNullOrWhiteSpace(html))
         {
-            return 80;
+            return 90;
         }
 
         static int Count(string source, string token) =>
@@ -101,21 +103,27 @@ internal static class WkhtmlPdfRenderer
         var brCount = Count(html, "<br\\b");
         var imgCount = Count(html, "<img\\b");
         var preCount = Count(html, "<pre\\b");
+        var hasKraQr = html.Contains("kra-etims-block", StringComparison.OrdinalIgnoreCase)
+            || html.Contains("KRA eTIMS", StringComparison.OrdinalIgnoreCase);
 
-        // Keep the estimate snug: too much safety buffer shows up as blank feed before
-        // the next receipt's org name on thermal printers.
-        // Header/meta ~24mm, rows ~5mm, misc blocks ~2–3mm, QR/images ~22mm each.
-        var mm = 24
-            + trCount * 5
-            + Math.Max(0, divCount - 8) * 2
+        // Match classic WinForms density: compact header + rows, room for footer + QR on ONE page.
+        // Header/meta ~28mm, rows ~6mm, misc blocks ~2mm, images/QR ~24mm each.
+        var mm = 28
+            + trCount * 6
+            + Math.Max(0, divCount - 10) * 2
             + pCount * 3
             + brCount * 3
-            + imgCount * 22
-            + preCount * 16;
+            + imgCount * 24
+            + preCount * 18;
 
-        // Keep only a very small buffer so footer lines are not clipped.
-        mm = (int)Math.Ceiling(mm * 1.02) + 2;
-        return Math.Clamp(mm, 55, 500);
+        // Footer + KRA QR must never spill onto page 2 (that becomes a "double receipt").
+        if (hasKraQr)
+        {
+            mm += 12;
+        }
+
+        mm = (int)Math.Ceiling(mm * 1.05) + 8;
+        return Math.Clamp(mm, 90, 260);
     }
 
     private static string? FindOnPath(string fileName)

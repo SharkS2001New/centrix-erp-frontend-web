@@ -1,10 +1,27 @@
 /**
  * Last completed POS receipt for Reprint — survives workspace clear and module remount.
  * Kept in sessionStorage for the browser tab (cleared on logout / tab close).
+ * Stores kra_response so External POS can reprint the eTIMS QR without admin permissions.
  */
 
 function storageKey(userId, branchId) {
   return `centrix.pos.lastReceipt.${userId ?? "anon"}.${branchId ?? "none"}`;
+}
+
+function compactKraResponse(sale) {
+  const kra = sale?.kra_response ?? sale?.kraResponse ?? null;
+  if (!kra || typeof kra !== "object") return null;
+  return {
+    id: kra.id ?? null,
+    sale_id: kra.sale_id ?? sale?.id ?? null,
+    status: kra.status ?? null,
+    invoice_number: kra.invoice_number ?? null,
+    signature_link: kra.signature_link ?? null,
+    receipt_signature: kra.receipt_signature ?? null,
+    serial_number: kra.serial_number ?? null,
+    kra_timestamp: kra.kra_timestamp ?? null,
+    response_payload: kra.response_payload ?? null,
+  };
 }
 
 export function rememberPosLastReceipt(userId, branchId, sale) {
@@ -15,6 +32,7 @@ export function rememberPosLastReceipt(userId, branchId, sale) {
       JSON.stringify({
         id: sale.id,
         order_num: sale.order_num ?? null,
+        kra_response: compactKraResponse(sale),
       }),
     );
   } catch {
@@ -29,7 +47,11 @@ export function readPosLastReceipt(userId, branchId) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.id) return null;
-    return { id: parsed.id, order_num: parsed.order_num ?? null };
+    return {
+      id: parsed.id,
+      order_num: parsed.order_num ?? null,
+      kra_response: parsed.kra_response ?? null,
+    };
   } catch {
     return null;
   }

@@ -67,10 +67,17 @@ export async function ensureSaleForPrint(sale) {
     ? [`/legacy-orders/${sale.id}?for_print=1`, `/legacy-orders/${sale.id}`, `/sales/${sale.id}`]
     : [`/sales/${sale.id}`, `/legacy-orders/${sale.id}?for_print=1`];
 
+  const existingKra = sale.kra_response ?? sale.kraResponse ?? null;
+
   for (const endpoint of endpoints) {
     try {
       const loaded = await apiRequest(endpoint, { loading: false, reportIssues: false });
-      if (loaded) return loaded;
+      if (!loaded) continue;
+      // Preserve checkout KRA payload if the refreshed sale omitted it (cache / older API).
+      if (existingKra && !loaded.kra_response && !loaded.kraResponse) {
+        return { ...loaded, kra_response: existingKra };
+      }
+      return loaded;
     } catch {
       // try next endpoint
     }

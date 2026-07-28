@@ -4260,6 +4260,8 @@ export function PosScreen({ standalone = false }) {
           user,
           preparedBy: user?.username ?? null,
           documentType,
+          // Checkout returns kra_response for immediate thermal QR print.
+          kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
           // Checkout already returned the sale — skip redundant print setup round-trips.
           skipSaleRefresh: true,
           skipSettingsRefresh: true,
@@ -4406,10 +4408,13 @@ export function PosScreen({ standalone = false }) {
       }
 
       const { __force_submit_kra: _ignoredForceKra, ...checkoutInput } = body ?? {};
+      // Do not send submit_kra:false — stale POS capabilities were skipping server-side
+      // "Use KRA device for sales". Omit the field and let the API apply org finance policy;
+      // only send true so the KRA wait UI still matches an expected fiscalized checkout.
       const checkoutBody = await attachDiscountApprovalReasonToCheckoutBody({
         ...checkoutInput,
         sales_workspace: salesWorkspace,
-        submit_kra: submitKra,
+        ...(submitKra ? { submit_kra: true } : {}),
         ...(activeCart?.held_order_num ? { order_num: activeCart.held_order_num } : {}),
         ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
       });
@@ -4422,15 +4427,15 @@ export function PosScreen({ standalone = false }) {
           method: "POST",
           body: checkoutBody,
         });
-      const sale = submitKra
-        ? await runBlockingTask(checkoutRequest, {
-            message: "Completing sale…",
-            detail: "Submitting receipt to the KRA device. Please wait.",
-          })
-        : await withPosCheckoutTimeout(
-            checkoutRequest(),
-            "Checkout timed out. Check that the API is running and try again.",
-          );
+      // Always use the blocking wait for online checkout. Server fiscalizes when
+      // "Use KRA device for sales" is on even if this till's cached capabilities
+      // still think KRA is off (previously that raced a short timeout and failed).
+      const sale = await runBlockingTask(checkoutRequest, {
+        message: "Completing sale…",
+        detail: submitKra
+          ? "Submitting receipt to the KRA device. Please wait."
+          : "Please wait.",
+      });
       markSaleForReprint(sale);
       setCart(null);
       setSelectedLineId(null);
@@ -4897,6 +4902,7 @@ export function PosScreen({ standalone = false }) {
           preparedBy: user?.username ?? null,
           documentType:
             resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
+          kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
         }),
       );
       if (!result) {

@@ -12,9 +12,9 @@ import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
   extractKraReceiptData,
-  kraReceiptQrDataUrl,
-  resolveKraReceiptDataForSale,
+  ensureKraQrForPrint,
 } from "@/lib/kra-receipt-qr";
+import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { resolveSaleDocumentBranding, resolveSaleOrderCreatorName } from "@/lib/sale-document-print-shared";
 import { organizationHasLogo } from "@/lib/reports/report-branding";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
@@ -313,19 +313,31 @@ export async function printSaleOrder(sale, options = {}) {
       branding = { ...branding, logoUrl: logoDataUrl };
     }
 
+    // When KRA device is on, always allow a sale/KRA lookup for the QR — even if other
+    // print metadata is taken from cache. Offline pending sales stay offline-only.
+    const saleIsOfflinePending =
+      Boolean(saleForPrint?.offline_pending_sync) ||
+      String(saleForPrint?.id ?? "").startsWith("offline:");
+    const kraAllowNetwork =
+      !saleIsOfflinePending &&
+      (isKraDeviceConfigured(moduleSettings, options.capabilities) || !skipNetworkLookups);
+
     let kraData = null;
     let kraQrDataUrl = null;
     try {
-      kraData = skipNetworkLookups
-        ? extractKraReceiptData(saleForPrint, options.kraReceipt)
-        : await resolveKraReceiptDataForSale(saleForPrint, options.kraReceipt);
-      kraQrDataUrl =
-        kraData?.signatureLink != null
-          ? await kraReceiptQrDataUrl(kraData.signatureLink, {
-              size: documentType === "invoice" ? 140 : 100,
-            })
-          : null;
-    } catch {
+      ({ kraData, kraQrDataUrl } = await ensureKraQrForPrint(saleForPrint, {
+        kraReceipt: options.kraReceipt,
+        moduleSettings,
+        capabilities: options.capabilities,
+        allowNetwork: kraAllowNetwork,
+        qrSize: documentType === "invoice" ? 140 : 100,
+        requireQrWhenFiscalized: true,
+      }));
+    } catch (kraPrintError) {
+      // Re-throw when KRA is required — do not silently print without the QR.
+      if (isKraDeviceConfigured(moduleSettings, options.capabilities)) {
+        throw kraPrintError;
+      }
       kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);
       kraQrDataUrl = null;
     }

@@ -155,8 +155,7 @@ describe("org print typography settings", () => {
     expect(html).toContain("<colgroup>");
     expect(html).toContain('col class="col-amount"');
     expect(html).toContain(">AMOUNT</th>");
-    expect(html).toContain('<div class="meta-full"><span class="meta-label">Till No:</span>');
-    expect(html).toContain('<div class="meta-full"><span class="meta-label">Cash Sales #:</span>');
+    expect(html).toContain('class="meta-cell meta-cell--sale"');
     expect(html).toContain("Cash Sales #:");
     expect(html).toContain("S1001");
     expect(html).toContain(`padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm`);
@@ -167,6 +166,28 @@ describe("org print typography settings", () => {
     expect(html).toContain("font-variant-numeric: tabular-nums");
     expect(html).toContain('<td class="amount-label">Total</td>');
     expect(html).toContain('<td class="amount-label">Cash</td>');
+  });
+
+  it("prints KRA eTIMS QR below Designed & Developed on thermal receipts", () => {
+    const html = buildSaleReceiptHtml(sampleSale, {
+      seller: { name: "Test Org" },
+      branding: { showHeader: false, display: "name", organizationName: "Test Org" },
+      kraData: {
+        signatureLink: "https://etims.example/verify/abc",
+        invoiceNumber: "CU-1",
+      },
+      kraQrDataUrl: "data:image/png;base64,aaa",
+    });
+
+    const bodyHtml = html.split("</head>")[1] ?? html;
+    const designedAt = Math.max(
+      bodyHtml.indexOf("Designed &amp; Developed By"),
+      bodyHtml.indexOf("Designed & Developed By"),
+    );
+    const qrAt = bodyHtml.indexOf('class="kra-etims-block"');
+    expect(designedAt).toBeGreaterThan(-1);
+    expect(qrAt).toBeGreaterThan(designedAt);
+    expect(bodyHtml).toContain("Scan to verify this invoice on KRA eTIMS platform");
   });
 
   it("preserves footer line casing on thermal receipts", () => {

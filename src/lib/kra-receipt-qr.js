@@ -1,26 +1,74 @@
 import QRCode from "qrcode";
 import { apiRequest } from "@/lib/api";
+import { isKraDeviceConfigured, isKraBypassedForOrderTotal, isKraFiscalizationActive } from "@/lib/finance-settings";
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 /** Normalize KRA fiscal payload from checkout response, sale relation, or credit note. */
 export function extractKraReceiptData(sale, kraReceipt = null) {
   const kra = kraReceipt ?? sale?.kra_response ?? sale?.kraResponse ?? null;
   if (!kra) return null;
 
-  const signatureLink = kra.signature_link ?? kra.kra_signature_link ?? null;
-  const invoiceNumber =
-    kra.invoice_number ?? kra.kra_cu_inv_no ?? kra.kra_invoice_number ?? null;
-  const receiptSignature = kra.receipt_signature ?? kra.kra_receipt_signature ?? null;
-  const serialNumber = kra.serial_number ?? kra.kra_serial_number ?? null;
-  const timestamp = kra.kra_timestamp ?? null;
+  const payload =
+    kra.response_payload && typeof kra.response_payload === "object"
+      ? kra.response_payload
+      : null;
+
+  const signatureLink = firstNonEmpty(
+    kra.signature_link,
+    kra.kra_signature_link,
+    kra.signatureLink,
+    payload?.signature_link,
+    payload?.signatureLink,
+    payload?.["Signature Link"],
+    payload?.qr_link,
+    payload?.qr_url,
+    payload?.verification_url,
+  );
+  const invoiceNumber = firstNonEmpty(
+    kra.invoice_number,
+    kra.kra_cu_inv_no,
+    kra.kra_invoice_number,
+    payload?.invoice_number,
+    payload?.["cu-inv-no"],
+    payload?.cu_inv_no,
+  );
+  const receiptSignature = firstNonEmpty(
+    kra.receipt_signature,
+    kra.kra_receipt_signature,
+    payload?.receipt_signature,
+    payload?.signature,
+    payload?.["Receipt Signature"],
+  );
+  const serialNumber = firstNonEmpty(
+    kra.serial_number,
+    kra.kra_serial_number,
+    payload?.serial_number,
+  );
+  const timestamp = firstNonEmpty(kra.kra_timestamp, payload?.timestamp);
 
   if (!signatureLink && !receiptSignature && !invoiceNumber) return null;
 
   return {
-    signatureLink: signatureLink ? String(signatureLink).trim() : null,
-    invoiceNumber: invoiceNumber ? String(invoiceNumber) : null,
-    receiptSignature: receiptSignature ? String(receiptSignature) : null,
-    serialNumber: serialNumber ? String(serialNumber) : null,
-    timestamp: timestamp ? String(timestamp) : null,
+    signatureLink,
+    invoiceNumber,
+    receiptSignature,
+    serialNumber,
+    timestamp,
+    status: firstNonEmpty(kra.status, payload?.status),
   };
 }
 
@@ -30,9 +78,10 @@ export async function kraReceiptQrDataUrl(link, { size = 120 } = {}) {
   if (!url) return null;
   try {
     return await QRCode.toDataURL(url, {
-      width: size,
+      width: Math.max(72, Number(size) || 120),
       margin: 1,
       errorCorrectionLevel: "M",
+      color: { dark: "#000000", light: "#ffffff" },
     });
   } catch {
     return null;
@@ -98,30 +147,59 @@ export function buildKraDocumentQrHtml(
 
   const isThermal = layout === "thermal";
   const fontSize = isThermal ? "8px" : "10px";
-  const padding = isThermal ? "6px 0" : "12px 0";
-  const margin = isThermal ? "6px 0" : "14px 0";
+  const padding = isThermal ? "4px 0" : "12px 0";
+  const margin = isThermal ? "4px 0 0" : "14px 0";
   const border = isThermal ? "1px dashed #64748b" : "1px dashed #999";
 
-  return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:${border};text-align:center;">
+  return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;">
       <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;" />
-      <div style="margin-top:${isThermal ? "5px" : "8px"};font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.35;">
+      <div style="margin-top:${isThermal ? "4px" : "8px"};font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.3;">
         Scan to verify this invoice on KRA eTIMS platform
       </div>
     </div>`;
 }
 
-/** Centered KRA eTIMS QR for thermal receipts (before the thank-you footer). */
+/** Centered KRA eTIMS QR for thermal receipts. */
 export function buildKraThermalQrHtml(kra, qrDataUrl) {
-  return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 72, layout: "thermal" });
+  return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 100, layout: "thermal" });
 }
 
-/** Load KRA fiscal data for a sale (checkout relation, embedded payload, or API lookup). */
+function saleLooksFiscalized(sale, kraData) {
+  if (kraData?.signatureLink || kraData?.invoiceNumber || kraData?.receiptSignature) {
+    return true;
+  }
+  const raw = sale?.kra_response ?? sale?.kraResponse ?? null;
+  if (!raw) return false;
+  const status = String(raw.status ?? "").toLowerCase();
+  return status === "success" || Boolean(raw.id) || Boolean(raw.invoice_number);
+}
+
+/**
+ * Load KRA fiscal data for a sale (checkout relation, embedded payload, or API lookup).
+ *
+ * Prefer GET /sales/{id} — cashiers can view their orders and the sale includes kra_response.
+ * Do NOT rely on /kra-responses: that list is admin-module gated (admin.view), so non-admin
+ * cashiers like till users never get a QR when the checkout payload was dropped on refresh.
+ */
 export async function resolveKraReceiptDataForSale(sale, kraReceipt = null) {
   const inline = extractKraReceiptData(sale, kraReceipt);
   if (inline?.signatureLink) return inline;
 
   if (!sale?.id) return inline;
 
+  try {
+    const loaded = await apiRequest(`/sales/${sale.id}`, {
+      loading: false,
+      reportIssues: false,
+    });
+    const fromSale = extractKraReceiptData(loaded, null);
+    if (fromSale?.signatureLink) return fromSale;
+    if (fromSale) return fromSale;
+  } catch {
+    // Fall through to optional admin list lookup.
+  }
+
+  // Admin / back-office only — keep as last resort for older environments.
   try {
     const res = await apiRequest("/kra-responses", {
       loading: false,
@@ -138,4 +216,75 @@ export async function resolveKraReceiptDataForSale(sale, kraReceipt = null) {
   } catch {
     return inline;
   }
+}
+
+/**
+ * Resolve KRA fiscal data + QR image for print.
+ * When KRA fiscalization is active for the sale, a scannable eTIMS QR is required.
+ */
+export async function ensureKraQrForPrint(
+  sale,
+  {
+    kraReceipt = null,
+    moduleSettings = null,
+    capabilities = null,
+    allowNetwork = true,
+    qrSize = 100,
+    requireQrWhenFiscalized = true,
+  } = {},
+) {
+  const kraEnabled = isKraDeviceConfigured(moduleSettings, capabilities);
+  const expectQr =
+    requireQrWhenFiscalized &&
+    isKraFiscalizationActive(moduleSettings, capabilities) &&
+    !isKraBypassedForOrderTotal(moduleSettings, sale?.order_total) &&
+    String(sale?.status ?? "").toLowerCase() !== "pending_approval";
+
+  let kraData = extractKraReceiptData(sale, kraReceipt);
+
+  if (allowNetwork && sale?.id && !kraData?.signatureLink) {
+    const attempts = expectQr || kraEnabled ? 4 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      kraData = await resolveKraReceiptDataForSale(sale, kraReceipt);
+      if (kraData?.signatureLink) break;
+      if (!(expectQr || kraEnabled) || attempt >= attempts - 1) break;
+      await sleep(300 * (attempt + 1));
+    }
+  }
+
+  let kraQrDataUrl = null;
+  if (kraData?.signatureLink) {
+    for (let attempt = 0; attempt < 3 && !kraQrDataUrl; attempt += 1) {
+      kraQrDataUrl = await kraReceiptQrDataUrl(kraData.signatureLink, { size: qrSize });
+    }
+  }
+
+  // Any verification link must become a printed QR image.
+  if (kraData?.signatureLink && !kraQrDataUrl) {
+    throw new Error(
+      "KRA is enabled but the eTIMS QR code could not be generated for this receipt. Please reprint.",
+    );
+  }
+
+  if (expectQr && !kraQrDataUrl) {
+    throw new Error(
+      kraData?.signatureLink
+        ? "KRA is enabled but the eTIMS QR code could not be generated for this receipt. Please reprint."
+        : "KRA is enabled but this sale has no eTIMS verification link yet. Please reprint in a moment.",
+    );
+  }
+
+  // Sale carries fiscal payload (even if default submit is off) — still require QR.
+  if (
+    requireQrWhenFiscalized &&
+    kraEnabled &&
+    saleLooksFiscalized(sale, kraData) &&
+    !kraQrDataUrl
+  ) {
+    throw new Error(
+      "KRA is enabled but the eTIMS QR code could not be generated for this receipt. Please reprint.",
+    );
+  }
+
+  return { kraData, kraQrDataUrl };
 }
