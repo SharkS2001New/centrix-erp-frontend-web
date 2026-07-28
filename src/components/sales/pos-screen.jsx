@@ -1071,7 +1071,8 @@ export function PosScreen({ standalone = false }) {
     return customerNum != null ? String(customerNum) : "";
   }, [cart?.held_order_num]);
 
-  const isCartEditSession = Boolean(cart?.held_order_num);
+  /** True only while revising a previous booked/completed receipt (not a restored held park). */
+  const isCartEditSession = Boolean(cart?.held_order_num && cart?.superseded_sale_id);
   const hasEditedOrderDraftChanges = useMemo(
     () => editedOrderHasLocalDraftChanges(cart),
     [cart],
@@ -1806,6 +1807,15 @@ export function PosScreen({ standalone = false }) {
     const run = cartCommitChainRef.current.then(task, task);
     cartCommitChainRef.current = run.catch(() => {});
     return run;
+  }
+
+  /** Previous-order edits: flip dirty before the queued commit so F10 works immediately. */
+  function markPreviousOrderDraftDirtyNow() {
+    const current = cartRef.current;
+    if (!current?.held_order_num || current._editDraftDirty) return;
+    const next = withEditDraftDirty(current);
+    cartRef.current = next;
+    setCart(next);
   }
 
   async function waitForCartLineSavesToFinish() {
@@ -2594,6 +2604,7 @@ export function PosScreen({ standalone = false }) {
     if (classicLayout || cartRef.current?.held_order_num || cartRef.current?.offline) {
       // Clear scan + entry row immediately so the next-row never parks this product.
       if (classicLayout) clearClassicEntryFields();
+      if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(async () => {
         const mergeTarget = findMergeableCartLine(
           cartRef.current?.lines,
@@ -2742,6 +2753,7 @@ export function PosScreen({ standalone = false }) {
           }
         };
         if (cartRef.current?.held_order_num || cartRef.current?.offline) {
+          if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
           await enqueueCartCommit(runReplace);
           return;
         }
@@ -3298,6 +3310,7 @@ export function PosScreen({ standalone = false }) {
         }
       };
       if (cartRef.current?.held_order_num || cartRef.current?.offline) {
+        if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
         void enqueueCartCommit(runReplace);
         return;
       }
@@ -3361,6 +3374,7 @@ export function PosScreen({ standalone = false }) {
 
     // Previous-order / classic: local queue — never freeze F10 behind lineBusy.
     if (classicLayout || cartRef.current?.held_order_num || cartRef.current?.offline) {
+      if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(run);
       return;
     }
@@ -3598,6 +3612,7 @@ export function PosScreen({ standalone = false }) {
 
     // Match fast new-order adds: don't freeze the grid while a local draft updates.
     if (localDraftEdit) {
+      if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(async () => {
         try {
           await run();
@@ -3704,6 +3719,7 @@ export function PosScreen({ standalone = false }) {
     };
 
     if (localDraftEdit) {
+      if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(async () => {
         try {
           await run();
@@ -3766,7 +3782,7 @@ export function PosScreen({ standalone = false }) {
     const targets = (cart.lines ?? []).filter((line) => cartLineMatchesSelection(line, idSet));
     if (!targets.length) return;
 
-    const isPreviousOrderEdit = Boolean(cart.held_order_num);
+    const isPreviousOrderEdit = Boolean(cart.held_order_num && cart.superseded_sale_id);
     if (isPreviousOrderEdit || targets.length > 1) {
       const ok = await confirm({
         title: targets.length === 1 ? "Remove item" : "Remove selected items",
@@ -4001,10 +4017,10 @@ export function PosScreen({ standalone = false }) {
     if (!autoHeldPrompt?.saleId) return;
     setAutoHeldBusy(true);
     try {
-      await restoreOrderForEdit(autoHeldPrompt.saleId);
+      await restoreHeldSaleToNewCart(autoHeldPrompt.saleId, { replace: true });
       clearAutoHeldOrder();
       setAutoHeldPrompt(null);
-      notifySuccess("Held sale restored.");
+      notifySuccess("Held sale restored — complete when ready.");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not restore held sale");
     } finally {
@@ -4781,7 +4797,7 @@ export function PosScreen({ standalone = false }) {
 
     const hasLines = (cartRef.current?.lines?.length ?? cart?.lines?.length ?? 0) > 0;
     const activeCart = cartRef.current ?? cart;
-    const editingPrevious = Boolean(activeCart?.held_order_num);
+    const editingPrevious = Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id);
     const isOfflineCart = Boolean(activeCart?.offline || activeCart?.offline_client_sale_uuid);
 
     if (hasLines || editingPrevious || isOfflineCart) {
@@ -4928,11 +4944,86 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  /**
+   * Apply a restored held/draft sale as a normal new cart (not previous-order edit).
+   */
+  function applyRestoredHeldCart(restoredCart, sourceSale = null) {
+    const cartData = normalizeCartResponse(restoredCart) ?? restoredCart ?? null;
+    cartRef.current = cartData;
+    setCart(cartData);
+    setEditSourceSale(null);
+    setSelectedLineId(null);
+    setEditingLineId(null);
+    setEditingLineRef(null);
+    setReplacingLineId(null);
+    setPaymentOpen(false);
+    setPaymentError(null);
+    setOrderEditError(null);
+    clearClassicLineSelection();
+    clearLineEntry();
+    orderNoUserEditedRef.current = false;
+    if (cartData?.next_order_num != null) {
+      setEditOrderNo(String(cartData.next_order_num));
+    }
+    const customerMemory = extractSaleCustomerMemory(sourceSale);
+    const rememberKey = cartData?.next_order_num ?? sourceSale?.order_num;
+    if (rememberKey != null && (customerMemory.name || customerMemory.customerNum != null)) {
+      rememberPosOrderCustomer(rememberKey, customerMemory);
+    }
+  }
+
+  /** Resume a parked held sale into the till as a new in-progress order. */
+  async function restoreHeldSaleToNewCart(saleId, { replace = false, saleSnapshot = null } = {}) {
+    if (saleId == null || saleId === "") {
+      throw new Error("No held order selected.");
+    }
+
+    const hasOpenLines = (cart?.lines?.length ?? 0) > 0;
+    if (hasOpenLines && !replace) {
+      const ok = await confirm({
+        title: "Restore held order",
+        message: "Your workspace has an open order. Replace it with this held order?",
+        confirmLabel: "Replace",
+        cancelLabel: "Cancel",
+        destructive: true,
+      });
+      if (!ok) return null;
+      replace = true;
+    }
+
+    const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
+      method: "POST",
+      body: { replace },
+    });
+    applyRestoredHeldCart(restoredRaw, saleSnapshot);
+    return restoredRaw;
+  }
+
   async function restoreOrderForEdit(saleId, { replace = false, saleSnapshot = null, keepEditing = false } = {}) {
     if (saleId == null || saleId === "") {
       const message = "No order selected to edit.";
       setOrderEditError(message);
       setStatusMessage(message);
+      return;
+    }
+
+    // Held/draft parks are unfinished sales — restore as a new cart, not previous-order edit.
+    const snapshotStatus = String(saleSnapshot?.status ?? "").toLowerCase();
+    if (snapshotStatus === "held" || snapshotStatus === "draft") {
+      setBusy(true);
+      setOrderEditError(null);
+      try {
+        await restoreHeldSaleToNewCart(saleId, { replace, saleSnapshot });
+        setStatusMessage("Held order restored — ready to complete as a new sale.");
+        if (standalone) notifySuccess("Held order restored — complete when ready.");
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Could not restore held order";
+        setOrderEditError(message);
+        setStatusMessage(message);
+        if (standalone) notifyError(message);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
@@ -5369,6 +5460,13 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function openCompletePayment() {
+    // Finish queued add/qty/edit commits before dirty check + flush (classic/previous-order
+    // edits enqueue without lineBusy, so F10 right after a scan must wait here).
+    await runBlockingTask(waitForCartLineSavesToFinish, {
+      message: "Saving cart changes…",
+      detail: "Please wait while the current line finishes saving.",
+    });
+
     const activeCart = cartRef.current ?? cart;
 
     if (activeCart?.held_order_num) {
@@ -5379,12 +5477,6 @@ export function PosScreen({ standalone = false }) {
       if (!activeCart?.lines?.length) {
         flashPosShortcutMessage("Add items before completing payment (F10).");
         return;
-      }
-      if (lineBusy) {
-        await runBlockingTask(waitForCartLineSavesToFinish, {
-          message: "Saving cart changes…",
-          detail: "Please wait while the current line finishes saving.",
-        });
       }
 
       setBusy(true);
@@ -5410,13 +5502,6 @@ export function PosScreen({ standalone = false }) {
     if (cartStockBlocked) {
       flashPosShortcutMessage("Fix stock issues before completing payment.");
       return;
-    }
-    // Live cart only — if a line save is in flight, wait and then continue.
-    if (checkoutBlocked) {
-      await runBlockingTask(waitForCartLineSavesToFinish, {
-        message: "Saving cart changes…",
-        detail: "Please wait while the current line finishes saving.",
-      });
     }
     setPaymentError(null);
     closeProductSearchDropdown();
@@ -5446,7 +5531,7 @@ export function PosScreen({ standalone = false }) {
     selectedLineCount,
     enableRetailPricing: posSalesConfig.enableRetailPricing,
     showCheckoutOnCreate: posSalesConfig.showCheckoutOnCreate,
-    isCartEditSession: Boolean(cart?.held_order_num),
+    isCartEditSession: Boolean(cart?.held_order_num && cart?.superseded_sale_id),
     modernOrderEditLocked,
     lineCount: cart?.lines?.length ?? 0,
     cartStockBlocked,
@@ -5471,6 +5556,13 @@ export function PosScreen({ standalone = false }) {
   };
 
   useEffect(() => {
+    function isConfirmDialogOpen() {
+      return Boolean(
+        typeof document !== "undefined"
+        && document.querySelector('[role="alertdialog"][aria-modal="true"]'),
+      );
+    }
+
     function isModalOpen(state) {
       return (
         state.paymentOpen
@@ -5485,6 +5577,7 @@ export function PosScreen({ standalone = false }) {
         || state.zReportOpen
         || state.autoHeldPrompt
         || state.discountReasonDialogOpen
+        || isConfirmDialogOpen()
       );
     }
 
@@ -5615,7 +5708,7 @@ export function PosScreen({ standalone = false }) {
           const ok = await actions.confirm({
             title: "HOLD ORDERS",
             message: "Are you sure you want to hold this order?",
-            confirmLabel: "Hold",
+            confirmLabel: "Hold order",
           });
           if (ok) actions.openSaveOrderDialog("hold");
         })();
@@ -7073,16 +7166,11 @@ export function PosScreen({ standalone = false }) {
         onClose={() => setHeldOrdersOpen(false)}
         onCountChange={setHeldOrdersCount}
         onRestored={(restoredCart, sourceSale) => {
-          setCart(restoredCart);
-          setSelectedLineId(null);
-          setEditingLineRef(null);
-          clearLineEntry();
-          const orderNum = restoredCart?.held_order_num;
-          const customerMemory = extractSaleCustomerMemory(sourceSale);
-          if (orderNum && (customerMemory.name || customerMemory.customerNum != null)) {
-            rememberPosOrderCustomer(orderNum, customerMemory);
+          applyRestoredHeldCart(restoredCart, sourceSale);
+          setStatusMessage("Held order restored — ready to complete as a new sale.");
+          if (standalone) {
+            notifySuccess("Held order restored — complete when ready.");
           }
-          setStatusMessage("Held order restored to cart — ready to complete or edit.");
           void loadHeldOrdersCount();
         }}
         embedded={!standalone}

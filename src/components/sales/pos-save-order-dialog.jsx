@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import {
   creditCustomerToOption,
@@ -41,6 +41,8 @@ export function PosSaveOrderDialog({
   const [customerOptions, setCustomerOptions] = useState([]);
   const [prefillLoading, setPrefillLoading] = useState(false);
   const [localError, setLocalError] = useState(null);
+  const primaryActionRef = useRef(null);
+  const walkInNameRef = useRef(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -50,13 +52,20 @@ export function PosSaveOrderDialog({
     const prefillNum = String(prefillCustomerNum ?? "").trim();
     const startExisting = Boolean(prefillNum);
     setCustomerMode(startExisting ? "existing" : "walkin");
-    setWalkInName(prefillName);
+    setWalkInName(prefillName || (isHold ? "Walk-in" : ""));
     setCustomerNum(prefillNum);
     setSelectedCustomer(null);
     setCustomerOptions([]);
     setLocalError(null);
 
-    if (!prefillNum) return;
+    // Prefer Hold/Save for Enter; walk-in name still editable after.
+    const focusTimer = window.setTimeout(() => {
+      primaryActionRef.current?.focus();
+    }, 0);
+
+    if (!prefillNum) {
+      return () => window.clearTimeout(focusTimer);
+    }
 
     let cancelled = false;
     setPrefillLoading(true);
@@ -78,8 +87,9 @@ export function PosSaveOrderDialog({
 
     return () => {
       cancelled = true;
+      window.clearTimeout(focusTimer);
     };
-  }, [open, prefillWalkInName, prefillCustomerNum]);
+  }, [open, prefillWalkInName, prefillCustomerNum, isHold]);
 
   const searchCustomersForSelect = useCallback(async (query) => {
     const rows = await searchCreditCustomers(query, { perPage: 30 });
@@ -94,15 +104,6 @@ export function PosSaveOrderDialog({
 
   const linkedCustomer = selectedCustomer ?? selectedOption?.customer ?? null;
   const linkedKraPin = String(linkedCustomer?.kra_pin ?? "").trim();
-
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e) {
-      if (e.key === "Escape" && !saving) onClose?.();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, saving, onClose]);
 
   function switchToWalkIn() {
     setCustomerMode("walkin");
@@ -129,6 +130,7 @@ export function PosSaveOrderDialog({
       const name = walkInName.trim();
       if (!name) {
         setLocalError("Enter the walk-in customer's name.");
+        walkInNameRef.current?.focus();
         return;
       }
       onSave?.({ walkIn: true, walkInName: name, hold: submitMode === "hold" });
@@ -149,6 +151,33 @@ export function PosSaveOrderDialog({
     }
     onSave?.({ walkIn: false, customer, hold: submitMode === "hold" });
   }
+
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onKeyDown(e) {
+      if (saving) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose?.();
+        return;
+      }
+      if (e.key !== "Enter") return;
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        if (target.closest('[role="listbox"]')) return;
+        if (target.tagName === "TEXTAREA") return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      handleSaveRef.current(isHold ? "hold" : "save");
+    }
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open, saving, onClose, isHold]);
 
   if (!open || !mounted) return null;
 
@@ -219,6 +248,7 @@ export function PosSaveOrderDialog({
                 Walk-in customer name
               </span>
               <input
+                ref={walkInNameRef}
                 type="text"
                 className={inputCls}
                 value={walkInName}
@@ -228,7 +258,6 @@ export function PosSaveOrderDialog({
                 }}
                 placeholder="Customer name"
                 disabled={saving}
-                autoFocus
               />
             </label>
           ) : (
@@ -287,8 +316,17 @@ export function PosSaveOrderDialog({
           ) : null}
         </div>
         <div className="theme-dialog-footer grid grid-cols-2 gap-2 p-3">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onClose}
+            className="theme-secondary-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
           {isHold ? (
             <button
+              ref={primaryActionRef}
               type="button"
               disabled={saving || prefillLoading}
               onClick={() => handleSave("hold")}
@@ -298,6 +336,7 @@ export function PosSaveOrderDialog({
             </button>
           ) : (
             <button
+              ref={primaryActionRef}
               type="button"
               disabled={saving || prefillLoading}
               onClick={() => handleSave("save")}
@@ -306,14 +345,6 @@ export function PosSaveOrderDialog({
               {saving ? "Saving…" : "Save order"}
             </button>
           )}
-          <button
-            type="button"
-            disabled={saving}
-            onClick={onClose}
-            className="theme-secondary-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Cancel
-          </button>
         </div>
       </div>
     </div>,

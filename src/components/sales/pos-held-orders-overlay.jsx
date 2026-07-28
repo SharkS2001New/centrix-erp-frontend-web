@@ -63,7 +63,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
     try {
       const res = await apiRequest("/sales", {
         searchParams: {
-          per_page: 200,
+          per_page: 50,
           with_items: 0,
           "filter[status]": "held",
         },
@@ -91,9 +91,8 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
       setBusyOrderId(null);
       return;
     }
-    void loadUoms();
     loadHeldOrders();
-  }, [open, loadHeldOrders, loadUoms]);
+  }, [open, loadHeldOrders]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -112,6 +111,9 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
     setDetailLoadingId(key);
     setActionError(null);
     try {
+      if (uomById.size === 0) {
+        void loadUoms();
+      }
       const sale = await apiRequest(`/sales/${orderId}`);
       setDetailsById((prev) => ({ ...prev, [key]: sale }));
       return sale;
@@ -275,7 +277,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
             </div>
           ) : (
             <ul className="space-y-2 p-3">
-            {filtered.map((order, index) => {
+            {filtered.map((order) => {
               const key = orderKey(order);
               const detail = detailsById[key] ?? order;
               const items = detail?.items ?? [];
@@ -288,7 +290,6 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
                   className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm"
                 >
                   <details
-                    open={index === 0}
                     className="group w-full"
                     onToggle={(e) => handleDetailsToggle(order, e)}
                   >
