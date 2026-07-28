@@ -93,6 +93,7 @@ export function buildOptimisticCartLine(product, lineBody, finalComputed) {
     product_code: product.product_code,
     product_name: product.product_name,
     unit_price: lineBody.unit_price,
+    display_unit_price: lineBody.display_unit_price,
     quantity: lineBody.quantity,
     uom: lineBody.uom,
     product_vat: lineBody.product_vat,

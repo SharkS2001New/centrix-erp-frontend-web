@@ -4,10 +4,10 @@ import { useEffect } from "react";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   linePriceForTier,
-  smallUnitsPerLevel,
-  tierPriceAtMeasureLevel,
-  wholesalePriceAtMeasureLevel,
+  retailMarkupChunkSize,
+  wholesalePricePerSmallUnit,
 } from "@/lib/retail-pricing";
+import { uomConversionFactor } from "@/lib/stock-uom";
 import {
   EMPTY_PRICING_TIER,
   measureLevelLabel,
@@ -33,6 +33,28 @@ export function defaultRetailPricingTier(productUom, priceMode = "retail") {
   };
 }
 
+function previewQtyForTier(tier, productUom) {
+  const factor = uomConversionFactor(productUom);
+  const halfPack = factor >= 2 ? factor / 2 : 1;
+  const maxQty =
+    tier.max_qty !== "" && tier.max_qty != null ? Number(tier.max_qty) : null;
+  if (factor >= 2 && maxQty != null && maxQty <= halfPack) {
+    return Math.max(1, Number(tier.min_qty) || 1);
+  }
+  if (factor >= 2) {
+    return halfPack;
+  }
+  return Math.max(1, Number(tier.min_qty) || 1);
+}
+
+function markupFieldLabel(tier, productUom, smallLabel) {
+  const chunk = productUom ? retailMarkupChunkSize(tier, productUom) : 1;
+  if (chunk > 1) {
+    return `Markup (KES / ${chunk} ${smallLabel})`;
+  }
+  return `Markup (KES / ${smallLabel})`;
+}
+
 export function RetailPricingTiersEditor({
   tiers,
   onChange,
@@ -42,7 +64,7 @@ export function RetailPricingTiersEditor({
   const levels = uomMeasureLevels(productUom);
   const smallLabel = levels[0]?.label ?? "small unit";
   const wholesalePerSmall = productUom
-    ? wholesalePriceAtMeasureLevel(Number(unitPrice) || 0, productUom, "small")
+    ? wholesalePricePerSmallUnit(Number(unitPrice) || 0, productUom)
     : null;
 
   const productUomId = productUom?.id ?? null;
@@ -91,11 +113,11 @@ export function RetailPricingTiersEditor({
   return (
     <div className="space-y-3">
       <p className="theme-subtext text-xs leading-relaxed">
-        Quantity ranges (From / To) are counted in <strong>{smallLabel}</strong>. Mark each tier as{" "}
-        <strong>Retail</strong> or <strong>Wholesale</strong>:
-        <strong> Retail</strong> = wholesale base at the measured unit ÷ conversion + markup per that
-        unit; <strong>Wholesale</strong> = catalog wholesale subtotal at the measured unit(s) + markup
-        on the <strong>line total</strong> (not per unit).
+        Quantity ranges (From / To) are counted in <strong>{smallLabel}</strong>. Retail line
+        total:{" "}
+        <strong>(catalog unit price ÷ conversion × qty) + tier markup</strong>. Small bands on
+        pack products apply markup per {smallLabel}; larger bands apply markup per half-bag chunk
+        (e.g. 25 {smallLabel} of a 50 {smallLabel} bag).
         {wholesalePerSmall != null && Number(unitPrice) > 0 ? (
           <>
             {" "}
@@ -122,19 +144,14 @@ export function RetailPricingTiersEditor({
         tiers.map((tier, index) => {
           const priceMode = normalizeTierPriceMode(tier);
           const levelLabel = measureLevelLabel(productUom, tier.measure_level || "small");
-          const baseAtLevel =
-            productUom && Number(unitPrice) > 0
-              ? wholesalePriceAtMeasureLevel(
-                  Number(unitPrice),
-                  productUom,
-                  tier.measure_level || "small",
-                )
-              : null;
-          const sellAtLevel =
+          const previewQty = productUom ? previewQtyForTier(tier, productUom) : 1;
+          const lineExample =
             productUom && Number(unitPrice) >= 0
-              ? priceMode === "wholesale"
-                ? linePriceForTier(Number(unitPrice) || 0, tier, smallUnitsPerLevel(productUom, tier.measure_level || "small"), productUom)
-                : tierPriceAtMeasureLevel(Number(unitPrice) || 0, tier, productUom)
+              ? linePriceForTier(Number(unitPrice) || 0, tier, previewQty, productUom)
+              : null;
+          const wholesaleBase =
+            productUom && Number(unitPrice) > 0
+              ? wholesalePricePerSmallUnit(Number(unitPrice), productUom) * previewQty
               : null;
 
           return (
@@ -187,7 +204,7 @@ export function RetailPricingTiersEditor({
                   ))}
                 </select>
               </Field>
-              <Field label={priceMode === "wholesale" ? "Line markup (KES)" : "Markup (KES/unit)"}>
+              <Field label={markupFieldLabel(tier, productUom, smallLabel)}>
                 <input
                   type="number"
                   min="0"
@@ -200,19 +217,18 @@ export function RetailPricingTiersEditor({
               <div className="flex flex-col justify-end gap-1 sm:col-span-2 lg:col-span-1">
                 <p className="text-[11px] theme-subtext">
                   {tierPriceModeLabel(priceMode)} · {levelLabel}
-                  {baseAtLevel != null ? (
+                  {wholesaleBase != null ? (
                     <>
                       {" "}
-                      · base {baseAtLevel.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                      {priceMode === "wholesale" ? " + line markup" : " + markup"}
+                      · base {wholesaleBase.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      {" + markup"}
                     </>
                   ) : null}
                 </p>
-                {sellAtLevel != null ? (
+                {lineExample != null ? (
                   <p className="text-[11px] font-semibold text-[var(--theme-primary)]">
-                    {priceMode === "wholesale" ? "Line total (1 unit)" : "Sell"}:{" "}
-                    {sellAtLevel.toLocaleString(undefined, { maximumFractionDigits: 2 })} KES
-                    {priceMode === "wholesale" ? "" : ` per ${levelLabel}`}
+                    Example {previewQty} {smallLabel} line:{" "}
+                    {lineExample.toLocaleString(undefined, { maximumFractionDigits: 2 })} KES
                   </p>
                 ) : null}
                 <button

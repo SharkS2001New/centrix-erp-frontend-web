@@ -3,6 +3,7 @@ import {
   linePrice,
   retailMarkupApplications,
   resolvedMiddleFactor,
+  tiersForRetailPackage,
 } from "@/lib/retail-pricing";
 
 const sugarUom = {
@@ -69,6 +70,17 @@ describe("retail markup accumulation", () => {
     expect(linePrice(6250, sugarTiers, 75, true, sugarUom)).toBe(9465);
   });
 
+  it("prices configured retail tiers (1–12 kg +5, 12.5–50 kg +30 per half bag)", () => {
+    const configuredTiers = [
+      { min_qty: 1, max_qty: 12, measure_level: "small", price_mode: "retail", markup_price: 5 },
+      { min_qty: 12.5, max_qty: 50, measure_level: "small", price_mode: "retail", markup_price: 30 },
+    ];
+    expect(linePrice(6250, configuredTiers, 10, true, sugarUom)).toBe(1300);
+    expect(linePrice(6250, configuredTiers, 25, true, sugarUom)).toBe(3155);
+    expect(linePrice(6250, configuredTiers, 50, true, sugarUom)).toBe(6310);
+    expect(linePrice(6250, configuredTiers, 75, true, sugarUom)).toBe(9465);
+  });
+
   it("counts three markup applications for 75kg on a full-pack wholesale tier", () => {
     expect(retailMarkupApplications(75, sugarTiers[1], sugarUom)).toBe(3);
   });
@@ -80,6 +92,25 @@ describe("retail markup accumulation", () => {
 
   it("keeps wholesale session flat markup once per line", () => {
     expect(linePrice(6250, sugarTiers, 50, false, sugarUom)).toBe(6280);
+  });
+
+  it("legacy max_qty_measure + markup uses aggregate chunk markup on pack products", () => {
+    const legacyPackage = {
+      max_qty_measure: 50,
+      markup_price: 30,
+      wholesale_qty_measure: 0,
+    };
+    const tiers = tiersForRetailPackage(legacyPackage, sugarUom);
+    expect(linePrice(6250, tiers, 25, true, sugarUom)).toBe(3155);
+    expect(linePrice(6250, tiers, 50, true, sugarUom)).toBe(6310);
+    expect(linePrice(6250, tiers, 75, true, sugarUom)).toBe(9465);
+  });
+
+  it("legacy small-unit products keep per-piece retail markup", () => {
+    const legacyPackage = { max_qty_measure: 50, markup_price: 5, wholesale_qty_measure: 0 };
+    const pcsUom = { conversion_factor: 1, measure_name: "pcs", uom_type: "count" };
+    const tiers = tiersForRetailPackage(legacyPackage, pcsUom);
+    expect(linePrice(100, tiers, 10, true, pcsUom)).toBe(1050);
   });
 
   it("accumulates markup for legacy middle wholesale tiers", () => {

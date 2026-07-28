@@ -330,7 +330,7 @@ export function resolveSaleLinePrintColumns(
   const amountBeforeDisc = amountAfterDisc + discount;
   const catalogBase = Number(line?.product?.unit_price ?? 0);
   const packageSettings = retailPackage ?? saleLineRetailPackage(line);
-  const tiers = tiersForRetailPackage(packageSettings);
+  const tiers = tiersForRetailPackage(packageSettings, uom);
 
   const qty = isRetail
     ? baseQty > 0

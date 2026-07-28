@@ -255,11 +255,16 @@ function presentLocalOfflineCart(local) {
     lines: (local.lines ?? []).map((line) => {
       const qty = Number(line.quantity ?? 0);
       const price = Number(line.unit_price ?? 0);
+      const storedAmount = Number(line.amount);
+      const amount =
+        Number.isFinite(storedAmount) && storedAmount > 0
+          ? Math.round(storedAmount * 100) / 100
+          : Math.round(qty * price * 100) / 100;
       return {
         ...line,
         id: line.client_line_id,
         update_code: line.client_line_id,
-        amount: Math.round(qty * price * 100) / 100,
+        amount,
       };
     }),
   };

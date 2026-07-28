@@ -62,7 +62,7 @@ export function posQuantityFieldMeta(
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
   const retailPricing = usesPosRetailPricing(sellWholesale, product, retailPackage);
-  const tiers = tiersForRetailPackage(retailPackage);
+  const tiers = tiersForRetailPackage(retailPackage, uom);
 
   if (isPosRetailSession(sellWholesale) && !product) {
     return {
@@ -128,7 +128,7 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
   const qty = Math.max(0, Number(entryQty) || 0);
-  const tiers = tiersForRetailPackage(retailPackage);
+  const tiers = tiersForRetailPackage(retailPackage, uom);
   const retailPricing = usesPosRetailPricing(sellWholesale, product, retailPackage);
 
   if (!retailPricing) {
@@ -358,7 +358,7 @@ export function computePosLine({
   const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellWholesale);
   const { baseQty, packQty, pricingRetail, retailSession } = resolved;
   const catalogUnitPrice = Number(product?.unit_price ?? 0);
-  const tiers = tiersForRetailPackage(retailPackage);
+  const tiers = tiersForRetailPackage(retailPackage, uom);
   const wholesaleMarkup = Number(retailPackage?.wholesale_markup_price ?? 0);
 
   let lineAmount;

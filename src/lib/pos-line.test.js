@@ -67,15 +67,19 @@ describe("computePosLine retail amount vs unit", () => {
     expect(line.displayUnitPrice).toBe(125);
   });
 
-  it("does not treat pack-scaled unit as per-kg override", () => {
-    // Old bug: display was (3155/25)*50 = 6310, then amount = 25*6310
+  it("prices legacy retail package settings for 25kg sugar", () => {
+    const legacyPackage = {
+      max_qty_measure: 50,
+      markup_price: 30,
+      wholesale_qty_measure: 0,
+    };
     const line = computePosLine({
       product: sugarProduct,
       entryQty: "25",
       sellWholesale: false,
-      retailPackage: sugarRetailPackage,
+      retailPackage: legacyPackage,
     });
-    expect(line.displayUnitPrice).not.toBe(6310);
     expect(line.lineAmount).toBe(3155);
+    expect(line.displayUnitPrice).toBe(125);
   });
 });
