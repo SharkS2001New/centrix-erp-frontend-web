@@ -6,6 +6,7 @@ import {
   resolveTillReportBundle,
   resolveNetSalesMinusFloat,
   resolveTillReportNo,
+  resolveTillPaymentSummary,
 } from "@/lib/pos-till";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
 import {
@@ -50,24 +51,9 @@ function wrapSummaryTable(rowsHtml) {
 }
 
 function paymentPrintRows(report) {
-  const sales = report?.sales ?? {};
-  const payments = Array.isArray(report?.payments) ? report.payments : [];
-
-  if (payments.length > 0) {
-    return payments.map((entry) =>
-      row(entry.method_name ?? entry.method_code ?? "Payment", amt(entry.total)),
-    );
-  }
-
-  return [
-    row("Cash", amt(sales.cash)),
-    row("M-Pesa", amt(sales.mpesa)),
-    row("Equity", amt(sales.equity ?? 0)),
-    row("KCB", amt(sales.kcb ?? 0)),
-    ...(Number(sales.bank) > 0 && !sales.equity && !sales.kcb
-      ? [row("Bank", amt(sales.bank))]
-      : []),
-  ];
+  return resolveTillPaymentSummary(report).map((entry) =>
+    row(entry.method_name ?? entry.method_code ?? "Payment", amt(entry.total)),
+  );
 }
 
 /**
@@ -211,15 +197,15 @@ export function buildPosTillReportHtml({
     .divider { border-top: 1px dashed #000; margin: 4px 0; page-break-inside: avoid; break-inside: avoid; }
     .meta { font-size: ${px(10)}; line-height: 1.3; margin: 1px 0; word-break: break-word; overflow-wrap: anywhere; page-break-inside: avoid; break-inside: avoid; }
     .meta-label { font-weight: 700; }
-    .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(10)}; page-break-inside: avoid; break-inside: avoid; }
-    .summary-table col.col-label { width: 62%; }
-    .summary-table col.col-value { width: 38%; }
-    .summary-table td { padding: 2px 0; vertical-align: top; }
+    .summary-table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(10)}; page-break-inside: avoid; break-inside: avoid; }
+    .summary-table col.col-label { width: 70%; }
+    .summary-table col.col-value { width: 30%; }
+    .summary-table td { padding: 1px 0; vertical-align: top; overflow: hidden; }
     .summary-table tr { page-break-inside: avoid; break-inside: avoid; }
-    .summary-table tr.section-row td.section-label { padding-top: 6px; font-weight: 700; text-transform: uppercase; font-size: ${px(10)}; letter-spacing: .04em; border-top: 1px dashed #000; }
+    .summary-table tr.section-row td.section-label { padding-top: 6px; font-weight: 700; text-transform: uppercase; font-size: ${px(10)}; letter-spacing: .04em; border-top: 1px dashed #000; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table tr.section-row-first td.section-label { padding-top: 2px; border-top: 0; }
-    .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; padding-right: 4px; }
-    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; padding-right: 4px; max-width: 0; }
+    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; max-width: 0; }
     .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
     .footer { margin-top: 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 700); letter-spacing: .04em; page-break-inside: avoid; break-inside: avoid; }

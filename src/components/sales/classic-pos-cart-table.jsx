@@ -152,6 +152,7 @@ export function ClassicPosCartTable({
   replacingLineId = null,
   swapDraftLineId = null,
   swapDraftQty = "",
+  swapLinePreview = null,
   swapLineQtyRef = null,
   onScanCodeClick,
   busy = false,
@@ -340,6 +341,10 @@ export function ClassicPosCartTable({
             const checked = selectedLineIds?.has(String(line.id)) ?? false;
             const replacing = String(replacingLineId) === String(line.id);
             const swapDraftActive = String(swapDraftLineId) === String(line.id);
+            const swapPreviewActive =
+              swapDraftActive &&
+              swapLinePreview &&
+              String(swapLinePreview.lineId) === String(line.id);
             const qtyAdjust = lineQtyAdjust?.(line) ?? {
               canDecrease: false,
               canIncrease: false,
@@ -388,14 +393,22 @@ export function ClassicPosCartTable({
                   tabIndex={replacing || busy || lineBusy ? -1 : 0}
                 >
                   {replacing ? (
-                    scanSearch
+                    swapPreviewActive ? (
+                      <span className="classic-pos-scan-code">{swapLinePreview.productCode}</span>
+                    ) : (
+                      scanSearch
+                    )
                   ) : (
                     <span className="classic-pos-scan-code">{line.product_code}</span>
                   )}
                 </td>
-                <td className="classic-pos-col-desc">{line.product_name}</td>
+                <td className="classic-pos-col-desc">
+                  {swapPreviewActive ? swapLinePreview.productName : line.product_name}
+                </td>
                 <td className="classic-pos-col-pkg">
-                  {linePackage?.(line) ?? line.package_label ?? line.uom_name ?? "—"}
+                  {swapPreviewActive
+                    ? swapLinePreview.package
+                    : linePackage?.(line) ?? line.package_label ?? line.uom_name ?? "—"}
                 </td>
                 <td className="classic-pos-col-qty">
                   <ClassicLineQtyCell
@@ -415,13 +428,25 @@ export function ClassicPosCartTable({
                     inputRef={swapDraftActive ? swapLineQtyRef : null}
                   />
                 </td>
-                <td className="classic-pos-col-price tabular-nums">{lineUnitPrice?.(line)}</td>
+                <td className="classic-pos-col-price tabular-nums">
+                  {swapPreviewActive
+                    ? Number(swapLinePreview.unitPrice).toLocaleString()
+                    : lineUnitPrice?.(line)}
+                </td>
                 {showLineDiscount ? (
                   <td className="classic-pos-col-disc tabular-nums">{lineDiscount?.(line)}</td>
                 ) : null}
-                <td className="classic-pos-col-vat tabular-nums">{lineVat?.(line)}</td>
+                <td className="classic-pos-col-vat tabular-nums">
+                  {swapPreviewActive
+                    ? Number(swapLinePreview.vat).toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })
+                    : lineVat?.(line)}
+                </td>
                 <td className="classic-pos-col-amt tabular-nums font-semibold">
-                  {lineAmount?.(line)}
+                  {swapPreviewActive
+                    ? Number(swapLinePreview.amount).toLocaleString()
+                    : lineAmount?.(line)}
                 </td>
                 {selectionEnabled ? (
                   <td

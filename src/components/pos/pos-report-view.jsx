@@ -1,6 +1,6 @@
 "use client";
 
-import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat, cashMovementLabel, resolveTillReportNo } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat, cashMovementLabel, resolveTillReportNo, resolveTillPaymentSummary } from "@/lib/pos-till";
 
 function ReportSection({ title, children, action = null }) {
   return (
@@ -36,25 +36,10 @@ function ReportSummaryRows({ items, grandLabels = [] }) {
 }
 
 function paymentSummaryItems(report) {
-  const sales = report?.sales ?? {};
-  const payments = Array.isArray(report?.payments) ? report.payments : [];
-
-  if (payments.length > 0) {
-    return payments.map((row) => ({
-      label: row.method_name ?? row.method_code ?? "Payment",
-      value: formatTillKes(row.total),
-    }));
-  }
-
-  return [
-    { label: "Cash", value: formatTillKes(sales.cash) },
-    { label: "M-Pesa", value: formatTillKes(sales.mpesa) },
-    { label: "Equity", value: formatTillKes(sales.equity) },
-    { label: "KCB", value: formatTillKes(sales.kcb) },
-    ...(Number(sales.bank) > 0 && !Number(sales.equity) && !Number(sales.kcb)
-      ? [{ label: "Bank", value: formatTillKes(sales.bank) }]
-      : []),
-  ];
+  return resolveTillPaymentSummary(report).map((row) => ({
+    label: row.method_name ?? row.method_code ?? "Payment",
+    value: formatTillKes(row.total),
+  }));
 }
 
 function FloatBreakdownSection({ session, report, showFloatBreakdown }) {

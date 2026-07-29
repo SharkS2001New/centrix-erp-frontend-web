@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildPosTillReportHtml } from "@/components/pos/pos-shared";
-import { resolveTillReportNo } from "@/lib/pos-till";
+import { resolveTillReportNo, resolveTillPaymentSummary } from "@/lib/pos-till";
 import { createOrgPrintPx, orgPrintFontFamilyFromSettings } from "@/lib/print-typography";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { THERMAL_PAPER_WIDTH_MM } from "@/lib/thermal-receipt-layout";
@@ -38,6 +38,23 @@ const sampleSession = {
   opened_at: "2026-07-28T08:00:00Z",
   working_amount: 9998210,
 };
+
+describe("resolveTillPaymentSummary", () => {
+  it("prefers sales-column splits when sale_payments only has a single cash row", () => {
+    const rows = resolveTillPaymentSummary({
+      sales: { cash: 400, mpesa: 300, equity: 300, kcb: 0 },
+      payments: [{ method_code: "CASH", method_name: "Cash", total: 1000 }],
+    });
+
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method_code: "CASH", total: 400 }),
+        expect.objectContaining({ method_code: "MPESA", total: 300 }),
+        expect.objectContaining({ method_code: "EQUITY", total: 300 }),
+      ]),
+    );
+  });
+});
 
 describe("resolveTillReportNo", () => {
   it("prefers till_number and falls back to session till id", () => {

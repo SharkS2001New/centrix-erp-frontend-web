@@ -57,6 +57,17 @@ function kesNum(value) {
   return Number(value ?? 0).toLocaleString("en-KE", { maximumFractionDigits: 0 });
 }
 
+function floatPaymentLabel(type) {
+  const key = String(type ?? "").toUpperCase();
+  if (key === "MPESA" || key === "M-PESA") return "M-Pesa";
+  if (key === "CASH") return "Cash";
+  if (key === "EQUITY") return "Equity";
+  if (key === "KCB") return "KCB";
+  if (key === "BANK") return "Bank";
+  if (key === "CHEQUE") return "Cheque";
+  return key.replace(/_/g, " ") || "Other";
+}
+
 function PaymentDonut({ payments }) {
   const segments = [
     { key: "cash", label: "Cash", value: Number(payments?.cash ?? 0), color: "#185FA5" },
@@ -258,6 +269,13 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
     );
   }
 
+  for (const row of report?.float_breakdown ?? []) {
+    push("Float breakdown", floatPaymentLabel(row.payment_type), kesNum(row.amount));
+  }
+  if ((report?.float_breakdown ?? []).length) {
+    push("Float breakdown", "Total float", kesNum(report.float_breakdown_total ?? report?.summary?.opening_float));
+  }
+
   for (const row of report?.expenses ?? []) {
     push("Expenses", row.group_name ?? "Other", kesNum(row.amount));
   }
@@ -397,6 +415,34 @@ export function EndOfDayReportScreen() {
       Number(payments.card ?? 0),
     [payments],
   );
+
+  const cashierSalesRows = useMemo(() => {
+    const rows = report?.cashiers ?? [];
+    if (rows.length > 0) return rows;
+    if (!cashierId || !report?.summary) return [];
+
+    const s = report.summary;
+    if (Number(s.transactions ?? 0) <= 0 && Number(s.gross_sales ?? 0) <= 0) return [];
+
+    const p = report.payments ?? {};
+    return [
+      {
+        cashier_id: Number(cashierId),
+        cashier: cashierName ?? "—",
+        gross_sales: s.gross_sales,
+        total_vat: s.total_vat,
+        transactions: s.transactions,
+        cash_collected: p.cash,
+        mpesa_collected: p.mpesa,
+        bank_collected: p.bank,
+        opening_float: s.opening_float,
+      },
+    ];
+  }, [report, cashierId, cashierName]);
+
+  const floatBreakdownRows = report?.float_breakdown ?? [];
+  const floatBreakdownTotal =
+    report?.float_breakdown_total ?? summary.opening_float ?? 0;
 
   const isMonthly = reportMode === "monthly" || report?.report_mode === "monthly";
   const periodStart = report?.period_start ?? (isMonthly ? `${saleMonth}-01` : saleDate);
@@ -637,7 +683,7 @@ export function EndOfDayReportScreen() {
             </Panel>
 
             <Panel title="Cashier sales">
-              {(report.cashiers ?? []).length === 0 ? (
+              {cashierSalesRows.length === 0 ? (
                 <p className="theme-subtext text-sm">No cashier sales for this date.</p>
               ) : (
                 <table className="w-full border-collapse text-sm">
@@ -654,7 +700,7 @@ export function EndOfDayReportScreen() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(report.cashiers ?? []).map((row) => {
+                    {cashierSalesRows.map((row) => {
                       const isSelected = cashierId && String(row.cashier_id) === cashierId;
                       return (
                         <tr
@@ -736,6 +782,37 @@ export function EndOfDayReportScreen() {
                 </table>
               )}
             </Panel>
+            ) : null}
+          </div>
+
+          <div className={`mt-6 grid gap-4 ${requireTillFloat ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+            {requireTillFloat ? (
+              <Panel title="Float breakdown">
+                {floatBreakdownRows.length === 0 ? (
+                  <p className="theme-subtext text-sm">No float entries for this date.</p>
+                ) : (
+                  <>
+                    <table className="w-full border-collapse text-sm">
+                      <tbody>
+                        {floatBreakdownRows.map((row) => (
+                          <tr
+                            key={row.payment_type}
+                            className="border-b border-[var(--theme-border)] last:border-b-0"
+                          >
+                            <td className="theme-text-muted py-2">{floatPaymentLabel(row.payment_type)}</td>
+                            <td className="py-2 text-right font-medium text-[var(--theme-text)]">
+                              {formatTillKes(row.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="mt-3 border-t border-[var(--theme-border)] pt-2">
+                      <SummaryRow label="Total float" value={formatTillKes(floatBreakdownTotal)} bold />
+                    </div>
+                  </>
+                )}
+              </Panel>
             ) : null}
 
             <Panel

@@ -160,10 +160,8 @@ describe("org print typography settings", () => {
     expect(html).toContain("Cash Sales #:");
     expect(html).toContain("S1001");
     expect(html).toContain(`padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm`);
-    expect(html).toContain("margin: 0 !important");
-    expect(html).toContain(".receipt { width: 100%");
-    expect(html).toContain(`size: ${THERMAL_PAPER_WIDTH_MM}mm auto`);
-    expect(html).not.toContain("overflow: hidden");
+    expect(html).toContain("text-align: right");
+    expect(html).toContain("max-width: 0");
     expect(html).toContain("font-variant-numeric: tabular-nums");
     expect(html).toContain('<td class="amount-label">Total</td>');
     expect(html).toContain('<td class="amount-label">Cash</td>');

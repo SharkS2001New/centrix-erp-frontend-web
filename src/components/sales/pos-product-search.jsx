@@ -236,7 +236,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         setHighlight(-1);
       } else if (onEscapeKey) {
         onEscapeKey();
-        return;
       }
       // Keep focus on Scan code and select text for the next scan.
       window.requestAnimationFrame(() => {

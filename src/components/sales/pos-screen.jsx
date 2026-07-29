@@ -1955,6 +1955,11 @@ export function PosScreen({ standalone = false }) {
     });
   }
 
+  /** Focus Scan code only — used after Esc closes overlays without clearing the entry row. */
+  function focusScanCode() {
+    focusClassicProductSearch();
+  }
+
   function clearClassicEntryFields() {
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
@@ -2885,6 +2890,8 @@ export function PosScreen({ standalone = false }) {
         product,
         quantity: String(quantity),
       });
+      setSearchQuery(product.product_code ?? "");
+      setSearchResults([]);
       setStatusMessage(
         `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
       );
@@ -3183,6 +3190,36 @@ export function PosScreen({ standalone = false }) {
     retailByCode,
     routeMarkupPerUnit,
   ]);
+
+  const swapLinePreview = useMemo(() => {
+    if (!swapDraft?.product || swapDraft.quantity == null || swapDraft.quantity === "") {
+      return null;
+    }
+    const isRetailLine = cartLineRetailStockFlag(swapDraft.line);
+    const computed = applyComputedPrice(
+      swapDraft.product,
+      swapDraft.quantity,
+      0,
+      null,
+      isRetailLine,
+      !isRetailLine,
+    );
+    const amount = enablePosCashRounding
+      ? roundLightStoresAmount(computed.lineAmount)
+      : computed.lineAmount;
+    return {
+      lineId: swapDraft.lineId,
+      productCode: swapDraft.product.product_code,
+      productName:
+        swapDraft.product.product_name ??
+        swapDraft.product.description ??
+        swapDraft.product.product_code,
+      package: computed.packagingLabel,
+      unitPrice: computed.displayUnitPrice,
+      vat: lineProductVat(swapDraft.product, computed.lineAmount),
+      amount,
+    };
+  }, [swapDraft, sellWholesale, retailByCode, routeMarkupPerUnit, enablePosCashRounding]);
 
   const lineStockCheck = useMemo(() => {
     if (!selectedProduct || allowNegativeStock) {
@@ -5737,6 +5774,7 @@ export function PosScreen({ standalone = false }) {
     toggleRetailWholesaleMode,
     cancelReplaceCartLine,
     focusProductSearch,
+    focusScanCode,
     closeProductSearchDropdown,
     handleNewOrder,
     startFreshWorkspace,
@@ -5824,6 +5862,23 @@ export function PosScreen({ standalone = false }) {
       }
     }
 
+    function focusScanAfterEsc(actions) {
+      const attempt = () => {
+        if (isModalOpen(posShortcutStateRef.current)) return false;
+        actions.focusScanCode();
+        return true;
+      };
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (attempt()) return;
+          // Confirm dialog / slow unmount — one more try after the overlay is gone.
+          window.setTimeout(() => {
+            attempt();
+          }, 50);
+        });
+      });
+    }
+
     function onPosKeyEvent(e, phase) {
       const state = posShortcutStateRef.current;
       const actions = posShortcutActionsRef.current;
@@ -5899,21 +5954,23 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      if (isModalOpen(state)) {
-        if (e.key === "Escape" && state.priceCheckerOpen) {
-          setPriceCheckerOpen(false);
+      if (e.key === "Escape") {
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
+        const modalOpen = isModalOpen(state);
+        if (state.replacingLineId && !modalOpen) {
+          actions.cancelReplaceCartLine();
+        }
+        if (modalOpen) {
+          focusScanAfterEsc(actions);
+        } else {
+          // Open workspace: reset entry row and focus Scan code.
+          actions.focusProductSearch();
         }
         return;
       }
 
-      if (e.key === "Escape") {
-        claimPosFunctionKeyEvent(e);
-        e.__centrixPosShortcutHandled = true;
-        if (state.replacingLineId) {
-          actions.cancelReplaceCartLine();
-        }
-        // Always return focus to Scan code on the open workspace.
-        actions.focusProductSearch();
+      if (isModalOpen(state)) {
         return;
       }
 
@@ -6789,6 +6846,7 @@ export function PosScreen({ standalone = false }) {
                 replacingLineId={replacingLineId}
                 swapDraftLineId={swapDraft?.lineId ?? null}
                 swapDraftQty={swapDraft?.quantity ?? ""}
+                swapLinePreview={swapLinePreview}
                 swapLineQtyRef={swapLineQtyRef}
                 onScanCodeClick={(lineId) => beginReplaceCartLine(lineId)}
                 selectionEnabled

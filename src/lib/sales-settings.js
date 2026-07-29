@@ -1221,6 +1221,8 @@ export function resolveShowBackofficeCheckoutOnCreate(moduleSettings) {
 /**
  * External POS + Create order cash rounding (Light Stores last-digit rule).
  * Explicit platform flag wins; if unset, classic layout keeps the former always-on behaviour.
+ *
+ * `/erp/capabilities` resolves the effective flag server-side for orgs on classic POS.
  */
 export function resolveEnablePosCashRounding(moduleSettings) {
   const raw = moduleSettings?.sales ?? {};

@@ -155,9 +155,9 @@ export function buildKraDocumentQrHtml(
     ? ""
     : `margin-top:8px;font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.35;`;
 
-  return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;">
-      <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;" />
-      <div class="${captionClass}" style="${captionStyle}">
+  return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;max-width:100%;overflow:hidden;box-sizing:border-box;">
+      <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;max-width:100%;" />
+      <div class="${captionClass}" style="${captionStyle}${isThermal ? "max-width:100%;padding:0 1px;overflow-wrap:anywhere;word-break:break-word;" : ""}">
         Scan to verify this invoice on KRA eTIMS platform
       </div>
     </div>`;
