@@ -2642,11 +2642,17 @@ export function PosScreen({ standalone = false }) {
           mergeTarget ??
           activeCart.lines?.find((line) => String(cartLineRef(line)) === String(targetLineRef));
         if (base && !String(base.id ?? "").startsWith("pending-")) {
-          const idx = draftLines.findIndex(
-            (line) =>
-              String(line.product_code) === String(product.product_code) &&
-              Number(line.on_wholesale_retail ?? 0) === Number(lineBody.on_wholesale_retail ?? 0),
+          const preserveRef = targetLineRef ?? cartLineRef(mergeTarget);
+          let idx = draftLines.findIndex(
+            (line) => String(cartLineRef(line)) === String(preserveRef),
           );
+          if (idx < 0 && mergeTarget) {
+            idx = draftLines.findIndex(
+              (line) =>
+                String(line.product_code) === String(product.product_code) &&
+                Number(line.on_wholesale_retail ?? 0) === Number(lineBody.on_wholesale_retail ?? 0),
+            );
+          }
           if (idx >= 0) {
             draftLines[idx] = {
               ...draftLines[idx],
@@ -3009,43 +3015,20 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
 
-    const activeCart = cartRef.current ?? cart;
-    // Previous-order / offline: swap locally until Complete flushes.
-    if (activeCart?.held_order_num || activeCart?.offline) {
-      const without = (activeCart.lines ?? []).filter(
-        (l) => String(cartLineRef(l)) !== String(lineRef) && !sameLineId(l.id, line.id),
-      );
-      let nextCart = { ...activeCart, lines: without };
-      cartRef.current = nextCart;
-      setCart(nextCart);
-      return commitCartLine({
-        product,
-        computed,
-        incrementBaseQty: computed.baseQty,
-        discount,
-        override,
-        clearEntry: true,
-        successMessage: null,
-        lineRetailStockFlagOverride: isRetailLine,
-      });
-    }
-
-    const removed = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
-      method: "DELETE",
-    });
-    setCart(removed);
-
-    const ok = await commitCartLine({
+    // Swap replaces this cart row in place (PATCH / local edit) — never delete + add,
+    // which duplicated lines when cartRef lagged behind setCart after DELETE.
+    return commitCartLine({
       product,
       computed,
       incrementBaseQty: computed.baseQty,
+      editingId: line.id,
+      editingRef: lineRef,
       discount,
       override,
       clearEntry: true,
       successMessage: null,
       lineRetailStockFlagOverride: isRetailLine,
     });
-    return ok;
   }
 
   useEffect(() => {
