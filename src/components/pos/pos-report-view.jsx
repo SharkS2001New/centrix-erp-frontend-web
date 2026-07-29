@@ -1,6 +1,17 @@
 "use client";
 
-import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat, cashMovementLabel, resolveTillReportNo, resolveTillPaymentSummary } from "@/lib/pos-till";
+import {
+  formatTillKes,
+  formatTillKesExact,
+  formatSessionDateTime,
+  formatSessionTime,
+  normalizeFloatEntries,
+  formatFloatEntryDate,
+  cashMovementLabel,
+  resolveTillReportNo,
+  resolveTillReportPaymentLines,
+  resolveTillSalesSummaryRows,
+} from "@/lib/pos-till";
 
 function ReportSection({ title, children, action = null }) {
   return (
@@ -24,22 +35,22 @@ function ReportSummaryRows({ items, grandLabels = [] }) {
         return (
           <div
             key={item.label}
-            className={`flex items-baseline justify-between gap-4 py-1 ${grand ? "mt-1 border-t border-slate-200 pt-2 font-semibold" : ""}`}
+            className={`py-1 ${grand ? "mt-1 border-t border-slate-200 pt-2 font-semibold" : ""}`}
           >
-            <dt className={grand ? "text-slate-800" : "text-slate-600"}>{item.label}</dt>
-            <dd className={`shrink-0 tabular-nums ${item.valueClassName ?? "text-slate-900"}`}>{item.value}</dd>
+            <div className="flex items-baseline justify-between gap-4">
+              <dt className={grand ? "text-slate-800" : "text-slate-600"}>{item.label}</dt>
+              <dd className={`shrink-0 tabular-nums ${item.valueClassName ?? "text-slate-900"}`}>
+                {item.value}
+              </dd>
+            </div>
+            {item.hint ? (
+              <p className="mt-0.5 text-[11px] italic leading-snug text-slate-400">{item.hint}</p>
+            ) : null}
           </div>
         );
       })}
     </dl>
   );
-}
-
-function paymentSummaryItems(report) {
-  return resolveTillPaymentSummary(report).map((row) => ({
-    label: row.method_name ?? row.method_code ?? "Payment",
-    value: formatTillKes(row.total),
-  }));
 }
 
 function FloatBreakdownSection({ session, report, showFloatBreakdown }) {
@@ -111,40 +122,45 @@ function CashMovementsSection({ report }) {
   );
 }
 
-export function PosReportView({ report, session, tillName, till = null, cashierName, showCashReconciliation = false, variance = null, showFloatBreakdown = false }) {
+export function PosReportView({
+  report,
+  session,
+  tillName,
+  till = null,
+  cashierName,
+  showCashReconciliation = false,
+  variance = null,
+  showFloatBreakdown = false,
+}) {
   const sales = report?.sales ?? {};
   const tillReport = report?.till ?? {};
-  const sessionExpenses = Number(report?.session_expenses ?? 0);
+  const sessionExpenses = Number(report?.session_expenses ?? tillReport?.session_expenses ?? 0);
   const tillNo = resolveTillReportNo({ tillName, till, session, report });
-  const netSales = Number(sales.net_sales ?? sales.net ?? 0);
-  const openingFloat = Number(tillReport.opening_float ?? session?.working_amount ?? 0);
-  const netSalesMinusFloat = showFloatBreakdown
-    ? resolveNetSalesMinusFloat({
-        netSales,
-        openingFloat,
-        netSalesMinusFloat: sales.net_sales_minus_float,
-      })
-    : null;
+
+  const paymentItems = resolveTillReportPaymentLines(report).map((row) => ({
+    label: row.label,
+    value: formatTillKes(row.total),
+  }));
+  paymentItems.push({
+    label: "Total paid debtors",
+    value: formatTillKes(sales.debtor_collections ?? 0),
+  });
 
   const salesItems = [
-    { label: "Transactions", value: sales.transactions ?? 0 },
-    { label: "Net sales", value: formatTillKes(netSales) },
-    ...(showFloatBreakdown
-      ? [{ label: "Net sales minus float", value: formatTillKes(netSalesMinusFloat) }]
-      : []),
-    ...(Number(sales.total_vat) > 0
-      ? [{ label: "VAT total", value: formatTillKes(sales.total_vat) }]
-      : []),
-    { label: "Refunds", value: formatTillKes(sales.refunds) },
-    ...(sessionExpenses > 0
-      ? [{ label: "Session expenses", value: `−${formatTillKes(sessionExpenses)}`, valueClassName: "text-red-700" }]
-      : []),
-    ...(Number(sales.debtor_collections) > 0
-      ? [{ label: "Debtor collections", value: formatTillKes(sales.debtor_collections) }]
-      : []),
+    {
+      label: "Total expenses",
+      value: formatTillKes(sessionExpenses),
+      valueClassName: sessionExpenses > 0 ? "text-red-700" : undefined,
+    },
   ];
 
-  const paymentItems = paymentSummaryItems(report);
+  const salesSummaryItems = resolveTillSalesSummaryRows(report, session, {
+    showFloatBreakdown,
+  }).map((row) => ({
+    label: row.label,
+    value: formatTillKes(row.amount),
+    hint: row.hint,
+  }));
 
   const cashItems = [
     ...(showFloatBreakdown
@@ -155,7 +171,8 @@ export function PosReportView({ report, session, tillName, till = null, cashierN
             label: "Gross till total",
             value: formatTillKes(
               tillReport.gross_total ??
-                Number(tillReport.opening_float ?? session?.working_amount ?? 0) + Number(tillReport.cash_collected ?? sales.cash ?? 0),
+                Number(tillReport.opening_float ?? session?.working_amount ?? 0)
+                + Number(tillReport.cash_collected ?? sales.cash ?? 0),
             ),
           },
         ]
@@ -180,9 +197,7 @@ export function PosReportView({ report, session, tillName, till = null, cashierN
       : []),
   ];
 
-  const cashGrandLabels = showCashReconciliation
-    ? ["Variance"]
-    : ["Expected cash"];
+  const cashGrandLabels = showCashReconciliation ? ["Variance"] : ["Expected cash"];
 
   return (
     <div className="space-y-4 text-sm">
@@ -200,12 +215,16 @@ export function PosReportView({ report, session, tillName, till = null, cashierN
       <div className="space-y-4 border-t border-slate-200 pt-4">
         <FloatBreakdownSection session={session} report={report} showFloatBreakdown={showFloatBreakdown} />
 
+        <ReportSection title="Payment summary">
+          <ReportSummaryRows items={paymentItems} />
+        </ReportSection>
+
         <ReportSection title="Sales">
           <ReportSummaryRows items={salesItems} />
         </ReportSection>
 
-        <ReportSection title="Payment summary">
-          <ReportSummaryRows items={paymentItems} />
+        <ReportSection title="Sales summary">
+          <ReportSummaryRows items={salesSummaryItems} />
         </ReportSection>
 
         <CashMovementsSection report={report} />

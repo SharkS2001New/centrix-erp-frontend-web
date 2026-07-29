@@ -149,7 +149,6 @@ export function ClassicPosCartTable({
   orderNo = "",
   onOrderNoChange,
   onOrderNoSubmit,
-  onOrderNoClick = null,
   orderNavError = null,
   showRetailModeHint = false,
   sellAtRetail = false,
@@ -268,9 +267,9 @@ export function ClassicPosCartTable({
               title={
                 orderNavLocked
                   ? orderNavHint || "Order editing is disabled"
-                  : "Shows next order #. Click to open the current completed order, or type a number and press Enter."
+                  : "Shows next order #. Type an order number and press Enter, or use ← for the latest completed order."
               }
-              onClick={() => onOrderNoClick?.()}
+              onFocus={(e) => e.target.select()}
               onChange={(e) => onOrderNoChange?.(e.target.value)}
               onKeyDown={(e) => {
                 if (isPosFunctionKeyEvent(e)) return;

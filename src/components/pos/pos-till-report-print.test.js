@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildPosTillReportHtml } from "@/components/pos/pos-shared";
-import { resolveTillReportNo, resolveTillPaymentSummary } from "@/lib/pos-till";
+import { resolveTillReportNo, resolveTillPaymentSummary, resolveTillReportPaymentLines, resolveTillSalesSummaryRows } from "@/lib/pos-till";
 import { createOrgPrintPx, orgPrintFontFamilyFromSettings } from "@/lib/print-typography";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { THERMAL_CONTENT_WIDTH_MM, THERMAL_PAPER_WIDTH_MM } from "@/lib/thermal-receipt-layout";
@@ -17,21 +17,29 @@ vi.mock("@/lib/print-module-settings", () => ({
 const sampleReport = {
   sales: {
     transactions: 3,
+    gross_sales: 23510,
     net_sales: 23510,
+    net_sales_minus_expenses: 19110,
+    net_sales_minus_vat: 18000,
+    net_sales_minus_float: 912900,
+    total_vat: 1110,
     refunds: 0,
     cash: 10000,
     mpesa: 8000,
     equity: 5510,
+    debtor_collections: 2500,
   },
   payments: [
     { method_code: "CASH", method_name: "Cash", total: 10000 },
     { method_code: "MPESA", method_name: "M-Pesa", total: 8000 },
     { method_code: "EQUITY", method_name: "Equity", total: 5510 },
   ],
+  session_expenses: 4400,
   till: {
     opening_float: 9998210,
     cash_collected: 23510,
     gross_total: 10021720,
+    session_expenses: 4400,
   },
   expected_cash: 10021720,
   float_entries: [
@@ -91,6 +99,34 @@ describe("resolveTillReportNo", () => {
   });
 });
 
+describe("resolveTillReportPaymentLines", () => {
+  it("always returns the four standard tender lines", () => {
+    const rows = resolveTillReportPaymentLines(sampleReport);
+    expect(rows.map((row) => row.label)).toEqual([
+      "Cash payment",
+      "M-Pesa payments",
+      "Equity payment",
+      "K.C.B payment",
+    ]);
+    expect(rows.find((row) => row.method_code === "CASH")?.total).toBe(10000);
+    expect(rows.find((row) => row.method_code === "KCB")?.total).toBe(0);
+  });
+});
+
+describe("resolveTillSalesSummaryRows", () => {
+  it("builds the gross-to-float chain with hints", () => {
+    const rows = resolveTillSalesSummaryRows(sampleReport, sampleSession, { showFloatBreakdown: true });
+    expect(rows.map((row) => row.label)).toEqual([
+      "Gross sales",
+      "Net sales minus expenses",
+      "Net sales minus VAT",
+      "Net sales minus float",
+    ]);
+    expect(rows[0]?.amount).toBe(23510);
+    expect(rows[1]?.hint).toContain("Gross sales − expenses");
+  });
+});
+
 describe("buildPosTillReportHtml", () => {
   it("uses 80mm thermal layout and receipt font settings", () => {
     const general = mergeGeneralSettings({
@@ -126,8 +162,12 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain('class="section-row');
     expect(html).toContain("Operating float");
     expect(html).toContain("Payment summary");
-    expect(html).toContain("M-Pesa");
-    expect(html).toContain("Equity");
+    expect(html).toContain("Cash payment");
+    expect(html).toContain("M-Pesa payments");
+    expect(html).toContain("Total paid debtors");
+    expect(html).toContain("Sales summary");
+    expect(html).toContain("Gross sales");
+    expect(html).toContain("Total expenses");
     expect(html).toMatch(/<table class="summary-table">[\s\S]*Operating float[\s\S]*Payment summary[\s\S]*<\/table>/);
     expect(html).toContain("page: centrix-thermal");
     expect(html).toContain("break-inside: avoid-page");
@@ -139,12 +179,54 @@ describe("buildPosTillReportHtml", () => {
       report: { ...sampleReport, expected_cash: 100 },
       session: { ...sampleSession, closed_at: "2026-07-28T18:00:00Z", closing_amount: 100 },
       variance: 0,
+      showFloatBreakdown: true,
     });
     expect(html).toContain("Z REPORT");
     expect(html).toContain("SESSION CLOSED");
-    expect(html).toContain("Payment summary");
-    expect(html).toContain("M-Pesa");
-    expect(html).toContain("Equity");
     expect(html).not.toContain("SESSION STILL OPEN");
+    expect(html).toContain("Payment summary");
+    expect(html).toContain("Cash payment");
+    expect(html).toContain("M-Pesa payments");
+    expect(html).toContain("Equity payment");
+    expect(html).toContain("K.C.B payment");
+    expect(html).toContain("Total paid debtors");
+    expect(html).toContain("Total expenses");
+    expect(html).toContain("Sales summary");
+    expect(html).toContain("Gross sales");
+    expect(html).toContain("Net sales minus expenses");
+    expect(html).toContain("Net sales minus VAT");
+    expect(html).toContain("Net sales minus float");
+    expect(html).toContain("Expected Cash");
+    expect(html).toContain("Actual Cash");
+    expect(html).toContain("Variance");
+  });
+
+  it("prints X and Z with the same summary sections in order", () => {
+    const common = {
+      organizationName: "Test Org",
+      tillName: "Till03",
+      cashierName: "Cashier",
+      report: sampleReport,
+      session: sampleSession,
+      showFloatBreakdown: true,
+    };
+    const xHtml = buildPosTillReportHtml({ ...common, type: "X" });
+    const zHtml = buildPosTillReportHtml({
+      ...common,
+      type: "Z",
+      session: { ...sampleSession, closed_at: "2026-07-28T18:00:00Z", closing_amount: 100 },
+      variance: 0,
+    });
+
+    for (const html of [xHtml, zHtml]) {
+      const paymentIdx = html.indexOf("Payment summary");
+      const salesIdx = html.indexOf('>Sales<');
+      const salesSummaryIdx = html.indexOf("Sales summary");
+      const cashIdx = html.indexOf('>Cash<');
+      expect(paymentIdx).toBeGreaterThan(-1);
+      expect(salesIdx).toBeGreaterThan(paymentIdx);
+      expect(salesSummaryIdx).toBeGreaterThan(salesIdx);
+      expect(cashIdx).toBeGreaterThan(salesSummaryIdx);
+    }
   });
 });

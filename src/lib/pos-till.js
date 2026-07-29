@@ -352,6 +352,78 @@ export function resolveTillPaymentSummary(report) {
   return [...byCode.values()].sort((a, b) => b.total - a.total);
 }
 
+/** Fixed payment lines for X/Z till reports (always show all four tenders). */
+export const TILL_REPORT_PAYMENT_LINES = [
+  { method_code: "CASH", label: "Cash payment" },
+  { method_code: "MPESA", label: "M-Pesa payments" },
+  { method_code: "EQUITY", label: "Equity payment" },
+  { method_code: "KCB", label: "K.C.B payment" },
+];
+
+export function resolveTillReportPaymentLines(report) {
+  const totals = new Map(
+    resolveTillPaymentSummary(report).map((row) => [row.method_code, row.total]),
+  );
+  return TILL_REPORT_PAYMENT_LINES.map((spec) => ({
+    ...spec,
+    total: Number(totals.get(spec.method_code) ?? 0),
+  }));
+}
+
+function formatTillHintAmount(value) {
+  return Number(value ?? 0).toLocaleString("en-KE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
+/** Sales summary chain for till X/Z — gross sales through net minus float. */
+export function resolveTillSalesSummaryRows(report, session, { showFloatBreakdown = true } = {}) {
+  const sales = report?.sales ?? {};
+  const till = report?.till ?? {};
+  const sessionExpenses = Number(report?.session_expenses ?? till?.session_expenses ?? 0);
+  const grossSales = Number(sales.gross_sales ?? sales.net_sales ?? sales.net ?? 0);
+  const totalVat = Number(sales.total_vat ?? 0);
+  const openingFloat = Number(till.opening_float ?? session?.working_amount ?? 0);
+  const netSalesMinusExpenses = Number(
+    sales.net_sales_minus_expenses ?? Math.max(0, grossSales - sessionExpenses),
+  );
+  const netSalesMinusVat = Number(
+    sales.net_sales_minus_vat ?? Math.max(0, netSalesMinusExpenses - totalVat),
+  );
+  const netSalesMinusFloat = Number(
+    sales.net_sales_minus_float ?? Math.max(0, netSalesMinusExpenses - openingFloat),
+  );
+
+  const rows = [
+    {
+      label: "Gross sales",
+      amount: grossSales,
+      hint: "Sum of completed POS order totals this session",
+    },
+    {
+      label: "Net sales minus expenses",
+      amount: netSalesMinusExpenses,
+      hint: `Gross sales − expenses (${formatTillHintAmount(grossSales)} − ${formatTillHintAmount(sessionExpenses)})`,
+    },
+    {
+      label: "Net sales minus VAT",
+      amount: netSalesMinusVat,
+      hint: `Net sales minus expenses − VAT (${formatTillHintAmount(netSalesMinusExpenses)} − ${formatTillHintAmount(totalVat)})`,
+    },
+  ];
+
+  if (showFloatBreakdown) {
+    rows.push({
+      label: "Net sales minus float",
+      amount: netSalesMinusFloat,
+      hint: `Net sales minus expenses − float (${formatTillHintAmount(netSalesMinusExpenses)} − ${formatTillHintAmount(openingFloat)})`,
+    });
+  }
+
+  return rows;
+}
+
 /** Live cash position for an active session; 0 when closed or no session. */
 export function currentFloatAmount(session, reportPayload) {
   if (!session || String(session.status).toLowerCase() !== "open") return 0;

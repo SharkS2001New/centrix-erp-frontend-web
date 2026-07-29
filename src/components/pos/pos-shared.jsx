@@ -3,9 +3,9 @@ import {
   tillDisplayName,
   normalizeFloatEntries,
   resolveTillReportBundle,
-  resolveNetSalesMinusFloat,
+  resolveTillReportPaymentLines,
+  resolveTillSalesSummaryRows,
   resolveTillReportNo,
-  resolveTillPaymentSummary,
 } from "@/lib/pos-till";
 import { formatInTimezone } from "@/lib/datetime";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
@@ -37,6 +37,15 @@ function amt(value) {
 
 function row(label, value, { grand = false } = {}) {
   return `<tr class="${grand ? "amount-line-grand" : ""}"><td class="amount-label">${escapeHtml(label)}</td><td class="amount-value">${escapeHtml(value)}</td></tr>`;
+}
+
+function hintRow(text) {
+  if (!text) return "";
+  return `<tr class="hint-row"><td class="hint-text" colspan="2">${escapeHtml(text)}</td></tr>`;
+}
+
+function rowWithHint(label, value, hint, options = {}) {
+  return row(label, value, options) + hintRow(hint);
 }
 
 function sectionRow(title, { first = false } = {}) {
@@ -73,9 +82,15 @@ function formatTillReportFloatLabel(entry) {
 }
 
 function paymentPrintRows(report) {
-  return resolveTillPaymentSummary(report).map((entry) =>
-    row(entry.method_name ?? entry.method_code ?? "Payment", amt(entry.total)),
+  return resolveTillReportPaymentLines(report).map((entry) =>
+    row(entry.label, amt(entry.total)),
   );
+}
+
+function salesSummaryPrintRows(report, session, showFloatBreakdown) {
+  return resolveTillSalesSummaryRows(report, session, { showFloatBreakdown }).flatMap((entry) => [
+    rowWithHint(entry.label, amt(entry.amount), entry.hint),
+  ]);
 }
 
 /**
@@ -102,16 +117,9 @@ export function buildPosTillReportHtml({
   const printVariance = variance ?? bundle.variance;
   const sales = report.sales ?? {};
   const till = report.till ?? {};
+  const sessionExpenses = Number(report?.session_expenses ?? till?.session_expenses ?? 0);
   const opened = session?.opened_at;
   const closed = session?.closed_at;
-  const netSales = Number(sales.net_sales ?? sales.net ?? 0);
-  const netSalesMinusFloat = showFloatBreakdown
-    ? resolveNetSalesMinusFloat({
-        netSales,
-        openingFloat: till.opening_float ?? session?.working_amount,
-        netSalesMinusFloat: sales.net_sales_minus_float,
-      })
-    : null;
   const dateStr = opened ? formatTillReportDate(opened) : formatTillReportDate(new Date());
 
   const isZ = type === "Z";
@@ -164,33 +172,30 @@ export function buildPosTillReportHtml({
               row("Gross till total", amt(till.gross_total)),
             ]
           : []),
-        ...(Number(report?.session_expenses) > 0
-          ? [row("Session expenses", amt(report.session_expenses))]
-          : []),
         row("Expected Cash", amt(report?.expected_cash), { grand: true }),
       ];
 
-  const salesRowItems = [
-    row("Transactions", String(sales.transactions ?? 0)),
-    row("Net Sales", amt(netSales)),
-    ...(showFloatBreakdown
-      ? [row("Net sales minus float", amt(netSalesMinusFloat))]
-      : []),
-    ...(Number(sales.total_vat) > 0 ? [row("VAT total", amt(sales.total_vat))] : []),
-    row("Refunds", amt(sales.refunds)),
-    ...(Number(sales.debtor_collections) > 0
-      ? [row("Debtor collections", amt(sales.debtor_collections))]
-      : []),
+  const paymentRowItems = [
+    sectionRow("Payment summary", { first: floatRows.length === 0 }),
+    ...paymentPrintRows(report),
+    row("Total paid debtors", amt(sales.debtor_collections ?? 0)),
   ];
 
-  const paymentRowItems = paymentPrintRows(report);
+  const salesExpenseRows = [
+    sectionRow("Sales"),
+    row("Total expenses", amt(sessionExpenses)),
+  ];
+
+  const salesSummaryRowItems = [
+    sectionRow("Sales summary"),
+    ...salesSummaryPrintRows(report, session, showFloatBreakdown),
+  ];
 
   const continuousRows = [
     ...floatRows,
-    sectionRow("Sales", { first: floatRows.length === 0 }),
-    ...salesRowItems,
-    sectionRow("Payment summary"),
     ...paymentRowItems,
+    ...salesExpenseRows,
+    ...salesSummaryRowItems,
     ...cashRows,
   ];
 
@@ -220,6 +225,7 @@ export function buildPosTillReportHtml({
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0; padding-right: 0; }
     .summary-table tr.amount-line-grand td { font-size: ${px(10)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
+    .summary-table tr.hint-row td.hint-text { font-size: ${fpx(7)}; font-weight: 400; font-style: italic; color: #444; padding: 0 0 3px; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; }
     .footer { margin-top: 8px; text-align: center; font-size: ${fpx(8)}; font-weight: var(--print-w-footer, 700); letter-spacing: normal; line-height: 1.3; page-break-inside: avoid; break-inside: avoid; word-break: break-word; overflow-wrap: anywhere; }
     @media print {
       @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0 !important; }

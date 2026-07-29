@@ -6870,11 +6870,6 @@ export function PosScreen({ standalone = false }) {
                   setEditOrderNo(value);
                   setOrderEditError(null);
                 }}
-                onOrderNoClick={() => {
-                  if (!enablePosOrderEdit) return;
-                  if (isCartEditSession) return;
-                  void classicOpenCurrentOrder();
-                }}
                 onOrderNoSubmit={() => {
                   if (!enablePosOrderEdit) {
                     setStatusMessage(
