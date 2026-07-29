@@ -6,6 +6,7 @@ import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
+import { buildCheckoutPaymentSplits } from "@/lib/checkout-payment-splits";
 import {
   customerCreditSummary,
   validateCustomerCreditSale,
@@ -398,6 +399,20 @@ export function PosPaymentPanel({
       allowPartialPayment: cfg.allowPartialPayment,
     });
 
+    const paymentSplits = buildCheckoutPaymentSplits(cfg, {
+      cashAmount,
+      mpesaAmount,
+      chequeAmount,
+      equityAmount,
+      kcbAmount,
+      otherBankAmount,
+      bankAmount,
+      bankType,
+      mpesaCode,
+      chequeNo,
+      bankRef,
+    });
+
     const body = {
       pay_now: payNow,
       payment_method_code: paymentMethodCode,
@@ -405,6 +420,7 @@ export function PosPaymentPanel({
       payment_date: resolvedPaymentDate(),
       status,
       is_credit_sale: creditSale,
+      ...(paymentSplits.length > 0 ? { payment_splits: paymentSplits } : {}),
       // Frontend-only: full amount tendered by the customer (may exceed order total for cash).
       // Stripped before the API call; used to print the correct change on the receipt.
       __cash_tendered: amountPaid,

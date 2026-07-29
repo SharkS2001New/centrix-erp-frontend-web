@@ -69,23 +69,35 @@ export function SalePosPaymentPanel({
             422,
           );
         }
-        const code = String(body.payment_method_code ?? "CASH").toUpperCase();
-        const method = resolvePaymentMethodByCode(paymentMethods, code);
-        if (!method) {
-          throw new ApiError(
-            `Payment method "${code}" is not set up. Add it under Admin → Payment methods, or use Cash / M-Pesa / Bank.`,
-            422,
-          );
+
+        const splits = Array.isArray(body.payment_splits) && body.payment_splits.length > 0
+          ? body.payment_splits
+          : [{
+              method_code: String(body.payment_method_code ?? "CASH").toUpperCase(),
+              amount: body.pay_now,
+              reference_number: body.payment_reference || null,
+            }];
+
+        let updated = sale;
+        for (const split of splits) {
+          const code = String(split.method_code ?? "CASH").toUpperCase();
+          const method = resolvePaymentMethodByCode(paymentMethods, code);
+          if (!method) {
+            throw new ApiError(
+              `Payment method "${code}" is not set up. Add it under Admin → Payment methods, or use Cash / M-Pesa / Bank.`,
+              422,
+            );
+          }
+          updated = await apiRequest(`/sales/${sale.id}/payments`, {
+            method: "POST",
+            body: {
+              payment_method_id: method.id,
+              amount: split.amount,
+              reference_number: split.reference_number || null,
+              ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
+            },
+          });
         }
-        const updated = await apiRequest(`/sales/${sale.id}/payments`, {
-          method: "POST",
-          body: {
-            payment_method_id: method.id,
-            amount: body.pay_now,
-            reference_number: body.payment_reference || null,
-            ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
-          },
-        });
         await onPaid?.(updated);
         return updated;
       } catch (e) {

@@ -19,8 +19,15 @@ const sampleReport = {
     transactions: 3,
     net_sales: 23510,
     refunds: 0,
-    cash: 23510,
+    cash: 10000,
+    mpesa: 8000,
+    equity: 5510,
   },
+  payments: [
+    { method_code: "CASH", method_name: "Cash", total: 10000 },
+    { method_code: "MPESA", method_name: "M-Pesa", total: 8000 },
+    { method_code: "EQUITY", method_name: "Equity", total: 5510 },
+  ],
   till: {
     opening_float: 9998210,
     cash_collected: 23510,
@@ -40,10 +47,29 @@ const sampleSession = {
 };
 
 describe("resolveTillPaymentSummary", () => {
-  it("prefers sales-column splits when sale_payments only has a single cash row", () => {
+  it("uses backend payment rows when provided", () => {
+    const rows = resolveTillPaymentSummary({
+      sales: { cash: 160778, mpesa: 0, equity: 0 },
+      payments: [
+        { method_code: "CASH", method_name: "Cash", total: 80000 },
+        { method_code: "MPESA", method_name: "M-Pesa", total: 50000 },
+        { method_code: "EQUITY", method_name: "Equity", total: 30778 },
+      ],
+    });
+
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method_code: "CASH", total: 80000 }),
+        expect.objectContaining({ method_code: "MPESA", total: 50000 }),
+        expect.objectContaining({ method_code: "EQUITY", total: 30778 }),
+      ]),
+    );
+  });
+
+  it("falls back to sales-column splits when payments are missing", () => {
     const rows = resolveTillPaymentSummary({
       sales: { cash: 400, mpesa: 300, equity: 300, kcb: 0 },
-      payments: [{ method_code: "CASH", method_name: "Cash", total: 1000 }],
+      payments: [],
     });
 
     expect(rows).toEqual(
@@ -100,6 +126,8 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain('class="section-row');
     expect(html).toContain("Operating float");
     expect(html).toContain("Payment summary");
+    expect(html).toContain("M-Pesa");
+    expect(html).toContain("Equity");
     expect(html).toMatch(/<table class="summary-table">[\s\S]*Operating float[\s\S]*Payment summary[\s\S]*<\/table>/);
     expect(html).toContain("page: centrix-thermal");
     expect(html).toContain("break-inside: avoid-page");
@@ -114,5 +142,9 @@ describe("buildPosTillReportHtml", () => {
     });
     expect(html).toContain("Z REPORT");
     expect(html).toContain("SESSION CLOSED");
+    expect(html).toContain("Payment summary");
+    expect(html).toContain("M-Pesa");
+    expect(html).toContain("Equity");
+    expect(html).not.toContain("SESSION STILL OPEN");
   });
 });

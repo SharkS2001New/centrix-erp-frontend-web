@@ -310,8 +310,20 @@ const TILL_PAYMENT_COLUMN_ROWS = [
 
 /** Merge sales-column tenders with sale_payments rows (matches EOD + backend X/Z). */
 export function resolveTillPaymentSummary(report) {
-  const sales = report?.sales ?? {};
   const payments = Array.isArray(report?.payments) ? report.payments : [];
+  const normalizedPayments = payments
+    .map((row) => ({
+      method_code: String(row.method_code ?? "").toUpperCase(),
+      method_name: row.method_name ?? row.method_code ?? "Payment",
+      total: Number(row.total ?? 0),
+    }))
+    .filter((row) => row.method_code && row.total > 0);
+
+  if (normalizedPayments.length > 0) {
+    return normalizedPayments.sort((a, b) => b.total - a.total);
+  }
+
+  const sales = report?.sales ?? {};
   const byCode = new Map();
 
   for (const spec of TILL_PAYMENT_COLUMN_ROWS) {
@@ -337,22 +349,7 @@ export function resolveTillPaymentSummary(report) {
     });
   }
 
-  for (const row of payments) {
-    const code = String(row.method_code ?? "").toUpperCase();
-    const total = Number(row.total ?? 0);
-    if (!code || total <= 0) continue;
-    const columnKey = TILL_PAYMENT_COLUMN_ROWS.find((spec) => spec.method_code === code)?.column;
-    if (columnKey && Number(sales[columnKey] ?? 0) > 0) continue;
-    if (!byCode.has(code) || Number(byCode.get(code)?.total ?? 0) <= 0) {
-      byCode.set(code, {
-        method_code: code,
-        method_name: row.method_name ?? code,
-        total,
-      });
-    }
-  }
-
-  return [...byCode.values()].sort((a, b) => Number(b.total) - Number(a.total));
+  return [...byCode.values()].sort((a, b) => b.total - a.total);
 }
 
 /** Live cash position for an active session; 0 when closed or no session. */
