@@ -195,7 +195,11 @@ import {
   rememberPosOrderCustomerName,
 } from "@/lib/pos-customer-name-memory";
 import { readPosLastReceipt, rememberPosLastReceipt } from "@/lib/pos-last-receipt";
-import { roundLightStoresAmount } from "@/lib/pos-cash-round";
+import {
+  posCashLineAmount,
+  posDisplayCartLineAmount,
+  roundLightStoresAmount,
+} from "@/lib/pos-cash-round";
 import {
   clearAutoHeldOrder,
   peekAutoHeldOrder,
@@ -1444,7 +1448,7 @@ export function PosScreen({ standalone = false }) {
     const rows = cart?.lines ?? [];
     const lineDiscounts = rows.reduce((sum, line) => sum + Number(line.discount_given ?? 0), 0);
     const net = enablePosCashRounding
-      ? rows.reduce((sum, line) => sum + roundLightStoresAmount(line.amount ?? 0), 0)
+      ? rows.reduce((sum, line) => sum + posCashLineAmount(line.amount ?? 0), 0)
       : rows.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
     const vat = rows.reduce((sum, line) => sum + Number(line.product_vat ?? 0), 0);
     const orderDiscountRaw =
@@ -6958,9 +6962,13 @@ export function PosScreen({ standalone = false }) {
                   })
                 }
                 lineAmount={(line) =>
-                  (enablePosCashRounding
-                    ? roundLightStoresAmount(line.amount)
-                    : Number(line.amount ?? 0)
+                  posDisplayCartLineAmount(
+                    line.amount,
+                    (cart?.lines ?? []).map((l) => l.amount),
+                    {
+                      cashRound: enablePosCashRounding,
+                      orderDiscount: cartSummary.orderDiscount,
+                    },
                   ).toLocaleString()
                 }
                 scanSearch={
@@ -7176,7 +7184,14 @@ export function PosScreen({ standalone = false }) {
                           </td>
                         ) : null}
                         <td className="px-3 py-2 text-right font-medium">
-                          {Number(line.amount).toLocaleString()}
+                          {posDisplayCartLineAmount(
+                            line.amount,
+                            (cart?.lines ?? []).map((l) => l.amount),
+                            {
+                              cashRound: enablePosCashRounding,
+                              orderDiscount: cartSummary.orderDiscount,
+                            },
+                          ).toLocaleString()}
                         </td>
                       </tr>
                     );

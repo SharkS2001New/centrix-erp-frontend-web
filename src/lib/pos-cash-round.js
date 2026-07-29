@@ -34,3 +34,36 @@ export function finalizePosLineAmount(value, { cashRound = false } = {}) {
   if (cashRound) return roundLightStoresAmount(n);
   return Math.round(n * 100) / 100;
 }
+
+/** Per-line cash round (first pass). */
+export function posCashLineAmount(value) {
+  return roundLightStoresAmount(value);
+}
+
+/**
+ * Light Stores order total: round each line, sum, then round the sum again
+ * (matches POS footer Total / amount due).
+ */
+export function posCashOrderTotal(lineAmounts) {
+  const amounts = (lineAmounts ?? []).map((a) => Number(a ?? 0));
+  if (amounts.length === 0) return 0;
+  const sum = amounts.reduce((total, amount) => total + roundLightStoresAmount(amount), 0);
+  return roundLightStoresAmount(sum);
+}
+
+/**
+ * Cart grid Amount column — single-line orders with no order discount show the same figure as the footer Total.
+ */
+export function posDisplayCartLineAmount(
+  rawAmount,
+  allLineAmounts,
+  { cashRound = false, orderDiscount = 0 } = {},
+) {
+  const n = Number(rawAmount ?? 0);
+  if (!cashRound) return n;
+  const all = allLineAmounts ?? [rawAmount];
+  if (all.length === 1 && orderDiscount === 0) {
+    return posCashOrderTotal(all);
+  }
+  return roundLightStoresAmount(n);
+}

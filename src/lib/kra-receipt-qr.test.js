@@ -63,10 +63,34 @@ describe("kra receipt QR", () => {
     expect(buildKraThermalQrHtml(kraData, kraQrDataUrl)).toContain("<img");
   });
 
-  it("throws when KRA is enabled but the sale has no verification link", async () => {
+  it("prints without QR when KRA is enabled but the sale was not fiscalized", async () => {
+    const result = await ensureKraQrForPrint(
+      { id: 3, status: "completed", order_total: 50 },
+      {
+        moduleSettings: {
+          finance: {
+            enable_kra_integration: true,
+            enable_kra_device: true,
+            default_submit_kra: true,
+          },
+        },
+        allowNetwork: false,
+      },
+    );
+
+    expect(result.kraQrDataUrl).toBeNull();
+    expect(result.kraData).toBeNull();
+  });
+
+  it("still requires a QR when the sale was fiscalized but the link is missing", async () => {
     await expect(
       ensureKraQrForPrint(
-        { id: 3, status: "completed", order_total: 50 },
+        {
+          id: 5,
+          status: "completed",
+          order_total: 50,
+          kra_response: { status: "success", invoice_number: "CU-5" },
+        },
         {
           moduleSettings: {
             finance: {

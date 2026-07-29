@@ -175,7 +175,10 @@ function saleLooksFiscalized(sale, kraData) {
   const raw = sale?.kra_response ?? sale?.kraResponse ?? null;
   if (!raw) return false;
   const status = String(raw.status ?? "").toLowerCase();
-  return status === "success" || Boolean(raw.id) || Boolean(raw.invoice_number);
+  if (status === "failed" || status === "error" || status === "skipped" || status === "bypassed") {
+    return false;
+  }
+  return status === "success" || Boolean(raw.invoice_number);
 }
 
 /**
@@ -271,6 +274,10 @@ export async function ensureKraQrForPrint(
   }
 
   if (expectQr && !kraQrDataUrl) {
+    // Legacy / pre-eTIMS receipts — print normally without the KRA scan block.
+    if (!saleLooksFiscalized(sale, kraData)) {
+      return { kraData: null, kraQrDataUrl: null };
+    }
     throw new Error(
       kraData?.signatureLink
         ? "KRA is enabled but the eTIMS QR code could not be generated for this receipt. Please reprint."

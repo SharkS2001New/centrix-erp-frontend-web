@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { finalizePosLineAmount, roundLightStoresAmount } from "@/lib/pos-cash-round";
+import {
+  finalizePosLineAmount,
+  posCashOrderTotal,
+  posDisplayCartLineAmount,
+  roundLightStoresAmount,
+} from "@/lib/pos-cash-round";
 
 describe("roundLightStoresAmount", () => {
   it("rounds 105.4 to 106 (legacy last-digit on decimal string)", () => {
@@ -20,6 +25,22 @@ describe("roundLightStoresAmount", () => {
     expect(roundLightStoresAmount(0)).toBe(0);
     expect(roundLightStoresAmount(-5)).toBe(0);
     expect(roundLightStoresAmount(Number.NaN)).toBe(0);
+  });
+});
+
+describe("posCashOrderTotal", () => {
+  it("applies order-level round after per-line round", () => {
+    expect(posCashOrderTotal([1592.5])).toBe(1595);
+  });
+});
+
+describe("posDisplayCartLineAmount", () => {
+  it("matches order total for a single line", () => {
+    expect(posDisplayCartLineAmount(1592.5, [1592.5], { cashRound: true })).toBe(1595);
+  });
+
+  it("uses per-line round when multiple lines", () => {
+    expect(posDisplayCartLineAmount(105.4, [105.4, 200], { cashRound: true })).toBe(106);
   });
 });
 

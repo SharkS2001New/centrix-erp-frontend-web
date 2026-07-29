@@ -262,11 +262,16 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   push("Metrics", "Total customers", String(s.customers ?? 0));
 
   for (const row of report?.cashiers ?? []) {
-    push(
-      "Cashier sales",
-      row.cashier ?? "—",
-      `${kesNum(row.gross_sales)} · VAT ${kesNum(row.total_vat)} · ${row.transactions ?? 0} txns`,
-    );
+    const name = row.cashier ?? "—";
+    push("Cashier sales", `${name} — Total sales`, kesNum(row.gross_sales));
+    push("Cashier sales", `${name} — VAT`, kesNum(row.total_vat));
+    push("Cashier sales", `${name} — Transactions`, String(row.transactions ?? 0));
+    push("Cashier sales", `${name} — Cash`, kesNum(row.cash_collected));
+    push("Cashier sales", `${name} — M-Pesa`, kesNum(row.mpesa_collected));
+    push("Cashier sales", `${name} — Bank`, kesNum(row.bank_collected));
+    if (requireTillFloat) {
+      push("Cashier sales", `${name} — Float`, kesNum(row.opening_float));
+    }
   }
 
   for (const row of report?.float_breakdown ?? []) {
@@ -686,58 +691,38 @@ export function EndOfDayReportScreen() {
               {cashierSalesRows.length === 0 ? (
                 <p className="theme-subtext text-sm">No cashier sales for this date.</p>
               ) : (
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
-                      <th className="pb-2 pr-3">Cashier</th>
-                      <th className="pb-2 pr-3 text-right">Total sales</th>
-                      <th className="pb-2 pr-3 text-right">VAT</th>
-                      <th className="pb-2 pr-3 text-right">Transactions</th>
-                      <th className="pb-2 pr-3 text-right">Cash</th>
-                      <th className="pb-2 pr-3 text-right">M-Pesa</th>
-                      <th className="pb-2 text-right">Bank</th>
-                      {requireTillFloat ? <th className="pb-2 pl-3 text-right">Float</th> : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cashierSalesRows.map((row) => {
-                      const isSelected = cashierId && String(row.cashier_id) === cashierId;
-                      return (
-                        <tr
-                          key={row.cashier_id}
-                          className={`border-b border-[var(--theme-border)] last:border-b-0 ${
-                            isSelected ? "bg-[var(--theme-primary-subtle)]" : ""
-                          }`}
+                <div className="space-y-4">
+                  {cashierSalesRows.map((row) => {
+                    const isSelected = cashierId && String(row.cashier_id) === cashierId;
+                    return (
+                      <div
+                        key={row.cashier_id}
+                        className={`rounded-lg border px-3 py-2 ${
+                          isSelected
+                            ? "border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)]"
+                            : "border-[var(--theme-border)]"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setCashierId(String(row.cashier_id))}
+                          className="theme-link mb-1 text-sm font-semibold hover:underline"
                         >
-                          <td className="py-2.5 pr-3">
-                            <button
-                              type="button"
-                              onClick={() => setCashierId(String(row.cashier_id))}
-                              className="theme-link font-medium hover:underline"
-                            >
-                              {row.cashier ?? "—"}
-                            </button>
-                          </td>
-                          <td className="py-2.5 pr-3 text-right font-medium text-[var(--theme-text)]">
-                            {formatTillKes(row.gross_sales)}
-                          </td>
-                          <td className="theme-text-muted py-2.5 pr-3 text-right">
-                            {formatTillKes(row.total_vat)}
-                          </td>
-                          <td className="theme-text-muted py-2.5 pr-3 text-right">{row.transactions ?? 0}</td>
-                          <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.cash_collected)}</td>
-                          <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.mpesa_collected)}</td>
-                          <td className="theme-text-muted py-2.5 text-right">{formatTillKes(row.bank_collected)}</td>
-                          {requireTillFloat ? (
-                            <td className="theme-text-muted py-2.5 pl-3 text-right">
-                              {formatTillKes(row.opening_float)}
-                            </td>
-                          ) : null}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          {row.cashier ?? "—"}
+                        </button>
+                        <SummaryRow label="Total sales" value={formatTillKes(row.gross_sales)} bold />
+                        <SummaryRow label="VAT" value={formatTillKes(row.total_vat)} />
+                        <SummaryRow label="Transactions" value={row.transactions ?? 0} />
+                        <SummaryRow label="Cash" value={formatTillKes(row.cash_collected)} />
+                        <SummaryRow label="M-Pesa" value={formatTillKes(row.mpesa_collected)} />
+                        <SummaryRow label="Bank" value={formatTillKes(row.bank_collected)} />
+                        {requireTillFloat ? (
+                          <SummaryRow label="Float" value={formatTillKes(row.opening_float)} />
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
               {cashierId ? (
                 <button
