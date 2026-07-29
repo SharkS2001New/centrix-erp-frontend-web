@@ -15,6 +15,8 @@ function ClassicLineQtyCell({
   canIncrease,
   onAdjustQty,
   onSetQty,
+  onDraftQtyChange = null,
+  swapQtyCommit = false,
   inputRef = null,
 }) {
   const committed = String(entryQty ?? "");
@@ -24,13 +26,13 @@ function ClassicLineQtyCell({
     setDraft(committed);
   }, [line?.id, committed]);
 
-  function commit() {
+  function commit({ force = false } = {}) {
     const trimmed = String(draft).trim();
     if (!trimmed) {
       setDraft(committed);
       return;
     }
-    if (trimmed === committed) return;
+    if (!force && !swapQtyCommit && trimmed === committed) return;
     onSetQty?.(line, trimmed);
   }
 
@@ -58,15 +60,18 @@ function ClassicLineQtyCell({
         value={draft}
         disabled={busy || lineBusy}
         aria-label={qtyUnit ? `Line quantity (${qtyUnit})` : "Line quantity"}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          onDraftQtyChange?.(line, e.target.value);
+        }}
         onFocus={(e) => e.target.select()}
-        onBlur={commit}
+        onBlur={() => commit({ force: swapQtyCommit })}
         onKeyDown={(e) => {
           if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
           e.stopPropagation();
           if (e.key === "Enter") {
             e.preventDefault();
-            commit();
+            commit({ force: true });
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {
@@ -170,6 +175,7 @@ export function ClassicPosCartTable({
   lineQtyUnit,
   onAdjustQty,
   onSetQty,
+  onSwapDraftQtyChange = null,
   scanSearch = null,
   qtyRef,
   entryDescription,
@@ -425,6 +431,8 @@ export function ClassicPosCartTable({
                     canIncrease={qtyAdjust.canIncrease}
                     onAdjustQty={onAdjustQty}
                     onSetQty={onSetQty}
+                    onDraftQtyChange={swapPreviewActive ? onSwapDraftQtyChange : null}
+                    swapQtyCommit={swapPreviewActive}
                     inputRef={swapDraftActive ? swapLineQtyRef : null}
                   />
                 </td>

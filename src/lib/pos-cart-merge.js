@@ -110,14 +110,26 @@ export function applyOptimisticCartMutation(prevCart, optimisticLine, { mergeTar
 
   if (editingRef) {
     const idx = lines.findIndex((line) => String(cartLineRef(line)) === String(editingRef));
-    if (idx >= 0) lines[idx] = { ...lines[idx], ...optimisticLine };
-    else lines.push(optimisticLine);
+    if (idx >= 0) {
+      const existing = lines[idx];
+      lines[idx] = {
+        ...optimisticLine,
+        id: existing.id,
+        update_code: existing.update_code ?? existing.id,
+      };
+    } else lines.push(optimisticLine);
   } else if (mergeTarget) {
     const idx = lines.findIndex(
       (line) => String(cartLineRef(line)) === String(cartLineRef(mergeTarget)),
     );
-    if (idx >= 0) lines[idx] = { ...lines[idx], ...optimisticLine };
-    else lines.push(optimisticLine);
+    if (idx >= 0) {
+      const existing = lines[idx];
+      lines[idx] = {
+        ...optimisticLine,
+        id: existing.id,
+        update_code: existing.update_code ?? existing.id,
+      };
+    } else lines.push(optimisticLine);
   } else {
     lines.push(optimisticLine);
   }

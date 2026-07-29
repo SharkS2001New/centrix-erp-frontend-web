@@ -697,16 +697,12 @@ export function EndOfDayReportScreen() {
                     return (
                       <div
                         key={row.cashier_id}
-                        className={`rounded-lg border px-3 py-2 ${
-                          isSelected
-                            ? "border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)]"
-                            : "border-[var(--theme-border)]"
-                        }`}
+                        className="border-b border-[var(--theme-border)] pb-4 last:border-b-0 last:pb-0"
                       >
                         <button
                           type="button"
                           onClick={() => setCashierId(String(row.cashier_id))}
-                          className="theme-link mb-1 text-sm font-semibold hover:underline"
+                          className={`theme-link mb-1 text-sm font-semibold hover:underline ${isSelected ? "underline" : ""}`}
                         >
                           {row.cashier ?? "—"}
                         </button>

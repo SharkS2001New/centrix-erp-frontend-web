@@ -1006,6 +1006,7 @@ export function PosScreen({ standalone = false }) {
   const [replacingLineId, setReplacingLineId] = useState(null);
   const replacingLineIdRef = useRef(null);
   const [swapDraft, setSwapDraft] = useState(null);
+  const swapDraftRef = useRef(null);
   const swapLineQtyRef = useRef(null);
   const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
@@ -2833,7 +2834,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function completeSwapFromDraft(entryQtyRaw) {
-    const draft = swapDraft;
+    const draft = swapDraftRef.current;
     if (!draft?.line || !draft?.product) return false;
     const entryQty = parseDecimalInput(entryQtyRaw ?? draft.quantity);
     if (!(entryQty > 0)) {
@@ -2841,7 +2842,7 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
 
-    const runReplace = async () => {
+    const finishSwap = async () => {
       try {
         const ok = await replaceCartLineWithProduct(
           draft.line,
@@ -2851,6 +2852,7 @@ export function PosScreen({ standalone = false }) {
           null,
         );
         if (ok) {
+          swapDraftRef.current = null;
           setSwapDraft(null);
           setReplacingLineId(null);
           setSelectedProduct(null);
@@ -2869,18 +2871,25 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    if (cartRef.current?.held_order_num || cartRef.current?.offline) {
+    if (cartRef.current?.held_order_num || cartRef.current?.offline || classicLayout) {
       if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
-      await enqueueCartCommit(runReplace);
+      void enqueueCartCommit(finishSwap);
       return true;
     }
 
     setLineBusy(true);
     try {
-      return await runReplace();
+      return await finishSwap();
     } finally {
       setLineBusy(false);
     }
+  }
+
+  function handleSwapDraftQtyChange(line, value) {
+    if (!swapDraftRef.current || !sameLineId(swapDraftRef.current.lineId, line.id)) return;
+    const next = { ...swapDraftRef.current, quantity: value };
+    swapDraftRef.current = next;
+    setSwapDraft(next);
   }
 
   async function pickProduct(product) {
@@ -2911,12 +2920,14 @@ export function PosScreen({ standalone = false }) {
         retailPackage,
         Boolean(replaceRetail),
       );
-      setSwapDraft({
+      const nextSwapDraft = {
         lineId: replaceLine.id,
         line: replaceLine,
         product,
         quantity: String(quantity),
-      });
+      };
+      swapDraftRef.current = nextSwapDraft;
+      setSwapDraft(nextSwapDraft);
       setSearchQuery(product.product_code ?? "");
       setSearchResults([]);
       setStatusMessage(
@@ -2959,6 +2970,7 @@ export function PosScreen({ standalone = false }) {
   function beginReplaceCartLine(lineId) {
     const line = (cart?.lines ?? []).find((row) => sameLineId(row.id, lineId));
     if (!line || busy || lineBusy) return;
+    swapDraftRef.current = null;
     setSwapDraft(null);
     setReplacingLineId(line.id);
     setSelectedLineId(line.id);
@@ -2987,6 +2999,7 @@ export function PosScreen({ standalone = false }) {
   function cancelReplaceCartLine() {
     if (!replacingLineId) return;
     setReplacingLineId(null);
+    swapDraftRef.current = null;
     setSwapDraft(null);
     setSelectedProduct(null);
     setSelectedProductCode(null);
@@ -3040,13 +3053,17 @@ export function PosScreen({ standalone = false }) {
   }, [replacingLineId]);
 
   useEffect(() => {
-    if (!classicLayout || !replacingLineId) return;
+    swapDraftRef.current = swapDraft;
+  }, [swapDraft]);
+
+  useEffect(() => {
+    if (!classicLayout || !replacingLineId || swapDraft) return;
     const frame = window.requestAnimationFrame(() => {
       searchInputRef.current?.focus({ preventScroll: true });
       searchInputRef.current?.select?.();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [classicLayout, replacingLineId]);
+  }, [classicLayout, replacingLineId, swapDraft]);
 
   useEffect(() => {
     if (editingLineId) return;
@@ -6924,6 +6941,7 @@ export function PosScreen({ standalone = false }) {
                 }}
                 onAdjustQty={(line, delta) => void adjustCartLineQuantity(line, delta)}
                 onSetQty={(line, value) => void setCartLineEntryQuantity(line, value)}
+                onSwapDraftQtyChange={(line, value) => handleSwapDraftQtyChange(line, value)}
                 linePackage={(line) => {
                   const productMeta = productByCode[line.product_code];
                   const uom = productMeta?.uom;
