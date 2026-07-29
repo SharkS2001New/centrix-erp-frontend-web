@@ -351,19 +351,27 @@ export function ClassicPosCartTable({
                 onClick={() => onSelectLine?.(line.id)}
               >
                 <td className="classic-pos-cart-rownum">{index + 1}</td>
-                <td className="classic-pos-col-scan font-mono">
-                  <button
-                    type="button"
-                    className="classic-pos-scan-replace-btn"
-                    disabled={busy || lineBusy}
-                    title="Replace this item — search or scan a new product"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onScanCodeClick?.(line.id);
-                    }}
-                  >
-                    {line.product_code}
-                  </button>
+                <td
+                  className="classic-pos-col-scan font-mono"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {replacing ? (
+                    scanSearch
+                  ) : (
+                    <button
+                      type="button"
+                      className="classic-pos-scan-replace-btn"
+                      disabled={busy || lineBusy}
+                      title="Swap this item — search or scan the replacement product"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onScanCodeClick?.(line.id);
+                      }}
+                    >
+                      {line.product_code}
+                    </button>
+                  )}
                 </td>
                 <td className="classic-pos-col-desc">{line.product_name}</td>
                 <td className="classic-pos-col-pkg">
@@ -414,7 +422,15 @@ export function ClassicPosCartTable({
 
           <tr className="classic-pos-cart-entry-row">
             <td className="classic-pos-cart-rownum">{lines.length + 1}</td>
-            <td className="classic-pos-cart-scan-cell classic-pos-col-scan">{scanSearch}</td>
+            <td className="classic-pos-cart-scan-cell classic-pos-col-scan">
+              {replacingLineId ? (
+                <span className="classic-pos-cart-entry-muted text-xs" aria-hidden="true">
+                  —
+                </span>
+              ) : (
+                scanSearch
+              )}
+            </td>
             <td className="classic-pos-col-desc classic-pos-cart-entry-muted">
               {entryReady ? entryDescription : ""}
             </td>

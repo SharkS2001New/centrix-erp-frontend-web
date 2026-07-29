@@ -55,6 +55,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   retailByCode,
   onSelect,
   onBarcodeEnter,
+  onEscapeKey = null,
   barcodeEnabled = false,
   stockDisplayMode = "both",
   posSalesConfig = null,
@@ -233,6 +234,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       if (open) {
         setOpen(false);
         setHighlight(-1);
+      } else if (onEscapeKey) {
+        onEscapeKey();
+        return;
       }
       // Keep focus on Scan code and select text for the next scan.
       window.requestAnimationFrame(() => {

@@ -980,6 +980,7 @@ export function PosScreen({ standalone = false }) {
   const [editBrowseIndex, setEditBrowseIndex] = useState(0);
   const orderNoUserEditedRef = useRef(false);
   const [replacingLineId, setReplacingLineId] = useState(null);
+  const replacingLineIdRef = useRef(null);
   const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
   const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
@@ -2772,8 +2773,8 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Barcode not found — search by name or code.");
       return false;
     }
-    if (replacingLineId) {
-      pickProduct(product);
+    if (replacingLineIdRef.current) {
+      void pickProduct(product);
       return true;
     }
     await quickAddOrIncrementProduct(product);
@@ -2788,46 +2789,27 @@ export function PosScreen({ standalone = false }) {
     productByCodeRef.current[product.product_code] =
       productByCodeRef.current[product.product_code] ?? product;
 
-    setSelectedProductCode(product.product_code);
-    setSelectedProduct(product);
-    setUnitPriceTouched(false);
     await ensureRetailPackageForProduct(product);
     const retailPackage = getRetailPackage(product.product_code);
-    const replaceLine = replacingLineId
-      ? (cart?.lines ?? []).find((line) => sameLineId(line.id, replacingLineId))
+    const activeReplacingId = replacingLineIdRef.current;
+    const activeCart = cartRef.current ?? cart;
+    const replaceLine = activeReplacingId
+      ? (activeCart?.lines ?? []).find((line) => sameLineId(line.id, activeReplacingId))
       : null;
-    const replaceRetail = replaceLine ? cartLineRetailStockFlag(replaceLine) : null;
-    const quantity = replaceLine
-      ? posEntryQtyFromBaseQty(
-          Number(replaceLine.quantity ?? 0),
-          product,
-          retailPackage,
-          Boolean(replaceRetail),
-        )
-      : defaultPosEntryQty(product, sellWholesale, retailPackage);
-    const computed = applyComputedPrice(
-      product,
-      quantity,
-      0,
-      null,
-      replaceRetail,
-      replaceRetail == null ? null : !replaceRetail,
-    );
-    setLineForm({
-      product_code: product.product_code,
-      description: product.product_name ?? "",
-      package: computed.packagingLabel,
-      quantity,
-      discount: String(computed.discountAmount ?? 0),
-      unit_price: String(computed.displayUnitPrice),
-    });
 
     if (replaceLine) {
       if (String(replaceLine.product_code) === String(product.product_code)) {
-        setStatusMessage("Choose a different product to replace this line.");
+        setStatusMessage("Choose a different product to swap onto this line.");
         return;
       }
-      setStatusMessage(`Replacing ${replaceLine.product_code} → ${product.product_code}…`);
+      const replaceRetail = cartLineRetailStockFlag(replaceLine);
+      const quantity = posEntryQtyFromBaseQty(
+        Number(replaceLine.quantity ?? 0),
+        product,
+        retailPackage,
+        Boolean(replaceRetail),
+      );
+      setStatusMessage(`Swapping ${replaceLine.product_code} → ${product.product_code}…`);
       void (async () => {
         const runReplace = async () => {
           try {
@@ -2845,12 +2827,12 @@ export function PosScreen({ standalone = false }) {
               setSearchQuery("");
               setLineForm(EMPTY_LINE);
               setStatusMessage(
-                `Replaced ${replaceLine.product_code} with ${product.product_code}.`,
+                `Swapped ${replaceLine.product_code} with ${product.product_code}.`,
               );
               focusProductSearch();
             }
           } catch (e) {
-            setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+            setStatusMessage(e instanceof ApiError ? e.message : "Failed to swap line");
           }
         };
         if (cartRef.current?.held_order_num || cartRef.current?.offline) {
@@ -2868,10 +2850,29 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
+    setSelectedProductCode(product.product_code);
+    setSelectedProduct(product);
+    setUnitPriceTouched(false);
+    const quantity = defaultPosEntryQty(product, sellWholesale, retailPackage);
+    const computed = applyComputedPrice(
+      product,
+      quantity,
+      0,
+      null,
+      null,
+      null,
+    );
+    setLineForm({
+      product_code: product.product_code,
+      description: product.product_name ?? "",
+      package: computed.packagingLabel,
+      quantity,
+      discount: String(computed.discountAmount ?? 0),
+      unit_price: String(computed.displayUnitPrice),
+    });
+
     // Classic search/scan pick: park on entry row, show item code, focus qty.
-    // Skip when we're replacing a line — the replace fires above and we don't
-    // want to overwrite the search field or clear the entry row state.
-    if (classicLayout && !replacingLineId) {
+    if (classicLayout) {
       setSearchQuery(product.product_code ?? "");
     }
   }
@@ -2899,9 +2900,8 @@ export function PosScreen({ standalone = false }) {
       unit_price: "",
     });
     setStatusMessage(
-      `Replace ${line.product_code}: search or scan the new product (Enter selects & replaces). Esc cancels.`,
+      `Swap ${line.product_code}: search or scan the replacement product (Enter selects). Esc cancels.`,
     );
-    focusProductSearch();
   }
 
   function cancelReplaceCartLine() {
@@ -2912,7 +2912,7 @@ export function PosScreen({ standalone = false }) {
     setSearchQuery("");
     setSearchResults([]);
     setLineForm(EMPTY_LINE);
-    setStatusMessage("Replace cancelled.");
+    setStatusMessage("Swap cancelled.");
     focusProductSearch();
   }
 
@@ -2978,18 +2978,31 @@ export function PosScreen({ standalone = false }) {
   }
 
   useEffect(() => {
+    replacingLineIdRef.current = replacingLineId;
+  }, [replacingLineId]);
+
+  useEffect(() => {
+    if (!classicLayout || !replacingLineId) return;
+    const frame = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select?.();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [classicLayout, replacingLineId]);
+
+  useEffect(() => {
     if (editingLineId) return;
     setUnitPriceTouched(false);
   }, [sellWholesale, routeMarkupPerUnit, editingLineId]);
 
   useEffect(() => {
-    if (!selectedProduct?.product_code) return;
+    if (!selectedProduct?.product_code || replacingLineId) return;
     const frame = window.requestAnimationFrame(() => {
       qtyInputRef.current?.focus({ preventScroll: true });
       qtyInputRef.current?.select?.();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedProduct?.product_code]);
+  }, [selectedProduct?.product_code, replacingLineId]);
 
   useEffect(() => {
     if (!selectedProduct || editingLineId) return;
@@ -3400,8 +3413,10 @@ export function PosScreen({ standalone = false }) {
         ? parseDecimalInput(lineForm.unit_price)
         : null;
 
-    const replaceLine = replacingLineId
-      ? (cart?.lines ?? []).find((line) => sameLineId(line.id, replacingLineId))
+    const replaceLine = replacingLineIdRef.current
+      ? (cartRef.current ?? cart)?.lines?.find((line) =>
+          sameLineId(line.id, replacingLineIdRef.current),
+        )
       : null;
 
     if (replaceLine) {
@@ -6839,6 +6854,7 @@ export function PosScreen({ standalone = false }) {
                     sellFromShop={sellFromShop}
                     onSelect={pickProduct}
                     onBarcodeEnter={handleBarcodeEnter}
+                    onEscapeKey={replacingLineId ? cancelReplaceCartLine : null}
                     barcodeEnabled={enableBarcodeScanner}
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
@@ -6863,7 +6879,7 @@ export function PosScreen({ standalone = false }) {
                     ? lineProductVat(selectedProduct, entryRowComputed.lineAmount)
                     : 0
                 }
-                entryReady={Boolean(selectedProduct && lineForm.product_code)}
+                entryReady={Boolean(selectedProduct && lineForm.product_code && !replacingLineId)}
                 onEntryQtyChange={(value) =>
                   setLineForm((p) => ({ ...p, quantity: value }))
                 }
