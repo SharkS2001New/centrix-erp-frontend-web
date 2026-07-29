@@ -968,9 +968,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                     canRecordPayment ? () => setPaymentModalOpen(true) : null
                   }
                   onAdvance={
-                    !readOnlyWorkflow
-                    && sale.status !== "cancelled"
-                    && sale.status !== "completed"
+                    !readOnlyWorkflow && sale.status !== "cancelled"
                       ? (status) => handleAdvance(status)
                       : null
                   }

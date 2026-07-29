@@ -750,9 +750,9 @@ export function OrganizationOrderWorkflowSettings({
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order cancellation</p>
             <p className="mt-1 text-xs text-slate-500">
-              When enabled, staff can cancel orders that are still booked, pending, or unpaid. Partially paid
-              and later stages cannot be cancelled. A Cancelled orders link appears under Backoffice → Sales →
-              Orders.
+              When enabled, staff can cancel orders on the workflow stages you select under Order actions by
+              stage (for example Unpaid, Partially paid, and Paid). A Cancelled orders link appears under
+              Backoffice → Sales → Orders.
             </p>
             <div className="mt-3 space-y-3">
               <Toggle

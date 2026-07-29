@@ -119,7 +119,7 @@ export function isPosOrMobileSale(sale, capabilities = null) {
   return sourceKey === "pos" || sourceKey === "mobile";
 }
 
-/** Line-edit popup for workspace orders (backoffice, mobile, editable discount revision). */
+/** Line-edit popup for Sales/Orders (backoffice, POS, mobile, editable discount revision). */
 export function shouldOpenBackofficeOrderEdit(sale, workflow = null, capabilities = null) {
   // Platform Edit-order stages are the hard gate — API flags must not expand beyond them.
   if (!isOrderEditVisible(sale, workflow, capabilities)) return false;
@@ -128,7 +128,8 @@ export function shouldOpenBackofficeOrderEdit(sale, workflow = null, capabilitie
   if (String(sale?.status ?? "").toLowerCase() === "editable") return true;
 
   const sourceKey = resolveOrderSourceKey(sale?.order_source, sale?.channel, capabilities);
-  if (sourceKey === "mobile") return true;
+  // From Sales/Orders, always use the edit popup — never send cashiers back to create-order/POS.
+  if (sourceKey === "mobile" || sourceKey === "pos") return true;
   if (isBackofficeSale(sale, capabilities)) return true;
 
   return !isPosOrMobileSale(sale, capabilities);

@@ -143,7 +143,8 @@ export function OrderWorkflowPipeline({
   const isCancelled = status === "cancelled";
   const isExpired = status === "expired";
   const isEditable = status === "editable";
-  const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
+  const isCompletedStored = status === "completed";
+  const prevStep = !isCompletedStored && currentIdx > 0 ? steps[currentIdx - 1] : null;
   const firstStep = steps[0] ?? null;
   const paidTotal =
     totalPaid != null ? Number(totalPaid) : Math.max(0, Number(sale?.order_total ?? 0) - balanceDue);
@@ -153,7 +154,7 @@ export function OrderWorkflowPipeline({
       })
     : { showCollectPayment: false, advanceStatus: null };
   const showCollectPayment = Boolean(onCollectPayment) && actions.showCollectPayment;
-  const advanceTarget = actions.advanceStatus;
+  const advanceTarget = isCompletedStored ? null : actions.advanceStatus;
   const advanceStep = advanceTarget
     ? steps.find((s) => s.key === advanceTarget) ?? {
         key: advanceTarget,
@@ -161,6 +162,8 @@ export function OrderWorkflowPipeline({
       }
     : null;
   const showWorkflowAdvance = Boolean(onAdvance) && !readOnlyWorkflow;
+  // Cancel must remain available even when the order is at a terminal stage (paid / completed).
+  const showCancelAction = showWorkflowAdvance && canCancel;
   const hasWorkflowAdvanceActions =
     showWorkflowAdvance
     && (prevStep || advanceStep || canCancel || status === "held" || status === "draft");
@@ -275,7 +278,7 @@ export function OrderWorkflowPipeline({
                   {busyStatus ? "Updating…" : `${firstStep.label} →`}
                 </button>
               ) : null}
-              {showWorkflowAdvance && canCancel ? (
+              {showCancelAction ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}

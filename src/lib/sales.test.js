@@ -68,9 +68,9 @@ describe("sales order edit routing", () => {
     expect(shouldRestoreOrderToCart(mobileBookedSale, null, capabilitiesWithPos)).toBe(false);
   });
 
-  it("still restores external POS orders to cart", () => {
-    expect(shouldOpenBackofficeOrderEdit(posBookedSale, null, capabilitiesWithPos)).toBe(false);
-    expect(shouldRestoreOrderToCart(posBookedSale, null, capabilitiesWithPos)).toBe(true);
+  it("opens the line-edit popup for booked POS orders from Sales/Orders", () => {
+    expect(shouldOpenBackofficeOrderEdit(posBookedSale, null, capabilitiesWithPos)).toBe(true);
+    expect(shouldRestoreOrderToCart(posBookedSale, null, capabilitiesWithPos)).toBe(false);
   });
 
   it("prefers the popup when can_edit_lines is true", () => {

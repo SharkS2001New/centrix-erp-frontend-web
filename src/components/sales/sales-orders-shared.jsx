@@ -443,13 +443,14 @@ export function buildOrderContextMenuItems({
     return items;
   }
 
-  if (disableWorkflowActions || !sale || sale.status === "cancelled" || sale.status === "completed") {
+  if (disableWorkflowActions || !sale || sale.status === "cancelled") {
     return items;
   }
 
   const forward = workflowActions.advanceStatus;
   const canCancel = canCancelOrder(sale, workflow, capabilities);
 
+  // Terminal / completed receipts can still expose Cancel when platform stages allow it.
   if (forward || canCancel) {
     items.push({ type: "separator" });
     if (forward) {

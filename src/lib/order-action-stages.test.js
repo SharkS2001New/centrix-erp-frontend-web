@@ -75,6 +75,37 @@ describe("order actions by stage (platform config)", () => {
     expect(canCancelOrder(sale("paid"), null, PLATFORM_CAPS)).toBe(false);
   });
 
+  it("cancel on Unpaid, Partially paid, and Paid when configured", () => {
+    const caps = {
+      module_settings: {
+        sales: {
+          order_cancellation_enabled: true,
+          cancel_order_statuses: ["unpaid", "pending_payment", "paid"],
+        },
+      },
+    };
+    const workflow = {
+      statuses: ["unpaid", "pending_payment", "paid"],
+      pipeline: [
+        { key: "unpaid", label: "Unpaid" },
+        { key: "pending_payment", label: "Partially paid" },
+        { key: "paid", label: "Paid" },
+      ],
+      labels: {
+        unpaid: "Unpaid",
+        pending_payment: "Partially paid",
+        paid: "Paid",
+      },
+    };
+
+    expect(canCancelOrder(sale("unpaid"), workflow, caps)).toBe(true);
+    expect(canCancelOrder(sale("pending_payment", "partial", 400), workflow, caps)).toBe(true);
+    expect(canCancelOrder(sale("paid", "paid", 1000), workflow, caps)).toBe(true);
+    // Stored POS "completed" maps onto terminal Paid for short pipelines.
+    expect(canCancelOrder(sale("completed", "paid", 1000), workflow, caps)).toBe(true);
+    expect(canCancelOrder(sale("booked"), workflow, caps)).toBe(false);
+  });
+
   it("customer returns only on Processed, Delivered, Completed", () => {
     expect(isCustomerReturnAllowedForOrder(sale("booked"), PLATFORM_CAPS)).toBe(false);
     expect(isCustomerReturnAllowedForOrder(sale("paid"), PLATFORM_CAPS)).toBe(false);
