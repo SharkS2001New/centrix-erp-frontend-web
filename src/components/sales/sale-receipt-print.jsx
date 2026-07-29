@@ -28,8 +28,8 @@ import {
   orgPrintInkStyles,
 } from "@/lib/print-typography";
 import {
+  THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
-  THERMAL_SIDE_MARGIN_MM,
 } from "@/lib/thermal-receipt-layout";
 
 function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {}) {
@@ -297,10 +297,9 @@ export function buildSaleReceiptHtml(
   <style>
     @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
-    html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0 auto; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
-    body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
-    .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
+    .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; }
     .org-brand,
     .org-header { margin: 0; padding: 0; max-width: 100%; }
     .org-logo { display: block; margin: 0 auto 2px; max-height: 34px; max-width: 100%; object-fit: contain; }
@@ -316,39 +315,39 @@ export function buildSaleReceiptHtml(
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
     .table { width: 100%; max-width: 100%; border-collapse: collapse; margin: 4px 0; font-size: ${px(8)}; table-layout: fixed; }
-    .table col.col-desc { width: 41%; }
-    .table col.col-qty { width: 13%; }
-    .table col.col-price { width: 20%; }
+    .table col.col-desc { width: 44%; }
+    .table col.col-qty { width: 12%; }
+    .table col.col-price { width: 18%; }
     .table col.col-amount { width: 26%; }
-    .table.has-disc col.col-desc { width: 38%; }
-    .table.has-disc col.col-qty { width: 11%; }
-    .table.has-disc col.col-price { width: 17%; }
-    .table.has-disc col.col-disc { width: 8%; }
-    .table.has-disc col.col-amount { width: 26%; }
-    .table thead th { padding: 1px 0; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(7)}; letter-spacing: 0; overflow: hidden; }
+    .table.has-disc col.col-desc { width: 36%; }
+    .table.has-disc col.col-qty { width: 10%; }
+    .table.has-disc col.col-price { width: 16%; }
+    .table.has-disc col.col-disc { width: 10%; }
+    .table.has-disc col.col-amount { width: 28%; }
+    .table thead th { padding: 1px 0; border-bottom: none; font-weight: 700; text-align: left; font-size: ${px(7)}; letter-spacing: 0; }
     .table thead th.qty,
     .table thead th.price,
     .table thead th.disc,
-    .table thead th.amount { text-align: right; }
+    .table thead th.amount { text-align: right; padding-left: 0; padding-right: 0; }
     .table th.desc, .table td.desc { padding-right: 2px; word-break: break-word; overflow-wrap: anywhere; }
     .table tbody tr { border-top: 1px dashed #000; }
-    .table td { padding: 1px 0; vertical-align: top; text-align: left; overflow: hidden; }
-    .table td.qty { white-space: nowrap; line-height: 1.15; font-size: ${px(7.5)}; text-align: right; max-width: 0; }
+    .table td { padding: 1px 0; vertical-align: top; text-align: left; }
+    .table td.qty { white-space: nowrap; line-height: 1.15; font-size: ${px(7.5)}; text-align: right; padding-left: 0; padding-right: 0; }
     .table td.price,
     .table td.disc,
-    .table td.amount { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; max-width: 0; }
+    .table td.amount { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; padding-left: 0; padding-right: 0; }
     .summary-table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(8)}; }
-    .summary-table col.col-label { width: 70%; }
-    .summary-table col.col-value { width: 30%; }
+    .summary-table col.col-label { width: 52%; }
+    .summary-table col.col-value { width: 48%; }
     .summary-table.vat-table col.col-vat-rate { width: 52%; }
     .summary-table.vat-table col.col-vat-amt { width: 48%; }
-    .summary-table td { padding: 1px 0; vertical-align: top; overflow: hidden; }
-    .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; max-width: 0; }
-    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; max-width: 0; }
+    .summary-table td { padding: 1px 0; vertical-align: top; }
+    .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; padding-right: 4px; }
+    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table.vat-table .amount-label,
     .summary-table.vat-table .vat-charged-label { font-size: ${px(7)}; letter-spacing: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table.vat-table .vat-charged-label { padding-left: 0; text-align: right; }
-    .summary-table.vat-table .amount-value { text-align: right; max-width: 0; }
+    .summary-table.vat-table .amount-value { text-align: right; }
     .summary-table tr.amount-line-grand td { font-size: ${px(10)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
     .vat-note { margin: 4px 0 0; font-size: 0.85em; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; }
@@ -362,14 +361,13 @@ export function buildSaleReceiptHtml(
     .footer-text { font-size: ${fpx(8)}; color: #000; margin-top: 3px; letter-spacing: normal; line-height: 1.3; font-weight: var(--print-w-footer, 700); word-break: break-word; overflow-wrap: anywhere; text-transform: none; }
     .footer-line-divider { margin: 3px 0; }
     .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 2px; letter-spacing: normal; line-height: 1.25; word-break: break-word; overflow-wrap: anywhere; text-transform: none; }
-    .kra-etims-block { page-break-inside: avoid; break-inside: avoid; max-width: 100%; overflow: hidden; }
+    .kra-etims-block { page-break-inside: avoid; break-inside: avoid; max-width: 100%; overflow: hidden; box-sizing: border-box; }
     .kra-etims-caption { margin-top: 4px; font-size: ${px(8)}; font-weight: 700; color: #000; line-height: 1.35; text-align: center; padding: 0 1px; overflow-wrap: anywhere; word-break: break-word; }
     .center { text-align: center; }
     @media print {
-      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
-      body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; padding-top: 0 !important; box-sizing: border-box !important; }
+      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 auto !important; padding: 0 !important; }
       body { font-size: ${px(10, true)}; }
-      .receipt { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+      .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; overflow: visible !important; }
       .org-brand,
       .org-header { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
       .org-logo { margin: 0 auto 2px !important; max-height: 34px !important; max-width: 100% !important; }

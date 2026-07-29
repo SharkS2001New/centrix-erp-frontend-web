@@ -20,8 +20,8 @@ import {
 } from "@/lib/print-typography";
 import { formatThermalPrintAmount } from "@/lib/sale-document-print-shared";
 import {
+  THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
-  THERMAL_SIDE_MARGIN_MM,
 } from "@/lib/thermal-receipt-layout";
 
 function escapeHtml(value) {
@@ -188,32 +188,30 @@ export function buildPosTillReportHtml({
   <style>
     @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
-    html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0 auto; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(11)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
-    body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
-    .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+    .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; }
     .org-name { text-align: center; font-size: ${hpx(13)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.15; margin: 0 0 2px; word-break: break-word; }
     .doc-title { text-align: center; font-size: ${px(12)}; font-weight: 700; letter-spacing: .08em; margin: 6px 0 4px; }
     .divider { border-top: 1px dashed #000; margin: 4px 0; page-break-inside: avoid; break-inside: avoid; }
     .meta { font-size: ${px(10)}; line-height: 1.3; margin: 1px 0; word-break: break-word; overflow-wrap: anywhere; page-break-inside: avoid; break-inside: avoid; }
     .meta-label { font-weight: 700; }
     .summary-table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(10)}; page-break-inside: avoid; break-inside: avoid; }
-    .summary-table col.col-label { width: 70%; }
-    .summary-table col.col-value { width: 30%; }
-    .summary-table td { padding: 1px 0; vertical-align: top; overflow: hidden; }
+    .summary-table col.col-label { width: 52%; }
+    .summary-table col.col-value { width: 48%; }
+    .summary-table td { padding: 1px 0; vertical-align: top; }
     .summary-table tr { page-break-inside: avoid; break-inside: avoid; }
     .summary-table tr.section-row td.section-label { padding-top: 6px; font-weight: 700; text-transform: uppercase; font-size: ${px(10)}; letter-spacing: .04em; border-top: 1px dashed #000; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table tr.section-row-first td.section-label { padding-top: 2px; border-top: 0; }
-    .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; padding-right: 4px; max-width: 0; }
-    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; max-width: 0; }
+    .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; padding-right: 4px; }
+    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
     .footer { margin-top: 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 700); letter-spacing: .04em; page-break-inside: avoid; break-inside: avoid; }
     @media print {
       @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0 !important; }
-      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; page: centrix-thermal; }
-      body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; page: centrix-thermal; }
-      .receipt { page-break-before: avoid !important; page-break-after: avoid !important; page-break-inside: avoid !important; break-before: avoid-page !important; break-after: avoid-page !important; break-inside: avoid-page !important; }
+      html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 auto !important; padding: 0 !important; overflow: visible !important; page: centrix-thermal; }
+      .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; page-break-before: avoid !important; page-break-after: avoid !important; page-break-inside: avoid !important; break-before: avoid-page !important; break-after: avoid-page !important; break-inside: avoid-page !important; }
       body { font-size: ${px(11, true)}; }
       .org-name { font-size: ${hpx(13, true)}; }
       .doc-title { font-size: ${px(12, true)}; }

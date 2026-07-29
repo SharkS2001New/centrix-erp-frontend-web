@@ -10,8 +10,8 @@ import {
 } from "@/lib/print-typography";
 import { resolveOrgPrintFontSettings } from "@/lib/print-font-settings";
 import {
+  THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
-  THERMAL_SIDE_MARGIN_MM,
 } from "@/lib/thermal-receipt-layout";
 
 const sampleSale = {
@@ -159,9 +159,9 @@ describe("org print typography settings", () => {
     expect(html).toContain('<div class="meta-full"><span class="meta-label">Cash Sales #:</span>');
     expect(html).toContain("Cash Sales #:");
     expect(html).toContain("S1001");
-    expect(html).toContain(`padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm`);
+    expect(html).toContain(`width: ${THERMAL_CONTENT_WIDTH_MM}mm`);
     expect(html).toContain("text-align: right");
-    expect(html).toContain("max-width: 0");
+    expect(html).not.toContain("max-width: 0");
     expect(html).toContain("font-variant-numeric: tabular-nums");
     expect(html).toContain('<td class="amount-label">Total</td>');
     expect(html).toContain('<td class="amount-label">Cash</td>');
