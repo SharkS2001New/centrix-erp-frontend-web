@@ -1,9 +1,39 @@
 "use client";
 
-import Link from "next/link";
-import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat, cashMovementLabel } from "@/lib/pos-till";
-import { buildExpensesHref } from "@/lib/expenses-link";
-import { ReportStatGrid } from "@/components/pos/pos-shared";
+import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat, cashMovementLabel, resolveTillReportNo } from "@/lib/pos-till";
+
+function ReportSection({ title, children, action = null }) {
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+        {action}
+      </div>
+      <div className="mt-1.5">{children}</div>
+    </section>
+  );
+}
+
+function ReportSummaryRows({ items, grandLabels = [] }) {
+  const grandSet = new Set(grandLabels);
+
+  return (
+    <dl className="text-sm">
+      {items.map((item) => {
+        const grand = grandSet.has(item.label);
+        return (
+          <div
+            key={item.label}
+            className={`flex items-baseline justify-between gap-4 py-1 ${grand ? "mt-1 border-t border-slate-200 pt-2 font-semibold" : ""}`}
+          >
+            <dt className={grand ? "text-slate-800" : "text-slate-600"}>{item.label}</dt>
+            <dd className={`shrink-0 tabular-nums ${item.valueClassName ?? "text-slate-900"}`}>{item.value}</dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
 
 function paymentSummaryItems(report) {
   const sales = report?.sales ?? {};
@@ -19,7 +49,11 @@ function paymentSummaryItems(report) {
   return [
     { label: "Cash", value: formatTillKes(sales.cash) },
     { label: "M-Pesa", value: formatTillKes(sales.mpesa) },
-    { label: "Bank", value: formatTillKes(sales.bank) },
+    { label: "Equity", value: formatTillKes(sales.equity) },
+    { label: "KCB", value: formatTillKes(sales.kcb) },
+    ...(Number(sales.bank) > 0 && !Number(sales.equity) && !Number(sales.kcb)
+      ? [{ label: "Bank", value: formatTillKes(sales.bank) }]
+      : []),
   ];
 }
 
@@ -31,37 +65,40 @@ function FloatBreakdownSection({ session, report, showFloatBreakdown }) {
       ? report.float_entries
       : normalizeFloatEntries(session?.float_breakdown);
 
+  if (entries.length === 0) {
+    return (
+      <ReportSection title="Operating float">
+        <ReportSummaryRows
+          items={[{ label: "Total", value: formatTillKes(session?.working_amount) }]}
+          grandLabels={["Total"]}
+        />
+      </ReportSection>
+    );
+  }
+
   return (
-    <div className="theme-panel rounded-xl border p-5 shadow-sm">
-      <h2 className="text-sm font-medium text-slate-900">Operating float</h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Total declared float: {formatTillKes(session?.working_amount)}
-      </p>
-      {entries.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">No float entries recorded.</p>
-      ) : (
-        <table className="mt-4 w-full border-collapse text-sm">
-          <thead>
-            <tr className="theme-table-head-row text-left text-xs font-medium">
-              <th className="px-3 py-2">Date added</th>
-              <th className="px-3 py-2">Payment type</th>
-              <th className="px-3 py-2 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry, index) => (
-              <tr key={`${entry.date_added}-${index}`} className="border-b border-slate-100 last:border-b-0">
-                <td className="px-3 py-2.5 text-slate-600">{formatFloatEntryDate(entry.date_added)}</td>
-                <td className="px-3 py-2.5 text-slate-800">{entry.payment_type}</td>
-                <td className="px-3 py-2.5 text-right font-medium text-slate-900">
-                  {formatTillKes(entry.new_float)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+    <ReportSection title="Operating float">
+      <dl className="text-sm">
+        {entries.map((entry, index) => (
+          <div
+            key={`${entry.date_added}-${index}`}
+            className="flex items-baseline justify-between gap-4 border-b border-slate-100 py-1 last:border-b-0"
+          >
+            <dt className="min-w-0 text-slate-600">
+              {entry.payment_type}
+              {entry.date_added ? (
+                <span className="text-slate-400"> · {formatFloatEntryDate(entry.date_added)}</span>
+              ) : null}
+            </dt>
+            <dd className="shrink-0 tabular-nums text-slate-900">{formatTillKes(entry.new_float)}</dd>
+          </div>
+        ))}
+        <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-slate-200 pt-2 font-semibold">
+          <dt className="text-slate-800">Total float</dt>
+          <dd className="shrink-0 tabular-nums text-slate-900">{formatTillKes(session?.working_amount)}</dd>
+        </div>
+      </dl>
+    </ReportSection>
   );
 }
 
@@ -70,36 +107,32 @@ function CashMovementsSection({ report }) {
   if (movements.length === 0) return null;
 
   return (
-    <div className="theme-panel rounded-xl border p-5 shadow-sm">
-      <h2 className="text-sm font-medium text-slate-900">Cash movements</h2>
-      <table className="mt-4 w-full border-collapse text-sm">
-        <thead>
-          <tr className="theme-table-head-row text-left text-xs font-medium">
-            <th className="px-3 py-2">Type</th>
-            <th className="px-3 py-2">Reason</th>
-            <th className="px-3 py-2 text-right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {movements.map((row, index) => (
-            <tr key={`${row.recorded_at}-${index}`} className="border-b border-slate-100 last:border-b-0">
-              <td className="px-3 py-2.5 text-slate-800">{cashMovementLabel(row.type)}</td>
-              <td className="px-3 py-2.5 text-slate-600">{row.reason ?? "—"}</td>
-              <td className="px-3 py-2.5 text-right font-medium text-slate-900">{formatTillKes(row.amount)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <ReportSection title="Cash movements">
+      <dl className="text-sm">
+        {movements.map((row, index) => (
+          <div
+            key={`${row.recorded_at}-${index}`}
+            className="flex items-baseline justify-between gap-4 border-b border-slate-100 py-1 last:border-b-0"
+          >
+            <dt className="min-w-0 text-slate-600">
+              {cashMovementLabel(row.type)}
+              {row.reason ? <span className="text-slate-400"> · {row.reason}</span> : null}
+            </dt>
+            <dd className="shrink-0 tabular-nums text-slate-900">{formatTillKes(row.amount)}</dd>
+          </div>
+        ))}
+      </dl>
+    </ReportSection>
   );
 }
 
-export function PosReportView({ report, session, tillName, cashierName, showCashReconciliation = false, variance = null, showFloatBreakdown = false, expensesFromDate = null, expensesToDate = null }) {
+export function PosReportView({ report, session, tillName, till = null, cashierName, showCashReconciliation = false, variance = null, showFloatBreakdown = false }) {
   const sales = report?.sales ?? {};
-  const till = report?.till ?? {};
-  const expensesHref = buildExpensesHref({ fromDate: expensesFromDate, toDate: expensesToDate });
+  const tillReport = report?.till ?? {};
+  const sessionExpenses = Number(report?.session_expenses ?? 0);
+  const tillNo = resolveTillReportNo({ tillName, till, session, report });
   const netSales = Number(sales.net_sales ?? sales.net ?? 0);
-  const openingFloat = Number(till.opening_float ?? session?.working_amount ?? 0);
+  const openingFloat = Number(tillReport.opening_float ?? session?.working_amount ?? 0);
   const netSalesMinusFloat = showFloatBreakdown
     ? resolveNetSalesMinusFloat({
         netSales,
@@ -118,6 +151,9 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
       ? [{ label: "VAT total", value: formatTillKes(sales.total_vat) }]
       : []),
     { label: "Refunds", value: formatTillKes(sales.refunds) },
+    ...(sessionExpenses > 0
+      ? [{ label: "Session expenses", value: `−${formatTillKes(sessionExpenses)}`, valueClassName: "text-red-700" }]
+      : []),
     ...(Number(sales.debtor_collections) > 0
       ? [{ label: "Debtor collections", value: formatTillKes(sales.debtor_collections) }]
       : []),
@@ -125,86 +161,74 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
 
   const paymentItems = paymentSummaryItems(report);
 
+  const cashItems = [
+    ...(showFloatBreakdown
+      ? [
+          { label: "Operating float", value: formatTillKes(tillReport.opening_float ?? session?.working_amount) },
+          { label: "Cash collected", value: formatTillKes(tillReport.cash_collected ?? sales.cash) },
+          {
+            label: "Gross till total",
+            value: formatTillKes(
+              tillReport.gross_total ??
+                Number(tillReport.opening_float ?? session?.working_amount ?? 0) + Number(tillReport.cash_collected ?? sales.cash ?? 0),
+            ),
+          },
+        ]
+      : []),
+    { label: "Expected cash", value: formatTillKesExact(report?.expected_cash) },
+    ...(showCashReconciliation
+      ? [
+          { label: "Actual cash", value: formatTillKesExact(session?.closing_amount) },
+          {
+            label: "Variance",
+            value: variance != null ? formatTillKesExact(variance) : "—",
+            valueClassName:
+              variance != null
+                ? Number(variance) < 0
+                  ? "text-red-700"
+                  : Number(variance) > 0
+                    ? "text-amber-700"
+                    : "text-emerald-700"
+                : undefined,
+          },
+        ]
+      : []),
+  ];
+
+  const cashGrandLabels = showCashReconciliation
+    ? ["Variance"]
+    : ["Expected cash"];
+
   return (
-    <div className="space-y-6">
-      <div className="theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-sm font-medium text-slate-900">Session info</h2>
-        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-          <div><dt className="text-slate-500">Till</dt><dd className="font-medium">{tillName ?? "—"}</dd></div>
-          <div><dt className="text-slate-500">Cashier</dt><dd className="font-medium">{cashierName ?? "—"}</dd></div>
-          <div><dt className="text-slate-500">Opened</dt><dd className="font-medium">{formatSessionTime(session?.opened_at)}</dd></div>
-          <div><dt className="text-slate-500">Current time</dt><dd className="font-medium">{formatSessionTime(new Date().toISOString())}</dd></div>
-          {session?.closed_at ? (
-            <div><dt className="text-slate-500">Closed</dt><dd className="font-medium">{formatSessionDateTime(session.closed_at)}</dd></div>
-          ) : null}
-        </dl>
+    <div className="space-y-4 text-sm">
+      <ReportSummaryRows
+        items={[
+          { label: "Till No", value: tillNo },
+          { label: "Cashier", value: cashierName ?? "—" },
+          { label: "Opened", value: formatSessionTime(session?.opened_at) },
+          ...(session?.closed_at
+            ? [{ label: "Closed", value: formatSessionDateTime(session.closed_at) }]
+            : [{ label: "Current time", value: formatSessionTime(new Date().toISOString()) }]),
+        ]}
+      />
+
+      <div className="space-y-4 border-t border-slate-200 pt-4">
+        <FloatBreakdownSection session={session} report={report} showFloatBreakdown={showFloatBreakdown} />
+
+        <ReportSection title="Sales">
+          <ReportSummaryRows items={salesItems} />
+        </ReportSection>
+
+        <ReportSection title="Payment summary">
+          <ReportSummaryRows items={paymentItems} />
+        </ReportSection>
+
+        <CashMovementsSection report={report} />
+
+        <ReportSection title="Cash">
+          <ReportSummaryRows items={cashItems} grandLabels={cashGrandLabels} />
+        </ReportSection>
       </div>
-
-      <div className="theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-sm font-medium text-slate-900">Sales summary</h2>
-        <div className="mt-4">
-          <ReportStatGrid items={salesItems} />
-        </div>
-      </div>
-
-      <div className="theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-sm font-medium text-slate-900">Payment summary</h2>
-        <div className="mt-4">
-          <ReportStatGrid items={paymentItems} />
-        </div>
-      </div>
-
-      <FloatBreakdownSection session={session} report={report} showFloatBreakdown={showFloatBreakdown} />
-
-      <CashMovementsSection report={report} />
-
-      {Number(report?.session_expenses) > 0 ? (
-        <div className="theme-panel rounded-xl border p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-slate-900">Session expenses</h2>
-            <Link href={expensesHref} className="text-xs font-medium text-[#185FA5] hover:underline">
-              View expenses
-            </Link>
-          </div>
-          <p className="mt-3 text-sm font-medium text-red-700">−{formatTillKes(report.session_expenses)}</p>
-        </div>
-      ) : null}
-
-      <div className="theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-sm font-medium text-slate-900">Cash summary</h2>
-        <dl className="mt-4 space-y-2 text-sm">
-          {showFloatBreakdown ? (
-            <div className="flex justify-between"><dt className="text-slate-500">Operating float</dt><dd className="font-medium">{formatTillKes(till.opening_float ?? session?.working_amount)}</dd></div>
-          ) : null}
-          <div className="flex justify-between"><dt className="text-slate-500">Cash collected</dt><dd className="font-medium">{formatTillKes(till.cash_collected ?? sales.cash)}</dd></div>
-          {showFloatBreakdown ? (
-            <div className="flex justify-between border-t border-slate-100 pt-2"><dt className="text-slate-500">Gross till total</dt><dd className="font-semibold text-slate-900">{formatTillKes(till.gross_total ?? (Number(till.opening_float ?? session?.working_amount ?? 0) + Number(till.cash_collected ?? sales.cash ?? 0)))}</dd></div>
-          ) : null}
-          {Number(report?.session_expenses) > 0 ? (
-            <div className="flex justify-between"><dt className="text-slate-500">Session expenses</dt><dd className="font-medium text-red-700">−{formatTillKes(report.session_expenses)}</dd></div>
-          ) : null}
-          <div className="flex justify-between border-t border-slate-100 pt-2"><dt className="text-slate-500">Expected cash</dt><dd className="font-semibold text-slate-900">{formatTillKesExact(report?.expected_cash)}</dd></div>
-          {showCashReconciliation ? (
-            <>
-              <div className="flex justify-between"><dt className="text-slate-500">Actual cash</dt><dd className="font-medium">{formatTillKesExact(session?.closing_amount)}</dd></div>
-              <div className="flex justify-between border-t border-slate-100 pt-2">
-                <dt className="text-slate-500">Variance</dt>
-                <dd className={`font-semibold ${Number(variance) < 0 ? "text-red-700" : Number(variance) > 0 ? "text-amber-700" : "text-emerald-700"}`}>
-                  {variance != null ? formatTillKesExact(variance) : "—"}
-                </dd>
-              </div>
-            </>
-          ) : null}
-        </dl>
-      </div>
-
-      {expensesFromDate ? (
-        <div className="flex justify-end">
-          <Link href={expensesHref} className="text-sm font-medium text-[#185FA5] hover:underline">
-            View expenses
-          </Link>
-        </div>
-      ) : null}
     </div>
   );
 }

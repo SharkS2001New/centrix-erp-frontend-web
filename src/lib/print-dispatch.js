@@ -1,5 +1,9 @@
 import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
 import {
+  injectPrintDocumentBaseline,
+  prepareThermalPrintHtml,
+} from "@/lib/print-document-baseline";
+import {
   getLocalPrintProvider,
   saveLocalPrintProvider,
 } from "@/lib/local-print-provider";
@@ -10,6 +14,13 @@ import {
   savePrintAgentConfig,
 } from "@/lib/print-agent";
 import { saveQzTrayConfig, getQzTrayConfig } from "@/lib/qz-tray-print";
+
+function preparePrintHtml(html, jobType = "receipt") {
+  if (jobType === "receipt") {
+    return prepareThermalPrintHtml(html);
+  }
+  return injectPrintDocumentBaseline(html);
+}
 
 /**
  * Route a print job to Centrix Print Agent or the browser dialog (org settings).
@@ -30,8 +41,10 @@ export async function dispatchPrintJob({
     return { mode: "browser", ok: false };
   }
 
+  const preparedHtml = preparePrintHtml(html, jobType);
+
   if (printWindow) {
-    fillPrintWindow(printWindow, html);
+    fillPrintWindow(printWindow, preparedHtml, { skipBaseline: true });
     return { mode: "browser", ok: true };
   }
 
@@ -42,7 +55,7 @@ export async function dispatchPrintJob({
     if (config.enabled || activeProvider === "agent") {
       try {
         const result = await printViaAgent({
-          html,
+          html: preparedHtml,
           copies,
           jobType,
           config: { ...config, enabled: true },
@@ -60,7 +73,7 @@ export async function dispatchPrintJob({
   }
 
   for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
-    openPrintWindow(html, windowFeatures);
+    openPrintWindow(preparedHtml, windowFeatures, { skipBaseline: true });
   }
 
   return { mode: "browser", ok: true };

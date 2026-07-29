@@ -67,6 +67,31 @@ export function tillCode(till) {
   return till?.till_number ?? "—";
 }
 
+/** Till number/label for X/Z reports — prefers till_number, never blank when session has a till. */
+export function resolveTillReportNo({ tillName = null, till = null, session = null, report = null } = {}) {
+  const candidates = [
+    till?.till_number,
+    report?.till?.till_number,
+    session?.till_number,
+    session?.till?.till_number,
+    tillName,
+    till?.till_name,
+    report?.till?.till_name,
+    session?.till_name,
+    session?.till?.till_name,
+    till ? tillDisplayName(till) : null,
+    session?.till_id != null ? `Till #${session.till_id}` : null,
+    till?.id != null ? `Till #${till.id}` : null,
+  ];
+
+  for (const value of candidates) {
+    const text = String(value ?? "").trim();
+    if (text && text !== "—") return text;
+  }
+
+  return "—";
+}
+
 /** Parse Till01 → 1, else null. */
 export function parseTillNumber(value) {
   const match = String(value ?? "").trim().match(/^Till(\d+)$/i);

@@ -183,6 +183,7 @@ import {
   createBranchTill,
   indexOpenSessionsByTill,
   pickBranchTillForCashier,
+  resolveTillReportNo,
   tillDisplayName,
 } from "@/lib/pos-till";
 import {
@@ -309,6 +310,11 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
 function sameLineId(a, b) {
   if (a == null || b == null) return false;
   return String(a) === String(b);
+}
+
+function posProductDisplayName(record) {
+  if (!record) return "item";
+  return record.product_name ?? record.description ?? record.product_code ?? "item";
 }
 
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
@@ -654,6 +660,11 @@ export function PosScreen({ standalone = false }) {
     [posTills, tillId, activeSession?.till_id],
   );
 
+  const reportTillNo = useMemo(
+    () => resolveTillReportNo({ till: activeTill, session: activeSession, report: sessionReport }),
+    [activeTill, activeSession, sessionReport],
+  );
+
   useEffect(() => {
     // Only auto-prompt on standalone POS — backoffice users can declare float from the banner.
     if (!standalone) return;
@@ -754,7 +765,13 @@ export function PosScreen({ standalone = false }) {
     const closedTill = closedTillId
       ? posTills.find((t) => String(t.id) === String(closedTillId))
       : activeTill;
-    setZReportTillName(closedTill ? tillDisplayName(closedTill) : null);
+    setZReportTillName(
+      resolveTillReportNo({
+        till: closedTill,
+        session: res?.session,
+        report: res?.report ?? res,
+      }),
+    );
     setCloseSessionOpen(false);
     setZReportPayload(res);
     setZReportOpen(true);
@@ -981,6 +998,8 @@ export function PosScreen({ standalone = false }) {
   const orderNoUserEditedRef = useRef(false);
   const [replacingLineId, setReplacingLineId] = useState(null);
   const replacingLineIdRef = useRef(null);
+  const [swapDraft, setSwapDraft] = useState(null);
+  const swapLineQtyRef = useRef(null);
   const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
   const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
@@ -2781,6 +2800,57 @@ export function PosScreen({ standalone = false }) {
     return true;
   }
 
+  async function completeSwapFromDraft(entryQtyRaw) {
+    const draft = swapDraft;
+    if (!draft?.line || !draft?.product) return false;
+    const entryQty = parseDecimalInput(entryQtyRaw ?? draft.quantity);
+    if (!(entryQty > 0)) {
+      setStatusMessage("Enter a quantity greater than zero to complete the swap.");
+      return false;
+    }
+
+    const runReplace = async () => {
+      try {
+        const ok = await replaceCartLineWithProduct(
+          draft.line,
+          draft.product,
+          String(entryQtyRaw ?? entryQty),
+          0,
+          null,
+        );
+        if (ok) {
+          setSwapDraft(null);
+          setReplacingLineId(null);
+          setSelectedProduct(null);
+          setSelectedProductCode(null);
+          setSearchQuery("");
+          setLineForm(EMPTY_LINE);
+          setStatusMessage(
+            `Swapped ${posProductDisplayName(draft.line)} with ${posProductDisplayName(draft.product)}.`,
+          );
+          focusProductSearch();
+        }
+        return ok;
+      } catch (e) {
+        setStatusMessage(e instanceof ApiError ? e.message : "Failed to swap line");
+        return false;
+      }
+    };
+
+    if (cartRef.current?.held_order_num || cartRef.current?.offline) {
+      if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
+      await enqueueCartCommit(runReplace);
+      return true;
+    }
+
+    setLineBusy(true);
+    try {
+      return await runReplace();
+    } finally {
+      setLineBusy(false);
+    }
+  }
+
   async function pickProduct(product) {
     if (!product) return;
     setProductByCode((prev) =>
@@ -2809,44 +2879,19 @@ export function PosScreen({ standalone = false }) {
         retailPackage,
         Boolean(replaceRetail),
       );
-      setStatusMessage(`Swapping ${replaceLine.product_code} → ${product.product_code}…`);
-      void (async () => {
-        const runReplace = async () => {
-          try {
-            const ok = await replaceCartLineWithProduct(
-              replaceLine,
-              product,
-              quantity,
-              0,
-              null,
-            );
-            if (ok) {
-              setReplacingLineId(null);
-              setSelectedProduct(null);
-              setSelectedProductCode(null);
-              setSearchQuery("");
-              setLineForm(EMPTY_LINE);
-              setStatusMessage(
-                `Swapped ${replaceLine.product_code} with ${product.product_code}.`,
-              );
-              focusProductSearch();
-            }
-          } catch (e) {
-            setStatusMessage(e instanceof ApiError ? e.message : "Failed to swap line");
-          }
-        };
-        if (cartRef.current?.held_order_num || cartRef.current?.offline) {
-          if (cartRef.current?.held_order_num) markPreviousOrderDraftDirtyNow();
-          await enqueueCartCommit(runReplace);
-          return;
-        }
-        setLineBusy(true);
-        try {
-          await runReplace();
-        } finally {
-          setLineBusy(false);
-        }
-      })();
+      setSwapDraft({
+        lineId: replaceLine.id,
+        line: replaceLine,
+        product,
+        quantity: String(quantity),
+      });
+      setStatusMessage(
+        `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
+      );
+      window.requestAnimationFrame(() => {
+        swapLineQtyRef.current?.focus({ preventScroll: true });
+        swapLineQtyRef.current?.select?.();
+      });
       return;
     }
 
@@ -2880,6 +2925,7 @@ export function PosScreen({ standalone = false }) {
   function beginReplaceCartLine(lineId) {
     const line = (cart?.lines ?? []).find((row) => sameLineId(row.id, lineId));
     if (!line || busy || lineBusy) return;
+    setSwapDraft(null);
     setReplacingLineId(line.id);
     setSelectedLineId(line.id);
     setEditingLineId(null);
@@ -2900,13 +2946,14 @@ export function PosScreen({ standalone = false }) {
       unit_price: "",
     });
     setStatusMessage(
-      `Swap ${line.product_code}: search or scan the replacement product (Enter selects). Esc cancels.`,
+      `Swap ${posProductDisplayName(line)}: search or scan the replacement product (Enter selects). Esc cancels.`,
     );
   }
 
   function cancelReplaceCartLine() {
     if (!replacingLineId) return;
     setReplacingLineId(null);
+    setSwapDraft(null);
     setSelectedProduct(null);
     setSelectedProductCode(null);
     setSearchQuery("");
@@ -3436,7 +3483,7 @@ export function PosScreen({ standalone = false }) {
           if (ok) {
             setReplacingLineId(null);
             setStatusMessage(
-              `Replaced ${replaceLine.product_code} with ${selectedProduct.product_code}.`,
+              `Replaced ${posProductDisplayName(replaceLine)} with ${posProductDisplayName(selectedProduct)}.`,
             );
           }
         } catch (e) {
@@ -3770,6 +3817,10 @@ export function PosScreen({ standalone = false }) {
   /** Classic: type an absolute entry qty — keeps this line's wholesale/retail price mode. */
   async function setCartLineEntryQuantity(line, entryQtyRaw) {
     if (!line || !cart?.id) return;
+    if (swapDraft && sameLineId(swapDraft.lineId, line.id)) {
+      void completeSwapFromDraft(entryQtyRaw);
+      return;
+    }
     const localDraftEdit = Boolean(cartRef.current?.held_order_num || cartRef.current?.offline);
     if (!localDraftEdit && (busy || lineBusy)) return;
     const entryQty = parseDecimalInput(entryQtyRaw);
@@ -4074,6 +4125,7 @@ export function PosScreen({ standalone = false }) {
     setEditingLineId(null);
     setEditingLineRef(null);
     setReplacingLineId(null);
+    setSwapDraft(null);
   }
 
   function completeLeaveNavigation(href) {
@@ -6168,7 +6220,7 @@ export function PosScreen({ standalone = false }) {
         }}
         session={activeSession}
         report={sessionReport}
-        tillName={activeTill ? tillDisplayName(activeTill) : null}
+        tillName={reportTillNo !== "—" ? reportTillNo : null}
         cashierName={posCashierName}
         showFloatBreakdown={requireTillFloat}
         organizationName={organizationName}
@@ -6735,6 +6787,9 @@ export function PosScreen({ standalone = false }) {
                 sellAtRetail={retailPricingSession}
                 onToggleRetailMode={() => toggleRetailWholesaleMode()}
                 replacingLineId={replacingLineId}
+                swapDraftLineId={swapDraft?.lineId ?? null}
+                swapDraftQty={swapDraft?.quantity ?? ""}
+                swapLineQtyRef={swapLineQtyRef}
                 onScanCodeClick={(lineId) => beginReplaceCartLine(lineId)}
                 selectionEnabled
                 selectedLineIds={selectedLineIds}

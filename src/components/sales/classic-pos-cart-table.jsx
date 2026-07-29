@@ -15,6 +15,7 @@ function ClassicLineQtyCell({
   canIncrease,
   onAdjustQty,
   onSetQty,
+  inputRef = null,
 }) {
   const committed = String(entryQty ?? "");
   const [draft, setDraft] = useState(committed);
@@ -50,6 +51,7 @@ function ClassicLineQtyCell({
         −
       </button>
       <input
+        ref={inputRef}
         type="text"
         inputMode="decimal"
         className="classic-pos-line-qty-input"
@@ -148,6 +150,9 @@ export function ClassicPosCartTable({
   sellAtRetail = false,
   onToggleRetailMode = null,
   replacingLineId = null,
+  swapDraftLineId = null,
+  swapDraftQty = "",
+  swapLineQtyRef = null,
   onScanCodeClick,
   busy = false,
   lineBusy = false,
@@ -334,6 +339,7 @@ export function ClassicPosCartTable({
             const selected = String(selectedLineId) === String(line.id);
             const checked = selectedLineIds?.has(String(line.id)) ?? false;
             const replacing = String(replacingLineId) === String(line.id);
+            const swapDraftActive = String(swapDraftLineId) === String(line.id);
             const qtyAdjust = lineQtyAdjust?.(line) ?? {
               canDecrease: false,
               canIncrease: false,
@@ -352,25 +358,39 @@ export function ClassicPosCartTable({
               >
                 <td className="classic-pos-cart-rownum">{index + 1}</td>
                 <td
-                  className="classic-pos-col-scan font-mono"
-                  onClick={(e) => e.stopPropagation()}
+                  className={`classic-pos-col-scan font-mono${
+                    replacing ? "" : " classic-pos-col-scan--swap"
+                  }`}
+                  title={
+                    replacing
+                      ? undefined
+                      : "Swap this item — click here, then search or scan the replacement product"
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!replacing && !busy && !lineBusy) {
+                      onScanCodeClick?.(line.id);
+                    }
+                  }}
                   onMouseDown={(e) => e.stopPropagation()}
+                  onKeyDown={
+                    replacing
+                      ? undefined
+                      : (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!busy && !lineBusy) onScanCodeClick?.(line.id);
+                          }
+                        }
+                  }
+                  role={replacing ? undefined : "button"}
+                  tabIndex={replacing || busy || lineBusy ? -1 : 0}
                 >
                   {replacing ? (
                     scanSearch
                   ) : (
-                    <button
-                      type="button"
-                      className="classic-pos-scan-replace-btn"
-                      disabled={busy || lineBusy}
-                      title="Swap this item — search or scan the replacement product"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onScanCodeClick?.(line.id);
-                      }}
-                    >
-                      {line.product_code}
-                    </button>
+                    <span className="classic-pos-scan-code">{line.product_code}</span>
                   )}
                 </td>
                 <td className="classic-pos-col-desc">{line.product_name}</td>
@@ -381,8 +401,9 @@ export function ClassicPosCartTable({
                   <ClassicLineQtyCell
                     line={line}
                     entryQty={
-                      lineEntryQty?.(line) ??
-                      String(line.quantity ?? "")
+                      swapDraftActive
+                        ? swapDraftQty
+                        : lineEntryQty?.(line) ?? String(line.quantity ?? "")
                     }
                     qtyUnit={lineQtyUnit?.(line) ?? ""}
                     busy={busy}
@@ -391,6 +412,7 @@ export function ClassicPosCartTable({
                     canIncrease={qtyAdjust.canIncrease}
                     onAdjustQty={onAdjustQty}
                     onSetQty={onSetQty}
+                    inputRef={swapDraftActive ? swapLineQtyRef : null}
                   />
                 </td>
                 <td className="classic-pos-col-price tabular-nums">{lineUnitPrice?.(line)}</td>

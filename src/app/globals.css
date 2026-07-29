@@ -2849,28 +2849,22 @@ html[data-theme="dark"] .pos-workspace-classic {
   line-height: 1.25;
 }
 
-.classic-pos-scan-replace-btn {
-  display: inline;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.classic-pos-col-scan--swap {
   cursor: pointer;
 }
 
-.classic-pos-scan-replace-btn:hover:not(:disabled) {
+.classic-pos-col-scan--swap:hover {
   color: var(--classic-caption, #8b0000);
 }
 
-.classic-pos-scan-replace-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+.classic-pos-scan-code {
+  display: block;
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .classic-pos-cart-row--replacing td {

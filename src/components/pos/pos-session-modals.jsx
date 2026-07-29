@@ -6,7 +6,7 @@ import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catal
 import { PosReportView } from "@/components/pos/pos-report-view";
 import { PosStatusBadge, printPosTillReport } from "@/components/pos/pos-shared";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { CLOSE_REASONS, DEFAULT_CLOSE_REASON, formatTillKesExact, tillDisplayName, varianceLabel, resolveTillReportBundle } from "@/lib/pos-till";
+import { CLOSE_REASONS, DEFAULT_CLOSE_REASON, formatTillKesExact, tillDisplayName, varianceLabel, resolveTillReportBundle, resolveTillReportNo } from "@/lib/pos-till";
 
 function PosSessionDialogShell({
   open,
@@ -52,13 +52,6 @@ function PosSessionDialogShell({
       </div>
     </div>
   );
-}
-
-function sessionExpenseDate(session) {
-  if (!session) return null;
-  if (session.session_date) return String(session.session_date).slice(0, 10);
-  if (session.opened_at) return String(session.opened_at).slice(0, 10);
-  return null;
 }
 
 function deferModalAction(fn) {
@@ -112,13 +105,35 @@ export function XReportModal({
     () => resolveTillReportBundle({ ...(reportPayload ?? {}), session: session ?? reportPayload?.session }),
     [reportPayload, session],
   );
+  const [till, setTill] = useState(null);
   const hasReport = Boolean(resolvedReport?.sales || resolvedReport?.expected_cash != null);
+  const resolvedTillNo = useMemo(
+    () => resolveTillReportNo({ tillName, till, session, report: resolvedReport }),
+    [tillName, till, session, resolvedReport],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      setTill(null);
+      return;
+    }
+
+    const tillId = session?.till_id ?? reportPayload?.session?.till_id;
+    if (!tillId) {
+      setTill(null);
+      return;
+    }
+
+    apiRequest(`/tills/${tillId}`)
+      .then(setTill)
+      .catch(() => setTill(null));
+  }, [open, session?.till_id, reportPayload?.session?.till_id]);
 
   function handlePrint() {
     void printPosTillReport({
       type: "X",
       organizationName,
-      tillName,
+      tillName: resolvedTillNo,
       cashierName,
       report: reportPayload,
       session,
@@ -131,7 +146,6 @@ export function XReportModal({
     <PosSessionDialogShell
       open={open}
       onClose={onClose}
-      wide
       embedded={embedded}
       title="X report"
       subtitle="Interim snapshot — session remains open"
@@ -161,13 +175,12 @@ export function XReportModal({
           <PosReportView
             report={resolvedReport}
             session={session}
-            tillName={tillName}
+            tillName={resolvedTillNo}
+            till={till}
             cashierName={cashierName}
             showFloatBreakdown={showFloatBreakdown}
-            expensesFromDate={sessionExpenseDate(session)}
-            expensesToDate={sessionExpenseDate(session)}
           />
-          <p className="mt-4 text-center text-xs text-slate-500">
+          <p className="mt-3 text-center text-xs text-slate-500">
             Session still open — this is not an end-of-day Z report.
           </p>
         </>
@@ -427,9 +440,9 @@ export function ZReportModal({
   const session = bundle.session;
   const report = bundle.report;
   const variance = bundle.variance;
-  const tillName = useMemo(
-    () => fallbackTillName ?? tillDisplayName(till),
-    [fallbackTillName, till],
+  const tillNo = useMemo(
+    () => resolveTillReportNo({ tillName: fallbackTillName, till, session, report }),
+    [fallbackTillName, till, session, report],
   );
   const resolvedCashier = cashierName ?? fallbackCashierName;
 
@@ -437,7 +450,7 @@ export function ZReportModal({
     void printPosTillReport({
       type: "Z",
       organizationName,
-      tillName,
+      tillName: tillNo,
       cashierName: resolvedCashier,
       report: loaded,
       session,
@@ -451,7 +464,6 @@ export function ZReportModal({
     <PosSessionDialogShell
       open={open}
       onClose={onClose}
-      wide
       closeOnBackdrop={false}
       layerClassName="z-[100]"
       embedded={embedded}
@@ -480,19 +492,18 @@ export function ZReportModal({
         <p className="text-sm text-slate-500">{loading ? "Loading Z report…" : "No report data."}</p>
       ) : report?.sales || report?.expected_cash != null ? (
         <>
-          <div className="mb-4">
+          <div className="mb-3">
             <PosStatusBadge label="Session closed" tone="closed" />
           </div>
           <PosReportView
             report={report}
             session={session}
-            tillName={tillName}
+            tillName={tillNo}
+            till={till}
             cashierName={resolvedCashier}
             showCashReconciliation
             variance={variance}
             showFloatBreakdown={showFloatBreakdown}
-            expensesFromDate={sessionExpenseDate(session)}
-            expensesToDate={sessionExpenseDate(session)}
           />
         </>
       ) : null}

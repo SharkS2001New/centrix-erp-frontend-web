@@ -364,7 +364,7 @@ export function buildSaleReceiptHtml(
     .center { text-align: center; }
     @media print {
       html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
-      body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; }
+      body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; padding-top: 0 !important; box-sizing: border-box !important; }
       body { font-size: ${px(10, true)}; }
       .receipt { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
       .org-brand,

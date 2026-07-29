@@ -485,6 +485,36 @@ export function PosPaymentPanel({
     return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
   }
 
+  /** Replace leading 0 when cashier starts typing (0 → 5, not 05). Keeps 0.5 decimals. */
+  function normalizePaymentAmountInput(nextValue, previousValue = "0") {
+    let next = String(nextValue ?? "");
+    if (next === "") return "";
+
+    const prev = String(previousValue ?? "0");
+    if (
+      (prev === "0" || prev === "0.0" || prev === "0.00") &&
+      /^0\d/.test(next) &&
+      !next.startsWith("0.")
+    ) {
+      next = next.replace(/^0+/, "") || "0";
+    }
+
+    if (/^\d+$/.test(next)) {
+      next = next.replace(/^0+(?=\d)/, "") || "0";
+    }
+
+    return next;
+  }
+
+  function handlePaymentAmountFocus(e) {
+    e.target.select?.();
+  }
+
+  function handlePaymentAmountChange(setAmount, nextValue, previousValue) {
+    setAmount(normalizePaymentAmountInput(nextValue, previousValue));
+    setLocalError(null);
+  }
+
   function remainingForPaymentField(currentAmount) {
     const current = parseDecimalInput(currentAmount);
     return Math.max(0, checkoutTotal - (amountPaid - current));
@@ -711,7 +741,7 @@ export function PosPaymentPanel({
 
   useEffect(() => {
     if (!open || step !== "payment") return;
-    const t = window.setTimeout(() => cashAmountRef.current?.focus(), 0);
+    const t = window.setTimeout(() => focusPaymentField(cashAmountRef), 0);
     return () => window.clearTimeout(t);
   }, [open, step]);
 
@@ -1162,7 +1192,8 @@ export function PosPaymentPanel({
               step="any"
               className={inputCls}
               value={cashAmount}
-              onChange={(e) => setCashAmount(e.target.value)}
+              onFocus={handlePaymentAmountFocus}
+              onChange={(e) => handlePaymentAmountChange(setCashAmount, e.target.value, cashAmount)}
               onKeyDown={(e) => handlePaymentAmountKeyDown(e, cashAmount, setCashAmount, { ceil: true })}
             />
           </PosField>
@@ -1177,7 +1208,8 @@ export function PosPaymentPanel({
                 value={mpesaAmount}
                 readOnly={lockMpesaFields}
                 disabled={lockMpesaFields}
-                onChange={(e) => setMpesaAmount(e.target.value)}
+                onFocus={handlePaymentAmountFocus}
+                onChange={(e) => handlePaymentAmountChange(setMpesaAmount, e.target.value, mpesaAmount)}
                 onKeyDown={(e) => handlePaymentAmountKeyDown(e, mpesaAmount, setMpesaAmount)}
               />
             </PosField>
@@ -1221,7 +1253,8 @@ export function PosPaymentPanel({
                       step="any"
                       className={inputCls}
                       value={bankAmount}
-                      onChange={(e) => setBankAmount(e.target.value)}
+                      onFocus={handlePaymentAmountFocus}
+                      onChange={(e) => handlePaymentAmountChange(setBankAmount, e.target.value, bankAmount)}
                       onKeyDown={(e) => handlePaymentAmountKeyDown(e, bankAmount, setBankAmount)}
                     />
                   </PosField>
@@ -1248,7 +1281,8 @@ export function PosPaymentPanel({
                 step="any"
                 className={inputCls}
                 value={equityAmount}
-                onChange={(e) => setEquityAmount(e.target.value)}
+                onFocus={handlePaymentAmountFocus}
+                onChange={(e) => handlePaymentAmountChange(setEquityAmount, e.target.value, equityAmount)}
                 onKeyDown={(e) => handlePaymentAmountKeyDown(e, equityAmount, setEquityAmount)}
               />
             </PosField>
@@ -1262,7 +1296,8 @@ export function PosPaymentPanel({
                 step="any"
                 className={inputCls}
                 value={kcbAmount}
-                onChange={(e) => setKcbAmount(e.target.value)}
+                onFocus={handlePaymentAmountFocus}
+                onChange={(e) => handlePaymentAmountChange(setKcbAmount, e.target.value, kcbAmount)}
                 onKeyDown={(e) => handlePaymentAmountKeyDown(e, kcbAmount, setKcbAmount)}
               />
             </PosField>
@@ -1275,7 +1310,10 @@ export function PosPaymentPanel({
                 step="any"
                 className={inputCls}
                 value={otherBankAmount}
-                onChange={(e) => setOtherBankAmount(e.target.value)}
+                onFocus={handlePaymentAmountFocus}
+                onChange={(e) =>
+                  handlePaymentAmountChange(setOtherBankAmount, e.target.value, otherBankAmount)
+                }
                 onKeyDown={(e) => handlePaymentAmountKeyDown(e, otherBankAmount, setOtherBankAmount)}
               />
             </PosField>
@@ -1290,7 +1328,8 @@ export function PosPaymentPanel({
                   step="any"
                   className={inputCls}
                   value={chequeAmount}
-                  onChange={(e) => setChequeAmount(e.target.value)}
+                  onFocus={handlePaymentAmountFocus}
+                  onChange={(e) => handlePaymentAmountChange(setChequeAmount, e.target.value, chequeAmount)}
                   onKeyDown={(e) => handlePaymentAmountKeyDown(e, chequeAmount, setChequeAmount)}
                 />
               </PosField>

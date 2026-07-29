@@ -116,10 +116,12 @@ function loadHtmlIntoPrintTarget(win, htmlContent, onReady) {
   }
 }
 
-export function fillPrintWindow(win, htmlContent, { autoPrint = true } = {}) {
+export function fillPrintWindow(win, htmlContent, { autoPrint = true, skipBaseline = false } = {}) {
   if (!win || win.closed) return false;
 
-  const preparedHtml = injectPrintDocumentBaseline(htmlContent);
+  const preparedHtml = skipBaseline
+    ? String(htmlContent ?? "")
+    : injectPrintDocumentBaseline(htmlContent);
   const htmlWithoutScript = String(preparedHtml).replace(/<script[\s\S]*?<\/script>/gi, "");
 
   let printed = false;
@@ -147,9 +149,9 @@ export function showPrintPreparing(win, message = "Preparing document…") {
 }
 
 /** Print HTML via a hidden iframe (no visible new tab). Avoids browser URL/date headers on popups. */
-export function openPrintWindow(htmlContent, windowFeatures = printWindowFeatures("receipt")) {
+export function openPrintWindow(htmlContent, windowFeatures = printWindowFeatures("receipt"), options = {}) {
   const win = openBlankPrintWindow(windowFeatures);
   if (!win) return null;
-  fillPrintWindow(win, htmlContent);
+  fillPrintWindow(win, htmlContent, options);
   return win;
 }

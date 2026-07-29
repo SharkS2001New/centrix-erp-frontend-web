@@ -70,3 +70,50 @@ export function injectPrintDocumentBaseline(htmlContent) {
   }
   return `${PRINT_DOCUMENT_BASELINE_HTML}${html}`;
 }
+
+/**
+ * Extra zero-top rules for 80mm thermal receipts.
+ * wkhtmltopdf (Centrix Print Agent) and some Windows PDF drivers keep a default
+ * body margin unless these are forced after all other styles.
+ */
+export const THERMAL_FLUSH_TOP_HTML = `
+<style id="centrix-thermal-flush">
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+  body.centrix-print-thermal {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  body.centrix-print-thermal > .receipt {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body.centrix-print-thermal > .receipt > :first-child {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+  @media print {
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    body.centrix-print-thermal {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+  }
+</style>`;
+
+/** Baseline + thermal flush rules — use for receipts on browser and Print Agent. */
+export function prepareThermalPrintHtml(htmlContent) {
+  const html = injectPrintDocumentBaseline(htmlContent);
+  if (!html || html.includes("centrix-thermal-flush")) return html;
+
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `${THERMAL_FLUSH_TOP_HTML}</head>`);
+  }
+  return `${THERMAL_FLUSH_TOP_HTML}${html}`;
+}

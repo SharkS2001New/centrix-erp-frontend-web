@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildPosTillReportHtml } from "@/components/pos/pos-shared";
+import { resolveTillReportNo } from "@/lib/pos-till";
 import { createOrgPrintPx, orgPrintFontFamilyFromSettings } from "@/lib/print-typography";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { THERMAL_PAPER_WIDTH_MM } from "@/lib/thermal-receipt-layout";
@@ -38,6 +39,15 @@ const sampleSession = {
   working_amount: 9998210,
 };
 
+describe("resolveTillReportNo", () => {
+  it("prefers till_number and falls back to session till id", () => {
+    expect(resolveTillReportNo({ till: { till_number: "Till01" } })).toBe("Till01");
+    expect(resolveTillReportNo({ report: { till: { till_number: "Till03" } } })).toBe("Till03");
+    expect(resolveTillReportNo({ session: { till_id: 5 } })).toBe("Till #5");
+    expect(resolveTillReportNo({})).toBe("—");
+  });
+});
+
 describe("buildPosTillReportHtml", () => {
   it("uses 80mm thermal layout and receipt font settings", () => {
     const general = mergeGeneralSettings({
@@ -61,11 +71,18 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain('class="centrix-print-thermal"');
     expect(html).toContain(orgPrintFontFamilyFromSettings(general, "thermal"));
     expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal").body(10)}`);
-    expect(html).toContain("summary-table");
+    expect(html).toContain("Till No:");
+    expect(html).toContain("Till 1");
     expect(html).toContain("9,998,210");
     expect(html).toContain("23,510");
     expect(html).toContain("10,021,720");
     expect(html).not.toContain("max-width: 280px");
+    expect(html).toContain('class="section-row');
+    expect(html).toContain("Operating float");
+    expect(html).toContain("Payment summary");
+    expect(html).toMatch(/<table class="summary-table">[\s\S]*Operating float[\s\S]*Payment summary[\s\S]*<\/table>/);
+    expect(html).toContain("page: centrix-thermal");
+    expect(html).toContain("break-inside: avoid-page");
   });
 
   it("marks Z reports as session closed", () => {

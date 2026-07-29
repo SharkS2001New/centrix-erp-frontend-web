@@ -38,13 +38,13 @@ public sealed class HtmlPrintService
 
             try
             {
-                await RenderPdfAsync(html, htmlPath, pdfPath, jobDir, cancellationToken);
+                var pageHeightMm = await RenderPdfAsync(html, htmlPath, pdfPath, jobDir, cancellationToken);
 
                 var targetPrinter = ResolvePrinter(printerName);
                 for (var copy = 0; copy < copies; copy++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await PrintPdfAsync(pdfPath, targetPrinter, cancellationToken);
+                    await PrintPdfAsync(pdfPath, targetPrinter, pageHeightMm, cancellationToken);
                 }
 
                 return ($"{documentId}-{stamp}", targetPrinter);
@@ -91,7 +91,7 @@ public sealed class HtmlPrintService
         return _printers.DefaultPrinter();
     }
 
-    private static async Task RenderPdfAsync(
+    private static async Task<int> RenderPdfAsync(
         string html,
         string htmlPath,
         string pdfPath,
@@ -99,16 +99,17 @@ public sealed class HtmlPrintService
         CancellationToken cancellationToken)
     {
         var errors = new List<string>();
+        var pageHeightMm = WkhtmlPdfRenderer.EstimateThermalPageHeightMm(html);
 
         if (WkhtmlPdfRenderer.FindExecutable() is not null)
         {
             try
             {
                 TryDelete(pdfPath);
-                await WkhtmlPdfRenderer.RenderAsync(htmlPath, pdfPath, cancellationToken);
+                pageHeightMm = await WkhtmlPdfRenderer.RenderAsync(htmlPath, pdfPath, cancellationToken);
                 if (File.Exists(pdfPath))
                 {
-                    return;
+                    return pageHeightMm;
                 }
             }
             catch (Exception ex)
@@ -141,6 +142,7 @@ public sealed class HtmlPrintService
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--no-pdf-header-footer",
+                "--prefer-css-page-size",
                 "--run-all-compositor-stages-before-draw",
                 "--virtual-time-budget=10000",
                 $"--print-to-pdf={pdfPathNorm}",
@@ -153,6 +155,7 @@ public sealed class HtmlPrintService
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--no-pdf-header-footer",
+                "--prefer-css-page-size",
                 "--run-all-compositor-stages-before-draw",
                 "--virtual-time-budget=10000",
                 $"--print-to-pdf={pdfPathNorm}",
@@ -167,6 +170,7 @@ public sealed class HtmlPrintService
                 "--smartscreen-disable",
                 $"--user-data-dir={edgeProfileDir}",
                 "--no-pdf-header-footer",
+                "--prefer-css-page-size",
                 "--run-all-compositor-stages-before-draw",
                 "--virtual-time-budget=10000",
                 $"--print-to-pdf={pdfPathNorm}",
@@ -190,7 +194,7 @@ public sealed class HtmlPrintService
                     var created = await WaitForFileAsync(pdfPath, cancellationToken);
                     if (created)
                     {
-                        return;
+                        return pageHeightMm;
                     }
 
                     var detail = string.IsNullOrWhiteSpace(stderr)
@@ -216,15 +220,20 @@ public sealed class HtmlPrintService
 
     public static string? SumatraExecutablePath() => FindSumatraExecutable();
 
-    private static async Task PrintPdfAsync(string pdfPath, string? printerName, CancellationToken cancellationToken)
+    private static async Task PrintPdfAsync(
+        string pdfPath,
+        string? printerName,
+        int pageHeightMm,
+        CancellationToken cancellationToken)
     {
         var sumatra = FindSumatraExecutable()
             ?? throw new InvalidOperationException(
                 "SumatraPDF is required to print from the Windows service. Run scripts\\configure-sumatra.ps1 -SkipDownload as Administrator (copies Sumatra into the Print Agent folder).");
 
+        var printSettings = WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm);
         var args = string.IsNullOrWhiteSpace(printerName)
-            ? new[] { "-print-to-default", "-silent", "-exit-when-done", pdfPath }
-            : new[] { "-print-to", printerName, "-silent", "-exit-when-done", pdfPath };
+            ? new[] { "-print-to-default", "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath }
+            : new[] { "-print-to", printerName, "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath };
 
         var (exitCode, stderr) = await RunProcessAsync(sumatra, args, cancellationToken);
         if (exitCode != 0)

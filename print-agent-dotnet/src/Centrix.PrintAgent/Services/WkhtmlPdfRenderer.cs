@@ -8,6 +8,8 @@ namespace Centrix.PrintAgent.Services;
 /// </summary>
 internal static class WkhtmlPdfRenderer
 {
+    private const int ThermalPaperWidthTenthsMm = 800;
+
     public static string? FindExecutable()
     {
         var env = Environment.GetEnvironmentVariable("WKHTMLTOPDF_PATH");
@@ -37,16 +39,15 @@ internal static class WkhtmlPdfRenderer
         return pathExe;
     }
 
-    public static async Task RenderAsync(string htmlPath, string pdfPath, CancellationToken cancellationToken)
+    public static async Task<int> RenderAsync(string htmlPath, string pdfPath, CancellationToken cancellationToken)
     {
         var executable = FindExecutable()
             ?? throw new InvalidOperationException(
                 "wkhtmltopdf is missing. Install it manually, then re-run install-windows-service.ps1 or set WKHTMLTOPDF_PATH.");
 
-        // Fixed tall pages (e.g. 300mm) make thermal printers feed a huge blank before/after content.
-        // Size the PDF page to roughly match receipt content so Sumatra only advances that much paper.
         var html = await File.ReadAllTextAsync(htmlPath, cancellationToken);
         var pageHeightMm = EstimateThermalPageHeightMm(html);
+        var viewportHeightPx = Math.Max(120, (int)Math.Ceiling(pageHeightMm / 25.4 * 96.0));
 
         var args = new[]
         {
@@ -59,15 +60,17 @@ internal static class WkhtmlPdfRenderer
             "--page-height",
             $"{pageHeightMm}mm",
             "--margin-top",
-            "0",
+            "0mm",
             "--margin-bottom",
-            "0",
+            "0mm",
             "--margin-left",
-            "1mm",
+            "0mm",
             "--margin-right",
-            "1mm",
+            "0mm",
             "--disable-smart-shrinking",
             "--print-media-type",
+            "--viewport-size",
+            $"302x{viewportHeightPx}",
             htmlPath,
             pdfPath,
         };
@@ -80,7 +83,12 @@ internal static class WkhtmlPdfRenderer
                 : stderr.Trim();
             throw new InvalidOperationException(detail);
         }
+
+        return pageHeightMm;
     }
+
+    public static string BuildSumatraPrintSettings(int pageHeightMm) =>
+        $"noscale,paper={ThermalPaperWidthTenthsMm}x{Math.Max(700, pageHeightMm * 10)}";
 
     /// <summary>
     /// Rough mm height for an 80mm thermal receipt.
@@ -107,8 +115,8 @@ internal static class WkhtmlPdfRenderer
             || html.Contains("KRA eTIMS", StringComparison.OrdinalIgnoreCase);
 
         // Match classic WinForms density: compact header + rows, room for footer + QR on ONE page.
-        // Header/meta ~28mm, rows ~6mm, misc blocks ~2mm, images/QR ~24mm each.
-        var mm = 28
+        // Header/meta ~22mm, rows ~6mm, misc blocks ~2mm, images/QR ~24mm each.
+        var mm = 22
             + trCount * 6
             + Math.Max(0, divCount - 10) * 2
             + pCount * 3
@@ -122,8 +130,8 @@ internal static class WkhtmlPdfRenderer
             mm += 12;
         }
 
-        mm = (int)Math.Ceiling(mm * 1.05) + 8;
-        return Math.Clamp(mm, 90, 260);
+        mm = (int)Math.Ceiling(mm * 1.03) + 4;
+        return Math.Clamp(mm, 70, 260);
     }
 
     private static string? FindOnPath(string fileName)
