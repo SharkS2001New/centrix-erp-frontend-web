@@ -5,6 +5,7 @@ import { ACTION_ERROR_CLASS } from "@/lib/action-feedback";
 export function PosOrderEditBar({
   enabled,
   busy,
+  loading = false,
   orderNo,
   onOrderNoChange,
   onSubmit,
@@ -53,7 +54,17 @@ export function PosOrderEditBar({
             disabled={busy || !String(orderNo ?? "").trim()}
             className={`${buttonClassName} shrink-0 disabled:opacity-50`}
           >
-            Edit
+            {loading ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+                  aria-hidden="true"
+                />
+                Loading…
+              </span>
+            ) : (
+              "Edit"
+            )}
           </button>
         </form>
         <button

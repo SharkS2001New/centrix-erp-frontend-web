@@ -174,6 +174,7 @@ import { mergeGeneralSettings } from "@/lib/general-settings";
 import { applyTheme, getTheme } from "@/lib/theme";
 import {
   PosPriceCheckerModal,
+  PosPreviousOrderLoadingOverlay,
 } from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
@@ -973,6 +974,8 @@ export function PosScreen({ standalone = false }) {
   const [editingLineId, setEditingLineId] = useState(null);
   const [editingLineRef, setEditingLineRef] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [previousOrderLoading, setPreviousOrderLoading] = useState(false);
+  const previousOrderLoadingDepthRef = useRef(0);
   const [lineBusy, setLineBusy] = useState(false);
   const [cartLineSaveFailed, setCartLineSaveFailed] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -1550,6 +1553,20 @@ export function PosScreen({ standalone = false }) {
   }, [classicLayout, standalone]);
 
   const cartActionPending = busy || lineBusy;
+
+  const beginPreviousOrderLoading = useCallback(() => {
+    previousOrderLoadingDepthRef.current += 1;
+    setPreviousOrderLoading(true);
+  }, []);
+
+  const endPreviousOrderLoading = useCallback(() => {
+    previousOrderLoadingDepthRef.current = Math.max(0, previousOrderLoadingDepthRef.current - 1);
+    if (previousOrderLoadingDepthRef.current === 0) {
+      setPreviousOrderLoading(false);
+    }
+  }, []);
+
+  const orderEditBusy = busy || previousOrderLoading;
 
   useEffect(() => {
     if (cartActionPending || !focusSearchAfterAdd.current) return;
@@ -5250,6 +5267,7 @@ export function PosScreen({ standalone = false }) {
     const snapshotStatus = String(saleSnapshot?.status ?? "").toLowerCase();
     if (snapshotStatus === "held" || snapshotStatus === "draft") {
       setBusy(true);
+      beginPreviousOrderLoading();
       setOrderEditError(null);
       try {
         await restoreHeldSaleToNewCart(saleId, { replace, saleSnapshot });
@@ -5262,6 +5280,7 @@ export function PosScreen({ standalone = false }) {
         if (standalone) notifyError(message);
       } finally {
         setBusy(false);
+        endPreviousOrderLoading();
       }
       return;
     }
@@ -5282,6 +5301,7 @@ export function PosScreen({ standalone = false }) {
       }
 
       setBusy(true);
+      beginPreviousOrderLoading();
       setOrderEditError(null);
       try {
         if (replace && cart?.offline_client_sale_uuid && cart.offline_client_sale_uuid !== parseOfflineSaleUuid(saleId)) {
@@ -5351,6 +5371,7 @@ export function PosScreen({ standalone = false }) {
         if (standalone) notifyError(message);
       } finally {
         setBusy(false);
+        endPreviousOrderLoading();
       }
       return;
     }
@@ -5370,6 +5391,7 @@ export function PosScreen({ standalone = false }) {
     }
 
     setBusy(true);
+    beginPreviousOrderLoading();
     setOrderEditError(null);
     try {
       const needSaleDetail = !(
@@ -5454,6 +5476,7 @@ export function PosScreen({ standalone = false }) {
       if (standalone) notifyError(message);
     } finally {
       setBusy(false);
+      endPreviousOrderLoading();
     }
   }
 
@@ -5463,6 +5486,7 @@ export function PosScreen({ standalone = false }) {
 
     setOrderEditError(null);
     setBusy(true);
+    beginPreviousOrderLoading();
     try {
       try {
         const offlineOrders = await listOfflinePendingSalesForEdit();
@@ -5510,6 +5534,7 @@ export function PosScreen({ standalone = false }) {
       if (standalone) notifyError(message);
     } finally {
       setBusy(false);
+      endPreviousOrderLoading();
     }
   }
 
@@ -5544,32 +5569,37 @@ export function PosScreen({ standalone = false }) {
 
   /** Click the order # (while it shows the next number) → load the latest completed (“current”) order. */
   async function classicOpenCurrentOrder() {
-    if (!enablePosOrderEdit || busy) return;
+    if (!enablePosOrderEdit || orderEditBusy) return;
     if (isCartEditSession) return;
 
-    let orders = sessionPosOrders;
-    if (!orders.length) {
-      setStatusMessage("Loading completed POS orders…");
-      orders = await loadCompletedPosOrders();
-    }
-    if (!orders.length) {
-      const message =
-        "No completed POS order to open yet. Complete a sale first, then click the order # to reopen it.";
-      setOrderEditError(message);
-      setStatusMessage(message);
-      return;
-    }
+    beginPreviousOrderLoading();
+    try {
+      let orders = sessionPosOrders;
+      if (!orders.length) {
+        setStatusMessage("Loading completed POS orders…");
+        orders = await loadCompletedPosOrders();
+      }
+      if (!orders.length) {
+        const message =
+          "No completed POS order to open yet. Complete a sale first, then click the order # to reopen it.";
+        setOrderEditError(message);
+        setStatusMessage(message);
+        return;
+      }
 
-    const row = orders[0];
-    orderNoUserEditedRef.current = false;
-    setEditBrowseIndex(0);
-    setEditOrderNo(String(row.order_num));
-    setOrderEditError(null);
-    await restoreOrderForEdit(row.id, { saleSnapshot: row });
+      const row = orders[0];
+      orderNoUserEditedRef.current = false;
+      setEditBrowseIndex(0);
+      setEditOrderNo(String(row.order_num));
+      setOrderEditError(null);
+      await restoreOrderForEdit(row.id, { saleSnapshot: row });
+    } finally {
+      endPreviousOrderLoading();
+    }
   }
 
   async function goPreviousOrder() {
-    if (!canGoPreviousOrder || busy) return;
+    if (!canGoPreviousOrder || orderEditBusy) return;
     const nextIndex = editBrowseIndex + 1;
     const row = sessionPosOrders[nextIndex];
     if (!row?.id) return;
@@ -5581,7 +5611,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function goNextOrder() {
-    if (!canGoNextOrder || busy) return;
+    if (!canGoNextOrder || orderEditBusy) return;
     const nextIndex = editBrowseIndex - 1;
     const row = sessionPosOrders[nextIndex];
     if (!row?.id) return;
@@ -5597,7 +5627,7 @@ export function PosScreen({ standalone = false }) {
   const classicCanGoNext = enablePosOrderEdit && isCartEditSession;
 
   async function classicGoPreviousOrder() {
-    if (!enablePosOrderEdit || busy) return;
+    if (!enablePosOrderEdit || orderEditBusy) return;
 
     if (!isCartEditSession) {
       // ← from new order (next #) opens the current completed receipt.
@@ -5605,51 +5635,61 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    let orders = sessionPosOrders;
-    if (!orders.length) {
-      setStatusMessage("Loading completed POS orders…");
-      orders = await loadCompletedPosOrders();
-    }
-    const heldNum = cartRef.current?.held_order_num ?? cart?.held_order_num;
-    // Walk older than the order currently being edited (list is newest-first).
-    let startIndex = 0;
-    if (heldNum != null) {
-      const heldIdx = orders.findIndex((row) => String(row.order_num) === String(heldNum));
-      startIndex = heldIdx >= 0 ? heldIdx + 1 : editBrowseIndex + 1;
-    } else {
-      startIndex = editBrowseIndex + 1;
-    }
-    const row = orders[startIndex];
-    if (!row) {
-      const message =
-        "No older completed POS orders found. Save or finish this edit, then use ←.";
-      setOrderEditError(message);
-      setStatusMessage(message);
-      return;
-    }
+    beginPreviousOrderLoading();
+    try {
+      let orders = sessionPosOrders;
+      if (!orders.length) {
+        setStatusMessage("Loading completed POS orders…");
+        orders = await loadCompletedPosOrders();
+      }
+      const heldNum = cartRef.current?.held_order_num ?? cart?.held_order_num;
+      // Walk older than the order currently being edited (list is newest-first).
+      let startIndex = 0;
+      if (heldNum != null) {
+        const heldIdx = orders.findIndex((row) => String(row.order_num) === String(heldNum));
+        startIndex = heldIdx >= 0 ? heldIdx + 1 : editBrowseIndex + 1;
+      } else {
+        startIndex = editBrowseIndex + 1;
+      }
+      const row = orders[startIndex];
+      if (!row) {
+        const message =
+          "No older completed POS orders found. Save or finish this edit, then use ←.";
+        setOrderEditError(message);
+        setStatusMessage(message);
+        return;
+      }
 
-    orderNoUserEditedRef.current = false;
-    setSessionPosOrders(orders);
-    setEditBrowseIndex(startIndex);
-    setEditOrderNo(String(row.order_num));
-    await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
+      orderNoUserEditedRef.current = false;
+      setSessionPosOrders(orders);
+      setEditBrowseIndex(startIndex);
+      setEditOrderNo(String(row.order_num));
+      await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
+    } finally {
+      endPreviousOrderLoading();
+    }
   }
 
   async function classicGoNextOrder() {
-    if (!classicCanGoNext || busy) return;
-    if (editBrowseIndex > 0) {
-      const nextIndex = editBrowseIndex - 1;
-      const orders =
-        sessionPosOrders.length > 0 ? sessionPosOrders : await loadCompletedPosOrders();
-      const row = orders[nextIndex];
-      if (!row) return;
-      setEditBrowseIndex(nextIndex);
-      setEditOrderNo(String(row.order_num));
-      await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
-      return;
+    if (!classicCanGoNext || orderEditBusy) return;
+    beginPreviousOrderLoading();
+    try {
+      if (editBrowseIndex > 0) {
+        const nextIndex = editBrowseIndex - 1;
+        const orders =
+          sessionPosOrders.length > 0 ? sessionPosOrders : await loadCompletedPosOrders();
+        const row = orders[nextIndex];
+        if (!row) return;
+        setEditBrowseIndex(nextIndex);
+        setEditOrderNo(String(row.order_num));
+        await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
+        return;
+      }
+      await handleNewOrder();
+      orderNoUserEditedRef.current = false;
+    } finally {
+      endPreviousOrderLoading();
     }
-    await handleNewOrder();
-    orderNoUserEditedRef.current = false;
   }
 
   const classicOrderCaption = useMemo(() => {
@@ -6474,7 +6514,8 @@ export function PosScreen({ standalone = false }) {
               <div className="col-span-2">
                 <PosOrderEditBar
                   enabled
-                  busy={busy}
+                  busy={orderEditBusy}
+                  loading={previousOrderLoading}
                   orderNo={editOrderNo}
                   onOrderNoChange={(value) => {
                     orderNoUserEditedRef.current = true;
@@ -6857,7 +6898,7 @@ export function PosScreen({ standalone = false }) {
                   toggleAllCartLinesOnPage(checked, (cart?.lines ?? []).map((l) => l.id))
                 }
                 onToggleLineSelect={(lineId) => toggleCartLineSelect(lineId)}
-                busy={busy}
+                busy={orderEditBusy}
                 lineBusy={lineBusy}
                 showLineDiscount={showLineDiscountField}
                 formatQty={(line) => {
@@ -7500,6 +7541,8 @@ export function PosScreen({ standalone = false }) {
         branchId={user?.branch_id}
         embedded={!standalone}
       />
+
+      <PosPreviousOrderLoadingOverlay open={previousOrderLoading} />
 
       {standalone ? (
         classicLayout ? (
