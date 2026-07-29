@@ -1225,6 +1225,13 @@ html[data-theme="dark"] .pos-workspace-standalone {
   min-height: 3.25rem;
 }
 
+.pos-header-actions {
+  flex-wrap: wrap;
+  row-gap: 0.35rem;
+  /* Prefer wrapping/shrinking over horizontal scroll that hides buttons */
+  overflow: visible;
+}
+
 .pos-header-action-btn {
   display: inline-flex;
   align-items: center;
@@ -1243,6 +1250,88 @@ html[data-theme="dark"] .pos-workspace-standalone {
   box-shadow: var(--pos-btn-shadow, none);
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Compact header actions on mid/small widths so buttons stay visible */
+@media (max-width: 1280px) {
+  .pos-header-bar {
+    gap: 0.5rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+  }
+
+  .pos-header-actions {
+    gap: 0.35rem;
+  }
+
+  .pos-header-action-btn {
+    gap: 0.3rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.7rem;
+  }
+
+  .pos-header-brand-wrap .pos-header-brand {
+    gap: 0.45rem;
+  }
+
+  .pos-header-brand-wrap .pos-header-brand-strong,
+  .pos-header-brand-wrap .pos-header-brand-light {
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 1100px) {
+  .pos-header-action-btn {
+    padding: 0.28rem 0.45rem;
+    font-size: 0.65rem;
+    border-radius: 0.375rem;
+  }
+
+  .pos-header-action-badge {
+    min-width: 0.95rem;
+    height: 0.95rem;
+    padding: 0 0.28rem;
+    font-size: 0.55rem;
+  }
+
+  /* Shorter labels when space is tight (full text remains available via button title) */
+  .pos-header-btn-label[data-short] {
+    font-size: 0;
+  }
+
+  .pos-header-btn-label[data-short]::before {
+    content: attr(data-short);
+    font-size: 0.65rem;
+    font-weight: 600;
+  }
+
+  .pos-header-brand-wrap .pos-header-brand > span.flex {
+    max-width: 7.5rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .pos-header-bar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .pos-header-actions {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .pos-header-action-btn {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.625rem;
+  }
+
+  .pos-header-btn-label[data-short]::before {
+    font-size: 0.625rem;
+  }
 }
 
 .pos-header-action-btn.normal-case {

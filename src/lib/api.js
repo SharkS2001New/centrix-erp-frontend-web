@@ -11,6 +11,7 @@ import { notifyError as showErrorToast } from "./notify";
 import { handleCacheInvalidation } from "./cache-invalidation";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
 import { compressImageFileIfNeeded } from "./image-compress";
+import { humanizeKraDeviceErrorMessage } from "./kra-device-errors";
 
 const baseUrl = () => apiV1BaseUrl();
 
@@ -150,28 +151,34 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
     if (errors && typeof errors === "object") {
       for (const messages of Object.values(errors)) {
         if (Array.isArray(messages) && messages[0]) {
-          return String(messages[0]);
+          const raw = String(messages[0]);
+          return humanizeKraDeviceErrorMessage(raw) ?? raw;
         }
       }
     }
     if (data.expose_detail === true) {
       if (typeof data.detail === "string" && data.detail.trim()) {
-        return data.detail.trim();
+        const detail = data.detail.trim();
+        return humanizeKraDeviceErrorMessage(detail) ?? detail;
       }
       if (typeof data.message === "string" && data.message.trim()) {
-        return data.message.trim();
+        const message = data.message.trim();
+        return humanizeKraDeviceErrorMessage(message) ?? message;
       }
     }
     if (typeof data.message === "string" && data.message.trim()) {
       const detail = typeof data.detail === "string" && data.detail.trim() ? data.detail.trim() : "";
       const message = data.message.trim();
       if (/^server error$/i.test(message) && detail) {
-        return detail;
+        return humanizeKraDeviceErrorMessage(detail) ?? detail;
       }
       if (detail && detail !== message && !message.includes(detail) && !detail.includes(message)) {
-        return `${message} ${detail}`;
+        const combined = `${message} ${detail}`;
+        return humanizeKraDeviceErrorMessage(combined) ?? combined;
       }
       const cleaned = dedupeRepeatedText(message);
+      const kraHumanized = humanizeKraDeviceErrorMessage(cleaned);
+      if (kraHumanized) return kraHumanized;
       // Org module gate (erp.module) — surface which module keys failed.
       if (/not enabled for your organization/i.test(cleaned)) {
         const moduleKey =
@@ -465,13 +472,11 @@ async function performApiRequest(path, url, options = {}) {
       }
 
       let errorMessage = formatApiErrorMessage(data, res.statusText);
-      // Proxies sometimes return 519/520 when the origin closed the connection mid-request.
-      if (
-        (res.status === 519 || res.status === 520) &&
-        (!errorMessage || /^request failed$/i.test(errorMessage) || /aborted/i.test(errorMessage))
-      ) {
+      // Proxies sometimes return 519/520 when the origin / KRA bridge closed mid-request.
+      if (res.status === 519 || res.status === 520) {
         errorMessage =
-          "The server closed the connection before finishing. Please try again.";
+          humanizeKraDeviceErrorMessage(errorMessage) ??
+          "The KRA fiscal device is not communicating with the system. Check that Comstore is running, the device is powered on and connected, then try again.";
       }
       const issueMessage = formatSystemIssueMessage(
         data,

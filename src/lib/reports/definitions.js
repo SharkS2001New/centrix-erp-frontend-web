@@ -376,7 +376,7 @@ export const REPORT_DEFINITIONS = {
         compute: (rows, summary) => ({
           value: String(
             summary?.below_reorder_count ??
-              rows.filter((r) => {
+            rows.filter((r) => {
                 const qty = Number(r.available_total_units ?? r.total_base_units ?? r.total_quantity) || 0;
                 if (qty <= 0) return false;
                 const mode = r.stock_alert_mode ?? "per_product";
@@ -389,7 +389,7 @@ export const REPORT_DEFINITIONS = {
                       ? Math.max(productPoint, globalThreshold)
                       : productPoint;
                 return threshold > 0 && qty <= threshold;
-              }).length,
+            }).length,
           ),
           tone: "warning",
           hint: summary?.below_reorder_count == null && rows.length ? "On this page" : undefined,

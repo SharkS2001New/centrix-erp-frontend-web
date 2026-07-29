@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePosLine } from "@/lib/pos-line";
+import { cartLineDisplayUnitPrice, computePosLine } from "@/lib/pos-line";
 
 const sugarUom = {
   conversion_factor: 50,
@@ -81,5 +81,54 @@ describe("computePosLine retail amount vs unit", () => {
     });
     expect(line.lineAmount).toBe(3155);
     expect(line.displayUnitPrice).toBe(125);
+  });
+});
+
+describe("cartLineDisplayUnitPrice wholesale", () => {
+  it("does not multiply API pack unit_price by conversion factor", () => {
+    // Backend stores wholesale unit_price as amount ÷ bag qty (6,250), not per kg.
+    expect(
+      cartLineDisplayUnitPrice(
+        {
+          unit_price: 6250,
+          display_unit_price: 6250,
+          quantity: 25,
+          amount: 3125,
+          on_wholesale_retail: 0,
+        },
+        sugarUom,
+        false,
+      ),
+    ).toBe(6250);
+  });
+
+  it("uses amount ÷ pack qty when display_unit_price is missing", () => {
+    expect(
+      cartLineDisplayUnitPrice(
+        {
+          unit_price: 6250,
+          quantity: 25,
+          amount: 3125,
+          on_wholesale_retail: 0,
+        },
+        sugarUom,
+        false,
+      ),
+    ).toBe(6250);
+  });
+
+  it("scales local per-base unit_price only when it matches amount", () => {
+    expect(
+      cartLineDisplayUnitPrice(
+        {
+          unit_price: 125,
+          quantity: 25,
+          amount: 3125,
+          on_wholesale_retail: 0,
+        },
+        sugarUom,
+        false,
+      ),
+    ).toBe(6250);
   });
 });

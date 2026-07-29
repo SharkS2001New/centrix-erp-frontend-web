@@ -470,21 +470,44 @@ export function lineDiscountTotal(perUnitDiscount, packQty) {
   return Math.round(perUnit * q * 100) / 100;
 }
 
-/** Cart grid unit price — retail: wholesale per small (display_unit_price); wholesale: per pack. */
+/**
+ * Cart grid unit price for the sold unit (bag / kg / pcs).
+ * Prefer `display_unit_price` — it is already per cashier-facing unit.
+ * Never scale API `unit_price` by conversion again: PosLinePricingService stores
+ * wholesale `unit_price` as amount ÷ pack qty (per bag), so multiplying by factor
+ * inflated the UI (e.g. 6,250 × 50 = 312,500) while amount/receipts stayed correct.
+ */
 export function cartLineDisplayUnitPrice(line, uom, isRetailLine = false) {
-  if (isRetailLine) {
-    const stored = Number(line?.display_unit_price);
-    if (Number.isFinite(stored) && stored > 0) {
-      return stored;
-    }
-    return Number(line?.unit_price ?? 0);
+  const storedDisplay = Number(line?.display_unit_price);
+  if (Number.isFinite(storedDisplay) && storedDisplay > 0) {
+    return storedDisplay;
   }
-  const perBase = Number(line?.unit_price ?? 0);
+
+  const amount = Number(line?.amount ?? 0);
+  const discount = Math.max(0, Number(line?.discount_given ?? 0));
+  const baseQty = Number(line?.quantity ?? 0);
   const factor = uomConversionFactor(uom);
-  if (factor <= 1) {
-    return perBase;
+  const soldQty =
+    !isRetailLine && factor > 1 && baseQty > 0
+      ? baseToDisplayQty(baseQty, factor)
+      : baseQty;
+
+  if (soldQty > 0 && (amount > 0 || discount > 0)) {
+    return Math.round(((amount + discount) / soldQty) * 100) / 100;
   }
-  return Math.round(perBase * factor * 100) / 100;
+
+  // Offline/optimistic lines may still hold per-base unit_price before display is set.
+  const stored = Number(line?.unit_price ?? 0);
+  if (!isRetailLine && factor > 1 && Number.isFinite(stored) && stored > 0) {
+    const asPack = Math.round(stored * factor * 100) / 100;
+    const asBaseTimesQty = Math.round(stored * baseQty * 100) / 100;
+    // Per-base local lines: unit × baseQty ≈ amount; scale to pack for the grid.
+    if (amount > 0 && Math.abs(asBaseTimesQty - amount) <= Math.max(0.02, amount * 0.001)) {
+      return asPack;
+    }
+  }
+
+  return Number.isFinite(stored) ? stored : 0;
 }
 
 /** Rebuild POS entry quantity from a saved cart line (base qty in DB). */

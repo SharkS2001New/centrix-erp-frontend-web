@@ -4051,6 +4051,7 @@ export function PosScreen({ standalone = false }) {
         is_credit_sale: false,
         deduct_stock: true,
         save_only: true,
+        submit_kra: false,
         customer_name_override:
           prefilledEditCustomerName.trim() || "Walk-in (auto-held)",
         sales_workspace: salesWorkspace,
@@ -4072,7 +4073,7 @@ export function PosScreen({ standalone = false }) {
       clearLineEntry();
       setSelectedLineId(null);
       setCart(null);
-      await loadHeldOrdersCount();
+      void loadHeldOrdersCount();
       completeLeaveNavigation(href);
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to hold sale before leaving");
@@ -4742,6 +4743,8 @@ export function PosScreen({ standalone = false }) {
         is_credit_sale: false,
         deduct_stock: true,
         save_only: true,
+        // Held parks are unfinished — never wait on the fiscal device.
+        ...(hold ? { submit_kra: false } : {}),
       };
       if (walkIn) {
         body.customer_name_override = walkInName?.trim() || "Walk-in";
@@ -4778,8 +4781,10 @@ export function PosScreen({ standalone = false }) {
       clearPosUiDraft();
       clearLineEntry();
       setSelectedLineId(null);
+      setCart(null);
+      cartRef.current = null;
       void clearPreviousOrderEditDraft().catch(() => {});
-      await loadCashierCart();
+
       const who = walkIn
         ? walkInName?.trim() || "Walk-in"
         : customer?.customer_name;
@@ -4792,9 +4797,16 @@ export function PosScreen({ standalone = false }) {
       } else {
         setStatusMessage(successText);
       }
-      if (hold) {
-        await loadHeldOrdersCount();
-      }
+
+      // Unblock the till immediately — refresh next cart / held count in the background.
+      void (async () => {
+        try {
+          await loadCashierCart();
+          if (hold) await loadHeldOrdersCount();
+        } catch {
+          /* next scan / F8 still works; cart remounts on demand */
+        }
+      })();
     } catch (e) {
       if (isAbortError(e)) return;
       const message =
@@ -5823,21 +5835,24 @@ export function PosScreen({ standalone = false }) {
         <>
           <div className="pos-header shrink-0 shadow-sm">
             <div className="pos-header-bar flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 lg:px-5">
-              <div className="shrink-0">
+              <div className="pos-header-brand-wrap shrink-0">
                 <CentrixLogoHeader
                   markSize={28}
                   title={PRODUCT_NAME}
                   orgSubtitle={organization?.org_name ?? organizationName}
                 />
               </div>
-              <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto px-1">
+              <div className="pos-header-actions flex min-w-0 flex-1 items-center justify-center gap-2 px-1">
                 <button
                   type="button"
                   disabled={busy}
+                  title="Held orders"
                   onClick={() => setHeldOrdersOpen(true)}
                   className={posHeaderBtnClassName}
                 >
-                  Held orders
+                  <span className="pos-header-btn-label" data-short="Held">
+                    Held orders
+                  </span>
                   {heldOrdersCount > 0 ? (
                     <span className="pos-header-action-badge">
                       {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
@@ -5849,34 +5864,43 @@ export function PosScreen({ standalone = false }) {
                     <button
                       type="button"
                       disabled={busy}
+                      title="Float details"
                       onClick={() => {
                         setSessionError(null);
                         setFloatDetailsOpen(true);
                       }}
                       className={posHeaderBtnClassName}
                     >
-                      Float details
+                      <span className="pos-header-btn-label" data-short="Float">
+                        Float details
+                      </span>
                     </button>
                     <button
                       type="button"
                       disabled={busy || sessionBusy}
+                      title="Record expense"
                       onClick={() => {
                         setSessionError(null);
                         setRecordExpenseOpen(true);
                       }}
                       className={posHeaderBtnClassName}
                     >
-                      Record expense
+                      <span className="pos-header-btn-label" data-short="Expense">
+                        Record expense
+                      </span>
                     </button>
                   </>
                 ) : null}
                 <button
                   type="button"
                   disabled={busy}
+                  title="Price checker"
                   onClick={() => setPriceCheckerOpen(true)}
                   className={posHeaderBtnClassName}
                 >
-                  Price checker
+                  <span className="pos-header-btn-label" data-short="Price">
+                    Price checker
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -5891,7 +5915,16 @@ export function PosScreen({ standalone = false }) {
                   onClick={() => void handlePrintReceipt()}
                   className={posHeaderBtnClassName}
                 >
-                  {reprintReceiptLabel}
+                  <span
+                    className="pos-header-btn-label"
+                    data-short={
+                      reprintSale?.order_num
+                        ? `Reprint #${reprintSale.order_num}`
+                        : "Reprint"
+                    }
+                  >
+                    {reprintReceiptLabel}
+                  </span>
                 </button>
                 {showStandaloneTillActions && requireTillFloat ? (
                   <>
@@ -6582,7 +6615,7 @@ export function PosScreen({ standalone = false }) {
               <ClassicPosCartTable
                 lines={cart?.lines ?? []}
                 selectedLineId={selectedLineId}
-                onSelectLine={setSelectedLineId}
+                onSelectLine={(lineId) => beginReplaceCartLine(lineId)}
                 orderCaption={classicOrderCaption}
                 showOrderNav
                 orderNavLocked={!enablePosOrderEdit}
