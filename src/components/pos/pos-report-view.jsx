@@ -44,7 +44,7 @@ function ReportSummaryRows({ items, grandLabels = [] }) {
               </dd>
             </div>
             {item.hint ? (
-              <p className="mt-0.5 text-[11px] italic leading-snug text-slate-400">{item.hint}</p>
+              <p className="mt-0.5 text-[11px] font-medium leading-snug text-slate-600">{item.hint}</p>
             ) : null}
           </div>
         );
@@ -219,9 +219,7 @@ export function PosReportView({
           <ReportSummaryRows items={paymentItems} />
         </ReportSection>
 
-        <ReportSection title="Sales">
-          <ReportSummaryRows items={salesItems} />
-        </ReportSection>
+        <ReportSummaryRows items={salesItems} />
 
         <ReportSection title="Sales summary">
           <ReportSummaryRows items={salesSummaryItems} />

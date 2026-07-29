@@ -2862,7 +2862,10 @@ export function PosScreen({ standalone = false }) {
           setStatusMessage(
             `Swapped ${posProductDisplayName(draft.line)} with ${posProductDisplayName(draft.product)}.`,
           );
-          focusProductSearch();
+          // After swap qty Enter, focus Scan code for the next new line.
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => focusProductSearch());
+          });
         }
         return ok;
       } catch (e) {
@@ -3958,7 +3961,11 @@ export function PosScreen({ standalone = false }) {
         successMessage: null,
         lineRetailStockFlagOverride: isRetailLine,
       });
-      if (ok) setSelectedLineId(line.id);
+      if (ok) {
+        setSelectedLineId(line.id);
+        // After qty Enter, park on Scan code for the next item.
+        window.requestAnimationFrame(() => focusProductSearch());
+      }
     };
 
     if (localDraftEdit) {
@@ -7566,16 +7573,6 @@ export function PosScreen({ standalone = false }) {
             currencySettings={classicCurrencySettings}
             statusMessage={cartBridgeStatus || statusMessage}
             connectionStatus={networkStatus}
-            onPayClick={() => openCompletePayment()}
-            payDisabled={
-              busy
-              || Boolean(cartBridgeStatus)
-              || (isCartEditSession
-                ? !hasEditedOrderDraftChanges || !cart?.lines?.length
-                : !cart?.lines?.length || cartStockBlocked || lineBusy || checkoutBlocked)
-            }
-            onReprintClick={() => void handlePrintReceipt()}
-            reprintDisabled={busy || !reprintSale?.id}
           />
         ) : (
           <PosStatusFooter

@@ -77,10 +77,6 @@ export function ClassicPosStatusFooter({
   version = "1.0.0",
   currencySettings = GENERAL_DEFAULTS,
   statusMessage = null,
-  onPayClick = null,
-  payDisabled = false,
-  onReprintClick = null,
-  reprintDisabled = false,
   connectionStatus = "online",
 }) {
   const [now, setNow] = useState(() => new Date());
@@ -151,37 +147,6 @@ export function ClassicPosStatusFooter({
         <span>
           <span className="classic-pos-footer-label">VERSION:</span>{" "}
           <strong className="classic-pos-footer-value">{version}</strong>
-        </span>
-        <span>
-          <span className="classic-pos-footer-label">HINT:</span>{" "}
-          {typeof onReprintClick === "function" ? (
-            <button
-              type="button"
-              className="classic-pos-footer-pay"
-              disabled={reprintDisabled}
-              title="Reprint receipt for this order (Alt+P)"
-              onClick={() => onReprintClick()}
-            >
-              ALT+P REPRINT
-            </button>
-          ) : null}
-          {typeof onPayClick === "function" ? (
-            <button
-              type="button"
-              className="classic-pos-footer-pay"
-              disabled={payDisabled}
-              title={
-                payDisabled
-                  ? "Add or change lines on this order first (F10)"
-                  : "Open payment (F10). If the browser captures F10: Ctrl+Enter or Ctrl+F10."
-              }
-              onClick={() => onPayClick()}
-            >
-              F10 PAY
-            </button>
-          ) : (
-            <strong className="classic-pos-footer-value">F10 PAY</strong>
-          )}
         </span>
       </div>
     </footer>

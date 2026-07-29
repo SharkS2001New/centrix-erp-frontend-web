@@ -58,30 +58,37 @@ function deferModalAction(fn) {
   window.setTimeout(() => fn(), 0);
 }
 
-function ReportModalFooter({ onClose, onPrint, printLabel = "Print report" }) {
+function ReportModalFooter({
+  onClose,
+  onPrint,
+  printLabel = "Print report",
+  printing = false,
+}) {
   return (
     <div className="flex justify-end gap-2">
       <button
         type="button"
+        disabled={printing}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           deferModalAction(onClose);
         }}
-        className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+        className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
       >
         Close
       </button>
       <PrimaryButton
         type="button"
         showIcon={false}
+        disabled={printing}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           onPrint();
         }}
       >
-        {printLabel}
+        {printing ? "Printing…" : printLabel}
       </PrimaryButton>
     </div>
   );
@@ -106,6 +113,7 @@ export function XReportModal({
     [reportPayload, session],
   );
   const [till, setTill] = useState(null);
+  const [printing, setPrinting] = useState(false);
   const hasReport = Boolean(resolvedReport?.sales || resolvedReport?.expected_cash != null);
   const resolvedTillNo = useMemo(
     () => resolveTillReportNo({ tillName, till, session, report: resolvedReport }),
@@ -115,6 +123,7 @@ export function XReportModal({
   useEffect(() => {
     if (!open) {
       setTill(null);
+      setPrinting(false);
       return;
     }
 
@@ -129,17 +138,26 @@ export function XReportModal({
       .catch(() => setTill(null));
   }, [open, session?.till_id, reportPayload?.session?.till_id]);
 
-  function handlePrint() {
-    void printPosTillReport({
-      type: "X",
-      organizationName,
-      tillName: resolvedTillNo,
-      cashierName,
-      report: reportPayload,
-      session,
-      showFloatBreakdown,
-      moduleSettings,
-    });
+  async function handlePrint() {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      const result = await printPosTillReport({
+        type: "X",
+        organizationName,
+        tillName: resolvedTillNo,
+        cashierName,
+        report: reportPayload,
+        session,
+        showFloatBreakdown,
+        moduleSettings,
+      });
+      if (result?.ok !== false) {
+        deferModalAction(onClose);
+      }
+    } finally {
+      setPrinting(false);
+    }
   }
 
   return (
@@ -151,7 +169,12 @@ export function XReportModal({
       subtitle="Interim snapshot — session remains open"
       footer={
         hasReport ? (
-          <ReportModalFooter onClose={onClose} onPrint={handlePrint} printLabel="Print X report" />
+          <ReportModalFooter
+            onClose={onClose}
+            onPrint={() => void handlePrint()}
+            printLabel="Print X report"
+            printing={printing}
+          />
         ) : (
           <div className="flex justify-end">
             <button
@@ -380,6 +403,7 @@ export function ZReportModal({
   const [cashierName, setCashierName] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -387,6 +411,7 @@ export function ZReportModal({
       setTill(null);
       setCashierName(null);
       setError(null);
+      setPrinting(false);
       return;
     }
 
@@ -446,18 +471,24 @@ export function ZReportModal({
   );
   const resolvedCashier = cashierName ?? fallbackCashierName;
 
-  function handlePrint() {
-    void printPosTillReport({
-      type: "Z",
-      organizationName,
-      tillName: tillNo,
-      cashierName: resolvedCashier,
-      report: loaded,
-      session,
-      variance,
-      showFloatBreakdown,
-      moduleSettings,
-    });
+  async function handlePrint() {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      await printPosTillReport({
+        type: "Z",
+        organizationName,
+        tillName: tillNo,
+        cashierName: resolvedCashier,
+        report: loaded,
+        session,
+        variance,
+        showFloatBreakdown,
+        moduleSettings,
+      });
+    } finally {
+      setPrinting(false);
+    }
   }
 
   return (
@@ -471,7 +502,12 @@ export function ZReportModal({
       subtitle="End-of-day report for the closed session — print before closing"
       footer={
         report?.sales || report?.expected_cash != null ? (
-          <ReportModalFooter onClose={onClose} onPrint={handlePrint} printLabel="Print Z report" />
+          <ReportModalFooter
+            onClose={onClose}
+            onPrint={() => void handlePrint()}
+            printLabel="Print Z report"
+            printing={printing}
+          />
         ) : (
           <div className="flex justify-end">
             <button

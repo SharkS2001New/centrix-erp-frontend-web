@@ -181,10 +181,7 @@ export function buildPosTillReportHtml({
     row("Total paid debtors", amt(sales.debtor_collections ?? 0)),
   ];
 
-  const salesExpenseRows = [
-    sectionRow("Sales"),
-    row("Total expenses", amt(sessionExpenses)),
-  ];
+  const salesExpenseRows = [row("Total expenses", amt(sessionExpenses))];
 
   const salesSummaryRowItems = [
     sectionRow("Sales summary"),
@@ -225,7 +222,7 @@ export function buildPosTillReportHtml({
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0; padding-right: 0; }
     .summary-table tr.amount-line-grand td { font-size: ${px(10)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
-    .summary-table tr.hint-row td.hint-text { font-size: ${fpx(7)}; font-weight: 400; font-style: italic; color: #444; padding: 0 0 3px; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; }
+    .summary-table tr.hint-row td.hint-text { font-size: ${fpx(7)}; font-weight: 600; font-style: normal; color: #000; padding: 0 0 3px; line-height: 1.25; overflow-wrap: anywhere; word-break: break-word; }
     .footer { margin-top: 8px; text-align: center; font-size: ${fpx(8)}; font-weight: var(--print-w-footer, 700); letter-spacing: normal; line-height: 1.3; page-break-inside: avoid; break-inside: avoid; word-break: break-word; overflow-wrap: anywhere; }
     @media print {
       @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0 !important; }
@@ -238,6 +235,7 @@ export function buildPosTillReportHtml({
       .summary-table { font-size: ${px(8, true)}; }
       .summary-table tr.section-row td.section-label { font-size: ${px(8, true)}; }
       .summary-table tr.amount-line-grand td { font-size: ${px(10, true)}; }
+      .summary-table tr.hint-row td.hint-text { font-size: ${fpx(7, true)}; font-weight: 600; color: #000; }
       .footer { font-size: ${fpx(8, true)}; }
     }
   </style>

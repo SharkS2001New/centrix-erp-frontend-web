@@ -220,13 +220,14 @@ describe("buildPosTillReportHtml", () => {
 
     for (const html of [xHtml, zHtml]) {
       const paymentIdx = html.indexOf("Payment summary");
-      const salesIdx = html.indexOf('>Sales<');
+      const expensesIdx = html.indexOf("Total expenses");
       const salesSummaryIdx = html.indexOf("Sales summary");
-      const cashIdx = html.indexOf('>Cash<');
+      const cashIdx = html.indexOf(">Cash<");
       expect(paymentIdx).toBeGreaterThan(-1);
-      expect(salesIdx).toBeGreaterThan(paymentIdx);
-      expect(salesSummaryIdx).toBeGreaterThan(salesIdx);
+      expect(expensesIdx).toBeGreaterThan(paymentIdx);
+      expect(salesSummaryIdx).toBeGreaterThan(expensesIdx);
       expect(cashIdx).toBeGreaterThan(salesSummaryIdx);
+      expect(html).not.toContain(">Sales<");
     }
   });
 });
