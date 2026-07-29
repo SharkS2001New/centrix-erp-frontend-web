@@ -23,6 +23,26 @@ function allowedActionStagesInclude(allowedList, key) {
 }
 
 /**
+ * Paid / fulfillment terminal synonyms — e.g. POS stores `completed` while short
+ * pipelines only expose `paid`. Used so action-stage gates can treat those as equal
+ * without also collapsing earlier stages (booked → unpaid).
+ */
+const ACTION_STAGE_TERMINAL_ALIASES = new Set([
+  "paid",
+  "completed",
+  "delivered",
+  "processed",
+]);
+
+function isAcceptableActionStageAlignment(rawStatus, alignedStatus) {
+  const raw = String(rawStatus ?? "").toLowerCase();
+  const aligned = String(alignedStatus ?? "").toLowerCase();
+  if (!raw || !aligned) return false;
+  if (raw === aligned) return true;
+  return ACTION_STAGE_TERMINAL_ALIASES.has(raw) && ACTION_STAGE_TERMINAL_ALIASES.has(aligned);
+}
+
+/**
  * True when the order's workflow stage is in `allowedList`, or when `mobile` is allowed
  * and the order is from the mobile channel (Mobile Orders page).
  */
@@ -34,10 +54,15 @@ export function saleMatchesConfiguredActionStages(sale, allowedList, workflow = 
   const raw = String(sale.status ?? "").toLowerCase();
   if (allowed.has(raw)) return true;
 
-  const aligned = String(
-    sale.workflow_status ?? (workflow ? alignStatusToWorkflow(raw, workflow) : raw),
-  ).toLowerCase();
-  if (allowed.has(aligned)) return true;
+  const explicitWorkflowStatus = String(sale.workflow_status ?? "").toLowerCase();
+  if (explicitWorkflowStatus && allowed.has(explicitWorkflowStatus)) return true;
+
+  if (workflow) {
+    const aligned = String(alignStatusToWorkflow(raw, workflow)).toLowerCase();
+    if (allowed.has(aligned) && isAcceptableActionStageAlignment(raw, aligned)) {
+      return true;
+    }
+  }
 
   return allowed.has("mobile") && saleIsMobileActionTarget(sale);
 }
@@ -465,7 +490,7 @@ export function canCancelOrderStatus(statusOrSale, workflow, capabilities = null
   const allowed = new Set(resolveCancelOrderStatuses(salesSettingsFromCapabilities(capabilities)));
   if (allowed.has(key)) return true;
   const aligned = alignStatusToWorkflow(key, workflow);
-  return allowed.has(aligned);
+  return allowed.has(aligned) && isAcceptableActionStageAlignment(key, aligned);
 }
 
 /** Whether staff should be offered cancel for this order (settings + status). */
