@@ -157,7 +157,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       setAgentForm(agentConfigFromLocalPrinting(savedSettings));
       applyLocalPrintProviderSelection(savedSettings.provider);
       await refreshCapabilities?.({ force: true });
-      setSaved(true);
+    setSaved(true);
       notifySuccess("Local print settings saved for this organization.");
       if (savedSettings.provider === "agent") {
         await refreshHealth();
@@ -272,7 +272,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     ? "Checking…"
     : provider === "browser"
       ? "Browser print"
-      : health?.ok
+    : health?.ok
         ? "Print agent connected"
         : "Print agent offline";
 
@@ -310,7 +310,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                 : "border-[var(--theme-border)] bg-white/40"
             } ${!canEdit ? "opacity-70" : ""}`}
           >
-            <input
+              <input
               type="radio"
               name="local-print-provider"
               className="mt-1"
@@ -355,24 +355,24 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
             <p className="theme-heading font-medium">Install Windows print service</p>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
                 onClick={() => void handleDownloadSource()}
                 disabled={downloadingSource || !sourceAvailable}
-                className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+            className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {downloadingSource ? "Downloading…" : "Download build package (source)"}
-              </button>
+          </button>
               {dotnetAvailable ? (
-                <button
-                  type="button"
+          <button
+            type="button"
                   onClick={() => void handleDownloadDotnet()}
                   disabled={downloadingDotnet}
-                  className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
-                >
+            className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
                   {downloadingDotnet ? "Downloading…" : "Download ready installer (zip)"}
-                </button>
+          </button>
               ) : null}
             </div>
 
@@ -451,22 +451,22 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         ) : null}
         {provider === "agent" ? (
           <>
-            <button
-              type="button"
-              onClick={() => void handleTestConnection()}
+        <button
+          type="button"
+          onClick={() => void handleTestConnection()}
               disabled={checking}
-              className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
-            >
+          className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
               {checking ? "Checking…" : "Test connection"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleTestPrint()}
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleTestPrint()}
               disabled={testPrinting || checking}
-              className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
-            >
+          className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
               {testPrinting ? "Printing…" : "Test print"}
-            </button>
+        </button>
           </>
         ) : null}
       </div>

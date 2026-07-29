@@ -685,7 +685,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">Branding &amp; display</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Branding &amp; display</h2>
                 <p className="mt-0.5 text-xs text-slate-500">
                   Optional — show or hide branding, quantity, payment details, eTIMS, and watermark per invoice.
                 </p>

@@ -392,107 +392,107 @@ export function PlatformEmailDeliveryPanel() {
             />
           </label>
 
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={form.enabled}
-              onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
-            />
-            <span>
-              <span className="block text-sm font-medium text-slate-900">Enable outbound email</span>
-              <span className="mt-0.5 block text-xs text-slate-500">
-                Required before sending contracts, quotes, or client mail from the mailbox.
-              </span>
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={form.enabled}
+            onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+          />
+          <span>
+            <span className="block text-sm font-medium text-slate-900">Enable outbound email</span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              Required before sending contracts, quotes, or client mail from the mailbox.
             </span>
-          </label>
+          </span>
+        </label>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">From name</span>
-              <input
-                className={inputClass}
-                value={form.from_name}
-                onChange={(e) => setForm((f) => ({ ...f, from_name: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">From address</span>
-              <input
-                type="email"
-                className={inputClass}
-                value={form.from_address}
-                onChange={(e) => setForm((f) => ({ ...f, from_address: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm sm:col-span-2">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Reply-To</span>
-              <input
-                type="email"
-                className={inputClass}
-                value={form.reply_to}
-                onChange={(e) => setForm((f) => ({ ...f, reply_to: e.target.value }))}
-              />
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">From name</span>
+            <input
+              className={inputClass}
+              value={form.from_name}
+              onChange={(e) => setForm((f) => ({ ...f, from_name: e.target.value }))}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">From address</span>
+            <input
+              type="email"
+              className={inputClass}
+              value={form.from_address}
+              onChange={(e) => setForm((f) => ({ ...f, from_address: e.target.value }))}
+            />
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Reply-To</span>
+            <input
+              type="email"
+              className={inputClass}
+              value={form.reply_to}
+              onChange={(e) => setForm((f) => ({ ...f, reply_to: e.target.value }))}
+            />
               <span className="mt-1 block text-[11px] text-slate-500">
                 Used for contracts, invoices, mailbox, and renewal reminders — not for 2FA codes.
               </span>
-            </label>
-          </div>
+          </label>
+        </div>
 
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">SMTP</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Google Workspace, Microsoft 365, or any transactional SMTP provider.
-            </p>
+        <p className="mt-1 text-xs text-slate-500">
+          Google Workspace, Microsoft 365, or any transactional SMTP provider.
+        </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm sm:col-span-2">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Host</span>
-                <input
-                  className={inputClass}
-                  value={form.smtp_host}
-                  onChange={(e) => setForm((f) => ({ ...f, smtp_host: e.target.value }))}
-                  placeholder="smtp.gmail.com"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Port</span>
-                <input
-                  className={inputClass}
-                  value={form.smtp_port}
-                  onChange={(e) => setForm((f) => ({ ...f, smtp_port: e.target.value }))}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
-                <select
-                  className={inputClass}
-                  value={form.smtp_encryption}
-                  onChange={(e) => setForm((f) => ({ ...f, smtp_encryption: e.target.value }))}
-                >
-                  <option value="tls">TLS</option>
-                  <option value="ssl">SSL</option>
-                  <option value="none">None</option>
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Username</span>
-                <input
-                  className={inputClass}
-                  value={form.smtp_username}
-                  onChange={(e) => setForm((f) => ({ ...f, smtp_username: e.target.value }))}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Password</span>
-                <input
-                  type="password"
-                  className={inputClass}
-                  value={form.smtp_password}
-                  onChange={(e) => setForm((f) => ({ ...f, smtp_password: e.target.value }))}
-                  placeholder={form.smtp_password_set ? "•••••••• (saved — leave blank to keep)" : ""}
-                  autoComplete="new-password"
-                />
-              </label>
+          <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Host</span>
+            <input
+              className={inputClass}
+              value={form.smtp_host}
+              onChange={(e) => setForm((f) => ({ ...f, smtp_host: e.target.value }))}
+              placeholder="smtp.gmail.com"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Port</span>
+            <input
+              className={inputClass}
+              value={form.smtp_port}
+              onChange={(e) => setForm((f) => ({ ...f, smtp_port: e.target.value }))}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
+            <select
+              className={inputClass}
+              value={form.smtp_encryption}
+              onChange={(e) => setForm((f) => ({ ...f, smtp_encryption: e.target.value }))}
+            >
+              <option value="tls">TLS</option>
+              <option value="ssl">SSL</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Username</span>
+            <input
+              className={inputClass}
+              value={form.smtp_username}
+              onChange={(e) => setForm((f) => ({ ...f, smtp_username: e.target.value }))}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Password</span>
+            <input
+              type="password"
+              className={inputClass}
+              value={form.smtp_password}
+              onChange={(e) => setForm((f) => ({ ...f, smtp_password: e.target.value }))}
+              placeholder={form.smtp_password_set ? "•••••••• (saved — leave blank to keep)" : ""}
+              autoComplete="new-password"
+            />
+          </label>
             </div>
           </div>
 
@@ -518,14 +518,14 @@ export function PlatformEmailDeliveryPanel() {
                 {testing ? "Sending…" : "Send test"}
               </button>
             </div>
-          </div>
-        </section>
+        </div>
+      </section>
       ) : null}
 
       {activeEmailTab === "auth" ? (
-        <section className="theme-panel rounded-xl border p-5 shadow-sm">
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">Auth / 2FA email</h2>
-          <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-500">
             Separate sender for two-factor and email-verification codes. No Reply-To is set on these
             messages. You can use a different mailbox than contracts and renewals (recommended).
           </p>
@@ -565,10 +565,10 @@ export function PlatformEmailDeliveryPanel() {
             Each send is logged under Platform → Mailbox → Sent (OTP codes are redacted in the stored copy).
           </p>
 
-          <label className="mt-4 flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
+        <label className="mt-4 flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
               checked={form.auth_mail_use_dedicated}
               onChange={(e) =>
                 setForm((f) => ({ ...f, auth_mail_use_dedicated: e.target.checked }))
@@ -769,7 +769,7 @@ export function PlatformEmailDeliveryPanel() {
               Choose SMTP if your provider blocks IMAP. You can still fill IMAP fields and test the
               connection before switching to IMAP mode.
             </span>
-          </label>
+        </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -808,51 +808,51 @@ export function PlatformEmailDeliveryPanel() {
               ) : null}
             </div>
           ) : null}
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm sm:col-span-2">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Host</span>
-              <input
-                className={inputClass}
-                value={form.imap_host}
-                onChange={(e) => setForm((f) => ({ ...f, imap_host: e.target.value }))}
-                placeholder="imap.gmail.com"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Port</span>
-              <input
-                className={inputClass}
-                value={form.imap_port}
-                onChange={(e) => setForm((f) => ({ ...f, imap_port: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
-              <select
-                className={inputClass}
-                value={form.imap_encryption}
-                onChange={(e) => setForm((f) => ({ ...f, imap_encryption: e.target.value }))}
-              >
-                <option value="ssl">SSL</option>
-                <option value="tls">TLS</option>
-                <option value="none">None</option>
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Username</span>
-              <input
-                className={inputClass}
-                value={form.imap_username}
-                onChange={(e) => setForm((f) => ({ ...f, imap_username: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Password</span>
-              <input
-                type="password"
-                className={inputClass}
-                value={form.imap_password}
-                onChange={(e) => setForm((f) => ({ ...f, imap_password: e.target.value }))}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Host</span>
+            <input
+              className={inputClass}
+              value={form.imap_host}
+              onChange={(e) => setForm((f) => ({ ...f, imap_host: e.target.value }))}
+              placeholder="imap.gmail.com"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Port</span>
+            <input
+              className={inputClass}
+              value={form.imap_port}
+              onChange={(e) => setForm((f) => ({ ...f, imap_port: e.target.value }))}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
+            <select
+              className={inputClass}
+              value={form.imap_encryption}
+              onChange={(e) => setForm((f) => ({ ...f, imap_encryption: e.target.value }))}
+            >
+              <option value="ssl">SSL</option>
+              <option value="tls">TLS</option>
+              <option value="none">None</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Username</span>
+            <input
+              className={inputClass}
+              value={form.imap_username}
+              onChange={(e) => setForm((f) => ({ ...f, imap_username: e.target.value }))}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Password</span>
+            <input
+              type="password"
+              className={inputClass}
+              value={form.imap_password}
+              onChange={(e) => setForm((f) => ({ ...f, imap_password: e.target.value }))}
                 placeholder={
                   form.imap_password_set
                     ? "•••••••• (saved — leave blank to keep)"
@@ -860,17 +860,17 @@ export function PlatformEmailDeliveryPanel() {
                       ? "Leave blank to reuse SMTP password"
                       : "App password if required"
                 }
-                autoComplete="new-password"
-              />
-            </label>
-            <label className="block text-sm sm:col-span-2">
-              <span className="mb-1 block text-xs font-medium text-slate-600">Mailbox folder</span>
-              <input
-                className={inputClass}
-                value={form.imap_mailbox}
-                onChange={(e) => setForm((f) => ({ ...f, imap_mailbox: e.target.value }))}
-                placeholder="INBOX"
-              />
+              autoComplete="new-password"
+            />
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Mailbox folder</span>
+            <input
+              className={inputClass}
+              value={form.imap_mailbox}
+              onChange={(e) => setForm((f) => ({ ...f, imap_mailbox: e.target.value }))}
+              placeholder="INBOX"
+            />
               <span className="mt-1 block text-xs text-slate-500">
                 Use <strong>INBOX</strong>. Gmail Primary / Updates are tabs inside INBOX, not folder names.
               </span>
@@ -891,56 +891,56 @@ export function PlatformEmailDeliveryPanel() {
               <span className="mt-1 block text-xs text-slate-500">
                 For Gmail only. Choose Primary to pull client mail from the Primary tab instead of Updates.
               </span>
-            </label>
-          </div>
-        </section>
+          </label>
+        </div>
+      </section>
       ) : null}
 
       {activeEmailTab === "templates" ? (
-        <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Contract / quote email template</h2>
-          <p className="mt-1 text-xs text-slate-500">
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Contract / quote email template</h2>
+        <p className="mt-1 text-xs text-slate-500">
             Placeholders: {"{kind}"}, {"{title}"}, {"{reference}"}, {"{customer_name}"},{" "}
             {"{first_payment}"}, {"{renewal_payment}"}, {"{from_name}"}
-          </p>
+        </p>
 
-          <div className="mt-4">
-            <PlatformAiEmailAssist
-              subject={form.contract_email_subject}
-              body={form.contract_email_body}
-              placeholders={PLATFORM_EMAIL_PLACEHOLDERS}
-              onApply={({ subject, body }) =>
-                setForm((f) => ({
-                  ...f,
-                  contract_email_subject: subject,
-                  contract_email_body: body,
-                }))
-              }
-            />
-          </div>
+        <div className="mt-4">
+          <PlatformAiEmailAssist
+            subject={form.contract_email_subject}
+            body={form.contract_email_body}
+            placeholders={PLATFORM_EMAIL_PLACEHOLDERS}
+            onApply={({ subject, body }) =>
+              setForm((f) => ({
+                ...f,
+                contract_email_subject: subject,
+                contract_email_body: body,
+              }))
+            }
+          />
+        </div>
 
-          <label className="mt-4 block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Subject</span>
-            <input
-              className={inputClass}
-              value={form.contract_email_subject}
-              onChange={(e) => setForm((f) => ({ ...f, contract_email_subject: e.target.value }))}
-            />
-          </label>
-          <label className="mt-3 block text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Body</span>
-            <textarea
-              className={inputClass}
-              rows={8}
-              value={form.contract_email_body}
-              onChange={(e) => setForm((f) => ({ ...f, contract_email_body: e.target.value }))}
-            />
-          </label>
-        </section>
+        <label className="mt-4 block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Subject</span>
+          <input
+            className={inputClass}
+            value={form.contract_email_subject}
+            onChange={(e) => setForm((f) => ({ ...f, contract_email_subject: e.target.value }))}
+          />
+        </label>
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Body</span>
+          <textarea
+            className={inputClass}
+            rows={8}
+            value={form.contract_email_body}
+            onChange={(e) => setForm((f) => ({ ...f, contract_email_body: e.target.value }))}
+          />
+        </label>
+      </section>
       ) : null}
 
       {activeEmailTab === "renewals" ? (
-        <section className="theme-panel rounded-xl border p-5 shadow-sm">
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">Subscription renewal reminders</h2>
           <p className="mt-1 text-xs text-slate-500">
             Automatically email organization admins (and org email) before a plan expires, with a draft
@@ -1083,28 +1083,28 @@ export function PlatformEmailDeliveryPanel() {
               Sends your current subject/body with sample placeholders and a sample invoice PDF. Does
               not notify a real tenant.
             </p>
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <label className="block min-w-[16rem] flex-1 text-sm">
-                <span className="mb-1 block text-xs font-medium text-slate-600">Recipient</span>
-                <input
-                  type="email"
-                  className={inputClass}
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="block min-w-[16rem] flex-1 text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Recipient</span>
+            <input
+              type="email"
+              className={inputClass}
                   value={renewalTestTo}
                   onChange={(e) => setRenewalTestTo(e.target.value)}
                   placeholder={testTo || "you@example.com"}
-                />
-              </label>
-              <button
-                type="button"
+            />
+          </label>
+          <button
+            type="button"
                 disabled={testingRenewal || !form.enabled}
-                className={SECONDARY_BTN_CLASS}
+            className={SECONDARY_BTN_CLASS}
                 onClick={() => void handleTestRenewalReminder()}
-              >
+          >
                 {testingRenewal ? "Sending…" : "Send test reminder"}
-              </button>
+          </button>
             </div>
-          </div>
-        </section>
+        </div>
+      </section>
       ) : null}
 
       <div className="flex justify-end">

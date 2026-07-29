@@ -12,6 +12,15 @@ export function mergeSecuritySettings(moduleSettings) {
   return { ...SECURITY_DEFAULTS, ...(moduleSettings?.security ?? {}) };
 }
 
+/** Resolve session timeouts from capabilities (top-level or module_settings.security). */
+export function resolveSecurityTimeouts(capabilities) {
+  const security = mergeSecuritySettings(capabilities?.module_settings);
+  return {
+    screen_lock_minutes: capabilities?.screen_lock_minutes ?? security.screen_lock_minutes,
+    session_idle_minutes: capabilities?.session_idle_minutes ?? security.session_idle_minutes,
+  };
+}
+
 export function securityFormFromApi(res) {
   const security = mergeSecuritySettings({ security: res?.security ?? res });
   return {

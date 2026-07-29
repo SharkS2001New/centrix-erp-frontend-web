@@ -956,7 +956,7 @@ export function PlatformMailboxPanel() {
               <path d="M21 21l-4.3-4.3" />
             </svg>
           </span>
-          <input
+        <input
             className={`${inputClass} pl-9`}
             placeholder="Search mail in this mailbox…"
             value={searchInput}
@@ -1005,7 +1005,7 @@ export function PlatformMailboxPanel() {
           only if your provider allows it.
         </div>
       ) : (
-        <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500">
           Synced inbox mail is stored as metadata + short snippets; the full body loads from IMAP when you
           open a message. Local copies (including saved AI responses) are auto-deleted after 3 months.
           Outbound mail you send from Centrix is kept the same way. Use Sync inbox anytime to pull the
@@ -1067,12 +1067,12 @@ export function PlatformMailboxPanel() {
                   </button>
                 ) : null}
               </div>
-              <ul className="divide-y divide-slate-100">
-                {messages.map((msg) => {
-                  const unread = msg.folder === "inbox" && !msg.read_at;
-                  const active = selectedId === msg.id;
+            <ul className="divide-y divide-slate-100">
+              {messages.map((msg) => {
+                const unread = msg.folder === "inbox" && !msg.read_at;
+                const active = selectedId === msg.id;
                   const checked = selectedIds.has(msg.id);
-                  return (
+                return (
                     <li key={msg.id} className="group relative">
                       <div
                         className={`flex items-stretch ${
@@ -1091,12 +1091,12 @@ export function PlatformMailboxPanel() {
                             aria-label={`Select message ${msg.subject || msg.id}`}
                           />
                         </label>
-                        <button
-                          type="button"
+                    <button
+                      type="button"
                           className="min-w-0 flex-1 px-1 py-3 pr-10 text-left hover:bg-slate-50/80"
-                          onClick={() => void openMessage(msg.id)}
-                        >
-                          <div className="flex items-start justify-between gap-2">
+                      onClick={() => void openMessage(msg.id)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
                             <span className="flex min-w-0 items-center gap-2">
                               {unread ? (
                                 <span
@@ -1112,15 +1112,15 @@ export function PlatformMailboxPanel() {
                                   unread ? "font-semibold text-slate-900" : "text-slate-800"
                                 }`}
                               >
-                                {msg.direction === "outbound"
-                                  ? (Array.isArray(msg.to_addresses) ? msg.to_addresses[0] : "—")
-                                  : msg.from_name || msg.from_address}
+                          {msg.direction === "outbound"
+                            ? (Array.isArray(msg.to_addresses) ? msg.to_addresses[0] : "—")
+                            : msg.from_name || msg.from_address}
                               </span>
-                            </span>
-                            <span className="shrink-0 text-[10px] text-slate-400">
-                              {formatWhen(msg.sent_at || msg.received_at)}
-                            </span>
-                          </div>
+                        </span>
+                        <span className="shrink-0 text-[10px] text-slate-400">
+                          {formatWhen(msg.sent_at || msg.received_at)}
+                        </span>
+                      </div>
                           <div
                             className={`mt-0.5 truncate pl-4 text-xs ${
                               unread ? "font-medium text-slate-800" : "text-slate-600"
@@ -1131,8 +1131,8 @@ export function PlatformMailboxPanel() {
                                 {msg.kind_label}
                               </span>
                             ) : null}
-                            {msg.subject || "(no subject)"}
-                          </div>
+                        {msg.subject || "(no subject)"}
+                      </div>
                           <div className="mt-0.5 truncate pl-4 text-[11px] text-slate-400">
                             {previewBody(msg.body_text)}
                           </div>
@@ -1147,11 +1147,11 @@ export function PlatformMailboxPanel() {
                         onClick={(e) => void handleDeleteMessage(msg.id, e)}
                       >
                         <TrashIcon />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
               {hasMore ? (
                 <div className="border-t border-slate-100 p-3">
                   <button
@@ -1349,8 +1349,8 @@ export function PlatformMailboxPanel() {
           ) : (
             <div className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-base font-semibold text-slate-900">{selected.subject || "(no subject)"}</h2>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">{selected.subject || "(no subject)"}</h2>
                   {selected.kind_label || selected.meta?.kind ? (
                     <p className="mt-1">
                       <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
@@ -1358,13 +1358,13 @@ export function PlatformMailboxPanel() {
                       </span>
                     </p>
                   ) : null}
-                  <p className="mt-1 text-xs text-slate-500">
-                    {selected.direction === "outbound" ? "To" : "From"}{" "}
-                    {selected.direction === "outbound"
-                      ? (Array.isArray(selected.to_addresses) ? selected.to_addresses.join(", ") : "—")
-                      : `${selected.from_name ? `${selected.from_name} ` : ""}<${selected.from_address}>`}{" "}
-                    · {formatWhen(selected.sent_at || selected.received_at)}
-                  </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {selected.direction === "outbound" ? "To" : "From"}{" "}
+                  {selected.direction === "outbound"
+                    ? (Array.isArray(selected.to_addresses) ? selected.to_addresses.join(", ") : "—")
+                    : `${selected.from_name ? `${selected.from_name} ` : ""}<${selected.from_address}>`}{" "}
+                  · {formatWhen(selected.sent_at || selected.received_at)}
+                </p>
                   {selected.meta?.invoice_id ? (
                     <p className="mt-1 text-xs text-slate-500">
                       Invoice attached · ID {selected.meta.invoice_id}
@@ -1437,7 +1437,7 @@ export function PlatformMailboxPanel() {
 
               {selected.direction === "inbound" || selected.folder === "inbox" ? (
                 <form onSubmit={(e) => void handleReply(e)} className="space-y-3 border-t border-slate-100 pt-4">
-                  <h3 className="text-sm font-semibold text-slate-900">Reply</h3>
+                <h3 className="text-sm font-semibold text-slate-900">Reply</h3>
                   {selected.body_from_imap ? (
                     <p className="text-[11px] text-slate-400">Full message loaded from IMAP.</p>
                   ) : selected.body_is_snippet ? (
@@ -1463,14 +1463,14 @@ export function PlatformMailboxPanel() {
                     savingForFuture={savingReplyMemory}
                     onApply={({ body }) => setReplyBody(body)}
                   />
-                  <textarea
-                    className={inputClass}
-                    rows={6}
-                    value={replyBody}
-                    onChange={(e) => setReplyBody(e.target.value)}
-                    placeholder="Write your reply…"
-                    required
-                  />
+                <textarea
+                  className={inputClass}
+                  rows={6}
+                  value={replyBody}
+                  onChange={(e) => setReplyBody(e.target.value)}
+                  placeholder="Write your reply…"
+                  required
+                />
                   <div className="flex flex-wrap justify-end gap-2">
                     <button
                       type="button"
@@ -1481,15 +1481,15 @@ export function PlatformMailboxPanel() {
                       <TrashIcon />
                       Delete
                     </button>
-                    <PrimaryButton type="submit" showIcon={false} disabled={sending || !replyBody.trim()}>
+                  <PrimaryButton type="submit" showIcon={false} disabled={sending || !replyBody.trim()}>
                       {sending
                         ? "Sending…"
                         : saveReplyForAi
                           ? "Send & save for future response"
                           : "Send reply"}
-                    </PrimaryButton>
-                  </div>
-                </form>
+                  </PrimaryButton>
+                </div>
+              </form>
               ) : null}
             </div>
           )}

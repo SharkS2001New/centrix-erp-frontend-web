@@ -554,6 +554,9 @@ export function PosScreen({ standalone = false }) {
   const unitPriceRef = useRef(null);
   const searchInputRef = useRef(null);
   const productSearchRef = useRef(null);
+  const cartLinesScrollRef = useRef(null);
+  const classicCartTableScrollRef = useRef(null);
+  const prevCartLineCountRef = useRef(0);
   const focusSearchAfterAdd = useRef(false);
   const appliedRouteMarkupRef = useRef(0);
   const [sellFromShop, setSellFromShop] = useState(true);
@@ -1387,6 +1390,32 @@ export function PosScreen({ standalone = false }) {
       setSelectedLineId(null);
     }
   }, [cart?.lines, classicLayout, selectedLineId, setSelectedLineIds]);
+
+  useEffect(() => {
+    const lineCount = cart?.lines?.length ?? 0;
+    const prevCount = prevCartLineCountRef.current;
+    prevCartLineCountRef.current = lineCount;
+    if (lineCount <= prevCount) return;
+
+    const scrollToLatest = () => {
+      if (classicLayout) {
+        const el = classicCartTableScrollRef.current;
+        if (!el) return;
+        const entryRow = el.querySelector(".classic-pos-cart-entry-row");
+        if (entryRow instanceof HTMLElement) {
+          entryRow.scrollIntoView({ block: "end", behavior: "auto" });
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
+        return;
+      }
+      const el = cartLinesScrollRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    };
+
+    requestAnimationFrame(scrollToLatest);
+  }, [cart?.lines?.length, classicLayout]);
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -6126,9 +6155,9 @@ export function PosScreen({ standalone = false }) {
       />
 
       <div
-        className={`flex min-h-0 flex-1 flex-col lg:flex-row${
-          classicLayout ? " overflow-visible" : " overflow-hidden"
-        }${standalone ? " pos-standalone-frame" : " pos-backoffice-frame"}`}
+        className={`flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden${
+          standalone ? " pos-standalone-frame" : " pos-backoffice-frame"
+        }`}
       >
         {/* Left — line entry + payment options */}
         <div className="pos-left-panel flex min-h-0 w-full flex-col self-stretch border-b border-[var(--theme-border)] bg-[var(--theme-page-bg)] lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
@@ -6593,10 +6622,9 @@ export function PosScreen({ standalone = false }) {
             </div>
           ) : null}
           <div
+            ref={cartLinesScrollRef}
             className={`pos-cart-table-wrap min-h-0 flex-1${
-              classicLayout
-                ? " overflow-visible"
-                : " overflow-auto"
+              classicLayout ? " overflow-hidden" : " overflow-auto"
             }${
               showCartToolbar ? " p-3" : " pos-cart-table-wrap--flush"
             }`}
@@ -6613,6 +6641,7 @@ export function PosScreen({ standalone = false }) {
           >
             {classicLayout ? (
               <ClassicPosCartTable
+                tableScrollRef={classicCartTableScrollRef}
                 lines={cart?.lines ?? []}
                 selectedLineId={selectedLineId}
                 onSelectLine={(lineId) => beginReplaceCartLine(lineId)}

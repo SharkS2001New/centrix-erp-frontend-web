@@ -114,7 +114,7 @@ export function XReportModal({
   const hasReport = Boolean(resolvedReport?.sales || resolvedReport?.expected_cash != null);
 
   function handlePrint() {
-    printPosTillReport({
+    void printPosTillReport({
       type: "X",
       organizationName,
       tillName,
@@ -431,7 +431,7 @@ export function ZReportModal({
   const resolvedCashier = cashierName ?? fallbackCashierName;
 
   function handlePrint() {
-    printPosTillReport({
+    void printPosTillReport({
       type: "Z",
       organizationName,
       tillName,

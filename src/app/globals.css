@@ -1546,6 +1546,10 @@ html[data-theme="dark"] .pos-workspace-standalone .pos-header-order-badge {
   border-top: 1px solid var(--theme-border);
   border-radius: 0;
   background-color: var(--theme-page-bg);
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pos-workspace-backoffice .pos-cart-summary {
@@ -1594,6 +1598,10 @@ html[data-theme="dark"] .pos-workspace-standalone .pos-header-order-badge {
   border-top: 1px solid var(--theme-border-strong, var(--theme-border));
   border-radius: 0;
   background-color: var(--theme-page-bg);
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pos-workspace .pos-cart-table-wrap--flush,
@@ -2400,7 +2408,7 @@ html[data-theme="dark"] .pos-workspace-classic {
   width: 100% !important;
   background: var(--classic-bg) !important;
   border: none !important;
-  overflow: visible !important;
+  overflow: hidden !important;
 }
 
 .pos-workspace-classic .pos-left-panel {
@@ -2414,11 +2422,11 @@ html[data-theme="dark"] .pos-workspace-classic {
 .pos-workspace-classic .pos-standalone-frame {
   flex-direction: column !important;
   background: var(--classic-bg) !important;
-  overflow: visible !important;
+  overflow: hidden !important;
 }
 
 .pos-workspace-classic .pos-cart-table-wrap {
-  overflow: visible !important;
+  overflow: hidden !important;
   background: transparent !important;
   border: none !important;
   border-top: none !important;
@@ -2733,10 +2741,26 @@ html[data-theme="dark"] .pos-workspace-classic {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
   background: var(--classic-table, #fff);
   border: 1px solid var(--classic-grid-border, #8b9dc3);
   color: var(--classic-text, #1a1a1a);
+}
+
+.classic-pos-cart-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.classic-pos-cart-table-scroll thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--classic-table, #fff);
 }
 
 .classic-pos-cart-caption {

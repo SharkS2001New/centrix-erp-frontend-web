@@ -379,14 +379,14 @@ export function ProductPriceSheetScreen() {
       const printHasCost = printRows.some(
         (row) => row.last_cost_price != null && Number(row.last_cost_price) > 0,
       );
-      const html = buildPriceSheetPrintHtml({
+    const html = buildPriceSheetPrintHtml({
         groups: printGroups,
         columns: printCols,
-        organizationName: organization?.org_name ?? capabilities?.profile_label ?? "",
+      organizationName: organization?.org_name ?? capabilities?.profile_label ?? "",
         showCost: printHasCost && printColumns.unitCost,
         showMargins: printHasCost && printCols.wholesale,
-      });
-      openPrintWindow(html, "width=1100,height=800");
+    });
+    openPrintWindow(html, "width=1100,height=800");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to prepare price sheet for print");
     } finally {
@@ -511,42 +511,42 @@ export function ProductPriceSheetScreen() {
                         className="text-xs font-medium text-blue-600 hover:text-blue-500"
                       >
                         Reset
-                      </button>
-                    </div>
+          </button>
+        </div>
                     <ul className="max-h-72 space-y-1 overflow-y-auto">
-                      {PRINT_COLUMN_OPTIONS.map((option) => {
-                        const available =
-                          option.key === "unitCost"
-                            ? hasCostRows
-                            : option.key === "packaging"
-                              ? true
-                              : Boolean(availableColumns[option.key]);
-                        return (
+          {PRINT_COLUMN_OPTIONS.map((option) => {
+            const available =
+              option.key === "unitCost"
+                ? hasCostRows
+                : option.key === "packaging"
+                  ? true
+                  : Boolean(availableColumns[option.key]);
+            return (
                           <li key={option.key}>
-                            <label
+              <label
                               className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                                available
+                  available
                                   ? "cursor-pointer text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]"
                                   : "cursor-not-allowed opacity-50"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={Boolean(printColumns[option.key]) && available}
-                                disabled={!available}
-                                onChange={(event) =>
-                                  setPrintColumns((prev) => ({
-                                    ...prev,
-                                    [option.key]: event.target.checked,
-                                  }))
-                                }
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(printColumns[option.key]) && available}
+                  disabled={!available}
+                  onChange={(event) =>
+                    setPrintColumns((prev) => ({
+                      ...prev,
+                      [option.key]: event.target.checked,
+                    }))
+                  }
                                 className="rounded border-slate-300"
-                              />
-                              {option.label}
-                            </label>
+                />
+                {option.label}
+              </label>
                           </li>
-                        );
-                      })}
+            );
+          })}
                     </ul>
                   </div>
                 </>,

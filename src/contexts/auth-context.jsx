@@ -48,6 +48,7 @@ import {
   clearLicenseWarningDismissed,
   licenseFromAuthState,
 } from "@/lib/organization-license";
+import { resolveSecurityTimeouts } from "@/lib/security-settings";
 import { syncLocalPrintingFromCapabilities } from "@/lib/local-printing-settings";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
@@ -596,8 +597,8 @@ export function AuthProvider({ children }) {
         }),
       isOrgWide,
       generalSettings: () => resolveGeneralSettings(capabilities),
-      sessionIdleMinutes: () => capabilities?.session_idle_minutes ?? 60,
-      screenLockMinutes: () => capabilities?.screen_lock_minutes ?? 5,
+      sessionIdleMinutes: () => resolveSecurityTimeouts(capabilities).session_idle_minutes,
+      screenLockMinutes: () => resolveSecurityTimeouts(capabilities).screen_lock_minutes,
     }),
     [
       user,

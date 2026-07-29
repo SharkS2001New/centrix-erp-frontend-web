@@ -177,6 +177,7 @@ export function ClassicPosCartTable({
   onEntryQtyChange,
   onEntryQtyKeyDown,
   onEmptyDoubleClick = null,
+  tableScrollRef = null,
 }) {
   function handleWrapDoubleClick(e) {
     if (typeof onEmptyDoubleClick !== "function") return;
@@ -292,6 +293,7 @@ export function ClassicPosCartTable({
           </div>
         ) : null}
       </div>
+      <div ref={tableScrollRef} className="classic-pos-cart-table-scroll">
       <table className="classic-pos-cart-table">
         <colgroup>
           <col className="classic-pos-col-num" />
@@ -456,6 +458,7 @@ export function ClassicPosCartTable({
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
