@@ -136,29 +136,44 @@ async function fetchRoute(routeId) {
   }
 }
 
-async function fetchUserLoginUsername(userId) {
+async function fetchUserPrintName(userId) {
   if (userId == null || userId === "") return null;
   try {
     const user = await apiRequest(`/users/${userId}`, { loading: false, reportIssues: false });
-    return user.username ?? user.login ?? user.user_name ?? null;
+    return (
+      user.full_name ??
+      user.name ??
+      user.display_name ??
+      user.username ??
+      user.login ??
+      user.user_name ??
+      null
+    );
   } catch {
     return null;
   }
 }
 
 async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
-  const fromSale = resolveSaleOrderCreatorName(sale, options.preparedBy);
+  // Sale creator / cashier first — never prefer the reprinting session login.
+  const fromSale = resolveSaleOrderCreatorName(sale, null);
   if (fromSale !== "—") return fromSale;
 
-  const sessionUsername = options.user?.username ?? options.user?.login ?? null;
-  if (sessionUsername) return String(sessionUsername);
+  const createdByName = await fetchUserPrintName(sale?.created_by);
+  if (createdByName) return createdByName;
 
-  // POS channel may block user lookups for some ID shapes — never fail the print.
-  const createdByUsername = await fetchUserLoginUsername(sale?.created_by);
-  if (createdByUsername) return createdByUsername;
+  const cashierName = await fetchUserPrintName(sale?.cashier_id);
+  if (cashierName) return cashierName;
 
-  const cashierUsername = await fetchUserLoginUsername(sale?.cashier_id);
-  if (cashierUsername) return cashierUsername;
+  // Immediate POS checkout may not have cashier relation loaded yet — session user is the creator.
+  const sessionName =
+    options.user?.full_name ??
+    options.user?.name ??
+    options.preparedBy ??
+    options.user?.username ??
+    options.user?.login ??
+    null;
+  if (sessionName) return String(sessionName).trim();
 
   return "—";
 }

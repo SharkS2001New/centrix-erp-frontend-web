@@ -114,34 +114,49 @@ function firstNonEmptyString(...values) {
   return null;
 }
 
-function usernameFromSaleUserRecord(user) {
+function personNameFromSaleUserRecord(user) {
   if (!user || typeof user !== "object") return null;
-  // Receipt "You were served by" uses login username, not display/full name.
-  return firstNonEmptyString(user.username, user.login, user.user_name);
+  // Prefer display name for "You were served by"; fall back to login username.
+  return firstNonEmptyString(
+    user.full_name,
+    user.name,
+    user.display_name,
+    user.username,
+    user.login,
+    user.user_name,
+  );
 }
 
-/** Login username for receipt/invoice "You were served by" (not full name). */
+/**
+ * Name of the user who created / cashiered the sale for receipt "You were served by".
+ * Prefer sale creator fields over the current session user (reprints must not show the reprinting login).
+ */
 export function resolveSaleOrderCreatorName(sale, preparedBy = null) {
-  const explicit = typeof preparedBy === "string" ? preparedBy.trim() : "";
-  if (explicit) return explicit;
-  if (!sale) return "—";
-
-  return (
-    firstNonEmptyString(
-      sale.created_by_username,
-      sale.cashier_username,
-      sale.placed_by_username,
-      usernameFromSaleUserRecord(sale.created_by_user),
-      usernameFromSaleUserRecord(sale.cashier_user),
-      usernameFromSaleUserRecord(sale.cashier),
-      usernameFromSaleUserRecord(sale.user),
-      typeof sale.created_by === "string" ? sale.created_by : null,
-      // Legacy fields may store display names — only used when username is unavailable.
+  if (sale) {
+    const fromSale = firstNonEmptyString(
       sale.created_by_name,
       sale.cashier_name,
       sale.placed_by_name,
-    ) ?? "—"
-  );
+      personNameFromSaleUserRecord(sale.created_by_user),
+      personNameFromSaleUserRecord(sale.cashier_user),
+      personNameFromSaleUserRecord(sale.cashier),
+      personNameFromSaleUserRecord(sale.user),
+      sale.created_by_username,
+      sale.cashier_username,
+      sale.placed_by_username,
+      typeof sale.created_by === "string" ? sale.created_by : null,
+    );
+    if (fromSale) return fromSale;
+  }
+
+  if (typeof preparedBy === "string" && preparedBy.trim()) {
+    return preparedBy.trim();
+  }
+  if (preparedBy && typeof preparedBy === "object") {
+    return personNameFromSaleUserRecord(preparedBy) ?? "—";
+  }
+
+  return "—";
 }
 
 export function buildSaleDocumentOrgHeaderHtml(

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { canSeeServerErrorDetail } from "@/lib/auth-storage";
+import { isAbortError } from "@/lib/api";
 import { emitSystemIssue } from "@/lib/system-issue-dispatcher";
 import { logApiErrorIssue } from "@/lib/system-issue-reports";
 
@@ -31,9 +32,18 @@ async function reportUnhandledError(message, context = {}) {
   }
 }
 
+function rejectionMessage(reason) {
+  if (reason instanceof Error) return reason.message;
+  if (typeof reason === "string") return reason;
+  return "Unhandled promise rejection";
+}
+
 export function GlobalErrorCapture() {
   useEffect(() => {
     function onError(event) {
+      if (isAbortError(event.error) || isAbortError({ name: "AbortError", message: event.message })) {
+        return;
+      }
       const message = event.error instanceof Error ? event.error.message : event.message;
       void reportUnhandledError(message, {
         pageUrl: window.location.pathname,
@@ -45,13 +55,11 @@ export function GlobalErrorCapture() {
 
     function onRejection(event) {
       const reason = event.reason;
-      const message =
-        reason instanceof Error
-          ? reason.message
-          : typeof reason === "string"
-            ? reason
-            : "Unhandled promise rejection";
-      void reportUnhandledError(message, {
+      if (isAbortError(reason)) {
+        event.preventDefault?.();
+        return;
+      }
+      void reportUnhandledError(rejectionMessage(reason), {
         pageUrl: window.location.pathname,
         kind: "unhandledrejection",
       });

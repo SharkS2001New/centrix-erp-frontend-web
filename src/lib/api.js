@@ -333,10 +333,27 @@ function getInflightDedupeKey(method, urlString) {
   return `GET:${urlString}`;
 }
 
+/** True when fetch/AbortController cancelled the request (expected control flow). */
+export function isAbortError(error) {
+  if (!error) return false;
+  if (error.name === "AbortError") return true;
+  if (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  return /signal is aborted|aborted without a reason|The user aborted a request/i.test(
+    String(error.message ?? ""),
+  );
+}
+
 export async function apiRequest(path, options = {}) {
   const method = options.method ?? "GET";
   const url = buildApiUrl(path, options.searchParams);
-  const dedupeKey = options.dedupe === false ? null : getInflightDedupeKey(method, url.toString());
+  // Never share in-flight GETs that carry an AbortSignal — aborting one waiter
+  // would reject every other caller of the same URL (POS product search did this).
+  const dedupeKey =
+    options.signal || options.dedupe === false
+      ? null
+      : getInflightDedupeKey(method, url.toString());
 
   if (dedupeKey && inflightGetRequests.has(dedupeKey)) {
     return inflightGetRequests.get(dedupeKey);
@@ -447,8 +464,20 @@ async function performApiRequest(path, url, options = {}) {
         }
       }
 
-      const errorMessage = formatApiErrorMessage(data, res.statusText);
-      const issueMessage = formatSystemIssueMessage(data, res.statusText, apiPath);
+      let errorMessage = formatApiErrorMessage(data, res.statusText);
+      // Proxies sometimes return 519/520 when the origin closed the connection mid-request.
+      if (
+        (res.status === 519 || res.status === 520) &&
+        (!errorMessage || /^request failed$/i.test(errorMessage) || /aborted/i.test(errorMessage))
+      ) {
+        errorMessage =
+          "The server closed the connection before finishing. Please try again.";
+      }
+      const issueMessage = formatSystemIssueMessage(
+        data,
+        errorMessage || res.statusText,
+        apiPath,
+      );
       let systemIssuePrompted = false;
       if (trackIssues) {
         const report = await logApiErrorIssue({
@@ -495,7 +524,7 @@ async function performApiRequest(path, url, options = {}) {
 
     return data;
   } catch (error) {
-    if (error?.name === "AbortError") {
+    if (isAbortError(error) || options.signal?.aborted) {
       throw error;
     }
     if (trackIssues && !(error instanceof ApiError)) {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, isAbortError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams } from "@/lib/paginated-api";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
@@ -1459,9 +1459,12 @@ export function PosScreen({ standalone = false }) {
     try {
       const res = await apiRequest("/sales", {
         searchParams: { per_page: 1, "filter[status]": "held" },
+        loading: false,
+        reportIssues: false,
       });
       setHeldOrdersCount(Number(res.total ?? (res.data ?? []).length ?? 0));
-    } catch {
+    } catch (e) {
+      if (isAbortError(e)) return;
       setHeldOrdersCount(0);
     }
   }, []);
@@ -1854,8 +1857,9 @@ export function PosScreen({ standalone = false }) {
 
   function enqueueCartCommit(task) {
     const run = cartCommitChainRef.current.then(task, task);
+    // Keep the chain alive after failures, and never leave void callers unhandled.
     cartCommitChainRef.current = run.catch(() => {});
-    return run;
+    return cartCommitChainRef.current;
   }
 
   /** Previous-order edits: flip dirty before the queued commit so F10 works immediately. */
@@ -2098,6 +2102,8 @@ export function PosScreen({ standalone = false }) {
         const res = await apiRequest("/products", {
           searchParams: { per_page: 40, q: trimmed, fields: "lean", ...productBranchParams },
           signal: abort.signal,
+          loading: false,
+          reportIssues: false,
         });
         if (seq !== searchSeq.current || abort.signal.aborted) return;
         const list = (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap));
@@ -2127,7 +2133,7 @@ export function PosScreen({ standalone = false }) {
           void ensureRetailPackages(classicLayout ? missingPkg.slice(0, 5) : missingPkg.slice(0, 15));
         }
       } catch (err) {
-        if (abort.signal.aborted || seq !== searchSeq.current) return;
+        if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
         // Network drop mid-search: fall back to offline catalog when available.
         if (standalone) {
           try {
@@ -4339,7 +4345,7 @@ export function PosScreen({ standalone = false }) {
           uomById,
           productByCode,
           user,
-          preparedBy: user?.username ?? null,
+          preparedBy: user?.full_name ?? user?.username ?? null,
           documentType,
           // Checkout returns kra_response for immediate thermal QR print.
           kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
@@ -4711,10 +4717,25 @@ export function PosScreen({ standalone = false }) {
       setSaveOrderError("Save order is disabled while checkout on create order is enabled.");
       return;
     }
+
+    // Classic POS enqueues line saves — wait so hold/create does not checkout an empty server cart.
+    await waitForCartLineSavesToFinish();
+
     setBusy(true);
     setSaveOrderError(null);
     setStatusMessage(null);
     try {
+      const activeCart = cartRef.current ?? cart;
+      if (!activeCart?.id) return;
+      if (!(activeCart.lines?.length > 0)) {
+        const message = hold
+          ? "Add items before holding this order."
+          : "Add items before saving this order.";
+        setSaveOrderError(message);
+        flashPosShortcutMessage(message);
+        return;
+      }
+
       const body = {
         status: hold ? "held" : resolveSaveOrderStatus({ channel, workflow: channelWorkflow }),
         pay_now: 0,
@@ -4728,11 +4749,11 @@ export function PosScreen({ standalone = false }) {
         body.customer_num = customer.customer_num;
         body.customer_name_override = customer.customer_name;
       }
-      if (cart?.held_order_num) {
+      if (activeCart?.held_order_num) {
         if (walkIn) {
-          rememberPosOrderCustomerName(cart.held_order_num, body.customer_name_override);
+          rememberPosOrderCustomerName(activeCart.held_order_num, body.customer_name_override);
         } else if (customer) {
-          rememberPosOrderCustomer(cart.held_order_num, {
+          rememberPosOrderCustomer(activeCart.held_order_num, {
             name: customer.customer_name,
             customerNum: customer.customer_num,
           });
@@ -4741,14 +4762,14 @@ export function PosScreen({ standalone = false }) {
       const checkoutBody = await attachDiscountApprovalReasonToCheckoutBody({
         ...body,
         sales_workspace: salesWorkspace,
-        ...(cart?.held_order_num ? { order_num: cart.held_order_num } : {}),
+        ...(activeCart?.held_order_num ? { order_num: activeCart.held_order_num } : {}),
         ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
       });
       if (!checkoutBody) {
         setSaveOrderError("Enter a discount reason to save this order for manager approval.");
         return;
       }
-      const sale = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
+      const sale = await apiRequest(`/sales/carts/${activeCart.id}/checkout`, {
         method: "POST",
         body: checkoutBody,
       });
@@ -4757,6 +4778,7 @@ export function PosScreen({ standalone = false }) {
       clearPosUiDraft();
       clearLineEntry();
       setSelectedLineId(null);
+      void clearPreviousOrderEditDraft().catch(() => {});
       await loadCashierCart();
       const who = walkIn
         ? walkInName?.trim() || "Walk-in"
@@ -4774,6 +4796,7 @@ export function PosScreen({ standalone = false }) {
         await loadHeldOrdersCount();
       }
     } catch (e) {
+      if (isAbortError(e)) return;
       const message =
         e instanceof ApiError
           ? e.message
@@ -4952,7 +4975,7 @@ export function PosScreen({ standalone = false }) {
           uomById,
           productByCode,
           user,
-          preparedBy: user?.username ?? null,
+          preparedBy: user?.full_name ?? user?.username ?? null,
           documentType:
             resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
           kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,

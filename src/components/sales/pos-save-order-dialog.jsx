@@ -51,15 +51,25 @@ export function PosSaveOrderDialog({
     const prefillName = String(prefillWalkInName ?? "").trim();
     const prefillNum = String(prefillCustomerNum ?? "").trim();
     const startExisting = Boolean(prefillNum);
+    // Don't seed Hold with a generic "Walk-in" label — cashier types the name.
+    const genericWalkIn =
+      !prefillName ||
+      /^walk[\s-]*in(\s*\(auto-held\))?$/i.test(prefillName);
     setCustomerMode(startExisting ? "existing" : "walkin");
-    setWalkInName(prefillName || (isHold ? "Walk-in" : ""));
+    setWalkInName(startExisting || genericWalkIn ? "" : prefillName);
     setCustomerNum(prefillNum);
     setSelectedCustomer(null);
     setCustomerOptions([]);
     setLocalError(null);
 
-    // Prefer Hold/Save for Enter; walk-in name still editable after.
+    // Hold: focus the name field so the cashier can type immediately.
+    // Save / existing customer: keep primary action focused for Enter.
     const focusTimer = window.setTimeout(() => {
+      if (!startExisting && isHold) {
+        walkInNameRef.current?.focus();
+        walkInNameRef.current?.select?.();
+        return;
+      }
       primaryActionRef.current?.focus();
     }, 0);
 
@@ -111,6 +121,10 @@ export function PosSaveOrderDialog({
     setSelectedCustomer(null);
     setCustomerOptions([]);
     setLocalError(null);
+    window.setTimeout(() => {
+      walkInNameRef.current?.focus();
+      walkInNameRef.current?.select?.();
+    }, 0);
   }
 
   function switchToExisting() {
@@ -258,7 +272,8 @@ export function PosSaveOrderDialog({
                   setWalkInName(e.target.value);
                   setLocalError(null);
                 }}
-                placeholder="Customer name"
+                placeholder={isHold ? "Type customer name…" : "Customer name"}
+                autoComplete="off"
                 disabled={saving}
               />
             </label>

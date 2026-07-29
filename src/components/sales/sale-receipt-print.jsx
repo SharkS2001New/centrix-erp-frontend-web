@@ -170,9 +170,16 @@ export function buildSaleReceiptHtml(
   });
   const tillNo = sale.pos_terminal_id ?? sale.branch_id ?? branch?.id ?? "1";
   const servedByName = (() => {
+    // Prefer the sale cashier / order creator — not the reprinting login.
     const fromSale = resolveSaleOrderCreatorName(sale, preparedBy);
     if (fromSale !== "—") return fromSale;
-    return user?.username ?? user?.login ?? "—";
+    return (
+      user?.full_name ??
+      user?.name ??
+      user?.username ??
+      user?.login ??
+      "—"
+    );
   })();
 
   const discountTotals = saleDocumentDiscountTotals({
