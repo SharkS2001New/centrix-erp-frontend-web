@@ -193,35 +193,35 @@ export function buildPosTillReportHtml({
     @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-    body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
+    body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(11)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm; box-sizing: border-box; }
     .receipt { width: 100%; max-width: 100%; margin: 0; padding: 0; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; }
-    .org-name { text-align: center; font-size: ${hpx(12)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.15; margin: 0 0 2px; word-break: break-word; }
-    .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .08em; margin: 6px 0 4px; }
+    .org-name { text-align: center; font-size: ${hpx(13)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.15; margin: 0 0 2px; word-break: break-word; }
+    .doc-title { text-align: center; font-size: ${px(12)}; font-weight: 700; letter-spacing: .08em; margin: 6px 0 4px; }
     .divider { border-top: 1px dashed #000; margin: 4px 0; }
-    .meta { font-size: ${px(9)}; line-height: 1.3; margin: 1px 0; word-break: break-word; overflow-wrap: anywhere; }
+    .meta { font-size: ${px(10)}; line-height: 1.3; margin: 1px 0; word-break: break-word; overflow-wrap: anywhere; }
     .meta-label { font-weight: 700; }
-    .section { margin: 6px 0 2px; font-weight: 700; text-transform: uppercase; font-size: ${px(9)}; letter-spacing: .04em; }
-    .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(9)}; }
+    .section { margin: 6px 0 2px; font-weight: 700; text-transform: uppercase; font-size: ${px(10)}; letter-spacing: .04em; }
+    .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(10)}; }
     .summary-table col.col-label { width: 62%; }
     .summary-table col.col-value { width: 38%; }
     .summary-table td { padding: 2px 0; vertical-align: top; }
     .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; padding-right: 4px; }
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .summary-table tr.amount-line-grand td { font-size: ${px(10)}; font-weight: 700; }
+    .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
-    .footer { margin-top: 8px; text-align: center; font-size: ${fpx(9)}; font-weight: var(--print-w-footer, 700); letter-spacing: .04em; }
+    .footer { margin-top: 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 700); letter-spacing: .04em; }
     @media print {
       html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
       body.centrix-print-thermal { padding: 0 ${THERMAL_SIDE_MARGIN_MM}mm !important; box-sizing: border-box !important; }
-      body { font-size: ${px(10, true)}; }
-      .org-name { font-size: ${hpx(12, true)}; }
-      .doc-title { font-size: ${px(11, true)}; }
-      .meta { font-size: ${px(9, true)}; }
-      .section { font-size: ${px(9, true)}; }
-      .summary-table { font-size: ${px(9, true)}; }
-      .summary-table tr.amount-line-grand td { font-size: ${px(10, true)}; }
-      .footer { font-size: ${fpx(9, true)}; }
+      body { font-size: ${px(11, true)}; }
+      .org-name { font-size: ${hpx(13, true)}; }
+      .doc-title { font-size: ${px(12, true)}; }
+      .meta { font-size: ${px(10, true)}; }
+      .section { font-size: ${px(10, true)}; }
+      .summary-table { font-size: ${px(10, true)}; }
+      .summary-table tr.amount-line-grand td { font-size: ${px(11, true)}; }
+      .footer { font-size: ${fpx(10, true)}; }
     }
   </style>
 </head>

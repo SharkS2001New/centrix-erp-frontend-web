@@ -103,6 +103,7 @@ export function XReportModal({
   cashierName,
   showFloatBreakdown = false,
   organizationName = DEFAULT_PRINT_ORG_NAME,
+  moduleSettings = null,
   loading = false,
   error = null,
   embedded = false,
@@ -122,6 +123,7 @@ export function XReportModal({
       report: reportPayload,
       session,
       showFloatBreakdown,
+      moduleSettings,
     });
   }
 
@@ -357,6 +359,7 @@ export function ZReportModal({
   showFloatBreakdown = false,
   fallbackCashierName = null,
   fallbackTillName = null,
+  moduleSettings = null,
   embedded = false,
 }) {
   const [loaded, setLoaded] = useState(null);
@@ -440,6 +443,7 @@ export function ZReportModal({
       session,
       variance,
       showFloatBreakdown,
+      moduleSettings,
     });
   }
 

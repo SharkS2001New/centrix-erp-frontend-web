@@ -405,6 +405,9 @@ export function PosPaymentPanel({
       payment_date: resolvedPaymentDate(),
       status,
       is_credit_sale: creditSale,
+      // Frontend-only: full amount tendered by the customer (may exceed order total for cash).
+      // Stripped before the API call; used to print the correct change on the receipt.
+      __cash_tendered: amountPaid,
     };
 
     if (creditCustomer) {

@@ -65,6 +65,8 @@ const SALES_DEFAULTS = {
   external_pos_layout: "modern",
   /** Light Stores–style last-digit cash rounding on external POS (/pos). */
   enable_pos_cash_rounding: false,
+  /** Show all payment method rows on thermal receipt (Cash, M-Pesa, Equity, KCB) even when zero. */
+  receipt_show_all_payment_methods: true,
   require_backoffice_till_float: false,
   blind_till_close: false,
   enable_pos_order_edit: false,

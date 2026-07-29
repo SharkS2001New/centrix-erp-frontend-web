@@ -32,7 +32,7 @@ import {
   THERMAL_SIDE_MARGIN_MM,
 } from "@/lib/thermal-receipt-layout";
 
-function buildUsedPaymentRows(sale, orderTotal) {
+function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {}) {
   const rows = [];
   const cashAmount = Number(sale.cash ?? 0);
   const mpesaAmount = Number(sale.mpesa_amount ?? 0);
@@ -41,10 +41,20 @@ function buildUsedPaymentRows(sale, orderTotal) {
   const voucherAmount = Number(sale.voucher_payment_amount ?? 0);
   const pointsAmount = Number(sale.points_payment_amount ?? 0);
 
-  if (cashAmount > 0) rows.push({ label: "Cash", value: cashAmount });
-  if (mpesaAmount > 0) rows.push({ label: "M-Pesa", value: mpesaAmount });
-  if (kcbAmount > 0) rows.push({ label: "KCB", value: kcbAmount });
-  if (equityAmount > 0) rows.push({ label: "Equity", value: equityAmount });
+  if (showAllMethods) {
+    // Always print Cash, M-Pesa, Equity, KCB rows so the cashier can see which methods
+    // were and were not used at a glance. Voucher/Points only shown when used.
+    rows.push({ label: "Cash", value: cashAmount });
+    rows.push({ label: "M-Pesa", value: mpesaAmount });
+    rows.push({ label: "Equity", value: equityAmount });
+    rows.push({ label: "KCB", value: kcbAmount });
+  } else {
+    if (cashAmount > 0) rows.push({ label: "Cash", value: cashAmount });
+    if (mpesaAmount > 0) rows.push({ label: "M-Pesa", value: mpesaAmount });
+    if (kcbAmount > 0) rows.push({ label: "KCB", value: kcbAmount });
+    if (equityAmount > 0) rows.push({ label: "Equity", value: equityAmount });
+  }
+
   if (voucherAmount > 0) rows.push({ label: "Voucher", value: voucherAmount });
   if (pointsAmount > 0) rows.push({ label: "Points", value: pointsAmount });
 
@@ -218,7 +228,12 @@ export function buildSaleReceiptHtml(
     kcbAmount +
     Number(sale.voucher_payment_amount ?? 0) +
     Number(sale.points_payment_amount ?? 0);
-  const changeAmount = Math.max(0, totalPaid - orderTotal);
+  // _cash_tendered is a frontend-only annotation set at checkout time (the amount the customer
+  // physically handed over, which may exceed the order total for cash payments). It is never
+  // stored on the server. Fall back to totalPaid so reprints still show 0 change when unknown.
+  const cashTendered = Number(sale._cash_tendered ?? 0);
+  const effectiveTendered = cashTendered > totalPaid ? cashTendered : totalPaid;
+  const changeAmount = Math.max(0, effectiveTendered - orderTotal);
   const totalDiscount = discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
   const showDiscountTotal =
     (showDiscountColumn || orderDiscountEnabled) && totalDiscount > 0.0001;
@@ -243,7 +258,8 @@ export function buildSaleReceiptHtml(
       ? buildReceiptPaymentDetailsHtml(paymentInstructions, { layout: "thermal" })
       : "";
 
-  const usedPaymentRows = buildUsedPaymentRows(sale, orderTotal);
+  const showAllPaymentMethods = salesSettings?.receipt_show_all_payment_methods !== false;
+  const usedPaymentRows = buildUsedPaymentRows(sale, orderTotal, { showAllMethods: showAllPaymentMethods });
   const paymentDetailsHtml = [
     ...usedPaymentRows.map((entry) => paymentDetailRow(entry.label, entry.value)),
     ...(changeAmount > 0.0001 ? [paymentDetailRow("Change", changeAmount)] : []),

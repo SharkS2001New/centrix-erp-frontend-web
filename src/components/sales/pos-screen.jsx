@@ -2492,6 +2492,10 @@ export function PosScreen({ standalone = false }) {
       discount_given:
         allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
       product_vat: lineProductVat(product, finalComputed.lineAmount),
+      // When cash rounding is on, send the pre-rounded amount so the backend
+      // uses it directly instead of recomputing unit_price × quantity (which
+      // would lose the rounding adjustment).
+      ...(enablePosCashRounding ? { amount: finalComputed.lineAmount } : {}),
     };
 
     const discountAmount = Number(lineBody.discount_given ?? 0);
@@ -2836,9 +2840,14 @@ export function PosScreen({ standalone = false }) {
             );
             if (ok) {
               setReplacingLineId(null);
+              setSelectedProduct(null);
+              setSelectedProductCode(null);
+              setSearchQuery("");
+              setLineForm(EMPTY_LINE);
               setStatusMessage(
                 `Replaced ${replaceLine.product_code} with ${product.product_code}.`,
               );
+              focusProductSearch();
             }
           } catch (e) {
             setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
@@ -2860,7 +2869,9 @@ export function PosScreen({ standalone = false }) {
     }
 
     // Classic search/scan pick: park on entry row, show item code, focus qty.
-    if (classicLayout) {
+    // Skip when we're replacing a line — the replace fires above and we don't
+    // want to overwrite the search field or clear the entry row state.
+    if (classicLayout && !replacingLineId) {
       setSearchQuery(product.product_code ?? "");
     }
   }
@@ -3094,6 +3105,22 @@ export function PosScreen({ standalone = false }) {
     retailByCode,
     posSalesConfig,
     sellFromShop,
+    routeMarkupPerUnit,
+  ]);
+
+  const entryRowComputed = useMemo(() => {
+    if (!selectedProduct || !lineForm.quantity) return null;
+    return applyComputedPrice(
+      selectedProduct,
+      lineForm.quantity,
+      parseDecimalInput(lineForm.discount),
+    );
+  }, [
+    selectedProduct,
+    lineForm.quantity,
+    lineForm.discount,
+    sellWholesale,
+    retailByCode,
     routeMarkupPerUnit,
   ]);
 
@@ -4441,6 +4468,7 @@ export function PosScreen({ standalone = false }) {
     ) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
+      const offlineCashTendered = Number(body?.__cash_tendered ?? 0);
       if (method && method !== "CASH") {
         setPaymentError(
           "Offline mode supports cash payments only. Reconnect for M-Pesa or other methods.",
@@ -4471,13 +4499,17 @@ export function PosScreen({ standalone = false }) {
           offline_client_sale_uuid: activeCart.offline_client_sale_uuid ?? null,
           offline_edit_snapshot: activeCart.offline_edit_snapshot ?? null,
         };
-        const { sale } = await completeOfflineCashSale({
+        const { sale: offlineSale } = await completeOfflineCashSale({
           cart: local,
           user,
           organization,
           cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
           floatSessionId,
         });
+        const sale =
+          offlineCashTendered > 0
+            ? { ...offlineSale, _cash_tendered: offlineCashTendered }
+            : offlineSale;
         markSaleForReprint(sale);
         setCart(null);
         setSelectedLineId(null);
@@ -4539,7 +4571,7 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
-      const { __force_submit_kra: _ignoredForceKra, ...checkoutInput } = body ?? {};
+      const { __force_submit_kra: _ignoredForceKra, __cash_tendered: cashTendered, ...checkoutInput } = body ?? {};
       // Do not send submit_kra:false — stale POS capabilities were skipping server-side
       // "Use KRA device for sales". Omit the field and let the API apply org finance policy;
       // only send true so the KRA wait UI still matches an expected fiscalized checkout.
@@ -4562,12 +4594,16 @@ export function PosScreen({ standalone = false }) {
       // Always use the blocking wait for online checkout. Server fiscalizes when
       // "Use KRA device for sales" is on even if this till's cached capabilities
       // still think KRA is off (previously that raced a short timeout and failed).
-      const sale = await runBlockingTask(checkoutRequest, {
+      let sale = await runBlockingTask(checkoutRequest, {
         message: "Completing sale…",
         detail: submitKra
           ? "Submitting receipt to the KRA device. Please wait."
           : "Please wait.",
       });
+      // Annotate with the tendered amount so the immediate receipt can show correct change.
+      if (cashTendered != null && cashTendered > 0) {
+        sale = { ...sale, _cash_tendered: Number(cashTendered) };
+      }
       markSaleForReprint(sale);
       setCart(null);
       setSelectedLineId(null);
@@ -6121,6 +6157,7 @@ export function PosScreen({ standalone = false }) {
         cashierName={posCashierName}
         showFloatBreakdown={requireTillFloat}
         organizationName={organizationName}
+        moduleSettings={capabilities?.module_settings}
         loading={xReportLoading}
         error={sessionError}
         embedded={!standalone}
@@ -6151,6 +6188,7 @@ export function PosScreen({ standalone = false }) {
         showFloatBreakdown={requireTillFloat}
         fallbackCashierName={posCashierName}
         fallbackTillName={zReportTillName}
+        moduleSettings={capabilities?.module_settings}
         embedded={!standalone}
       />
 
@@ -6644,7 +6682,7 @@ export function PosScreen({ standalone = false }) {
                 tableScrollRef={classicCartTableScrollRef}
                 lines={cart?.lines ?? []}
                 selectedLineId={selectedLineId}
-                onSelectLine={(lineId) => beginReplaceCartLine(lineId)}
+                onSelectLine={(lineId) => handleClassicSelectLine(lineId)}
                 orderCaption={classicOrderCaption}
                 showOrderNav
                 orderNavLocked={!enablePosOrderEdit}
@@ -6683,6 +6721,14 @@ export function PosScreen({ standalone = false }) {
                 onToggleRetailMode={() => toggleRetailWholesaleMode()}
                 replacingLineId={replacingLineId}
                 onScanCodeClick={(lineId) => beginReplaceCartLine(lineId)}
+                selectionEnabled
+                selectedLineIds={selectedLineIds}
+                allLinesSelected={allCartLinesSelected((cart?.lines ?? []).map((l) => l.id))}
+                someLinesSelected={someCartLinesSelected((cart?.lines ?? []).map((l) => l.id))}
+                onToggleAllLines={(checked) =>
+                  toggleAllCartLinesOnPage(checked, (cart?.lines ?? []).map((l) => l.id))
+                }
+                onToggleLineSelect={(lineId) => toggleCartLineSelect(lineId)}
                 busy={busy}
                 lineBusy={lineBusy}
                 showLineDiscount={showLineDiscountField}
@@ -6806,29 +6852,15 @@ export function PosScreen({ standalone = false }) {
                 entryQtyUnit={qtyFieldMeta?.unit ?? ""}
                 entryUnitPrice={lineForm.unit_price}
                 entryAmount={
-                  enablePosCashRounding
-                    ? roundLightStoresAmount(
-                        Number(lineForm.quantity || 0) * Number(lineForm.unit_price || 0),
-                      )
-                    : Math.round(
-                        Number(lineForm.quantity || 0) * Number(lineForm.unit_price || 0) * 100,
-                      ) / 100
+                  entryRowComputed
+                    ? (enablePosCashRounding
+                        ? roundLightStoresAmount(entryRowComputed.lineAmount)
+                        : entryRowComputed.lineAmount)
+                    : 0
                 }
                 entryVat={
-                  selectedProduct
-                    ? lineProductVat(
-                        selectedProduct,
-                        enablePosCashRounding
-                          ? roundLightStoresAmount(
-                              Number(lineForm.quantity || 0) *
-                                Number(lineForm.unit_price || 0),
-                            )
-                          : Math.round(
-                              Number(lineForm.quantity || 0) *
-                                Number(lineForm.unit_price || 0) *
-                                100,
-                            ) / 100,
-                      )
+                  selectedProduct && entryRowComputed
+                    ? lineProductVat(selectedProduct, entryRowComputed.lineAmount)
                     : 0
                 }
                 entryReady={Boolean(selectedProduct && lineForm.product_code)}

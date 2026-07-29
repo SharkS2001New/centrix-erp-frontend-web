@@ -317,6 +317,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     require_pos_till_float: false,
     external_pos_layout: "modern",
     enable_pos_cash_rounding: false,
+    receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
     enable_backoffice_order_edit: true,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
@@ -372,6 +373,7 @@ export function salesPlatformFromApi(apiPayload) {
     )
       ? Boolean(apiPayload.enable_pos_cash_rounding)
       : apiPayload.external_pos_layout === "classic",
+    receipt_show_all_payment_methods: apiPayload.receipt_show_all_payment_methods !== false,
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
@@ -517,6 +519,12 @@ export function OrganizationPlatformSalesSettings({
             description="When on, external POS (/pos) and Sales → Create order round line and order amounts with last-digit rules (e.g. 105.4 → 106; 0–1→0, 2–6→5, 7–9→10). Applies to Modern and Classic POS layouts."
             checked={Boolean(salesPlatform?.enable_pos_cash_rounding)}
             onChange={(v) => patch({ enable_pos_cash_rounding: v })}
+          />
+          <Toggle
+            label="Show all payment methods on thermal receipt"
+            description="When on, all payment method rows (Cash, M-Pesa, Equity, KCB) are printed on the thermal receipt even when their amount is zero. Useful for auditing at a glance which methods were not used."
+            checked={salesPlatform?.receipt_show_all_payment_methods !== false}
+            onChange={(v) => patch({ receipt_show_all_payment_methods: v })}
           />
           <Toggle
             label="Allow editing completed POS orders"
