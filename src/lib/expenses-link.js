@@ -7,6 +7,32 @@ export function buildExpensesHref({ fromDate, toDate } = {}) {
   return query ? `/expenses?${query}` : "/expenses";
 }
 
+/** Resolve expense category name from list map or API relation payload. */
+export function expenseGroupName(expense, groupById = null) {
+  const fromMap = groupById?.get(String(expense?.expense_group_id));
+  if (fromMap?.group_name) return fromMap.group_name;
+  return expense?.expense_group?.group_name ?? expense?.group_name ?? null;
+}
+
+/** Primary expense label for lists — description first, then category name. */
+export function expenseDisplayLabel(expense, groupById = null) {
+  const description = String(expense?.description ?? "").trim();
+  if (description) return description.split(" — ")[0];
+  const group = expenseGroupName(expense, groupById);
+  if (group) return group;
+  return "Expense";
+}
+
+/** End-of-day / report row label — prefer description over generic "Other". */
+export function expenseSummaryRowLabel(row) {
+  const description = String(row?.description ?? "").trim();
+  if (description) return description;
+  const group = String(row?.group_name ?? "").trim();
+  if (group && group.toLowerCase() !== "other") return group;
+  if (group) return group;
+  return "Expense";
+}
+
 /** Collapse duplicated API error text (e.g. same sentence repeated). */
 export function dedupeErrorMessage(text) {
   const trimmed = String(text ?? "").trim();

@@ -109,6 +109,22 @@ export function formatAppDateTimeWithSettings(value, settings) {
   return timePart ? `${datePart} ${timePart}` : datePart;
 }
 
+/** Thermal receipt footer date line — always East Africa Time. */
+export function formatThermalReceiptDateTime(value) {
+  if (!value) return "—";
+  const weekday = formatInTimezone(value, { weekday: "long" });
+  const day = formatInTimezone(value, { day: "numeric" });
+  const month = formatInTimezone(value, { month: "long" });
+  const year = formatInTimezone(value, { year: "numeric" });
+  const time = formatInTimezone(value, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  if (!weekday || !day || !month || !year || !time) return "—";
+  return `${weekday}, ${day} ${month} ${year}. ${time.toLowerCase()}`;
+}
+
 /** @deprecated Use APP_TIMEZONE */
 export const NAIROBI_TZ = APP_TIMEZONE;
 

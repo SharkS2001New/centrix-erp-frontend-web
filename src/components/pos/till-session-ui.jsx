@@ -544,12 +544,22 @@ export function RecordSessionExpenseModal({
   if (!open) return null;
 
   async function handleSaveExpense() {
-    if (!amount || Number(amount) <= 0 || !onRecordExpense || !expenseGroupId || !expensePaymentMethodId) return;
+    const description = expenseDescription.trim();
+    if (
+      !amount ||
+      Number(amount) <= 0 ||
+      !onRecordExpense ||
+      !expenseGroupId ||
+      !expensePaymentMethodId ||
+      !description
+    ) {
+      return;
+    }
     try {
       await onRecordExpense({
         expense_group_id: Number(expenseGroupId),
         expense_amount: Number(amount),
-        description: expenseDescription.trim() || null,
+        description,
         payment_method_id: Number(expensePaymentMethodId),
       });
       onClose();
@@ -590,13 +600,14 @@ export function RecordSessionExpenseModal({
               ))}
             </select>
           </Field>
-          <Field label="Description (optional)">
+          <Field label="Description">
             <input
               className={inputClassName()}
               value={expenseDescription}
               onChange={(e) => setExpenseDescription(e.target.value)}
               disabled={busy}
-              placeholder="e.g. Petty cash — lunch supplies"
+              required
+              placeholder="e.g. Lunch supplies for staff"
             />
           </Field>
           <Field label="Amount (KES)">
@@ -629,7 +640,8 @@ export function RecordSessionExpenseModal({
               !amount ||
               Number(amount) <= 0 ||
               !expenseGroupId ||
-              !expensePaymentMethodId
+              !expensePaymentMethodId ||
+              !expenseDescription.trim()
             }
             onClick={() => void handleSaveExpense()}
           >

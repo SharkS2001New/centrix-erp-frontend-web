@@ -10,7 +10,7 @@ import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sale
 import { openPrintWindow } from "@/lib/open-print-window";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { formatTillKes, formatTillKesExact, resolveNetSalesMinusFloat } from "@/lib/pos-till";
-import { buildExpensesHref } from "@/lib/expenses-link";
+import { buildExpensesHref, expenseDisplayLabel, expenseGroupName, expenseSummaryRowLabel } from "@/lib/expenses-link";
 import {
   FilterSelect,
   PrimaryButton,
@@ -282,7 +282,7 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   }
 
   for (const row of report?.expenses ?? []) {
-    push("Expenses", row.group_name ?? "Other", kesNum(row.amount));
+    push("Expenses", expenseSummaryRowLabel(row), kesNum(row.amount));
   }
   if ((report?.expenses ?? []).length) {
     push("Expenses", "Total expenses", kesNum(report.total_expenses));
@@ -811,8 +811,8 @@ export function EndOfDayReportScreen() {
                   <table className="w-full border-collapse text-sm">
                     <tbody>
                       {(report.expenses ?? []).map((row) => (
-                        <tr key={row.group_name} className="border-b border-[var(--theme-border)] last:border-b-0">
-                          <td className="theme-text-muted py-2">{row.group_name ?? "Other"}</td>
+                        <tr key={row.id ?? row.group_name} className="border-b border-[var(--theme-border)] last:border-b-0">
+                          <td className="theme-text-muted py-2">{expenseSummaryRowLabel(row)}</td>
                           <td className="py-2 text-right font-medium text-[var(--theme-text)]">{formatTillKes(row.amount)}</td>
                         </tr>
                       ))}

@@ -27,6 +27,7 @@ import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
 } from "@/lib/print-typography";
+import { formatThermalReceiptDateTime } from "@/lib/datetime";
 import {
   THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
@@ -76,18 +77,6 @@ function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {})
   }
 
   return rows;
-}
-
-function formatReceiptDateTime(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
-  const day = d.getDate();
-  const month = d.toLocaleDateString("en-US", { month: "long" });
-  const year = d.getFullYear();
-  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toLowerCase();
-  return `${weekday}, ${day} ${month} ${year}. ${time}`;
 }
 
 function paymentDetailRow(label, value, { plain = false } = {}) {
@@ -170,7 +159,7 @@ export function buildSaleReceiptHtml(
   const customerPhone =
     sale.customer_phone ?? sale.customer_mobile ?? customer?.phone_number ?? customer?.additional_phone ?? "";
   const rawDate = sale.completed_at ?? sale.created_at;
-  const dateTime = formatReceiptDateTime(rawDate);
+  const dateTime = formatThermalReceiptDateTime(rawDate);
 
   const orgName = seller?.name ?? organizationName;
   const { branchName, storeAddress, storePhones } = resolveSaleDocumentStoreContact({

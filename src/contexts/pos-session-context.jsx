@@ -274,6 +274,11 @@ export function PosSessionProvider({ children }) {
   const recordSessionExpense = useCallback(
     async ({ expense_group_id, expense_amount, description, payment_method_id }) => {
       if (!tillFloatEnabled || !activeSession?.id) return null;
+      const trimmedDescription = String(description ?? "").trim();
+      if (!trimmedDescription) {
+        setError("Enter a description for this expense.");
+        throw new Error("Description is required.");
+      }
       setBusy(true);
       setError(null);
       try {
@@ -282,7 +287,7 @@ export function PosSessionProvider({ children }) {
           body: {
             expense_group_id: Number(expense_group_id),
             expense_amount: Number(expense_amount),
-            description: description?.trim() || null,
+            description: trimmedDescription,
             payment_method_id: Number(payment_method_id),
           },
         });

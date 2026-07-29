@@ -30,6 +30,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { fetchUsersCached } from "@/lib/reference-data-cache";
+import { expenseDisplayLabel, expenseGroupName } from "@/lib/expenses-link";
 
 const SORT_STORAGE_KEY = "centrix-erp-expenses-sort";
 
@@ -62,11 +63,6 @@ function formatKesCompact(value) {
   if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `KES ${(n / 1_000).toFixed(0)}K`;
   return formatKes(n);
-}
-
-function expenseDisplayName(expense) {
-  const text = expense.description ?? "";
-  return text.split(" — ")[0] || text || "—";
 }
 
 function isSameDay(a, b) {
@@ -194,7 +190,10 @@ export function ExpensesScreen() {
     if (statsRes) setExpenseStats(statsRes);
   }
 
-  const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
+  const groupById = useMemo(
+    () => new Map(groups.map((g) => [String(g.id), g])),
+    [groups],
+  );
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const paymentById = useMemo(
     () => new Map(paymentMethods.map((p) => [p.id, p])),
@@ -341,7 +340,7 @@ export function ExpensesScreen() {
   async function deleteExpense(expense) {
     const ok = await confirm({
       title: "Delete expense",
-      message: `Delete expense "${expenseDisplayName(expense)}"?`,
+      message: `Delete expense "${expenseDisplayLabel(expense, groupById)}"?`,
       confirmLabel: "Delete",
       destructive: true,
     });
@@ -524,7 +523,7 @@ export function ExpensesScreen() {
                     </tr>
                   ) : (
                     expenses.map((expense) => {
-                      const group = groupById.get(expense.expense_group_id);
+                      const groupName = expenseGroupName(expense, groupById);
                       const recorder = userById.get(expense.recorded_by);
                       return (
                         <tr
@@ -537,10 +536,10 @@ export function ExpensesScreen() {
                             {formatShortDate(expense.expense_date)}
                           </td>
                           <td className="px-4 py-3 font-medium text-slate-900">
-                            {expenseDisplayName(expense)}
+                            {expenseDisplayLabel(expense, groupById)}
                           </td>
                           <td className="px-4 py-3">
-                            <GroupBadge name={group?.group_name} />
+                            <GroupBadge name={groupName} />
                           </td>
                           <td className="px-4 py-3 text-right font-medium text-slate-800">
                             {formatKes(expense.expense_amount)}
@@ -618,10 +617,10 @@ export function ExpensesScreen() {
             {drawerMode === "view" && viewExpense ? (
               <div className="flex-1 overflow-y-auto px-5 py-4 text-sm">
                 <dl className="space-y-3">
-                  <ViewRow label="Expense" value={expenseDisplayName(viewExpense)} />
+                  <ViewRow label="Expense" value={expenseDisplayLabel(viewExpense, groupById)} />
                   <ViewRow
                     label="Group"
-                    value={groupById.get(viewExpense.expense_group_id)?.group_name ?? "—"}
+                    value={expenseGroupName(viewExpense, groupById) ?? "Uncategorized"}
                   />
                   <ViewRow label="Amount" value={formatKes(viewExpense.expense_amount)} />
                   <ViewRow label="Date" value={formatShortDate(viewExpense.expense_date)} />
@@ -821,9 +820,10 @@ function StatCard({ label, value }) {
 }
 
 function GroupBadge({ name }) {
+  const label = String(name ?? "").trim();
   return (
     <span className="inline-flex rounded-full bg-[#EEEDFE] px-2.5 py-0.5 text-[11px] font-medium text-[#3C3489]">
-      {name || "—"}
+      {label || "Uncategorized"}
     </span>
   );
 }

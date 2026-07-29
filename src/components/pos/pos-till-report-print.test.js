@@ -3,7 +3,7 @@ import { buildPosTillReportHtml } from "@/components/pos/pos-shared";
 import { resolveTillReportNo, resolveTillPaymentSummary } from "@/lib/pos-till";
 import { createOrgPrintPx, orgPrintFontFamilyFromSettings } from "@/lib/print-typography";
 import { mergeGeneralSettings } from "@/lib/general-settings";
-import { THERMAL_PAPER_WIDTH_MM } from "@/lib/thermal-receipt-layout";
+import { THERMAL_CONTENT_WIDTH_MM, THERMAL_PAPER_WIDTH_MM } from "@/lib/thermal-receipt-layout";
 
 vi.mock("@/lib/print-dispatch", () => ({
   dispatchPrintJob: vi.fn(async () => ({ mode: "browser", ok: true })),
@@ -85,9 +85,12 @@ describe("buildPosTillReportHtml", () => {
     });
 
     expect(html).toContain(`size: ${THERMAL_PAPER_WIDTH_MM}mm auto`);
+    expect(html).toContain(`width: ${THERMAL_CONTENT_WIDTH_MM}mm`);
     expect(html).toContain('class="centrix-print-thermal"');
     expect(html).toContain(orgPrintFontFamilyFromSettings(general, "thermal"));
     expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal").body(10)}`);
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal").body(8)}`);
+    expect(html).not.toContain("max-width: 0");
     expect(html).toContain("Till No:");
     expect(html).toContain("Till 1");
     expect(html).toContain("9,998,210");

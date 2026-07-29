@@ -2,12 +2,12 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import {
   tillDisplayName,
   normalizeFloatEntries,
-  formatFloatEntryDate,
   resolveTillReportBundle,
   resolveNetSalesMinusFloat,
   resolveTillReportNo,
   resolveTillPaymentSummary,
 } from "@/lib/pos-till";
+import { formatInTimezone } from "@/lib/datetime";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
 import {
   fetchPrintModuleSettings,
@@ -50,6 +50,28 @@ function wrapSummaryTable(rowsHtml) {
   </table>`;
 }
 
+function formatTillReportDate(value) {
+  return (
+    formatInTimezone(value, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }) ?? "—"
+  );
+}
+
+function formatTillReportFloatLabel(entry) {
+  const type = entry?.payment_type ?? "Float";
+  if (!entry?.date_added) return type;
+  const when = formatInTimezone(entry.date_added, {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return when ? `${type} (${when})` : type;
+}
+
 function paymentPrintRows(report) {
   return resolveTillPaymentSummary(report).map((entry) =>
     row(entry.method_name ?? entry.method_code ?? "Payment", amt(entry.total)),
@@ -90,13 +112,7 @@ export function buildPosTillReportHtml({
         netSalesMinusFloat: sales.net_sales_minus_float,
       })
     : null;
-  const dateStr = opened
-    ? new Date(opened).toLocaleDateString("en-KE", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : new Date().toLocaleDateString("en-KE");
+  const dateStr = opened ? formatTillReportDate(opened) : formatTillReportDate(new Date());
 
   const isZ = type === "Z";
   const tillNo = resolveTillReportNo({ tillName, session, report });
@@ -118,10 +134,7 @@ export function buildPosTillReportHtml({
       ? [
           sectionRow("Operating float", { first: true }),
           ...floatEntries.map((entry) =>
-            row(
-              `${entry.payment_type}${entry.date_added ? ` (${formatFloatEntryDate(entry.date_added)})` : ""}`,
-              amt(entry.new_float),
-            ),
+            row(formatTillReportFloatLabel(entry), amt(entry.new_float)),
           ),
           row("Total float", amt(session?.working_amount), { grand: true }),
         ]
@@ -189,37 +202,37 @@ export function buildPosTillReportHtml({
     @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0 auto; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-    body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(11)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
-    .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; }
-    .org-name { text-align: center; font-size: ${hpx(13)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.15; margin: 0 0 2px; word-break: break-word; }
-    .doc-title { text-align: center; font-size: ${px(12)}; font-weight: 700; letter-spacing: .08em; margin: 6px 0 4px; }
+    body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
+    .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; overflow: visible; }
+    .org-name { text-align: center; font-size: ${hpx(13)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.12; margin: 0 0 2px; word-break: break-word; overflow-wrap: anywhere; }
+    .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .08em; margin: 6px 0 4px; }
     .divider { border-top: 1px dashed #000; margin: 4px 0; page-break-inside: avoid; break-inside: avoid; }
-    .meta { font-size: ${px(10)}; line-height: 1.3; margin: 1px 0; word-break: break-word; overflow-wrap: anywhere; page-break-inside: avoid; break-inside: avoid; }
+    .meta { font-size: ${px(9)}; line-height: 1.25; margin: 1px 0; word-break: break-word; overflow-wrap: anywhere; page-break-inside: avoid; break-inside: avoid; }
     .meta-label { font-weight: 700; }
-    .summary-table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(10)}; page-break-inside: avoid; break-inside: avoid; }
+    .summary-table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; font-size: ${px(8)}; page-break-inside: avoid; break-inside: avoid; }
     .summary-table col.col-label { width: 52%; }
     .summary-table col.col-value { width: 48%; }
     .summary-table td { padding: 1px 0; vertical-align: top; }
     .summary-table tr { page-break-inside: avoid; break-inside: avoid; }
-    .summary-table tr.section-row td.section-label { padding-top: 6px; font-weight: 700; text-transform: uppercase; font-size: ${px(10)}; letter-spacing: .04em; border-top: 1px dashed #000; overflow-wrap: anywhere; word-break: break-word; }
+    .summary-table tr.section-row td.section-label { padding-top: 6px; font-weight: 700; text-transform: uppercase; font-size: ${px(8)}; letter-spacing: .02em; border-top: 1px dashed #000; overflow-wrap: anywhere; word-break: break-word; }
     .summary-table tr.section-row-first td.section-label { padding-top: 2px; border-top: 0; }
     .summary-table .amount-label { font-weight: 700; text-align: left; overflow-wrap: anywhere; word-break: break-word; padding-right: 4px; }
-    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .summary-table tr.amount-line-grand td { font-size: ${px(11)}; font-weight: 700; }
+    .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0; padding-right: 0; }
+    .summary-table tr.amount-line-grand td { font-size: ${px(10)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
-    .footer { margin-top: 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 700); letter-spacing: .04em; page-break-inside: avoid; break-inside: avoid; }
+    .footer { margin-top: 8px; text-align: center; font-size: ${fpx(8)}; font-weight: var(--print-w-footer, 700); letter-spacing: normal; line-height: 1.3; page-break-inside: avoid; break-inside: avoid; word-break: break-word; overflow-wrap: anywhere; }
     @media print {
       @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0 !important; }
       html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm !important; max-width: ${THERMAL_PAPER_WIDTH_MM}mm !important; height: auto !important; min-height: 0 !important; margin: 0 auto !important; padding: 0 !important; overflow: visible !important; page: centrix-thermal; }
-      .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; page-break-before: avoid !important; page-break-after: avoid !important; page-break-inside: avoid !important; break-before: avoid-page !important; break-after: avoid-page !important; break-inside: avoid-page !important; }
-      body { font-size: ${px(11, true)}; }
+      body { font-size: ${px(10, true)}; }
+      .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; overflow: visible !important; page-break-before: avoid !important; page-break-after: avoid !important; page-break-inside: avoid !important; break-before: avoid-page !important; break-after: avoid-page !important; break-inside: avoid-page !important; }
       .org-name { font-size: ${hpx(13, true)}; }
-      .doc-title { font-size: ${px(12, true)}; }
-      .meta { font-size: ${px(10, true)}; }
-      .summary-table { font-size: ${px(10, true)}; }
-      .summary-table tr.section-row td.section-label { font-size: ${px(10, true)}; }
-      .summary-table tr.amount-line-grand td { font-size: ${px(11, true)}; }
-      .footer { font-size: ${fpx(10, true)}; }
+      .doc-title { font-size: ${px(11, true)}; }
+      .meta { font-size: ${px(9, true)}; }
+      .summary-table { font-size: ${px(8, true)}; }
+      .summary-table tr.section-row td.section-label { font-size: ${px(8, true)}; }
+      .summary-table tr.amount-line-grand td { font-size: ${px(10, true)}; }
+      .footer { font-size: ${fpx(8, true)}; }
     }
   </style>
 </head>
@@ -231,7 +244,7 @@ export function buildPosTillReportHtml({
     <div class="meta"><span class="meta-label">Till No:</span> ${escapeHtml(tillNo)}</div>
     <div class="meta"><span class="meta-label">Cashier:</span> ${escapeHtml(cashierName ?? "—")}</div>
     <div class="meta"><span class="meta-label">Date:</span> ${escapeHtml(dateStr)}</div>
-    ${isZ && closed ? `<div class="meta"><span class="meta-label">Closed:</span> ${escapeHtml(new Date(closed).toLocaleTimeString("en-KE"))}</div>` : ""}
+    ${isZ && closed ? `<div class="meta"><span class="meta-label">Closed:</span> ${escapeHtml(formatInTimezone(closed, { hour: "numeric", minute: "2-digit" }) ?? "—")}</div>` : ""}
     <div class="divider"></div>
     ${wrapSummaryTable(continuousRows.join(""))}
     <div class="divider"></div>
