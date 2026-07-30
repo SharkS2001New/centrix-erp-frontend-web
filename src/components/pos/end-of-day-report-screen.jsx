@@ -431,13 +431,16 @@ export function EndOfDayReportScreen() {
     return rows
       .filter((row) => row?.float_session_id != null)
       .map((row) => {
-        const till = row.till_number || row.till_name || "Till";
+        const tillNo = row.till_number || row.till_name || "Till";
+        const cashier = row.cashier || "—";
         const opened = formatReportTime(row.opened_at);
-        const status = String(row.session_status || "").toLowerCase();
-        const float = formatTillKes(row.opening_float);
+        const statusRaw = String(row.session_status || "").trim();
+        const status = statusRaw
+          ? statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1).toLowerCase()
+          : "—";
         return {
           value: String(row.float_session_id),
-          label: `#${row.float_session_id} · ${till} · ${row.cashier ?? "—"} · ${opened} · float ${float}${status ? ` · ${status}` : ""}`,
+          label: `${tillNo} · ${cashier} · ${opened} · ${status}`,
           row,
         };
       });
