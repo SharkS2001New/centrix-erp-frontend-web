@@ -288,6 +288,12 @@ describe("resolveSalesOrderQueue", () => {
     expect(config?.requireOutstandingBalance).toBe(true);
   });
 
+  it("mobile queue excludes cancelled orders", () => {
+    const config = resolveSalesOrderQueue("mobile", pipeline, { includeMobile: true });
+    expect(config?.fixedSourceFilter).toBe("mobile");
+    expect(config?.excludeStatuses).toEqual(["cancelled"]);
+  });
+
   it("distribution pending_payment queue includes partial + fulfillment stages", () => {
     const config = resolveSalesOrderQueue("pending_payment", pipeline, {
       capabilities: distributionCaps,

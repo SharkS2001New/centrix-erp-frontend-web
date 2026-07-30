@@ -540,7 +540,36 @@ export const CLOSE_REASONS = [
 ];
 
 /** Payment types for float entries — matches legacy comboTypeOfFloat. */
-export const FLOAT_PAYMENT_TYPES = ["CASH", "MPESA", "EQUITY", "KCB", "BANK", "CHEQUE", "OTHER"];
+export const FLOAT_PAYMENT_TYPES = [
+  "CASH",
+  "MPESA",
+  "EQUITY",
+  "KCB",
+  "ECO_BANK",
+  "BANK",
+  "CHEQUE",
+  "OTHER",
+];
+
+/** Human-readable label for float payment type codes. */
+export function floatPaymentTypeLabel(type) {
+  const key = String(type ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  const labels = {
+    CASH: "Cash",
+    MPESA: "M-Pesa",
+    "M-PESA": "M-Pesa",
+    EQUITY: "Equity",
+    KCB: "KCB",
+    ECO_BANK: "ECO Bank",
+    BANK: "Bank",
+    CHEQUE: "Cheque",
+    OTHER: "Other",
+  };
+  return labels[key] ?? (key ? key.replace(/_/g, " ") : "Other");
+}
 
 /**
  * Normalize float_breakdown from API (legacy array or map format).

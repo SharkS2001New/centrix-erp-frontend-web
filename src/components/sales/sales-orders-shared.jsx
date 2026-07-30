@@ -29,6 +29,8 @@ import {
   canCancelOrder,
   canRestoreExpiredOrder,
   expiredOrderRestoreTarget,
+  canRestoreCancelledOrder,
+  cancelledOrderRestoreTarget,
   saleBalanceDue,
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
@@ -461,6 +463,23 @@ export function buildOrderContextMenuItems({
     return items;
   }
 
+  if (sale?.status === "cancelled" && !disableWorkflowActions && onAdvance) {
+    const restoreTarget = cancelledOrderRestoreTarget(sale, workflow, capabilities);
+    if (restoreTarget && canRestoreCancelledOrder(sale, workflow, capabilities)) {
+      items.push({ type: "separator" });
+      items.push({
+        key: "restore-cancelled",
+        label: busy
+          ? "Restoring…"
+          : `Restore to ${workflowStatusLabel(workflow, restoreTarget)}`,
+        icon: "advance",
+        disabled: busy,
+        onClick: () => onAdvance?.(restoreTarget),
+      });
+    }
+    return items;
+  }
+
   if (disableWorkflowActions || !sale || sale.status === "cancelled") {
     return items;
   }
@@ -661,6 +680,15 @@ function PrintIcon() {
   );
 }
 
+function RestoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1 0 3-6.7" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v5h5" />
+    </svg>
+  );
+}
+
 function MoreIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
@@ -685,6 +713,8 @@ export function OrderRowActions({
   onView,
   onPrint,
   onCollectPayment,
+  onRestore = null,
+  restoreLabel = "Restore order",
   onOpenMenu,
   busy = false,
   printAriaLabel = "Print",
@@ -704,6 +734,21 @@ export function OrderRowActions({
           title="Collect payment"
         >
           <CollectPaymentIcon />
+        </button>
+      ) : null}
+      {onRestore ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRestore();
+          }}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--theme-primary)] hover:bg-[color-mix(in_srgb,var(--theme-primary)_12%,transparent)] disabled:opacity-50"
+          aria-label={restoreLabel}
+          title={restoreLabel}
+        >
+          <RestoreIcon />
         </button>
       ) : null}
       <button
@@ -927,6 +972,8 @@ export function OrderListTableRow({
   onApproveActionRequest = null,
   onRejectActionRequest = null,
   selection = null,
+  onRestore = null,
+  restoreLabel = null,
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
@@ -1137,6 +1184,8 @@ export function OrderListTableRow({
             onView={onView}
             onPrint={onPrint}
             onCollectPayment={onCollectPayment}
+            onRestore={onRestore}
+            restoreLabel={restoreLabel ?? "Restore order"}
             onOpenMenu={onOpenActionsMenu}
             printAriaLabel={printAriaLabel}
           />

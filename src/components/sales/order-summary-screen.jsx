@@ -824,7 +824,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       void transitionOrder(targetStatus);
       return;
     }
-    if (String(sale?.status ?? "").toLowerCase() === "expired") {
+    const fromStatus = String(sale?.status ?? "").toLowerCase();
+    if (fromStatus === "expired" || fromStatus === "cancelled") {
       void transitionOrder(targetStatus);
       return;
     }
@@ -969,7 +970,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                     canRecordPayment ? () => setPaymentModalOpen(true) : null
                   }
                   onAdvance={
-                    !readOnlyWorkflow && sale.status !== "cancelled"
+                    !readOnlyWorkflow
                       ? (status) => handleAdvance(status)
                       : null
                   }

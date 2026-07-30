@@ -58,11 +58,12 @@ function kesNum(value) {
 }
 
 function floatPaymentLabel(type) {
-  const key = String(type ?? "").toUpperCase();
+  const key = String(type ?? "").toUpperCase().replace(/\s+/g, "_");
   if (key === "MPESA" || key === "M-PESA") return "M-Pesa";
   if (key === "CASH") return "Cash";
   if (key === "EQUITY") return "Equity";
   if (key === "KCB") return "KCB";
+  if (key === "ECO_BANK") return "ECO Bank";
   if (key === "BANK") return "Bank";
   if (key === "CHEQUE") return "Cheque";
   return key.replace(/_/g, " ") || "Other";

@@ -735,6 +735,24 @@ export function expiredOrderRestoreTarget(sale, workflow = null, capabilities = 
   return firstPipelineStatus(workflow ?? getOrderWorkflow(capabilities, sale));
 }
 
+/** Original status before cancel (from fulfillment_meta), else first pipeline step. */
+export function cancelledOrderRestoreTarget(sale, workflow = null, capabilities = null) {
+  if (String(sale?.status ?? "").toLowerCase() !== "cancelled") return null;
+  const wf = workflow ?? getOrderWorkflow(capabilities, sale);
+  const stored = String(sale?.fulfillment_meta?.status_before_cancel ?? "")
+    .trim()
+    .toLowerCase();
+  if (stored && !["cancelled", "expired", "draft", "held"].includes(stored)) {
+    return stored;
+  }
+  return firstPipelineStatus(wf);
+}
+
+export function canRestoreCancelledOrder(sale, workflow = null, capabilities = null) {
+  // Restore remains available even if cancellation was later disabled for the org.
+  return Boolean(cancelledOrderRestoreTarget(sale, workflow, capabilities));
+}
+
 export function resolveSaveOrderStatus({ channel, workflow, hold = false }) {
   if (hold) return "held";
   const wf = workflow ?? buildChannelWorkflow(DEFAULT_ORDER_WORKFLOW, channel);
@@ -911,6 +929,7 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
       showConnectivityColumn: true,
       lockStatusFilter: false,
       lockSourceFilter: true,
+      excludeStatuses: ["cancelled"],
     };
   }
   if (slug === "whatsapp") {
@@ -1298,7 +1317,7 @@ export function resolveOrderWorkflowActions(
 ) {
   const { disableWorkflowActions = false } = options;
   const status = String(sale?.status ?? "").toLowerCase();
-  if (!sale || status === "cancelled" || status === "completed") {
+  if (!sale || status === "completed") {
     return { showCollectPayment: false, advanceStatus: null, balanceDue: 0 };
   }
 
@@ -1312,6 +1331,14 @@ export function resolveOrderWorkflowActions(
     return {
       showCollectPayment: false,
       advanceStatus: expiredOrderRestoreTarget(sale, workflow, capabilities),
+      balanceDue,
+    };
+  }
+
+  if (status === "cancelled") {
+    return {
+      showCollectPayment: false,
+      advanceStatus: cancelledOrderRestoreTarget(sale, workflow, capabilities),
       balanceDue,
     };
   }

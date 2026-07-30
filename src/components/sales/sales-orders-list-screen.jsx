@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { mapWithConcurrency } from "@/lib/api-concurrency";
+import { mapWithConcurrency, fetchAllPages } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
@@ -21,8 +21,13 @@ import {
   saleBalanceDue,
   canCollectPaymentOnQueue,
   canCancelOrder,
+  canRestoreCancelledOrder,
+  cancelledOrderRestoreTarget,
+  canRestoreExpiredOrder,
+  expiredOrderRestoreTarget,
   isPrintInvoiceVisible,
   workflowStatusFilterOptions,
+  workflowStatusLabel,
 } from "@/lib/order-workflow";
 import {
   CatalogPageShell,
@@ -140,10 +145,13 @@ export default function SalesOrdersListScreen({
       }),
     [queueSlug, orgWorkflow, includeMobileOrders, includeWhatsappOrders, capabilities],
   );
-  const statusOptions = useMemo(
-    () => workflowStatusFilterOptions(orgWorkflow),
-    [orgWorkflow],
-  );
+  const statusOptions = useMemo(() => {
+    const options = workflowStatusFilterOptions(orgWorkflow);
+    if (queueConfig?.slug === "mobile") {
+      return options.filter((o) => o.value !== "cancelled");
+    }
+    return options;
+  }, [orgWorkflow, queueConfig?.slug]);
   const includeExternalPos = isExternalPosEnabled(capabilities);
   const sourceOptions = useMemo(
     () => orderSourceFilterOptions(includeMobileOrders, includeExternalPos, includeWhatsappOrders),
@@ -287,6 +295,12 @@ export default function SalesOrdersListScreen({
   }, [includeMobileOrders, sourceFilter]);
 
   useEffect(() => {
+    if (queueConfig?.slug === "mobile" && statusFilter === "cancelled") {
+      setStatusFilter("all");
+    }
+  }, [queueConfig?.slug, statusFilter]);
+
+  useEffect(() => {
     if (!includeWhatsappOrders && sourceFilter === "whatsapp") {
       setSourceFilter("all");
     }
@@ -379,10 +393,8 @@ export default function SalesOrdersListScreen({
   const showTableLoading = loading || (listLoading && rows.length === 0);
   const showRefreshOverlay = listLoading && !loading && rows.length > 0 && !showArchiveLoading;
 
-  const loadOrders = useCallback(async () => {
-    if (!listFiltersInitialized) return;
-    setListLoading(true);
-    try {
+  const buildOrdersListSearchParams = useCallback(
+    (pageNum, perPageNum) => {
       const filters = {};
       const statusFromColumn = String(debouncedColumnFilters.status ?? "").trim();
       const statusParam = queueConfig?.lockStatusFilter
@@ -457,13 +469,35 @@ export default function SalesOrdersListScreen({
         }
       }
 
-      const searchParams = buildPageParams({
-        page,
-        perPage: pageSize,
+      return buildPageParams({
+        page: pageNum,
+        perPage: perPageNum,
         q: searchQ || undefined,
         filters,
         extra,
       });
+    },
+    [
+      debouncedSearch,
+      appliedFromDate,
+      appliedToDate,
+      effectiveSourceFilter,
+      effectiveStatusFilter,
+      queueConfig,
+      routeOrdersOnly,
+      minTotalFilter,
+      routeFilter,
+      ordersListSort,
+      ordersSearchDays,
+      debouncedColumnFilters,
+    ],
+  );
+
+  const loadOrders = useCallback(async () => {
+    if (!listFiltersInitialized) return;
+    setListLoading(true);
+    try {
+      const searchParams = buildOrdersListSearchParams(page, pageSize);
       const res = await apiRequest("/sales", { searchParams });
       const parsed = parsePaginator(res);
       const list = sortOrdersForList(parsed.items, ordersListSort);
@@ -491,22 +525,19 @@ export default function SalesOrdersListScreen({
       setListLoading(false);
     }
   }, [
+    listFiltersInitialized,
     page,
     pageSize,
-    debouncedSearch,
-    appliedFromDate,
-    appliedToDate,
-    effectiveSourceFilter,
-    effectiveStatusFilter,
-    queueConfig,
-    routeOrdersOnly,
-    minTotalFilter,
-    routeFilter,
-    listFiltersInitialized,
+    buildOrdersListSearchParams,
     ordersListSort,
-    ordersSearchDays,
-    debouncedColumnFilters,
   ]);
+
+  /** Same filters/dates as the list — every matching order across pages. */
+  const fetchAllFilteredOrders = useCallback(async () => {
+    const searchParams = buildOrdersListSearchParams(1, 200);
+    const { page: _page, ...rest } = searchParams;
+    return fetchAllPages("/sales", rest, { perPage: 200 });
+  }, [buildOrdersListSearchParams]);
 
   useTabAwareDataLoad(loadOrders);
 
@@ -820,7 +851,8 @@ export default function SalesOrdersListScreen({
       void transitionOrder(sale, targetStatus);
       return;
     }
-    if (String(sale?.status ?? "").toLowerCase() === "expired") {
+    const fromStatus = String(sale?.status ?? "").toLowerCase();
+    if (fromStatus === "expired" || fromStatus === "cancelled") {
       void transitionOrder(sale, targetStatus);
       return;
     }
@@ -902,6 +934,77 @@ export default function SalesOrdersListScreen({
       if (failed > 0) parts.push(`${failed} failed`);
       setActionMessage(`${parts.join(" · ")}.`);
       if (printed > 0) clearSelection();
+    } finally {
+      setBatchBusy(null);
+    }
+  }
+
+  /** Mobile orders: print every receipt matching the current date range + filters. */
+  async function printAllFilteredOrders() {
+    if (batchBusy || !listFiltersInitialized) return;
+
+    setBatchBusy("print-all-load");
+    setActionMessage("Loading orders to print…");
+    try {
+      const allRows = await fetchAllFilteredOrders();
+      const printable = allRows.filter((sale) => isPrintInvoiceVisible(sale, capabilities));
+      const skipped = allRows.length - printable.length;
+
+      if (printable.length === 0) {
+        setActionMessage(
+          allRows.length === 0
+            ? "No orders match the current date and filters."
+            : "None of the matching orders can be printed.",
+        );
+        return;
+      }
+
+      const dateLabel =
+        appliedFromDate && appliedToDate
+          ? appliedFromDate === appliedToDate
+            ? appliedFromDate
+            : `${appliedFromDate} → ${appliedToDate}`
+          : "the selected dates";
+
+      setBatchBusy(null);
+      const ok = await confirm({
+        title: "Print all receipts",
+        message:
+          printable.length === 1
+            ? `Print 1 receipt for ${dateLabel} with the current filters?`
+            : `Print ${printable.length} receipts for ${dateLabel} with the current filters?`,
+        confirmLabel: printable.length === 1 ? "Print receipt" : `Print ${printable.length}`,
+      });
+      if (!ok) {
+        setActionMessage(null);
+        return;
+      }
+
+      setBatchBusy("print-all");
+      setActionMessage(`Printing ${printable.length} receipt${printable.length === 1 ? "" : "s"}…`);
+
+      let documentType = defaultOrderListPrintDocumentType(
+        capabilities?.module_settings,
+        capabilities,
+      );
+      if (!documentType || documentType === "both") {
+        documentType = "receipt";
+      }
+
+      let printed = 0;
+      let failed = 0;
+      for (const sale of printable) {
+        const success = await printOrder(sale, documentType);
+        if (success) printed += 1;
+        else failed += 1;
+      }
+
+      const parts = [`Printed ${printed} of ${printable.length}`];
+      if (skipped > 0) parts.push(`${skipped} skipped`);
+      if (failed > 0) parts.push(`${failed} failed`);
+      setActionMessage(`${parts.join(" · ")}.`);
+    } catch (e) {
+      setActionMessage(e instanceof Error ? e.message : "Could not print all receipts.");
     } finally {
       setBatchBusy(null);
     }
@@ -1087,6 +1190,19 @@ export default function SalesOrdersListScreen({
             >
               {loading || listLoading ? "Refreshing…" : "Refresh"}
             </button>
+            {queueConfig?.slug === "mobile" ? (
+              <button
+                type="button"
+                onClick={() => void printAllFilteredOrders()}
+                disabled={loading || listLoading || Boolean(batchBusy) || !listFiltersInitialized}
+                title="Print all receipts for the current date range and filters"
+                className={SECONDARY_BTN_CLASS}
+              >
+                {batchBusy === "print-all" || batchBusy === "print-all-load"
+                  ? "Printing all…"
+                  : "Print all"}
+              </button>
+            ) : null}
             {queueConfig?.activityHref ? (
               <Link
                 href={queueConfig.activityHref}
@@ -1233,11 +1349,15 @@ export default function SalesOrdersListScreen({
                   className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
                   aria-hidden
                 />
-                {batchBusy === "print"
-                  ? "Printing selected orders…"
-                  : batchBusy === "cancel"
-                    ? "Cancelling selected orders…"
-                    : "Updating order…"}
+                {batchBusy === "print-all-load"
+                  ? "Loading orders to print…"
+                  : batchBusy === "print-all"
+                    ? "Printing all receipts…"
+                    : batchBusy === "print"
+                      ? "Printing selected orders…"
+                      : batchBusy === "cancel"
+                        ? "Cancelling selected orders…"
+                        : "Updating order…"}
               </div>
             </div>
           ) : null}
@@ -1368,11 +1488,28 @@ export default function SalesOrdersListScreen({
                     ) : (
                       pageSlice.map((sale) => {
                         const key = String(sale.id);
+                        const rowWorkflow = workflowBySaleId.get(sale.id);
+                        const cancelledRestore =
+                          !routeOrdersOnly &&
+                          String(sale.status ?? "").toLowerCase() === "cancelled" &&
+                          canRestoreCancelledOrder(sale, rowWorkflow, capabilities)
+                            ? cancelledOrderRestoreTarget(sale, rowWorkflow, capabilities)
+                            : null;
+                        const expiredRestore =
+                          !routeOrdersOnly &&
+                          String(sale.status ?? "").toLowerCase() === "expired" &&
+                          canRestoreExpiredOrder(sale, rowWorkflow, capabilities)
+                            ? expiredOrderRestoreTarget(sale, rowWorkflow, capabilities)
+                            : null;
+                        const restoreTarget = cancelledRestore ?? expiredRestore;
+                        const restoreLabel = restoreTarget
+                          ? `Restore to ${workflowStatusLabel(rowWorkflow, restoreTarget)}`
+                          : null;
                         return (
                           <OrderListTableRow
                             key={sale.id}
                             sale={sale}
-                            workflow={workflowBySaleId.get(sale.id)}
+                            workflow={rowWorkflow}
                             detail={detailsById[key]}
                             itemsLoading={detailLoadingId === key}
                             uomById={uomById}
@@ -1388,6 +1525,12 @@ export default function SalesOrdersListScreen({
                                 ? () => openCollectPayment(sale)
                                 : null
                             }
+                            onRestore={
+                              restoreTarget
+                                ? () => void handleAdvance(sale, restoreTarget)
+                                : null
+                            }
+                            restoreLabel={restoreLabel}
                             actionBusy={transitionBusyId === sale.id || Boolean(batchBusy)}
                             showBranchColumn={showBranchColumn}
                             branchName={saleBranchLabel(sale, branchById)}

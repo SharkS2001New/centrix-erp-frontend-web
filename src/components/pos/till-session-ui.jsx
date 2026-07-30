@@ -8,6 +8,7 @@ import {
   FLOAT_PAYMENT_TYPES,
   cashMovementHint,
   cashMovementLabel,
+  floatPaymentTypeLabel,
   formatFloatEntryDate,
   formatSessionDateTime,
   formatTillKes,
@@ -352,7 +353,7 @@ export function OpenSessionModal({
             >
               {FLOAT_PAYMENT_TYPES.map((type) => (
                 <option key={type} value={type}>
-                  {type}
+                  {floatPaymentTypeLabel(type)}
                 </option>
               ))}
             </select>
@@ -472,7 +473,7 @@ export function AddFloatModal({ open, onClose, onSaved, session, busy, error }) 
           <Field label="Payment type">
             <select className={inputClassName()} value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
               {FLOAT_PAYMENT_TYPES.map((type) => (
-                <option key={type} value={type}>{type}</option>
+                <option key={type} value={type}>{floatPaymentTypeLabel(type)}</option>
               ))}
             </select>
           </Field>
@@ -778,7 +779,7 @@ export function FloatBreakdownModal({
                 {entries.map((entry, index) => (
                   <tr key={`${entry.date_added}-${index}`} className="border-b border-slate-100 last:border-b-0">
                     <td className="px-3 py-2.5 text-slate-600">{formatFloatEntryDate(entry.date_added)}</td>
-                    <td className="px-3 py-2.5 text-slate-800">{entry.payment_type}</td>
+                    <td className="px-3 py-2.5 text-slate-800">{floatPaymentTypeLabel(entry.payment_type)}</td>
                     <td className="px-3 py-2.5 text-right font-medium text-slate-900">
                       {formatTillKes(entry.new_float)}
                     </td>
@@ -834,7 +835,7 @@ export function FloatBreakdownModal({
                   disabled={addFloatBusy}
                 >
                   {FLOAT_PAYMENT_TYPES.map((type) => (
-                    <option key={type} value={type}>{type}</option>
+                    <option key={type} value={type}>{floatPaymentTypeLabel(type)}</option>
                   ))}
                 </select>
               </Field>
@@ -1045,7 +1046,7 @@ export function FloatEntriesTable({ session }) {
             {entries.map((entry, index) => (
               <tr key={`${entry.date_added}-${index}`} className="border-b border-slate-100 last:border-b-0">
                 <td className="px-4 py-3 text-slate-600">{formatFloatEntryDate(entry.date_added)}</td>
-                <td className="px-4 py-3 text-slate-800">{entry.payment_type}</td>
+                <td className="px-4 py-3 text-slate-800">{floatPaymentTypeLabel(entry.payment_type)}</td>
                 <td className="px-4 py-3 text-right font-medium text-slate-900">
                   {formatTillKes(entry.new_float)}
                 </td>
@@ -1126,7 +1127,7 @@ export function EditSessionFloatDrawer({ open, onClose, onSaved, session, tillNa
           {entries.map((entry, index) => (
             <div key={`${entry.date_added}-${index}`} className="rounded-lg border border-slate-200 p-3">
               <p className="mb-2 text-xs text-slate-500">
-                Entry {index + 1} · {formatFloatEntryDate(entry.date_added)} · {entry.payment_type}
+                Entry {index + 1} · {formatFloatEntryDate(entry.date_added)} · {floatPaymentTypeLabel(entry.payment_type)}
               </p>
               <Field label="Amount (KES)">
                 <input

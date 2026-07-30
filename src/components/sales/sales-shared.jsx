@@ -178,7 +178,21 @@ export function OrderWorkflowPipeline({
         </div>
       </div>
       {isCancelled ? (
-        <p className="mt-3 text-sm text-red-600">This order was cancelled.</p>
+        <>
+          <p className="mt-3 text-sm text-red-600">This order was cancelled.</p>
+          {showWorkflowAdvance && advanceStep ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!!busyStatus}
+                onClick={() => onAdvance(advanceStep.key)}
+                className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
+              >
+                {busyStatus ? "Restoring…" : `Restore to ${advanceStep.label}`}
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : isEditable ? (
         <p className="mt-3 text-sm text-amber-800">
           This order was returned for revision after a rejected discount. Edit pricing, then save to
