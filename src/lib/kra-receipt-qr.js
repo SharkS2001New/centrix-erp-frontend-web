@@ -241,6 +241,19 @@ export async function ensureKraQrForPrint(
   } = {},
 ) {
   const kraEnabled = isKraDeviceConfigured(moduleSettings, capabilities);
+
+  // KRA off: never contact the API — print from inline sale / kraReceipt only.
+  if (!kraEnabled) {
+    const kraData = extractKraReceiptData(sale, kraReceipt);
+    let kraQrDataUrl = null;
+    if (kraData?.signatureLink) {
+      for (let attempt = 0; attempt < 3 && !kraQrDataUrl; attempt += 1) {
+        kraQrDataUrl = await kraReceiptQrDataUrl(kraData.signatureLink, { size: qrSize });
+      }
+    }
+    return { kraData, kraQrDataUrl };
+  }
+
   const expectQr =
     requireQrWhenFiscalized &&
     isKraFiscalizationActive(moduleSettings, capabilities) &&

@@ -82,6 +82,33 @@ describe("kra receipt QR", () => {
     expect(result.kraData).toBeNull();
   });
 
+  it("never contacts the API when KRA device is not configured", async () => {
+    const result = await ensureKraQrForPrint(
+      {
+        id: 11,
+        status: "completed",
+        order_total: 80,
+        kra_response: {
+          status: "success",
+          signature_link: "https://etims.example/verify/11",
+        },
+      },
+      {
+        moduleSettings: {
+          finance: {
+            enable_kra_integration: false,
+            enable_kra_device: false,
+          },
+        },
+        allowNetwork: true,
+      },
+    );
+
+    expect(apiRequest).not.toHaveBeenCalled();
+    expect(result.kraData?.signatureLink).toContain("etims.example");
+    expect(result.kraQrDataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+
   it("still requires a QR when the sale was fiscalized but the link is missing", async () => {
     await expect(
       ensureKraQrForPrint(

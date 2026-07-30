@@ -155,25 +155,25 @@ async function fetchUserPrintName(userId) {
 }
 
 async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
-  // Sale creator / cashier first — never prefer the reprinting session login.
-  const fromSale = resolveSaleOrderCreatorName(sale, null);
+  // Prefer names already in memory (sale payload / POS session) — never block print on WAN.
+  const preparedBy =
+    options.preparedBy ??
+    options.user?.full_name ??
+    options.user?.name ??
+    options.user ??
+    null;
+  const fromSale = resolveSaleOrderCreatorName(sale, preparedBy);
   if (fromSale !== "—") return fromSale;
+
+  if (options.skipNetworkLookups || isOfflineSalePrint(sale, options)) {
+    return "—";
+  }
 
   const createdByName = await fetchUserPrintName(sale?.created_by);
   if (createdByName) return createdByName;
 
   const cashierName = await fetchUserPrintName(sale?.cashier_id);
   if (cashierName) return cashierName;
-
-  // Immediate POS checkout may not have cashier relation loaded yet — session user is the creator.
-  const sessionName =
-    options.user?.full_name ??
-    options.user?.name ??
-    options.preparedBy ??
-    options.user?.username ??
-    options.user?.login ??
-    null;
-  if (sessionName) return String(sessionName).trim();
 
   return "—";
 }
@@ -328,14 +328,16 @@ export async function printSaleOrder(sale, options = {}) {
       branding = { ...branding, logoUrl: logoDataUrl };
     }
 
-    // When KRA device is on, always allow a sale/KRA lookup for the QR — even if other
-    // print metadata is taken from cache. Offline pending sales stay offline-only.
+    // When KRA is off: never hit WAN for fiscal/QR. When on: allow sale/KRA fetch unless
+    // checkout already passed kraReceipt and we are on the fast POS path.
     const saleIsOfflinePending =
       Boolean(saleForPrint?.offline_pending_sync) ||
       String(saleForPrint?.id ?? "").startsWith("offline:");
+    const kraConfigured = isKraDeviceConfigured(moduleSettings, options.capabilities);
     const kraAllowNetwork =
+      kraConfigured &&
       !saleIsOfflinePending &&
-      (isKraDeviceConfigured(moduleSettings, options.capabilities) || !skipNetworkLookups);
+      !(skipNetworkLookups && options.kraReceipt);
 
     let kraData = null;
     let kraQrDataUrl = null;
@@ -346,11 +348,11 @@ export async function printSaleOrder(sale, options = {}) {
         capabilities: options.capabilities,
         allowNetwork: kraAllowNetwork,
         qrSize: documentType === "invoice" ? 140 : 100,
-        requireQrWhenFiscalized: true,
+        requireQrWhenFiscalized: kraConfigured,
       }));
     } catch (kraPrintError) {
       // Re-throw when KRA is required — do not silently print without the QR.
-      if (isKraDeviceConfigured(moduleSettings, options.capabilities)) {
+      if (kraConfigured) {
         throw kraPrintError;
       }
       kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);

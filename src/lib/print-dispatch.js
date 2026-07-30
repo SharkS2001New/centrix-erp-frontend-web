@@ -8,6 +8,7 @@ import {
   saveLocalPrintProvider,
 } from "@/lib/local-print-provider";
 import {
+  checkPrintAgentHealth,
   getPrintAgentConfig,
   isPrintAgentEnabled,
   printViaAgent,
@@ -54,18 +55,25 @@ export async function dispatchPrintJob({
     const config = activeProvider === "agent" ? { ...agentConfig, enabled: true } : agentConfig;
     if (config.enabled || activeProvider === "agent") {
       try {
-        const result = await printViaAgent({
-          html: preparedHtml,
-          copies,
-          jobType,
-          config: { ...config, enabled: true },
-        });
-        return {
-          mode: "agent",
-          ok: true,
-          printer: config.printerName || undefined,
-          jobId: result.jobId ?? undefined,
-        };
+        // Quick ping first — avoid an 8s print timeout when the agent is not running.
+        const health = await checkPrintAgentHealth(
+          { ...config, enabled: true },
+          { quick: true },
+        );
+        if (health?.ok) {
+          const result = await printViaAgent({
+            html: preparedHtml,
+            copies,
+            jobType,
+            config: { ...config, enabled: true },
+          });
+          return {
+            mode: "agent",
+            ok: true,
+            printer: config.printerName || undefined,
+            jobId: result.jobId ?? undefined,
+          };
+        }
       } catch {
         // Agent missing/offline → browser dialog (fallback always on in org settings)
       }
