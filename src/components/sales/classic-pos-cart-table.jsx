@@ -211,11 +211,11 @@ export function ClassicPosCartTable({
                 sellAtRetail ? " classic-pos-mode-hint--retail" : ""
               }`}
               onClick={() => onToggleRetailMode?.()}
-              title="Click or press F12 (or Ctrl+F12 / Ctrl+Shift+U) to switch wholesale / retail. Then edit a line qty (+/− or Enter) to reprice that item."
+              title="F12 switches mode for new lines, and for a cart line only when you click its qty and press Enter"
             >
               {sellAtRetail
-                ? "Mode: RETAIL — edit qty to apply · F12 wholesale"
-                : "Mode: WHOLESALE — edit qty to apply · F12 retail"}
+                ? "Mode: RETAIL — qty Enter applies to that line · F12 wholesale"
+                : "Mode: WHOLESALE — qty Enter applies to that line · F12 retail"}
             </button>
           ) : null}
           <span className="classic-pos-cart-caption-text">{orderCaption}</span>

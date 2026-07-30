@@ -3742,9 +3742,6 @@ export function PosScreen({ standalone = false }) {
       return { canDecrease: false, canIncrease: false };
     }
     const retailPackage = getRetailPackage(line.product_code);
-    const sessionIsRetail = posSalesConfig.enableRetailPricing
-      ? isPosRetailSession(sellWholesale)
-      : cartLineRetailStockFlag(line);
     const currentBase = Number(line.quantity ?? 0);
     const decreaseCheck = canAdjustCartLineQuantity({
       line,
@@ -3756,7 +3753,6 @@ export function PosScreen({ standalone = false }) {
       posSalesConfig,
       allowNegativeStock,
       productByCode,
-      isRetailLine: sessionIsRetail,
     });
     const increaseCheck = canAdjustCartLineQuantity({
       line,
@@ -3768,7 +3764,6 @@ export function PosScreen({ standalone = false }) {
       posSalesConfig,
       allowNegativeStock,
       productByCode,
-      isRetailLine: sessionIsRetail,
     });
     return {
       canDecrease: currentBase > 0 && decreaseCheck.ok,
@@ -3794,10 +3789,8 @@ export function PosScreen({ standalone = false }) {
       }
 
       const retailPackage = getRetailPackage(line.product_code);
-      // F12 session mode: qty +/- reprice this line into the current retail/wholesale mode.
-      const sessionIsRetail = posSalesConfig.enableRetailPricing
-        ? isPosRetailSession(sellWholesale)
-        : cartLineRetailStockFlag(line);
+      // +/- keeps this line's own wholesale/retail mode (F12 only applies on qty Enter).
+      const isRetailLine = cartLineRetailStockFlag(line);
       const adjustCheck = canAdjustCartLineQuantity({
         line,
         product,
@@ -3808,14 +3801,13 @@ export function PosScreen({ standalone = false }) {
         posSalesConfig,
         allowNegativeStock,
         productByCode: productByCodeRef.current,
-        isRetailLine: sessionIsRetail,
       });
 
       if (!adjustCheck.ok) {
         setStatusMessage(
           posStockInsufficientMessage(adjustCheck.stockCheck, {
             product,
-            sellWholesale: !sessionIsRetail,
+            sellWholesale: !isRetailLine,
             retailPackage,
             posSalesConfig,
           }),
@@ -3823,13 +3815,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const nextBaseQty = cartLineNextBaseQty(
-        line,
-        product,
-        retailPackage,
-        delta,
-        sessionIsRetail,
-      );
+      const nextBaseQty = cartLineNextBaseQty(line, product, retailPackage, delta);
 
       if (adjustCheck.willRemove || nextBaseQty <= 0) {
         const lineRef = cartLineRef(line);
@@ -3867,20 +3853,21 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const entryQty = cartLineEntryQtyForBaseQty(
-        line,
-        product,
-        retailPackage,
-        nextBaseQty,
-        sessionIsRetail,
-      );
+      const entryQty = cartLineEntryQtyForBaseQty(line, product, retailPackage, nextBaseQty);
       const packQty = cartLinePackQtyForDiscount(
-        { ...line, quantity: nextBaseQty, on_wholesale_retail: sessionIsRetail ? 1 : 0 },
+        { ...line, quantity: nextBaseQty },
         product,
         retailPackage,
       );
       const perUnitDiscount = lineDiscountPerUnit(line.discount_given, packQty);
-      const computed = applyComputedPrice(product, entryQty, perUnitDiscount, null);
+      const computed = applyComputedPrice(
+        product,
+        entryQty,
+        perUnitDiscount,
+        null,
+        isRetailLine,
+        !isRetailLine,
+      );
 
       const ok = await commitCartLine({
         product,
@@ -3891,6 +3878,7 @@ export function PosScreen({ standalone = false }) {
         discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
+        lineRetailStockFlagOverride: isRetailLine,
       });
       if (ok) setSelectedLineId(line.id);
     };
@@ -3918,7 +3906,10 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
-  /** Classic: type absolute entry qty — prices in the current F12 retail/wholesale mode. */
+  /**
+   * Classic qty Enter: only this line updates. Typed qty stays as entered (e.g. 6 → 6);
+   * price/mode follow the current F12 retail/wholesale session. Other lines are unchanged.
+   */
   async function setCartLineEntryQuantity(line, entryQtyRaw) {
     if (!line || !cart?.id) return;
     if (swapDraft && sameLineId(swapDraft.lineId, line.id)) {
@@ -3944,10 +3935,20 @@ export function PosScreen({ standalone = false }) {
       }
 
       const retailPackage = getRetailPackage(line.product_code);
+      const lineIsRetail = cartLineRetailStockFlag(line);
       const sessionIsRetail = posSalesConfig.enableRetailPricing
         ? isPosRetailSession(sellWholesale)
-        : cartLineRetailStockFlag(line);
-      const computedPreview = applyComputedPrice(product, entryQty, 0, null);
+        : lineIsRetail;
+
+      // Use the number in the qty field as-is in the F12 session mode (do not × conversion).
+      const computedPreview = applyComputedPrice(
+        product,
+        entryQty,
+        0,
+        null,
+        sessionIsRetail,
+        !sessionIsRetail,
+      );
       const packQty = cartLinePackQtyForDiscount(
         {
           ...line,
@@ -3958,7 +3959,14 @@ export function PosScreen({ standalone = false }) {
         retailPackage,
       );
       const perUnitDiscount = lineDiscountPerUnit(line.discount_given, packQty);
-      const computed = applyComputedPrice(product, entryQty, perUnitDiscount, null);
+      const computed = applyComputedPrice(
+        product,
+        entryQty,
+        perUnitDiscount,
+        null,
+        sessionIsRetail,
+        !sessionIsRetail,
+      );
 
       if (!allowNegativeStock) {
         const stockCheck = posStockAvailability({
@@ -3970,7 +3978,7 @@ export function PosScreen({ standalone = false }) {
           allowNegativeStock,
           stockAsRetail: posLineRetailStockFlag(
             posSalesConfig,
-            sellWholesale,
+            !sessionIsRetail,
             computed.isRetail,
             product,
           ),
@@ -3999,6 +4007,7 @@ export function PosScreen({ standalone = false }) {
         discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
+        lineRetailStockFlagOverride: sessionIsRetail,
       });
       if (ok) {
         setSelectedLineId(line.id);
@@ -4424,41 +4433,43 @@ export function PosScreen({ standalone = false }) {
       }
 
       const retailPackage = getRetailPackage(line.product_code);
-      const sessionIsRetail = posSalesConfig.enableRetailPricing
-        ? isPosRetailSession(sellWholesale)
-        : Number(line.on_wholesale_retail) === 1;
+      const isRetailLine = Number(line.on_wholesale_retail) === 1;
       setEditingLineId(line.id);
       setEditingLineRef(cartLineRef(line));
       setSelectedLineId(line.id);
+      setSellWholesale(!isRetailLine);
       setSelectedProductCode(line.product_code);
       setSelectedProduct(product);
       setSearchQuery(product.product_name ?? line.product_code);
-      setUnitPriceTouched(false);
-      const entryQty = posEntryQtyFromBaseQty(
-        Number(line.quantity ?? 0),
-        product,
-        retailPackage,
-        sessionIsRetail,
-      );
+      setUnitPriceTouched(true);
+      const entryQty = posEntryQtyFromCartLine(line, product, retailPackage);
       const perUnitDiscount = cartLineEnteredDiscountPerUnit(line, product, retailPackage);
-      const computed = applyComputedPrice(
-        product,
-        entryQty,
-        String(perUnitDiscount),
-        null,
-      );
+      // Retail Price field is wholesale/kg (markup on amount). Prefer stored display;
+      // fall back to catalog wholesale so amortized unit_price is never used as override.
+      const retailUnit =
+        Number(line.display_unit_price) > 0
+          ? Number(line.display_unit_price)
+          : applyComputedPrice(
+              product,
+              entryQty,
+              String(perUnitDiscount),
+              null,
+              isRetailLine,
+              !isRetailLine,
+            ).displayUnitPrice;
       setLineForm({
         product_code: line.product_code,
         description: line.product_name ?? product.product_name ?? "",
         package: line.uom ?? "",
         quantity: entryQty,
         discount: String(perUnitDiscount),
-        unit_price: String(computed.displayUnitPrice),
+        unit_price: String(
+          isRetailLine
+            ? retailUnit
+            : cartLineDisplayUnitPrice(line, product.uom, isRetailLine),
+        ),
       });
-      const modeLabel = sessionIsRetail ? "Retail" : "Wholesale";
-      setStatusMessage(
-        `Editing line #${line.line_no ?? line.id} — will save as ${modeLabel} (F12 to switch).`,
-      );
+      setStatusMessage(`Editing line #${line.line_no ?? line.id} (${posCartLineTypeLabel(line)}).`);
       window.requestAnimationFrame(() => {
         qtyInputRef.current?.focus();
         qtyInputRef.current?.select?.();
@@ -5766,10 +5777,10 @@ export function PosScreen({ standalone = false }) {
       const nextWholesale = !prev;
       const label = nextWholesale ? "WHOLESALE" : "RETAIL";
       setStatusMessage(
-        `${label} pricing (F12) — edit a line qty (+/− or Enter) to apply to that item.`,
+        `${label} mode (F12) — only the line you confirm with qty Enter switches.`,
       );
       if (standalone) {
-        notifySuccess(`Switched to ${label} pricing.`);
+        notifySuccess(`Switched to ${label} for next confirm / new lines.`);
       }
       return nextWholesale;
     });
@@ -6511,7 +6522,7 @@ export function PosScreen({ standalone = false }) {
                     onChange={() => toggleRetailWholesaleMode()}
                   />
                   Sell at retail prices
-                  <span className="theme-subtext text-[10px] font-normal">(F12 — then edit qty to apply)</span>
+                  <span className="theme-subtext text-[10px] font-normal">(F12 — qty Enter applies per line)</span>
                   {retailPricingSession ? (
                     <span className="rounded bg-[var(--theme-primary-subtle)] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--theme-text)]">
                       Retail
@@ -6964,26 +6975,15 @@ export function PosScreen({ standalone = false }) {
                 formatQty={(line) => {
                   const productMeta = productByCode[line.product_code];
                   const uom = productMeta?.uom;
-                  const isRetailForDisplay = posSalesConfig.enableRetailPricing
-                    ? retailPricingSession
-                    : Number(line.on_wholesale_retail) === 1;
                   return uom
                     ? formatSaleLineQtyDisplay(line.quantity, uom, {
-                        isRetailLine: isRetailForDisplay,
+                        isRetailLine: Number(line.on_wholesale_retail) === 1,
                       })
                     : formatMixedStockDisplay(line.quantity, 1).text;
                 }}
                 lineEntryQty={(line) => {
                   const productMeta = productByCode[line.product_code];
                   if (!productMeta) return String(line.quantity ?? "");
-                  if (posSalesConfig.enableRetailPricing) {
-                    return posEntryQtyFromBaseQty(
-                      Number(line.quantity ?? 0),
-                      productMeta,
-                      getRetailPackage(line.product_code),
-                      retailPricingSession,
-                    );
-                  }
                   return posEntryQtyFromCartLine(
                     line,
                     productMeta,
@@ -6992,16 +6992,9 @@ export function PosScreen({ standalone = false }) {
                 }}
                 lineQtyUnit={(line) => {
                   const productMeta = productByCode[line.product_code];
-                  const lineForUnit =
-                    posSalesConfig.enableRetailPricing
-                      ? {
-                          ...line,
-                          on_wholesale_retail: retailPricingSession ? 1 : 0,
-                        }
-                      : line;
                   return (
                     posCartLineEntryUnitLabel(
-                      lineForUnit,
+                      line,
                       productMeta ?? null,
                       getRetailPackage(line.product_code),
                     ) || "pcs"
