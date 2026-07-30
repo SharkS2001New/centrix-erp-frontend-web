@@ -376,6 +376,8 @@ export function TillManagementScreen() {
   const filteredTills = useMemo(() => {
     const q = tillSearch.trim().toLowerCase();
     return tills.filter((t) => {
+      // Keep Till Management list focused on usable tills only.
+      if (t.is_active === false) return false;
       const branch = branchById.get(t.branch_id)?.branch_name ?? "";
       const openSessionRow = openByTill.get(t.id);
       const activeCashier = openSessionRow ? userById.get(openSessionRow.cashier_id) : null;
@@ -383,7 +385,7 @@ export function TillManagementScreen() {
       const status = tillStatusLabel(t, openByTill);
       if (tillBranchFilter && String(t.branch_id) !== tillBranchFilter) return false;
       if (tillStatusFilter === "active" && status !== "Active") return false;
-      if (tillStatusFilter === "closed" && status !== "Closed") return false;
+      if (tillStatusFilter === "available" && status !== "Closed") return false;
       if (!q) return true;
       return `${t.till_number} ${t.till_name} ${branch} ${activeCashier?.full_name ?? ""} ${lockedCashier?.full_name ?? ""}`
         .toLowerCase()
@@ -392,12 +394,13 @@ export function TillManagementScreen() {
   }, [tills, tillSearch, tillBranchFilter, tillStatusFilter, branchById, userById, openByTill]);
 
   const tillStats = useMemo(() => {
-    const active = tills.filter((t) => openByTill.has(t.id)).length;
+    const visible = tills.filter((t) => t.is_active !== false);
+    const active = visible.filter((t) => openByTill.has(t.id)).length;
     const totalFloat = openSessions.reduce((sum, session) => sum + Number(session.working_amount ?? 0), 0);
     return {
-      total: tills.length,
+      total: visible.length,
       active,
-      closed: Math.max(0, tills.length - active),
+      available: Math.max(0, visible.length - active),
       totalFloat,
     };
   }, [tills, openByTill, openSessions]);
@@ -554,7 +557,7 @@ export function TillManagementScreen() {
             <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard label="Total tills" value={tillStats.total} hint="All locations" />
               <StatCard label="Active tills" value={tillStats.active} hint="Currently active" />
-              <StatCard label="Closed tills" value={tillStats.closed} hint="Not in use" />
+              <StatCard label="Available tills" value={tillStats.available} hint="Ready to open session" />
               <StatCard label="Total float" value={formatTillKes(tillStats.totalFloat)} hint="Across active tills" />
             </div>
             <div className="mb-4 flex flex-wrap gap-3">
@@ -578,7 +581,7 @@ export function TillManagementScreen() {
                 options={[
                   { value: "", label: "All statuses" },
                   { value: "active", label: "Active" },
-                  { value: "closed", label: "Closed" },
+                  { value: "available", label: "Available" },
                 ]}
               />
             </div>
@@ -903,6 +906,7 @@ export function TillManagementScreen() {
         editing={editingTill}
         branches={branches}
         existingTills={tills}
+        users={users}
       />
     </>
   );

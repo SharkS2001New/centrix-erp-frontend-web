@@ -28,6 +28,7 @@ const EMPTY = {
   till_number: "",
   till_name: "",
   branch_id: "",
+  cashier_id: "",
   description: "",
   ip_address: "",
   is_active: true,
@@ -40,6 +41,7 @@ export function TillFormDrawer({
   editing,
   branches,
   existingTills = [],
+  users = [],
 }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -53,6 +55,7 @@ export function TillFormDrawer({
         till_number: editing.till_number ?? "",
         till_name: editing.till_name ?? "",
         branch_id: String(editing.branch_id ?? ""),
+        cashier_id: editing.cashier_id != null ? String(editing.cashier_id) : "",
         description: editing.description ?? "",
         ip_address: editing.ip_address ?? "",
         is_active: editing.is_active !== false,
@@ -99,6 +102,7 @@ export function TillFormDrawer({
         till_number: tillNumber,
         till_name: form.till_name.trim() || null,
         branch_id: branchId,
+        cashier_id: form.cashier_id ? Number(form.cashier_id) : null,
         description: form.description.trim() || null,
         ip_address: form.ip_address.trim() || null,
         is_active: Boolean(form.is_active),
@@ -160,6 +164,22 @@ export function TillFormDrawer({
               {b.branch_name}
             </option>
           ))}
+        </select>
+      </Field>
+      <Field label="Lock to cashier (optional)">
+        <select
+          className={inputClassName()}
+          value={form.cashier_id}
+          onChange={(e) => setForm((f) => ({ ...f, cashier_id: e.target.value }))}
+        >
+          <option value="">Not locked (any cashier can use)</option>
+          {users
+            .filter((u) => u?.is_active !== false)
+            .map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name ?? u.username ?? `User #${u.id}`}
+              </option>
+            ))}
         </select>
       </Field>
       <Field label="IP address (optional)">

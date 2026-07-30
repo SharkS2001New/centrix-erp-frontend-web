@@ -615,7 +615,7 @@ export function PosScreen({ standalone = false }) {
     if (!organizationId || !requireTillFloat) return;
     setPosTillMetaLoading(true);
     try {
-      const [tillRes, branchRes, sessionRes] = await Promise.all([
+      const [tillRes, branchRes, sessionRes] = await Promise.allSettled([
         apiRequest("/tills", { searchParams: { per_page: 200 } }),
         apiRequest("/branches", {
           searchParams: { per_page: 200, ...orgListParams(organizationId) },
@@ -626,12 +626,34 @@ export function PosScreen({ standalone = false }) {
             "filter[status]": "open",
             "filter[session_date]": orgTodayKey,
           },
-        }).catch(() => ({ data: [] })),
+        }),
       ]);
-      let tills = tillRes.data ?? [];
-      const sessions = sessionRes.data ?? [];
-      const branches = filterByOrganization(branchRes.data ?? [], organizationId);
-      const branchId = user?.branch_id ?? branches[0]?.id;
+      const tills =
+        tillRes.status === "fulfilled"
+          ? (tillRes.value?.data ?? [])
+          : [];
+      const sessions =
+        sessionRes.status === "fulfilled"
+          ? (sessionRes.value?.data ?? [])
+          : [];
+      const branchesFromApi =
+        branchRes.status === "fulfilled"
+          ? filterByOrganization(branchRes.value?.data ?? [], organizationId)
+          : [];
+      const branches = branchesFromApi.length > 0
+        ? branchesFromApi
+        : Array.from(
+            new Map(
+              (tills ?? [])
+                .map((t) => [t.branch_id, t.branch_id ? { id: t.branch_id, branch_name: `Branch #${t.branch_id}` } : null])
+                .filter((row) => row[1] != null),
+            ).values(),
+          );
+
+      const assignedTillForUser = (tills ?? []).find(
+        (t) => user?.id != null && Number(t.cashier_id) === Number(user.id),
+      );
+      const branchId = user?.branch_id ?? assignedTillForUser?.branch_id ?? branches[0]?.id ?? null;
 
       if (branchId) {
         const picked = pickBranchTillForCashier({
