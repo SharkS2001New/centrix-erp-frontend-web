@@ -42,7 +42,6 @@ import {
 import { todayCalendarDate } from "@/lib/datetime";
 import { isBlindTillCloseEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 import { useConfirm } from "@/lib/use-confirm";
-import { resolveGeneralSettings } from "@/lib/format";
 
 const TABS = [
   { id: "tills", label: "Tills" },
@@ -80,17 +79,6 @@ function EyeIcon() {
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
     </svg>
   );
-}
-
-function sessionBusinessDate(session) {
-  const raw = session?.session_date ?? session?.opened_at;
-  if (!raw) return null;
-  return String(raw).slice(0, 10);
-}
-
-function isSessionForToday(session, timeZone) {
-  const date = sessionBusinessDate(session);
-  return date != null && date === todayCalendarDate(timeZone);
 }
 
 function MoreIcon() {
@@ -212,8 +200,8 @@ export function TillManagementScreen() {
   const { activeSession, clearSession } = usePosSession();
 
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
-  const general = resolveGeneralSettings(capabilities);
-  const orgTimeZone = general.timezone;
+  const orgTimeZone = capabilities?.general?.timezone ?? "Africa/Nairobi";
+  const todayKey = todayCalendarDate(orgTimeZone);
 
   const [tab, setTab] = useState(initialTab);
   const [pageError, setPageError] = useState(null);
@@ -279,7 +267,11 @@ export function TillManagementScreen() {
         fetchBranchesCached(organizationId),
         fetchUsersCached(organizationId),
         apiRequest("/till-float-sessions", {
-          searchParams: { per_page: 200, "filter[status]": "open" },
+          searchParams: {
+            per_page: 200,
+            "filter[status]": "open",
+            "filter[session_date]": todayKey,
+          },
         }).catch(() => ({ data: [] })),
       ]);
       setTills(tillRes.data ?? []);
@@ -295,7 +287,7 @@ export function TillManagementScreen() {
     } finally {
       setMetaLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, todayKey]);
 
   const ensureSessionXReport = useCallback(async (sessionId) => {
     if (sessionId == null) return null;
@@ -779,9 +771,7 @@ export function TillManagementScreen() {
                                   >
                                     Z
                                   </button>
-                                  {!isSuspended &&
-                                  isSessionForToday(row, orgTimeZone) &&
-                                  (canManageSessions || Number(row.cashier_id) === Number(user?.id)) ? (
+                                  {!isSuspended ? (
                                     <button
                                       type="button"
                                       onClick={() => void reopenHistorySession(row)}
