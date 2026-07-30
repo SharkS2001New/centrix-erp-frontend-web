@@ -327,6 +327,7 @@ export function EndOfDayReportScreen() {
   const [users, setUsers] = useState([]);
   const [branchId, setBranchId] = useState("");
   const [cashierId, setCashierId] = useState("");
+  const [floatSessionId, setFloatSessionId] = useState("");
   const [saleDate, setSaleDate] = useState(todayIsoDate());
   const [reportMode, setReportMode] = useState("daily");
   const [saleMonth, setSaleMonth] = useState(() => todayIsoDate().slice(0, 7));
@@ -381,6 +382,7 @@ export function EndOfDayReportScreen() {
       }
       if (branchId) params.branch_id = branchId;
       if (cashierId) params.cashier_id = cashierId;
+      if (floatSessionId) params.float_session_id = floatSessionId;
       const data = await apiRequest("/reports/eod-report", { searchParams: params });
       setReport(data);
     } catch (e) {
@@ -389,7 +391,7 @@ export function EndOfDayReportScreen() {
     } finally {
       setLoading(false);
     }
-  }, [saleDate, saleMonth, reportMode, branchId, cashierId]);
+  }, [saleDate, saleMonth, reportMode, branchId, cashierId, floatSessionId]);
 
   useEffect(() => {
     if (reportMode === "monthly" ? saleMonth : saleDate) load();
@@ -423,6 +425,28 @@ export function EndOfDayReportScreen() {
   const cashierName =
     report?.cashier_name ??
     (cashierId ? cashierOptions.find((c) => c.value === cashierId)?.label : null);
+
+  const sessionOptions = useMemo(() => {
+    const rows = report?.sessions ?? report?.tills ?? [];
+    return rows
+      .filter((row) => row?.float_session_id != null)
+      .map((row) => {
+        const till = row.till_number || row.till_name || "Till";
+        const opened = formatReportTime(row.opened_at);
+        const status = String(row.session_status || "").toLowerCase();
+        const float = formatTillKes(row.opening_float);
+        return {
+          value: String(row.float_session_id),
+          label: `#${row.float_session_id} · ${till} · ${row.cashier ?? "—"} · ${opened} · float ${float}${status ? ` · ${status}` : ""}`,
+          row,
+        };
+      });
+  }, [report?.sessions, report?.tills]);
+
+  const selectedSessionLabel = useMemo(() => {
+    if (!floatSessionId) return null;
+    return sessionOptions.find((opt) => opt.value === floatSessionId)?.label ?? `Session #${floatSessionId}`;
+  }, [floatSessionId, sessionOptions]);
 
   const netSalesExVat = useMemo(() => {
     if (summary.net_sales_ex_vat != null) return Number(summary.net_sales_ex_vat);
@@ -542,6 +566,7 @@ export function EndOfDayReportScreen() {
               ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
               : formatReportDate(saleDate)}
             {cashierName ? ` · ${cashierName}` : " · All cashiers"}
+            {selectedSessionLabel ? ` · ${selectedSessionLabel}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -552,6 +577,7 @@ export function EndOfDayReportScreen() {
               onChange={(e) => {
                 setBranchId(e.target.value);
                 setCashierId("");
+                setFloatSessionId("");
               }}
               options={[
                 { value: "", label: "All branches" },
@@ -563,10 +589,26 @@ export function EndOfDayReportScreen() {
             <label className="theme-subtext mb-1 block text-xs font-medium">Cashier</label>
             <FilterSelect
               value={cashierId}
-              onChange={(e) => setCashierId(e.target.value)}
+              onChange={(e) => {
+                setCashierId(e.target.value);
+                setFloatSessionId("");
+              }}
               options={[{ value: "", label: "All cashiers" }, ...cashierOptions]}
             />
           </div>
+          {requireTillFloat ? (
+            <div>
+              <label className="theme-subtext mb-1 block text-xs font-medium">Till session</label>
+              <FilterSelect
+                value={floatSessionId}
+                onChange={(e) => setFloatSessionId(e.target.value)}
+                options={[
+                  { value: "", label: "All sessions" },
+                  ...sessionOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+                ]}
+              />
+            </div>
+          ) : null}
           <div>
             <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
             <FilterSelect
@@ -761,35 +803,84 @@ export function EndOfDayReportScreen() {
             </Panel>
 
             {requireTillFloat ? (
-            <Panel title="Till & cashier summary" className="lg:col-span-2">
-              {(report.tills ?? []).length === 0 ? (
+            <Panel title="Till sessions" className="lg:col-span-2">
+              {(report.sessions ?? report.tills ?? []).length === 0 ? (
                 <p className="theme-subtext text-sm">No till sessions for this date.</p>
               ) : (
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
-                      <th className="pb-2 pr-3">Till</th>
-                      <th className="pb-2 pr-3">Cashier</th>
-                      <th className="pb-2 pr-3 text-right">Total sales</th>
-                      <th className="pb-2 text-right">Transactions</th>
-                      <th className="pb-2 pl-3 text-right">Float</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(report.tills ?? []).map((row, i) => (
-                      <tr key={`${row.till_number}-${i}`} className="border-b border-[var(--theme-border)] last:border-b-0">
-                        <td className="py-2.5 pr-3 font-medium text-[var(--theme-text)]">
-                          {row.till_number}
-                          {row.till_name ? ` · ${row.till_name}` : ""}
-                        </td>
-                        <td className="theme-text-muted py-2.5 pr-3">{row.cashier ?? "—"}</td>
-                        <td className="py-2.5 pr-3 text-right text-[var(--theme-text)]">{formatTillKes(row.gross_sales)}</td>
-                        <td className="theme-text-muted py-2.5 text-right">{row.transactions ?? 0}</td>
-                        <td className="theme-text-muted py-2.5 pl-3 text-right">{formatTillKes(row.opening_float)}</td>
+                <>
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
+                        <th className="pb-2 pr-3">Session</th>
+                        <th className="pb-2 pr-3">Till</th>
+                        <th className="pb-2 pr-3">Cashier</th>
+                        <th className="pb-2 pr-3 text-right">Float</th>
+                        <th className="pb-2 pr-3 text-right">Sales</th>
+                        <th className="pb-2 pr-3 text-right">Expenses</th>
+                        <th className="pb-2 text-right">Expected</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {(report.sessions ?? report.tills ?? []).map((row, i) => {
+                        const sid = row.float_session_id != null ? String(row.float_session_id) : "";
+                        const isSelected = floatSessionId && sid === floatSessionId;
+                        return (
+                          <tr
+                            key={`${sid || row.till_number}-${i}`}
+                            className={`border-b border-[var(--theme-border)] last:border-b-0 ${isSelected ? "bg-[var(--theme-primary-subtle)]" : ""}`}
+                          >
+                            <td className="py-2.5 pr-3">
+                              {sid ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setFloatSessionId(sid)}
+                                  className={`theme-link font-medium hover:underline ${isSelected ? "underline" : ""}`}
+                                >
+                                  #{sid}
+                                  {row.session_status ? (
+                                    <span className="theme-subtext ml-1 text-xs font-normal">
+                                      {row.session_status}
+                                    </span>
+                                  ) : null}
+                                </button>
+                              ) : (
+                                "—"
+                              )}
+                              <div className="theme-subtext text-xs">
+                                {formatReportTime(row.opened_at)}
+                                {row.closed_at ? ` – ${formatReportTime(row.closed_at)}` : " – open"}
+                              </div>
+                            </td>
+                            <td className="py-2.5 pr-3 font-medium text-[var(--theme-text)]">
+                              {row.till_number}
+                              {row.till_name ? ` · ${row.till_name}` : ""}
+                            </td>
+                            <td className="theme-text-muted py-2.5 pr-3">{row.cashier ?? "—"}</td>
+                            <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.opening_float)}</td>
+                            <td className="py-2.5 pr-3 text-right text-[var(--theme-text)]">{formatTillKes(row.gross_sales)}</td>
+                            <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.session_expenses)}</td>
+                            <td className="py-2.5 text-right font-medium text-[var(--theme-text)]">
+                              {formatTillKes(row.expected_net_sales)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {floatSessionId ? (
+                    <button
+                      type="button"
+                      onClick={() => setFloatSessionId("")}
+                      className="theme-link mt-3 text-xs font-medium hover:underline"
+                    >
+                      Clear session filter — show all sessions
+                    </button>
+                  ) : (
+                    <p className="theme-subtext mt-3 text-xs">
+                      Click a session to filter the summary maths to that till session only.
+                    </p>
+                  )}
+                </>
               )}
             </Panel>
             ) : null}
