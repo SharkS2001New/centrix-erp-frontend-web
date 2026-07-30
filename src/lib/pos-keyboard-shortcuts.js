@@ -101,7 +101,10 @@ export function isPosAltLetterShortcut(e, letter) {
   return key === lower || key === upper || code === `Key${upper}`;
 }
 
-/** Classic external POS: Alt+H hold, Alt+F float, Alt+P reprint. */
+/**
+ * Standalone external POS Alt shortcuts: Alt+H hold, Alt+F float, Alt+P reprint.
+ * Name kept for callers; applies to classic and modern standalone layouts.
+ */
 export function isPosClassicAltShortcut(e) {
   return isPosAltLetterShortcut(e, "h")
     || isPosAltLetterShortcut(e, "f")

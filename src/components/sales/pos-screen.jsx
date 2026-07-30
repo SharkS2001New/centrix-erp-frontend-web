@@ -5905,6 +5905,9 @@ export function PosScreen({ standalone = false }) {
       F9: 0,
       F10: 0,
       F12: 0,
+      AltH: 0,
+      AltF: 0,
+      AltP: 0,
     };
 
     function runPosFunctionAction(key, state, actions) {
@@ -5989,13 +5992,27 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // Classic Alt+H/F/P: claim immediately (like F-keys) so the browser menu / scan
+      // External POS Alt+H/F/P: claim immediately (like F-keys) so the browser menu / scan
       // field cannot swallow them. Right Alt is often AltGr (ctrl+alt).
-      const isClassicAlt = state.classicLayout && isPosClassicAltShortcut(e);
-      if (isClassicAlt) {
+      // Enabled for all standalone POS (classic + modern) — not classic-only.
+      const isPosAlt = state.standalone && isPosClassicAltShortcut(e);
+      if (isPosAlt) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
-        if (phase === "keyup") return;
+
+        const altStampKey = isPosAltLetterShortcut(e, "h")
+          ? "AltH"
+          : isPosAltLetterShortcut(e, "f")
+            ? "AltF"
+            : "AltP";
+
+        if (phase === "keyup") {
+          // Some shells eat Alt+letter on keydown (browser Help / menu) — run on keyup once.
+          if (Date.now() - (handledOnKeyDownAt[altStampKey] || 0) < 900) return;
+        } else {
+          handledOnKeyDownAt[altStampKey] = Date.now();
+        }
+
         if (isModalOpen(state)) return;
 
         actions.closeProductSearchDropdown?.();

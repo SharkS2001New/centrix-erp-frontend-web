@@ -195,7 +195,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   async function handleInputKeyDown(e) {
     // Let POS shortcuts (F2/F8/F10/F12, Alt+H/F/P, …) reach the window capture listener.
-    if (isPosFunctionKeyEvent(e) || (classic && isPosClassicAltShortcut(e))) return;
+    if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
