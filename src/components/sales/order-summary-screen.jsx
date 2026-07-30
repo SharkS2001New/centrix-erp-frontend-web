@@ -82,6 +82,7 @@ import {
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { PodRecordSummary } from "@/components/fulfillment/pod-record-summary";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { InlineActionError } from "@/components/shared/inline-action-error";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
@@ -254,7 +255,7 @@ function OrderSummaryItemsTable({
   uomById,
   limit,
   onViewAll,
-  showDiscountColumn = true,
+  showDiscountColumn = false,
 }) {
   const rows = limit ? (items ?? []).slice(0, limit) : (items ?? []);
 
@@ -336,7 +337,7 @@ function OrderSummaryItemsTable({
   );
 }
 
-function OrderTotalsPanel({ sale, totalPaid, balanceDue, showDiscountColumn = true }) {
+function OrderTotalsPanel({ sale, totalPaid, balanceDue, showDiscountColumn = false }) {
   const items = sale?.items ?? [];
   const subtotal = items.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
   const orderDiscount = Number(sale?.order_discount ?? 0);
@@ -1138,9 +1139,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 capabilities={capabilities}
                 {...fulfillmentLabels}
               />
-              {sale?.fulfillment_meta?.pod_captured ||
-              sale?.fulfillment_meta?.pod_signer_name ||
-              ["delivered", "completed"].includes(sale?.status) ? (
+              {isDistributionOpsEnabled(capabilities) &&
+              (sale?.fulfillment_meta?.pod_captured ||
+                sale?.fulfillment_meta?.pod_signer_name ||
+                ["delivered", "completed"].includes(sale?.status)) ? (
                 <div className="lg:col-span-2">
                   <PodRecordSummary saleId={sale.id} />
                 </div>

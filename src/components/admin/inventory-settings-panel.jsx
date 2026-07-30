@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { useAuth } from "@/contexts/auth-context";
 import {
   INVENTORY_LOCATION_OPTIONS,
   STOCK_ALERT_MODE_OPTIONS,
@@ -11,7 +10,7 @@ import {
 } from "@/lib/inventory-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -36,9 +35,8 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 }
 
 export function InventorySettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
-  const { refreshCapabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(inventoryFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("selling");

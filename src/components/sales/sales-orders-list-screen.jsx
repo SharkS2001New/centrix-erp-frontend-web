@@ -45,6 +45,7 @@ import {
   buildOrderContextMenuItems,
   ORDER_MIN_TOTAL_OPTIONS,
   saleBranchLabel,
+  normalizeOrdersListSummary,
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
@@ -144,6 +145,7 @@ export default function SalesOrdersListScreen({
   );
 
   const [rows, setRows] = useState([]);
+  const [orderSummary, setOrderSummary] = useState(null);
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -450,6 +452,7 @@ export default function SalesOrdersListScreen({
       const list = sortOrdersForList(parsed.items, ordersListSort);
 
       setListScope(res?.list_scope ?? null);
+      setOrderSummary(normalizeOrdersListSummary(res?.summary));
       setRows(list);
       setTotalOrders(parsed.total);
       setTotalPages(parsed.totalPages);
@@ -821,7 +824,7 @@ export default function SalesOrdersListScreen({
     setPage(1);
   }
 
-  const summary = useMemo(() => summarizeOrders(rows), [rows]);
+  const summary = orderSummary ?? summarizeOrders(rows);
   const pageSlice = rows;
 
   const workflowBySaleId = useMemo(() => {

@@ -238,6 +238,9 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     if (item.href === "/fulfillment/routes" || item.href?.startsWith("/fulfillment/routes/")) {
       return true;
     }
+    if (item.href === "/sales/loading-sheets" || item.href?.startsWith("/sales/loading-sheets/")) {
+      return true;
+    }
     if (item.href === "/sales/picking-lists" || item.href?.startsWith("/sales/picking-lists/")) {
       return true;
     }
@@ -298,6 +301,8 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
     workspaceId === "backoffice" &&
     (pathname === "/fulfillment/routes" ||
       pathname.startsWith("/fulfillment/routes/") ||
+      pathname === "/sales/loading-sheets" ||
+      pathname.startsWith("/sales/loading-sheets/") ||
       pathname === "/sales/picking-lists" ||
       pathname.startsWith("/sales/picking-lists/") ||
       pathname === "/fulfillment/loading-lists" ||

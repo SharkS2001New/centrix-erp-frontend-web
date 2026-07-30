@@ -6,6 +6,7 @@ import {
   getPosSalesConfig,
   isDiscountApprovalEnabled,
   isDiscountApprovalEnabledForChannel,
+  loadingListNavHref,
   resolveCancelOrderStatuses,
   resolveCollectPaymentStatuses,
   resolveCustomerReturnStatuses,
@@ -13,6 +14,10 @@ import {
   resolveEnablePosCashRounding,
   resolveShowPosCheckoutOnCreate,
   resolvePrintInvoiceStatuses,
+  shouldShowDistributionLoadingLists,
+  shouldShowLoadingListNav,
+  shouldShowMobileLoadingSheets,
+  shouldShowSalesDiscountColumn,
   showBackofficeLineDiscountEdit,
   showPosLineDiscountField,
 } from "@/lib/sales-settings";
@@ -144,9 +149,11 @@ describe("sales-settings order action stages", () => {
       "booked",
       "pending",
       "unpaid",
+      "pending_payment",
+      "paid",
       "processed",
-      "pending_approval",
-      "editable",
+      "delivered",
+      "completed",
     ]);
     expect(resolveCustomerReturnStatuses(null)).toEqual([
       "paid",
@@ -253,5 +260,72 @@ describe("sales-settings checkout on create (POS vs backoffice)", () => {
         sales: { show_checkout_on_create_order: true },
       }),
     ).toBe(true);
+  });
+});
+
+describe("shouldShowSalesDiscountColumn", () => {
+  it("hides the column when product discounts are off even if edit-line defaults merge as true", () => {
+    expect(
+      shouldShowSalesDiscountColumn({
+        sales: {
+          allow_discounts: false,
+          discount_approval_enabled_mobile: false,
+          discount_approval_enabled_backoffice: false,
+          enable_order_discount: false,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("shows the column when product discounts or approval is enabled", () => {
+    expect(shouldShowSalesDiscountColumn({ sales: { allow_discounts: true } })).toBe(true);
+    expect(
+      shouldShowSalesDiscountColumn({
+        sales: {
+          allow_discounts: false,
+          discount_approval_enabled_mobile: true,
+        },
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("sales-settings mobile loading sheets", () => {
+  const mobileCaps = {
+    modules: { "sales.mobile": true, distribution: false },
+    module_settings: { sales: { enable_mobile_orders: true } },
+    distribution_ops_enabled: false,
+  };
+
+  it("shows field-sales loading sheets when mobile is on and distribution ops are off", () => {
+    expect(shouldShowMobileLoadingSheets(mobileCaps)).toBe(true);
+    expect(shouldShowLoadingListNav(mobileCaps)).toBe(true);
+    expect(loadingListNavHref(mobileCaps)).toBe("/sales/loading-sheets");
+  });
+
+  it("hides field-sales loading sheets when distribution ops are enabled", () => {
+    const caps = {
+      ...mobileCaps,
+      modules: { ...mobileCaps.modules, distribution: true },
+      distribution_ops_enabled: true,
+    };
+    expect(shouldShowMobileLoadingSheets(caps)).toBe(false);
+    expect(shouldShowDistributionLoadingLists(caps)).toBe(true);
+    expect(loadingListNavHref(caps)).toBe("/fulfillment/loading-lists");
+  });
+
+  it("hides loading sheets when mobile module or orders are off", () => {
+    expect(
+      shouldShowMobileLoadingSheets({
+        ...mobileCaps,
+        modules: { "sales.mobile": false, distribution: false },
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowMobileLoadingSheets({
+        ...mobileCaps,
+        module_settings: { sales: { enable_mobile_orders: false } },
+      }),
+    ).toBe(false);
   });
 });

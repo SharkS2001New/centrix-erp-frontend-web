@@ -87,6 +87,12 @@ export function FulfillmentSchedulesScreen() {
   const [formError, setFormError] = useState(null);
 
   const loadRefs = useCallback(async () => {
+    if (!distributionEnabled) {
+      setRoutes([]);
+      setDrivers([]);
+      setVehicles([]);
+      return;
+    }
     try {
       const refs = await fetchFulfillmentRefsCached(user?.organization_id);
       setRoutes(refs.routes ?? []);
@@ -95,9 +101,17 @@ export function FulfillmentSchedulesScreen() {
     } catch {
       /* non-blocking for form selects */
     }
-  }, [user?.organization_id]);
+  }, [distributionEnabled, user?.organization_id]);
 
   const loadData = useCallback(async () => {
+    if (!distributionEnabled) {
+      setSchedules([]);
+      setTotal(0);
+      setTotalPages(1);
+      setLoading(false);
+      setListLoading(false);
+      return;
+    }
     setError(null);
     setListLoading(true);
     try {
@@ -117,7 +131,7 @@ export function FulfillmentSchedulesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch]);
+  }, [distributionEnabled, page, pageSize, debouncedSearch]);
 
   useTabAwareDataLoad(loadRefs);
   useTabAwareDataLoad(loadData);

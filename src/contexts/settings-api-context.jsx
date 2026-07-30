@@ -34,18 +34,16 @@ export function useSettingsApi() {
   return useContext(SettingsApiContext);
 }
 
-/** Prefer org reload on platform-managed settings; otherwise refresh tenant capabilities. */
+/** After settings save: refresh session capabilities so nav/features update without a browser reload. */
 export function useSettingsAfterSave(onAfterSave) {
-  const { isOrganizationScoped } = useSettingsApi();
   const { refreshCapabilities } = useAuth();
 
   return useCallback(async () => {
+    // Force-refresh so module_settings toggles apply instantly across the app.
+    const caps = await refreshCapabilities({ force: true });
     if (onAfterSave) {
       await onAfterSave();
-      return;
     }
-    if (!isOrganizationScoped) {
-      await refreshCapabilities({ force: true });
-    }
-  }, [isOrganizationScoped, onAfterSave, refreshCapabilities]);
+    return caps;
+  }, [onAfterSave, refreshCapabilities]);
 }

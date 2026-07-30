@@ -39,15 +39,6 @@ function row(label, value, { grand = false } = {}) {
   return `<tr class="${grand ? "amount-line-grand" : ""}"><td class="amount-label">${escapeHtml(label)}</td><td class="amount-value">${escapeHtml(value)}</td></tr>`;
 }
 
-function hintRow(text) {
-  if (!text) return "";
-  return `<tr class="hint-row"><td class="hint-text" colspan="2">${escapeHtml(text)}</td></tr>`;
-}
-
-function rowWithHint(label, value, hint, options = {}) {
-  return row(label, value, options) + hintRow(hint);
-}
-
 function sectionRow(title, { first = false } = {}) {
   return `<tr class="section-row${first ? " section-row-first" : ""}"><td class="section-label" colspan="2">${escapeHtml(title)}</td></tr>`;
 }
@@ -88,9 +79,9 @@ function paymentPrintRows(report) {
 }
 
 function salesSummaryPrintRows(report, session, showFloatBreakdown) {
-  return resolveTillSalesSummaryRows(report, session, { showFloatBreakdown }).flatMap((entry) => [
-    rowWithHint(entry.label, amt(entry.amount), entry.hint),
-  ]);
+  return resolveTillSalesSummaryRows(report, session, { showFloatBreakdown }).map((entry) =>
+    row(entry.label, amt(entry.amount), entry.label === "Expected Amount" ? { grand: true } : {}),
+  );
 }
 
 /**
@@ -166,11 +157,7 @@ export function buildPosTillReportHtml({
     : [
         sectionRow("Cash"),
         ...(showFloatBreakdown
-          ? [
-              row("Operating float", amt(till.opening_float ?? session?.working_amount)),
-              row("Cash collected", amt(till.cash_collected ?? sales.cash)),
-              row("Gross till total", amt(till.gross_total)),
-            ]
+          ? [row("Cash collected", amt(till.cash_collected ?? sales.cash))]
           : []),
         row("Expected Cash", amt(report?.expected_cash), { grand: true }),
       ];
@@ -222,7 +209,6 @@ export function buildPosTillReportHtml({
     .summary-table .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 0; padding-right: 0; }
     .summary-table tr.amount-line-grand td { font-size: ${px(10)}; font-weight: 700; }
     .summary-table tr.amount-line-grand .amount-value { font-weight: 700; }
-    .summary-table tr.hint-row td.hint-text { font-size: ${fpx(7)}; font-weight: 600; font-style: normal; color: #000; padding: 0 0 3px; line-height: 1.25; overflow-wrap: anywhere; word-break: break-word; }
     .footer { margin-top: 8px; text-align: center; font-size: ${fpx(8)}; font-weight: var(--print-w-footer, 700); letter-spacing: normal; line-height: 1.3; page-break-inside: avoid; break-inside: avoid; word-break: break-word; overflow-wrap: anywhere; }
     @media print {
       @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0 !important; }
@@ -235,7 +221,6 @@ export function buildPosTillReportHtml({
       .summary-table { font-size: ${px(8, true)}; }
       .summary-table tr.section-row td.section-label { font-size: ${px(8, true)}; }
       .summary-table tr.amount-line-grand td { font-size: ${px(10, true)}; }
-      .summary-table tr.hint-row td.hint-text { font-size: ${fpx(7, true)}; font-weight: 600; color: #000; }
       .footer { font-size: ${fpx(8, true)}; }
     }
   </style>

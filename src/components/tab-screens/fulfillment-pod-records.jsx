@@ -53,6 +53,14 @@ export function FulfillmentPodRecordsScreen() {
   const { pageSize, setPageSize } = useListPageSize(10);
 
   const loadData = useCallback(async () => {
+    if (!distributionEnabled) {
+      setRecords([]);
+      setTotal(0);
+      setTotalPages(1);
+      setLoading(false);
+      setListLoading(false);
+      return;
+    }
     setError(null);
     setListLoading(true);
     try {
@@ -77,7 +85,7 @@ export function FulfillmentPodRecordsScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, fromDate, toDate, statusFilter]);
+  }, [distributionEnabled, page, pageSize, debouncedSearch, fromDate, toDate, statusFilter]);
 
   useTabAwareDataLoad(loadData);
 

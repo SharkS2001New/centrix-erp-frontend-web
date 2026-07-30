@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
@@ -18,13 +17,11 @@ import {
   PencilIcon,
   SearchInput,
   StatCard,
-  TrashIcon,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { PosStatusBadge } from "@/components/pos/pos-shared";
-import { ZReportModal, HandoverSessionModal } from "@/components/pos/pos-session-modals";
+import { CloseSessionModal, ZReportModal, HandoverSessionModal } from "@/components/pos/pos-session-modals";
 import {
-  DeleteTillConfirmModal,
   EditSessionFloatDrawer,
   FloatBreakdownModal,
   FloatTotalLink,
@@ -42,8 +39,10 @@ import {
   tillStatusLabel,
   tillStatusTone,
 } from "@/lib/pos-till";
-import { isPosTillFloatRequired } from "@/lib/sales-settings";
+import { todayCalendarDate } from "@/lib/datetime";
+import { isBlindTillCloseEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 import { useConfirm } from "@/lib/use-confirm";
+import { resolveGeneralSettings } from "@/lib/format";
 
 const TABS = [
   { id: "tills", label: "Tills" },
@@ -83,25 +82,15 @@ function EyeIcon() {
   );
 }
 
-function OpenPosIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-    </svg>
-  );
+function sessionBusinessDate(session) {
+  const raw = session?.session_date ?? session?.opened_at;
+  if (!raw) return null;
+  return String(raw).slice(0, 10);
 }
 
-function IconLink({ href, label, children }) {
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      title={label}
-      className="inline-flex rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-    >
-      {children}
-    </Link>
-  );
+function isSessionForToday(session, timeZone) {
+  const date = sessionBusinessDate(session);
+  return date != null && date === todayCalendarDate(timeZone);
 }
 
 function MoreIcon() {
@@ -114,7 +103,7 @@ function MoreIcon() {
   );
 }
 
-function TillActionsMenu({ onEditTill, onCorrectFloat, onDelete, deleting }) {
+function TillActionsMenu({ onEditTill, onCorrectFloat }) {
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState({ top: 0, left: 0 });
   const triggerRef = useRef(null);
@@ -195,17 +184,6 @@ function TillActionsMenu({ onEditTill, onCorrectFloat, onDelete, deleting }) {
                   Edit cashier float
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="block w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
-                disabled={deleting}
-                onClick={() => {
-                  setOpen(false);
-                  onDelete();
-                }}
-              >
-                Delete till
-              </button>
             </div>
           </>,
           document.body,
@@ -234,6 +212,8 @@ export function TillManagementScreen() {
   const { activeSession, clearSession } = usePosSession();
 
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const general = resolveGeneralSettings(capabilities);
+  const orgTimeZone = general.timezone;
 
   const [tab, setTab] = useState(initialTab);
   const [pageError, setPageError] = useState(null);
@@ -262,9 +242,6 @@ export function TillManagementScreen() {
   const [tillPage, setTillPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTill, setEditingTill] = useState(null);
-  const [deletingTillId, setDeletingTillId] = useState(null);
-  const [deleteTillTarget, setDeleteTillTarget] = useState(null);
-  const [deleteTillError, setDeleteTillError] = useState(null);
 
   // History tab
   const [historyRows, setHistoryRows] = useState([]);
@@ -272,19 +249,25 @@ export function TillManagementScreen() {
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatus, setHistoryStatus] = useState("");
   const [historyPage, setHistoryPage] = useState(1);
-  const [deletingSessionId, setDeletingSessionId] = useState(null);
   const [zReportSessionId, setZReportSessionId] = useState(null);
   const [handoverTarget, setHandoverTarget] = useState(null);
   const [handoverBusy, setHandoverBusy] = useState(false);
   const [handoverError, setHandoverError] = useState(null);
+  const [closeTarget, setCloseTarget] = useState(null);
+  const [closeReport, setCloseReport] = useState(null);
+  const [closeBusy, setCloseBusy] = useState(false);
+  const [closeError, setCloseError] = useState(null);
+  const [reopeningSessionId, setReopeningSessionId] = useState(null);
 
   const showFloatBreakdown = isPosTillFloatRequired(capabilities?.module_settings);
+  const blindTillClose = isBlindTillCloseEnabled(capabilities?.module_settings);
   const organizationName = capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
-  const canHandoverSession = Boolean(
+  const canManageSessions = Boolean(
     user?.is_admin ||
-      capabilities?.permissions?.["sales.orders.approve"] ||
-      capabilities?.permissions?.["sales.manage"],
+      capabilities?.permissions?.["sales.manage"] ||
+      capabilities?.permissions?.["sales.orders.approve"],
   );
+  const canHandoverSession = canManageSessions;
 
   const loadMeta = useCallback(async () => {
     if (!organizationId) return;
@@ -452,51 +435,60 @@ export function TillManagementScreen() {
     historySafePage * HISTORY_PAGE_SIZE,
   );
 
-  function promptDeleteTill(till) {
-    setDeleteTillError(null);
-    setDeleteTillTarget(till);
+  function promptCloseSession(row, till, cashier) {
+    setCloseError(null);
+    setCloseReport(null);
+    setCloseTarget({ session: row, till, cashier });
+    void ensureSessionXReport(row.id).then((report) => setCloseReport(report));
   }
 
-  async function confirmDeleteTill() {
-    if (!deleteTillTarget) return;
-    setDeletingTillId(deleteTillTarget.id);
-    setDeleteTillError(null);
+  async function handleAdminCloseSession(payload) {
+    if (!closeTarget?.session?.id) return;
+    setCloseBusy(true);
+    setCloseError(null);
     try {
-      await apiRequest(`/tills/${deleteTillTarget.id}`, { method: "DELETE" });
-      if (activeSession?.till_id === deleteTillTarget.id) {
+      await apiRequest(`/pos/sessions/${closeTarget.session.id}/close`, {
+        method: "POST",
+        body: {
+          closing_amount: Number(payload.closing_amount),
+          expected_amount:
+            payload.expected_amount != null ? Number(payload.expected_amount) : undefined,
+          notes: payload.notes?.trim() || null,
+          closing_denominations: payload.closing_denominations ?? null,
+        },
+      });
+      if (activeSession?.id === closeTarget.session.id) {
         clearSession();
       }
-      setDeleteTillTarget(null);
+      setCloseTarget(null);
+      setCloseReport(null);
       await loadMeta();
       if (tab === "history") await loadHistory();
     } catch (e) {
-      setDeleteTillError(e instanceof ApiError ? e.message : "Could not delete till");
+      setCloseError(e instanceof ApiError ? e.message : "Could not close session");
+      throw e;
     } finally {
-      setDeletingTillId(null);
+      setCloseBusy(false);
     }
   }
 
-  async function deleteHistorySession(row) {
+  async function reopenHistorySession(row) {
     const ok = await confirm({
-      title: "Delete session",
-      message: `Delete session #${row.id}? Only allowed when the session has no linked sales.`,
-      confirmLabel: "Delete",
-      destructive: true,
+      title: "Reopen session",
+      message: `Reopen session #${row.id} for today so the cashier can continue selling?`,
+      confirmLabel: "Reopen",
     });
     if (!ok) return;
-    setDeletingSessionId(row.id);
+    setReopeningSessionId(row.id);
     setPageError(null);
     try {
-      await apiRequest(`/till-float-sessions/${row.id}`, { method: "DELETE" });
+      await apiRequest(`/pos/sessions/${row.id}/reopen`, { method: "POST" });
       await loadHistory();
       await loadMeta();
-      if (activeSession?.id === row.id) {
-        clearSession();
-      }
     } catch (e) {
-      setPageError(e instanceof ApiError ? e.message : "Could not delete session");
+      setPageError(e instanceof ApiError ? e.message : "Could not reopen session");
     } finally {
-      setDeletingSessionId(null);
+      setReopeningSessionId(null);
     }
   }
 
@@ -557,7 +549,7 @@ export function TillManagementScreen() {
     <>
       <CatalogPageShell
         title="Till Management"
-        subtitle="Monitor tills and cashier sessions. Cashiers declare float in POS; use Edit cashier float to fix mistakes."
+        subtitle="Monitor tills and cashier sessions. Managers can close an active session or reopen today's closed session if it was closed by mistake."
         banner={
           displayError ? (
             <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{displayError}</p>
@@ -662,14 +654,12 @@ export function TillManagementScreen() {
                                 <PencilIcon />
                               </IconButton>
                               <TillActionsMenu
-                                deleting={deletingTillId === till.id}
                                 onEditTill={() => { setEditingTill(till); setDrawerOpen(true); }}
                                 onCorrectFloat={
                                   openSessionRow && sessionHasFloat(openSessionRow)
                                     ? () => openFloatCorrection(openSessionRow, till, cashier)
                                     : undefined
                                 }
-                                onDelete={() => promptDeleteTill(till)}
                               />
                             </div>
                           </td>
@@ -757,9 +747,16 @@ export function TillManagementScreen() {
                             <div className="flex justify-end gap-1">
                               {isOpen ? (
                                 <>
-                                  <IconLink href="/sales/pos" label="Create order">
-                                    <OpenPosIcon />
-                                  </IconLink>
+                                  {canManageSessions ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => promptCloseSession(row, till, cashier)}
+                                      className="rounded-md px-1.5 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50"
+                                      title="Close session"
+                                    >
+                                      Close
+                                    </button>
+                                  ) : null}
                                   {canHandoverSession ? (
                                     <IconButton
                                       label="Hand over session"
@@ -773,14 +770,29 @@ export function TillManagementScreen() {
                                   ) : null}
                                 </>
                               ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setZReportSessionId(String(row.id))}
-                                  className="rounded-md px-1 text-xs font-medium text-[#185FA5] hover:bg-[#E6F1FB] hover:underline"
-                                  title="View Z report"
-                                >
-                                  Z
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setZReportSessionId(String(row.id))}
+                                    className="rounded-md px-1 text-xs font-medium text-[#185FA5] hover:bg-[#E6F1FB] hover:underline"
+                                    title="View Z report"
+                                  >
+                                    Z
+                                  </button>
+                                  {!isSuspended &&
+                                  isSessionForToday(row, orgTimeZone) &&
+                                  (canManageSessions || Number(row.cashier_id) === Number(user?.id)) ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void reopenHistorySession(row)}
+                                      disabled={reopeningSessionId === row.id}
+                                      className="rounded-md px-1.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                                      title="Reopen today's session"
+                                    >
+                                      {reopeningSessionId === row.id ? "…" : "Reopen"}
+                                    </button>
+                                  ) : null}
+                                </>
                               )}
                               {sessionHasFloat(row) ? (
                                 <IconButton
@@ -790,14 +802,6 @@ export function TillManagementScreen() {
                                   <PencilIcon />
                                 </IconButton>
                               ) : null}
-                              <IconButton
-                                label="Delete session"
-                                danger
-                                disabled={deletingSessionId === row.id}
-                                onClick={() => void deleteHistorySession(row)}
-                              >
-                                <TrashIcon />
-                              </IconButton>
                             </div>
                           </td>
                         </tr>
@@ -850,28 +854,21 @@ export function TillManagementScreen() {
         cashierName={editingFloatSession?.cashierName}
       />
 
-      <DeleteTillConfirmModal
-        open={Boolean(deleteTillTarget)}
+      <CloseSessionModal
+        open={Boolean(closeTarget)}
         onClose={() => {
-          if (deletingTillId) return;
-          setDeleteTillTarget(null);
-          setDeleteTillError(null);
+          if (closeBusy) return;
+          setCloseTarget(null);
+          setCloseReport(null);
+          setCloseError(null);
         }}
-        onConfirm={() => void confirmDeleteTill()}
-        till={deleteTillTarget}
-        openSession={deleteTillTarget ? openByTill.get(deleteTillTarget.id) : null}
-        cashierName={
-          deleteTillTarget
-            ? (() => {
-                const session = openByTill.get(deleteTillTarget.id);
-                const cashierId = session?.cashier_id ?? deleteTillTarget.cashier_id;
-                const cashier = cashierId ? userById.get(cashierId) : null;
-                return cashier?.full_name ?? cashier?.username ?? null;
-              })()
-            : null
-        }
-        deleting={Boolean(deleteTillTarget && deletingTillId === deleteTillTarget.id)}
-        error={deleteTillError}
+        session={closeTarget?.session}
+        sessionReport={closeReport}
+        closeSession={handleAdminCloseSession}
+        busy={closeBusy}
+        error={closeError}
+        requireTillFloat={showFloatBreakdown}
+        blindTillClose={blindTillClose}
       />
 
       <HandoverSessionModal

@@ -22,10 +22,12 @@ import {
   profilesForIndustry,
 } from "@/lib/erp-industries";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function ManageOrganizationPage() {
   const params = useParams();
   const orgId = params?.id;
+  const { refreshCapabilities, organization: sessionOrganization } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -201,7 +203,11 @@ export default function ManageOrganizationPage() {
       setOrgAddress(org?.org_address ?? orgAddress);
       setOrgPin(org?.org_pin ?? "");
       setVatRegno(org?.vat_regno ?? "");
-      notifySuccess("Organization configuration saved. Users may need to refresh or sign in again.");
+      notifySuccess("Organization configuration saved.");
+      // If this is the signed-in org, refresh session capabilities so nav updates immediately.
+      if (String(sessionOrganization?.id ?? "") === String(orgId)) {
+        await refreshCapabilities({ force: true });
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not save organization.");
     } finally {

@@ -6,15 +6,15 @@ import { createPortal } from "react-dom";
 import { useCanAccess } from "@/components/permission-gate";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
-import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+import { activeGeneralSettings } from "@/lib/general-settings";
 import { LIST_PAGE_SIZE_OPTIONS } from "@/lib/use-list-page-controls";
 
-export function formatShortDate(value, settings = GENERAL_DEFAULTS) {
+export function formatShortDate(value, settings = activeGeneralSettings()) {
   return formatOrgDate(value, settings);
 }
 
-export function formatKesMarkup(value, settings = GENERAL_DEFAULTS) {
-  const currency = settings?.currency ?? GENERAL_DEFAULTS.currency ?? "KES";
+export function formatKesMarkup(value, settings = activeGeneralSettings()) {
+  const currency = settings?.currency ?? "KES";
   return `+ ${currency} ${formatOrgNumber(value, settings)}`;
 }
 
@@ -29,7 +29,7 @@ export function parseDecimalInput(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function formatKesCompact(value, settings = GENERAL_DEFAULTS) {
+export function formatKesCompact(value, settings = activeGeneralSettings()) {
   return formatOrgCurrencyCompact(value, settings);
 }
 

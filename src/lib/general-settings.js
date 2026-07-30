@@ -64,6 +64,23 @@ export function mergeGeneralSettings(moduleSettings) {
   return { ...GENERAL_DEFAULTS, ...(moduleSettings?.general ?? {}) };
 }
 
+/** Latest org general settings from capabilities — used by formatters outside React. */
+let activeGeneralSettingsCache = null;
+
+export function setActiveGeneralSettings(general) {
+  activeGeneralSettingsCache = general ? mergeGeneralSettings({ general }) : null;
+}
+
+export function activeGeneralSettings() {
+  return activeGeneralSettingsCache ?? GENERAL_DEFAULTS;
+}
+
+function parseNumericFormValue(value, fallback) {
+  if (value === "" || value == null) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 import { printFontFormFromGeneral } from "@/lib/print-font-settings";
 
 export function generalFormFromApi(res) {
@@ -93,9 +110,9 @@ export function generalPayloadFromForm(form, { includePlatformFields = false } =
     timezone: form.timezone || "Africa/Nairobi",
     date_format: form.date_format || "DD/MM/YYYY",
     language: form.language || "en",
-    decimal_places: Number(form.decimal_places) || 2,
+    decimal_places: parseNumericFormValue(form.decimal_places, 2),
     number_thousands_separator: form.number_thousands_separator || "comma",
-    fiscal_year_start_month: Number(form.fiscal_year_start_month) || 1,
+    fiscal_year_start_month: parseNumericFormValue(form.fiscal_year_start_month, 1),
     week_starts_on: form.week_starts_on || "monday",
     phone_country_code: form.phone_country_code || "+254",
     default_country_code: form.default_country_code || "KE",

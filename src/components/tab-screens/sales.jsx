@@ -18,7 +18,7 @@ import {
 } from "@/components/dashboard/dashboard-shared";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
 import { HourlySalesChart } from "@/components/sales/sales-shared";
-import { OrderSummaryStats, summarizeOrders } from "@/components/sales/sales-orders-shared";
+import { OrderSummaryStats, normalizeOrdersListSummary, summarizeOrders } from "@/components/sales/sales-orders-shared";
 import { SaleCreatedByCell } from "@/components/sales/sales-orders-columns";
 import {
   buildHourlySalesChart,
@@ -39,6 +39,7 @@ const SALES_LINKS = [
 
 export function SalesScreen() {
   const [sales, setSales] = useState([]);
+  const [orderSummary, setOrderSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const loadData = useCallback(async ({ soft = false } = {}) => {
@@ -58,6 +59,7 @@ export function SalesScreen() {
         },
       });
       setSales(res.data ?? []);
+      setOrderSummary(normalizeOrdersListSummary(res?.summary));
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load sales");
     } finally {
@@ -68,7 +70,7 @@ export function SalesScreen() {
 
   useTabAwareDataLoad(loadData);
 
-  const orderSummary = useMemo(() => summarizeOrders(sales), [sales]);
+  const orderSummaryDisplay = orderSummary ?? summarizeOrders(sales);
   const hourly = useMemo(() => buildHourlySalesChart(sales), [sales]);
 
   const recentOrders = useMemo(
@@ -114,7 +116,7 @@ export function SalesScreen() {
       ) : (
         <div className="space-y-8">
           <DashboardSection title="Today's orders" subtitle="Excluding held orders">
-            <OrderSummaryStats summary={orderSummary} hint="Today" />
+            <OrderSummaryStats summary={orderSummaryDisplay} hint="Today" />
           </DashboardSection>
 
           <DashboardPanel title="Hourly sales" subtitle="Revenue by hour (today)">

@@ -25,6 +25,7 @@ import { printPickingList } from "@/components/fulfillment/picking-list-print";
 import { printTripChartList } from "@/components/fulfillment/trip-chart-list-print";
 import { LoadingListDocumentPreview } from "@/components/fulfillment/loading-list-document-preview";
 import { isDistributionOpsEnabled, isProductShelfLocationEnabled } from "@/lib/distribution-settings";
+import { fieldSalesLoadingSheetsHref, shouldShowMobileLoadingSheets } from "@/lib/sales-settings";
 import { formatSaleKes } from "@/lib/sales";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
@@ -297,7 +298,17 @@ export function DistributionLoadingListsScreen() {
         subtitle="Aggregated pick lists for dispatch trips"
       >
         <div className="theme-panel rounded-xl border p-6 text-sm">
-          <p>Enable distribution operations in Organization settings → Distribution to use loading lists.</p>
+          {shouldShowMobileLoadingSheets(capabilities) ? (
+            <p>
+              Loading lists for mobile route orders are under{" "}
+              <Link href={fieldSalesLoadingSheetsHref()} className="theme-link font-medium">
+                Field Sales → Loading list
+              </Link>
+              .
+            </p>
+          ) : (
+            <p>Enable distribution operations in Organization settings → Distribution to use loading lists.</p>
+          )}
         </div>
       </CatalogPageShell>
     );

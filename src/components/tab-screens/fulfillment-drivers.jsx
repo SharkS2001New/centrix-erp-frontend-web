@@ -12,6 +12,8 @@ import {
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import {
   CatalogPageShell,
@@ -57,7 +59,8 @@ export function FulfillmentDriversScreen() {
   const searchParams = useSearchParams();
   const handledParams = useRef("");
   const drawerOptionsLoadedRef = useRef(false);
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const distributionEnabled = isDistributionOpsEnabled(capabilities);
 
   const [drivers, setDrivers] = useState([]);
   const [total, setTotal] = useState(0);
@@ -92,6 +95,11 @@ export function FulfillmentDriversScreen() {
   } = usePageRowSelection();
 
   const loadReferenceData = useCallback(async () => {
+    if (!distributionEnabled) {
+      setRoutes([]);
+      setVehicles([]);
+      return;
+    }
     try {
       const orgId = user?.organization_id;
       const [routesData, vehiclesData] = await Promise.all([
@@ -103,9 +111,17 @@ export function FulfillmentDriversScreen() {
     } catch {
       /* non-blocking — filter/form selects degrade gracefully */
     }
-  }, [user?.organization_id]);
+  }, [distributionEnabled, user?.organization_id]);
 
   const loadDrivers = useCallback(async () => {
+    if (!distributionEnabled) {
+      setDrivers([]);
+      setTotal(0);
+      setTotalPages(1);
+      setLoading(false);
+      setListLoading(false);
+      return;
+    }
     setListLoading(true);
     try {
       const extra = {};
@@ -130,7 +146,7 @@ export function FulfillmentDriversScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter, routeFilter]);
+  }, [distributionEnabled, page, pageSize, debouncedSearch, statusFilter, routeFilter]);
 
   const loadDrawerOptions = useCallback(async () => {
     if (drawerOptionsLoadedRef.current) return;
@@ -312,6 +328,16 @@ export function FulfillmentDriversScreen() {
       extra,
     });
   }, [debouncedSearch, statusFilter, routeFilter]);
+
+  if (!distributionEnabled) {
+    return (
+      <CatalogPageShell title="Drivers" subtitle="Manage delivery drivers and assignments">
+        <p className="text-sm text-slate-500">
+          Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
+        </p>
+      </CatalogPageShell>
+    );
+  }
 
   return (
     <CatalogPageShell

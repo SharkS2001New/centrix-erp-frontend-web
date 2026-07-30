@@ -143,6 +143,20 @@ export function summarizeOrders(rows) {
   };
 }
 
+/** Normalize list summary from GET /sales (aggregate across all filtered rows). */
+export function normalizeOrdersListSummary(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  return {
+    total: Number(raw.total ?? 0),
+    revenue: Number(raw.revenue ?? 0),
+    unpaid: Number(raw.unpaid ?? 0),
+    partial: Number(raw.partial ?? 0),
+    paid: Number(raw.paid ?? 0),
+    cancelled: Number(raw.cancelled ?? 0),
+    expired: Number(raw.expired ?? 0),
+  };
+}
+
 export function saleDateKey(sale) {
   const d = getSaleTimestamp(sale);
   if (!d || Number.isNaN(d.getTime())) return "";
@@ -1248,7 +1262,7 @@ export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue, s
   );
 }
 
-export function OrderLineItemsTable({ items, uomById, legacyPrint = false, showDiscountColumn = true }) {
+export function OrderLineItemsTable({ items, uomById, legacyPrint = false, showDiscountColumn = false }) {
   const rows = items ?? [];
 
   return (

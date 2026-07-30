@@ -16,6 +16,7 @@ import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { printPickingList } from "@/components/fulfillment/picking-list-print";
 import { formatSaleKes } from "@/lib/sales";
 import { shouldShowMobilePickingLists } from "@/lib/sales-settings";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
@@ -160,7 +161,7 @@ export default function MobilePickingSheetsScreen() {
         subtitle="Product pick lists for mobile route orders"
       >
         <div className="theme-panel rounded-xl border p-6 text-sm">
-          {capabilities?.modules?.distribution ? (
+          {isDistributionOpsEnabled(capabilities) ? (
             <p>
               Picking lists are managed under{" "}
               <Link href="/fulfillment/picking" className="theme-link font-medium">

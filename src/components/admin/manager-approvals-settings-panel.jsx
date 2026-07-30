@@ -5,7 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { ApprovalAlertsFields } from "@/components/admin/approval-alerts-fields";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import {
   accountingManagerApprovalsPayload,
   hrManagerApprovalsPayload,
@@ -59,10 +59,10 @@ export function ManagerApprovalsSettingsPanel({
   onAfterSave,
   capabilities: capabilitiesProp,
 }) {
-  const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
+  const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath, organizationApiPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(managerApprovalsFormFromApiResponses({}));
   const [loading, setLoading] = useState(true);
 

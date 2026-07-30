@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { useAuth } from "@/contexts/auth-context";
 import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -30,9 +29,8 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 }
 
 export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
-  const { refreshCapabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(aiFormFromApi({}));
   const [loading, setLoading] = useState(true);
 

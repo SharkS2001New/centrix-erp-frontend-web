@@ -19,9 +19,9 @@ export default function PlatformOrganizationSettingsPage() {
   const [organization, setOrganization] = useState(null);
   const [orgPayload, setOrgPayload] = useState(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!orgId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await apiRequest(`/admin/organizations/${orgId}`);
@@ -30,7 +30,7 @@ export default function PlatformOrganizationSettingsPage() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load organization.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [orgId]);
 
@@ -44,6 +44,7 @@ export default function PlatformOrganizationSettingsPage() {
   );
 
   const apiPrefix = orgId ? `/admin/organizations/${orgId}/settings` : "/erp/settings";
+  const handleAfterSave = useCallback(() => load({ silent: true }), [load]);
 
   return (
     <CatalogPageShell
@@ -83,7 +84,7 @@ export default function PlatformOrganizationSettingsPage() {
             <OrganizationSettingsContent
               capabilities={capabilities}
               platformManaged
-              onAfterSave={load}
+              onAfterSave={handleAfterSave}
               breadcrumbItems={null}
               showShell={false}
             />

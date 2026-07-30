@@ -33,6 +33,7 @@ import {
 import { clearStoredActiveSession } from "@/lib/pos-till";
 import { setStoredCompanyCode } from "@/lib/tenant-config";
 import { resolveGeneralSettings } from "@/lib/format";
+import { setActiveGeneralSettings } from "@/lib/general-settings";
 import { buildAccessContext, resolveHasPermission, resolveHasNavPermission, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { resolvePostLoginPath, workspaceLoginChannel, workspacesFromCapabilities } from "@/lib/workspaces";
 import { applyWorkspaceSession } from "@/lib/workspace-session";
@@ -201,6 +202,10 @@ export function AuthProvider({ children }) {
     () => licenseFromAuthState({ capabilities, organization }),
     [capabilities, organization],
   );
+
+  useEffect(() => {
+    setActiveGeneralSettings(capabilities ? resolveGeneralSettings(capabilities) : null);
+  }, [capabilities]);
 
   const applyAuthPayload = useCallback(async (res, channel = WEB_LOGIN_CHANNEL) => {
     setSession(res.token, res.user, res.organization, res.memberships ?? [], channel);

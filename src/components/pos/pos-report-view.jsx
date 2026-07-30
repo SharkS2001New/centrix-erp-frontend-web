@@ -159,23 +159,11 @@ export function PosReportView({
   }).map((row) => ({
     label: row.label,
     value: formatTillKes(row.amount),
-    hint: row.hint,
   }));
 
   const cashItems = [
     ...(showFloatBreakdown
-      ? [
-          { label: "Operating float", value: formatTillKes(tillReport.opening_float ?? session?.working_amount) },
-          { label: "Cash collected", value: formatTillKes(tillReport.cash_collected ?? sales.cash) },
-          {
-            label: "Gross till total",
-            value: formatTillKes(
-              tillReport.gross_total ??
-                Number(tillReport.opening_float ?? session?.working_amount ?? 0)
-                + Number(tillReport.cash_collected ?? sales.cash ?? 0),
-            ),
-          },
-        ]
+      ? [{ label: "Cash collected", value: formatTillKes(tillReport.cash_collected ?? sales.cash) }]
       : []),
     { label: "Expected cash", value: formatTillKesExact(report?.expected_cash) },
     ...(showCashReconciliation

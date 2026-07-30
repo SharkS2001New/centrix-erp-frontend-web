@@ -34,11 +34,18 @@ export function PodRecordSummary({ saleId, compact = false }) {
       const res = await apiRequest("/pod-records", {
         searchParams: { per_page: 5, "filter[sale_id]": saleId },
         loading: false,
+        reportIssues: false,
       });
       setRecords(res.data ?? []);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load proof of delivery.");
-      setRecords([]);
+      // Distribution-only API — ignore when module is off or no POD exists.
+      if (e instanceof ApiError && e.status === 403) {
+        setRecords([]);
+        setError(null);
+      } else {
+        setError(e instanceof ApiError ? e.message : "Could not load proof of delivery.");
+        setRecords([]);
+      }
     } finally {
       setLoading(false);
     }

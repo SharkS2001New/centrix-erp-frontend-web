@@ -17,6 +17,7 @@ import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { LoadingListDocumentPreview } from "@/components/fulfillment/loading-list-document-preview";
 import { formatSaleKes } from "@/lib/sales";
 import { shouldShowMobileLoadingSheets } from "@/lib/sales-settings";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
@@ -144,7 +145,7 @@ export default function MobileLoadingSheetsScreen() {
         subtitle="Aggregated pick lists for mobile route orders"
       >
         <div className="theme-panel rounded-xl border p-6 text-sm">
-          {capabilities?.modules?.distribution ? (
+          {isDistributionOpsEnabled(capabilities) ? (
             <p>
               Loading lists are managed under{" "}
               <Link href="/fulfillment/loading-lists" className="theme-link font-medium">
@@ -153,7 +154,7 @@ export default function MobileLoadingSheetsScreen() {
               when Distribution is enabled.
             </p>
           ) : (
-            <p>Enable the mobile application for this organization to use the loading list.</p>
+            <p>Enable mobile field sales for this organization to use the loading list.</p>
           )}
         </div>
       </CatalogPageShell>

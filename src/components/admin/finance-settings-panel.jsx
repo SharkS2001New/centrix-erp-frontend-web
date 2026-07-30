@@ -11,7 +11,7 @@ import {
   financeDebtorAlertPayloadFromForm,
   notificationsFormFromApi,
 } from "@/lib/notifications-settings";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -42,10 +42,10 @@ function UrlField({ label, value, onChange, placeholder }) {
 
 export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, capabilities: capabilitiesProp, onAfterSave }) {
   const confirm = useConfirm();
-  const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
+  const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(financeFormFromApi({}));
   const [alertForm, setAlertForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);

@@ -62,6 +62,7 @@ function ReportModalFooter({
   onClose,
   onPrint,
   printLabel = "Print report",
+  closeLabel = "Close",
   printing = false,
 }) {
   return (
@@ -76,7 +77,7 @@ function ReportModalFooter({
         }}
         className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
       >
-        Close
+        {closeLabel}
       </button>
       <PrimaryButton
         type="button"
@@ -389,6 +390,7 @@ export function CloseSessionModal({
 export function ZReportModal({
   open,
   onClose,
+  onPrinted = null,
   payload = null,
   sessionId = null,
   organizationName = DEFAULT_PRINT_ORG_NAME,
@@ -397,6 +399,8 @@ export function ZReportModal({
   fallbackTillName = null,
   moduleSettings = null,
   embedded = false,
+  closeLabel = "Close",
+  signOutAfterFinish = false,
 }) {
   const [loaded, setLoaded] = useState(null);
   const [till, setTill] = useState(null);
@@ -486,6 +490,7 @@ export function ZReportModal({
         showFloatBreakdown,
         moduleSettings,
       });
+      onPrinted?.();
     } finally {
       setPrinting(false);
     }
@@ -499,13 +504,18 @@ export function ZReportModal({
       layerClassName="z-[100]"
       embedded={embedded}
       title="Z report"
-      subtitle="End-of-day report for the closed session — print before closing"
+      subtitle={
+        signOutAfterFinish
+          ? "End-of-day report for the closed session — print to finish and sign out"
+          : "End-of-day report for the closed session"
+      }
       footer={
         report?.sales || report?.expected_cash != null ? (
           <ReportModalFooter
             onClose={onClose}
             onPrint={() => void handlePrint()}
             printLabel="Print Z report"
+            closeLabel={closeLabel}
             printing={printing}
           />
         ) : (
@@ -515,7 +525,7 @@ export function ZReportModal({
               onClick={onClose}
               className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
             >
-              Close
+              {closeLabel}
             </button>
           </div>
         )

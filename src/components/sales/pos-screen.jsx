@@ -450,7 +450,7 @@ function withPosCheckoutTimeout(promise, message) {
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities, organization, hasPermission } = useAuth();
+  const { user, capabilities, organization, hasPermission, logout } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
   const {
     offlineMode,
@@ -782,14 +782,14 @@ export function PosScreen({ standalone = false }) {
     setZReportOpen(true);
   }
 
-  function handleZReportClose() {
+  function handleZReportFinished() {
+    // End-of-day: leave POS after Z — do not prompt for a new float immediately.
+    floatModalDismissedRef.current = true;
+    setFloatModalOpen(false);
     setZReportPayload(null);
     setZReportOpen(false);
     setZReportTillName(null);
-    if (requireTillFloat && !suspendedSession) {
-      setFloatModalOpen(true);
-      loadPosTillMeta();
-    }
+    void logout();
   }
 
   async function handleSuspendSession() {
@@ -6357,7 +6357,8 @@ export function PosScreen({ standalone = false }) {
 
       <ZReportModal
         open={zReportOpen}
-        onClose={handleZReportClose}
+        onClose={handleZReportFinished}
+        onPrinted={handleZReportFinished}
         payload={zReportPayload}
         organizationName={organizationName}
         showFloatBreakdown={requireTillFloat}
@@ -6365,6 +6366,8 @@ export function PosScreen({ standalone = false }) {
         fallbackTillName={zReportTillName}
         moduleSettings={capabilities?.module_settings}
         embedded={!standalone}
+        closeLabel="Sign out"
+        signOutAfterFinish
       />
 
       <div

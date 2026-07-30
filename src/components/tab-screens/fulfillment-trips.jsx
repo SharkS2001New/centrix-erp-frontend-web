@@ -106,15 +106,27 @@ export function FulfillmentTripsScreen() {
   } = usePageRowSelection();
 
   const loadRoutes = useCallback(async () => {
+    if (!distributionEnabled) {
+      setRoutes([]);
+      return;
+    }
     try {
       const routesData = await fetchRoutesCached(user?.organization_id);
       setRoutes(routesData ?? []);
     } catch {
       /* non-blocking */
     }
-  }, [user?.organization_id]);
+  }, [distributionEnabled, user?.organization_id]);
 
   const loadData = useCallback(async () => {
+    if (!distributionEnabled) {
+      setTrips([]);
+      setTotal(0);
+      setTotalPages(1);
+      setLoading(false);
+      setListLoading(false);
+      return;
+    }
     setError(null);
     setListLoading(true);
     try {
@@ -139,7 +151,7 @@ export function FulfillmentTripsScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, fromDate, toDate, statusFilter]);
+  }, [distributionEnabled, page, pageSize, debouncedSearch, fromDate, toDate, statusFilter]);
 
   useTabAwareDataLoad(loadRoutes);
   useTabAwareDataLoad(loadData);

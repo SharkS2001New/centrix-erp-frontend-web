@@ -9,7 +9,7 @@ import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-
 import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -33,8 +33,9 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 
-export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(hrPayrollFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("leave");
@@ -70,6 +71,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
         body: hrPayrollPayloadFromForm(form),
       });
       setForm(hrPayrollFormFromApi(res));
+      await afterSave();
       setMessage("HR & payroll settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save HR settings");

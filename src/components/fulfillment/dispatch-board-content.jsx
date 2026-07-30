@@ -59,6 +59,12 @@ export function DispatchBoardContent() {
   });
 
   useEffect(() => {
+    if (!distributionEnabled) {
+      setRoutes([]);
+      setDrivers([]);
+      setVehicles([]);
+      return;
+    }
     let cancelled = false;
     fetchFulfillmentRefsCached(user?.organization_id)
       .then(({ routes: nextRoutes, drivers: nextDrivers, vehicles: nextVehicles }) => {
@@ -73,7 +79,7 @@ export function DispatchBoardContent() {
     return () => {
       cancelled = true;
     };
-  }, [user?.organization_id]);
+  }, [distributionEnabled, user?.organization_id]);
 
   const loadData = useCallback(async () => {
     setLoading(true);

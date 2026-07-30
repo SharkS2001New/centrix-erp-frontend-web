@@ -12,7 +12,7 @@ import {
   mobileApplicationPayloadFromForm,
 } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -79,10 +79,10 @@ export function MobileApplicationSettingsPanel({
   capabilities: capabilitiesProp,
   onAfterSave,
 }) {
-  const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
+  const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(EMPTY_MOBILE_APPLICATION_FORM);
   const [loading, setLoading] = useState(true);
 

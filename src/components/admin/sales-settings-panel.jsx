@@ -619,7 +619,9 @@ export function SalesSettingsPanel({
     } finally {
       setLoading(false);
     }
-  }, [capabilities, setError, settingsPath]);
+    // capabilities used only for sanitize — do not re-fetch when caps refresh after save
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: mount / path only
+  }, [setError, settingsPath]);
 
   useEffect(() => {
     load();
@@ -639,15 +641,15 @@ export function SalesSettingsPanel({
           body: salesOrderAlertPayloadFromForm(alertForm),
         }),
       ]);
+      const caps = (await afterSave?.()) ?? capabilities;
       const [salesRes, notificationsRes] = await Promise.all([
         apiRequest(settingsPath("sales")),
         apiRequest(settingsPath("notifications")),
       ]);
       setSalesForm(
-        sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(salesRes), capabilities),
+        sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(salesRes), caps),
       );
       setAlertForm(notificationsFormFromApi(notificationsRes));
-      if (afterSave) await afterSave();
       setMessage("Sales settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save settings");

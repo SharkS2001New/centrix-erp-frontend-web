@@ -8,14 +8,13 @@ import { useAuth } from "@/contexts/auth-context";
 import { TENANT_ORG_SETTINGS_SUBTITLE } from "@/lib/org-settings-access";
 
 export function AdminSettingsScreen() {
-  const { capabilities, refreshCapabilities } = useAuth();
+  const { capabilities } = useAuth();
 
   return (
     <AdminGuard settingsOnly>
       <SettingsApiProvider apiPrefix="/erp/settings">
         <OrganizationSettingsContent
           capabilities={capabilities}
-          onAfterSave={() => refreshCapabilities({ force: true })}
           tenantSelfService
           breadcrumbItems={[
             { label: "Administration", href: "/admin" },

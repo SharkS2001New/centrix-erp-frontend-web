@@ -7,7 +7,7 @@ import {
   procurementPayloadFromForm,
 } from "@/lib/procurement-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -21,8 +21,9 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
-export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(procurementFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
@@ -45,6 +46,7 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
         body: procurementPayloadFromForm(form),
       });
       setForm(procurementFormFromApi(res));
+      await afterSave();
       setMessage("Procurement settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save procurement settings");

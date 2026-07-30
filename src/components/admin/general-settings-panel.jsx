@@ -16,9 +16,9 @@ import {
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
-export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
-  const afterSave = useSettingsAfterSave();
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(generalFormFromApi({}));
   const [loading, setLoading] = useState(true);
 

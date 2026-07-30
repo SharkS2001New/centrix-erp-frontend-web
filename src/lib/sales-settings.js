@@ -9,6 +9,7 @@ import {
   receiptPaymentDetailsFromApi,
 } from "@/lib/receipt-payment-details";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { defaultCancelOrderStatusesFromWorkflow } from "@/lib/order-action-stages-defaults";
 import { P } from "@/lib/permission-codes";
 
 const SALES_DEFAULTS = {
@@ -101,7 +102,7 @@ const SALES_DEFAULTS = {
   edit_order_statuses: ["booked", "pending", "editable"],
   print_invoice_statuses: null,
   collect_payment_statuses: ["unpaid", "pending_payment"],
-  cancel_order_statuses: ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"],
+  cancel_order_statuses: defaultCancelOrderStatusesFromWorkflow(),
   customer_return_statuses: ["paid", "processed", "delivered", "completed"],
 };
 
@@ -600,13 +601,13 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
 }
 
 /**
- * Backoffice loading list for mobile route orders when Distribution is not enabled.
- * When Distribution is on, loading lists live under Distribution → Loading list.
+ * Backoffice loading lists for mobile route orders when Distribution ops are off.
+ * When Distribution ops are on, loading lists live under Distribution → Loading list.
  */
 export function shouldShowMobileLoadingSheets(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;
   if (!isOrgMobileSalesEnabled(capabilities)) return false;
-  if (capabilities?.modules?.distribution) return false;
+  if (isDistributionOpsEnabled(capabilities)) return false;
   return true;
 }
 
@@ -623,9 +624,16 @@ export function shouldShowLoadingListNav(capabilities) {
   return shouldShowMobileLoadingSheets(capabilities);
 }
 
+/** When Distribution ops are off, field-sales loading lists use the mobile route API. */
+export function fieldSalesLoadingSheetsHref() {
+  return "/sales/loading-sheets";
+}
+
 /** Preferred route for the Field Sales loading list nav item. */
 export function loadingListNavHref(capabilities) {
-  return "/sales/loading-sheets";
+  return isDistributionOpsEnabled(capabilities)
+    ? "/fulfillment/loading-lists"
+    : fieldSalesLoadingSheetsHref();
 }
 
 /** Backoffice picking list for mobile route orders when Distribution is not enabled. */
@@ -734,9 +742,18 @@ export function canApproveDiscountRequests({ hasPermission = () => false, capabi
   );
 }
 
-/** List/detail/print tables show a discount column when any discount feature is on. */
+/** List/detail line tables show Discount only when discounts can actually be applied. */
 export function shouldShowSalesDiscountColumn(moduleSettings) {
-  return areSalesDiscountFeaturesEnabled(moduleSettings);
+  const sales = mergeSalesSettings(moduleSettings);
+  // Do not treat allow_edit_line_discount defaults as "on" when product discounts are off —
+  // otherwise View orders → load items keeps a useless Discount column of "—".
+  return Boolean(
+    sales.allow_discounts ||
+      sales.discount_approval_enabled ||
+      sales.discount_approval_enabled_mobile ||
+      sales.discount_approval_enabled_backoffice ||
+      sales.enable_order_discount,
+  );
 }
 
 /** POS / create-order line discount field — only when discounts are allowed. */
@@ -1070,7 +1087,9 @@ export function mergeSalesSettings(moduleSettings) {
 
   const cancelStatuses = normalizeOrderActionStatuses(sales.cancel_order_statuses);
   sales.cancel_order_statuses =
-    cancelStatuses.length > 0 ? cancelStatuses : [...SALES_DEFAULTS.cancel_order_statuses];
+    cancelStatuses.length > 0
+      ? cancelStatuses
+      : defaultCancelOrderStatusesFromWorkflow(sales.order_workflow);
 
   const returnStatuses = normalizeOrderActionStatuses(sales.customer_return_statuses);
   sales.customer_return_statuses =
@@ -1142,7 +1161,9 @@ export function resolveCollectPaymentStatuses(salesSettings = null) {
 /** @returns {string[]} */
 export function resolveCancelOrderStatuses(salesSettings = null) {
   const list = normalizeOrderActionStatuses(salesSettings?.cancel_order_statuses);
-  return list.length > 0 ? list : [...SALES_DEFAULTS.cancel_order_statuses];
+  return list.length > 0
+    ? list
+    : defaultCancelOrderStatusesFromWorkflow(salesSettings?.order_workflow);
 }
 
 /** @returns {string[]} */

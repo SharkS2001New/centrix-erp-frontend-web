@@ -11,7 +11,7 @@ import {
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -35,8 +35,9 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 
-export function NotificationsSettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function NotificationsSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("sms");
@@ -74,6 +75,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
         },
       });
       setForm(notificationsFormFromApi(res));
+      await afterSave();
       setMessage("Notification settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save notification settings");

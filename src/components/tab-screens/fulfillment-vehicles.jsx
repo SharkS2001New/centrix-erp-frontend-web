@@ -6,6 +6,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import {
   CatalogPageShell,
   Field,
@@ -45,7 +47,8 @@ import {
 
 export function FulfillmentVehiclesScreen() {
   const confirm = useConfirm();
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const distributionEnabled = isDistributionOpsEnabled(capabilities);
 
   const [vehicles, setVehicles] = useState([]);
   const [total, setTotal] = useState(0);
@@ -75,6 +78,14 @@ export function FulfillmentVehiclesScreen() {
   } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
+    if (!distributionEnabled) {
+      setVehicles([]);
+      setTotal(0);
+      setTotalPages(1);
+      setLoading(false);
+      setListLoading(false);
+      return;
+    }
     setListLoading(true);
     try {
       const filters = {};
@@ -98,7 +109,7 @@ export function FulfillmentVehiclesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter]);
+  }, [distributionEnabled, page, pageSize, debouncedSearch, statusFilter]);
 
   useTabAwareDataLoad(loadData);
 
@@ -238,6 +249,16 @@ export function FulfillmentVehiclesScreen() {
       filters,
     });
   }, [debouncedSearch, statusFilter]);
+
+  if (!distributionEnabled) {
+    return (
+      <CatalogPageShell title="Vehicles" subtitle="Fleet registration and vehicle status">
+        <p className="text-sm text-slate-500">
+          Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
+        </p>
+      </CatalogPageShell>
+    );
+  }
 
   return (
     <CatalogPageShell

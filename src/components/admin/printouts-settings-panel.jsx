@@ -26,8 +26,7 @@ import { MultilinePrintNotesField } from "@/components/admin/multiline-print-not
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
 import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview";
 import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
-import { useAuth } from "@/contexts/auth-context";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
 const PRINTOUT_TAB_BTN =
@@ -621,10 +620,9 @@ export function PrintoutsSettingsPanel({
   onAfterSave,
   capabilities,
 }) {
-  const { refreshCapabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
   const previewContext = useDocumentPrintPreviewContext();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("general");

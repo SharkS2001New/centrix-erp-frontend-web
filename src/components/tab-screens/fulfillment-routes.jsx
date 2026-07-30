@@ -51,6 +51,8 @@ import {
 } from "@/components/catalog/table-row-selection";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
 import { InlineActionError } from "@/components/shared/inline-action-error";
+import { useAuth } from "@/contexts/auth-context";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 
 
 export function FulfillmentRoutesScreen() {
@@ -58,6 +60,8 @@ export function FulfillmentRoutesScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const handledParams = useRef("");
+  const { capabilities } = useAuth();
+  const distributionEnabled = isDistributionOpsEnabled(capabilities);
   const { branches, showBranchSelect, defaultBranch, loading: branchesLoading, loadError: branchesLoadError, user } =
     useRouteFormResources();
 
@@ -333,7 +337,7 @@ export function FulfillmentRoutesScreen() {
               ["Industrial Area", "", "0", "true"],
             ]}
             apiPath="/routes/import-batch"
-            permission="fulfillment.manage"
+            permission="fulfillment.routes.create"
             normalizeRows={(rows) =>
               filterNonEmptyImportRows(mapImportHeaders(rows, ROUTE_EXPORT_COLUMNS), ["route_name"])
             }
@@ -564,33 +568,37 @@ export function FulfillmentRoutesScreen() {
         </>
       )}
 
-      <CreateDispatchTripDialog
-        open={createTripOpen}
-        onClose={() => {
-          setCreateTripOpen(false);
-          setCreateTripRouteIds([]);
-          clearSelection();
-        }}
-        routes={routes}
-        defaultRouteIds={createTripRouteIds}
-        description={
-          createTripRouteIds.length
-            ? "Routes from your selection are already included. Select more routes if needed, then assign the driver and vehicle."
-            : "Select routes going the same direction, then assign the driver and vehicle for this trip chart."
-        }
-      />
+      {distributionEnabled ? (
+        <CreateDispatchTripDialog
+          open={createTripOpen}
+          onClose={() => {
+            setCreateTripOpen(false);
+            setCreateTripRouteIds([]);
+            clearSelection();
+          }}
+          routes={routes}
+          defaultRouteIds={createTripRouteIds}
+          description={
+            createTripRouteIds.length
+              ? "Routes from your selection are already included. Select more routes if needed, then assign the driver and vehicle."
+              : "Select routes going the same direction, then assign the driver and vehicle for this trip chart."
+          }
+        />
+      ) : null}
 
       <BatchActionBar count={selectedCount} onClear={clearSelection}>
-        <button
-          type="button"
-          className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--theme-primary-hover)]"
-          onClick={() => {
-            setCreateTripRouteIds([...selectedIds].map((id) => Number(id)).filter((id) => id > 0));
-            setCreateTripOpen(true);
-          }}
-        >
-          Create trip chart
-        </button>
+        {distributionEnabled ? (
+          <button
+            type="button"
+            className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--theme-primary-hover)]"
+            onClick={() => {
+              setCreateTripRouteIds([...selectedIds].map((id) => Number(id)).filter((id) => id > 0));
+              setCreateTripOpen(true);
+            }}
+          >
+            Create trip chart
+          </button>
+        ) : null}
         <BatchDeleteButton
           count={selectedCount}
           busy={batchDeleting}

@@ -10,6 +10,10 @@ import {
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
 import {
+  defaultCancelOrderStatusesFromWorkflow,
+  syncCancelOrderStatusesForWorkflowChange,
+} from "@/lib/order-action-stages-defaults";
+import {
   DEFAULT_ORDER_WORKFLOW,
   orderActionStageOptionsFromWorkflow,
   workflowPipelineSteps,
@@ -333,7 +337,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     edit_order_statuses: ["booked", "pending", "editable"],
     print_invoice_statuses: [],
     collect_payment_statuses: ["unpaid", "pending_payment"],
-    cancel_order_statuses: ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"],
+    cancel_order_statuses: defaultCancelOrderStatusesFromWorkflow(DEFAULT_ORDER_WORKFLOW),
     customer_return_statuses: ["paid", "processed", "delivered", "completed"],
   };
 }
@@ -406,10 +410,9 @@ export function salesPlatformFromApi(apiPayload) {
       return list.length > 0 ? list : ["unpaid", "pending_payment"];
     })(),
     cancel_order_statuses: (() => {
+      const workflow = orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow });
       const list = normalizeOrderActionStatuses(apiPayload.cancel_order_statuses);
-      return list.length > 0
-        ? list
-        : ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"];
+      return list.length > 0 ? list : defaultCancelOrderStatusesFromWorkflow(workflow);
     })(),
     customer_return_statuses: (() => {
       const list = normalizeOrderActionStatuses(apiPayload.customer_return_statuses);
@@ -770,7 +773,16 @@ export function OrganizationOrderWorkflowSettings({
           <OrderWorkflowSettingsEditor
             embedded
             workflow={wf}
-            onChange={(next) => patch({ order_workflow: next })}
+            onChange={(next) =>
+              patch({
+                order_workflow: next,
+                cancel_order_statuses: syncCancelOrderStatusesForWorkflowChange(
+                  salesPlatform?.cancel_order_statuses,
+                  wf,
+                  next,
+                ),
+              })
+            }
             showCheckoutOnCreate={showBackofficeCheckout}
             showPosCheckoutOnCreate={showPosCheckout}
             stockDeductOn={stockDeductOn}
@@ -814,7 +826,7 @@ function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled =
     : ["unpaid", "pending_payment"];
   const cancelStatuses = Array.isArray(salesPlatform?.cancel_order_statuses)
     ? salesPlatform.cancel_order_statuses
-    : ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"];
+    : defaultCancelOrderStatusesFromWorkflow(salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW);
   const returnStatuses = Array.isArray(salesPlatform?.customer_return_statuses)
     ? salesPlatform.customer_return_statuses
     : ["paid", "processed", "delivered", "completed"];

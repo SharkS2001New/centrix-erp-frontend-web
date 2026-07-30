@@ -17,7 +17,7 @@ import {
   distributionDeliveryAlertPayloadFromForm,
   notificationsFormFromApi,
 } from "@/lib/notifications-settings";
-import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -42,9 +42,9 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 }
 
 export function DistributionSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave, platformManaged = false }) {
-  const { refreshCapabilities, isSuperAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(distributionFormFromApi({}));
   const [alertForm, setAlertForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
