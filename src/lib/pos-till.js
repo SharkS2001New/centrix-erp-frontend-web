@@ -179,7 +179,7 @@ export function findAssignedTillForCashier(tills, userId, branchId = null) {
   return (tills ?? []).find((till) => {
     if (Number(till.cashier_id) !== Number(userId)) return false;
     if (branchId != null && Number(till.branch_id) !== Number(branchId)) return false;
-    return till.is_active !== false;
+    return true;
   }) ?? null;
 }
 
@@ -200,12 +200,13 @@ export function pickBranchTillForCashier({ branchId, tills = [], openSessions = 
   }
 
   const openByTill = indexOpenSessionsByTill(openSessions);
-  const branchTills = tills
-    .filter((t) => Number(t.branch_id) === Number(branchId) && t.is_active !== false)
+  const branchAllTills = tills
+    .filter((t) => Number(t.branch_id) === Number(branchId))
     .slice()
     .sort((a, b) => tillSortKey(a) - tillSortKey(b));
+  const branchTills = branchAllTills.filter((t) => t.is_active !== false);
 
-  const assignedTill = findAssignedTillForCashier(branchTills, userId, branchId);
+  const assignedTill = findAssignedTillForCashier(branchAllTills, userId, branchId);
   if (assignedTill) {
     const open = openByTill.get(assignedTill.id);
     if (!open || Number(open.cashier_id) === Number(userId)) {
