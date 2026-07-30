@@ -1,5 +1,61 @@
 import { parseDecimalInput } from "@/components/catalog/catalog-shared";
 
+function roundMoney(value) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
+/** Ensure split lines sum to the checkout target (pay_now + cart M-Pesa when applicable). */
+export function alignPaymentSplitsToPayNow(splits, targetTotal) {
+  const target = roundMoney(targetTotal);
+  if (!Array.isArray(splits) || splits.length === 0 || target <= 0) {
+    return splits ?? [];
+  }
+
+  const normalized = splits
+    .filter((part) => part && Number(part.amount) > 0)
+    .map((part) => ({
+      ...part,
+      amount: roundMoney(part.amount),
+    }));
+
+  if (normalized.length === 0) {
+    return normalized;
+  }
+
+  const currentTotal = roundMoney(
+    normalized.reduce((sum, part) => sum + Number(part.amount ?? 0), 0),
+  );
+
+  if (Math.abs(currentTotal - target) <= 0.02) {
+    if (Math.abs(currentTotal - target) < 0.001) {
+      return normalized;
+    }
+    const adjusted = normalized.map((part) => ({ ...part }));
+    const last = adjusted[adjusted.length - 1];
+    last.amount = roundMoney(last.amount + (target - currentTotal));
+    return adjusted.filter((part) => part.amount > 0);
+  }
+
+  if (currentTotal <= 0) {
+    return normalized;
+  }
+
+  let allocated = 0;
+  const scaled = normalized.map((part, index) => {
+    if (index === normalized.length - 1) {
+      return {
+        ...part,
+        amount: roundMoney(Math.max(0, target - allocated)),
+      };
+    }
+    const share = roundMoney((part.amount / currentTotal) * target);
+    allocated += share;
+    return { ...part, amount: share };
+  });
+
+  return scaled.filter((part) => part.amount > 0);
+}
+
 /** Build per-method tender lines for checkout / sale payment APIs. */
 export function buildCheckoutPaymentSplits(cfg, amounts) {
   const parts = [

@@ -6,7 +6,7 @@ import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
-import { buildCheckoutPaymentSplits } from "@/lib/checkout-payment-splits";
+import { buildCheckoutPaymentSplits, alignPaymentSplitsToPayNow } from "@/lib/checkout-payment-splits";
 import {
   customerCreditSummary,
   validateCustomerCreditSale,
@@ -399,19 +399,25 @@ export function PosPaymentPanel({
       allowPartialPayment: cfg.allowPartialPayment,
     });
 
-    const paymentSplits = buildCheckoutPaymentSplits(cfg, {
-      cashAmount,
-      mpesaAmount,
-      chequeAmount,
-      equityAmount,
-      kcbAmount,
-      otherBankAmount,
-      bankAmount,
-      bankType,
-      mpesaCode,
-      chequeNo,
-      bankRef,
-    });
+    const cartMpesa = lockMpesaFields
+      ? Math.max(0, Number(prefillMpesaAmount) || 0)
+      : 0;
+    const paymentSplits = alignPaymentSplitsToPayNow(
+      buildCheckoutPaymentSplits(cfg, {
+        cashAmount,
+        mpesaAmount,
+        chequeAmount,
+        equityAmount,
+        kcbAmount,
+        otherBankAmount,
+        bankAmount,
+        bankType,
+        mpesaCode,
+        chequeNo,
+        bankRef,
+      }),
+      payNow + cartMpesa,
+    );
 
     const body = {
       pay_now: payNow,
