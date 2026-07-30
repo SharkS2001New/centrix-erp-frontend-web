@@ -378,17 +378,16 @@ export function TillManagementScreen() {
     return tills.filter((t) => {
       const branch = branchById.get(t.branch_id)?.branch_name ?? "";
       const openSessionRow = openByTill.get(t.id);
-      const cashier = openSessionRow
-        ? userById.get(openSessionRow.cashier_id)
-        : t.cashier_id
-          ? userById.get(t.cashier_id)
-          : null;
+      const activeCashier = openSessionRow ? userById.get(openSessionRow.cashier_id) : null;
+      const lockedCashier = t.cashier_id ? userById.get(t.cashier_id) : null;
       const status = tillStatusLabel(t, openByTill);
       if (tillBranchFilter && String(t.branch_id) !== tillBranchFilter) return false;
       if (tillStatusFilter === "active" && status !== "Active") return false;
       if (tillStatusFilter === "closed" && status !== "Closed") return false;
       if (!q) return true;
-      return `${t.till_number} ${t.till_name} ${branch} ${cashier?.full_name ?? ""}`.toLowerCase().includes(q);
+      return `${t.till_number} ${t.till_name} ${branch} ${activeCashier?.full_name ?? ""} ${lockedCashier?.full_name ?? ""}`
+        .toLowerCase()
+        .includes(q);
     });
   }, [tills, tillSearch, tillBranchFilter, tillStatusFilter, branchById, userById, openByTill]);
 
@@ -607,11 +606,10 @@ export function TillManagementScreen() {
                       const status = tillStatusLabel(till, openByTill);
                       const tone = tillStatusTone(till, openByTill);
                       const openSessionRow = openByTill.get(till.id);
-                      const cashier = openSessionRow
-                        ? userById.get(openSessionRow.cashier_id)
-                        : till.cashier_id
-                          ? userById.get(till.cashier_id)
-                          : null;
+                      const cashier = openSessionRow ? userById.get(openSessionRow.cashier_id) : null;
+                      const lockedCashier = !openSessionRow && till.cashier_id
+                        ? userById.get(till.cashier_id)
+                        : null;
                       const report = openSessionRow ? sessionReports.get(openSessionRow.id) : null;
                       const opening = openingFloatAmount(openSessionRow);
                       const current = currentFloatAmount(openSessionRow, report);
@@ -620,7 +618,14 @@ export function TillManagementScreen() {
                           <td className="px-4 py-3 font-medium text-slate-900">{tillCode(till)}</td>
                           <td className="px-4 py-3 text-slate-900">{tillDisplayName(till)}</td>
                           <td className="px-4 py-3 text-slate-700">{branchById.get(till.branch_id)?.branch_name ?? "—"}</td>
-                          <td className="px-4 py-3 text-slate-700">{cashier?.full_name ?? cashier?.username ?? "—"}</td>
+                          <td className="px-4 py-3 text-slate-700">
+                            {cashier?.full_name ?? cashier?.username ?? "—"}
+                            {!cashier && lockedCashier ? (
+                              <span className="ml-2 text-xs text-slate-500">
+                                (Locked to {lockedCashier.full_name ?? lockedCashier.username ?? "user"})
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="px-4 py-3"><PosStatusBadge label={status} tone={tone} /></td>
                           <td className="px-4 py-3 text-right text-slate-900">
                             {openSessionRow ? formatTillKes(opening) : "—"}

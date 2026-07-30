@@ -18,6 +18,7 @@ import {
   INPUT_READONLY_CLASS,
   COMPACT_INPUT_CLASS,
 } from "@/components/catalog/catalog-shared";
+import { todayCalendarDate } from "@/lib/datetime";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import {
   cartLineEnteredDiscountPerUnit,
@@ -590,6 +591,7 @@ export function PosScreen({ standalone = false }) {
   const [preferredTillId, setPreferredTillId] = useState(null);
   const [pendingTillSuggestion, setPendingTillSuggestion] = useState(null);
   const [posTillMetaLoading, setPosTillMetaLoading] = useState(false);
+  const orgTodayKey = todayCalendarDate(capabilities?.general?.timezone ?? "Africa/Nairobi");
   const [discountReasonDialogOpen, setDiscountReasonDialogOpen] = useState(false);
   const discountReasonResolverRef = useRef(null);
 
@@ -619,7 +621,11 @@ export function PosScreen({ standalone = false }) {
           searchParams: { per_page: 200, ...orgListParams(organizationId) },
         }),
         apiRequest("/till-float-sessions", {
-          searchParams: { per_page: 200, "filter[status]": "open" },
+          searchParams: {
+            per_page: 200,
+            "filter[status]": "open",
+            "filter[session_date]": orgTodayKey,
+          },
         }).catch(() => ({ data: [] })),
       ]);
       let tills = tillRes.data ?? [];
@@ -653,7 +659,7 @@ export function PosScreen({ standalone = false }) {
     } finally {
       setPosTillMetaLoading(false);
     }
-  }, [organizationId, requireTillFloat, user?.branch_id, user?.id]);
+  }, [organizationId, requireTillFloat, user?.branch_id, user?.id, orgTodayKey]);
 
   const openByTill = useMemo(
     () => indexOpenSessionsByTill(posOpenSessions),
