@@ -69,17 +69,17 @@ export function cartLineStockAsRetail(line, product) {
 }
 
 /** One +/- click changes quantity by this many base (stock) units. */
-export function cartLineQuantityStep(product, line, retailPackage = null) {
-  const isRetailLine = cartLineRetailStockFlag(line);
+export function cartLineQuantityStep(product, line, retailPackage = null, isRetailLine = null) {
+  const retail = isRetailLine != null ? Boolean(isRetailLine) : cartLineRetailStockFlag(line);
   const factor = uomConversionFactor(product?.uom);
-  if (isRetailLine || factor <= 1) {
+  if (retail || factor <= 1) {
     return 1;
   }
   return factor;
 }
 
-export function cartLineNextBaseQty(line, product, retailPackage, delta) {
-  const step = cartLineQuantityStep(product, line, retailPackage);
+export function cartLineNextBaseQty(line, product, retailPackage, delta, isRetailLine = null) {
+  const step = cartLineQuantityStep(product, line, retailPackage, isRetailLine);
   return Number(line?.quantity ?? 0) + step * delta;
 }
 
@@ -93,8 +93,10 @@ export function canAdjustCartLineQuantity({
   posSalesConfig,
   allowNegativeStock,
   productByCode = {},
+  /** When set (e.g. current F12 session), step + stock routing follow this mode. */
+  isRetailLine = null,
 }) {
-  const nextBaseQty = cartLineNextBaseQty(line, product, retailPackage, delta);
+  const nextBaseQty = cartLineNextBaseQty(line, product, retailPackage, delta, isRetailLine);
   if (nextBaseQty <= 0) {
     return { ok: true, willRemove: true };
   }
@@ -105,7 +107,10 @@ export function canAdjustCartLineQuantity({
     return { ok: true, willRemove: false };
   }
 
-  const stockAsRetail = cartLineStockAsRetail(line, product);
+  const stockAsRetail =
+    isRetailLine != null
+      ? saleLineStockAsRetail(product, isRetailLine)
+      : cartLineStockAsRetail(line, product);
   const stockCheck = posStockAvailability({
     product,
     baseQty: nextBaseQty,
@@ -126,9 +131,15 @@ export function canAdjustCartLineQuantity({
 }
 
 /** Entry qty string for repricing after a base-qty cart adjustment. */
-export function cartLineEntryQtyForBaseQty(line, product, retailPackage, baseQty) {
-  const isRetailLine = cartLineRetailStockFlag(line);
-  return posEntryQtyFromBaseQty(baseQty, product, retailPackage, isRetailLine);
+export function cartLineEntryQtyForBaseQty(
+  line,
+  product,
+  retailPackage,
+  baseQty,
+  isRetailLine = null,
+) {
+  const retail = isRetailLine != null ? Boolean(isRetailLine) : cartLineRetailStockFlag(line);
+  return posEntryQtyFromBaseQty(baseQty, product, retailPackage, retail);
 }
 
 /**

@@ -26,11 +26,15 @@ export function expenseDisplayLabel(expense, groupById = null) {
 /** End-of-day / report row label — prefer description over generic "Other". */
 export function expenseSummaryRowLabel(row) {
   const description = String(row?.description ?? "").trim();
-  if (description) return description;
   const group = String(row?.group_name ?? "").trim();
-  if (group && group.toLowerCase() !== "other") return group;
-  if (group) return group;
-  return "Expense";
+  let base = "Expense";
+  if (description) base = description;
+  else if (group && group.toLowerCase() !== "other") base = group;
+  else if (group) base = group;
+
+  const cashier = String(row?.cashier ?? "").trim();
+  if (cashier) return `${base} · ${cashier}`;
+  return base;
 }
 
 /** Collapse duplicated API error text (e.g. same sentence repeated). */

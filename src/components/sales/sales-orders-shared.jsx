@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, SortableColumnHeader, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
+import {
+  TableRowSelectCell,
+  TableSelectAllHeader,
+} from "@/components/catalog/table-row-selection";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   isLegacySale,
@@ -758,6 +762,7 @@ export function OrderListTableHead({
   onColumnFilterChange,
   statusOptions = [],
   sourceOptions = [],
+  selection = null,
 }) {
   const filtersEnabled = typeof onColumnFilterChange === "function";
   const sortable = typeof onSort === "function";
@@ -812,6 +817,14 @@ export function OrderListTableHead({
   return (
     <>
       <tr className={TABLE_HEAD_ROW_CLASS}>
+        {selection ? (
+          <TableSelectAllHeader
+            checked={selection.checked}
+            indeterminate={selection.indeterminate}
+            onChange={selection.onChange}
+            label={selection.label}
+          />
+        ) : null}
         <th className="w-12 px-4 py-2.5" aria-label="Expand" />
         <th className="px-4 py-2.5">{header("Order", "order_num")}</th>
         <th className="px-4 py-2.5">{header("Customer", "customer_name")}</th>
@@ -836,6 +849,7 @@ export function OrderListTableHead({
       </tr>
       {filtersEnabled ? (
         <tr className="border-b border-[var(--theme-border)] bg-[color-mix(in_srgb,var(--theme-surface-muted)_70%,transparent)]">
+          {selection ? <th className="w-10 px-2 py-1.5" /> : null}
           <th className="w-12 px-2 py-1.5" />
           <th className="px-2 py-1.5 font-normal">{filterCell("order", "Order #")}</th>
           <th className="px-2 py-1.5 font-normal">{filterCell("customer", "Customer")}</th>
@@ -912,6 +926,7 @@ export function OrderListTableRow({
   queueSlug = null,
   onApproveActionRequest = null,
   onRejectActionRequest = null,
+  selection = null,
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
@@ -1030,6 +1045,13 @@ export function OrderListTableRow({
         }}
         title="Right-click for actions"
       >
+        {selection ? (
+          <TableRowSelectCell
+            checked={selection.checked}
+            onChange={selection.onChange}
+            label={selection.label ?? `Select order ${formatOrderNumber(sale)}`}
+          />
+        ) : null}
         <td className="w-12 px-4 py-3">
           <OrderExpandButton
             expanded={expanded}

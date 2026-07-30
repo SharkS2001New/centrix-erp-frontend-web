@@ -86,27 +86,66 @@ export function isPosFunctionShortcutKey(key) {
   return POS_FN_KEYS.has(key);
 }
 
-/** Alt+letter classic POS shortcuts — use e.code so Option/Alt layers still match (e.g. Mac scan field). */
-export function isPosAltLetterShortcut(e, letter) {
-  // Do not require !ctrlKey: Right Alt is AltGr on many layouts (ctrl+alt together).
-  // Still ignore Cmd/Win chords.
-  if (!e?.altKey || e.metaKey) return false;
+/** True when Alt/Option is active (event flags, OS latch, or getModifierState). */
+export function isPosAltModifierActive(e, { altHeld = false } = {}) {
+  if (!e || e.metaKey) return false;
+  if (e.altKey || altHeld) return true;
+  try {
+    if (typeof e.getModifierState === "function" && e.getModifierState("Alt")) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+export function isPosAltKeyEvent(e) {
+  const key = String(e?.key ?? "");
+  const code = String(e?.code ?? "");
+  return (
+    key === "Alt"
+    || key === "AltGraph"
+    || code === "AltLeft"
+    || code === "AltRight"
+  );
+}
+
+/** Physical letter key for Alt+letter shortcuts (ignores Option dead-key glyphs like ˙). */
+export function isPosLetterCode(e, letter) {
   const upper = String(letter ?? "")
     .trim()
     .toUpperCase();
   if (!upper || upper.length !== 1 || !/[A-Z]/.test(upper)) return false;
-  const key = String(e.key ?? "");
-  const code = String(e.code ?? "");
+  const key = String(e?.key ?? "");
+  const code = String(e?.code ?? "");
   const lower = upper.toLowerCase();
-  return key === lower || key === upper || code === `Key${upper}`;
+  // keyCode 65–90 = A–Z (legacy Windows shells that omit e.code).
+  const keyCode = Number(e?.keyCode || e?.which || 0);
+  const fromKeyCode = keyCode >= 65 && keyCode <= 90 ? String.fromCharCode(keyCode) : "";
+  return (
+    key === lower
+    || key === upper
+    || code === `Key${upper}`
+    || fromKeyCode === upper
+  );
 }
 
 /**
- * Standalone external POS Alt shortcuts: Alt+H hold, Alt+F float, Alt+P reprint.
- * Name kept for callers; applies to classic and modern standalone layouts.
+ * Alt+letter POS shortcuts — prefer e.code so Mac Option layers still match (e.g. Option+H → ˙).
+ * Pass altHeld when the listener tracks AltLeft/AltRight down (Windows menu-bar quirks).
  */
-export function isPosClassicAltShortcut(e) {
-  return isPosAltLetterShortcut(e, "h")
-    || isPosAltLetterShortcut(e, "f")
-    || isPosAltLetterShortcut(e, "p");
+export function isPosAltLetterShortcut(e, letter, { altHeld = false } = {}) {
+  // Do not require !ctrlKey: Right Alt is AltGr on many layouts (ctrl+alt together).
+  // Still ignore Cmd/Win chords.
+  if (!isPosAltModifierActive(e, { altHeld })) return false;
+  return isPosLetterCode(e, letter);
+}
+
+/**
+ * POS Alt shortcuts: Alt+H hold, Alt+F float, Alt+P reprint.
+ * Name kept for callers; applies to classic and modern POS layouts.
+ */
+export function isPosClassicAltShortcut(e, { altHeld = false } = {}) {
+  return isPosAltLetterShortcut(e, "h", { altHeld })
+    || isPosAltLetterShortcut(e, "f", { altHeld })
+    || isPosAltLetterShortcut(e, "p", { altHeld });
 }

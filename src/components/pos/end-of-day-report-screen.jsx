@@ -700,7 +700,7 @@ export function EndOfDayReportScreen() {
               />
             ) : null}
             {Number(report?.total_expenses) > 0 ? (
-              <StatCard label="Total expenses" value={formatTillKes(report.total_expenses)} hint="All expense groups" />
+              <StatCard label="Total expenses" value={formatTillKes(report.total_expenses)} hint="Till session expenses" />
             ) : null}
           </div>
 

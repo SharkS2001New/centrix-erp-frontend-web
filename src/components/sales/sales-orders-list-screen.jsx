@@ -20,6 +20,8 @@ import {
   resolveSalesOrderQueue,
   saleBalanceDue,
   canCollectPaymentOnQueue,
+  canCancelOrder,
+  isPrintInvoiceVisible,
   workflowStatusFilterOptions,
 } from "@/lib/order-workflow";
 import {
@@ -33,6 +35,10 @@ import {
   SECONDARY_BTN_CLASS,
   ActiveSortChip,
 } from "@/components/catalog/catalog-shared";
+import {
+  BatchActionBar,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
 import { shouldShowSalesDiscountColumn, canApproveDiscountRequests } from "@/lib/sales-settings";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
@@ -48,7 +54,7 @@ import {
   normalizeOrdersListSummary,
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
-import { printSaleOrder } from "@/components/sales/sale-order-print";
+import { printSaleOrder, resolveOrderPrintType } from "@/components/sales/sale-order-print";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
@@ -174,6 +180,16 @@ export default function SalesOrdersListScreen({
   const [routeById, setRouteById] = useState(() => new Map());
   const [paymentRefsBySaleId, setPaymentRefsBySaleId] = useState(() => new Map());
   const [contextMenu, setContextMenu] = useState(null);
+  const [batchBusy, setBatchBusy] = useState(null);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
   const [editSale, setEditSale] = useState(null);
   const [paySale, setPaySale] = useState(null);
   const [rejectContext, setRejectContext] = useState(null);
@@ -349,6 +365,7 @@ export default function SalesOrdersListScreen({
     showSourceColumn,
     showDiscountColumn,
     showPaymentBreakdownColumns,
+    showSelectionColumn: true,
   });
 
   const loadingFromArchive =
@@ -683,7 +700,7 @@ export default function SalesOrdersListScreen({
   }
 
   async function printOrder(sale, documentType = null) {
-    if (!sale?.id) return;
+    if (!sale?.id) return false;
 
     const cachedType =
       documentType ?? defaultOrderListPrintDocumentType(capabilities?.module_settings, capabilities);
@@ -693,7 +710,7 @@ export default function SalesOrdersListScreen({
         : null;
     if (cachedType !== "both" && !printWindow) {
       setActionMessage(PRINT_BLOCKED_MESSAGE);
-      return;
+      return false;
     }
 
     try {
@@ -715,10 +732,13 @@ export default function SalesOrdersListScreen({
       });
       if (!printed) {
         disposePrintWindow(printWindow);
+        return false;
       }
+      return true;
     } catch (e) {
       disposePrintWindow(printWindow);
       setActionMessage(e instanceof Error ? e.message : "Print failed");
+      return false;
     }
   }
 
@@ -732,20 +752,20 @@ export default function SalesOrdersListScreen({
     }));
   }
 
-  async function transitionOrder(sale, targetStatus, fulfillmentMeta) {
-    if (!sale?.id) return;
-    if (transitionBusyId === sale.id) return;
-    if (targetStatus === "cancelled") {
+  async function transitionOrder(sale, targetStatus, fulfillmentMeta, { skipConfirm = false, quiet = false } = {}) {
+    if (!sale?.id) return null;
+    if (transitionBusyId === sale.id) return null;
+    if (targetStatus === "cancelled" && !skipConfirm) {
       const ok = await confirm({
         title: "Cancel order",
         message: "Cancel this order?",
         confirmLabel: "Cancel order",
         destructive: true,
       });
-      if (!ok) return;
+      if (!ok) return null;
     }
     setTransitionBusyId(sale.id);
-    setActionMessage(null);
+    if (!quiet) setActionMessage(null);
     try {
       const body = { status: targetStatus };
       if (fulfillmentMeta) body.fulfillment_meta = fulfillmentMeta;
@@ -754,7 +774,7 @@ export default function SalesOrdersListScreen({
         body,
       });
       patchSaleInState(updated);
-      setActionMessage(`Order ${formatOrderNumber(sale)} updated.`);
+      if (!quiet) setActionMessage(`Order ${formatOrderNumber(sale)} updated.`);
       if (queueConfig?.lockStatusFilter && updated.status !== queueConfig.fixedStatusFilter) {
         setRows((prev) => prev.filter((s) => s.id !== updated.id));
       }
@@ -764,8 +784,13 @@ export default function SalesOrdersListScreen({
       ) {
         setRows((prev) => prev.filter((s) => s.id !== updated.id));
       }
+      return updated;
     } catch (e) {
-      setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
+      if (!quiet) {
+        setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
+        return null;
+      }
+      throw e;
     } finally {
       setTransitionBusyId(null);
     }
@@ -826,6 +851,9 @@ export default function SalesOrdersListScreen({
 
   const summary = orderSummary ?? summarizeOrders(rows);
   const pageSlice = rows;
+  const pageRowIds = useMemo(() => pageSlice.map((sale) => sale.id), [pageSlice]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   const workflowBySaleId = useMemo(() => {
     const map = new Map();
@@ -834,6 +862,99 @@ export default function SalesOrdersListScreen({
     }
     return map;
   }, [pageSlice, capabilities]);
+
+  const selectedSales = useMemo(
+    () => pageSlice.filter((sale) => selectedIds.has(String(sale.id))),
+    [pageSlice, selectedIds],
+  );
+
+  async function printSelectedOrders() {
+    if (batchBusy || selectedSales.length === 0) return;
+    const printable = selectedSales.filter((sale) => isPrintInvoiceVisible(sale, capabilities));
+    const skipped = selectedSales.length - printable.length;
+    if (printable.length === 0) {
+      setActionMessage("None of the selected orders can be printed.");
+      return;
+    }
+
+    setBatchBusy("print");
+    setActionMessage(null);
+    try {
+      let documentType = defaultOrderListPrintDocumentType(
+        capabilities?.module_settings,
+        capabilities,
+      );
+      if (!documentType || documentType === "both") {
+        documentType = await resolveOrderPrintType(capabilities?.module_settings, null);
+        if (!documentType) return;
+      }
+
+      let printed = 0;
+      let failed = 0;
+      for (const sale of printable) {
+        const ok = await printOrder(sale, documentType);
+        if (ok) printed += 1;
+        else failed += 1;
+      }
+
+      const parts = [`Printed ${printed} of ${printable.length}`];
+      if (skipped > 0) parts.push(`${skipped} skipped`);
+      if (failed > 0) parts.push(`${failed} failed`);
+      setActionMessage(`${parts.join(" · ")}.`);
+      if (printed > 0) clearSelection();
+    } finally {
+      setBatchBusy(null);
+    }
+  }
+
+  async function cancelSelectedOrders() {
+    if (routeOrdersOnly || batchBusy || selectedSales.length === 0) return;
+    const cancellable = selectedSales.filter((sale) =>
+      canCancelOrder(sale, workflowBySaleId.get(sale.id), capabilities),
+    );
+    const skipped = selectedSales.length - cancellable.length;
+    if (cancellable.length === 0) {
+      setActionMessage("None of the selected orders can be cancelled.");
+      return;
+    }
+
+    const ok = await confirm({
+      title: "Cancel orders",
+      message:
+        cancellable.length === 1
+          ? `Cancel order ${formatOrderNumber(cancellable[0])}?`
+          : `Cancel ${cancellable.length} selected orders?`,
+      confirmLabel: cancellable.length === 1 ? "Cancel order" : "Cancel orders",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchBusy("cancel");
+    setActionMessage(null);
+    let succeeded = 0;
+    let failed = 0;
+    try {
+      for (const sale of cancellable) {
+        try {
+          const updated = await transitionOrder(sale, "cancelled", undefined, {
+            skipConfirm: true,
+            quiet: true,
+          });
+          if (updated) succeeded += 1;
+          else failed += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      const parts = [`Cancelled ${succeeded} of ${cancellable.length}`];
+      if (skipped > 0) parts.push(`${skipped} skipped`);
+      if (failed > 0) parts.push(`${failed} failed`);
+      setActionMessage(`${parts.join(" · ")}.`);
+      if (succeeded > 0) clearSelection();
+    } finally {
+      setBatchBusy(null);
+    }
+  }
 
   const allPageExpanded = useMemo(() => {
     const pageIds = pageSlice.map((sale) => String(sale.id));
@@ -851,7 +972,7 @@ export default function SalesOrdersListScreen({
   const hasExternalPos = useMemo(() => isExternalPosEnabled(capabilities), [capabilities]);
   const orderPrintAriaLabel = useMemo(() => orderListPrintAriaLabel(capabilities), [capabilities]);
 
-  const showTransitionOverlay = Boolean(transitionBusyId) || fulfillment.busy;
+  const showTransitionOverlay = Boolean(transitionBusyId) || fulfillment.busy || Boolean(batchBusy);
 
   const contextMenuItems = useMemo(() => {
     if (!contextMenu?.sale) return [];
@@ -881,7 +1002,12 @@ export default function SalesOrdersListScreen({
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, sourceFilter, minTotalFilter, appliedFromDate, appliedToDate, queueSlug]);
+    clearSelection();
+  }, [debouncedSearch, statusFilter, sourceFilter, minTotalFilter, appliedFromDate, appliedToDate, queueSlug, clearSelection]);
+
+  useEffect(() => {
+    clearSelection();
+  }, [page, pageSize, clearSelection]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -1107,7 +1233,11 @@ export default function SalesOrdersListScreen({
                   className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
                   aria-hidden
                 />
-                Updating order…
+                {batchBusy === "print"
+                  ? "Printing selected orders…"
+                  : batchBusy === "cancel"
+                    ? "Cancelling selected orders…"
+                    : "Updating order…"}
               </div>
             </div>
           ) : null}
@@ -1156,7 +1286,7 @@ export default function SalesOrdersListScreen({
                 <p className="text-xs text-slate-500">
                   {pageSlice.length === 0
                     ? "No orders on this page · Adjust filters above or in the header row"
-                    : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page · Right-click for actions`}
+                    : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page · Select for print/cancel · Right-click for actions`}
                 </p>
                 <button
                   type="button"
@@ -1218,6 +1348,11 @@ export default function SalesOrdersListScreen({
                           : statusOptions
                       }
                       sourceOptions={showSourceColumn ? sourceOptions : []}
+                      selection={{
+                        checked: allOnPageSelected,
+                        indeterminate: someOnPageSelected,
+                        onChange: (checked) => toggleAllOnPage(checked, pageRowIds),
+                      }}
                     />
                   </thead>
                   <tbody>
@@ -1253,7 +1388,7 @@ export default function SalesOrdersListScreen({
                                 ? () => openCollectPayment(sale)
                                 : null
                             }
-                            actionBusy={transitionBusyId === sale.id}
+                            actionBusy={transitionBusyId === sale.id || Boolean(batchBusy)}
                             showBranchColumn={showBranchColumn}
                             branchName={saleBranchLabel(sale, branchById)}
                             showRouteColumn={showRouteColumn}
@@ -1272,6 +1407,10 @@ export default function SalesOrdersListScreen({
                             onRejectActionRequest={rejectActionRequest}
                             canApproveDiscounts={canApproveDiscounts}
                             capabilities={capabilities}
+                            selection={{
+                              checked: selectedIds.has(key),
+                              onChange: () => toggleOne(sale.id),
+                            }}
                           />
                         );
                       })
@@ -1370,6 +1509,30 @@ export default function SalesOrdersListScreen({
           if (!listLoading) setRejectContext(null);
         }}
       />
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <button
+          type="button"
+          disabled={Boolean(batchBusy) || selectedCount === 0}
+          onClick={() => void printSelectedOrders()}
+          className="theme-primary-btn rounded-lg px-4 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {batchBusy === "print"
+            ? "Printing…"
+            : `Print${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+        </button>
+        {!routeOrdersOnly ? (
+          <button
+            type="button"
+            disabled={Boolean(batchBusy) || selectedCount === 0}
+            onClick={() => void cancelSelectedOrders()}
+            className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {batchBusy === "cancel"
+              ? "Cancelling…"
+              : `Cancel${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+          </button>
+        ) : null}
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

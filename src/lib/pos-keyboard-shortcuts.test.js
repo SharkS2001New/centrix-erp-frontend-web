@@ -102,5 +102,16 @@ describe("claimPosFunctionKeyEvent", () => {
         "h",
       ),
     ).toBe(false);
+    // Windows menu-bar quirk: letter key may lose altKey while Alt is still held.
+    expect(
+      isPosAltLetterShortcut(fakeEvent({ key: "h", code: "KeyH", altKey: false }), "h", {
+        altHeld: true,
+      }),
+    ).toBe(true);
+    expect(
+      isPosAltLetterShortcut(fakeEvent({ key: "˙", code: "KeyH", keyCode: 72, altKey: false }), "h", {
+        altHeld: true,
+      }),
+    ).toBe(true);
   });
 });
