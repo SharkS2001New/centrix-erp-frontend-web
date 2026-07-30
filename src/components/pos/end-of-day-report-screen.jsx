@@ -9,7 +9,7 @@ import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cach
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
-import { formatTillKes, formatTillKesExact, resolveNetSalesMinusFloat } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, resolveExpectedNetSales } from "@/lib/pos-till";
 import { buildExpensesHref, expenseDisplayLabel, expenseGroupName, expenseSummaryRowLabel } from "@/lib/expenses-link";
 import {
   FilterSelect,
@@ -201,11 +201,17 @@ ${meta.showDiscounts ? `<div class="row"><span>Discounts</span><span>${kesNum(s.
 <div class="row"><span>Net sales (incl VAT)</span><span>${kesNum(s.net_sales)}</span></div>
 <div class="row"><span>Net sales (ex VAT)</span><span>${kesNum(s.net_sales_ex_vat ?? Math.max(0, Number(s.net_sales ?? 0) - Number(s.total_vat ?? 0)))}</span></div>
 ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.opening_float)}</span></div>` : ""}
-${meta.showFloat ? `<div class="row"><span>Net sales minus float</span><span>${kesNum(resolveNetSalesMinusFloat({ netSales: s.net_sales, openingFloat: s.opening_float, netSalesMinusFloat: s.net_sales_minus_float }))}</span></div>` : ""}
 ${Number(s.cash_movements_out) > 0 ? `<div class="row"><span>Safe drops</span><span>-${kesNum(s.cash_movements_out)}</span></div>` : ""}
 ${Number(s.cash_movements_in) > 0 ? `<div class="row"><span>Cash in</span><span>${kesNum(s.cash_movements_in)}</span></div>` : ""}
-${Number(s.session_expenses) > 0 ? `<div class="row"><span>Session expenses</span><span>-${kesNum(s.session_expenses)}</span></div>` : ""}
-<div class="row"><span>Net cash expected</span><span>${kesNum(s.net_cash_expected)}</span></div>
+${Number(meta.totalExpenses ?? s.session_expenses) > 0 ? `<div class="row"><span>Expenses</span><span>-${kesNum(meta.totalExpenses ?? s.session_expenses)}</span></div>` : ""}
+${meta.showFloat ? `<div class="row"><span>Expected net sales</span><span>${kesNum(resolveExpectedNetSales({
+  openingFloat: s.opening_float,
+  totalSales: s.net_sales,
+  expenses: meta.totalExpenses ?? s.session_expenses,
+  cashMovementsIn: s.cash_movements_in,
+  cashMovementsOut: s.cash_movements_out,
+  expectedNetSales: s.expected_net_sales ?? s.net_cash_expected,
+}))}</span></div>` : ""}
 </div>
 <div class="box"><strong>Payments</strong>
 <div class="row"><span>Cash</span><span>${kesNum(report?.payments?.cash)}</span></div>
@@ -233,23 +239,27 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   push("Sales", "Net sales (ex VAT)", kesNum(s.net_sales_ex_vat ?? Math.max(0, Number(s.net_sales ?? 0) - Number(s.total_vat ?? 0))));
   push("Sales", "Transactions", String(s.transactions ?? 0));
   if (requireTillFloat) push("Sales", "Opening float", kesNum(s.opening_float));
+  if (Number(s.cash_movements_out) > 0) push("Sales", "Safe drops", `-${kesNum(s.cash_movements_out)}`);
+  if (Number(s.cash_movements_in) > 0) push("Sales", "Cash in", kesNum(s.cash_movements_in));
+  if (Number(report?.total_expenses ?? s.session_expenses) > 0) {
+    push("Sales", "Expenses", `-${kesNum(report?.total_expenses ?? s.session_expenses)}`);
+  }
   if (requireTillFloat) {
     push(
       "Sales",
-      "Net sales minus float",
+      "Expected net sales",
       kesNum(
-        resolveNetSalesMinusFloat({
-          netSales: s.net_sales,
+        resolveExpectedNetSales({
           openingFloat: s.opening_float,
-          netSalesMinusFloat: s.net_sales_minus_float,
+          totalSales: s.net_sales,
+          expenses: report?.total_expenses ?? s.session_expenses,
+          cashMovementsIn: s.cash_movements_in,
+          cashMovementsOut: s.cash_movements_out,
+          expectedNetSales: s.expected_net_sales ?? s.net_cash_expected,
         }),
       ),
     );
   }
-  if (Number(s.cash_movements_out) > 0) push("Sales", "Safe drops", `-${kesNum(s.cash_movements_out)}`);
-  if (Number(s.cash_movements_in) > 0) push("Sales", "Cash in", kesNum(s.cash_movements_in));
-  if (Number(s.session_expenses) > 0) push("Sales", "Session expenses", `-${kesNum(s.session_expenses)}`);
-  if (requireTillFloat) push("Sales", "Net cash expected", kesNum(s.net_cash_expected));
 
   push("Payments", "Cash", kesNum(p.cash));
   push("Payments", "M-Pesa", kesNum(p.mpesa));
@@ -387,14 +397,26 @@ export function EndOfDayReportScreen() {
 
   const summary = report?.summary ?? {};
   const payments = report?.payments ?? {};
-  const netSalesMinusFloat = useMemo(
+  const expectedNetSales = useMemo(
     () =>
-      resolveNetSalesMinusFloat({
-        netSales: summary.net_sales,
+      resolveExpectedNetSales({
         openingFloat: summary.opening_float,
-        netSalesMinusFloat: summary.net_sales_minus_float,
+        totalSales: summary.net_sales,
+        expenses: report?.total_expenses ?? summary.session_expenses,
+        cashMovementsIn: summary.cash_movements_in,
+        cashMovementsOut: summary.cash_movements_out,
+        expectedNetSales: summary.expected_net_sales ?? summary.net_cash_expected,
       }),
-    [summary.net_sales, summary.opening_float, summary.net_sales_minus_float],
+    [
+      summary.net_sales,
+      summary.opening_float,
+      summary.expected_net_sales,
+      summary.net_cash_expected,
+      summary.session_expenses,
+      summary.cash_movements_in,
+      summary.cash_movements_out,
+      report?.total_expenses,
+    ],
   );
   const branchName =
     report?.branch_name ?? branches.find((b) => String(b.id) === branchId)?.branch_name ?? "All branches";
@@ -485,6 +507,7 @@ export function EndOfDayReportScreen() {
         cashierName: cashierName ?? "All cashiers",
         showFloat: requireTillFloat,
         showDiscounts: discountsEnabled,
+        totalExpenses: report.total_expenses,
         userName: user?.full_name ?? user?.username,
       });
     },
@@ -626,9 +649,9 @@ export function EndOfDayReportScreen() {
             <StatCard label="Net sales (ex VAT)" value={formatTillKes(netSalesExVat)} hint="Net after VAT" />
             {requireTillFloat ? (
               <StatCard
-                label="Net sales minus float"
-                value={formatTillKes(netSalesMinusFloat)}
-                hint="Net sales after operating float"
+                label="Expected net sales"
+                value={formatTillKes(expectedNetSales)}
+                hint="Opening float + total sales − expenses"
               />
             ) : null}
             {Number(report?.total_expenses) > 0 ? (
@@ -651,21 +674,27 @@ export function EndOfDayReportScreen() {
               {requireTillFloat ? (
                 <SummaryRow label="Opening float" value={formatTillKes(summary.opening_float)} />
               ) : null}
-              {requireTillFloat ? (
-                <SummaryRow label="Net sales minus float" value={formatTillKes(netSalesMinusFloat)} tone="primary" bold />
-              ) : null}
               {Number(summary.cash_movements_out) > 0 ? (
                 <SummaryRow label="Safe drops" value={`-${formatTillKes(summary.cash_movements_out)}`} tone="danger" />
               ) : null}
               {Number(summary.cash_movements_in) > 0 ? (
                 <SummaryRow label="Cash in" value={formatTillKes(summary.cash_movements_in)} tone="success" />
               ) : null}
-              {Number(summary.session_expenses) > 0 ? (
-                <SummaryRow label="Session expenses" value={`-${formatTillKes(summary.session_expenses)}`} tone="danger" />
+              {Number(report?.total_expenses ?? summary.session_expenses) > 0 ? (
+                <SummaryRow
+                  label="Expenses"
+                  value={`-${formatTillKes(report?.total_expenses ?? summary.session_expenses)}`}
+                  tone="danger"
+                />
               ) : null}
               {requireTillFloat ? (
                 <div className="mt-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-primary-subtle)] px-3 py-2">
-                  <SummaryRow label="Net cash expected" value={formatTillKesExact(summary.net_cash_expected)} tone="primary" bold />
+                  <SummaryRow
+                    label="Expected net sales"
+                    value={formatTillKesExact(expectedNetSales)}
+                    tone="primary"
+                    bold
+                  />
                 </div>
               ) : null}
             </Panel>
@@ -866,15 +895,9 @@ export function EndOfDayReportScreen() {
           <div className="mt-6 theme-panel rounded-xl border p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-center gap-3 text-center text-sm">
               <HighlightMetric
-                label="Net cash expected"
-                value={formatTillKes(summary.net_cash_expected)}
+                label="Expected net sales"
+                value={formatTillKes(expectedNetSales)}
                 variant="primary"
-              />
-              <span className="theme-subtext text-xl">−</span>
-              <HighlightMetric
-                label="Total expenses"
-                value={formatTillKes(report.total_expenses)}
-                variant="danger"
               />
               <span className="theme-subtext text-xl">−</span>
               <HighlightMetric
@@ -889,6 +912,9 @@ export function EndOfDayReportScreen() {
                 variant="success"
               />
             </div>
+            <p className="theme-subtext mt-3 text-center text-xs">
+              Expected net sales = opening float + total sales − expenses
+            </p>
           </div>
           ) : null}
 

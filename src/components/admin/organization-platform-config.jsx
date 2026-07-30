@@ -872,7 +872,7 @@ function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled =
         />
         <ActionStageChecklist
           title="Cancel order"
-          hint="Web. At least one stage. Master cancel toggle still applies."
+          hint="Web. At least one stage. Master cancel toggle still applies. Checking Paid also covers POS receipts stored as Completed. Unpaid / Partially paid also cover fulfillment stages that still have that payment status."
           options={actionStatusOptions}
           selected={cancelStatuses}
           onToggle={(status, checked) =>

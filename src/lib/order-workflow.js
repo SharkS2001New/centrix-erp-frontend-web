@@ -67,6 +67,48 @@ export function saleMatchesConfiguredActionStages(sale, allowedList, workflow = 
   return allowed.has("mobile") && saleIsMobileActionTarget(sale);
 }
 
+/** Early pipeline stages — Cancel must match the stage itself, not payment_status alone. */
+const CANCEL_EARLY_STATUSES = new Set([
+  "booked",
+  "pending",
+  "pending_approval",
+  "editable",
+  "held",
+  "draft",
+]);
+
+/**
+ * Extra Cancel matching beyond exact workflow stage:
+ * - POS stores fully-paid as `completed` while Cancel stages often list `paid`
+ * - Fulfillment stages (processed/delivered/…) with unpaid/partial/paid payment_status
+ *   when those payment stages are configured (same idea as Collect payment)
+ */
+function saleMatchesCancelPaymentStages(sale, allowedList) {
+  if (!sale) return false;
+  const status = String(sale.status ?? "").toLowerCase();
+  if (!status || status === "cancelled" || status === "expired") return false;
+
+  const allowed = new Set((allowedList ?? []).map((s) => String(s).toLowerCase()));
+
+  // POS full-paid synonym (do not equate processed/delivered with paid).
+  if (status === "completed" && allowed.has("paid")) return true;
+  if (status === "paid" && allowed.has("completed")) return true;
+
+  if (CANCEL_EARLY_STATUSES.has(status)) return false;
+
+  const paymentStatus = String(sale.payment_status ?? "").toLowerCase();
+  const mapped =
+    paymentStatus === "partial" || paymentStatus === "pending_payment"
+      ? "pending_payment"
+      : paymentStatus === "paid"
+        ? "paid"
+        : paymentStatus === "unpaid"
+          ? "unpaid"
+          : null;
+
+  return mapped != null && allowed.has(mapped);
+}
+
 export const DEFAULT_ORDER_WORKFLOW = {
   steps: [
     { status: "booked", label: "Booked", enabled: true },
@@ -480,7 +522,10 @@ export function canCancelOrderStatus(statusOrSale, workflow, capabilities = null
       return false;
     }
     const allowed = resolveCancelOrderStatuses(salesSettingsFromCapabilities(capabilities));
-    return saleMatchesConfiguredActionStages(statusOrSale, allowed, workflow);
+    if (saleMatchesConfiguredActionStages(statusOrSale, allowed, workflow)) {
+      return true;
+    }
+    return saleMatchesCancelPaymentStages(statusOrSale, allowed);
   }
 
   const key = String(statusOrSale ?? "").toLowerCase();
@@ -489,6 +534,9 @@ export function canCancelOrderStatus(statusOrSale, workflow, capabilities = null
   }
   const allowed = new Set(resolveCancelOrderStatuses(salesSettingsFromCapabilities(capabilities)));
   if (allowed.has(key)) return true;
+  // POS full-paid synonym when only a status string is passed (no sale/workflow).
+  if (key === "completed" && allowed.has("paid")) return true;
+  if (key === "paid" && allowed.has("completed")) return true;
   const aligned = alignStatusToWorkflow(key, workflow);
   return allowed.has(aligned) && isAcceptableActionStageAlignment(key, aligned);
 }

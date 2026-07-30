@@ -19,9 +19,10 @@ const sampleReport = {
     transactions: 3,
     gross_sales: 23510,
     net_sales: 23510,
-    net_sales_minus_expenses: 19110,
-    net_sales_minus_vat: 18000,
-    net_sales_minus_float: 912900,
+    expected_net_sales: 10017320,
+    net_sales_minus_expenses: 10017320,
+    net_sales_minus_vat: 10017320,
+    net_sales_minus_float: 10017320,
     total_vat: 1110,
     refunds: 0,
     cash: 10000,
@@ -41,7 +42,8 @@ const sampleReport = {
     gross_total: 10021720,
     session_expenses: 4400,
   },
-  expected_cash: 10021720,
+  expected_cash: 10017320,
+  expected_net_sales: 10017320,
   float_entries: [
     { payment_type: "EQUITY", new_float: 5000000, date_added: "2026-07-29T08:33:00Z" },
     { payment_type: "CASH", new_float: 4998210, date_added: "2026-07-29T08:34:00Z" },
@@ -114,16 +116,19 @@ describe("resolveTillReportPaymentLines", () => {
 });
 
 describe("resolveTillSalesSummaryRows", () => {
-  it("builds the gross-to-float chain with hints", () => {
+  it("builds opening float + sales − expenses = expected net sales", () => {
     const rows = resolveTillSalesSummaryRows(sampleReport, sampleSession, { showFloatBreakdown: true });
     expect(rows.map((row) => row.label)).toEqual([
-      "Gross sales",
-      "Net sales minus expenses",
-      "Net sales minus VAT",
-      "Net sales minus float",
+      "Opening float",
+      "Total sales",
+      "Expenses",
+      "Expected net sales",
     ]);
-    expect(rows[0]?.amount).toBe(23510);
-    expect(rows[1]?.hint).toContain("Gross sales − expenses");
+    expect(rows[0]?.amount).toBe(9998210);
+    expect(rows[1]?.amount).toBe(23510);
+    expect(rows[2]?.amount).toBe(4400);
+    expect(rows[3]?.amount).toBe(10017320);
+    expect(rows[3]?.hint).toContain("Opening float + total sales − expenses");
   });
 });
 
@@ -157,7 +162,7 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain("Till 1");
     expect(html).toContain("9,998,210");
     expect(html).toContain("23,510");
-    expect(html).toContain("10,021,720");
+    expect(html).toContain("10,017,320");
     expect(html).not.toContain("max-width: 280px");
     expect(html).toContain('class="section-row');
     expect(html).toContain("Operating float");
@@ -166,7 +171,8 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain("M-Pesa payments");
     expect(html).toContain("Total paid debtors");
     expect(html).toContain("Sales summary");
-    expect(html).toContain("Gross sales");
+    expect(html).toContain("Total sales");
+    expect(html).toContain("Expected net sales");
     expect(html).toContain("Total expenses");
     expect(html).toMatch(/<table class="summary-table">[\s\S]*Operating float[\s\S]*Payment summary[\s\S]*<\/table>/);
     expect(html).toContain("page: centrix-thermal");
@@ -192,10 +198,10 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain("Total paid debtors");
     expect(html).toContain("Total expenses");
     expect(html).toContain("Sales summary");
-    expect(html).toContain("Gross sales");
-    expect(html).toContain("Net sales minus expenses");
-    expect(html).toContain("Net sales minus VAT");
-    expect(html).toContain("Net sales minus float");
+    expect(html).toContain("Opening float");
+    expect(html).toContain("Total sales");
+    expect(html).toContain("Expenses");
+    expect(html).toContain("Expected net sales");
     expect(html).toContain("Expected Cash");
     expect(html).toContain("Actual Cash");
     expect(html).toContain("Variance");

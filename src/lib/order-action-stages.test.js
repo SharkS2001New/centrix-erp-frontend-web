@@ -106,6 +106,58 @@ describe("order actions by stage (platform config)", () => {
     expect(canCancelOrder(sale("booked"), workflow, caps)).toBe(false);
   });
 
+  it("cancel Paid covers POS completed when full pipeline still includes completed", () => {
+    const caps = {
+      module_settings: {
+        sales: {
+          order_cancellation_enabled: true,
+          cancel_order_statuses: ["unpaid", "pending_payment", "paid"],
+        },
+      },
+    };
+    const fullPipeline = {
+      statuses: [
+        "booked",
+        "pending",
+        "unpaid",
+        "pending_payment",
+        "paid",
+        "processed",
+        "delivered",
+        "completed",
+      ],
+      pipeline: [
+        { key: "booked", label: "Booked" },
+        { key: "pending", label: "Pending" },
+        { key: "unpaid", label: "Unpaid" },
+        { key: "pending_payment", label: "Partially paid" },
+        { key: "paid", label: "Paid" },
+        { key: "processed", label: "Processed" },
+        { key: "delivered", label: "Delivered" },
+        { key: "completed", label: "Completed" },
+      ],
+      labels: {
+        booked: "Booked",
+        pending: "Pending",
+        unpaid: "Unpaid",
+        pending_payment: "Partially paid",
+        paid: "Paid",
+        processed: "Processed",
+        delivered: "Delivered",
+        completed: "Completed",
+      },
+    };
+
+    // Align keeps `completed` when that step is enabled — Cancel Paid must still match.
+    expect(canCancelOrder(sale("completed", "paid", 1000), fullPipeline, caps)).toBe(true);
+    expect(canCancelOrder(sale("paid", "paid", 1000), fullPipeline, caps)).toBe(true);
+    expect(canCancelOrder(sale("unpaid", "unpaid", 0), fullPipeline, caps)).toBe(true);
+    expect(canCancelOrder(sale("processed", "unpaid", 0), fullPipeline, caps)).toBe(true);
+    expect(canCancelOrder(sale("processed", "partial", 400), fullPipeline, caps)).toBe(true);
+    expect(canCancelOrder(sale("booked", "unpaid", 0), fullPipeline, caps)).toBe(false);
+    expect(canCancelOrder(sale("processed", "paid", 1000), fullPipeline, caps)).toBe(true);
+  });
+
   it("customer returns only on Processed, Delivered, Completed", () => {
     expect(isCustomerReturnAllowedForOrder(sale("booked"), PLATFORM_CAPS)).toBe(false);
     expect(isCustomerReturnAllowedForOrder(sale("paid"), PLATFORM_CAPS)).toBe(false);

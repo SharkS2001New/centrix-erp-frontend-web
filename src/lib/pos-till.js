@@ -44,16 +44,42 @@ export function cashMovementHint(type) {
   return CASH_MOVEMENT_OPTIONS.find((opt) => opt.value === type)?.hint ?? "";
 }
 
-/** Net sales after deducting operating float (always >= 0). */
+/** Expected net sales: opening float + total sales − expenses. */
+export function resolveExpectedNetSales({
+  openingFloat,
+  totalSales,
+  expenses = 0,
+  cashMovementsIn = 0,
+  cashMovementsOut = 0,
+  expectedNetSales,
+} = {}) {
+  if (expectedNetSales != null && expectedNetSales !== "") {
+    return Number(expectedNetSales);
+  }
+  return (
+    Number(openingFloat ?? 0)
+    + Number(totalSales ?? 0)
+    - Number(expenses ?? 0)
+    - Number(cashMovementsOut ?? 0)
+    + Number(cashMovementsIn ?? 0)
+  );
+}
+
+/** @deprecated Use resolveExpectedNetSales — float is added, not subtracted. */
 export function resolveNetSalesMinusFloat({
   netSales,
   openingFloat,
   netSalesMinusFloat,
+  expenses = 0,
 } = {}) {
   if (netSalesMinusFloat != null && netSalesMinusFloat !== "") {
-    return Math.max(0, Number(netSalesMinusFloat));
+    return Number(netSalesMinusFloat);
   }
-  return Math.max(0, Number(netSales ?? 0) - Number(openingFloat ?? 0));
+  return resolveExpectedNetSales({
+    openingFloat,
+    totalSales: netSales,
+    expenses,
+  });
 }
 
 export const MAX_BRANCH_TILLS = 10;
@@ -377,49 +403,60 @@ function formatTillHintAmount(value) {
   });
 }
 
-/** Sales summary chain for till X/Z — gross sales through net minus float. */
+/** Sales summary for till X/Z — opening float + total sales − expenses = expected net sales. */
 export function resolveTillSalesSummaryRows(report, session, { showFloatBreakdown = true } = {}) {
   const sales = report?.sales ?? {};
   const till = report?.till ?? {};
   const sessionExpenses = Number(report?.session_expenses ?? till?.session_expenses ?? 0);
-  const grossSales = Number(sales.gross_sales ?? sales.net_sales ?? sales.net ?? 0);
-  const totalVat = Number(sales.total_vat ?? 0);
+  const totalSales = Number(sales.net_sales ?? sales.gross_sales ?? sales.net ?? 0);
   const openingFloat = Number(till.opening_float ?? session?.working_amount ?? 0);
-  const netSalesMinusExpenses = Number(
-    sales.net_sales_minus_expenses ?? Math.max(0, grossSales - sessionExpenses),
-  );
-  const netSalesMinusVat = Number(
-    sales.net_sales_minus_vat ?? Math.max(0, netSalesMinusExpenses - totalVat),
-  );
-  const netSalesMinusFloat = Number(
-    sales.net_sales_minus_float ?? Math.max(0, netSalesMinusExpenses - openingFloat),
-  );
+  const cashMovements = report?.cash_movements ?? [];
+  const movementsOut = (cashMovements ?? [])
+    .filter((row) => ["drop", "pay_out", "payout"].includes(String(row.type ?? "").toLowerCase()))
+    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+  const movementsIn = (cashMovements ?? [])
+    .filter((row) => ["cash_in", "in"].includes(String(row.type ?? "").toLowerCase()))
+    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+  const expectedNetSales = resolveExpectedNetSales({
+    openingFloat: showFloatBreakdown ? openingFloat : 0,
+    totalSales,
+    expenses: sessionExpenses,
+    cashMovementsIn: showFloatBreakdown ? movementsIn : 0,
+    cashMovementsOut: showFloatBreakdown ? movementsOut : 0,
+    expectedNetSales: showFloatBreakdown
+      ? (report?.expected_net_sales ?? sales.expected_net_sales ?? report?.expected_cash)
+      : (report?.expected_net_sales ?? sales.expected_net_sales),
+  });
 
-  const rows = [
-    {
-      label: "Gross sales",
-      amount: grossSales,
-      hint: "Sum of completed POS order totals this session",
-    },
-    {
-      label: "Net sales minus expenses",
-      amount: netSalesMinusExpenses,
-      hint: `Gross sales − expenses (${formatTillHintAmount(grossSales)} − ${formatTillHintAmount(sessionExpenses)})`,
-    },
-    {
-      label: "Net sales minus VAT",
-      amount: netSalesMinusVat,
-      hint: `Net sales minus expenses − VAT (${formatTillHintAmount(netSalesMinusExpenses)} − ${formatTillHintAmount(totalVat)})`,
-    },
-  ];
+  const rows = [];
 
   if (showFloatBreakdown) {
     rows.push({
-      label: "Net sales minus float",
-      amount: netSalesMinusFloat,
-      hint: `Net sales minus expenses − float (${formatTillHintAmount(netSalesMinusExpenses)} − ${formatTillHintAmount(openingFloat)})`,
+      label: "Opening float",
+      amount: openingFloat,
+      hint: "Operating float declared when the till session opened",
     });
   }
+
+  rows.push({
+    label: "Total sales",
+    amount: totalSales,
+    hint: "Sum of completed POS order totals this session (after refunds)",
+  });
+
+  rows.push({
+    label: "Expenses",
+    amount: sessionExpenses,
+    hint: "Session expenses recorded against this till",
+  });
+
+  rows.push({
+    label: "Expected net sales",
+    amount: expectedNetSales,
+    hint: showFloatBreakdown
+      ? `Opening float + total sales − expenses (${formatTillHintAmount(openingFloat)} + ${formatTillHintAmount(totalSales)} − ${formatTillHintAmount(sessionExpenses)})`
+      : `Total sales − expenses (${formatTillHintAmount(totalSales)} − ${formatTillHintAmount(sessionExpenses)})`,
+  });
 
   return rows;
 }
