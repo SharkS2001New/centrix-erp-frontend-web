@@ -116,30 +116,30 @@ describe("resolveTillReportPaymentLines", () => {
 });
 
 describe("resolveTillSalesSummaryRows", () => {
-  it("shows gross sales and expected amount (net sales − expenses, excluding float)", () => {
+  it("shows gross sales and expected amount from backend closing balance", () => {
     const rows = resolveTillSalesSummaryRows(sampleReport, sampleSession, { showFloatBreakdown: true });
     expect(rows.map((row) => row.label)).toEqual([
       "Gross sales",
       "Expected Amount",
     ]);
     expect(rows[0]?.amount).toBe(23510);
-    expect(rows[1]?.amount).toBe(19110); // 23510 − 4400; ignores float-inclusive backend fields
+    expect(rows[1]?.amount).toBe(10017320); // uses report.expected_net_sales
     expect(rows[0]?.hint).toBeUndefined();
     expect(rows[1]?.hint).toBeUndefined();
   });
 
-  it("computes expected amount as net sales − expenses", () => {
+  it("computes expected amount as float + sales − expenses", () => {
     const rows = resolveTillSalesSummaryRows(
       {
         sales: { gross_sales: 10000, net_sales: 10000 },
         session_expenses: 1500,
-        till: { session_expenses: 1500 },
+        till: { opening_float: 3000, session_expenses: 1500 },
       },
-      sampleSession,
+      { working_amount: 3000 },
     );
     expect(rows).toEqual([
       { label: "Gross sales", amount: 10000 },
-      { label: "Expected Amount", amount: 8500 },
+      { label: "Expected Amount", amount: 11500 },
     ]);
   });
 });
@@ -181,7 +181,7 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain("Payment summary");
     expect(html).toContain("Cash payment");
     expect(html).toContain("M-Pesa payments");
-    expect(html).toContain("Total paid debtors");
+    expect(html).not.toContain("Total paid debtors");
     expect(html).toContain("Sales summary");
     expect(html).toContain("Gross sales");
     expect(html).toContain("Expected Amount");
@@ -209,7 +209,7 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain("M-Pesa payments");
     expect(html).toContain("Equity payment");
     expect(html).toContain("K.C.B payment");
-    expect(html).toContain("Total paid debtors");
+    expect(html).not.toContain("Total paid debtors");
     expect(html).toContain("Total expenses");
     expect(html).toContain("Sales summary");
     expect(html).toContain("Gross sales");

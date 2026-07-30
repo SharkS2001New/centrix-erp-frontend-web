@@ -425,7 +425,7 @@ function saleHasPrintableItems(sale) {
   );
 }
 
-/** Fast POS reprint: skip redundant settings/org round-trips when capabilities are warm. */
+/** Fast POS reprint: skip redundant settings/org/network round-trips when capabilities are warm. */
 function fastPosPrintOptions(sale, base = {}) {
   const offline = offlinePrintOptions(sale, base);
   if (offline !== base) return offline;
@@ -436,6 +436,9 @@ function fastPosPrintOptions(sale, base = {}) {
     skipOrganizationRefresh: Boolean(
       base.organization?.name || base.organizationName || base.capabilities?.profile_label,
     ),
+    // Receipt HTML is built from the sale already in memory — don't wait on WAN.
+    skipNetworkLookups: true,
+    skipLogoFetch: true,
   };
 }
 
@@ -4555,7 +4558,7 @@ export function PosScreen({ standalone = false }) {
         resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt";
       void printSaleOrder(
         sale,
-        offlinePrintOptions(sale, {
+        fastPosPrintOptions(sale, {
           capabilities,
           organization,
           organizationName: capabilities?.profile_label,
@@ -4566,10 +4569,6 @@ export function PosScreen({ standalone = false }) {
           documentType,
           // Checkout returns kra_response for immediate thermal QR print.
           kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
-          // Checkout already returned the sale — skip redundant print setup round-trips.
-          skipSaleRefresh: true,
-          skipSettingsRefresh: true,
-          skipOrganizationRefresh: Boolean(organization?.name || capabilities?.profile_label),
         }),
       )
         .then((result) => {

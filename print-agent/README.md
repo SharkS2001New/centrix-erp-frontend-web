@@ -60,7 +60,8 @@ The script downloads portable Node.js when missing.
 
 Agent listens on **http://127.0.0.1:9247** after install.
 
-See previous README sections for `/v1/health` and `/v1/print`.
+- `POST /v1/print` queues by default and returns immediately (`queued: true`)
+- Pass `"wait": true` to print synchronously (Admin test print)
 
 ---
 

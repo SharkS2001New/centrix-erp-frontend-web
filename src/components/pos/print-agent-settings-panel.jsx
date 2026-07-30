@@ -214,10 +214,11 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         html,
         copies: 1,
         jobType: "receipt",
+        wait: true,
         config: { ...agentForm, enabled: true },
       });
       notifySuccess(
-        `Test receipt sent via Centrix Print Agent${agentForm.printerName ? ` → ${agentForm.printerName}` : ""}.`,
+        `Test receipt printed via Centrix Print Agent${agentForm.printerName ? ` → ${agentForm.printerName}` : ""}.`,
       );
     } catch (error) {
       notifyError(error instanceof Error ? error.message : "Test print failed.");

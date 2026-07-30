@@ -913,7 +913,7 @@ export function EndOfDayReportScreen() {
               />
             </div>
             <p className="theme-subtext mt-3 text-center text-xs">
-              Expected net sales = opening float + total sales − expenses
+              Expected closing = opening float + total sales − expenses
             </p>
           </div>
           ) : null}

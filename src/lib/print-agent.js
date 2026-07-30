@@ -14,7 +14,9 @@ import {
 const DEFAULT_BASE_URL = "http://127.0.0.1:9247";
 const HEALTH_TIMEOUT_MS = 1200;
 const QUICK_HEALTH_TIMEOUT_MS = 500;
-const PRINT_TIMEOUT_MS = 30000;
+/** Async queue returns quickly; sync/test print may still wait for PDF + printer. */
+const PRINT_TIMEOUT_MS = 8000;
+const PRINT_WAIT_TIMEOUT_MS = 45000;
 
 export const PRINT_AGENT_DEFAULTS = {
   enabled: false,
@@ -104,13 +106,16 @@ export async function checkPrintAgentHealth(config = getPrintAgentConfig(), { qu
 
 /**
  * Send HTML to the print agent for silent printing.
- * @returns {{ ok: true, jobId?: string }}
+ * By default the agent queues the job and returns immediately (POS feels snappy).
+ * Pass `wait: true` for Admin test prints that must confirm success/failure.
+ * @returns {{ ok: true, jobId?: string, queued?: boolean }}
  */
 export async function printViaAgent({
   html,
   copies = 1,
   jobType = "receipt",
   documentId = null,
+  wait = false,
   config = getPrintAgentConfig(),
 }) {
   if (!config.enabled) {
@@ -122,16 +127,22 @@ export async function printViaAgent({
 
   const body = await agentFetch(config, "/v1/print", {
     method: "POST",
+    timeoutMs: wait ? PRINT_WAIT_TIMEOUT_MS : PRINT_TIMEOUT_MS,
     body: JSON.stringify({
       html,
       copies: Math.max(1, Number(copies) || 1),
       job_type: jobType,
       document_id: documentId != null ? String(documentId) : null,
       printer: config.printerName || null,
+      wait: Boolean(wait),
     }),
   });
 
-  return { ok: true, jobId: body.job_id ?? body.jobId ?? null };
+  return {
+    ok: true,
+    jobId: body.job_id ?? body.jobId ?? null,
+    queued: body.queued !== false,
+  };
 }
 
 export function isPrintAgentEnabled() {

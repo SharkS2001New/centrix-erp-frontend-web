@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 const string DefaultHost = "127.0.0.1";
 const int DefaultPort = 9247;
-const string Version = "0.2.9";
+const string Version = "0.3.0";
 
 var host = Environment.GetEnvironmentVariable("PRINT_AGENT_HOST") ?? DefaultHost;
 var port = int.TryParse(Environment.GetEnvironmentVariable("PRINT_AGENT_PORT"), out var parsedPort)
@@ -34,6 +34,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 builder.Services.AddSingleton<PrinterDiscovery>();
 builder.Services.AddSingleton<HtmlPrintService>();
+builder.Services.AddSingleton<PrintJobQueue>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PrintJobQueue>());
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
@@ -42,7 +44,7 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 app.UseCors();
 
-app.MapGet("/v1/health", async (PrinterDiscovery printers) =>
+app.MapGet("/v1/health", (PrinterDiscovery printers) =>
 {
     var list = printers.ListPrinters();
     var defaultPrinter = printers.DefaultPrinter();
@@ -52,6 +54,7 @@ app.MapGet("/v1/health", async (PrinterDiscovery printers) =>
         version = Version,
         platform = "win32",
         running_as_service = !Environment.UserInteractive,
+        async_print = true,
         wkhtmltopdf_available = WkhtmlPdfRenderer.FindExecutable() is not null,
         sumatra_available = HtmlPrintService.IsSumatraAvailable(),
         sumatra_path = HtmlPrintService.SumatraExecutablePath(),
@@ -60,7 +63,7 @@ app.MapGet("/v1/health", async (PrinterDiscovery printers) =>
     });
 });
 
-app.MapPost("/v1/print", async (PrintRequest request, HtmlPrintService printer, CancellationToken ct) =>
+app.MapPost("/v1/print", async (PrintRequest request, HtmlPrintService printer, PrintJobQueue queue, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(request.Html))
     {
@@ -69,9 +72,23 @@ app.MapPost("/v1/print", async (PrintRequest request, HtmlPrintService printer, 
 
     var copies = Math.Max(1, request.Copies <= 0 ? 1 : request.Copies);
     var documentId = string.IsNullOrWhiteSpace(request.DocumentId) ? "job" : request.DocumentId.Trim();
+    // wait=true keeps sync behaviour for Admin → Test print.
+    var wait = request.Wait == true;
 
     try
     {
+        if (!wait)
+        {
+            var queuedJobId = queue.Enqueue(request.Html, request.Printer, copies, documentId);
+            return Results.Json(new
+            {
+                ok = true,
+                queued = true,
+                job_id = queuedJobId,
+                printer = request.Printer,
+            });
+        }
+
         var (jobId, printerUsed) = await printer.PrintHtmlAsync(
             request.Html,
             request.Printer,
@@ -79,7 +96,7 @@ app.MapPost("/v1/print", async (PrintRequest request, HtmlPrintService printer, 
             documentId,
             ct);
 
-        return Results.Json(new { ok = true, job_id = jobId, printer = printerUsed });
+        return Results.Json(new { ok = true, queued = false, job_id = jobId, printer = printerUsed });
     }
     catch (Exception ex)
     {
@@ -103,4 +120,5 @@ internal sealed record PrintRequest(
     int Copies = 1,
     string? Printer = null,
     string? DocumentId = null,
-    string? JobType = null);
+    string? JobType = null,
+    bool? Wait = null);

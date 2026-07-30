@@ -11,11 +11,15 @@ const execFileAsync = promisify(execFile);
 
 const HOST = process.env.PRINT_AGENT_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.PRINT_AGENT_PORT ?? 9247);
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "4mb" }));
+
+/** @type {{ jobId: string, html: string, copies: number, printer: string | null, documentId: string }[]} */
+const printQueue = [];
+let queueRunning = false;
 
 async function listPrinters() {
   const platform = process.platform;
@@ -105,6 +109,51 @@ async function printPdf(pdfPath, printerName) {
   await execFileAsync("lp", args);
 }
 
+async function runPrintJob({ html, copies, printer, documentId, jobId }) {
+  const workDir = path.join(os.tmpdir(), "centrix-print-agent");
+  await mkdir(workDir, { recursive: true });
+  const pdfPath = path.join(workDir, `${jobId}.pdf`);
+
+  try {
+    await htmlToPdf(html, pdfPath);
+    for (let copy = 0; copy < copies; copy += 1) {
+      await printPdf(pdfPath, printer);
+    }
+    return jobId;
+  } finally {
+    await rm(pdfPath, { force: true }).catch(() => {});
+  }
+}
+
+async function drainPrintQueue() {
+  if (queueRunning) return;
+  queueRunning = true;
+  try {
+    while (printQueue.length > 0) {
+      const job = printQueue.shift();
+      if (!job) continue;
+      try {
+        await runPrintJob(job);
+      } catch (error) {
+        console.error(`Background print failed for ${job.jobId}:`, error);
+      }
+    }
+  } finally {
+    queueRunning = false;
+    if (printQueue.length > 0) {
+      void drainPrintQueue();
+    }
+  }
+}
+
+function enqueuePrintJob({ html, copies, printer, documentId }) {
+  const stamp = Date.now();
+  const jobId = `${String(documentId || "job").replace(/[^\w.-]+/g, "_")}-${stamp}`;
+  printQueue.push({ jobId, html, copies, printer, documentId });
+  void drainPrintQueue();
+  return jobId;
+}
+
 app.get("/v1/health", async (_req, res) => {
   const printers = await listPrinters();
   const default_printer = await defaultPrinter();
@@ -112,6 +161,7 @@ app.get("/v1/health", async (_req, res) => {
     ok: true,
     version: VERSION,
     platform: process.platform,
+    async_print: true,
     default_printer,
     printers,
   });
@@ -122,31 +172,29 @@ app.post("/v1/print", async (req, res) => {
   const copies = Math.max(1, Number(req.body?.copies ?? 1) || 1);
   const printer = req.body?.printer ? String(req.body.printer) : null;
   const documentId = req.body?.document_id ? String(req.body.document_id) : "job";
+  const wait = req.body?.wait === true || req.body?.wait === 1 || req.body?.wait === "1";
 
   if (!html.trim()) {
     res.status(400).json({ ok: false, message: "html is required" });
     return;
   }
 
-  const workDir = path.join(os.tmpdir(), "centrix-print-agent");
-  await mkdir(workDir, { recursive: true });
-
-  const stamp = Date.now();
-  const pdfPath = path.join(workDir, `${documentId}-${stamp}.pdf`);
-
   try {
-    await htmlToPdf(html, pdfPath);
-    for (let copy = 0; copy < copies; copy += 1) {
-      await printPdf(pdfPath, printer);
+    if (!wait) {
+      const jobId = enqueuePrintJob({ html, copies, printer, documentId });
+      res.json({ ok: true, queued: true, job_id: jobId, printer });
+      return;
     }
-    res.json({ ok: true, job_id: `${documentId}-${stamp}` });
+
+    const stamp = Date.now();
+    const jobId = `${String(documentId).replace(/[^\w.-]+/g, "_")}-${stamp}`;
+    await runPrintJob({ html, copies, printer, documentId, jobId });
+    res.json({ ok: true, queued: false, job_id: jobId, printer });
   } catch (error) {
     res.status(500).json({
       ok: false,
       message: error instanceof Error ? error.message : "Print failed",
     });
-  } finally {
-    await rm(pdfPath, { force: true }).catch(() => {});
   }
 });
 

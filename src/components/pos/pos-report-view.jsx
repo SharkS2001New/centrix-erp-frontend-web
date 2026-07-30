@@ -141,10 +141,6 @@ export function PosReportView({
     label: row.label,
     value: formatTillKes(row.total),
   }));
-  paymentItems.push({
-    label: "Total paid debtors",
-    value: formatTillKes(sales.debtor_collections ?? 0),
-  });
 
   const salesItems = [
     {

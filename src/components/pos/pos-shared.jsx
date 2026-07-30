@@ -165,7 +165,6 @@ export function buildPosTillReportHtml({
   const paymentRowItems = [
     sectionRow("Payment summary", { first: floatRows.length === 0 }),
     ...paymentPrintRows(report),
-    row("Total paid debtors", amt(sales.debtor_collections ?? 0)),
   ];
 
   const salesExpenseRows = [row("Total expenses", amt(sessionExpenses))];

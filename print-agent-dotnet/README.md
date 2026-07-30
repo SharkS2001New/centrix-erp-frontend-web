@@ -29,5 +29,7 @@ Host `publish/CentrixPrintAgent-win-x64.zip` via `PRINT_AGENT_DOTNET_URL` or `pr
 
 ## API
 
-- `GET /v1/health`
-- `POST /v1/print` with `{ "html", "copies", "printer", "document_id" }`
+- `GET /v1/health` — includes `async_print: true` when background queue is available
+- `POST /v1/print` with `{ "html", "copies", "printer", "document_id", "wait" }`
+  - Default: queues the job and returns immediately (`queued: true`) so POS stays snappy
+  - `"wait": true`: prints synchronously (used by Admin → Test print)

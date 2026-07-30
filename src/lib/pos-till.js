@@ -44,7 +44,7 @@ export function cashMovementHint(type) {
   return CASH_MOVEMENT_OPTIONS.find((opt) => opt.value === type)?.hint ?? "";
 }
 
-/** Expected net sales: opening float + total sales − expenses. */
+/** Expected closing balance: opening float + total sales − expenses (± movements). */
 export function resolveExpectedNetSales({
   openingFloat,
   totalSales,
@@ -397,15 +397,32 @@ export function resolveTillReportPaymentLines(report) {
   }));
 }
 
-/** Sales summary for till X/Z — Gross sales and Expected Amount (net sales − expenses, no float). */
+/** Sales summary for till X/Z — Gross sales and Expected Amount (closing balance). */
 export function resolveTillSalesSummaryRows(report, _session, { showFloatBreakdown: _showFloatBreakdown = true } = {}) {
   const sales = report?.sales ?? {};
   const till = report?.till ?? {};
   const sessionExpenses = Number(report?.session_expenses ?? till?.session_expenses ?? 0);
   const grossSales = Number(sales.gross_sales ?? sales.net_sales ?? sales.net ?? 0);
   const netSales = Number(sales.net_sales ?? sales.gross_sales ?? sales.net ?? 0);
-  // Do not use backend net_sales_minus_expenses / expected_net_sales — those include float.
-  const expectedAmount = Math.max(0, netSales - sessionExpenses);
+  const openingFloat = Number(till?.opening_float ?? _session?.working_amount ?? 0);
+  const movements = Array.isArray(report?.cash_movements) ? report.cash_movements : [];
+  let cashIn = 0;
+  let cashOut = 0;
+  for (const row of movements) {
+    const amount = Number(row?.amount ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const type = String(row?.type ?? "").toLowerCase();
+    if (type === "pay_in") cashIn += amount;
+    else if (type === "drop" || type === "pay_out") cashOut += amount;
+  }
+  const expectedAmount = resolveExpectedNetSales({
+    openingFloat,
+    totalSales: netSales,
+    expenses: sessionExpenses,
+    cashMovementsIn: cashIn,
+    cashMovementsOut: cashOut,
+    expectedNetSales: report?.expected_net_sales ?? report?.expected_cash ?? sales.expected_net_sales,
+  });
 
   return [
     {
