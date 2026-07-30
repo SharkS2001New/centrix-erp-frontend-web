@@ -44,19 +44,6 @@ function Test-VersionString {
   }
 }
 
-function New-ProductWxsWithVersion {
-  param(
-    [string]$SourceWxs,
-    [string]$DestinationWxs,
-    [string]$ProductVersion
-  )
-
-  $raw = Get-Content -Path $SourceWxs -Raw
-  $defineLine = "<?define ProductVersion = `"$ProductVersion`" ?>"
-  $injected = $raw -replace '<\?ifndef ProductVersion \?>[\s\S]*?<\?endif \?>', $defineLine
-  Set-Content -Path $DestinationWxs -Value $injected -Encoding UTF8
-}
-
 Test-VersionString -Value $Version
 
 $WixBin = Find-WixBin
@@ -88,10 +75,18 @@ $LightExe = Join-Path $WixBin "light.exe"
 $FilesWxs = Join-Path $WorkDir "Files.wxs"
 $ProductWxsSource = Join-Path $InstallerDir "Product.wxs"
 $ProductWxs = Join-Path $WorkDir "Product.wxs"
+$LicenseSource = Join-Path $InstallerDir "License.rtf"
+$LicenseWork = Join-Path $WorkDir "License.rtf"
 $CandleOut = Join-Path $WorkDir "out"
 $StagingDefine = ($StagingRoot -replace '\\', '/')
 
-New-ProductWxsWithVersion -SourceWxs $ProductWxsSource -DestinationWxs $ProductWxs -ProductVersion $Version
+if (-not (Test-Path $LicenseSource)) {
+  throw "Missing license file: $LicenseSource"
+}
+
+# Product.wxs + License.rtf must live next to each other for WixUILicenseRtf.
+Copy-Item -Path $ProductWxsSource -Destination $ProductWxs -Force
+Copy-Item -Path $LicenseSource -Destination $LicenseWork -Force
 
 Write-Host "==> Harvesting staged files (this may take a minute) …"
 Invoke-BuildTool -Name "heat.exe" -Command {
@@ -106,6 +101,7 @@ Invoke-BuildTool -Name "heat.exe" -Command {
 
 Write-Host "==> Compiling WiX …"
 New-Item -ItemType Directory -Path $CandleOut -Force | Out-Null
+# ProductVersion comes only from -d (Product.wxs keeps <?ifndef?> default for local candle).
 Invoke-BuildTool -Name "candle.exe" -Command {
   & $CandleExe `
     "-dStagingSource=$StagingDefine" `
@@ -116,10 +112,16 @@ Invoke-BuildTool -Name "candle.exe" -Command {
 }
 
 Write-Host "==> Linking MSI …"
-Invoke-BuildTool -Name "light.exe" -Command {
-  & $LightExe -out $OutMsi -ext WixUIExtension -ext WixUtilExtension `
-    (Join-Path $CandleOut "Product.wixobj") `
-    (Join-Path $CandleOut "Files.wixobj")
+# light resolves WixUILicenseRtf relative to the current directory.
+Push-Location $WorkDir
+try {
+  Invoke-BuildTool -Name "light.exe" -Command {
+    & $LightExe -out $OutMsi -ext WixUIExtension -ext WixUtilExtension `
+      (Join-Path $CandleOut "Product.wixobj") `
+      (Join-Path $CandleOut "Files.wixobj")
+  }
+} finally {
+  Pop-Location
 }
 
 if (-not (Test-Path $OutMsi)) {
