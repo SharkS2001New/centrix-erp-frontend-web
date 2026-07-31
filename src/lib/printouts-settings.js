@@ -4,6 +4,11 @@ import {
   invoicePrintFormFromApi,
   invoicePrintPayloadFromForm,
 } from "@/lib/invoice-print-settings";
+import {
+  proformaPrintFormFromApi,
+  proformaPrintPayloadFromForm,
+  PROFORMA_PRINT_DEFAULTS,
+} from "@/lib/proforma-print-settings";
 import { lpoPrintFormFromApi, lpoPrintPayloadFromForm } from "@/lib/lpo-print-settings";
 import { loadingSheetPrintFormFromApi, loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
 import { printFooterFormFromGeneral, printFooterPayloadFromForm } from "@/lib/print-footer-settings";
@@ -52,6 +57,20 @@ export const EMPTY_PRINTOUTS_FORM = {
   invoice_valid_days: "7",
   invoice_print_delivery_terms: "",
   invoice_print_footer_lines: "",
+  proforma_valid_days: String(PROFORMA_PRINT_DEFAULTS.proforma_valid_days),
+  show_proforma_payment_details: true,
+  show_proforma_terms: true,
+  proforma_print_terms: "",
+  show_proforma_vat_note: true,
+  proforma_vat_note: PROFORMA_PRINT_DEFAULTS.proforma_vat_note,
+  show_proforma_signatures: true,
+  proforma_confirmed_by: "",
+  show_proforma_banner: true,
+  proforma_banner_text: PROFORMA_PRINT_DEFAULTS.proforma_banner_text,
+  show_proforma_customer_pin: true,
+  show_proforma_valid_until: true,
+  show_proforma_payment_terms: true,
+  show_proforma_totals_breakdown: true,
   lpo_print_delivery_notes: "",
   lpo_print_kebs_warning: "",
   lpo_print_vat_note: "",
@@ -73,6 +92,7 @@ export const EMPTY_PRINTOUTS_FORM = {
 export const PRINTOUT_KIND_LABELS = {
   receipt: "Thermal receipts",
   invoice: "A4 invoices",
+  proforma: "Proforma invoices",
   lpo: "Local purchase orders (LPO)",
   loading_sheet: "Loading sheets",
   picking_list: "Picking lists",
@@ -139,6 +159,7 @@ export function resolvePrintoutSections(capabilities) {
   const previewTypes = [
     hasSales ? "receipt" : null,
     hasSales ? "invoice" : null,
+    hasSales ? "proforma" : null,
     hasProcurement ? "lpo" : null,
     hasRoutePrintouts ? "loading_sheet" : null,
     hasRoutePrintouts ? "picking_list" : null,
@@ -149,6 +170,7 @@ export function resolvePrintoutSections(capabilities) {
   const availableKinds = [
     hasSales ? "receipt" : null,
     hasSales ? "invoice" : null,
+    hasSales ? "proforma" : null,
     hasProcurement ? "lpo" : null,
     hasRoutePrintouts ? "loading_sheet" : null,
     hasRoutePrintouts ? "picking_list" : null,
@@ -198,6 +220,7 @@ export function printoutsSalesFormFromApi(res) {
     route_receipt_payment_details: sales.route_receipt_payment_details,
     invoice_valid_days: sales.invoice_valid_days,
     ...invoicePrintFormFromApi(sales),
+    ...proformaPrintFormFromApi(sales),
   };
 }
 
@@ -255,6 +278,7 @@ export function printoutsSalesPayloadFromForm(form) {
     ),
     invoice_valid_days: Number(form.invoice_valid_days) || 0,
     ...invoicePrintPayloadFromForm(form),
+    ...proformaPrintPayloadFromForm(form),
   };
 }
 

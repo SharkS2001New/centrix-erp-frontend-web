@@ -3,6 +3,7 @@ import {
   DEFAULT_INVOICE_FOOTER_LINES,
   invoicePrintFormFromApi,
 } from "@/lib/invoice-print-settings";
+import { PROFORMA_PRINT_DEFAULTS } from "@/lib/proforma-print-settings";
 import { defaultDateRange } from "@/lib/datetime";
 import {
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
@@ -91,6 +92,7 @@ const SALES_DEFAULTS = {
   },
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
+  ...PROFORMA_PRINT_DEFAULTS,
   stock_deduct_on: {
     pos: "order_created",
     mobile: "order_completed",

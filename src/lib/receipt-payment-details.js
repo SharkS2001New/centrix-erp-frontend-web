@@ -111,6 +111,9 @@ export function resolveReceiptPaymentDetails({
 
 export function shouldShowReceiptPaymentDetails(moduleSettings, documentType = "receipt") {
   const sales = moduleSettings?.sales ?? moduleSettings ?? {};
+  if (documentType === "proforma") {
+    return sales.show_proforma_payment_details !== false;
+  }
   if (documentType === "invoice") {
     return sales.show_invoice_payment_details !== false;
   }

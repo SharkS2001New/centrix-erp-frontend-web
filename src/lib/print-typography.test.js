@@ -85,8 +85,11 @@ describe("org print typography settings", () => {
     });
 
     expect(html).toContain("Arial");
-    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").body(12)}`);
-    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").header(24)}`);
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").body(11)}`);
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").header(16)}`);
+    expect(html).toContain("TAX INVOICE");
+    expect(html).toContain("Terms and Conditions");
+    expect(html).toContain("Prepared By");
   });
 
   it("uses admin printout settings for A4 invoice fonts", () => {

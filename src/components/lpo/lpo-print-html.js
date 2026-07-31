@@ -2,9 +2,9 @@ import { organizationLogoFileUrl } from "@/lib/api";
 import { openPrintWindow, printWindowFeatures } from "@/lib/open-print-window";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
-  buildReportOrgHeaderHtml,
   organizationHasLogo,
   resolveReportBranding,
+  buildReportWatermarkHtml,
 } from "@/lib/reports/report-branding";
 import {
   resolveLpoDeliveryNotes,
@@ -15,16 +15,17 @@ import {
   resolveLpoVatNote,
 } from "@/lib/lpo-print-settings";
 import { computeLpoLineTotals, formatLpoAmount, lpoDisplayNumber } from "./lpo-shared";
-import {
-  buildDocumentPrintEdgeFooterHtml,
-  documentPrintEdgeFooterStyles,
-} from "@/lib/document-print-edge-footer";
+import { buildDocumentPrintEdgeFooterHtml } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
 import {
-  createOrgPrintPx,
-  orgPrintFontFamilyFromSettings,
-  orgPrintInkStyles,
-} from "@/lib/print-typography";
+  buildProfessionalHeaderHtml,
+  buildProfessionalItemsTableHtml,
+  buildProfessionalMetaHtml,
+  buildProfessionalSignaturesHtml,
+  buildProfessionalTermsHtml,
+  escapeProfessionalHtml,
+  professionalA4Styles,
+} from "@/lib/professional-a4-print";
 
 function formatPrintDate(value) {
   if (!value) return "—";
@@ -32,7 +33,6 @@ function formatPrintDate(value) {
   const d = new Date(normalized.includes("T") ? normalized : `${normalized}T12:00:00`);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString("en-GB", {
-    weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -44,14 +44,6 @@ function formatQty(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export function sampleLpoPreviewData() {
@@ -99,98 +91,11 @@ export function sampleLpoPreviewData() {
   };
 }
 
-function signatureLine(label, value) {
-  const lineContent = value ? escapeHtml(value) : "&nbsp;";
-  return `<p><span class="sig-label">${escapeHtml(label)}:</span> <span class="sig-line">${lineContent}</span></p>`;
-}
-
-function buildLpoSignaturesHtml(signatures) {
-  return `<div class="signatures">
-    ${signatureLine("Prepared By", signatures.preparedBy)}
-    ${signatureLine("Checked By", signatures.checkedBy)}
-    ${signatureLine("Authorised By", signatures.authorisedBy)}
-    ${signatureLine("Terms", signatures.terms)}
-  </div>`;
-}
-
 function lpoDocumentTitle(variant) {
   return variant === "delivery_note" ? "DELIVERY NOTE" : "LOCAL PURCHASE ORDER";
 }
 
-function lpoPrintStyles(generalSettings = null) {
-  const printPx = createOrgPrintPx(generalSettings, "lpo");
-  const px = printPx.body;
-  const hpx = printPx.header;
-  const fpx = printPx.footer;
-  const font = orgPrintFontFamilyFromSettings(generalSettings, "lpo");
-  return `
-    @page { size: A4; margin: 0; }
-    html { height: 100%; }
-    body {
-      font-family: ${font};
-      margin: 0;
-      padding: 16px;
-      font-size: ${px(11)};
-      line-height: 1.35;
-      color: #000;
-      min-height: 100%;
-      box-sizing: border-box;
-      ${orgPrintInkStyles(generalSettings, "lpo")}
-    }
-    .page {
-      max-width: 820px;
-      margin: 0 auto;
-    }
-    .page-body { }
-    .org-header { text-align: center; margin-bottom: 8px; }
-    .org-logo { display: block; margin: 0 auto 8px; max-height: 72px; max-width: 280px; object-fit: contain; }
-    .org-name { font-size: ${hpx(22)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
-    .org-meta { text-align: center; font-size: ${hpx(10)}; margin-top: 4px; line-height: 1.45; font-weight: var(--print-w-header, 600); }
-    .doc-title { text-align: center; font-size: ${px(14)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
-    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-bottom: 12px; font-size: ${px(10)}; }
-    .meta p { margin: 2px 0; }
-    .meta-right { text-align: right; }
-    .supplier-name { font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
-    .meta-label { font-weight: 700; }
-    table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: ${px(10)}; }
-    table.items th, table.items td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 5px 6px; vertical-align: top; }
-    table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(9)}; }
-    table.items th.num, table.items td.num { text-align: right; white-space: nowrap; }
-    .table-totals { display: flex; justify-content: flex-end; margin: 0 0 12px; font-size: ${px(10)}; }
-    .table-totals-box { min-width: 220px; text-align: right; }
-    .table-totals-box p { margin: 2px 0; }
-    .bottom-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; margin-top: 8px; align-items: start; }
-    .instructions-title { font-weight: 700; text-transform: uppercase; font-size: ${px(9)}; margin: 0 0 4px; }
-    .notes { margin: 0; padding: 0; list-style: none; font-size: ${px(9)}; }
-    .notes li { margin-bottom: 3px; }
-    .notes .n { font-weight: 700; margin-right: 4px; }
-    .signatures { font-size: ${px(10)}; text-align: right; }
-    .signatures p { margin: 0 0 16px; }
-    .sig-label { font-weight: 700; }
-    .sig-line { display: inline-block; min-width: 140px; border-bottom: 1px dotted #000; padding-bottom: 2px; }
-    .footer-notes { margin-top: 12px; text-align: center; font-size: ${px(9)}; }
-    .footer-notes p { margin: 4px 0; }
-    .footer-line { font-weight: 700; }
-    .warn { font-weight: 700; text-decoration: underline; text-transform: uppercase; }
-    .note-line { margin-top: 4px; }
-    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "lpo" })}
-    @media print {
-      body { font-size: ${px(11, true)}; }
-      .org-name { font-size: ${hpx(22, true)}; }
-      .org-meta { font-size: ${hpx(10, true)}; }
-      .doc-title { font-size: ${px(14, true)}; }
-      .meta { font-size: ${px(10, true)}; }
-      table.items { font-size: ${px(10, true)}; }
-      table.items th { font-size: ${px(9, true)}; }
-      .table-totals { font-size: ${px(10, true)}; }
-      .instructions-title, .notes { font-size: ${px(9, true)}; }
-      .signatures { font-size: ${px(10, true)}; }
-      .footer-notes { font-size: ${px(9, true)}; }
-    }
-  `;
-}
-
-/** Build Omega-style A4 LPO or delivery note HTML. */
+/** Professional A4 LPO / delivery note HTML. */
 export function buildLpoPrintHtml({
   lpo,
   lines = [],
@@ -217,7 +122,16 @@ export function buildLpoPrintHtml({
       ? organizationLogoFileUrl(organization.id, {
           filePath: organization.logo_file_path ?? undefined,
         })
-      : null;
+      : branding.logoUrl ?? null;
+
+  const showLogo =
+    branding.showHeader !== false &&
+    (branding.display === "logo" || branding.display === "logo_and_name");
+  const showName =
+    branding.showHeader !== false &&
+    (branding.display === "name" ||
+      branding.display === "logo_and_name" ||
+      !showLogo);
 
   const supplierName = lpo?.supplier_name ?? supplier?.supplier_name ?? "Supplier";
   const supplierPoBox = supplier?.address?.trim() || "—";
@@ -255,19 +169,52 @@ export function buildLpoPrintHtml({
     Number(lpo?.subtotal) ||
     Math.max(0, Number(lpo?.net_amount ?? 0) - Number(lpo?.vat_amount ?? 0));
   const totalVat = Number(lpo?.vat_amount ?? 0);
+  const orderTotal = Number(lpo?.net_amount ?? subtotal + totalVat);
 
-  const lineRows = (lines ?? []).map((line) => {
+  const tableRows = (lines ?? []).map((line, index) => {
     const totals = computeLpoLineTotals(line);
     const pkg = (line.packaging_label || line.package_name || line.uom || "—").toLowerCase();
-    return {
-      key: line.id ?? `${line.product_code}-${line.ordered_qty}`,
-      product_name: line.product_name ?? "—",
+    const row = {
+      no: String(index + 1),
+      description: line.product_name ?? "—",
+      specification: pkg,
       qty: formatQty(line.ordered_qty),
-      pkg,
-      unitPrice: formatLpoAmount(line.cost_price),
-      vat: formatLpoAmount(totals.vat),
-      amount: formatLpoAmount(totals.net),
     };
+    if (showPricing) {
+      row.unit_price = formatLpoAmount(line.cost_price);
+      row.vat = formatLpoAmount(totals.vat);
+      row.amount = formatLpoAmount(totals.net);
+    }
+    return row;
+  });
+
+  const columns = showPricing
+    ? [
+        { key: "no", label: "No.", align: "center", width: "6%" },
+        { key: "description", label: "Item Description", width: "28%" },
+        { key: "specification", label: "Specification", width: "16%" },
+        { key: "qty", label: "Qty.", align: "right", width: "10%" },
+        { key: "unit_price", label: "Unit Price", align: "right", width: "12%" },
+        { key: "vat", label: "V.A.T", align: "right", width: "12%" },
+        { key: "amount", label: "Amount KSh", align: "right", width: "14%" },
+      ]
+    : [
+        { key: "no", label: "No.", align: "center", width: "8%" },
+        { key: "description", label: "Item Description", width: "52%" },
+        { key: "specification", label: "Specification", width: "22%" },
+        { key: "qty", label: "Qty.", align: "right", width: "18%" },
+      ];
+
+  const tableHtml = buildProfessionalItemsTableHtml({
+    columns,
+    rows: tableRows,
+    total: showPricing
+      ? {
+          totalLabel: "TOTAL :",
+          totalAmount: formatLpoAmount(orderTotal),
+          totalColSpan: columns.length - 1,
+        }
+      : null,
   });
 
   const printedAt = new Date();
@@ -281,143 +228,101 @@ export function buildLpoPrintHtml({
     hour12: true,
   });
 
-  const orgHeaderHtml = branding.showHeader
-    ? buildReportOrgHeaderHtml({
-        ...branding,
-        logoUrl: logoUrl ?? branding.logoUrl,
-        organizationName: orgName || branding.organizationName,
-      })
-    : orgName
-      ? `<div class="org-name">${escapeHtml(orgName)}</div>`
-      : "";
+  const docTitle = lpoDocumentTitle(variant);
+  const docNoLabel = isDeliveryNote ? "Delivery Note Number" : "LPO Number";
+  const termsHtml = buildProfessionalTermsHtml({
+    title: "Delivery Instructions",
+    lines: noteLines,
+  });
 
-  const notesHtml = noteLines
-    .map((line, index) => `<li><span class="n">${index + 1}.</span>${escapeHtml(line)}</li>`)
-    .join("");
+  const signaturesHtml = buildProfessionalSignaturesHtml([
+    { label: "Prepared By", value: signatures.preparedBy || null },
+    { label: "Checked By", value: signatures.checkedBy || null },
+    { label: "Authorised By", value: signatures.authorisedBy || null },
+  ]);
 
-  const colSpan = showPricing ? 6 : 3;
-  const itemsHtml = lineRows.length
-    ? lineRows
-        .map((line) =>
-          showPricing
-            ? `<tr>
-              <td>${escapeHtml(line.product_name)}</td>
-              <td class="num">${escapeHtml(line.qty)}</td>
-              <td class="num">${escapeHtml(line.pkg)}</td>
-              <td class="num">${escapeHtml(line.unitPrice)}</td>
-              <td class="num">${escapeHtml(line.vat)}</td>
-              <td class="num">${escapeHtml(line.amount)}</td>
-            </tr>`
-            : `<tr>
-              <td>${escapeHtml(line.product_name)}</td>
-              <td class="num">${escapeHtml(line.qty)}</td>
-              <td class="num">${escapeHtml(line.pkg)}</td>
-            </tr>`,
-        )
-        .join("")
-    : `<tr><td colspan="${colSpan}" style="text-align:center;color:#666;">No line items</td></tr>`;
-
-  const tableHeadHtml = showPricing
-    ? `<tr>
-          <th>Product Name</th>
-          <th class="num">Quantity</th>
-          <th class="num">Package</th>
-          <th class="num">Unit Price</th>
-          <th class="num">V.A.T</th>
-          <th class="num">Amount</th>
-        </tr>`
-    : `<tr>
-          <th>Product Name</th>
-          <th class="num">Quantity</th>
-          <th class="num">Package</th>
-        </tr>`;
-
-  const totalsHtml = showPricing
-    ? `<div class="table-totals">
-        <div class="table-totals-box">
-          <p><strong>Subtotal:</strong> ${escapeHtml(formatLpoAmount(subtotal))}</p>
-          <p><strong>Total V.A.T:</strong> ${escapeHtml(formatLpoAmount(totalVat))}</p>
-          <p><strong>Order total:</strong> ${escapeHtml(formatLpoAmount(Number(lpo?.net_amount ?? subtotal + totalVat)))}</p>
-        </div>
-      </div>`
-    : "";
+  const watermarkHtml = buildReportWatermarkHtml({
+    ...branding,
+    watermarkText: supplierName || branding.organizationName || "",
+  });
 
   const footerLinesHtml = footerLines
-    .map((line) => `<p class="footer-line">${escapeHtml(line)}</p>`)
+    .map((line) => `<p>${escapeProfessionalHtml(line)}</p>`)
     .join("");
-  const signaturesHtml = buildLpoSignaturesHtml(signatures);
-  const docTitle = lpoDocumentTitle(variant);
-  const docNoLabel = isDeliveryNote ? "Delivery Note No.:" : "L.P.O No.:";
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${escapeHtml(docTitle)} ${escapeHtml(lpoDisplayNumber(lpo))}</title>
-  <style>${lpoPrintStyles(generalSettings)}</style>
+  <title>${escapeProfessionalHtml(docTitle)} ${escapeProfessionalHtml(lpoDisplayNumber(lpo))}</title>
+  <style>${professionalA4Styles(generalSettings, "lpo")}</style>
 </head>
 <body class="has-doc-print-edge-footer">
+  ${watermarkHtml}
   <div class="page">
     <div class="page-body">
-    <div class="org-header">
-      ${orgHeaderHtml}
-      <div class="org-meta">
-        ${organization?.org_address || buyer.address ? `<div>${escapeHtml(organization?.org_address ?? buyer.address)}</div>` : ""}
-        ${organization?.org_email || buyer.email ? `<div>Email: ${escapeHtml(organization?.org_email ?? buyer.email)}</div>` : ""}
-        ${orgPhones || buyer.phone ? `<div>Tel: ${escapeHtml(orgPhones || buyer.phone)}</div>` : ""}
-        ${orgPin ? `<div>PIN NO: ${escapeHtml(orgPin)}</div>` : ""}
+      ${buildProfessionalHeaderHtml({
+        companyName: orgName,
+        pin: orgPin,
+        address: organization?.org_address ?? buyer.address ?? "",
+        email: organization?.org_email ?? buyer.email ?? "",
+        phones: orgPhones || buyer.phone || "",
+        logoUrl,
+        showLogo,
+        showName: showName || !showLogo,
+      })}
+
+      <div class="doc-title">${escapeProfessionalHtml(docTitle)}</div>
+
+      ${buildProfessionalMetaHtml([
+        { label: "Date", value: formatPrintDate(lpo?.order_date ?? lpo?.created_at) },
+        { label: "Supplier Name", value: supplierName, emphasize: true },
+        { label: "Supplier Address", value: supplierPoBox },
+        { label: docNoLabel, value: lpoDisplayNumber(lpo), emphasize: true },
+        { label: "Supplier PIN", value: supplierPin },
+        { label: "Email", value: supplierEmail },
+        { label: "Phone", value: supplierPhone },
+        { label: "Town", value: supplierTown },
+        { label: "Terms of Payment", value: paymentTerms },
+        { label: "Valid Until", value: formatPrintDate(lpo?.due_date) },
+        { label: "Deliver At", value: deliverAt },
+        ...(lpo?.reference_number
+          ? [{ label: "Your Ref", value: lpo.reference_number }]
+          : []),
+      ])}
+
+      ${tableHtml}
+
+      ${showPricing ? `<p class="vat-note">*${escapeProfessionalHtml(vatNote)}</p>` : ""}
+
+      <div class="closing">
+        ${
+          showPricing
+            ? `<div class="totals">
+                <div class="totals-box">
+                  <p><strong>Subtotal:</strong> ${escapeProfessionalHtml(formatLpoAmount(subtotal))}</p>
+                  <p><strong>Total V.A.T:</strong> ${escapeProfessionalHtml(formatLpoAmount(totalVat))}</p>
+                  <p class="grand"><strong>Order Total:</strong> ${escapeProfessionalHtml(formatLpoAmount(orderTotal))}</p>
+                </div>
+              </div>`
+            : ""
+        }
+
+        ${termsHtml}
+        ${signaturesHtml}
+
+        <div class="footer-notes">
+          ${footerLinesHtml}
+          <p class="warn">${escapeProfessionalHtml(kebsWarning)}</p>
+          ${
+            documentFooterText ?? branding.documentFooterText
+              ? documentFooterHtmlFromText(documentFooterText ?? branding.documentFooterText, {
+                  layout: "block",
+                  tag: "p",
+                })
+              : ""
+          }
+        </div>
       </div>
-    </div>
-
-    <div class="doc-title">${escapeHtml(docTitle)}</div>
-
-    <div class="meta">
-      <div>
-        <div class="supplier-name">${escapeHtml(supplierName)}</div>
-        <p><span class="meta-label">P.O Box:</span> ${escapeHtml(supplierPoBox)}</p>
-        <p><span class="meta-label">Email Address:</span> ${escapeHtml(supplierEmail)}</p>
-        <p><span class="meta-label">Phone:</span> ${escapeHtml(supplierPhone)}</p>
-        <p><span class="meta-label">K.R.A Pin:</span> ${escapeHtml(supplierPin)}</p>
-        <p><span class="meta-label">Town:</span> ${escapeHtml(supplierTown)}</p>
-        <p><span class="meta-label">Terms of Payment:</span> ${escapeHtml(paymentTerms)}</p>
-      </div>
-      <div class="meta-right">
-        <p><span class="meta-label">${escapeHtml(docNoLabel)}</span> <em>${escapeHtml(lpoDisplayNumber(lpo))}</em></p>
-        <p><span class="meta-label">Created On:</span> ${escapeHtml(formatPrintDate(lpo?.order_date ?? lpo?.created_at))}</p>
-        ${lpo?.created_by_name ? `<p><span class="meta-label">Created By:</span> ${escapeHtml(lpo.created_by_name)}</p>` : ""}
-        <p><span class="meta-label">Valid Until:</span> ${escapeHtml(formatPrintDate(lpo?.due_date))}</p>
-        <p><span class="meta-label">Deliver At:</span> ${escapeHtml(deliverAt)}</p>
-        ${lpo?.reference_number ? `<p><span class="meta-label">Your Ref:</span> ${escapeHtml(lpo.reference_number)}</p>` : ""}
-      </div>
-    </div>
-
-    <table class="items">
-      <thead>${tableHeadHtml}</thead>
-      <tbody>${itemsHtml}</tbody>
-    </table>
-
-    ${totalsHtml}
-
-    <div class="bottom-grid">
-      <div>
-        <p class="instructions-title">Delivery Instructions:</p>
-        <ol class="notes">${notesHtml}</ol>
-      </div>
-      ${signaturesHtml}
-    </div>
-
-    <div class="footer-notes">
-      ${footerLinesHtml}
-      <p class="warn">${escapeHtml(kebsWarning)}</p>
-      <p class="note-line"><strong>Take note:</strong> ${escapeHtml(vatNote)}</p>
-      ${
-        (documentFooterText ?? branding.documentFooterText)
-          ? documentFooterHtmlFromText(documentFooterText ?? branding.documentFooterText, {
-              layout: "block",
-              tag: "p",
-            })
-          : ""
-      }
-    </div>
     </div>
   </div>
   ${buildDocumentPrintEdgeFooterHtml({
@@ -433,5 +338,6 @@ export function buildLpoPrintHtml({
 /** Open compact A4 LPO or delivery note print. */
 export function printLpoDocument(options) {
   const html = buildLpoPrintHtml(options);
-  openPrintWindow(html, printWindowFeatures("invoice"));
+  if (!html) return;
+  openPrintWindow(html, printWindowFeatures.a4);
 }

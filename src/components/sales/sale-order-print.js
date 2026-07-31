@@ -26,6 +26,7 @@ import {
   resolveReceiptPaymentDetails,
   shouldShowReceiptPaymentDetails,
 } from "@/lib/receipt-payment-details";
+import { resolveProformaValidDays } from "@/lib/proforma-print-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
 import { fetchLegacyArchiveSaleForPrint } from "@/lib/legacy-archive-api";
@@ -377,6 +378,7 @@ export async function printSaleOrder(sale, options = {}) {
     const orderCreatorName = await resolveSaleOrderCreatorNameForPrint(saleForPrint, options);
 
     const footerDocType = documentType === "invoice" || isProforma ? "invoice" : "receipt";
+    const paymentDetailsDocType = isProforma ? "proforma" : footerDocType;
 
     const printOptions = {
       ...options,
@@ -407,7 +409,7 @@ export async function printSaleOrder(sale, options = {}) {
       showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
       documentFooterText: resolvePrintFooter(general, footerDocType),
       paymentInstructions,
-      showPaymentInstructions: shouldShowReceiptPaymentDetails(moduleSettings, footerDocType),
+      showPaymentInstructions: shouldShowReceiptPaymentDetails(moduleSettings, paymentDetailsDocType),
       kraData,
       kraQrDataUrl,
       printWindow,
@@ -415,11 +417,14 @@ export async function printSaleOrder(sale, options = {}) {
     };
 
     if (documentType === "invoice" || isProforma) {
+      const { resolveProformaValidDays } = await import("@/lib/proforma-print-settings");
       for (let copy = 0; copy < copies; copy += 1) {
         printSaleInvoice(saleForPrint, {
           ...printOptions,
           documentType: isProforma ? "proforma" : "invoice",
-          invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
+          invoiceValidDays: isProforma
+            ? resolveProformaValidDays(sales)
+            : Number(sales.invoice_valid_days ?? 7),
           preparedBy: orderCreatorName,
           uomById: options.uomById ?? null,
         });

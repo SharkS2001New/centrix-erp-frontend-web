@@ -2,9 +2,6 @@ import { buildKraDocumentQrHtml } from "@/lib/kra-receipt-qr";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
 import {
-  buildSaleDocumentLineRows,
-  buildSaleDocumentOrgHeaderHtml,
-  buildSaleDocumentTableHead,
   escapeHtml,
   formatPrintAmount,
   resolveSaleDocumentStoreContact,
@@ -12,30 +9,39 @@ import {
   saleDocumentDiscountTotals,
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
+import {
+  resolveSaleLinePrintColumns,
+  saleLinePrintQtyPackage,
+  saleLineProductLabel,
+  saleLineUom,
+} from "@/lib/sale-line-items";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 import {
   buildDocumentPrintEdgeFooterHtml,
-  documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
+import { resolveInvoiceDeliveryTerms } from "@/lib/invoice-print-settings";
 import {
-  buildSalesDocumentBodyFooterHtml,
-  resolveSalesDocumentBodyFooterLines,
-  salesDocumentFooterSettings,
-} from "@/lib/sales-document-footer";
+  DEFAULT_PROFORMA_BANNER,
+  DEFAULT_PROFORMA_VAT_NOTE,
+  resolveProformaTerms,
+} from "@/lib/proforma-print-settings";
 import {
-  createOrgPrintPx,
-  orgPrintFontFamilyFromSettings,
-  orgPrintInkStyles,
-} from "@/lib/print-typography";
+  buildProfessionalHeaderHtml,
+  buildProfessionalItemsTableHtml,
+  buildProfessionalMetaHtml,
+  buildProfessionalSignaturesHtml,
+  buildProfessionalTermsHtml,
+  professionalA4Styles,
+} from "@/lib/professional-a4-print";
 import { formatOrderNumber, saleCustomerLabel, salePaymentMethodDisplay } from "@/lib/sales";
 import { isLegacySale } from "@/lib/sale-line-items";
+import { buildReportWatermarkHtml } from "@/lib/reports/report-branding";
 
 function formatInvoiceDate(value) {
   if (!value) return "—";
   const d = new Date(value.includes("T") ? value : `${value}T12:00:00`);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleDateString("en-GB", {
-    weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -50,31 +56,39 @@ function addDays(value, days) {
   return d.toISOString();
 }
 
-function formatInvoiceDateShort(value) {
-  if (!value) return "—";
-  const d = new Date(value.includes("T") ? value : `${value}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
+function lineSpecification(line, uomById, legacyPrint) {
+  const { package: packageLabel } = saleLinePrintQtyPackage(line, uomById, { legacyPrint });
+  if (packageLabel) return packageLabel;
+  const code = line.product_code ?? line.sku ?? "";
+  return code ? String(code) : "—";
+}
+
+function buildProfessionalSaleRows(
+  items,
+  { uomById = null, showDiscountColumn = false, legacyPrint = false } = {},
+) {
+  return (items ?? []).map((line, index) => {
+    const uom = legacyPrint ? null : saleLineUom(line, uomById);
+    const cols = resolveSaleLinePrintColumns(line, { uom, legacyPrint });
+    const { quantity } = saleLinePrintQtyPackage(line, uomById, { legacyPrint });
+    const row = {
+      no: String(index + 1),
+      description: saleLineProductLabel(line),
+      specification: lineSpecification(line, uomById, legacyPrint),
+      qty: quantity,
+      unit_price: formatPrintAmount(cols.unitPrice),
+      amount: formatPrintAmount(cols.amount),
+    };
+    if (showDiscountColumn) {
+      row.discount = formatPrintAmount(line.discount_given ?? 0);
+    }
+    return row;
   });
 }
 
-function metaRow(label, value, { emphasize = false } = {}) {
-  const display = value == null || value === "" ? "—" : String(value);
-  return `<div class="meta-row">
-    <span class="meta-label">${escapeHtml(label)}</span>
-    <span class="meta-value${emphasize ? " meta-value-em" : ""}">${escapeHtml(display)}</span>
-  </div>`;
-}
-
 /**
- * A4 invoice receipt — org branding, standard line columns, optional KRA QR.
- * Pass documentType: "proforma" for unpaid bank documents (non-fiscal banner, no KRA QR).
+ * Professional A4 invoice / proforma — PIN left, logo right, bordered lines,
+ * terms & conditions, prepared/confirmed signatures.
  */
 export function buildSaleInvoiceHtml(
   sale,
@@ -104,12 +118,6 @@ export function buildSaleInvoiceHtml(
   if (!sale) return "";
 
   const isProforma = documentType === "proforma";
-  const printPx = createOrgPrintPx(generalSettings, "sale_invoice");
-  const px = printPx.body;
-  const hpx = printPx.header;
-  const fpx = printPx.footer;
-  const font = orgPrintFontFamilyFromSettings(generalSettings, "sale_invoice");
-
   const items = sale.items ?? [];
   const invoiceNo = formatOrderNumber(sale);
   const createdOn = sale.completed_at ?? sale.created_at;
@@ -130,8 +138,13 @@ export function buildSaleInvoiceHtml(
     branch,
     seller,
   });
-  const customerTown = customer?.town ?? (showBranchOnReceipt ? branchName : null) ?? "—";
-  const paymentTerms = customer?.terms_of_payment ?? paymentLine;
+  const customerAddress = [
+    customer?.town,
+    customer?.org_address ?? customer?.address,
+    customerPhone ? `Tel: ${customerPhone}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   const showDiscountColumn = shouldShowPrintDiscountColumn({
     moduleSettings,
@@ -147,20 +160,21 @@ export function buildSaleInvoiceHtml(
   const orderTotal = Number(sale.order_total ?? 0);
   const amountPaid = Number(sale.amount_paid ?? 0);
   const balanceDue = Math.max(0, orderTotal - amountPaid);
+  const totalDiscount =
+    discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
 
-  const sellerName = seller.name ?? "Company";
+  const sellerName = seller.name ?? branding?.organizationName ?? "Company";
+  const showLogo =
+    branding?.showHeader !== false &&
+    (branding?.display === "logo" || branding?.display === "logo_and_name");
+  const showName =
+    branding?.showHeader !== false &&
+    (branding?.display === "name" ||
+      branding?.display === "logo_and_name" ||
+      !showLogo);
 
-  const itemRows = buildSaleDocumentLineRows(items, {
-    uomById,
-    showDiscountColumn,
-    layout: "a4",
-    legacyPrint: isLegacySale(sale),
-  });
-  const tableHead = buildSaleDocumentTableHead({
-    showDiscountColumn,
-    layout: "a4",
-  });
-
+  const servedByName = resolveSaleOrderCreatorName(sale, preparedBy);
+  const printedByName = resolvePrintedByUser(printedBy) ?? "—";
   const printedAt = new Date().toLocaleString("en-GB", {
     day: "2-digit",
     month: "2-digit",
@@ -170,30 +184,7 @@ export function buildSaleInvoiceHtml(
     second: "2-digit",
     hour12: false,
   });
-  const servedByName = resolveSaleOrderCreatorName(sale, preparedBy);
-  const printedByName = resolvePrintedByUser(printedBy) ?? "—";
 
-  const bodyFooterLines = resolveSalesDocumentBodyFooterLines(
-    salesDocumentFooterSettings(
-      documentFooterText ? { print_footer_a4_invoice: documentFooterText } : {},
-      salesSettings ?? {},
-      "invoice",
-    ),
-    "invoice",
-    {
-      username: servedByName,
-      organizationName: sellerName,
-      validDays: invoiceValidDays,
-    },
-  );
-  const bodyFooterHtml = buildSalesDocumentBodyFooterHtml(bodyFooterLines, { layout: "a4" });
-
-  const orgHeader = buildSaleDocumentOrgHeaderHtml(branding, {
-    layout: "a4",
-    fallbackName: sellerName,
-  });
-
-  // Proforma is non-fiscal — never embed KRA QR.
   const kraQrHtml = isProforma
     ? ""
     : buildKraDocumentQrHtml(kraData, kraQrDataUrl, { size: 130, layout: "a4" });
@@ -203,26 +194,52 @@ export function buildSaleInvoiceHtml(
       ? buildReceiptPaymentDetailsHtml(paymentInstructions, { layout: "a4" })
       : "";
 
-  const docTitle = isProforma ? "Proforma" : "Invoice Receipt";
-  const pageTitle = isProforma ? `Proforma ${invoiceNo}` : `Invoice Receipt ${invoiceNo}`;
-  const numberLabel = isProforma ? "Proforma No." : "Invoice No.";
+  const docTitle = isProforma ? "PROFORMA INVOICE" : "TAX INVOICE";
+  const pageTitle = isProforma ? `Proforma ${invoiceNo}` : `Invoice ${invoiceNo}`;
+  const numberLabel = isProforma ? "PFI Number" : "Invoice Number";
 
-  const metaSheetHtml = [
-    metaRow(numberLabel, invoiceNo, { emphasize: true }),
-    metaRow("Customer Name", customerName),
-    metaRow("Phone Number", customerPhone),
-    metaRow("Date", formatInvoiceDateShort(createdOn)),
-    metaRow("K.R.A Pin", customer?.kra_pin ?? seller.tax_pin),
-    metaRow("Terms of Payment", paymentTerms),
-    metaRow("Location", customerTown),
-    metaRow("Valid Until", formatInvoiceDate(validUntil)),
-  ].join("");
+  const columns = [
+    { key: "no", label: "No.", align: "center", width: "6%" },
+    { key: "description", label: "Item Description", width: "28%" },
+    { key: "specification", label: "Specification", width: "24%" },
+    { key: "qty", label: "Qty.", align: "right", width: "10%" },
+    { key: "unit_price", label: "Unit Price", align: "right", width: "14%" },
+    ...(showDiscountColumn
+      ? [{ key: "discount", label: "Discount", align: "right", width: "10%" }]
+      : []),
+    { key: "amount", label: "Amount KSh", align: "right", width: "14%" },
+  ];
 
-  const totalDiscount =
-    discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
+  const tableHtml = buildProfessionalItemsTableHtml({
+    columns,
+    rows: buildProfessionalSaleRows(items, {
+      uomById,
+      showDiscountColumn,
+      legacyPrint: isLegacySale(sale),
+    }),
+    total: {
+      totalLabel: "TOTAL :",
+      totalAmount: formatPrintAmount(orderTotal),
+      totalColSpan: columns.length - 1,
+    },
+  });
 
-  const proformaBannerHtml = isProforma
-    ? `<div class="proforma-banner">This is a proforma invoice for payment purposes — not a tax invoice.</div>`
+  const termsLines = resolveInvoiceDeliveryTerms(salesSettings ?? {});
+  const termsHtml = buildProfessionalTermsHtml({
+    title: "Terms and Conditions",
+    lines: termsLines,
+  });
+
+  const signaturesHtml = buildProfessionalSignaturesHtml([
+    { label: "Prepared By", value: servedByName || null },
+    { label: "Confirmed By", value: null },
+  ]);
+
+  const watermarkHtml = branding
+    ? buildReportWatermarkHtml({
+        ...branding,
+        watermarkText: customerName || branding.organizationName || "",
+      })
     : "";
 
   const amountDueHtml = isProforma
@@ -237,126 +254,81 @@ export function buildSaleInvoiceHtml(
 <html>
 <head>
   <title>${escapeHtml(pageTitle)}</title>
-  <style>
-    @page { size: A4; margin: 0; }
-    body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
-    .page { max-width: 820px; margin: 0 auto; }
-    .page-body { }
-    .invoice-header-block { break-inside: avoid; page-break-inside: avoid; }
-    .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 80px; max-width: 300px; object-fit: contain; }
-    .org-brand .org-name { font-size: ${hpx(24)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-name { text-align: center; font-size: ${hpx(24)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-meta { margin-top: 6px; font-size: ${hpx(11)}; text-align: center; font-weight: var(--print-w-header, 600); line-height: 1.45; }
-    .doc-title { text-align: center; font-size: ${px(15)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
-    .proforma-banner { text-align: center; font-size: ${px(11)}; font-weight: 700; margin: -6px 0 12px; padding: 6px 10px; border: 1px solid #000; }
-    .meta-sheet { margin-bottom: 12px; font-size: ${px(11)}; }
-    .meta-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 4px 0; }
-    .meta-label { font-weight: 700; text-transform: uppercase; white-space: nowrap; }
-    .meta-value { text-align: right; flex: 1; min-width: 0; word-break: break-word; font-weight: 600; }
-    .meta-value-em { font-style: italic; font-weight: 700; }
-    table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: ${px(11)}; }
-    table.items thead { display: table-header-group; }
-    table.items th, table.items td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 5px 6px; vertical-align: top; }
-    table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(10)}; }
-    table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
-    table.items tbody tr { break-inside: avoid; page-break-inside: avoid; }
-    .invoice-closing { break-inside: avoid; page-break-inside: avoid; margin-top: 4px; }
-    .totals { display: flex; justify-content: flex-end; margin: 6px 0 14px; }
-    .totals-box { min-width: 280px; text-align: right; font-size: ${px(12)}; font-weight: 600; }
-    .totals-box p { margin: 3px 0; }
-    .totals-box .grand { font-weight: 700; font-size: ${px(13)}; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
-    .served-by { margin: 10px 0 8px; font-size: ${px(11)}; font-weight: 700; text-transform: none; }
-    .body-footer-block { margin: 10px 0 8px; font-size: ${px(11)}; }
-    .body-footer-line { margin: 6px 0; font-weight: 700; text-transform: none; }
-    .goods-note { margin: 8px 0 4px; font-size: ${px(11)}; font-weight: 700; text-transform: none; }
-    .goods-note-sub { margin: 0 0 0; font-weight: 700; }
-    .receive-signatures { margin: 14px 0 0; font-size: ${px(11)}; max-width: 420px; }
-    .sig-row { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; }
-    .sig-row:last-child { margin-bottom: 0; }
-    .sig-label { white-space: nowrap; min-width: 5.5rem; font-weight: 700; }
-    .sig-line { flex: 1; border-bottom: 1px dotted #000; min-height: 1.1em; }
-    .footer-notes { margin: 0 0 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 600); }
-    .footer-notes p { margin: 4px 0; }
-    .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(11)}; font-weight: 600; }
-    .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-    .pay-instructions .pay-line { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
-    .pay-instructions .pay-label { font-weight: 700; }
-    .pay-instructions .pay-value { text-align: right; font-weight: 600; }
-    .pay-instructions .pay-note { margin-top: 6px; font-size: ${px(10)}; font-weight: 600; }
-    .center { text-align: center; }
-    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
-    @media print {
-      html, body { height: auto !important; min-height: 0 !important; }
-      body { font-size: ${px(12, true)}; padding: 0; }
-      .org-brand .org-name, .brand-name { font-size: ${hpx(24, true)}; }
-      .brand-meta { font-size: ${hpx(11, true)}; }
-      .doc-title { font-size: ${px(15, true)}; }
-      .proforma-banner { font-size: ${px(11, true)}; }
-      .meta-sheet { font-size: ${px(11, true)}; }
-      table.items { font-size: ${px(11, true)}; }
-      table.items th { font-size: ${px(10, true)}; }
-      .totals-box { font-size: ${px(12, true)}; }
-      .totals-box .grand { font-size: ${px(13, true)}; }
-      .served-by, .goods-note, .receive-signatures { font-size: ${px(11, true)}; }
-      .footer-notes { font-size: ${fpx(10, true)}; }
-      .pay-instructions { font-size: ${px(11, true)}; }
-      .pay-instructions .pay-note { font-size: ${px(10, true)}; }
-      .page { max-width: none; margin: 0; }
-    }
-  </style>
+  <style>${professionalA4Styles(generalSettings, "sale_invoice")}</style>
 </head>
 <body class="has-doc-print-edge-footer">
+  ${watermarkHtml}
   <div class="page">
     <div class="page-body">
-    <div class="invoice-header-block">
-      <div class="brand">
-        ${orgHeader}
-        <div class="brand-meta">
-          ${branchName ? `<div>${escapeHtml(branchName)}</div>` : ""}
-          ${storeAddress ? `<div>${escapeHtml(storeAddress)}</div>` : ""}
-          ${seller.email ? `<div>Email: ${escapeHtml(seller.email)}</div>` : ""}
-          ${storePhones ? `<div>Tel: ${escapeHtml(storePhones)}</div>` : ""}
-          ${seller.tax_pin ? `<div>PIN NO: ${escapeHtml(seller.tax_pin)}</div>` : ""}
-          ${seller.vat_regno ? `<div>VAT Reg: ${escapeHtml(seller.vat_regno)}</div>` : ""}
-        </div>
-      </div>
+      ${buildProfessionalHeaderHtml({
+        companyName: sellerName,
+        pin: seller.tax_pin ?? "",
+        address: storeAddress || seller.address || "",
+        email: seller.email || "",
+        phones: storePhones || "",
+        logoUrl: branding?.logoUrl ?? null,
+        showLogo,
+        showName: showName || !showLogo,
+      })}
 
       <div class="doc-title">${escapeHtml(docTitle)}</div>
-      ${proformaBannerHtml}
-
-      <div class="meta-sheet">
-        ${metaSheetHtml}
-      </div>
-    </div>
-
-    <table class="items">
-      <thead>${tableHead}</thead>
-      <tbody>${itemRows}</tbody>
-    </table>
-
-    <div class="invoice-closing">
-      <div class="totals">
-        <div class="totals-box">
-          <p><strong>Total Amount:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
-          ${totalDiscount > 0.0001 ? `<p><strong>Total Discount:</strong> ${escapeHtml(formatPrintAmount(totalDiscount))}</p>` : ""}
-          <p><strong>V.A.T Charged:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
-          <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
-          ${amountPaidHtml}
-          ${amountDueHtml}
-          <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
-        </div>
-      </div>
-
-      ${paymentInstructionsHtml}
-
-      ${bodyFooterHtml}
-
       ${
-        kraQrHtml
-          ? `<div class="footer-notes">${kraQrHtml}</div>`
+        isProforma
+          ? `<div class="doc-banner">This is a proforma invoice for payment purposes — not a tax invoice.</div>`
           : ""
       }
-    </div>
+
+      ${buildProfessionalMetaHtml([
+        { label: "Date", value: formatInvoiceDate(createdOn) },
+        { label: "Customer Name", value: customerName, emphasize: true },
+        {
+          label: "Customer Address",
+          value: customerAddress || customer?.town || branchName || "—",
+        },
+        { label: numberLabel, value: invoiceNo, emphasize: true },
+        {
+          label: "Customer PIN",
+          value: customer?.kra_pin || "—",
+        },
+        {
+          label: "Terms of Payment",
+          value: customer?.terms_of_payment ?? paymentLine,
+        },
+        {
+          label: "Valid Until",
+          value: formatInvoiceDate(validUntil),
+        },
+      ])}
+
+      ${tableHtml}
+
+      <p class="vat-note">*The above prices are inclusive of VAT</p>
+
+      <div class="closing">
+        <div class="totals">
+          <div class="totals-box">
+            ${totalDiscount > 0.0001 ? `<p><strong>Total Discount:</strong> ${escapeHtml(formatPrintAmount(totalDiscount))}</p>` : ""}
+            <p><strong>V.A.T Charged:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
+            <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
+            ${amountPaidHtml}
+            ${amountDueHtml}
+            <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
+          </div>
+        </div>
+
+        ${paymentInstructionsHtml}
+        ${termsHtml}
+        ${signaturesHtml}
+
+        ${
+          kraQrHtml || documentFooterText
+            ? `<div class="footer-notes">
+                ${kraQrHtml}
+                ${documentFooterText ? `<p>${escapeHtml(documentFooterText)}</p>` : ""}
+              </div>`
+            : ""
+        }
+      </div>
     </div>
   </div>
   ${buildDocumentPrintEdgeFooterHtml({

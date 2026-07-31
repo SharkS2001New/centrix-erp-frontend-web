@@ -10,7 +10,7 @@ function extractPrintFragment(html) {
 }
 
 /**
- * Omega-style A4 LPO / delivery note print view.
+ * Professional A4 LPO / delivery note print view.
  * Uses the same HTML builder as live print and admin preview.
  */
 export function LpoPrintDocument({
