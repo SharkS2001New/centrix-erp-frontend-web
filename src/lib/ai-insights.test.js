@@ -52,7 +52,7 @@ describe("canUseAiInsights", () => {
   const allow = () => true;
   const deny = () => false;
 
-  it("requires permission and available ai", () => {
+  it("requires permission, enabled org AI, and available key", () => {
     expect(canUseAiInsights({ capabilities: {}, hasPermission: deny })).toBe(false);
     expect(
       canUseAiInsights({
@@ -67,11 +67,35 @@ describe("canUseAiInsights", () => {
       canUseAiInsights({
         capabilities: {
           platform_ai_enabled: true,
-          ai_assistant: { available: true, insights: { enabled: false } },
+          ai_assistant: { available: false, enabled: true, insights: { enabled: true } },
         },
         hasPermission: allow,
       }),
     ).toBe(false);
+    expect(
+      canUseAiInsights({
+        capabilities: {
+          platform_ai_enabled: true,
+          ai_assistant: { available: true, enabled: true, insights: { enabled: false } },
+        },
+        hasPermission: allow,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("canShowAiInsights", () => {
+  it("shows entry points when org AI is on even without available key", async () => {
+    const { canShowAiInsights } = await import("@/lib/ai-insights");
+    expect(
+      canShowAiInsights({
+        capabilities: {
+          platform_ai_enabled: true,
+          ai_assistant: { available: false, enabled: true, insights: { enabled: true } },
+        },
+        hasPermission: () => true,
+      }),
+    ).toBe(true);
   });
 });
 

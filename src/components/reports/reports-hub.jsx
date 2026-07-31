@@ -16,7 +16,7 @@ import { CatalogPageShell, inputClassName } from "@/components/catalog/catalog-s
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportsOverviewSummary } from "@/components/reports/reports-overview-summary";
 import { DashboardErrorBanner, DashboardSection } from "@/components/dashboard/dashboard-shared";
-import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
+import { AiInsightsHubSection } from "@/components/ai/ai-insights-hub-section";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import {
   buildReportCategories,
@@ -89,8 +89,6 @@ export function ReportsHub() {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState("cards");
   const [activeCategory, setActiveCategory] = useState("all");
-  const [stockPulseOpen, setStockPulseOpen] = useState(false);
-  const [salesBriefOpen, setSalesBriefOpen] = useState(false);
 
   useEffect(() => {
     apiRequest("/reports/")
@@ -169,9 +167,9 @@ export function ReportsHub() {
             + Create custom report
           </Link>
         ) : null}
-        <AiAnalyzeButton label="Stock Pulse" onClick={() => setStockPulseOpen(true)} />
-        <AiAnalyzeButton label="Sales brief" onClick={() => setSalesBriefOpen(true)} />
       </div>
+
+      <AiInsightsHubSection />
 
       <DashboardErrorBanner message={error ?? dashError} />
 
@@ -278,18 +276,6 @@ export function ReportsHub() {
         </div>
       </DashboardSection>
     </CatalogPageShell>
-    <AiInsightPanel
-      open={stockPulseOpen}
-      onClose={() => setStockPulseOpen(false)}
-      title="Stock Pulse"
-      mode="stock_pulse"
-    />
-    <AiInsightPanel
-      open={salesBriefOpen}
-      onClose={() => setSalesBriefOpen(false)}
-      title="Sales brief"
-      mode="sales_brief"
-    />
     </>
   );
 }

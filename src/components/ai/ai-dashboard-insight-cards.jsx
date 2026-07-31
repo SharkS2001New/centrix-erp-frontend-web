@@ -8,6 +8,7 @@ import { canUseAiInsights } from "@/lib/ai-insights";
 import { AiInsightPanel, AiAnalyzeButton } from "@/components/ai/ai-insight-panel";
 import { StatCard } from "@/components/catalog/catalog-shared";
 import { DashboardSection } from "@/components/dashboard/dashboard-shared";
+import { canShowAiInsights } from "@/lib/ai-insights";
 
 /**
  * Compact AI insight cards from GET /ai/insights/dashboard.
@@ -15,6 +16,7 @@ import { DashboardSection } from "@/components/dashboard/dashboard-shared";
  */
 export function AiDashboardInsightCards({ className = "mt-8" }) {
   const { capabilities, hasPermission } = useAuth();
+  const show = canShowAiInsights({ capabilities, hasPermission });
   const allowed = canUseAiInsights({ capabilities, hasPermission });
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -44,7 +46,7 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
     };
   }, [allowed]);
 
-  if (!allowed) return null;
+  if (!show) return null;
 
   const displayCards = cards.slice(0, 3);
 
@@ -61,9 +63,14 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
           </div>
         }
       >
+        {!allowed ? (
+          <p className="text-sm text-amber-800">
+            Add an OpenAI API key under Settings → AI (and grant Use AI assistant) to load insight cards.
+          </p>
+        ) : null}
         {loading ? <p className="text-sm text-slate-500">Loading insight cards…</p> : null}
         {error ? <p className="text-sm text-amber-800">{error}</p> : null}
-        {!loading && displayCards.length ? (
+        {!loading && allowed && displayCards.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {displayCards.map((card) => (
               <button

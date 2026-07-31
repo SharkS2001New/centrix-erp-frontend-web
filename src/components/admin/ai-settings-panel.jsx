@@ -140,8 +140,14 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
               <div className="border-t border-slate-200 pt-6">
                 <h3 className="text-base font-medium text-slate-900">AI Insights</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Analyze reports, Stock Pulse, and Sales briefs. Delivery uses your existing organization email,
-                  WhatsApp, and Africa&apos;s Talking SMS settings.
+                  Analyze reports, Stock Pulse, and Sales briefs. After saving, open{" "}
+                  <Link href="/reports" className="text-[var(--theme-primary)] hover:underline">
+                    Reports
+                  </Link>{" "}
+                  — look for the <span className="font-medium">AI Insights</span> section (Stock Pulse /
+                  Sales brief). On any report, use <span className="font-medium">Analyze with AI</span> next
+                  to Print / CSV. Users also need the <span className="font-medium">Use AI assistant</span>{" "}
+                  permission on their role.
                 </p>
 
                 <div className="mt-4 space-y-3">

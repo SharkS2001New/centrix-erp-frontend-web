@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { canUseAiInsights, formatInsightClipboard } from "@/lib/ai-insights";
+import { canShowAiInsights, canUseAiInsights, formatInsightClipboard, aiInsightsBlockedReason } from "@/lib/ai-insights";
 import { PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
 /**
@@ -23,6 +23,7 @@ export function AiInsightPanel({
 }) {
   const { capabilities, hasPermission } = useAuth();
   const allowed = canUseAiInsights({ capabilities, hasPermission });
+  const blockedReason = aiInsightsBlockedReason({ capabilities, hasPermission });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [insight, setInsight] = useState(null);
@@ -144,7 +145,8 @@ export function AiInsightPanel({
 
         {!allowed ? (
           <p className="p-4 text-sm text-amber-800">
-            AI insights need the Use AI assistant permission and a configured OpenAI key.
+            {blockedReason ??
+              "AI insights need the Use AI assistant permission and a configured OpenAI key."}
           </p>
         ) : (
           <div className="flex flex-1 flex-col overflow-hidden">
@@ -236,7 +238,9 @@ export function AiInsightPanel({
 /** Compact trigger button for toolbars. */
 export function AiAnalyzeButton({ onClick, disabled = false, label = "Analyze with AI" }) {
   const { capabilities, hasPermission } = useAuth();
-  if (!canUseAiInsights({ capabilities, hasPermission })) return null;
+  // Show whenever Insights is enabled for the org and the user may use AI —
+  // do not hide just because the API key is missing (panel explains that).
+  if (!canShowAiInsights({ capabilities, hasPermission })) return null;
   return (
     <button
       type="button"
