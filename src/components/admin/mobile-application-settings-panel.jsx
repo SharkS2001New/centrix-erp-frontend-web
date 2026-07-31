@@ -11,6 +11,13 @@ import {
   mobileApplicationFormFromApi,
   mobileApplicationPayloadFromForm,
 } from "@/lib/sales-settings";
+import {
+  LOADING_SHEET_PRINT_DEFAULTS,
+  loadingSheetPrintFormFromApi,
+  loadingSheetPrintPayloadFromForm,
+} from "@/lib/loading-sheet-print-settings";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
@@ -71,6 +78,11 @@ function PlatformMobileSummary({ capabilities: capabilitiesProp }) {
   );
 }
 
+const EMPTY_FORM = {
+  ...EMPTY_MOBILE_APPLICATION_FORM,
+  ...LOADING_SHEET_PRINT_DEFAULTS,
+};
+
 export function MobileApplicationSettingsPanel({
   saving,
   setSaving,
@@ -83,16 +95,41 @@ export function MobileApplicationSettingsPanel({
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
-  const [form, setForm] = useState(EMPTY_MOBILE_APPLICATION_FORM);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
+  const distributionEnabled = isDistributionOpsEnabled(capabilities);
+  const showLoadingSettings = !distributionEnabled;
 
   useEffect(() => {
     setLoading(true);
-    apiRequest(settingsPath("sales"))
-      .then((res) => setForm(mobileApplicationFormFromApi(res)))
+    const requests = [apiRequest(settingsPath("sales"))];
+    if (showLoadingSettings) {
+      requests.push(apiRequest(settingsPath("distribution")));
+    }
+    Promise.allSettled(requests)
+      .then(([salesResult, distributionResult]) => {
+        if (salesResult.status !== "fulfilled") {
+          throw salesResult.reason instanceof Error
+            ? salesResult.reason
+            : new Error("Failed to load mobile settings");
+        }
+        const mobileForm = mobileApplicationFormFromApi(salesResult.value);
+        const loadingForm =
+          showLoadingSettings && distributionResult?.status === "fulfilled"
+            ? loadingSheetPrintFormFromApi(distributionResult.value)
+            : LOADING_SHEET_PRINT_DEFAULTS;
+        setForm({ ...mobileForm, ...loadingForm });
+        if (showLoadingSettings && distributionResult?.status === "rejected") {
+          const detail =
+            distributionResult.reason instanceof ApiError
+              ? distributionResult.reason.message
+              : "Failed to load loading list settings";
+          setError(detail);
+        }
+      })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load mobile settings"))
       .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+  }, [setError, settingsPath, showLoadingSettings]);
 
   if (!isOrgMobileSalesEnabled(capabilities)) {
     return null;
@@ -104,11 +141,22 @@ export function MobileApplicationSettingsPanel({
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest(settingsPath("sales"), {
+      const salesRes = await apiRequest(settingsPath("sales"), {
         method: "PATCH",
         body: mobileApplicationPayloadFromForm(form),
       });
-      setForm(mobileApplicationFormFromApi(res));
+      let loadingForm = {};
+      if (showLoadingSettings) {
+        const distributionRes = await apiRequest(settingsPath("distribution"), {
+          method: "PATCH",
+          body: loadingSheetPrintPayloadFromForm(form),
+        });
+        loadingForm = loadingSheetPrintFormFromApi(distributionRes);
+      }
+      setForm({
+        ...mobileApplicationFormFromApi(salesRes),
+        ...loadingForm,
+      });
       if (afterSave) await afterSave();
       setMessage("Mobile application settings saved.");
     } catch (err) {
@@ -266,6 +314,32 @@ export function MobileApplicationSettingsPanel({
                   ) : null}
                 </div>
               </div>
+
+              {showLoadingSettings ? (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-900">Loading</h3>
+                  <p className="theme-subtext mt-1 text-xs">
+                    Column layout for backoffice and field-sales loading lists (and related picking sheets)
+                    when Distribution is not enabled. Fonts and footers are under Printouts → Loading sheets.
+                  </p>
+                  <div className="mt-3">
+                    <LoadingListPrintSettingsFields
+                      form={form}
+                      setForm={setForm}
+                      showTripFields={false}
+                      showFontNote
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-xs">
+                  <p className="theme-heading font-medium">Loading list layout</p>
+                  <p className="theme-subtext mt-1">
+                    Distribution is enabled — configure loading list columns under Distribution → Trips &amp;
+                    loading, or Printouts → Loading sheets.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="mt-6">
               <PrimaryButton type="submit" disabled={loading || saving} showIcon={false}>

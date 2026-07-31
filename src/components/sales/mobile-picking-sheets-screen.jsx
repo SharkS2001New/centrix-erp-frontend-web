@@ -13,7 +13,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
-import { printPickingList } from "@/components/fulfillment/picking-list-print";
+import { printPickingList, isSalesPickingLayout } from "@/components/fulfillment/picking-list-print";
 import { formatSaleKes } from "@/lib/sales";
 import { shouldShowMobilePickingLists } from "@/lib/sales-settings";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
@@ -23,7 +23,6 @@ import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   buildUomByProductCode,
   fetchCatalogForProductCodes,
-  formatFulfillmentQty,
 } from "@/lib/fulfillment-quantity";
 
 function todayIso() {
@@ -140,6 +139,7 @@ export default function MobilePickingSheetsScreen() {
           route_names: [pickingList.route?.route_name].filter(Boolean),
         },
         uomByProductCode,
+        layout: "sales",
         documentFooterText: resolvePrintFooter(
           mergeGeneralSettings(capabilities?.module_settings),
           "picking_list",
@@ -179,6 +179,11 @@ export default function MobilePickingSheetsScreen() {
 
   const pickingList = detail?.picking_list;
   const pickLines = pickingList?.lines ?? [];
+  const salesLayout = isSalesPickingLayout(pickingList, "sales");
+  const orderTotalValue =
+    pickingList?.order_total_value != null
+      ? Number(pickingList.order_total_value)
+      : (detail?.orders ?? []).reduce((sum, order) => sum + Number(order.order_total || 0), 0);
 
   return (
     <CatalogPageShell
@@ -276,27 +281,38 @@ export default function MobilePickingSheetsScreen() {
                 <table className="theme-table w-full text-sm">
                   <thead>
                     <tr className="theme-table-head-row">
-                      <th className="px-3 py-2 text-left">Product</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-left">Product Name</th>
+                      <th className="px-3 py-2 text-left">Quantity (W, Retail)</th>
+                      <th className="px-3 py-2 text-left">Price (W, R)</th>
+                      <th className="px-3 py-2 text-right">Line amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pickLines.map((line) => (
                       <tr key={`${line.product_code}-${line.line_no}`} className="theme-table-body-row">
+                        <td className="px-3 py-2 font-medium">{line.product_name}</td>
                         <td className="px-3 py-2">
-                          <div className="font-medium">{line.product_name}</div>
-                          {line.pack_breakdown ? (
-                            <div className="theme-subtext text-xs">{line.pack_breakdown}</div>
+                          <div className="tabular-nums">{line.quantity_label}</div>
+                          {line.retail_breakdown ? (
+                            <div className="theme-subtext text-xs">({line.retail_breakdown})</div>
                           ) : null}
                         </td>
+                        <td className="px-3 py-2 text-xs">{line.price_label || "—"}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
-                          {formatFulfillmentQty(line.required_qty, line, uomByProductCode)}
+                          {formatSaleKes(line.line_total)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {salesLayout ? (
+                <div className="mt-3 flex items-center justify-between border-t border-[var(--theme-border)] pt-3 text-sm font-semibold">
+                  <span>Totals Value of Order</span>
+                  <span className="tabular-nums">{formatSaleKes(orderTotalValue)}</span>
+                </div>
+              ) : null}
 
               {detail?.orders?.length ? (
                 <div className="mt-4 border-t border-[var(--theme-border)] pt-3">

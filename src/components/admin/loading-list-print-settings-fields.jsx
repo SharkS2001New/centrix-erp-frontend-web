@@ -21,13 +21,14 @@ function Toggle({ checked, onChange, label, description }) {
 }
 
 /**
- * Loading list print layout — shared by Distribution settings and Printouts.
+ * Loading list print layout — shared by Distribution, Printouts, and Mobile settings.
  */
 export function LoadingListPrintSettingsFields({
   form,
   setForm,
   showExtendedFields = true,
   showFontNote = false,
+  showTripFields = true,
 }) {
   return (
     <div className="space-y-3">
@@ -44,7 +45,7 @@ export function LoadingListPrintSettingsFields({
       />
       <Toggle
         label="Show price and amount columns"
-        description="Includes unit price (R/W) and line totals. Turn off for quantity-only pick lists."
+        description="Includes unit price (R/W) and line totals. Turn off for quantity-only lists."
         checked={form.loading_sheet_show_price_columns !== false}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_price_columns: v }))}
       />
@@ -54,18 +55,22 @@ export function LoadingListPrintSettingsFields({
         checked={form.loading_sheet_show_total !== false}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_total: v }))}
       />
-      <Toggle
-        label="Show trip expenses"
-        description="Print fuel, tolls, and other trip costs on the loading list totals block."
-        checked={form.loading_sheet_show_trip_expenses !== false}
-        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_expenses: v }))}
-      />
-      <Toggle
-        label="Show trip profit"
-        description="Print gross profit and net profit (after expenses) on the loading list."
-        checked={form.loading_sheet_show_trip_profit !== false}
-        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_profit: v }))}
-      />
+      {showTripFields ? (
+        <>
+          <Toggle
+            label="Show trip expenses"
+            description="Print fuel, tolls, and other trip costs on the loading list totals block."
+            checked={form.loading_sheet_show_trip_expenses !== false}
+            onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_expenses: v }))}
+          />
+          <Toggle
+            label="Show trip profit"
+            description="Print gross profit and net profit (after expenses) on the loading list."
+            checked={form.loading_sheet_show_trip_profit !== false}
+            onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_profit: v }))}
+          />
+        </>
+      ) : null}
       {showExtendedFields ? (
         <>
           <Toggle

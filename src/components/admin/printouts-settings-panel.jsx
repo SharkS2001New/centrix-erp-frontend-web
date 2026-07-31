@@ -689,7 +689,8 @@ function LpoPrintoutsTab({ form, setForm }) {
   );
 }
 
-function LoadingSheetsTab({ form, setForm, hasDistribution = false }) {
+function LoadingSheetsTab({ form, setForm, hasDistribution = false, hasMobileSales = false }) {
+  const canPersistColumns = hasDistribution || hasMobileSales;
   return (
     <div className="space-y-3">
       <SectionHeading
@@ -697,14 +698,13 @@ function LoadingSheetsTab({ form, setForm, hasDistribution = false }) {
         description={
           hasDistribution
             ? "Route delivery loading lists for Distribution trips and mobile route orders. Column visibility can also be configured under Distribution → Trips & loading."
-            : "Field-sales loading lists. Document footers and fonts save under General. Column layout options require the Distribution module — defaults are used until then."
+            : "Field-sales and backoffice loading lists for mobile route orders. Column layout (show amount, totals, etc.) is saved with these settings."
         }
       />
-      {!hasDistribution ? (
+      {!canPersistColumns ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-          Distribution is not enabled for this organization. General / receipt / invoice printouts still
-          save normally. Loading-sheet column toggles below are preview-only until Distribution is turned
-          on.
+          Enable mobile orders or Distribution to save loading-sheet column toggles. Fonts and footers still
+          save under General.
         </p>
       ) : null}
       <PrintFontSettingsFields
@@ -718,7 +718,11 @@ function LoadingSheetsTab({ form, setForm, hasDistribution = false }) {
         setForm={setForm}
         variantKey="loading_sheet"
       />
-      <LoadingListPrintSettingsFields form={form} setForm={setForm} />
+      <LoadingListPrintSettingsFields
+        form={form}
+        setForm={setForm}
+        showTripFields={hasDistribution}
+      />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
           title="Document footer"
@@ -737,7 +741,7 @@ function PickingListsTab({ form, setForm }) {
     <div className="space-y-3">
       <SectionHeading
         title="Picking lists"
-        description="Warehouse pick sheets for Distribution trip charts and mobile route orders."
+        description="Warehouse pick sheets for Distribution trip charts and mobile route orders. Lines are ordered from highest quantity to lowest."
       />
       <PrintFontSettingsFields
         form={form}
@@ -905,14 +909,15 @@ export function PrintoutsSettingsPanel({
     setLoading(true);
     setError(null);
     try {
-      // Distribution settings API requires the distribution module. Field sales /
-      // wholesale+retail may have route printouts (footers/fonts via general) without it.
+      // Loading-sheet column flags live under distribution settings, but the API is also
+      // available when sales.mobile is on (field-sales loading/picking without Distribution).
+      const canLoadDistributionPrint = hasDistribution || hasMobileSales;
       const [generalResult, salesResult, procurementResult, distributionResult] =
         await Promise.allSettled([
           apiRequest(settingsPath("general")),
           hasSales ? apiRequest(settingsPath("sales")) : Promise.resolve(null),
           hasProcurement ? apiRequest(settingsPath("procurement")) : Promise.resolve(null),
-          hasDistribution
+          canLoadDistributionPrint
             ? apiRequest(settingsPath("distribution"))
             : Promise.resolve(null),
         ]);
@@ -943,7 +948,9 @@ export function PrintoutsSettingsPanel({
         generalResult.status === "rejected" ? "general" : null,
         salesResult.status === "rejected" ? "sales" : null,
         procurementResult.status === "rejected" ? "procurement" : null,
-        hasDistribution && distributionResult.status === "rejected" ? "distribution" : null,
+        (hasDistribution || hasMobileSales) && distributionResult.status === "rejected"
+          ? "distribution"
+          : null,
       ].filter(Boolean);
 
       if (failures.length > 0) {
@@ -971,7 +978,7 @@ export function PrintoutsSettingsPanel({
     } finally {
       setLoading(false);
     }
-  }, [hasDistribution, hasProcurement, hasSales, setError, settingsPath]);
+  }, [hasDistribution, hasMobileSales, hasProcurement, hasSales, setError, settingsPath]);
 
   useEffect(() => {
     load();
@@ -1013,7 +1020,7 @@ export function PrintoutsSettingsPanel({
             }),
         });
       }
-      if (hasDistribution) {
+      if (hasDistribution || hasMobileSales) {
         steps.push({
           label: "distribution",
           run: () =>
@@ -1079,6 +1086,7 @@ export function PrintoutsSettingsPanel({
           form={form}
           setForm={setForm}
           hasDistribution={hasDistribution}
+          hasMobileSales={hasMobileSales}
         />
       );
     }

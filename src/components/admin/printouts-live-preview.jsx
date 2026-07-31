@@ -196,7 +196,8 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
   }
 
   if (previewType === "picking_list") {
-    const sample = samplePickingListPreviewData();
+    const salesLayout = !capabilities?.modules?.distribution;
+    const sample = samplePickingListPreviewData({ salesLayout });
     return buildPickingListHtml({
       organization: organizationForPrint,
       generalSettings: general,
@@ -204,7 +205,8 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       trip: sample.trip,
       documentFooterText: resolvePrintFooter(general, "picking_list"),
       printedBy: "Preview",
-      includeShelfLocation: true,
+      includeShelfLocation: !salesLayout,
+      layout: salesLayout ? "sales" : "distribution",
     });
   }
 
