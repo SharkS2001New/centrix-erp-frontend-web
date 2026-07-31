@@ -90,11 +90,15 @@ export function UserDetailModal({
             </div>
             {userHasMobileChannel(user.login_channels) ? (
               <div>
-                <dt className="text-xs uppercase text-slate-500">Assigned route</dt>
+                <dt className="text-xs uppercase text-slate-500">Assigned routes</dt>
                 <dd className="mt-0.5 text-slate-900">
-                  {user.assigned_route_id
-                    ? `Route #${user.assigned_route_id} (locked)`
-                    : "Any route"}
+                  {Array.isArray(user.assigned_route_ids) && user.assigned_route_ids.length > 0
+                    ? `${user.assigned_route_ids
+                        .map((id) => `Route #${id}`)
+                        .join(", ")} (locked)`
+                    : user.assigned_route_id
+                      ? `Route #${user.assigned_route_id} (locked)`
+                      : "Any route"}
                 </dd>
               </div>
             ) : null}

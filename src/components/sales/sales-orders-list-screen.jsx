@@ -1098,6 +1098,7 @@ export default function SalesOrdersListScreen({
         : null,
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
+      onPrintProforma: () => void printOrder(sale, "proforma"),
       onAdvance: routeOrdersOnly ? null : (status) => void handleAdvance(sale, status),
       onCancel: routeOrdersOnly ? null : () => void handleAdvance(sale, "cancelled"),
     });

@@ -35,6 +35,7 @@ import {
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
   isPrintInvoiceVisible,
+  isPrintProformaVisible,
   workflowStatusLabel,
 } from "@/lib/order-workflow";
 import {
@@ -386,6 +387,7 @@ export function buildOrderContextMenuItems({
   canEdit = false,
   onPrintThermal,
   onPrintA4,
+  onPrintProforma,
   onAdvance,
   onCancel,
   onCollectPayment,
@@ -420,6 +422,14 @@ export function buildOrderContextMenuItems({
       icon: "advance",
       disabled: busy,
       onClick: onCollectPayment,
+    });
+  }
+  if (includePrint && isPrintProformaVisible(sale) && onPrintProforma) {
+    items.push({
+      key: "print-proforma",
+      label: "Print proforma",
+      icon: "print",
+      onClick: onPrintProforma,
     });
   }
   if (includePrint && isPrintInvoiceVisible(sale, capabilities)) {

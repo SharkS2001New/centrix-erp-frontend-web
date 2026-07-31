@@ -74,6 +74,7 @@ function metaRow(label, value, { emphasize = false } = {}) {
 
 /**
  * A4 invoice receipt — org branding, standard line columns, optional KRA QR.
+ * Pass documentType: "proforma" for unpaid bank documents (non-fiscal banner, no KRA QR).
  */
 export function buildSaleInvoiceHtml(
   sale,
@@ -97,10 +98,12 @@ export function buildSaleInvoiceHtml(
     showBranchOnReceipt = true,
     generalSettings = null,
     salesSettings = null,
+    documentType = "invoice",
   } = {},
 ) {
   if (!sale) return "";
 
+  const isProforma = documentType === "proforma";
   const printPx = createOrgPrintPx(generalSettings, "sale_invoice");
   const px = printPx.body;
   const hpx = printPx.header;
@@ -142,6 +145,8 @@ export function buildSaleInvoiceHtml(
 
   const totalVat = Number(sale.total_vat ?? 0);
   const orderTotal = Number(sale.order_total ?? 0);
+  const amountPaid = Number(sale.amount_paid ?? 0);
+  const balanceDue = Math.max(0, orderTotal - amountPaid);
 
   const sellerName = seller.name ?? "Company";
 
@@ -188,15 +193,22 @@ export function buildSaleInvoiceHtml(
     fallbackName: sellerName,
   });
 
-  const kraQrHtml = buildKraDocumentQrHtml(kraData, kraQrDataUrl, { size: 130, layout: "a4" });
+  // Proforma is non-fiscal — never embed KRA QR.
+  const kraQrHtml = isProforma
+    ? ""
+    : buildKraDocumentQrHtml(kraData, kraQrDataUrl, { size: 130, layout: "a4" });
 
   const paymentInstructionsHtml =
     showPaymentInstructions && paymentInstructions
       ? buildReceiptPaymentDetailsHtml(paymentInstructions, { layout: "a4" })
       : "";
 
+  const docTitle = isProforma ? "Proforma" : "Invoice Receipt";
+  const pageTitle = isProforma ? `Proforma ${invoiceNo}` : `Invoice Receipt ${invoiceNo}`;
+  const numberLabel = isProforma ? "Proforma No." : "Invoice No.";
+
   const metaSheetHtml = [
-    metaRow("Invoice No.", invoiceNo, { emphasize: true }),
+    metaRow(numberLabel, invoiceNo, { emphasize: true }),
     metaRow("Customer Name", customerName),
     metaRow("Phone Number", customerPhone),
     metaRow("Date", formatInvoiceDateShort(createdOn)),
@@ -209,10 +221,22 @@ export function buildSaleInvoiceHtml(
   const totalDiscount =
     discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
 
+  const proformaBannerHtml = isProforma
+    ? `<div class="proforma-banner">This is a proforma invoice for payment purposes — not a tax invoice.</div>`
+    : "";
+
+  const amountDueHtml = isProforma
+    ? `<p class="grand"><strong>Amount Due:</strong> ${escapeHtml(formatPrintAmount(balanceDue > 0.01 ? balanceDue : orderTotal))}</p>`
+    : "";
+  const amountPaidHtml =
+    isProforma && amountPaid > 0.01
+      ? `<p><strong>Amount Paid:</strong> ${escapeHtml(formatPrintAmount(amountPaid))}</p>`
+      : "";
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Invoice Receipt ${escapeHtml(invoiceNo)}</title>
+  <title>${escapeHtml(pageTitle)}</title>
   <style>
     @page { size: A4; margin: 0; }
     body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
@@ -224,6 +248,7 @@ export function buildSaleInvoiceHtml(
     .brand-name { text-align: center; font-size: ${hpx(24)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
     .brand-meta { margin-top: 6px; font-size: ${hpx(11)}; text-align: center; font-weight: var(--print-w-header, 600); line-height: 1.45; }
     .doc-title { text-align: center; font-size: ${px(15)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .proforma-banner { text-align: center; font-size: ${px(11)}; font-weight: 700; margin: -6px 0 12px; padding: 6px 10px; border: 1px solid #000; }
     .meta-sheet { margin-bottom: 12px; font-size: ${px(11)}; }
     .meta-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 4px 0; }
     .meta-label { font-weight: 700; text-transform: uppercase; white-space: nowrap; }
@@ -266,6 +291,7 @@ export function buildSaleInvoiceHtml(
       .org-brand .org-name, .brand-name { font-size: ${hpx(24, true)}; }
       .brand-meta { font-size: ${hpx(11, true)}; }
       .doc-title { font-size: ${px(15, true)}; }
+      .proforma-banner { font-size: ${px(11, true)}; }
       .meta-sheet { font-size: ${px(11, true)}; }
       table.items { font-size: ${px(11, true)}; }
       table.items th { font-size: ${px(10, true)}; }
@@ -295,7 +321,8 @@ export function buildSaleInvoiceHtml(
         </div>
       </div>
 
-      <div class="doc-title">Invoice Receipt</div>
+      <div class="doc-title">${escapeHtml(docTitle)}</div>
+      ${proformaBannerHtml}
 
       <div class="meta-sheet">
         ${metaSheetHtml}
@@ -314,6 +341,8 @@ export function buildSaleInvoiceHtml(
           ${totalDiscount > 0.0001 ? `<p><strong>Total Discount:</strong> ${escapeHtml(formatPrintAmount(totalDiscount))}</p>` : ""}
           <p><strong>V.A.T Charged:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
           <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
+          ${amountPaidHtml}
+          ${amountDueHtml}
           <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
         </div>
       </div>

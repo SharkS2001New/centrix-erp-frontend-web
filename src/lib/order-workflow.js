@@ -1198,6 +1198,32 @@ export function isPrintInvoiceVisible(sale, capabilities = null) {
   return saleMatchesConfiguredActionStages(sale, allowed);
 }
 
+/**
+ * Proforma (unpaid bank document) — print-only A4, non-fiscal.
+ * Available for active unpaid / partially paid orders; not after full payment.
+ */
+export function isPrintProformaVisible(sale, totalPaid = null) {
+  if (!sale) return false;
+  const status = String(sale.status ?? "").toLowerCase();
+  if (status === "cancelled" || status === "expired" || status === "draft" || status === "held") {
+    return false;
+  }
+
+  const balance = saleBalanceDue(sale, totalPaid);
+  if (balance > 0.01) return true;
+
+  const paymentStatus = String(sale.payment_status ?? "").toLowerCase();
+  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "pending") {
+    return true;
+  }
+  if (!paymentStatus) {
+    // No payment_status recorded — treat as unpaid when nothing has been paid.
+    const paid = totalPaid ?? Number(sale.amount_paid ?? 0);
+    return paid <= 0.01;
+  }
+  return false;
+}
+
 /** Block manual workflow moves that skip recording payment. */
 export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid = null) {
   if (!sale || sale.status === "cancelled" || sale.status === "expired") return false;

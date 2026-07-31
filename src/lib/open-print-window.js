@@ -6,7 +6,9 @@ export const PRINT_BLOCKED_MESSAGE =
 const printFrameByWindow = new WeakMap();
 
 export function printWindowFeatures(documentType = "receipt") {
-  return documentType === "invoice" ? "width=860,height=960" : "width=420,height=720";
+  return documentType === "invoice" || documentType === "proforma"
+    ? "width=860,height=960"
+    : "width=420,height=720";
 }
 
 function parseWindowFeatures(features) {

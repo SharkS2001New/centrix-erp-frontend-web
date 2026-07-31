@@ -11,6 +11,7 @@ import {
   canCollectPaymentOnQueue,
   canCancelOrder,
   isPrintInvoiceVisible,
+  isPrintProformaVisible,
   orderActionStageOptionsFromWorkflow,
   resolveSalesOrderQueue,
   workflowPipelineSteps,
@@ -140,6 +141,55 @@ describe("order action stage gates", () => {
         { module_settings: { sales: { print_invoice_statuses: ["paid"] } } },
       ),
     ).toBe(true);
+  });
+
+  it("allows proforma only for unpaid / partially paid active orders", () => {
+    expect(
+      isPrintProformaVisible({
+        status: "booked",
+        payment_status: "unpaid",
+        order_total: 1000,
+        amount_paid: 0,
+      }),
+    ).toBe(true);
+    expect(
+      isPrintProformaVisible({
+        status: "unpaid",
+        order_total: 1000,
+        amount_paid: 0,
+      }),
+    ).toBe(true);
+    expect(
+      isPrintProformaVisible({
+        status: "processed",
+        payment_status: "partial",
+        order_total: 1000,
+        amount_paid: 400,
+      }),
+    ).toBe(true);
+    expect(
+      isPrintProformaVisible({
+        status: "paid",
+        payment_status: "paid",
+        order_total: 1000,
+        amount_paid: 1000,
+      }),
+    ).toBe(false);
+    expect(
+      isPrintProformaVisible({
+        status: "cancelled",
+        payment_status: "unpaid",
+        order_total: 1000,
+        amount_paid: 0,
+      }),
+    ).toBe(false);
+    expect(
+      isPrintProformaVisible({
+        status: "draft",
+        order_total: 1000,
+        amount_paid: 0,
+      }),
+    ).toBe(false);
   });
 
   it("gates collect payment by stage plus outstanding balance", () => {

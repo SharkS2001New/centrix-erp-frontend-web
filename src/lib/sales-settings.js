@@ -893,10 +893,12 @@ export function orderDocumentIncludesInvoice(moduleSettings) {
 /**
  * Resolve the document type to print. Returns null when user choice is required.
  * @param {object} moduleSettings
- * @param {"receipt"|"invoice"|null|undefined} explicitType
+ * @param {"receipt"|"invoice"|"proforma"|null|undefined} explicitType
  */
 export function resolveOrderPrintDocumentType(moduleSettings, explicitType) {
-  if (explicitType === "receipt" || explicitType === "invoice") return explicitType;
+  if (explicitType === "receipt" || explicitType === "invoice" || explicitType === "proforma") {
+    return explicitType;
+  }
   const configured = getOrderDocumentType(moduleSettings);
   if (configured === "both") return null;
   return configured;
@@ -927,6 +929,7 @@ export function orderListPrintAriaLabel(capabilities) {
 
 export function orderDocumentTitle(moduleSettings, documentType = null) {
   const type = documentType ?? getOrderDocumentType(moduleSettings);
+  if (type === "proforma") return "PROFORMA";
   if (type === "invoice") return "INVOICE RECEIPT";
   if (type === "receipt") return "RECEIPT";
   return "ORDER DOCUMENT";

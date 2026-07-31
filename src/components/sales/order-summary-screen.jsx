@@ -28,6 +28,7 @@ import {
   saleBalanceDue,
   canRecordOrderPayment,
   isPrintInvoiceVisible,
+  isPrintProformaVisible,
 } from "@/lib/order-workflow";
 import {
   PAYMENT_STATUS_LABELS,
@@ -752,6 +753,37 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     }
   }, [sale, capabilities, organization, customer, branchName, uomById, user]);
 
+  const handlePrintProforma = useCallback(async () => {
+    if (!sale) return;
+
+    const printWindow = openBlankPrintWindow(printWindowFeatures("proforma"));
+    if (!printWindow) {
+      notifyError(PRINT_BLOCKED_MESSAGE);
+      return;
+    }
+
+    try {
+      const printed = await printSaleOrder(sale, {
+        organization,
+        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+        customer,
+        branch: branchName ? { name: branchName } : null,
+        user,
+        uomById,
+        printWindow,
+        documentType: "proforma",
+      });
+      if (!printed) {
+        disposePrintWindow(printWindow);
+      }
+    } catch (e) {
+      disposePrintWindow(printWindow);
+      notifyError(e instanceof Error ? e.message : "Print failed");
+    }
+  }, [sale, capabilities, organization, customer, branchName, uomById, user]);
+
   async function requestOrderCancellation() {
     if (!sale?.id) return;
     const reason = window.prompt("Reason for cancellation (required):");
@@ -1007,6 +1039,17 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 >
                   Create return
                 </Link>
+              ) : null}
+              {isPrintProformaVisible(sale) ? (
+                <button
+                  type="button"
+                  onClick={() => void handlePrintProforma()}
+                  className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                  title="Print unpaid order document for bank payment"
+                >
+                  <PrintIcon />
+                  Print proforma
+                </button>
               ) : null}
               {isPrintInvoiceVisible(sale, capabilities) ? (
                 <button

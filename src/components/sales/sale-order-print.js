@@ -180,9 +180,11 @@ async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
 
 /**
  * Resolve thermal vs A4 before printing. Prompts when org setting is "both".
- * @returns {Promise<"receipt"|"invoice"|null>}
+ * Explicit "proforma" always wins (unpaid bank document — non-fiscal).
+ * @returns {Promise<"receipt"|"invoice"|"proforma"|null>}
  */
 export async function resolveOrderPrintType(moduleSettings, explicitType) {
+  if (explicitType === "proforma") return "proforma";
   let documentType = resolveOrderPrintDocumentType(moduleSettings, explicitType);
   if (!documentType) {
     documentType = await requestOrderPrintType();
@@ -339,24 +341,29 @@ export async function printSaleOrder(sale, options = {}) {
       !saleIsOfflinePending &&
       !(skipNetworkLookups && options.kraReceipt);
 
+    // Proforma = unpaid bank document — never fiscalize / never require KRA QR.
+    const isProforma = documentType === "proforma";
+
     let kraData = null;
     let kraQrDataUrl = null;
-    try {
-      ({ kraData, kraQrDataUrl } = await ensureKraQrForPrint(saleForPrint, {
-        kraReceipt: options.kraReceipt,
-        moduleSettings,
-        capabilities: options.capabilities,
-        allowNetwork: kraAllowNetwork,
-        qrSize: documentType === "invoice" ? 140 : 100,
-        requireQrWhenFiscalized: kraConfigured,
-      }));
-    } catch (kraPrintError) {
-      // Re-throw when KRA is required — do not silently print without the QR.
-      if (kraConfigured) {
-        throw kraPrintError;
+    if (!isProforma) {
+      try {
+        ({ kraData, kraQrDataUrl } = await ensureKraQrForPrint(saleForPrint, {
+          kraReceipt: options.kraReceipt,
+          moduleSettings,
+          capabilities: options.capabilities,
+          allowNetwork: kraAllowNetwork,
+          qrSize: documentType === "invoice" ? 140 : 100,
+          requireQrWhenFiscalized: kraConfigured,
+        }));
+      } catch (kraPrintError) {
+        // Re-throw when KRA is required — do not silently print without the QR.
+        if (kraConfigured) {
+          throw kraPrintError;
+        }
+        kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);
+        kraQrDataUrl = null;
       }
-      kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);
-      kraQrDataUrl = null;
     }
 
     const paymentInstructions = resolveReceiptPaymentDetails({
@@ -368,6 +375,8 @@ export async function printSaleOrder(sale, options = {}) {
 
     const printedBy = resolvePrintedByUser(options.printedBy ?? options.user);
     const orderCreatorName = await resolveSaleOrderCreatorNameForPrint(saleForPrint, options);
+
+    const footerDocType = documentType === "invoice" || isProforma ? "invoice" : "receipt";
 
     const printOptions = {
       ...options,
@@ -396,25 +405,20 @@ export async function printSaleOrder(sale, options = {}) {
       ),
       customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
       showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
-      documentFooterText: resolvePrintFooter(
-        general,
-        documentType === "invoice" ? "invoice" : "receipt",
-      ),
+      documentFooterText: resolvePrintFooter(general, footerDocType),
       paymentInstructions,
-      showPaymentInstructions: shouldShowReceiptPaymentDetails(
-        moduleSettings,
-        documentType === "invoice" ? "invoice" : "receipt",
-      ),
+      showPaymentInstructions: shouldShowReceiptPaymentDetails(moduleSettings, footerDocType),
       kraData,
       kraQrDataUrl,
       printWindow,
       salesSettings: sales,
     };
 
-    if (documentType === "invoice") {
+    if (documentType === "invoice" || isProforma) {
       for (let copy = 0; copy < copies; copy += 1) {
         printSaleInvoice(saleForPrint, {
           ...printOptions,
+          documentType: isProforma ? "proforma" : "invoice",
           invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
           preparedBy: orderCreatorName,
           uomById: options.uomById ?? null,

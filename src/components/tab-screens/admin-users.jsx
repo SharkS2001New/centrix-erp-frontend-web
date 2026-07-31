@@ -68,7 +68,7 @@ const EMPTY_FORM = {
   must_change_password: true,
   access_scope: "branch",
   login_channels: [],
-  assigned_route_id: "",
+  assigned_route_ids: [],
   till_id: "auto",
   is_active: true,
 };
@@ -376,7 +376,11 @@ export function AdminUsersScreen() {
       must_change_password: true,
       access_scope: row.access_scope ?? "branch",
       login_channels: normalizeLoginChannels(row.login_channels, allowedLoginChannelSet),
-      assigned_route_id: row.assigned_route_id ? String(row.assigned_route_id) : "",
+      assigned_route_ids: Array.isArray(row.assigned_route_ids)
+        ? row.assigned_route_ids.map((id) => String(id))
+        : row.assigned_route_id
+          ? [String(row.assigned_route_id)]
+          : [],
       till_id: row.till_id != null ? String(row.till_id) : "",
       is_active: row.is_active !== false,
     });
@@ -584,9 +588,10 @@ export function AdminUsersScreen() {
         login_channels: normalizeLoginChannels(form.login_channels, allowedLoginChannelSet),
       };
       if (userHasMobileChannel(form.login_channels)) {
-        body.assigned_route_id = form.assigned_route_id
-          ? Number(form.assigned_route_id)
-          : null;
+        body.assigned_route_ids = (form.assigned_route_ids ?? [])
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+        body.assigned_route_id = body.assigned_route_ids[0] ?? null;
       }
       if (posEnabled && form.login_channels.includes("pos")) {
         if (!form.branch_id && (form.till_id === "auto" || form.till_id)) {
@@ -931,18 +936,39 @@ export function AdminUsersScreen() {
             </p>
           </Field>
           {mobileAppEnabled && userHasMobileChannel(form.login_channels) ? (
-            <Field label="Assigned route (optional)">
-              <HrSearchableSelect
-                value={form.assigned_route_id}
-                onChange={(v) => setForm((f) => ({ ...f, assigned_route_id: v }))}
-                options={routes.map((route) => ({
-                  value: String(route.id),
-                  label: route.route_name ?? `Route #${route.id}`,
-                }))}
-                placeholder="Any route — rep chooses in the app"
-              />
+            <Field label="Assigned routes (optional)">
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-slate-200 p-2">
+                {routes.length === 0 ? (
+                  <p className="text-xs text-slate-500">No active routes available.</p>
+                ) : (
+                  routes.map((route) => {
+                    const value = String(route.id);
+                    const checked = (form.assigned_route_ids ?? []).includes(value);
+                    return (
+                      <label key={route.id} className="flex items-center gap-2 text-sm text-slate-800">
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300"
+                          checked={checked}
+                          onChange={() => {
+                            setForm((f) => {
+                              const current = f.assigned_route_ids ?? [];
+                              const next = checked
+                                ? current.filter((id) => id !== value)
+                                : [...current, value];
+                              return { ...f, assigned_route_ids: next };
+                            });
+                          }}
+                        />
+                        <span>{route.route_name ?? `Route #${route.id}`}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
               <p className="mt-1 text-xs text-slate-500">
-                Leave empty to let the rep work on multiple routes. When set, the rep is locked to that route only.
+                Leave empty to let the rep work on any route. When set, the rep is locked to the
+                selected route(s) only and can switch among them in the app.
               </p>
             </Field>
           ) : null}
