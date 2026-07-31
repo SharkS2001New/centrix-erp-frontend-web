@@ -20,6 +20,7 @@ export const DEFAULT_PROFORMA_TERMS = [
 
 export const PROFORMA_PRINT_DEFAULTS = {
   show_print_proforma_invoice_option: true,
+  proforma_document_template: "default",
   proforma_valid_days: 7,
   show_proforma_payment_details: true,
   show_proforma_terms: true,
@@ -44,6 +45,9 @@ export function proformaPrintFormFromApi(sales = {}) {
       : PROFORMA_PRINT_DEFAULTS.proforma_print_terms;
   return {
     show_print_proforma_invoice_option: merged.show_print_proforma_invoice_option !== false,
+    proforma_document_template: String(
+      merged.proforma_document_template ?? PROFORMA_PRINT_DEFAULTS.proforma_document_template,
+    ),
     proforma_valid_days: String(
       merged.proforma_valid_days ??
         merged.invoice_valid_days ??
@@ -72,6 +76,7 @@ export function proformaPrintFormFromApi(sales = {}) {
 export function proformaPrintPayloadFromForm(form) {
   return {
     show_print_proforma_invoice_option: Boolean(form.show_print_proforma_invoice_option),
+    proforma_document_template: String(form.proforma_document_template ?? "default"),
     proforma_valid_days: Number(form.proforma_valid_days) || 0,
     show_proforma_payment_details: Boolean(form.show_proforma_payment_details),
     show_proforma_terms: Boolean(form.show_proforma_terms),

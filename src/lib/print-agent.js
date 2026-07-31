@@ -17,6 +17,11 @@ const QUICK_HEALTH_TIMEOUT_MS = 500;
 /** Async queue returns quickly; sync/test print may still wait for PDF + printer. */
 const PRINT_TIMEOUT_MS = 8000;
 const PRINT_WAIT_TIMEOUT_MS = 45000;
+/** Skip localhost health pings for a short window after a successful check/print. */
+const HEALTH_CACHE_TTL_MS = 45_000;
+
+/** @type {Map<string, { ok: boolean, at: number, result?: object|null }>} */
+const healthCacheByBaseUrl = new Map();
 
 export const PRINT_AGENT_DEFAULTS = {
   enabled: false,
@@ -59,6 +64,37 @@ function agentUrl(config, path) {
   return `${config.baseUrl}${path}`;
 }
 
+function healthCacheKey(config) {
+  return String(config?.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "") || DEFAULT_BASE_URL;
+}
+
+/** @internal test helper */
+export function clearPrintAgentHealthCache() {
+  healthCacheByBaseUrl.clear();
+}
+
+export function markPrintAgentHealthy(config = getPrintAgentConfig(), result = { ok: true }) {
+  healthCacheByBaseUrl.set(healthCacheKey(config), {
+    ok: true,
+    at: Date.now(),
+    result: result ?? { ok: true },
+  });
+}
+
+export function invalidatePrintAgentHealth(config = getPrintAgentConfig()) {
+  healthCacheByBaseUrl.delete(healthCacheKey(config));
+}
+
+/** True when the agent answered OK within HEALTH_CACHE_TTL_MS. */
+export function isPrintAgentRecentlyHealthy(
+  config = getPrintAgentConfig(),
+  { ttlMs = HEALTH_CACHE_TTL_MS } = {},
+) {
+  const cached = healthCacheByBaseUrl.get(healthCacheKey(config));
+  if (!cached?.ok) return false;
+  return Date.now() - cached.at < ttlMs;
+}
+
 async function agentFetch(config, path, init = {}) {
   const controller = new AbortController();
   const timeoutMs = init.timeoutMs ?? PRINT_TIMEOUT_MS;
@@ -85,23 +121,47 @@ async function agentFetch(config, path, init = {}) {
 }
 
 /** Ping the local print agent. Returns null when unreachable. */
-export async function checkPrintAgentHealth(config = getPrintAgentConfig(), { quick = false } = {}) {
+export async function checkPrintAgentHealth(
+  config = getPrintAgentConfig(),
+  { quick = false, bypassCache = false } = {},
+) {
   if (!config?.baseUrl) return null;
+
+  if (!bypassCache) {
+    const cached = healthCacheByBaseUrl.get(healthCacheKey(config));
+    if (cached?.ok && Date.now() - cached.at < HEALTH_CACHE_TTL_MS) {
+      return cached.result ?? { ok: true };
+    }
+  }
+
   try {
     const body = await agentFetch(config, "/v1/health", {
       method: "GET",
       timeoutMs: quick ? QUICK_HEALTH_TIMEOUT_MS : HEALTH_TIMEOUT_MS,
     });
-    return {
+    const result = {
       ok: Boolean(body.ok),
       version: body.version ?? null,
       platform: body.platform ?? null,
       defaultPrinter: body.default_printer ?? body.defaultPrinter ?? null,
       printers: Array.isArray(body.printers) ? body.printers : [],
     };
+    if (result.ok) {
+      markPrintAgentHealthy(config, result);
+    } else {
+      invalidatePrintAgentHealth(config);
+    }
+    return result;
   } catch {
+    invalidatePrintAgentHealth(config);
     return null;
   }
+}
+
+/** Background warm-up so the first POS receipt can skip the health round-trip. */
+export async function warmPrintAgentHealth(config = getPrintAgentConfig()) {
+  if (!config?.enabled && !isPrintAgentEnabled()) return null;
+  return checkPrintAgentHealth({ ...config, enabled: true }, { quick: true, bypassCache: true });
 }
 
 /**
@@ -137,6 +197,8 @@ export async function printViaAgent({
       wait: Boolean(wait),
     }),
   });
+
+  markPrintAgentHealthy(config, { ok: true });
 
   return {
     ok: true,

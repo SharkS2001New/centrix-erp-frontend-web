@@ -13,12 +13,12 @@ export const DOCUMENT_LOGO_SIZES = [
   { id: "extra_large", label: "Extra large" },
 ];
 
-/** CSS max dimensions for A4 / professional headers. */
+/** CSS max dimensions for A4 / professional headers (Menengai-style prominence). */
 export const DOCUMENT_LOGO_A4_SIZE_PX = {
-  small: { maxHeight: 40, maxWidth: 110 },
-  medium: { maxHeight: 56, maxWidth: 140 },
-  large: { maxHeight: 72, maxWidth: 180 },
-  extra_large: { maxHeight: 96, maxWidth: 240 },
+  small: { maxHeight: 72, maxWidth: 180 },
+  medium: { maxHeight: 96, maxWidth: 220 },
+  large: { maxHeight: 128, maxWidth: 280 },
+  extra_large: { maxHeight: 160, maxWidth: 340 },
 };
 
 /** CSS max dimensions for thermal receipts. */
@@ -52,7 +52,9 @@ export const DOCUMENT_LOGO_VARIANTS = {
     label: "Proforma invoice",
     defaultShow: true,
     defaultPosition: "right",
-    defaultSize: "small",
+    defaultSize: "large",
+    /** Commercial PFI logos; "small" is omitted (legacy small maps to large). */
+    sizes: ["medium", "large", "extra_large"],
   },
   lpo: {
     label: "LPO",
@@ -105,8 +107,10 @@ export function normalizeDocumentLogoPosition(value, variantKey = "invoice") {
 }
 
 export function normalizeDocumentLogoSize(value, variantKey = "invoice") {
-  const fallback = DOCUMENT_LOGO_VARIANTS[variantKey]?.defaultSize ?? "medium";
-  return DOCUMENT_LOGO_SIZES.some((row) => row.id === value) ? value : fallback;
+  const config = DOCUMENT_LOGO_VARIANTS[variantKey];
+  const allowed = config?.sizes ?? DOCUMENT_LOGO_SIZES.map((row) => row.id);
+  const fallback = config?.defaultSize ?? "medium";
+  return allowed.includes(value) ? value : fallback;
 }
 
 /**

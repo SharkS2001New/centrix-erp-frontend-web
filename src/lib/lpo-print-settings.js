@@ -23,6 +23,7 @@ export const DEFAULT_LPO_FOOTER_LINES = [
 ];
 
 export const PROCUREMENT_PRINT_DEFAULTS = {
+  lpo_document_template: "default",
   lpo_print_delivery_notes: DEFAULT_LPO_DELIVERY_NOTES.join("\n"),
   lpo_print_kebs_warning: DEFAULT_LPO_KEBS_WARNING,
   lpo_print_vat_note: DEFAULT_LPO_VAT_NOTE,
@@ -108,6 +109,9 @@ export function resolveLpoSignatures(lpo, printSettings = {}) {
 export function lpoPrintFormFromApi(res) {
   const procurement = mergeLpoPrintSettings(res?.procurement ?? res);
   return {
+    lpo_document_template: String(
+      procurement.lpo_document_template ?? PROCUREMENT_PRINT_DEFAULTS.lpo_document_template,
+    ),
     lpo_print_delivery_notes: String(
       procurement.lpo_print_delivery_notes ?? PROCUREMENT_PRINT_DEFAULTS.lpo_print_delivery_notes,
     ),
@@ -126,6 +130,7 @@ export function lpoPrintFormFromApi(res) {
 
 export function lpoPrintPayloadFromForm(form) {
   return {
+    lpo_document_template: String(form.lpo_document_template ?? "default"),
     lpo_print_delivery_notes: String(form.lpo_print_delivery_notes ?? ""),
     lpo_print_kebs_warning: String(form.lpo_print_kebs_warning ?? "").trim(),
     lpo_print_vat_note: String(form.lpo_print_vat_note ?? "").trim(),

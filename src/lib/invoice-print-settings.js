@@ -19,6 +19,7 @@ export const DEFAULT_INVOICE_FOOTER_LINES = [
 ];
 
 export const INVOICE_PRINT_DEFAULTS = {
+  invoice_document_template: "default",
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
 };
@@ -48,6 +49,9 @@ export function resolveInvoiceFooterLines(salesSettings = {}, { organizationName
 export function invoicePrintFormFromApi(sales = {}) {
   const merged = { ...INVOICE_PRINT_DEFAULTS, ...sales };
   return {
+    invoice_document_template: String(
+      merged.invoice_document_template ?? INVOICE_PRINT_DEFAULTS.invoice_document_template,
+    ),
     invoice_print_delivery_terms: String(
       merged.invoice_print_delivery_terms ?? INVOICE_PRINT_DEFAULTS.invoice_print_delivery_terms,
     ),
@@ -59,6 +63,7 @@ export function invoicePrintFormFromApi(sales = {}) {
 
 export function invoicePrintPayloadFromForm(form) {
   return {
+    invoice_document_template: String(form.invoice_document_template ?? "default"),
     invoice_print_delivery_terms: String(form.invoice_print_delivery_terms ?? ""),
     invoice_print_footer_lines: String(form.invoice_print_footer_lines ?? ""),
   };

@@ -43,6 +43,10 @@ import {
   DOCUMENT_LOGO_A4_SIZE_PX,
 } from "@/lib/document-logo-settings";
 import {
+  orgDocumentTemplateCss,
+  resolveOrgDocumentTemplateId,
+} from "@/lib/document-print-templates";
+import {
   buildProfessionalHeaderHtml,
   buildProfessionalItemsTableHtml,
   buildProfessionalMetaHtml,
@@ -225,6 +229,9 @@ function buildClassicTaxInvoiceHtml(sale, options) {
   const logoSize =
     DOCUMENT_LOGO_A4_SIZE_PX[effectiveBranding?.logoLayout?.size ?? "large"] ??
     DOCUMENT_LOGO_A4_SIZE_PX.large;
+  const documentTemplateId = resolveOrgDocumentTemplateId(
+    salesSettings?.invoice_document_template,
+  );
 
   const itemRows = buildSaleDocumentLineRows(items, {
     uomById,
@@ -338,6 +345,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     .pay-instructions .pay-note { margin-top: 6px; font-size: ${px(10)}; font-weight: 600; }
     .center { text-align: center; }
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
+    ${orgDocumentTemplateCss(documentTemplateId, { layout: "classic" })}
     @media print {
       html, body { height: auto !important; min-height: 0 !important; }
       body { font-size: ${px(12, true)}; padding: 0; }
@@ -495,7 +503,7 @@ function buildProformaInvoiceHtml(sale, options) {
   const logoLayout = effectiveBranding?.logoLayout ?? {
     show: true,
     position: "right",
-    size: "small",
+    size: "large",
   };
   const showLogo =
     effectiveBranding?.showHeader !== false &&
@@ -649,11 +657,15 @@ function buildProformaInvoiceHtml(sale, options) {
             <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
           </div>`;
 
+  const documentTemplateId = resolveOrgDocumentTemplateId(
+    salesSettings?.proforma_document_template,
+  );
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <title>${escapeHtml(`Proforma ${invoiceNo}`)}</title>
-  <style>${professionalA4Styles(generalSettings, "sale_invoice")}</style>
+  <style>${professionalA4Styles(generalSettings, "sale_invoice", documentTemplateId)}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   ${watermarkHtml}

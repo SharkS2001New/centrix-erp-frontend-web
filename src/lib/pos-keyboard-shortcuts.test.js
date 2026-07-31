@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
+  clearPosAltLatch,
+  isPosAltLatched,
   isPosAltLetterShortcut,
   isPosClassicAltShortcut,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
+  notePosAltKeyEvent,
+  resolvePosAltShortcutLetter,
   resolvePosShortcutKey,
 } from "@/lib/pos-keyboard-shortcuts";
 
@@ -113,5 +117,38 @@ describe("claimPosFunctionKeyEvent", () => {
         altHeld: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe("POS Alt latch / release grace", () => {
+  afterEach(() => {
+    clearPosAltLatch();
+    vi.useRealTimers();
+  });
+
+  it("treats letter as Alt+letter while Alt is latched even if altKey is false", () => {
+    notePosAltKeyEvent(fakeEvent({ key: "Alt", code: "AltLeft" }), "keydown");
+    expect(isPosAltLatched()).toBe(true);
+    expect(
+      resolvePosAltShortcutLetter(fakeEvent({ key: "h", code: "KeyH", altKey: false })),
+    ).toBe("h");
+    expect(isPosClassicAltShortcut(fakeEvent({ key: "p", code: "KeyP", altKey: false }))).toBe(
+      true,
+    );
+  });
+
+  it("keeps matching briefly after Alt keyup (Windows chord release race)", () => {
+    vi.useFakeTimers();
+    notePosAltKeyEvent(fakeEvent({ key: "Alt", code: "AltLeft" }), "keydown");
+    notePosAltKeyEvent(fakeEvent({ key: "Alt", code: "AltLeft" }), "keyup");
+    expect(isPosAltLatched()).toBe(true);
+    expect(
+      resolvePosAltShortcutLetter(fakeEvent({ key: "f", code: "KeyF", altKey: false })),
+    ).toBe("f");
+    vi.advanceTimersByTime(401);
+    expect(isPosAltLatched()).toBe(false);
+    expect(
+      resolvePosAltShortcutLetter(fakeEvent({ key: "f", code: "KeyF", altKey: false })),
+    ).toBe(null);
   });
 });

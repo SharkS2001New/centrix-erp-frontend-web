@@ -6,6 +6,8 @@ import {
   DOCUMENT_LOGO_SIZES,
   DOCUMENT_LOGO_VARIANTS,
   documentLogoFormKeys,
+  normalizeDocumentLogoPosition,
+  normalizeDocumentLogoSize,
 } from "@/lib/document-logo-settings";
 
 function Toggle({ checked, onChange, label, description }) {
@@ -36,10 +38,16 @@ export function DocumentLogoSettingsFields({
   if (!config) return null;
 
   const show = form?.[keys.show] !== false;
-  const position = form?.[keys.position] ?? config.defaultPosition;
-  const size = form?.[keys.size] ?? config.defaultSize;
+  const position = normalizeDocumentLogoPosition(
+    form?.[keys.position] ?? config.defaultPosition,
+    variantKey,
+  );
+  const size = normalizeDocumentLogoSize(form?.[keys.size] ?? config.defaultSize, variantKey);
   const positions = (config.positions ?? DOCUMENT_LOGO_POSITIONS.map((row) => row.id))
     .map((id) => DOCUMENT_LOGO_POSITIONS.find((row) => row.id === id))
+    .filter(Boolean);
+  const sizes = (config.sizes ?? DOCUMENT_LOGO_SIZES.map((row) => row.id))
+    .map((id) => DOCUMENT_LOGO_SIZES.find((row) => row.id === id))
     .filter(Boolean);
 
   return (
@@ -75,7 +83,7 @@ export function DocumentLogoSettingsFields({
               value={size}
               onChange={(e) => setForm((f) => ({ ...f, [keys.size]: e.target.value }))}
             >
-              {DOCUMENT_LOGO_SIZES.map((row) => (
+              {sizes.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.label}
                 </option>

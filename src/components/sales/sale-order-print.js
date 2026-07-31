@@ -318,10 +318,20 @@ export async function printSaleOrder(sale, options = {}) {
       (options.organizationName ? { name: options.organizationName } : null) ??
       { name: DEFAULT_PRINT_ORG_NAME };
 
+    // Proforma = unpaid bank document — never fiscalize / never require KRA QR.
+    const isProforma = documentType === "proforma";
+
     let branding = resolveSaleDocumentBranding({
       organization,
       generalSettings: general,
       organizationNameFallback: seller.name ?? options.organizationName ?? "",
+      documentVariant: isProforma
+        ? "proforma"
+        : documentType === "invoice"
+          ? "invoice"
+          : documentType === "receipt"
+            ? "receipt"
+            : null,
     });
     const logoDataUrl =
       options.skipLogoFetch || skipNetworkLookups
@@ -341,9 +351,6 @@ export async function printSaleOrder(sale, options = {}) {
       kraConfigured &&
       !saleIsOfflinePending &&
       !(skipNetworkLookups && options.kraReceipt);
-
-    // Proforma = unpaid bank document — never fiscalize / never require KRA QR.
-    const isProforma = documentType === "proforma";
 
     let kraData = null;
     let kraQrDataUrl = null;

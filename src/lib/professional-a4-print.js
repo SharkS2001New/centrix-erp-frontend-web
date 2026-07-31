@@ -10,6 +10,10 @@ import {
 } from "@/lib/print-typography";
 import { documentPrintEdgeFooterStyles } from "@/lib/document-print-edge-footer";
 import { reportWatermarkCss } from "@/lib/reports/report-branding";
+import {
+  orgDocumentTemplateCss,
+  resolveOrgDocumentTemplateId,
+} from "@/lib/document-print-templates";
 
 export function escapeProfessionalHtml(value) {
   return String(value ?? "")
@@ -19,12 +23,17 @@ export function escapeProfessionalHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-export function professionalA4Styles(generalSettings = null, variant = "sale_invoice") {
+export function professionalA4Styles(
+  generalSettings = null,
+  variant = "sale_invoice",
+  templateId = "default",
+) {
   const printPx = createOrgPrintPx(generalSettings, variant);
   const px = printPx.body;
   const hpx = printPx.header;
   const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, variant);
+  const resolvedTemplate = resolveOrgDocumentTemplateId(templateId);
 
   return `
   @page { size: A4; margin: 12mm 12mm 16mm; }
@@ -81,8 +90,8 @@ export function professionalA4Styles(generalSettings = null, variant = "sale_inv
   }
   .logo-wrap img {
     margin-left: auto;
-    max-height: 72px;
-    max-width: 180px;
+    max-height: 128px;
+    max-width: 280px;
   }
   .top-bar--logo-left {
     grid-template-columns: auto 1fr;
@@ -104,10 +113,10 @@ export function professionalA4Styles(generalSettings = null, variant = "sale_inv
   .logo-wrap--center img {
     margin: 0 auto;
   }
-  .logo-size-small img { max-height: 40px !important; max-width: 110px !important; }
-  .logo-size-medium img { max-height: 56px !important; max-width: 140px !important; }
-  .logo-size-large img { max-height: 72px !important; max-width: 180px !important; }
-  .logo-size-extra_large img { max-height: 96px !important; max-width: 240px !important; }
+  .logo-size-small img { max-height: 72px !important; max-width: 180px !important; }
+  .logo-size-medium img { max-height: 96px !important; max-width: 220px !important; }
+  .logo-size-large img { max-height: 128px !important; max-width: 280px !important; }
+  .logo-size-extra_large img { max-height: 160px !important; max-width: 340px !important; }
 
   .doc-title {
     text-align: center;
@@ -324,6 +333,7 @@ export function professionalA4Styles(generalSettings = null, variant = "sale_inv
 
   ${documentPrintEdgeFooterStyles(generalSettings, { variant })}
   ${reportWatermarkCss()}
+  ${orgDocumentTemplateCss(resolvedTemplate, { layout: "professional" })}
 
   @media print {
     body { font-size: ${px(11, true)}; }

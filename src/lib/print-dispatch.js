@@ -10,7 +10,9 @@ import {
 import {
   checkPrintAgentHealth,
   getPrintAgentConfig,
+  invalidatePrintAgentHealth,
   isPrintAgentEnabled,
+  isPrintAgentRecentlyHealthy,
   printViaAgent,
   savePrintAgentConfig,
 } from "@/lib/print-agent";
@@ -21,6 +23,21 @@ function preparePrintHtml(html, jobType = "receipt") {
     return prepareThermalPrintHtml(html);
   }
   return injectPrintDocumentBaseline(html);
+}
+
+async function tryAgentPrint({ preparedHtml, copies, jobType, config }) {
+  const result = await printViaAgent({
+    html: preparedHtml,
+    copies,
+    jobType,
+    config: { ...config, enabled: true },
+  });
+  return {
+    mode: "agent",
+    ok: true,
+    printer: config.printerName || undefined,
+    jobId: result.jobId ?? undefined,
+  };
 }
 
 /**
@@ -55,24 +72,21 @@ export async function dispatchPrintJob({
     const config = activeProvider === "agent" ? { ...agentConfig, enabled: true } : agentConfig;
     if (config.enabled || activeProvider === "agent") {
       try {
-        // Quick ping first — avoid an 8s print timeout when the agent is not running.
+        // Warm path: skip /v1/health when the agent answered recently (POS after first ping).
+        if (isPrintAgentRecentlyHealthy({ ...config, enabled: true })) {
+          try {
+            return await tryAgentPrint({ preparedHtml, copies, jobType, config });
+          } catch {
+            invalidatePrintAgentHealth({ ...config, enabled: true });
+          }
+        }
+
         const health = await checkPrintAgentHealth(
           { ...config, enabled: true },
           { quick: true },
         );
         if (health?.ok) {
-          const result = await printViaAgent({
-            html: preparedHtml,
-            copies,
-            jobType,
-            config: { ...config, enabled: true },
-          });
-          return {
-            mode: "agent",
-            ok: true,
-            printer: config.printerName || undefined,
-            jobId: result.jobId ?? undefined,
-          };
+          return await tryAgentPrint({ preparedHtml, copies, jobType, config });
         }
       } catch {
         // Agent missing/offline → browser dialog (fallback always on in org settings)

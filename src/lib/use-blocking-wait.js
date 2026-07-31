@@ -85,7 +85,10 @@ export function useBlockingWait(defaultMessage = DEFAULT_MESSAGE) {
         setWaitState((current) =>
           current?.active ? { ...current, progress: 100, serverProgress: 100 } : current,
         );
-        await new Promise((resolve) => setTimeout(resolve, 220));
+        const settleMs = opts.settleMs === undefined ? 220 : Math.max(0, Number(opts.settleMs) || 0);
+        if (settleMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, settleMs));
+        }
 
         return result;
       } finally {

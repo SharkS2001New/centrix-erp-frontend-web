@@ -29,11 +29,45 @@ import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview"
 import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import {
+  ORG_DOCUMENT_DESIGN_TEMPLATES,
+  orgDocumentTemplateMeta,
+} from "@/lib/document-print-templates";
 
 const PRINTOUT_TAB_BTN =
   "rounded-md px-3 py-1.5 text-sm font-medium transition whitespace-nowrap";
 const PRINTOUT_TAB_BTN_ACTIVE = "bg-white text-[#185FA5] shadow-sm";
 const PRINTOUT_TAB_BTN_IDLE = "text-slate-600 hover:text-slate-900";
+
+function DocumentTemplateSelect({
+  form,
+  setForm,
+  settingKey,
+  label = "Document template",
+}) {
+  const value = form?.[settingKey] ?? "default";
+  const meta = orgDocumentTemplateMeta(value);
+  return (
+    <div className="space-y-1">
+      <Field label={label}>
+        <select
+          className={inputClassName()}
+          value={value}
+          onChange={(e) => setForm((f) => ({ ...f, [settingKey]: e.target.value }))}
+        >
+          {ORG_DOCUMENT_DESIGN_TEMPLATES.map((tpl) => (
+            <option key={tpl.id} value={tpl.id}>
+              {tpl.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {meta?.description ? (
+        <p className="text-xs text-slate-500">{meta.description}</p>
+      ) : null}
+    </div>
+  );
+}
 
 const PRINTOUT_TABS = [
   { id: "general", label: "General" },
@@ -384,6 +418,12 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
         title="A4 invoice receipts"
         description="Valid-until date, payment instructions, logo, fonts, and closing footer text for A4 tax invoices."
       />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="invoice_document_template"
+        label="Document template"
+      />
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -443,11 +483,17 @@ function ProformaInvoicesTab({ form, setForm, hasMobileSales }) {
         onChange={(v) => setForm((f) => ({ ...f, show_print_proforma_invoice_option: v }))}
         description="When enabled, unpaid orders show Print Proforma Invoice alongside Print A4 Invoice. Uncheck to hide the proforma print action."
       />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="proforma_document_template"
+        label="Document template"
+      />
       <DocumentLogoSettingsFields
         form={form}
         setForm={setForm}
         variantKey="proforma"
-        description="Proformas often use a smaller logo than tax invoices."
+        description="Uses your company profile logo (Admin → Organization). Default size is large to match commercial PFI layouts."
       />
       <Field label="Proforma valid for (days)">
         <input
@@ -561,6 +607,12 @@ function LpoPrintoutsTab({ form, setForm }) {
   return (
     <div className="space-y-3">
       <SectionHeading title="Local purchase orders (LPO)" />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="lpo_document_template"
+        label="Document template"
+      />
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -1065,6 +1117,7 @@ export function PrintoutsSettingsPanel({
               <PrintoutsLivePreview
                 key={activeTab}
                 form={form}
+                setForm={setForm}
                 organization={previewContext.organization}
                 moduleSettings={previewContext.moduleSettings}
                 capabilities={capabilities}

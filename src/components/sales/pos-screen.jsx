@@ -92,6 +92,7 @@ import {
 } from "@/lib/reference-data-cache";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
+import { isPrintAgentEnabled, warmPrintAgentHealth } from "@/lib/print-agent";
 import {
   canAdjustCartLineQuantity,
   cartLineEntryQtyForBaseQty,
@@ -163,11 +164,12 @@ import {
 import {
   CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
+  clearPosAltLatch,
   isPosAltKeyEvent,
-  isPosAltLetterShortcut,
-  isPosClassicAltShortcut,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
+  notePosAltKeyEvent,
+  resolvePosAltShortcutLetter,
   resolvePosShortcutKey,
 } from "@/lib/pos-keyboard-shortcuts";
 import { newClientSaleUuid } from "@/lib/pos-offline-db";
@@ -710,6 +712,13 @@ export function PosScreen({ standalone = false }) {
     setFloatModalOpen(true);
     loadPosTillMeta();
   }, [standalone, requireTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
+
+  useEffect(() => {
+    // Warm local print agent so the first receipt can skip the health ping.
+    if (!standalone) return;
+    if (!isPrintAgentEnabled()) return;
+    void warmPrintAgentHealth();
+  }, [standalone, capabilities?.module_settings?.local_printing]);
 
   async function handlePosOpenSession(payload) {
     try {
@@ -4775,10 +4784,15 @@ export function PosScreen({ standalone = false }) {
         detail: submitKra
           ? "Submitting receipt to the KRA device. Please wait."
           : "Please wait.",
+        settleMs: 0,
       });
       // Annotate with the tendered amount so the immediate receipt can show correct change.
       if (cashTendered != null && cashTendered > 0) {
         sale = { ...sale, _cash_tendered: Number(cashTendered) };
+      }
+      // Kick print before cart-clear state churn so HTML build starts immediately.
+      if (!options.skipPrint) {
+        schedulePosReceiptPrint(sale);
       }
       markSaleForReprint(sale);
       setCart(null);
@@ -4789,9 +4803,6 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(`Order #${sale.order_num} completed.`);
       if (liveCart?.held_order_num) {
         setEditSourceSale(null);
-      }
-      if (!options.skipPrint) {
-        schedulePosReceiptPrint(sale);
       }
       return sale;
     } catch (e) {
@@ -5994,6 +6005,7 @@ export function PosScreen({ standalone = false }) {
 
       if (isPosAltKeyEvent(e)) {
         altHeld = phase === "keydown";
+        notePosAltKeyEvent(e, phase);
         return;
       }
 
@@ -6026,16 +6038,13 @@ export function PosScreen({ standalone = false }) {
       // cannot swallow them. Right Alt is often AltGr (ctrl+alt). Works on all PosScreen
       // mounts (external /pos and in-app), classic + modern.
       const altOpts = { altHeld };
-      const isPosAlt = isPosClassicAltShortcut(e, altOpts);
-      if (isPosAlt) {
+      const altLetter = resolvePosAltShortcutLetter(e, altOpts);
+      if (altLetter) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
 
-        const altStampKey = isPosAltLetterShortcut(e, "h", altOpts)
-          ? "AltH"
-          : isPosAltLetterShortcut(e, "f", altOpts)
-            ? "AltF"
-            : "AltP";
+        const altStampKey =
+          altLetter === "h" ? "AltH" : altLetter === "f" ? "AltF" : "AltP";
 
         if (phase === "keyup") {
           // Some shells eat Alt+letter on keydown (browser Help / menu) — run on keyup once.
@@ -6047,16 +6056,16 @@ export function PosScreen({ standalone = false }) {
         if (isModalOpen(state)) return;
 
         actions.closeProductSearchDropdown?.();
-        if (isPosAltLetterShortcut(e, "h", altOpts)) {
+        if (altLetter === "h") {
           // Same path as the Hold button — no extra confirm gate.
           actions.openSaveOrderDialog("hold");
           return;
         }
-        if (isPosAltLetterShortcut(e, "f", altOpts)) {
+        if (altLetter === "f") {
           if (state.activeSession) setFloatDetailsOpen(true);
           return;
         }
-        if (isPosAltLetterShortcut(e, "p", altOpts)) {
+        if (altLetter === "p") {
           void actions.handlePrintReceipt();
         }
         return;
@@ -6106,7 +6115,18 @@ export function PosScreen({ standalone = false }) {
       onPosKeyEvent(e, "keyup");
     }
     function onWindowBlur() {
-      altHeld = false;
+      // Only grace-latch if Alt was actually held — avoid treating H/F/P as shortcuts
+      // for ~400ms after every unrelated focus loss.
+      if (altHeld) {
+        altHeld = false;
+        notePosAltKeyEvent({ key: "Alt", code: "AltLeft" }, "keyup");
+      }
+    }
+    function onVisibilityChange() {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        altHeld = false;
+        clearPosAltLatch();
+      }
     }
 
     // passive: false is required — otherwise preventDefault is ignored and F12 opens DevTools.
@@ -6117,12 +6137,15 @@ export function PosScreen({ standalone = false }) {
       target.addEventListener("keyup", onKeyUp, opts);
     }
     window.addEventListener("blur", onWindowBlur);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       for (const target of captureTargets) {
         target.removeEventListener("keydown", onKeyDown, opts);
         target.removeEventListener("keyup", onKeyUp, opts);
       }
       window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearPosAltLatch();
     };
   }, []);
 

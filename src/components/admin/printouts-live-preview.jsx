@@ -36,6 +36,11 @@ import {
 } from "@/lib/print-preview-samples";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
+import {
+  ORG_DOCUMENT_DESIGN_TEMPLATES,
+  documentTemplateFieldForPreviewType,
+  orgDocumentTemplateMeta,
+} from "@/lib/document-print-templates";
 import { openPrintWindow, printWindowFeatures } from "@/lib/open-print-window";
 
 const PREVIEW_OPTION_LABELS = {
@@ -233,6 +238,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
 
 export function PrintoutsLivePreview({
   form,
+  setForm = null,
   organization,
   moduleSettings,
   capabilities,
@@ -247,6 +253,9 @@ export function PrintoutsLivePreview({
   const [previewType, setPreviewType] = useState(initialType);
   const [debouncedForm, setDebouncedForm] = useState(form);
   const [printing, setPrinting] = useState(false);
+  const templateField = documentTemplateFieldForPreviewType(previewType);
+  const templateValue = templateField ? form?.[templateField] ?? "default" : null;
+  const templateMeta = templateValue ? orgDocumentTemplateMeta(templateValue) : null;
 
   useEffect(() => {
     if (!previewTypes.includes(previewType) && previewTypes.length > 0) {
@@ -309,6 +318,31 @@ export function PrintoutsLivePreview({
               </option>
             ))}
           </select>
+          {templateField && setForm ? (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-slate-600">
+                Document template
+              </label>
+              <select
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                value={templateValue}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, [templateField]: e.target.value }))
+                }
+              >
+                {ORG_DOCUMENT_DESIGN_TEMPLATES.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.label}
+                  </option>
+                ))}
+              </select>
+              {templateMeta?.description ? (
+                <p className="text-[11px] leading-snug text-slate-500">
+                  {templateMeta.description}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="button"
             disabled={!html || printing}

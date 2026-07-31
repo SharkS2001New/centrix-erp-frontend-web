@@ -27,6 +27,7 @@ import {
   escapeProfessionalHtml,
   professionalA4Styles,
 } from "@/lib/professional-a4-print";
+import { resolveOrgDocumentTemplateId } from "@/lib/document-print-templates";
 
 function formatPrintDate(value) {
   if (!value) return "—";
@@ -261,11 +262,15 @@ export function buildLpoPrintHtml({
     .map((line) => `<p>${escapeProfessionalHtml(line)}</p>`)
     .join("");
 
+  const documentTemplateId = resolveOrgDocumentTemplateId(
+    printSettings?.lpo_document_template,
+  );
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <title>${escapeProfessionalHtml(docTitle)} ${escapeProfessionalHtml(lpoDisplayNumber(lpo))}</title>
-  <style>${professionalA4Styles(generalSettings, "lpo")}</style>
+  <style>${professionalA4Styles(generalSettings, "lpo", documentTemplateId)}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   ${watermarkHtml}

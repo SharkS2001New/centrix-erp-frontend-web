@@ -60,6 +60,7 @@ import {
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder, resolveOrderPrintType } from "@/components/sales/sale-order-print";
+import { requestOrderPrintType } from "@/lib/order-print-type-picker";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
@@ -968,28 +969,29 @@ export default function SalesOrdersListScreen({
 
       setBatchBusy(null);
       const ok = await confirm({
-        title: "Print all receipts",
+        title: "Print all orders",
         message:
           printable.length === 1
-            ? `Print 1 receipt for ${dateLabel} with the current filters?`
-            : `Print ${printable.length} receipts for ${dateLabel} with the current filters?`,
-        confirmLabel: printable.length === 1 ? "Print receipt" : `Print ${printable.length}`,
+            ? `Print 1 order for ${dateLabel} with the current filters? You will choose thermal or A4 next.`
+            : `Print ${printable.length} orders for ${dateLabel} with the current filters? You will choose thermal or A4 next.`,
+        confirmLabel: printable.length === 1 ? "Continue" : `Continue (${printable.length})`,
       });
       if (!ok) {
         setActionMessage(null);
         return;
       }
 
-      setBatchBusy("print-all");
-      setActionMessage(`Printing ${printable.length} receipt${printable.length === 1 ? "" : "s"}…`);
-
-      let documentType = defaultOrderListPrintDocumentType(
-        capabilities?.module_settings,
-        capabilities,
-      );
-      if (!documentType || documentType === "both") {
-        documentType = "receipt";
+      const documentType = await requestOrderPrintType();
+      if (!documentType) {
+        setActionMessage(null);
+        return;
       }
+
+      const formatLabel = documentType === "invoice" ? "A4 invoice" : "thermal receipt";
+      setBatchBusy("print-all");
+      setActionMessage(
+        `Printing ${printable.length} ${formatLabel}${printable.length === 1 ? "" : "s"}…`,
+      );
 
       let printed = 0;
       let failed = 0;
@@ -999,12 +1001,14 @@ export default function SalesOrdersListScreen({
         else failed += 1;
       }
 
-      const parts = [`Printed ${printed} of ${printable.length}`];
+      const parts = [
+        `Printed ${printed} of ${printable.length} (${formatLabel}${printable.length === 1 ? "" : "s"})`,
+      ];
       if (skipped > 0) parts.push(`${skipped} skipped`);
       if (failed > 0) parts.push(`${failed} failed`);
       setActionMessage(`${parts.join(" · ")}.`);
     } catch (e) {
-      setActionMessage(e instanceof Error ? e.message : "Could not print all receipts.");
+      setActionMessage(e instanceof Error ? e.message : "Could not print all orders.");
     } finally {
       setBatchBusy(null);
     }
@@ -1196,7 +1200,7 @@ export default function SalesOrdersListScreen({
                 type="button"
                 onClick={() => void printAllFilteredOrders()}
                 disabled={loading || listLoading || Boolean(batchBusy) || !listFiltersInitialized}
-                title="Print all receipts for the current date range and filters"
+                title="Print all matching orders — choose thermal or A4"
                 className={SECONDARY_BTN_CLASS}
               >
                 {batchBusy === "print-all" || batchBusy === "print-all-load"
@@ -1353,7 +1357,7 @@ export default function SalesOrdersListScreen({
                 {batchBusy === "print-all-load"
                   ? "Loading orders to print…"
                   : batchBusy === "print-all"
-                    ? "Printing all receipts…"
+                    ? "Printing all orders…"
                     : batchBusy === "print"
                       ? "Printing selected orders…"
                       : batchBusy === "cancel"

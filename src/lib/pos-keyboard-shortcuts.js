@@ -9,6 +9,13 @@ export const POS_FN_KEYS = new Set(["F2", "F8", "F9", "F10", "F12"]);
 /** Dispatched when F10 is pressed while the payment dialog is already open. */
 export const CENTRIX_POS_COMPLETE_PAYMENT_EVENT = "centrix:pos-complete-payment";
 
+/**
+ * How long after Alt/Option is released we still treat letter keys as Alt+letter.
+ * Windows/Chromium often clear e.altKey on the letter event, or deliver letter
+ * keydown a few ms after Alt keyup when the chord is released quickly.
+ */
+const POS_ALT_RELEASE_GRACE_MS = 400;
+
 const F_KEY_BY_CODE = {
   112: "F1",
   113: "F2",
@@ -23,6 +30,46 @@ const F_KEY_BY_CODE = {
   122: "F11",
   123: "F12",
 };
+
+/** Module latch so every POS listener sees the same Alt state (scan field, qty inputs, window). */
+let posAltPhysicallyDown = false;
+let posAltLatchUntil = 0;
+
+export function clearPosAltLatch() {
+  posAltPhysicallyDown = false;
+  posAltLatchUntil = 0;
+}
+
+export function isPosAltLatched() {
+  return posAltPhysicallyDown || Date.now() < posAltLatchUntil;
+}
+
+export function isPosAltKeyEvent(e) {
+  const key = String(e?.key ?? "");
+  const code = String(e?.code ?? "");
+  return (
+    key === "Alt"
+    || key === "AltGraph"
+    || code === "AltLeft"
+    || code === "AltRight"
+  );
+}
+
+/**
+ * Call from capture keydown/keyup when Alt/Option is pressed or released.
+ * @param {"keydown"|"keyup"} phase
+ */
+export function notePosAltKeyEvent(e, phase) {
+  if (!isPosAltKeyEvent(e)) return false;
+  if (phase === "keydown") {
+    posAltPhysicallyDown = true;
+    posAltLatchUntil = 0;
+  } else {
+    posAltPhysicallyDown = false;
+    posAltLatchUntil = Date.now() + POS_ALT_RELEASE_GRACE_MS;
+  }
+  return true;
+}
 
 export function isPosFunctionKeyEvent(e) {
   const key = String(e?.key ?? "");
@@ -89,24 +136,13 @@ export function isPosFunctionShortcutKey(key) {
 /** True when Alt/Option is active (event flags, OS latch, or getModifierState). */
 export function isPosAltModifierActive(e, { altHeld = false } = {}) {
   if (!e || e.metaKey) return false;
-  if (e.altKey || altHeld) return true;
+  if (e.altKey || altHeld || isPosAltLatched()) return true;
   try {
     if (typeof e.getModifierState === "function" && e.getModifierState("Alt")) return true;
   } catch {
     /* ignore */
   }
   return false;
-}
-
-export function isPosAltKeyEvent(e) {
-  const key = String(e?.key ?? "");
-  const code = String(e?.code ?? "");
-  return (
-    key === "Alt"
-    || key === "AltGraph"
-    || code === "AltLeft"
-    || code === "AltRight"
-  );
 }
 
 /** Physical letter key for Alt+letter shortcuts (ignores Option dead-key glyphs like ˙). */
@@ -130,6 +166,17 @@ export function isPosLetterCode(e, letter) {
 }
 
 /**
+ * Which Alt+letter shortcut this event is, if any: "h" | "f" | "p" | null.
+ */
+export function resolvePosAltShortcutLetter(e, { altHeld = false } = {}) {
+  if (!isPosAltModifierActive(e, { altHeld })) return null;
+  if (isPosLetterCode(e, "h")) return "h";
+  if (isPosLetterCode(e, "f")) return "f";
+  if (isPosLetterCode(e, "p")) return "p";
+  return null;
+}
+
+/**
  * Alt+letter POS shortcuts — prefer e.code so Mac Option layers still match (e.g. Option+H → ˙).
  * Pass altHeld when the listener tracks AltLeft/AltRight down (Windows menu-bar quirks).
  */
@@ -145,7 +192,5 @@ export function isPosAltLetterShortcut(e, letter, { altHeld = false } = {}) {
  * Name kept for callers; applies to classic and modern POS layouts.
  */
 export function isPosClassicAltShortcut(e, { altHeld = false } = {}) {
-  return isPosAltLetterShortcut(e, "h", { altHeld })
-    || isPosAltLetterShortcut(e, "f", { altHeld })
-    || isPosAltLetterShortcut(e, "p", { altHeld });
+  return resolvePosAltShortcutLetter(e, { altHeld }) != null;
 }
