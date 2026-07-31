@@ -91,7 +91,9 @@ import {
   normalizeSalesListSearchQuery,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
+  describeMobileOrderMergeSelection,
 } from "@/lib/sales";
+import { P } from "@/lib/permission-codes";
 import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
@@ -1063,6 +1065,55 @@ export default function SalesOrdersListScreen({
     }
   }
 
+  async function mergeSelectedOrders() {
+    if (routeOrdersOnly || batchBusy || selectedSales.length < 2) return;
+    if (!hasPermission(P.sales.orders.edit)) {
+      setActionMessage("You do not have permission to merge orders.");
+      return;
+    }
+
+    const plan = describeMobileOrderMergeSelection(selectedSales);
+    if (!plan.ok) {
+      setActionMessage(plan.message);
+      return;
+    }
+
+    const sourceLabels = plan.sources.map((sale) => formatOrderNumber(sale)).join(", ");
+    const ok = await confirm({
+      title: "Merge mobile orders",
+      message: `Merge ${plan.sources.length + 1} orders for the same customer into ${formatOrderNumber(plan.target)}? Line items and payments move into ${formatOrderNumber(plan.target)}; ${sourceLabels} will be cancelled as merged.`,
+      confirmLabel: "Merge orders",
+    });
+    if (!ok) return;
+
+    setBatchBusy("merge");
+    setActionMessage(null);
+    try {
+      const merged = await apiRequest("/sales/orders/merge", {
+        method: "POST",
+        body: {
+          sale_ids: selectedSales.map((sale) => Number(sale.id)),
+          target_sale_id: Number(plan.target.id),
+        },
+      });
+      setActionMessage(
+        `Merged into ${formatOrderNumber(merged)}. ${plan.sources.length} order${plan.sources.length === 1 ? "" : "s"} cancelled.`,
+      );
+      clearSelection();
+      void loadOrders();
+    } catch (e) {
+      setActionMessage(e instanceof ApiError ? e.message : "Could not merge orders.");
+    } finally {
+      setBatchBusy(null);
+    }
+  }
+
+  const canMergeSelected =
+    !routeOrdersOnly &&
+    hasPermission(P.sales.orders.edit) &&
+    selectedSales.length >= 2 &&
+    describeMobileOrderMergeSelection(selectedSales).ok;
+
   const allPageExpanded = useMemo(() => {
     const pageIds = pageSlice.map((sale) => String(sale.id));
     return pageIds.length > 0 && pageIds.every((id) => expandedIds.has(id));
@@ -1668,6 +1719,23 @@ export default function SalesOrdersListScreen({
             ? "Printing…"
             : `Print${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
         </button>
+        {!routeOrdersOnly && hasPermission(P.sales.orders.edit) ? (
+          <button
+            type="button"
+            disabled={Boolean(batchBusy) || !canMergeSelected}
+            title={
+              canMergeSelected
+                ? "Merge selected mobile orders for the same customer into one"
+                : "Select 2+ mobile orders for the same customer and route"
+            }
+            onClick={() => void mergeSelectedOrders()}
+            className="rounded-lg border border-[var(--theme-border)] bg-white px-4 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {batchBusy === "merge"
+              ? "Merging…"
+              : `Merge${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+          </button>
+        ) : null}
         {!routeOrdersOnly ? (
           <button
             type="button"

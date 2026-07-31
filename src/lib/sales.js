@@ -181,6 +181,54 @@ export function formatOrderNumber(saleOrNum) {
 }
 
 /**
+ * Client-side preflight for merging mobile orders (same customer + route).
+ * Server still enforces editable status and permissions.
+ * @returns {{ ok: true, target: object, sources: object[] } | { ok: false, message: string }}
+ */
+export function describeMobileOrderMergeSelection(sales = []) {
+  const list = Array.isArray(sales) ? sales.filter(Boolean) : [];
+  if (list.length < 2) {
+    return { ok: false, message: "Select at least two mobile orders to merge." };
+  }
+
+  const mobile = list.filter((sale) => {
+    const channel = String(sale.channel ?? "").toLowerCase();
+    const source = String(sale.order_source ?? "").toLowerCase();
+    return channel === "mobile" || source === "mobile";
+  });
+  if (mobile.length !== list.length) {
+    return { ok: false, message: "Only mobile orders can be merged." };
+  }
+
+  const customerKeys = new Set(
+    list.map((sale) => String(sale.customer_num ?? "").trim()).filter(Boolean),
+  );
+  if (customerKeys.size !== 1) {
+    return {
+      ok: false,
+      message: "Select orders for the same registered customer to merge.",
+    };
+  }
+
+  const routeKeys = new Set(
+    list.map((sale) => (sale.route_id == null ? "" : String(sale.route_id))),
+  );
+  if (routeKeys.size !== 1) {
+    return { ok: false, message: "Select orders on the same route to merge." };
+  }
+
+  const sorted = [...list].sort((a, b) => {
+    const orderCmp = Number(a.order_num ?? 0) - Number(b.order_num ?? 0);
+    if (orderCmp !== 0) return orderCmp;
+    return Number(a.id ?? 0) - Number(b.id ?? 0);
+  });
+  const target = sorted[0];
+  const sources = sorted.slice(1);
+
+  return { ok: true, target, sources };
+}
+
+/**
  * Parse display order # (S0034, s34, #34) to the numeric order_num, or null.
  */
 export function parseOrderNumberQuery(query) {

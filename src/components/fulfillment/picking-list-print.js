@@ -37,6 +37,34 @@ function formatKes(amount) {
   return n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Leading package count from labels like "26 Jer" / "4 Bag, 10 kg". */
+export function primaryPackageCountFromLine(line) {
+  const label = String(line?.quantity_label ?? line?.wholesale_qty_label ?? "").trim();
+  const match = label.match(/^([\d,]+(?:\.\d+)?)/);
+  if (match) {
+    const n = Number(String(match[1]).replace(/,/g, ""));
+    if (Number.isFinite(n)) return n;
+  }
+  if (line?.sort_qty != null && Number.isFinite(Number(line.sort_qty))) {
+    return Number(line.sort_qty);
+  }
+  return Number(line?.required_qty ?? line?.quantity ?? 0) || 0;
+}
+
+/** Highest displayed package count first (26 jer before 4 bag). */
+export function sortPickingLinesByPackageCount(lines) {
+  return [...(lines ?? [])]
+    .sort((a, b) => {
+      const qtyCmp = primaryPackageCountFromLine(b) - primaryPackageCountFromLine(a);
+      if (qtyCmp !== 0) return qtyCmp;
+      const baseCmp =
+        Number(b?.required_qty ?? b?.quantity ?? 0) - Number(a?.required_qty ?? a?.quantity ?? 0);
+      if (baseCmp !== 0) return baseCmp;
+      return String(a?.product_name ?? "").localeCompare(String(b?.product_name ?? ""));
+    })
+    .map((line, index) => ({ ...line, line_no: index + 1 }));
+}
+
 function resolveRouteHeader({ pickingList, trip }) {
   const routeNames =
     (Array.isArray(pickingList?.trip?.route_names) && pickingList.trip.route_names.length
@@ -254,7 +282,8 @@ export function buildPickingListHtml({
     "picking_list",
   );
   const orgHeader = buildPickingListHeaderHtml({ branding });
-  const lines = normalizePickingLines(pickingList?.lines ?? [], uomByProductCode);
+  const normalized = normalizePickingLines(pickingList?.lines ?? [], uomByProductCode);
+  const lines = salesLayout ? sortPickingLinesByPackageCount(normalized) : normalized;
   const meta = resolveRouteHeader({ pickingList, trip });
   const listDate = pickingList?.list_date ?? trip?.scheduled_date;
   const dateLabel = formatPrintDisplayDate(listDate, { emptyLabel: "—" });

@@ -13,7 +13,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
-import { printPickingList, isSalesPickingLayout } from "@/components/fulfillment/picking-list-print";
+import { printPickingList, isSalesPickingLayout, sortPickingLinesByPackageCount } from "@/components/fulfillment/picking-list-print";
 import { formatSaleKes } from "@/lib/sales";
 import { shouldShowMobilePickingLists } from "@/lib/sales-settings";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
@@ -178,7 +178,10 @@ export default function MobilePickingSheetsScreen() {
   }
 
   const pickingList = detail?.picking_list;
-  const pickLines = pickingList?.lines ?? [];
+  const pickLines = useMemo(
+    () => sortPickingLinesByPackageCount(pickingList?.lines ?? []),
+    [pickingList?.lines],
+  );
   const salesLayout = isSalesPickingLayout(pickingList, "sales");
   const orderTotalValue =
     pickingList?.order_total_value != null
