@@ -275,6 +275,40 @@ export function professionalA4Styles(generalSettings = null, variant = "sale_inv
   .signatures p { margin: 0 0 10px; }
   .signatures .sig-label { font-weight: 700; font-style: italic; }
 
+  .body-footer-block,
+  .served-by,
+  .body-footer-line,
+  .goods-note {
+    margin: 8px 0;
+    font-size: ${px(10)};
+    font-weight: 600;
+  }
+  .served-by { font-weight: 700; }
+  .goods-note.center,
+  .body-footer-line.center { text-align: center; }
+  .receive-signatures {
+    margin: 12px 0 0;
+    font-size: ${px(11)};
+    max-width: 420px;
+  }
+  .sig-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 0 0 10px;
+  }
+  .sig-row .sig-label { white-space: nowrap; min-width: 5.5rem; font-weight: 700; }
+  .sig-row .sig-line {
+    flex: 1;
+    border-bottom: 1px dotted #111;
+    min-height: 1.1em;
+  }
+  .footer-line-divider {
+    border: 0;
+    border-top: 1px solid #ccc;
+    margin: 8px 0;
+  }
+
   .footer-notes {
     margin-top: 10px;
     text-align: center;
