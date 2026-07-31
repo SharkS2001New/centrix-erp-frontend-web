@@ -5,18 +5,19 @@ import {
 } from "@/lib/document-print-edge-footer";
 import { THERMAL_PAPER_WIDTH_MM } from "@/lib/thermal-receipt-layout";
 
-/** Injected last into every print document — suppresses browser URL/date headers. */
+/** Injected last into every print document — suppresses browser URL/date headers & footers. */
 export const PRINT_DOCUMENT_BASELINE_HTML = `
 <style id="centrix-print-baseline">
   /*
-   * Zero top @page margin: Chrome/Edge omit built-in headers (URL, date, title).
-   * A4 edge-footer documents reserve bottom margin for the fixed print footer on every page.
+   * Zero @page margins on every page: Chrome/Edge/Firefox omit the print dialog
+   * "Headers and footers" (URL, title, date, page numbers). Document spacing uses
+   * body padding instead — never non-zero @page margins (those re-enable browser chrome).
    */
   @page {
     margin: 0 !important;
   }
   @page centrix-edge {
-    margin: 0 0 ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} 0 !important;
+    margin: 0 !important;
   }
   @page centrix-thermal {
     size: ${THERMAL_PAPER_WIDTH_MM}mm auto;
@@ -32,7 +33,7 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
     }
     body.has-doc-print-edge-footer {
       page: centrix-edge;
-      padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} 0 ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
+      padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
       box-sizing: border-box;
     }
     body.centrix-print-thermal {

@@ -1,7 +1,5 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { apiRequest, organizationLogoFileUrl } from "@/lib/api";
-import { getToken } from "@/lib/auth-storage";
-import { apiFetchCredentials } from "@/lib/auth-config";
+import { apiRequest } from "@/lib/api";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   ensureSaleForPrint,
@@ -16,7 +14,7 @@ import {
 } from "@/lib/kra-receipt-qr";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { resolveSaleDocumentBranding, resolveSaleOrderCreatorName } from "@/lib/sale-document-print-shared";
-import { organizationHasLogo } from "@/lib/reports/report-branding";
+import { fetchOrganizationLogoDataUrl } from "@/lib/organization-logo";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
 import {
   mergeSalesSettings,
@@ -65,29 +63,6 @@ async function fetchOrganizationForPrint(organizationId) {
     } catch {
       return null;
     }
-  }
-}
-
-async function fetchOrganizationLogoDataUrl(organization) {
-  if (!organization?.id || !organizationHasLogo(organization)) return null;
-  const url = organizationLogoFileUrl(organization.id, {
-    filePath: organization.logo_file_path ?? undefined,
-  });
-  const headers = {};
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  try {
-    const res = await fetch(url, { headers, credentials: apiFetchCredentials() });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
   }
 }
 

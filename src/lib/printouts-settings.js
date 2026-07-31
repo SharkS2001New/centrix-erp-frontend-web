@@ -77,6 +77,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   show_proforma_banner: true,
   proforma_banner_text: PROFORMA_PRINT_DEFAULTS.proforma_banner_text,
   show_proforma_customer_pin: true,
+  show_proforma_our_pin: true,
   show_proforma_valid_until: true,
   show_proforma_payment_terms: true,
   show_proforma_totals_breakdown: true,

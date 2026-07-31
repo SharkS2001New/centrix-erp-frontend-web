@@ -36,12 +36,12 @@ export function professionalA4Styles(
   const resolvedTemplate = resolveOrgDocumentTemplateId(templateId);
 
   return `
-  @page { size: A4; margin: 12mm 12mm 16mm; }
+  @page { size: A4; margin: 0; }
   html { height: 100%; }
   body {
     font-family: ${font};
     margin: 0;
-    padding: 0;
+    padding: 12mm 12mm 16mm;
     color: #111;
     font-size: ${px(11)};
     line-height: 1.4;

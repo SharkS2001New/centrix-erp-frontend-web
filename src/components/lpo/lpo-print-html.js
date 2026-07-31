@@ -109,6 +109,7 @@ export function buildLpoPrintHtml({
   generalSettings = null,
   documentFooterText = null,
   variant = "lpo",
+  logoDataUrl = null,
 } = {}) {
   const isDeliveryNote = variant === "delivery_note";
   const showPricing = !isDeliveryNote;
@@ -122,13 +123,13 @@ export function buildLpoPrintHtml({
   const orgPhones = [organization?.primary_tel, organization?.secondary_tel]
     .filter(Boolean)
     .join(" / ");
-  const orgPin = organization?.org_pin ?? buyer.tax_pin ?? "";
   const logoUrl =
-    organizationHasLogo(organization) && organization?.id
+    logoDataUrl ||
+    (organizationHasLogo(organization) && organization?.id
       ? organizationLogoFileUrl(organization.id, {
           filePath: organization.logo_file_path ?? undefined,
         })
-      : branding.logoUrl ?? null;
+      : branding.logoUrl ?? null);
 
   const logoLayout = branding.logoLayout ?? {
     show: true,
@@ -195,7 +196,7 @@ export function buildLpoPrintHtml({
     if (showPricing) {
       row.unit_price = formatLpoAmount(line.cost_price);
       row.vat = formatLpoAmount(totals.vat);
-      row.amount = formatLpoAmount(totals.net);
+      row.amount = formatLpoAmount(totals.gross);
     }
     return row;
   });
@@ -278,7 +279,7 @@ export function buildLpoPrintHtml({
     <div class="page-body">
       ${buildProfessionalHeaderHtml({
         companyName: orgName,
-        pin: orgPin,
+        pin: "",
         address: organization?.org_address ?? buyer.address ?? "",
         email: organization?.org_email ?? buyer.email ?? "",
         phones: orgPhones || buyer.phone || "",

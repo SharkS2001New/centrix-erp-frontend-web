@@ -673,7 +673,7 @@ function buildProformaInvoiceHtml(sale, options) {
     <div class="page-body">
       ${buildProfessionalHeaderHtml({
         companyName: sellerName,
-        pin: seller.tax_pin ?? "",
+        pin: salesSettings?.show_proforma_our_pin === false ? "" : (seller.tax_pin ?? ""),
         address: storeAddress || seller.address || "",
         email: seller.email || "",
         phones: storePhones || "",

@@ -12,6 +12,7 @@ import {
   lpoOrderDate,
   lpoRowDisplayNumber,
 } from "@/lib/lpo-display";
+import { vatFromInclusiveGross } from "@/lib/sales-vat";
 
 export { formatPoNumber, lpoOrderDate, lpoRowDisplayNumber };
 
@@ -280,34 +281,37 @@ export function lpoHeaderToForm(lpo, lines = [], uomById) {
   };
 }
 
-/** Per-line net, VAT, and gross from qty × cost and product VAT rate. */
+/** Per-line totals — cost_price is VAT-inclusive (do not add VAT again). */
 export function computeLpoLineTotals(line) {
   const qty = Number(line.ordered_qty) || 0;
   const cost = Number(line.cost_price) || 0;
-  const net = qty * cost;
   const rate = Number(line.vat_rate ?? 0);
-  const vat = net * (rate / 100);
+  const gross = Math.round(qty * cost * 100) / 100;
+  const vat = vatFromInclusiveGross(gross, rate);
+  const net = Math.round((gross - vat) * 100) / 100;
   return {
-    net: Math.round(net * 100) / 100,
-    vat: Math.round(vat * 100) / 100,
-    gross: Math.round((net + vat) * 100) / 100,
+    net,
+    vat,
+    gross,
     rate,
   };
 }
 
-/** Totals use each line's product VAT rate (from catalog). */
+/** Totals use each line's product VAT rate; cost is VAT-inclusive. */
 export function computeLpoTotals(lines) {
   let subtotal = 0;
   let vat = 0;
+  let total = 0;
   for (const line of lines) {
     const lineTotals = computeLpoLineTotals(line);
     subtotal += lineTotals.net;
     vat += lineTotals.vat;
+    total += lineTotals.gross;
   }
   return {
     subtotal: Math.round(subtotal * 100) / 100,
     vat: Math.round(vat * 100) / 100,
-    total: Math.round((subtotal + vat) * 100) / 100,
+    total: Math.round(total * 100) / 100,
   };
 }
 

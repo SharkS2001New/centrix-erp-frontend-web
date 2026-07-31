@@ -266,5 +266,6 @@ describe("org print typography settings", () => {
 
     expect(html).toContain("Georgia");
     expect(html).toContain(`font-size: ${createOrgPrintPx(general, "lpo").body(11)}`);
+    expect(html).not.toContain("Our PIN");
   });
 });

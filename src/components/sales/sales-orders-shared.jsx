@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, SortableColumnHeader, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
+import { formatShortDate, getSaleTimestamp, StatCard, SortableColumnHeader, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
 import {
   TableRowSelectCell,
   TableSelectAllHeader,
@@ -189,7 +189,7 @@ export function OrderSummaryStats({ summary, hint = "Today" }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard label="Orders" value={String(summary.total)} hint={hint} />
-      <StatCard label="Revenue" value={formatKesCompact(summary.revenue)} hint={formatSaleKes(summary.revenue)} />
+      <StatCard label="Revenue" value={formatSaleKes(summary.revenue)} hint={hint} />
       <StatCard
         label="Unpaid / partial"
         value={String(summary.unpaid + summary.partial)}

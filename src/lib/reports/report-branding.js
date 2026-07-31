@@ -20,7 +20,15 @@ function escapeHtml(value) {
 export function organizationHasLogo(organization) {
   if (!organization) return false;
   if (organization.has_logo != null) return Boolean(organization.has_logo);
-  return typeof organization.logo === "string" && organization.logo.startsWith("organizations/");
+  if (typeof organization.logo_file_path === "string" && organization.logo_file_path.trim()) {
+    return true;
+  }
+  const logo = organization.logo;
+  // Matches backend OrganizationPublicStorage::isOrgScopedPath (legacy + orgs/{code}/…).
+  return (
+    typeof logo === "string" &&
+    (logo.startsWith("organizations/") || logo.startsWith("orgs/"))
+  );
 }
 
 export function resolveDisplay(preference, hasLogo) {

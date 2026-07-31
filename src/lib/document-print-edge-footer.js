@@ -4,12 +4,14 @@ import { buildStyledFooterLinesHtml, parseFooterLines } from "@/lib/footer-line-
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { orgPrintInkStyles, orgPrintSectionPx } from "@/lib/print-typography";
 
-/** Body padding (not @page) — keeps content clear of the fixed print footer. */
+/** Body padding (not @page) — keeps content clear of the fixed print footer.
+ *  @page margins must stay 0 so the browser does not draw Headers and footers.
+ */
 export const DOCUMENT_PRINT_EDGE_BODY_TOP = "10mm";
 export const DOCUMENT_PRINT_EDGE_BODY_SIDES = "12mm";
 export const DOCUMENT_PRINT_EDGE_BODY_BOTTOM = "30mm";
 
-/** @deprecated Use zero @page margin + body padding above. Kept for imports that set @page size only. */
+/** @deprecated Prefer body padding constants. @page margins must remain 0. */
 export const DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN = "0";
 
 export function documentPrintEdgeFooterStyles(generalSettings = null, { variant = "a4" } = {}) {

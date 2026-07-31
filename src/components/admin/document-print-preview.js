@@ -214,6 +214,7 @@ function invoicePrintFieldsFromSalesForm(form) {
     show_proforma_banner: form.show_proforma_banner,
     proforma_banner_text: form.proforma_banner_text,
     show_proforma_customer_pin: form.show_proforma_customer_pin,
+    show_proforma_our_pin: form.show_proforma_our_pin,
     show_proforma_valid_until: form.show_proforma_valid_until,
     show_proforma_payment_terms: form.show_proforma_payment_terms,
     show_proforma_totals_breakdown: form.show_proforma_totals_breakdown,

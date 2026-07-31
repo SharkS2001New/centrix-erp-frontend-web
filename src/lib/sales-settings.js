@@ -599,6 +599,7 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     show_proforma_banner: _showProformaBanner,
     proforma_banner_text: _proformaBannerText,
     show_proforma_customer_pin: _showProformaCustomerPin,
+    show_proforma_our_pin: _showProformaOurPin,
     show_proforma_valid_until: _showProformaValidUntil,
     show_proforma_payment_terms: _showProformaPaymentTerms,
     show_proforma_totals_breakdown: _showProformaTotalsBreakdown,

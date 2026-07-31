@@ -47,7 +47,11 @@ export function EntityPhotoDisplay({
         try {
           const headers = { Accept: "image/*,*/*" };
           if (token) headers.Authorization = `Bearer ${token}`;
-          const res = await fetch(url, { headers, credentials: apiFetchCredentials() });
+          const res = await fetch(url, {
+            headers,
+            credentials: apiFetchCredentials(),
+            cache: "no-store",
+          });
           if (!res.ok) continue;
           const blob = await res.blob();
           if (!isDisplayableImageBlob(blob)) continue;

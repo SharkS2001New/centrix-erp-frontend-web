@@ -265,7 +265,7 @@ export function LpoOrderItemsSection({
                             }
                             onClick={(e) => e.stopPropagation()}
                             readOnly={readOnly}
-                            title="Supplier selling price per full package — updates product last cost when PO is saved"
+                            title="VAT-inclusive supplier price per full package — updates product last cost when PO is saved"
                           />
                         </td>
                         <td className="px-2 py-2 text-right align-middle font-medium tabular-nums text-slate-900">
@@ -286,7 +286,7 @@ export function LpoOrderItemsSection({
         <div className="mt-3 flex items-end justify-between gap-4 border-t border-slate-200 pt-3">
           <p className="text-xs text-slate-500">
             Enter quantity at each packaging level from UOM settings (e.g. bags, outers, kg).
-            Cost is per full package. VAT from the product catalog.
+            Cost is per full package and VAT-inclusive; VAT is extracted from the catalog rate.
           </p>
           <div className="text-right">
             <p className="text-xs text-slate-500">

@@ -36,6 +36,7 @@ import {
 } from "@/lib/print-preview-samples";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
+import { fetchOrganizationLogoDataUrl } from "@/lib/organization-logo";
 import {
   ORG_DOCUMENT_DESIGN_TEMPLATES,
   documentTemplateFieldForPreviewType,
@@ -82,7 +83,7 @@ function buildPreviewGeneral(form, moduleSettings, previewType) {
   return mergePreviewGeneralWithPrintFonts(form, moduleSettings, typographyVariant);
 }
 
-function buildPreviewHtml(previewType, { form, organization, moduleSettings, capabilities }) {
+function buildPreviewHtml(previewType, { form, organization, moduleSettings, capabilities, logoDataUrl = null }) {
   if (!form) return "";
 
   const general = buildPreviewGeneral(form, moduleSettings, previewType);
@@ -95,6 +96,20 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
         ? previewType
         : null,
   });
+  const brandingWithLogo = logoDataUrl
+    ? {
+        ...branding,
+        logoUrl: logoDataUrl,
+        display:
+          branding.display === "logo" || branding.display === "logo_and_name"
+            ? branding.display
+            : "logo_and_name",
+      }
+    : branding;
+  const organizationForPrint =
+    logoDataUrl && organization
+      ? { ...organization, has_logo: true }
+      : organization;
   const seller = resolvePreviewSeller(organization);
   const sale = sampleReceiptPreviewSale();
 
@@ -104,8 +119,8 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     return buildSaleReceiptHtml(sale, {
       seller,
       branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,
-      branding,
-      organization,
+      branding: brandingWithLogo,
+      organization: organizationForPrint,
       productDiscountsEnabled: Boolean(sales.allow_discounts),
       orderDiscountEnabled: Boolean(sales.enable_order_discount),
       customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
@@ -124,7 +139,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     return buildSaleInvoiceHtml(sale, {
       seller,
       branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,
-      branding,
+      branding: brandingWithLogo,
       customer: SAMPLE_PREVIEW_CUSTOMER,
       productDiscountsEnabled: Boolean(sales.allow_discounts),
       orderDiscountEnabled: Boolean(sales.enable_order_discount),
@@ -146,7 +161,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     return buildSaleInvoiceHtml(sale, {
       seller,
       branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,
-      branding,
+      branding: brandingWithLogo,
       customer: SAMPLE_PREVIEW_CUSTOMER,
       productDiscountsEnabled: Boolean(sales.allow_discounts),
       orderDiscountEnabled: Boolean(sales.enable_order_discount),
@@ -171,18 +186,19 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     };
     return buildLpoPrintHtml({
       ...sample,
-      organization,
+      organization: organizationForPrint,
       generalSettings: general,
       printedBy: "Preview",
       printSettings,
       documentFooterText: resolvePrintFooter(general, "lpo"),
+      logoDataUrl,
     });
   }
 
   if (previewType === "picking_list") {
     const sample = samplePickingListPreviewData();
     return buildPickingListHtml({
-      organization,
+      organization: organizationForPrint,
       generalSettings: general,
       pickingList: sample.pickingList,
       trip: sample.trip,
@@ -195,7 +211,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
   if (previewType === "trip_chart") {
     const sample = sampleTripChartListPreviewData();
     return buildTripChartListHtml({
-      organization,
+      organization: organizationForPrint,
       generalSettings: general,
       trip: sample.trip,
       documentFooterText: resolvePrintFooter(general, "trip_chart"),
@@ -207,7 +223,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     const loadingSettings = loadingSheetPrintPayloadFromForm(form);
     const sample = sampleLoadingListPreviewData();
     return buildLoadingListHtml({
-      organization,
+      organization: organizationForPrint,
       generalSettings: general,
       loadingList: sample.loadingList,
       financialSummary: sample.financialSummary,
@@ -226,7 +242,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     const sample = samplePayrollReceiptPreviewData();
     return buildPayrollReceiptDocument({
       receipts: [sample],
-      organization,
+      organization: organizationForPrint,
       generalSettings: general,
       single: true,
       documentFooterText: resolvePrintFooter(general, "payroll_receipt"),
@@ -253,6 +269,7 @@ export function PrintoutsLivePreview({
   const [previewType, setPreviewType] = useState(initialType);
   const [debouncedForm, setDebouncedForm] = useState(form);
   const [printing, setPrinting] = useState(false);
+  const [logoDataUrl, setLogoDataUrl] = useState(null);
   const templateField = documentTemplateFieldForPreviewType(previewType);
   const templateValue = templateField ? form?.[templateField] ?? "default" : null;
   const templateMeta = templateValue ? orgDocumentTemplateMeta(templateValue) : null;
@@ -268,6 +285,17 @@ export function PrintoutsLivePreview({
     return () => window.clearTimeout(timer);
   }, [form]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setLogoDataUrl(null);
+    void fetchOrganizationLogoDataUrl(organization).then((dataUrl) => {
+      if (!cancelled) setLogoDataUrl(dataUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [organization?.id, organization?.has_logo, organization?.logo, organization?.logo_file_path]);
+
   const html = useMemo(() => {
     try {
       return buildPreviewHtml(previewType, {
@@ -275,12 +303,13 @@ export function PrintoutsLivePreview({
         organization,
         moduleSettings,
         capabilities,
+        logoDataUrl,
       });
     } catch (previewError) {
       console.error("Printout preview failed", previewError);
       return "";
     }
-  }, [capabilities, debouncedForm, moduleSettings, organization, previewType]);
+  }, [capabilities, debouncedForm, logoDataUrl, moduleSettings, organization, previewType]);
 
   const handlePrintPreview = useCallback(() => {
     if (!html || printing) return;

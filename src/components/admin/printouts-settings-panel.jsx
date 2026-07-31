@@ -535,6 +535,12 @@ function ProformaInvoicesTab({ form, setForm, hasMobileSales }) {
         </Field>
       ) : null}
       <Toggle
+        label="Show our PIN (company KRA PIN)"
+        checked={form.show_proforma_our_pin !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_our_pin: v }))}
+        description="Prints “Our PIN No.” in the proforma header. Off hides it. Not used on LPO."
+      />
+      <Toggle
         label="Show customer PIN"
         checked={form.show_proforma_customer_pin}
         onChange={(v) => setForm((f) => ({ ...f, show_proforma_customer_pin: v }))}

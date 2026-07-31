@@ -9,6 +9,7 @@ import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { toast } from "@/lib/toast";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
 import {
@@ -5208,10 +5209,12 @@ export function PosScreen({ standalone = false }) {
       const message = isCartEditSession
         ? "No receipt available for this order yet."
         : "No completed order to print. Complete payment first (F10).";
-      if (standalone) notifyError(message);
-      else setStatusMessage(message);
+      notifyError(message);
+      if (!standalone) setStatusMessage(message);
       return;
     }
+    if (receiptPrintStatus === "pending") return;
+
     if (!saleHasPrintableItems(sale) && !isOfflinePendingSaleId(sale.id)) {
       try {
         const detail = await apiRequest(`/sales/${sale.id}`, {
@@ -5228,7 +5231,18 @@ export function PosScreen({ standalone = false }) {
         /* printSaleOrder will try ensureSaleForPrint */
       }
     }
+
     setReceiptPrintStatus("pending");
+    const orderLabel = sale.order_num ? `#${sale.order_num}` : "";
+    const loadingToastId = toast.loading(
+      orderLabel ? `Printing receipt ${orderLabel}…` : "Printing receipt…",
+    );
+    if (!standalone) {
+      setStatusMessage(
+        orderLabel ? `Printing receipt ${orderLabel}…` : "Printing receipt…",
+      );
+    }
+
     try {
       const result = await printSaleOrder(
         sale,
@@ -5247,21 +5261,23 @@ export function PosScreen({ standalone = false }) {
       );
       if (!result) {
         setReceiptPrintStatus("failed");
-        notifyError("Print cancelled or no format was selected.");
+        toast.error("Print cancelled or no format was selected.", { id: loadingToastId });
         if (!standalone) setStatusMessage("Print cancelled.");
         return;
       }
       setReceiptPrintStatus("printed");
-      const message = `Reprinting order #${sale.order_num}.`;
-      if (standalone) notifySuccess(message);
-      else setStatusMessage(message);
+      const message = orderLabel
+        ? `Receipt ${orderLabel} sent to printer.`
+        : "Receipt sent to printer.";
+      toast.success(message, { id: loadingToastId });
+      if (!standalone) setStatusMessage(message);
       if (classicLayout) {
         focusClassicProductSearch();
       }
     } catch (e) {
       setReceiptPrintStatus("failed");
       const message = e instanceof Error ? e.message : "Receipt print failed";
-      notifyError(message);
+      toast.error(message, { id: loadingToastId });
       if (!standalone) setStatusMessage("Receipt print failed.");
     }
   }
@@ -6229,26 +6245,33 @@ export function PosScreen({ standalone = false }) {
                 </button>
                 <button
                   type="button"
-                  disabled={busy || !reprintSale?.id}
+                  disabled={busy || !reprintSale?.id || receiptPrintStatus === "pending"}
                   title={
-                    reprintSale?.order_num
-                      ? `Reprint receipt #${reprintSale.order_num}`
-                      : isCartEditSession
-                        ? "Reprint this order"
-                        : "Complete an order first"
+                    receiptPrintStatus === "pending"
+                      ? "Printing receipt…"
+                      : reprintSale?.order_num
+                        ? `Reprint receipt #${reprintSale.order_num}`
+                        : isCartEditSession
+                          ? "Reprint this order"
+                          : "Complete an order first"
                   }
                   onClick={() => void handlePrintReceipt()}
                   className={posHeaderBtnClassName}
+                  aria-busy={receiptPrintStatus === "pending"}
                 >
                   <span
                     className="pos-header-btn-label"
                     data-short={
-                      reprintSale?.order_num
-                        ? `Reprint #${reprintSale.order_num}`
-                        : "Reprint"
+                      receiptPrintStatus === "pending"
+                        ? "Printing…"
+                        : reprintSale?.order_num
+                          ? `Reprint #${reprintSale.order_num}`
+                          : "Reprint"
                     }
                   >
-                    {reprintReceiptLabel}
+                    {receiptPrintStatus === "pending"
+                      ? "Printing receipt…"
+                      : reprintReceiptLabel}
                   </span>
                 </button>
                 {showStandaloneTillActions && requireTillFloat ? (

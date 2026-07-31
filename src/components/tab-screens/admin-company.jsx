@@ -68,6 +68,8 @@ export function AdminCompanyScreen() {
   const [orgId, setOrgId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [hasLogo, setHasLogo] = useState(false);
+  const [logoVersion, setLogoVersion] = useState(0);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -106,6 +108,22 @@ export function AdminCompanyScreen() {
 
   useTabAwareDataLoad(load);
 
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(logoPreviewUrl);
+      }
+    };
+  }, [logoPreviewUrl]);
+
+  function bumpLogoDisplay() {
+    setLogoVersion((v) => v + 1);
+    setLogoPreviewUrl((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     if (!orgId) return;
@@ -141,6 +159,12 @@ export function AdminCompanyScreen() {
       notifyError("Company profile is still loading. Please try again in a moment.");
       return;
     }
+    const localPreview = URL.createObjectURL(file);
+    setLogoPreviewUrl((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return localPreview;
+    });
+    setHasLogo(true);
     setUploadingLogo(true);
     try {
       const res = await uploadOrganizationLogo(orgId, file, { uploadPath: logoUploadPath(orgId) });
@@ -148,8 +172,14 @@ export function AdminCompanyScreen() {
       setHasLogo(Boolean(uploaded?.has_logo ?? true));
       notifySuccess("Logo uploaded.");
       await load();
+      bumpLogoDisplay();
     } catch (err) {
+      setLogoPreviewUrl((prev) => {
+        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return null;
+      });
       notifyError(err instanceof ApiError ? err.message : "Logo upload failed");
+      await load();
     } finally {
       setUploadingLogo(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -164,6 +194,7 @@ export function AdminCompanyScreen() {
     try {
       await apiRequest(logoUploadPath(orgId), { method: "DELETE" });
       setHasLogo(false);
+      bumpLogoDisplay();
       notifySuccess("Logo removed.");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not remove logo");
@@ -171,6 +202,10 @@ export function AdminCompanyScreen() {
       setUploadingLogo(false);
     }
   }
+
+  const logoFileHref = orgId
+    ? `${platformOrgId ? logoFileUrl(orgId) : `${apiBaseOrigin()}/api/v1/erp/organization/logo/file`}?v=${logoVersion}`
+    : null;
 
   return (
     <CatalogPageShell
@@ -272,13 +307,11 @@ export function AdminCompanyScreen() {
             <h2 className="text-[15px] font-medium text-slate-900">Logo</h2>
             <p className="mt-1 text-sm text-slate-500">PNG, JPG, or WebP up to 2 MB.</p>
             <div className="mt-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
-              {hasLogo && orgId ? (
+              {hasLogo && (logoPreviewUrl || logoFileHref) ? (
                 <EntityPhotoDisplay
-                  fileUrl={
-                    platformOrgId
-                      ? logoFileUrl(orgId)
-                      : `${apiBaseOrigin()}/api/v1/erp/organization/logo/file`
-                  }
+                  key={`logo-${logoVersion}-${logoPreviewUrl ? "preview" : "file"}`}
+                  fileUrl={logoPreviewUrl ? null : logoFileHref}
+                  imageUrl={logoPreviewUrl}
                   alt="Company logo"
                   className="h-full w-full object-contain p-2"
                   placeholderClassName="px-2 text-center text-xs text-slate-400"
