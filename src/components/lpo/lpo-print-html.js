@@ -6,6 +6,7 @@ import {
   resolveReportBranding,
   buildReportWatermarkHtml,
 } from "@/lib/reports/report-branding";
+import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 import {
   resolveLpoDeliveryNotes,
   resolveLpoFooterLines,
@@ -111,7 +112,11 @@ export function buildLpoPrintHtml({
   const isDeliveryNote = variant === "delivery_note";
   const showPricing = !isDeliveryNote;
 
-  const branding = resolveReportBranding({ organization, generalSettings });
+  const branding = brandingWithDocumentLogo(
+    resolveReportBranding({ organization, generalSettings }),
+    generalSettings,
+    "lpo",
+  );
   const orgName = organization?.org_name ?? buyer.name ?? "";
   const orgPhones = [organization?.primary_tel, organization?.secondary_tel]
     .filter(Boolean)
@@ -124,8 +129,14 @@ export function buildLpoPrintHtml({
         })
       : branding.logoUrl ?? null;
 
+  const logoLayout = branding.logoLayout ?? {
+    show: true,
+    position: "right",
+    size: "medium",
+  };
   const showLogo =
     branding.showHeader !== false &&
+    logoLayout.show !== false &&
     (branding.display === "logo" || branding.display === "logo_and_name");
   const showName =
     branding.showHeader !== false &&
@@ -269,6 +280,8 @@ export function buildLpoPrintHtml({
         logoUrl,
         showLogo,
         showName: showName || !showLogo,
+        logoPosition: logoLayout.position,
+        logoSize: logoLayout.size,
       })}
 
       <div class="doc-title">${escapeProfessionalHtml(docTitle)}</div>

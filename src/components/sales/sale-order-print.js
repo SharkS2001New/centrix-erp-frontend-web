@@ -417,7 +417,6 @@ export async function printSaleOrder(sale, options = {}) {
     };
 
     if (documentType === "invoice" || isProforma) {
-      const { resolveProformaValidDays } = await import("@/lib/proforma-print-settings");
       for (let copy = 0; copy < copies; copy += 1) {
         printSaleInvoice(saleForPrint, {
           ...printOptions,

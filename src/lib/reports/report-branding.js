@@ -1,6 +1,9 @@
 import { organizationLogoFileUrl } from "@/lib/api";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
+  documentLogoSizeCss,
+} from "@/lib/document-logo-settings";
+import {
   createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
@@ -67,24 +70,46 @@ export function resolveReportBranding({
   };
 }
 
-/** @param {ReturnType<resolveReportBranding>} branding */
-export function buildReportOrgHeaderHtml(branding) {
+/**
+ * @param {ReturnType<resolveReportBranding>} branding
+ * @param {{ layout?: 'thermal'|'a4', logoLayout?: { show?: boolean, position?: string, size?: string } }} [options]
+ */
+export function buildReportOrgHeaderHtml(branding, options = {}) {
   if (!branding?.showHeader) return "";
 
-  const parts = [];
-  if ((branding.display === "logo" || branding.display === "logo_and_name") && branding.logoUrl) {
-    parts.push(
-      `<img class="org-logo" src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(branding.organizationName)}">`,
-    );
+  const logoLayout = options.logoLayout ?? branding.logoLayout ?? null;
+  const size = logoLayout?.size ?? "medium";
+  const position = logoLayout?.position ?? "center";
+  const layout = options.layout ?? "a4";
+  const sizeStyle = documentLogoSizeCss(size, layout === "thermal" ? "thermal" : "a4");
+
+  const showLogo =
+    logoLayout?.show !== false &&
+    (branding.display === "logo" || branding.display === "logo_and_name") &&
+    Boolean(branding.logoUrl);
+  const showName =
+    branding.display === "name" ||
+    branding.display === "logo_and_name" ||
+    (!showLogo && Boolean(branding.organizationName));
+
+  const logoHtml = showLogo
+    ? `<img class="org-logo" style="${sizeStyle}" src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(branding.organizationName)}">`
+    : "";
+  const nameHtml =
+    showName && branding.organizationName
+      ? `<div class="org-name">${escapeHtml(branding.organizationName)}</div>`
+      : "";
+
+  if (!logoHtml && !nameHtml) return "";
+
+  if (position === "left" && logoHtml) {
+    return `<div class="org-header org-header--row org-header--logo-left">${logoHtml}<div class="org-header-text">${nameHtml}</div></div>`;
   }
-  if (
-    (branding.display === "name" || branding.display === "logo_and_name") &&
-    branding.organizationName
-  ) {
-    parts.push(`<div class="org-name">${escapeHtml(branding.organizationName)}</div>`);
+  if (position === "right" && logoHtml) {
+    return `<div class="org-header org-header--row org-header--logo-right"><div class="org-header-text">${nameHtml}</div>${logoHtml}</div>`;
   }
 
-  return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
+  return `<div class="org-header">${logoHtml}${nameHtml}</div>`;
 }
 
 /**
@@ -167,6 +192,12 @@ export function reportDocumentStyles(generalSettings = null) {
   return `
   body { font-family: ${font}; padding: 24px; color: #000; font-size: ${px(11)}; position: relative; ${orgPrintInkStyles(generalSettings, "report")} }
   .org-header { text-align: center; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #000; }
+  .org-header--row { display: flex; align-items: center; gap: 16px; text-align: left; }
+  .org-header--logo-left { justify-content: flex-start; }
+  .org-header--logo-right { justify-content: space-between; }
+  .org-header--row .org-logo { margin: 0; }
+  .org-header--logo-right .org-logo { margin-left: auto; }
+  .org-header-text { flex: 1; min-width: 0; }
   .org-logo { display: block; margin: 0 auto 8px; max-height: 64px; max-width: 260px; object-fit: contain; }
   .org-name { font-size: ${hpx(18)}; font-weight: var(--print-w-header, 800); margin: 0; line-height: 1.25; color: #000; }
   .meta { margin-bottom: 20px; text-align: center; }

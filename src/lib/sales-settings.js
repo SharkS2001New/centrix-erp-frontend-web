@@ -3,7 +3,10 @@ import {
   DEFAULT_INVOICE_FOOTER_LINES,
   invoicePrintFormFromApi,
 } from "@/lib/invoice-print-settings";
-import { PROFORMA_PRINT_DEFAULTS } from "@/lib/proforma-print-settings";
+import {
+  PROFORMA_PRINT_DEFAULTS,
+  proformaPrintFormFromApi,
+} from "@/lib/proforma-print-settings";
 import { defaultDateRange } from "@/lib/datetime";
 import {
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
@@ -493,6 +496,7 @@ export function salesOrganizationFormFromApi(res) {
       },
     ),
     ...invoicePrintFormFromApi(sales),
+    ...proformaPrintFormFromApi(sales),
     stock_deduct_on: sales.stock_deduct_on || "order_created",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(sales.orders_list_default_days)),
     orders_list_search_days: String(
@@ -581,6 +585,20 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     invoice_valid_days: _invoiceValidDays,
     invoice_print_delivery_terms: _invoicePrintDeliveryTerms,
     invoice_print_footer_lines: _invoicePrintFooterLines,
+    proforma_valid_days: _proformaValidDays,
+    show_proforma_payment_details: _showProformaPaymentDetails,
+    show_proforma_terms: _showProformaTerms,
+    proforma_print_terms: _proformaPrintTerms,
+    show_proforma_vat_note: _showProformaVatNote,
+    proforma_vat_note: _proformaVatNote,
+    show_proforma_signatures: _showProformaSignatures,
+    proforma_confirmed_by: _proformaConfirmedBy,
+    show_proforma_banner: _showProformaBanner,
+    proforma_banner_text: _proformaBannerText,
+    show_proforma_customer_pin: _showProformaCustomerPin,
+    show_proforma_valid_until: _showProformaValidUntil,
+    show_proforma_payment_terms: _showProformaPaymentTerms,
+    show_proforma_totals_breakdown: _showProformaTotalsBreakdown,
     ...checkoutForm
   } = withDiscountApproval;
 

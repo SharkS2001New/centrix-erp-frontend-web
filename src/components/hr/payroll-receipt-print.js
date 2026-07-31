@@ -9,6 +9,7 @@ import {
   buildReportOrgHeaderHtml,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
+import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
   orgPrintFontFamilyFromSettings,
@@ -413,14 +414,21 @@ export function buildPayrollReceiptDocument({
   single = false,
   documentFooterText = null,
 }) {
-  const branding = resolveReportBranding({ organization, generalSettings });
+  const branding = brandingWithDocumentLogo(
+    resolveReportBranding({ organization, generalSettings }),
+    generalSettings,
+    "payroll_receipt",
+  );
   const orgName = branding.organizationName ?? organization?.org_name ?? "Organization";
   const footerText =
     documentFooterText != null
       ? documentFooterText
       : resolvePrintFooter(generalSettings ?? {}, "payroll_receipt");
   const orgHeaderHtml = branding.showHeader
-    ? buildReportOrgHeaderHtml(branding)
+    ? buildReportOrgHeaderHtml(branding, {
+        layout: "a4",
+        logoLayout: branding.logoLayout ?? null,
+      })
     : "";
   const receiptsHtml = receipts.map((r) =>
     buildReceiptHtml(r.line, r.employee, {

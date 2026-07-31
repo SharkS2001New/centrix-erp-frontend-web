@@ -21,6 +21,7 @@ import {
 } from "@/lib/printouts-settings";
 import { FooterLineEditor } from "@/components/admin/footer-line-editor";
 import { PrintFontSettingsFields } from "@/components/admin/print-font-settings-fields";
+import { DocumentLogoSettingsFields } from "@/components/admin/document-logo-settings-fields";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
@@ -38,6 +39,7 @@ const PRINTOUT_TABS = [
   { id: "general", label: "General" },
   { id: "receipt", label: "Thermal receipts", requiresSales: true },
   { id: "invoice", label: "A4 invoices", requiresSales: true },
+  { id: "proforma", label: "Proforma", requiresSales: true },
   { id: "lpo", label: "LPO", requiresProcurement: true },
   { id: "loading_sheet", label: "Loading sheets", requiresRoutePrintouts: true },
   { id: "picking_list", label: "Picking lists", requiresRoutePrintouts: true },
@@ -174,7 +176,7 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
       <div>
         <SectionHeading
           title="Printouts for this organization"
-          description="Tabs below match your org setup. Receipts, invoices, and General branding work for backoffice wholesale and retail without Distribution."
+          description="Tabs below match your org setup. Receipts, invoices, proformas, and General branding work for backoffice wholesale and retail without Distribution."
         />
         <ul className="mt-3 space-y-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
           {availableKinds.length > 0 ? (
@@ -250,7 +252,7 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
       <div>
         <SectionHeading
           title="Document branding"
-          description="Logo and organization header shown on all printouts."
+          description="Global header mode for all documents. Per-document logo size and position are set on each printout tab."
         />
         <div className="mt-4 space-y-3">
           <Toggle
@@ -272,6 +274,10 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
               ))}
             </select>
           </Field>
+          <p className="text-xs text-slate-500">
+            Open each document tab (receipt, invoice, proforma, etc.) to choose whether that printout shows the
+            logo, where it sits, and how large it is. The live preview updates as you change those controls.
+          </p>
         </div>
       </div>
     </div>
@@ -341,6 +347,12 @@ function ThermalReceiptsTab({ form, setForm, hasMobileSales }) {
         variantKey="receipt"
         description="Font for narrow thermal receipt printers only."
       />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="receipt"
+        description="Thermal receipts usually use a small centered logo."
+      />
       <Toggle
         label="Show payment instructions on thermal receipts"
         checked={form.show_receipt_payment_details}
@@ -370,13 +382,19 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
     <div className="space-y-3">
       <SectionHeading
         title="A4 invoice receipts"
-        description="Valid-until date, payment instructions, and closing footer text for A4 sales invoices."
+        description="Valid-until date, payment instructions, logo, fonts, and closing footer text for A4 tax invoices."
       />
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
         variantKey="invoice"
         description="Font for A4 invoice receipts and similar sales documents."
+      />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="invoice"
+        description="Tax invoices can use a larger logo than proformas."
       />
       <Field label="Invoice valid for (days)">
         <input
@@ -412,6 +430,127 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
   );
 }
 
+function ProformaInvoicesTab({ form, setForm, hasMobileSales }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeading
+        title="Proforma invoices"
+        description="Control what appears on unpaid proforma (PFI) printouts. Separate from tax invoices."
+      />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="proforma"
+        description="Proformas often use a smaller logo than tax invoices."
+      />
+      <Field label="Proforma valid for (days)">
+        <input
+          type="number"
+          min={0}
+          max={365}
+          className={`${inputClassName()} w-32`}
+          value={form.proforma_valid_days}
+          onChange={(e) => setForm((f) => ({ ...f, proforma_valid_days: e.target.value }))}
+        />
+      </Field>
+      <Toggle
+        label="Show payment instructions"
+        checked={form.show_proforma_payment_details}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_payment_details: v }))}
+        description="Uses the same payment details configured for invoices/receipts."
+      />
+      {form.show_proforma_payment_details ? (
+        <PaymentInstructionsSharedSection
+          form={form}
+          setForm={setForm}
+          hasMobileSales={hasMobileSales}
+          idPrefix="printouts-proforma"
+        />
+      ) : null}
+      <Toggle
+        label="Show proforma banner"
+        checked={form.show_proforma_banner}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_banner: v }))}
+      />
+      {form.show_proforma_banner ? (
+        <Field label="Banner text">
+          <input
+            type="text"
+            className={inputClassName()}
+            value={form.proforma_banner_text}
+            onChange={(e) => setForm((f) => ({ ...f, proforma_banner_text: e.target.value }))}
+          />
+        </Field>
+      ) : null}
+      <Toggle
+        label="Show customer PIN"
+        checked={form.show_proforma_customer_pin}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_customer_pin: v }))}
+      />
+      <Toggle
+        label="Show terms of payment"
+        checked={form.show_proforma_payment_terms}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_payment_terms: v }))}
+      />
+      <Toggle
+        label="Show valid until"
+        checked={form.show_proforma_valid_until}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_valid_until: v }))}
+      />
+      <Toggle
+        label="Show totals breakdown (VAT, amount paid, amount due)"
+        checked={form.show_proforma_totals_breakdown}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_totals_breakdown: v }))}
+      />
+      <Toggle
+        label="Show VAT note"
+        checked={form.show_proforma_vat_note}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_vat_note: v }))}
+      />
+      {form.show_proforma_vat_note ? (
+        <Field label="VAT note">
+          <input
+            type="text"
+            className={inputClassName()}
+            value={form.proforma_vat_note}
+            onChange={(e) => setForm((f) => ({ ...f, proforma_vat_note: e.target.value }))}
+          />
+        </Field>
+      ) : null}
+      <Toggle
+        label="Show terms and conditions"
+        checked={form.show_proforma_terms}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_terms: v }))}
+      />
+      {form.show_proforma_terms ? (
+        <MultilinePrintNotesField
+          label="Terms and conditions"
+          value={form.proforma_print_terms}
+          onChange={(value) => setForm((f) => ({ ...f, proforma_print_terms: value }))}
+          rows={8}
+          hint="Printed on proforma invoices only. Edit freely — one term per line."
+        />
+      ) : null}
+      <Toggle
+        label="Show signature lines"
+        checked={form.show_proforma_signatures}
+        onChange={(v) => setForm((f) => ({ ...f, show_proforma_signatures: v }))}
+      />
+      {form.show_proforma_signatures ? (
+        <Field label="Default confirmed by">
+          <input
+            type="text"
+            className={inputClassName()}
+            value={form.proforma_confirmed_by}
+            onChange={(e) => setForm((f) => ({ ...f, proforma_confirmed_by: e.target.value }))}
+            placeholder="Leave blank for a signature line"
+          />
+        </Field>
+      ) : null}
+    </div>
+  );
+}
+
 function LpoPrintoutsTab({ form, setForm }) {
   return (
     <div className="space-y-3">
@@ -421,6 +560,11 @@ function LpoPrintoutsTab({ form, setForm }) {
         setForm={setForm}
         variantKey="lpo"
         description="Font for local purchase order printouts."
+      />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="lpo"
       />
       <MultilinePrintNotesField
         label="Default delivery notes"
@@ -505,6 +649,11 @@ function LoadingSheetsTab({ form, setForm, hasDistribution = false }) {
         variantKey="loading_sheet"
         description="Font for route loading sheets and delivery notes."
       />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="loading_sheet"
+      />
       <LoadingListPrintSettingsFields form={form} setForm={setForm} />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
@@ -532,6 +681,11 @@ function PickingListsTab({ form, setForm }) {
         variantKey="picking_list"
         description="Font for picking list printouts. Falls back to loading sheet fonts until you set these."
       />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="picking_list"
+      />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
           title="Document footer"
@@ -557,6 +711,11 @@ function TripChartListsTab({ form, setForm }) {
         setForm={setForm}
         variantKey="trip_chart"
         description="Font for trip chart list printouts. Falls back to loading sheet fonts until you set these."
+      />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="trip_chart"
       />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
@@ -584,6 +743,11 @@ function PayrollReceiptsTab({ form, setForm }) {
         variantKey="payroll_receipt"
         description="Font for payslip printouts. Falls back to A4 invoice fonts until you set these."
       />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="payroll_receipt"
+      />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
           title="Document footer"
@@ -601,6 +765,7 @@ function previewTypeForTab(tabId, previewTypes = []) {
   if (
     tabId === "receipt" ||
     tabId === "invoice" ||
+    tabId === "proforma" ||
     tabId === "lpo" ||
     tabId === "loading_sheet" ||
     tabId === "picking_list" ||
@@ -837,6 +1002,9 @@ export function PrintoutsSettingsPanel({
     }
     if (activeTab === "invoice" && hasSales) {
       return <A4InvoicesTab form={form} setForm={setForm} hasMobileSales={hasMobileSales} />;
+    }
+    if (activeTab === "proforma" && hasSales) {
+      return <ProformaInvoicesTab form={form} setForm={setForm} hasMobileSales={hasMobileSales} />;
     }
     if (activeTab === "lpo" && hasProcurement) {
       return <LpoPrintoutsTab form={form} setForm={setForm} />;

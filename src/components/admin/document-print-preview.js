@@ -202,6 +202,20 @@ function invoicePrintFieldsFromSalesForm(form) {
     invoice_valid_days: form.invoice_valid_days,
     show_invoice_payment_details: form.show_invoice_payment_details,
     pos_receipt_payment_details: form.pos_receipt_payment_details,
+    proforma_valid_days: form.proforma_valid_days,
+    show_proforma_payment_details: form.show_proforma_payment_details,
+    show_proforma_terms: form.show_proforma_terms,
+    proforma_print_terms: form.proforma_print_terms,
+    show_proforma_vat_note: form.show_proforma_vat_note,
+    proforma_vat_note: form.proforma_vat_note,
+    show_proforma_signatures: form.show_proforma_signatures,
+    proforma_confirmed_by: form.proforma_confirmed_by,
+    show_proforma_banner: form.show_proforma_banner,
+    proforma_banner_text: form.proforma_banner_text,
+    show_proforma_customer_pin: form.show_proforma_customer_pin,
+    show_proforma_valid_until: form.show_proforma_valid_until,
+    show_proforma_payment_terms: form.show_proforma_payment_terms,
+    show_proforma_totals_breakdown: form.show_proforma_totals_breakdown,
   };
 }
 

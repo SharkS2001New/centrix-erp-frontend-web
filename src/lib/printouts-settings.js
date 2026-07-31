@@ -19,6 +19,11 @@ import {
   printFontPayloadFromForm,
 } from "@/lib/print-font-settings";
 import {
+  documentLogoFormDefaults,
+  documentLogoFormFromGeneral,
+  documentLogoPayloadFromForm,
+} from "@/lib/document-logo-settings";
+import {
   receiptPaymentDetailsFromApi,
   receiptPaymentDetailsToPayload,
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
@@ -31,6 +36,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   show_organization_on_documents: true,
   document_header_display: "auto",
   ...printFontFormDefaults(),
+  ...documentLogoFormDefaults(),
   print_footer_receipt: defaultReceiptBodyFooterForAdmin(),
   print_footer_a4_invoice: "",
   print_footer_lpo: "",
@@ -60,7 +66,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   proforma_valid_days: String(PROFORMA_PRINT_DEFAULTS.proforma_valid_days),
   show_proforma_payment_details: true,
   show_proforma_terms: true,
-  proforma_print_terms: "",
+  proforma_print_terms: PROFORMA_PRINT_DEFAULTS.proforma_print_terms,
   show_proforma_vat_note: true,
   proforma_vat_note: PROFORMA_PRINT_DEFAULTS.proforma_vat_note,
   show_proforma_signatures: true,
@@ -203,6 +209,7 @@ export function printoutsGeneralFormFromApi(res) {
     show_organization_on_documents: general.show_organization_on_documents,
     document_header_display: general.document_header_display,
     ...printFontFormFromGeneral(merged),
+    ...documentLogoFormFromGeneral(merged),
     ...printFooterFormFromGeneral(merged),
   };
 }
@@ -248,6 +255,7 @@ export function printoutsGeneralPayloadFromForm(form) {
     document_header_display: form.document_header_display || "auto",
     document_footer_text: String(form.document_footer_text ?? "").trim(),
     ...printFontPayloadFromForm(form),
+    ...documentLogoPayloadFromForm(form),
     ...printFooterPayloadFromForm(form),
   };
 }

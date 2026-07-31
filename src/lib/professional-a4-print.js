@@ -74,13 +74,40 @@ export function professionalA4Styles(generalSettings = null, variant = "sale_inv
   .logo-wrap {
     text-align: right;
   }
-  .logo-wrap img {
+  .logo-wrap img,
+  .logo-wrap--center img {
     display: block;
+    object-fit: contain;
+  }
+  .logo-wrap img {
     margin-left: auto;
     max-height: 72px;
     max-width: 180px;
-    object-fit: contain;
   }
+  .top-bar--logo-left {
+    grid-template-columns: auto 1fr;
+  }
+  .top-bar--logo-left .logo-wrap {
+    text-align: left;
+  }
+  .top-bar--logo-left .logo-wrap img {
+    margin-left: 0;
+    margin-right: auto;
+  }
+  .top-bar--logo-center {
+    display: block;
+  }
+  .logo-wrap--center {
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  .logo-wrap--center img {
+    margin: 0 auto;
+  }
+  .logo-size-small img { max-height: 40px !important; max-width: 110px !important; }
+  .logo-size-medium img { max-height: 56px !important; max-width: 140px !important; }
+  .logo-size-large img { max-height: 72px !important; max-width: 180px !important; }
+  .logo-size-extra_large img { max-height: 96px !important; max-width: 240px !important; }
 
   .doc-title {
     text-align: center;
@@ -284,7 +311,9 @@ export function professionalA4Styles(generalSettings = null, variant = "sale_inv
 }
 
 /**
- * Header: company + PIN on the left, logo on the right.
+ * Header: company + PIN with configurable logo position/size.
+ * @param {'left'|'right'|'center'} [logoPosition]
+ * @param {'small'|'medium'|'large'|'extra_large'} [logoSize]
  */
 export function buildProfessionalHeaderHtml({
   companyName = "",
@@ -295,6 +324,8 @@ export function buildProfessionalHeaderHtml({
   logoUrl = null,
   showLogo = true,
   showName = true,
+  logoPosition = "right",
+  logoSize = "large",
 } = {}) {
   const pinHtml = pin
     ? `<p class="pin-line">Our PIN No.: ${escapeProfessionalHtml(pin)}</p>`
@@ -311,17 +342,36 @@ export function buildProfessionalHeaderHtml({
     .filter(Boolean)
     .join("");
 
-  const logoHtml =
-    showLogo && logoUrl
-      ? `<div class="logo-wrap"><img src="${escapeProfessionalHtml(logoUrl)}" alt="${escapeProfessionalHtml(companyName || "Logo")}" /></div>`
-      : `<div class="logo-wrap"></div>`;
-
-  return `<div class="top-bar">
-    <div class="company-block">
+  const companyBlock = `<div class="company-block">
       ${pinHtml}
       ${nameHtml}
       ${lines}
-    </div>
+    </div>`;
+
+  const sizeClass = `logo-size-${logoSize || "large"}`;
+  const logoHtml =
+    showLogo && logoUrl
+      ? `<div class="logo-wrap ${sizeClass}${logoPosition === "center" ? " logo-wrap--center" : ""}"><img src="${escapeProfessionalHtml(logoUrl)}" alt="${escapeProfessionalHtml(companyName || "Logo")}" /></div>`
+      : logoPosition === "center"
+        ? ""
+        : `<div class="logo-wrap"></div>`;
+
+  if (logoPosition === "center") {
+    return `<div class="top-bar top-bar--logo-center">
+    ${logoHtml}
+    ${companyBlock}
+  </div>`;
+  }
+
+  if (logoPosition === "left") {
+    return `<div class="top-bar top-bar--logo-left">
+    ${logoHtml}
+    ${companyBlock}
+  </div>`;
+  }
+
+  return `<div class="top-bar">
+    ${companyBlock}
     ${logoHtml}
   </div>`;
 }

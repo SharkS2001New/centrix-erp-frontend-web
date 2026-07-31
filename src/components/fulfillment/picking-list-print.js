@@ -4,6 +4,7 @@ import {
   buildReportOrgHeaderHtml,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
+import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
@@ -53,7 +54,10 @@ function resolveRouteHeader({ pickingList, trip }) {
 }
 
 function buildPickingListHeaderHtml({ branding }) {
-  return buildReportOrgHeaderHtml(branding);
+  return buildReportOrgHeaderHtml(branding, {
+    layout: "a4",
+    logoLayout: branding?.logoLayout ?? null,
+  });
 }
 
 function normalizePickingLines(lines, uomByProductCode) {
@@ -159,7 +163,11 @@ export function buildPickingListHtml({
   includeShelfLocation = true,
   uomByProductCode = null,
 } = {}) {
-  const branding = resolveReportBranding({ organization, generalSettings, organizationNameFallback: organizationName });
+  const branding = brandingWithDocumentLogo(
+    resolveReportBranding({ organization, generalSettings, organizationNameFallback: organizationName }),
+    generalSettings,
+    "picking_list",
+  );
   const orgHeader = buildPickingListHeaderHtml({ branding });
   const lines = normalizePickingLines(pickingList?.lines ?? [], uomByProductCode);
   const meta = resolveRouteHeader({ pickingList, trip });

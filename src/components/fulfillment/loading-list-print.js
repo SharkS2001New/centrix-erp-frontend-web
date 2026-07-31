@@ -4,7 +4,9 @@ import {
   buildReportWatermarkHtml,
   reportWatermarkCss,
   resolveReportBranding,
+  buildReportOrgHeaderHtml,
 } from "@/lib/reports/report-branding";
+import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 
 import { resolveLoadingSheetFooterLines, resolveLoadingSheetColumnFlags } from "@/lib/loading-sheet-print-settings";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
@@ -216,17 +218,14 @@ export function sampleLoadingListPreviewData() {
 function buildLoadingListHeaderHtml({ branding, companyName }) {
   if (branding?.showHeader === false) return "";
 
-  const parts = [];
-  if ((branding?.display === "logo" || branding?.display === "logo_and_name") && branding?.logoUrl) {
-    parts.push(
-      `<img class="org-logo" src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(companyName)}">`,
-    );
-  }
-  if (companyName) {
-    parts.push(`<div class="org-name">${escapeHtml(String(companyName).toUpperCase())}</div>`);
-  }
-
-  return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
+  const withName = {
+    ...branding,
+    organizationName: companyName ? String(companyName).toUpperCase() : branding.organizationName,
+  };
+  return buildReportOrgHeaderHtml(withName, {
+    layout: "a4",
+    logoLayout: branding?.logoLayout ?? null,
+  });
 }
 
 function normalizeLoadingListOrders(loadingList, uomByProductCode = null) {
@@ -773,7 +772,11 @@ export function buildLoadingListHtml({
   distributionEnabled = false,
   uomByProductCode = null,
 } = {}) {
-  const branding = resolveReportBranding({ organization, generalSettings });
+  const branding = brandingWithDocumentLogo(
+    resolveReportBranding({ organization, generalSettings }),
+    generalSettings,
+    "loading_sheet",
+  );
   const orgHeader = buildLoadingListHeaderHtml({
     branding,
     companyName: resolveOrganizationName({ organization, organizationName, branding }),

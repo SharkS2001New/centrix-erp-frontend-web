@@ -1,18 +1,28 @@
-import {
-  DEFAULT_INVOICE_DELIVERY_TERMS,
-  linesFromMultilineText,
-} from "@/lib/invoice-print-settings";
+import { linesFromMultilineText } from "@/lib/invoice-print-settings";
 
 export const DEFAULT_PROFORMA_BANNER =
   "This is a proforma invoice for payment purposes — not a tax invoice.";
 
 export const DEFAULT_PROFORMA_VAT_NOTE = "*The above prices are inclusive of VAT";
 
+/** Default terms & conditions for proforma printouts (admin-editable). */
+export const DEFAULT_PROFORMA_TERMS = [
+  "Order valid for the period shown above.",
+  "No goods shall be received without an invoice or delivery note.",
+  "Please quote invoice number on all delivery notes.",
+  "Kindly attach a copy of this invoice to delivery notes.",
+  "No oversupply will be accepted.",
+  "Ensure KRA PIN is captured on all supplier invoices.",
+  "Goods must comply with applicable KEBS standards.",
+  "VAT amount will not be paid on invoices without ETR receipt.",
+  "Payment terms as agreed with the customer.",
+];
+
 export const PROFORMA_PRINT_DEFAULTS = {
   proforma_valid_days: 7,
   show_proforma_payment_details: true,
   show_proforma_terms: true,
-  proforma_print_terms: "",
+  proforma_print_terms: DEFAULT_PROFORMA_TERMS.join("\n"),
   show_proforma_vat_note: true,
   proforma_vat_note: DEFAULT_PROFORMA_VAT_NOTE,
   show_proforma_signatures: true,
@@ -27,6 +37,10 @@ export const PROFORMA_PRINT_DEFAULTS = {
 
 export function proformaPrintFormFromApi(sales = {}) {
   const merged = { ...PROFORMA_PRINT_DEFAULTS, ...sales };
+  const terms =
+    merged.proforma_print_terms != null && String(merged.proforma_print_terms).trim() !== ""
+      ? String(merged.proforma_print_terms)
+      : PROFORMA_PRINT_DEFAULTS.proforma_print_terms;
   return {
     proforma_valid_days: String(
       merged.proforma_valid_days ??
@@ -35,7 +49,7 @@ export function proformaPrintFormFromApi(sales = {}) {
     ),
     show_proforma_payment_details: merged.show_proforma_payment_details !== false,
     show_proforma_terms: merged.show_proforma_terms !== false,
-    proforma_print_terms: String(merged.proforma_print_terms ?? ""),
+    proforma_print_terms: terms,
     show_proforma_vat_note: merged.show_proforma_vat_note !== false,
     proforma_vat_note: String(
       merged.proforma_vat_note ?? PROFORMA_PRINT_DEFAULTS.proforma_vat_note,
@@ -72,17 +86,10 @@ export function proformaPrintPayloadFromForm(form) {
   };
 }
 
-/**
- * Terms for proforma: dedicated text if set, otherwise invoice delivery terms, else defaults.
- */
+/** Terms for proforma printouts — admin text or built-in defaults. */
 export function resolveProformaTerms(salesSettings = {}) {
   const dedicated = linesFromMultilineText(salesSettings.proforma_print_terms);
-  if (dedicated.length) return dedicated;
-
-  const invoiceTerms = linesFromMultilineText(salesSettings.invoice_print_delivery_terms);
-  if (invoiceTerms.length) return invoiceTerms;
-
-  return DEFAULT_INVOICE_DELIVERY_TERMS;
+  return dedicated.length ? dedicated : DEFAULT_PROFORMA_TERMS;
 }
 
 export function resolveProformaValidDays(salesSettings = {}) {

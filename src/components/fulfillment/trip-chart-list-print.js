@@ -4,6 +4,7 @@ import {
   buildReportOrgHeaderHtml,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
+import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
@@ -187,11 +188,15 @@ export function buildTripChartListHtml({
   documentFooterText = null,
   printedBy = null,
 } = {}) {
-  const branding = resolveReportBranding({
-    organization,
+  const branding = brandingWithDocumentLogo(
+    resolveReportBranding({
+      organization,
+      generalSettings,
+      organizationNameFallback: organizationName,
+    }),
     generalSettings,
-    organizationNameFallback: organizationName,
-  });
+    "trip_chart",
+  );
   const meta = resolveTripMeta({ trip, loadingList });
   const rows = buildTripChartCustomerRows({
     sales: sales ?? trip?.sales,
@@ -235,7 +240,10 @@ export function buildTripChartListHtml({
 </head>
 <body>
   <div class="page">
-    ${buildReportOrgHeaderHtml(branding)}
+    ${buildReportOrgHeaderHtml(branding, {
+      layout: "a4",
+      logoLayout: branding.logoLayout ?? null,
+    })}
     <div class="title-block">
       <p class="doc-title">TRIP CHART LIST</p>
       ${meta.tripCode ? `<p class="meta-line">Trip Chart No: ${escapeHtml(meta.tripCode)}</p>` : ""}

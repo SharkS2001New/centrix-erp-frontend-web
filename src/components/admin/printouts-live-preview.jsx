@@ -25,6 +25,7 @@ import {
   sampleReceiptPreviewSale,
   shouldShowReceiptPaymentDetails,
 } from "@/lib/receipt-payment-details";
+import { resolveProformaValidDays } from "@/lib/proforma-print-settings";
 import { mergePreviewGeneralWithPrintFonts } from "@/lib/print-font-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { resolvePrintoutSections } from "@/lib/printouts-settings";
@@ -40,6 +41,7 @@ import { openPrintWindow, printWindowFeatures } from "@/lib/open-print-window";
 const PREVIEW_OPTION_LABELS = {
   receipt: "Thermal receipt",
   invoice: "Invoice receipt (A4)",
+  proforma: "Proforma invoice",
   lpo: "LPO",
   loading_sheet: "Loading sheet",
   picking_list: "Picking list",
@@ -50,6 +52,7 @@ const PREVIEW_OPTION_LABELS = {
 const PREVIEW_TYPOGRAPHY_VARIANT = {
   receipt: "thermal",
   invoice: "sale_invoice",
+  proforma: "sale_invoice",
   lpo: "lpo",
   loading_sheet: "loading_sheet",
   picking_list: "picking_list",
@@ -79,7 +82,14 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
 
   const general = buildPreviewGeneral(form, moduleSettings, previewType);
   const sales = { ...mergeSalesSettings(moduleSettings), ...form };
-  const branding = resolveSaleDocumentBranding({ organization, generalSettings: general });
+  const branding = resolveSaleDocumentBranding({
+    organization,
+    generalSettings: general,
+    documentVariant:
+      previewType === "invoice" || previewType === "proforma" || previewType === "receipt"
+        ? previewType
+        : null,
+  });
   const seller = resolvePreviewSeller(organization);
   const sale = sampleReceiptPreviewSale();
 
@@ -121,6 +131,29 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       preparedBy: "preview",
       generalSettings: general,
       salesSettings: sales,
+      documentType: "invoice",
+    });
+  }
+
+  if (previewType === "proforma") {
+    const showBranchOnReceipt = Boolean(sales.show_branch_on_receipt);
+    const paymentInstructions = receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
+    return buildSaleInvoiceHtml(sale, {
+      seller,
+      branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,
+      branding,
+      customer: SAMPLE_PREVIEW_CUSTOMER,
+      productDiscountsEnabled: Boolean(sales.allow_discounts),
+      orderDiscountEnabled: Boolean(sales.enable_order_discount),
+      invoiceValidDays: resolveProformaValidDays(sales),
+      documentFooterText: resolvePrintFooter(general, "invoice"),
+      paymentInstructions,
+      showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "proforma"),
+      showBranchOnReceipt,
+      preparedBy: "preview",
+      generalSettings: general,
+      salesSettings: sales,
+      documentType: "proforma",
     });
   }
 
@@ -244,7 +277,12 @@ export function PrintoutsLivePreview({
     if (!html || printing) return;
     setPrinting(true);
     try {
-      const documentType = previewType === "receipt" ? "receipt" : "invoice";
+      const documentType =
+        previewType === "receipt"
+          ? "receipt"
+          : previewType === "proforma"
+            ? "proforma"
+            : "invoice";
       openPrintWindow(html, printWindowFeatures(documentType));
     } finally {
       window.setTimeout(() => setPrinting(false), 600);

@@ -85,10 +85,28 @@ describe("org print typography settings", () => {
     });
 
     expect(html).toContain("Arial");
-    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").body(11)}`);
-    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").header(16)}`);
-    expect(html).toContain("TAX INVOICE");
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").body(12)}`);
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").header(24)}`);
+    expect(html).toContain("Invoice Receipt");
+    expect(html).not.toContain("Terms and Conditions");
+  });
+
+  it("embeds editable terms on proforma A4 HTML only", () => {
+    const general = generalWithFonts();
+    const html = buildSaleInvoiceHtml(sampleSale, {
+      generalSettings: general,
+      documentType: "proforma",
+      seller: { name: "Test Org" },
+      branding: { showHeader: true, display: "name", organizationName: "Test Org" },
+      salesSettings: {
+        show_proforma_terms: true,
+        proforma_print_terms: "Custom proforma term one\nCustom proforma term two",
+      },
+    });
+
+    expect(html).toContain("PROFORMA INVOICE");
     expect(html).toContain("Terms and Conditions");
+    expect(html).toContain("Custom proforma term one");
     expect(html).toContain("Prepared By");
   });
 

@@ -18,6 +18,10 @@ import {
   saleDocumentDiscountTotals,
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
+import {
+  brandingWithDocumentLogo,
+  DOCUMENT_LOGO_THERMAL_SIZE_PX,
+} from "@/lib/document-logo-settings";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 import { isLegacySale } from "@/lib/sale-line-items";
@@ -227,10 +231,19 @@ export function buildSaleReceiptHtml(
   const showDiscountTotal =
     (showDiscountColumn || orderDiscountEnabled) && totalDiscount > 0.0001;
 
-  const orgHeader = buildSaleDocumentOrgHeaderHtml(branding, {
+  const receiptBranding = brandingWithDocumentLogo(
+    branding,
+    generalSettings ?? salesSettings,
+    "receipt",
+  );
+  const orgHeader = buildSaleDocumentOrgHeaderHtml(receiptBranding, {
     layout: "thermal",
     fallbackName: orgName,
   });
+
+  const thermalLogoDims =
+    DOCUMENT_LOGO_THERMAL_SIZE_PX[receiptBranding?.logoLayout?.size ?? "small"] ??
+    DOCUMENT_LOGO_THERMAL_SIZE_PX.small;
 
   // Fiscal thermal receipts: QR below Designed & Developed. Fall back to CU text if QR image failed.
   const kraQrHtml = kraData
@@ -291,7 +304,7 @@ export function buildSaleReceiptHtml(
     .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; }
     .org-brand,
     .org-header { margin: 0; padding: 0; max-width: 100%; }
-    .org-logo { display: block; margin: 0 auto 2px; max-height: 34px; max-width: 100%; object-fit: contain; }
+    .org-logo { display: block; margin: 0 auto 2px; max-height: ${thermalLogoDims.maxHeight}px; max-width: ${thermalLogoDims.maxWidth}px; object-fit: contain; }
     .company-name,
     .org-name { text-align: center; font-size: ${hpx(13)}; font-weight: var(--print-w-header, 700); letter-spacing: .02em; line-height: 1.12; margin: 0 0 2px; word-break: break-word; overflow-wrap: anywhere; }
     .company-meta { text-align: center; font-size: ${hpx(9)}; color: #000; line-height: 1.15; margin: 0; font-weight: var(--print-w-header, 600); word-break: break-word; overflow-wrap: anywhere; }
@@ -359,7 +372,7 @@ export function buildSaleReceiptHtml(
       .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm !important; margin: 0 auto !important; padding: 0 !important; overflow: visible !important; }
       .org-brand,
       .org-header { margin: 0 !important; padding: 0 !important; max-width: 100% !important; }
-      .org-logo { margin: 0 auto 2px !important; max-height: 34px !important; max-width: 100% !important; }
+      .org-logo { margin: 0 auto 2px !important; max-height: ${thermalLogoDims.maxHeight}px !important; max-width: ${thermalLogoDims.maxWidth}px !important; }
       .company-name,
       .org-name { font-size: ${hpx(13, true)}; }
       .company-meta { font-size: ${hpx(9, true)}; }

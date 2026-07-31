@@ -6,6 +6,7 @@ import {
   saleLineUom,
 } from "@/lib/sale-line-items";
 import { buildReportOrgHeaderHtml, resolveReportBranding } from "@/lib/reports/report-branding";
+import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 
 /** Mirrors orgSalesDiscountFeaturesActive in sales-settings (inline to keep print path self-contained). */
 function discountFeaturesEnabledForPrint(moduleSettings) {
@@ -80,8 +81,11 @@ export function resolveSaleDocumentBranding({
   organization = null,
   generalSettings = null,
   organizationNameFallback = "",
+  documentVariant = null,
 } = {}) {
-  return resolveReportBranding({ organization, generalSettings, organizationNameFallback });
+  const branding = resolveReportBranding({ organization, generalSettings, organizationNameFallback });
+  if (!documentVariant) return branding;
+  return brandingWithDocumentLogo(branding, generalSettings, documentVariant);
 }
 
 /**
@@ -161,11 +165,14 @@ export function resolveSaleOrderCreatorName(sale, preparedBy = null) {
 
 export function buildSaleDocumentOrgHeaderHtml(
   branding,
-  { layout = "thermal", fallbackName = "" } = {},
+  { layout = "thermal", fallbackName = "", logoLayout = null } = {},
 ) {
   if (!branding?.showHeader) return "";
 
-  const header = buildReportOrgHeaderHtml(branding);
+  const header = buildReportOrgHeaderHtml(branding, {
+    layout,
+    logoLayout: logoLayout ?? branding.logoLayout ?? null,
+  });
   if (header?.trim()) {
     if (layout === "thermal") {
       // Font size comes from receipt CSS (.org-name / .company-name) so org print settings apply.
