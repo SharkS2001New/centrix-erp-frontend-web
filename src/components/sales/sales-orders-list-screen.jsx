@@ -1407,7 +1407,7 @@ export default function SalesOrdersListScreen({
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search S0034, customer, order #…"
+            placeholder="Search product, customer, amount, S0034…"
           />
           <Field label="From">
             <input
@@ -1486,7 +1486,26 @@ export default function SalesOrdersListScreen({
           </Field>
         </FilterToolbar>
       }
-      banner={actionMessage ? <ActionFeedbackBanner message={actionMessage} /> : null}
+      banner={
+        actionMessage || printJobBusy ? (
+          <div
+            className="mb-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+            role="status"
+            aria-live="polite"
+          >
+            {printJobBusy ? (
+              <span
+                className="mt-0.5 inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+                aria-hidden
+              />
+            ) : null}
+            <ActionFeedbackBanner
+              message={actionMessage ?? "Printing in background — you can keep working…"}
+              className="mb-0 border-0 bg-transparent p-0"
+            />
+          </div>
+        ) : null
+      }
     >
       <div className="mt-8 space-y-6">
         {showArchiveLoading ? (
@@ -1531,15 +1550,13 @@ export default function SalesOrdersListScreen({
                   className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
                   aria-hidden
                 />
-                {batchBusy === "print-all-load" || batchBusy === "print-load"
-                  ? "Loading receipts…"
-                  : batchBusy === "print-all"
-                    ? "Printing all orders…"
-                    : batchBusy === "print"
-                      ? "Printing selected orders…"
-                      : batchBusy === "cancel"
-                        ? "Cancelling selected orders…"
-                        : "Updating order…"}
+                {blockingBatchBusy
+                  ? batchBusy === "cancel"
+                    ? "Cancelling selected orders…"
+                    : batchBusy === "merge"
+                      ? "Merging orders…"
+                      : "Updating order…"
+                  : "Updating order…"}
               </div>
             </div>
           ) : null}
@@ -1850,7 +1867,7 @@ export default function SalesOrdersListScreen({
         {!routeOrdersOnly && hasPermission(P.sales.orders.edit) ? (
           <button
             type="button"
-            disabled={Boolean(batchBusy) || !canMergeSelected}
+            disabled={blockingBatchBusy || !canMergeSelected}
             title={
               canMergeSelected
                 ? "Merge selected mobile orders for the same customer into one"
@@ -1867,7 +1884,7 @@ export default function SalesOrdersListScreen({
         {!routeOrdersOnly ? (
           <button
             type="button"
-            disabled={Boolean(batchBusy) || selectedCount === 0}
+            disabled={blockingBatchBusy || selectedCount === 0}
             onClick={() => void cancelSelectedOrders()}
             className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
