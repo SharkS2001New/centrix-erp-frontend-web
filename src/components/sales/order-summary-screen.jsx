@@ -1040,7 +1040,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   Create return
                 </Link>
               ) : null}
-              {isPrintProformaVisible(sale) ? (
+              {isPrintProformaVisible(sale, null, capabilities) ? (
                 <button
                   type="button"
                   onClick={() => void handlePrintProforma()}
@@ -1048,7 +1048,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   title="Print unpaid order document for bank payment"
                 >
                   <PrintIcon />
-                  Print proforma
+                  Print Proforma Invoice
                 </button>
               ) : null}
               {isPrintInvoiceVisible(sale, capabilities) ? (

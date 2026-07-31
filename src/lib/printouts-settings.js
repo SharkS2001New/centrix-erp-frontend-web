@@ -64,6 +64,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   invoice_print_delivery_terms: "",
   invoice_print_footer_lines: "",
   proforma_valid_days: String(PROFORMA_PRINT_DEFAULTS.proforma_valid_days),
+  show_print_proforma_invoice_option: true,
   show_proforma_payment_details: true,
   show_proforma_terms: true,
   proforma_print_terms: PROFORMA_PRINT_DEFAULTS.proforma_print_terms,

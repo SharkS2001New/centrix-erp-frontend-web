@@ -143,7 +143,7 @@ describe("order action stage gates", () => {
     ).toBe(true);
   });
 
-  it("allows proforma only for unpaid / partially paid active orders", () => {
+  it("allows proforma only for fully unpaid active orders", () => {
     expect(
       isPrintProformaVisible({
         status: "booked",
@@ -166,7 +166,7 @@ describe("order action stage gates", () => {
         order_total: 1000,
         amount_paid: 400,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isPrintProformaVisible({
         status: "paid",
@@ -188,6 +188,26 @@ describe("order action stage gates", () => {
         status: "draft",
         order_total: 1000,
         amount_paid: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("hides proforma when Printouts org option is disabled", () => {
+    const unpaid = {
+      status: "booked",
+      payment_status: "unpaid",
+      order_total: 1000,
+      amount_paid: 0,
+    };
+    expect(isPrintProformaVisible(unpaid, null, null)).toBe(true);
+    expect(
+      isPrintProformaVisible(unpaid, null, {
+        module_settings: { sales: { show_print_proforma_invoice_option: true } },
+      }),
+    ).toBe(true);
+    expect(
+      isPrintProformaVisible(unpaid, null, {
+        module_settings: { sales: { show_print_proforma_invoice_option: false } },
       }),
     ).toBe(false);
   });

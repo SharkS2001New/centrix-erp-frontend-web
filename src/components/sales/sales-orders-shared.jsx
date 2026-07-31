@@ -424,14 +424,6 @@ export function buildOrderContextMenuItems({
       onClick: onCollectPayment,
     });
   }
-  if (includePrint && isPrintProformaVisible(sale) && onPrintProforma) {
-    items.push({
-      key: "print-proforma",
-      label: "Print proforma",
-      icon: "print",
-      onClick: onPrintProforma,
-    });
-  }
   if (includePrint && isPrintInvoiceVisible(sale, capabilities)) {
     if (hasExternalPos) {
       items.push({
@@ -442,18 +434,26 @@ export function buildOrderContextMenuItems({
       });
       items.push({
         key: "print-a4",
-        label: "Print (A4)",
+        label: "Print A4 Invoice",
         icon: "print",
         onClick: onPrintA4,
       });
     } else {
       items.push({
         key: "print",
-        label: "Print",
+        label: "Print A4 Invoice",
         icon: "print",
         onClick: onPrintA4,
       });
     }
+  }
+  if (includePrint && isPrintProformaVisible(sale, null, capabilities) && onPrintProforma) {
+    items.push({
+      key: "print-proforma",
+      label: "Print Proforma Invoice",
+      icon: "print",
+      onClick: onPrintProforma,
+    });
   }
 
   if (sale?.status === "expired" && !disableWorkflowActions && onAdvance) {

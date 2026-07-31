@@ -586,6 +586,7 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     invoice_print_delivery_terms: _invoicePrintDeliveryTerms,
     invoice_print_footer_lines: _invoicePrintFooterLines,
     proforma_valid_days: _proformaValidDays,
+    show_print_proforma_invoice_option: _showPrintProformaInvoiceOption,
     show_proforma_payment_details: _showProformaPaymentDetails,
     show_proforma_terms: _showProformaTerms,
     proforma_print_terms: _proformaPrintTerms,
@@ -927,11 +928,11 @@ export function resolveOrderPrintDocumentType(moduleSettings, explicitType) {
 export function orderDocumentPrintLabel(moduleSettings, capabilities = null) {
   const hasExternalPos = Boolean(capabilities?.modules?.["sales.pos"]);
   if (!hasExternalPos) {
-    return "Print";
+    return "Print A4 Invoice";
   }
   const type = getOrderDocumentType(moduleSettings);
   if (type === "both") return "Print";
-  if (type === "invoice") return "Print invoice";
+  if (type === "invoice") return "Print A4 Invoice";
   return "Print receipt";
 }
 
@@ -944,7 +945,7 @@ export function defaultOrderListPrintDocumentType(moduleSettings, capabilities) 
 }
 
 export function orderListPrintAriaLabel(capabilities) {
-  return capabilities?.modules?.["sales.pos"] ? "Print receipt" : "Print";
+  return capabilities?.modules?.["sales.pos"] ? "Print receipt" : "Print A4 Invoice";
 }
 
 export function orderDocumentTitle(moduleSettings, documentType = null) {

@@ -1199,29 +1199,42 @@ export function isPrintInvoiceVisible(sale, capabilities = null) {
 }
 
 /**
- * Proforma (unpaid bank document) — print-only A4, non-fiscal.
- * Available for active unpaid / partially paid orders; not after full payment.
+ * Proforma (unpaid bank document) — distinct from A4 tax invoice.
+ * Shown for unpaid active orders when Printouts → Show Print Proforma invoice option is on (default).
  */
-export function isPrintProformaVisible(sale, totalPaid = null) {
+export function isPrintProformaVisible(sale, totalPaid = null, capabilities = null) {
   if (!sale) return false;
+
+  const sales = salesSettingsFromCapabilities(capabilities);
+  if (sales?.show_print_proforma_invoice_option === false) {
+    return false;
+  }
+
   const status = String(sale.status ?? "").toLowerCase();
   if (status === "cancelled" || status === "expired" || status === "draft" || status === "held") {
     return false;
   }
 
-  const balance = saleBalanceDue(sale, totalPaid);
-  if (balance > 0.01) return true;
+  const paid = totalPaid ?? Number(sale.amount_paid ?? 0);
+  if (paid > 0.01) return false;
 
   const paymentStatus = String(sale.payment_status ?? "").toLowerCase();
-  if (paymentStatus === "unpaid" || paymentStatus === "partial" || paymentStatus === "pending") {
+  if (paymentStatus === "partial" || paymentStatus === "paid") return false;
+
+  const balance = saleBalanceDue(sale, totalPaid);
+  if (balance <= 0.01) return false;
+
+  if (
+    paymentStatus === "unpaid" ||
+    paymentStatus === "pending" ||
+    !paymentStatus ||
+    status === "unpaid"
+  ) {
     return true;
   }
-  if (!paymentStatus) {
-    // No payment_status recorded — treat as unpaid when nothing has been paid.
-    const paid = totalPaid ?? Number(sale.amount_paid ?? 0);
-    return paid <= 0.01;
-  }
-  return false;
+
+  // Outstanding balance with nothing paid — treat as unpaid.
+  return true;
 }
 
 /** Block manual workflow moves that skip recording payment. */

@@ -437,6 +437,12 @@ function ProformaInvoicesTab({ form, setForm, hasMobileSales }) {
         title="Proforma invoices"
         description="Control what appears on unpaid proforma (PFI) printouts. Separate from tax invoices."
       />
+      <Toggle
+        label="Show Print Proforma invoice option"
+        checked={form.show_print_proforma_invoice_option !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_print_proforma_invoice_option: v }))}
+        description="When enabled, unpaid orders show Print Proforma Invoice alongside Print A4 Invoice. Uncheck to hide the proforma print action."
+      />
       <DocumentLogoSettingsFields
         form={form}
         setForm={setForm}

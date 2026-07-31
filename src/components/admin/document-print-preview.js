@@ -203,6 +203,7 @@ function invoicePrintFieldsFromSalesForm(form) {
     show_invoice_payment_details: form.show_invoice_payment_details,
     pos_receipt_payment_details: form.pos_receipt_payment_details,
     proforma_valid_days: form.proforma_valid_days,
+    show_print_proforma_invoice_option: form.show_print_proforma_invoice_option,
     show_proforma_payment_details: form.show_proforma_payment_details,
     show_proforma_terms: form.show_proforma_terms,
     proforma_print_terms: form.proforma_print_terms,

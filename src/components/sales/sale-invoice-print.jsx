@@ -524,6 +524,21 @@ function buildProformaInvoiceHtml(sale, options) {
       ? buildReceiptPaymentDetailsHtml(paymentInstructions, { layout: "a4" })
       : "";
 
+  const bodyFooterLines = resolveSalesDocumentBodyFooterLines(
+    salesDocumentFooterSettings(
+      documentFooterText ? { print_footer_a4_invoice: documentFooterText } : {},
+      salesSettings ?? {},
+      "invoice",
+    ),
+    "invoice",
+    {
+      username: servedByName,
+      organizationName: sellerName,
+      validDays: invoiceValidDays,
+    },
+  );
+  const bodyFooterHtml = buildSalesDocumentBodyFooterHtml(bodyFooterLines, { layout: "a4" });
+
   const columns = [
     { key: "no", label: "No.", align: "center", width: "6%" },
     { key: "description", label: "Item Description", width: "28%" },
@@ -674,12 +689,7 @@ function buildProformaInvoiceHtml(sale, options) {
         ${paymentInstructionsHtml}
         ${termsHtml}
         ${signaturesHtml}
-
-        ${
-          documentFooterText
-            ? `<div class="footer-notes"><p>${escapeHtml(documentFooterText)}</p></div>`
-            : ""
-        }
+        ${bodyFooterHtml}
       </div>
     </div>
   </div>
