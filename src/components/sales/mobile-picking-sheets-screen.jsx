@@ -115,15 +115,26 @@ export default function MobilePickingSheetsScreen() {
     }
   }, [organization?.id]);
 
+  const pickingList = detail?.picking_list;
+  const pickLines = useMemo(
+    () => sortPickingLinesByPackageCount(pickingList?.lines ?? []),
+    [pickingList?.lines],
+  );
+  const salesLayout = isSalesPickingLayout(pickingList, "sales");
+  const orderTotalValue =
+    pickingList?.order_total_value != null
+      ? Number(pickingList.order_total_value)
+      : (detail?.orders ?? []).reduce((sum, order) => sum + Number(order.order_total || 0), 0);
+
   async function handlePrint() {
-    const pickingList = detail?.picking_list;
-    if (!pickingList) return;
+    const list = detail?.picking_list;
+    if (!list) return;
     setDetailLoading(true);
     try {
       const res = await apiRequest("/sales/mobile-picking-sheets/detail", {
         searchParams: {
-          route_id: pickingList.route_id,
-          list_date: pickingList.list_date,
+          route_id: list.route_id,
+          list_date: list.list_date,
         },
       });
       const freshPick = res.picking_list ?? res;
@@ -134,9 +145,9 @@ export default function MobilePickingSheetsScreen() {
         organizationName,
         pickingList: freshPick,
         trip: {
-          trip_code: pickingList.list_number,
-          scheduled_date: pickingList.list_date,
-          route_names: [pickingList.route?.route_name].filter(Boolean),
+          trip_code: list.list_number,
+          scheduled_date: list.list_date,
+          route_names: [list.route?.route_name].filter(Boolean),
         },
         uomByProductCode,
         layout: "sales",
@@ -176,17 +187,6 @@ export default function MobilePickingSheetsScreen() {
       </CatalogPageShell>
     );
   }
-
-  const pickingList = detail?.picking_list;
-  const pickLines = useMemo(
-    () => sortPickingLinesByPackageCount(pickingList?.lines ?? []),
-    [pickingList?.lines],
-  );
-  const salesLayout = isSalesPickingLayout(pickingList, "sales");
-  const orderTotalValue =
-    pickingList?.order_total_value != null
-      ? Number(pickingList.order_total_value)
-      : (detail?.orders ?? []).reduce((sum, order) => sum + Number(order.order_total || 0), 0);
 
   return (
     <CatalogPageShell
