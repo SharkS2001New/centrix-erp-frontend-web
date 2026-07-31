@@ -173,7 +173,9 @@ export function previewSaleInvoicePrint({
   const branding = resolveSaleDocumentBranding({ organization, generalSettings: general });
   const seller = resolvePreviewSeller(organization);
   const sale = sampleReceiptPreviewSale();
-  const paymentInstructions = receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
+  const paymentInstructions = receiptPaymentDetailsToPayload(
+    sales.invoice_payment_details ?? sales.pos_receipt_payment_details,
+  );
 
   const showBranchOnReceipt = Boolean(sales.show_branch_on_receipt);
 
@@ -201,10 +203,12 @@ function invoicePrintFieldsFromSalesForm(form) {
     invoice_print_footer_lines: form.invoice_print_footer_lines,
     invoice_valid_days: form.invoice_valid_days,
     show_invoice_payment_details: form.show_invoice_payment_details,
+    invoice_payment_details: form.invoice_payment_details,
     pos_receipt_payment_details: form.pos_receipt_payment_details,
     proforma_valid_days: form.proforma_valid_days,
     show_print_proforma_invoice_option: form.show_print_proforma_invoice_option,
     show_proforma_payment_details: form.show_proforma_payment_details,
+    proforma_payment_details: form.proforma_payment_details,
     show_proforma_terms: form.show_proforma_terms,
     proforma_print_terms: form.proforma_print_terms,
     show_proforma_vat_note: form.show_proforma_vat_note,

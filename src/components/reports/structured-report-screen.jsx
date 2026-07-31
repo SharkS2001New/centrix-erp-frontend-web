@@ -21,6 +21,7 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
+import { AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
 import { buildReportQueryParams, reportHidesBranchFilter, reportShowsDateRange } from "@/lib/reports/report-filter-config";
@@ -96,6 +97,7 @@ function StandardReportScreen({ definition }) {
   const [queryFilters, setQueryFilters] = useState(() =>
     cacheMatchesDefinition ? cachedBundle.queryFilters ?? {} : {},
   );
+  const [aiOpen, setAiOpen] = useState(false);
   const [applied, setApplied] = useState(() =>
     cacheMatchesDefinition && cachedBundle.applied
       ? cachedBundle.applied
@@ -330,6 +332,7 @@ function StandardReportScreen({ definition }) {
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
+      onAnalyzeWithAi={() => setAiOpen(true)}
       exportConfig={
         columns.length
           ? {
@@ -441,6 +444,22 @@ function StandardReportScreen({ definition }) {
         </>
       )}
     </ReportPageShell>
+      <AiInsightPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        title={`Analyze: ${definition.title}`}
+        mode="report"
+        reportKey={definition.key}
+        filters={{
+          from: applied.fromDate,
+          to: applied.toDate,
+          branch_id: applied.branchId || undefined,
+          ...applied.queryFilters,
+          ...applied.extraFilters,
+        }}
+        rows={rows}
+        summary={reportSummary}
+      />
     </>
   );
 }

@@ -173,6 +173,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     showBranchOnReceipt = true,
     generalSettings = null,
     salesSettings = null,
+    organization = null,
   } = options;
 
   const printPx = createOrgPrintPx(generalSettings, "sale_invoice");
@@ -200,6 +201,10 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     showBranchOnReceipt,
     branch,
     seller,
+    organization,
+    documentType: "invoice",
+    salesSettings,
+    moduleSettings,
   });
   const customerTown = customer?.town ?? (showBranchOnReceipt ? branchName : null) ?? "—";
   const paymentTerms = customer?.terms_of_payment ?? paymentLine;
@@ -320,8 +325,9 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(10)}; }
     table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
     table.items tbody tr { break-inside: avoid; page-break-inside: avoid; }
-    .invoice-closing { break-inside: avoid; page-break-inside: avoid; margin-top: 4px; }
-    .totals { display: flex; justify-content: flex-end; margin: 6px 0 14px; }
+    /* Allow closing sections to flow onto page 1 after a short line table. */
+    .invoice-closing { break-inside: auto; page-break-inside: auto; margin-top: 4px; }
+    .totals { display: flex; justify-content: flex-end; margin: 6px 0 14px; break-inside: avoid; page-break-inside: avoid; }
     .totals-box { min-width: 280px; text-align: right; font-size: ${px(12)}; font-weight: 600; }
     .totals-box p { margin: 3px 0; }
     .totals-box .grand { font-weight: 700; font-size: ${px(13)}; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
@@ -330,15 +336,18 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     .body-footer-line { margin: 6px 0; font-weight: 700; text-transform: none; }
     .goods-note { margin: 8px 0 4px; font-size: ${px(11)}; font-weight: 700; text-transform: none; }
     .goods-note-sub { margin: 0 0 0; font-weight: 700; }
-    .receive-signatures { margin: 14px 0 0; font-size: ${px(11)}; max-width: 420px; }
+    .receive-signatures { margin: 14px 0 0; font-size: ${px(11)}; max-width: 420px; break-inside: avoid; page-break-inside: avoid; }
     .sig-row { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; }
     .sig-row:last-child { margin-bottom: 0; }
     .sig-label { white-space: nowrap; min-width: 5.5rem; font-weight: 700; }
     .sig-line { flex: 1; border-bottom: 1px dotted #000; min-height: 1.1em; }
     .footer-notes { margin: 0 0 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 600); }
     .footer-notes p { margin: 4px 0; }
-    .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(11)}; font-weight: 600; }
+    .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(11)}; font-weight: 600; break-inside: avoid; page-break-inside: avoid; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pay-instructions .pay-block { margin: 0 0 8px; }
+    .pay-instructions .pay-block:last-of-type { margin-bottom: 0; }
+    .pay-instructions .pay-block-title { font-weight: 700; margin: 0 0 4px; }
     .pay-instructions .pay-line { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { text-align: right; font-weight: 600; }
@@ -446,6 +455,7 @@ function buildProformaInvoiceHtml(sale, options) {
     showBranchOnReceipt = true,
     generalSettings = null,
     salesSettings = null,
+    organization = null,
   } = options;
 
   const items = sale.items ?? [];
@@ -467,6 +477,10 @@ function buildProformaInvoiceHtml(sale, options) {
     showBranchOnReceipt,
     branch,
     seller,
+    organization,
+    documentType: "proforma",
+    salesSettings,
+    moduleSettings,
   });
   const customerAddress = [
     customer?.town,

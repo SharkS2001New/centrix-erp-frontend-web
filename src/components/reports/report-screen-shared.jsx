@@ -22,6 +22,7 @@ import { ReportExportToolbar } from "@/components/reports/report-export-toolbar"
 import { ReportQueryFilterFieldsStructured } from "@/components/reports/report-query-filter-fields";
 import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
 import { ReportCellLink } from "@/components/reports/report-cell-link";
+import { AiAnalyzeButton } from "@/components/ai/ai-insight-panel";
 
 const BADGE_TONES = {
   success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
@@ -349,6 +350,7 @@ export function ReportPageShell({
   exportConfig,
   printAction = null,
   onExport,
+  onAnalyzeWithAi = null,
   children,
 }) {
   return (
@@ -365,7 +367,7 @@ export function ReportPageShell({
           <h1 className="text-2xl font-semibold theme-heading">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm theme-subtext">{subtitle}</p> : null}
         </div>
-        {exportConfig || printAction ? (
+        {exportConfig || printAction || onAnalyzeWithAi ? (
           <div className="flex flex-wrap items-center gap-2">
             {printAction ? (
               <button
@@ -389,7 +391,10 @@ export function ReportPageShell({
             footerRow={exportConfig.footerRow}
             estimatedRowCount={exportConfig.estimatedRowCount}
             disabled={exportConfig.disabled}
+            onAnalyzeWithAi={onAnalyzeWithAi ?? exportConfig.onAnalyzeWithAi ?? null}
           />
+            ) : onAnalyzeWithAi ? (
+              <AiAnalyzeButton onClick={onAnalyzeWithAi} />
             ) : null}
           </div>
         ) : onExport ? (

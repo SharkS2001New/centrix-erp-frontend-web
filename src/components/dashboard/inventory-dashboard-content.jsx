@@ -25,6 +25,7 @@ import {
   ITEMS_CURRENTLY_IN_STOCK_HREF,
   ITEMS_CURRENTLY_IN_STOCK_LABEL,
 } from "@/lib/inventory-routes";
+import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
 
 const INVENTORY_LINKS = [
   {
@@ -53,6 +54,7 @@ export function InventoryDashboardContent() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [stockPulseOpen, setStockPulseOpen] = useState(false);
   const [topStockRows, setTopStockRows] = useState([]);
   const [lowStockRows, setLowStockRows] = useState([]);
   const [inventoryValue, setInventoryValue] = useState({
@@ -169,12 +171,14 @@ export function InventoryDashboardContent() {
   ];
 
   return (
+    <>
     <CatalogPageShell
       title="Inventory dashboard"
       subtitle="Stock health, valuation, and warehouse activity"
       action={
         <div className="flex flex-wrap items-center gap-2">
           <DashboardRefreshButton onClick={() => void loadDashboard({ soft: true })} loading={loading || refreshing} />
+          <AiAnalyzeButton label="Stock Pulse" onClick={() => setStockPulseOpen(true)} />
           <PrimaryLink href="/inventory/receipts/receive">Receive stock</PrimaryLink>
         </div>
       }
@@ -291,5 +295,12 @@ export function InventoryDashboardContent() {
         </div>
       )}
     </CatalogPageShell>
+    <AiInsightPanel
+      open={stockPulseOpen}
+      onClose={() => setStockPulseOpen(false)}
+      title="Stock Pulse"
+      mode="stock_pulse"
+    />
+    </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -26,6 +27,13 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
       </span>
     </label>
   );
+}
+
+function patchInsights(setForm, patch) {
+  setForm((f) => ({
+    ...f,
+    insights: { ...f.insights, ...patch },
+  }));
 }
 
 export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
@@ -60,6 +68,8 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
       setSaving(false);
     }
   }
+
+  const insights = form.insights;
 
   return (
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
@@ -125,6 +135,223 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   : !form.api_key_set && !form.api_key
                     ? "Add an API key and save to activate AI for this organization."
                     : "Save settings to apply changes."}
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
+                <h3 className="text-base font-medium text-slate-900">AI Insights</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Analyze reports, Stock Pulse, and Sales briefs. Delivery uses your existing organization email,
+                  WhatsApp, and Africa&apos;s Talking SMS settings.
+                </p>
+
+                <div className="mt-4 space-y-3">
+                  <Toggle
+                    checked={insights.enabled}
+                    onChange={(enabled) => patchInsights(setForm, { enabled })}
+                    label="Enable AI Insights"
+                    description="Analyze with AI on reports, dashboard cards, and scheduled digests."
+                  />
+
+                  {insights.enabled ? (
+                    <>
+                      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                        <p className="text-sm font-medium text-slate-900">Delivery channels</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Channels must already be configured under{" "}
+                          <Link href="/settings" className="text-[var(--theme-primary)] hover:underline">
+                            Notifications
+                          </Link>{" "}
+                          / WhatsApp settings.
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          <Toggle
+                            checked={insights.channels.email}
+                            onChange={(email) =>
+                              patchInsights(setForm, {
+                                channels: { ...insights.channels, email },
+                              })
+                            }
+                            label="Email"
+                          />
+                          <Toggle
+                            checked={insights.channels.whatsapp}
+                            onChange={(whatsapp) =>
+                              patchInsights(setForm, {
+                                channels: { ...insights.channels, whatsapp },
+                              })
+                            }
+                            label="WhatsApp"
+                          />
+                          <Toggle
+                            checked={insights.channels.sms}
+                            onChange={(sms) =>
+                              patchInsights(setForm, {
+                                channels: { ...insights.channels, sms },
+                              })
+                            }
+                            label="SMS"
+                          />
+                        </div>
+                      </div>
+
+                      <Field label="Email recipients (comma-separated)">
+                        <input
+                          className={inputClassName()}
+                          value={insights.recipients.emailsText}
+                          onChange={(e) =>
+                            patchInsights(setForm, {
+                              recipients: { ...insights.recipients, emailsText: e.target.value },
+                            })
+                          }
+                          placeholder="ops@example.com, manager@example.com"
+                        />
+                      </Field>
+                      <Field label="SMS phones (comma-separated)">
+                        <input
+                          className={inputClassName()}
+                          value={insights.recipients.phonesText}
+                          onChange={(e) =>
+                            patchInsights(setForm, {
+                              recipients: { ...insights.recipients, phonesText: e.target.value },
+                            })
+                          }
+                          placeholder="+2547…, 07…"
+                        />
+                      </Field>
+                      <Field label="WhatsApp phones (comma-separated)">
+                        <input
+                          className={inputClassName()}
+                          value={insights.recipients.whatsappPhonesText}
+                          onChange={(e) =>
+                            patchInsights(setForm, {
+                              recipients: { ...insights.recipients, whatsappPhonesText: e.target.value },
+                            })
+                          }
+                          placeholder="+2547…"
+                        />
+                      </Field>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-3 rounded-lg border border-slate-200 px-4 py-3">
+                          <Toggle
+                            checked={insights.stock_pulse.enabled}
+                            onChange={(enabled) =>
+                              patchInsights(setForm, {
+                                stock_pulse: { ...insights.stock_pulse, enabled },
+                              })
+                            }
+                            label="Daily Stock Pulse"
+                            description="Scheduled digest of low stock and movers."
+                          />
+                          <Field label="Send at (HH:MM)">
+                            <input
+                              type="time"
+                              className={inputClassName()}
+                              value={insights.stock_pulse.schedule_time}
+                              onChange={(e) =>
+                                patchInsights(setForm, {
+                                  stock_pulse: { ...insights.stock_pulse, schedule_time: e.target.value },
+                                })
+                              }
+                            />
+                          </Field>
+                          <Field label="Lookback days">
+                            <input
+                              type="number"
+                              min={1}
+                              max={90}
+                              className={inputClassName()}
+                              value={insights.stock_pulse.lookback_days}
+                              onChange={(e) =>
+                                patchInsights(setForm, {
+                                  stock_pulse: {
+                                    ...insights.stock_pulse,
+                                    lookback_days: Number(e.target.value) || 14,
+                                  },
+                                })
+                              }
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="space-y-3 rounded-lg border border-slate-200 px-4 py-3">
+                          <Toggle
+                            checked={insights.sales_brief.enabled}
+                            onChange={(enabled) =>
+                              patchInsights(setForm, {
+                                sales_brief: { ...insights.sales_brief, enabled },
+                              })
+                            }
+                            label="Daily Sales brief"
+                            description="Scheduled sales and cash snapshot."
+                          />
+                          <Field label="Send at (HH:MM)">
+                            <input
+                              type="time"
+                              className={inputClassName()}
+                              value={insights.sales_brief.schedule_time}
+                              onChange={(e) =>
+                                patchInsights(setForm, {
+                                  sales_brief: { ...insights.sales_brief, schedule_time: e.target.value },
+                                })
+                              }
+                            />
+                          </Field>
+                          <Field label="Lookback days">
+                            <input
+                              type="number"
+                              min={1}
+                              max={90}
+                              className={inputClassName()}
+                              value={insights.sales_brief.lookback_days}
+                              onChange={(e) =>
+                                patchInsights(setForm, {
+                                  sales_brief: {
+                                    ...insights.sales_brief,
+                                    lookback_days: Number(e.target.value) || 7,
+                                  },
+                                })
+                              }
+                            />
+                          </Field>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 rounded-lg border border-slate-200 px-4 py-3">
+                        <Toggle
+                          checked={insights.exception_alerts.enabled}
+                          onChange={(enabled) =>
+                            patchInsights(setForm, {
+                              exception_alerts: { ...insights.exception_alerts, enabled },
+                            })
+                          }
+                          label="Exception alerts"
+                          description="Short threshold-based alerts (future digests)."
+                        />
+                        <Toggle
+                          checked={insights.exception_alerts.low_stock}
+                          onChange={(low_stock) =>
+                            patchInsights(setForm, {
+                              exception_alerts: { ...insights.exception_alerts, low_stock },
+                            })
+                          }
+                          label="Low stock"
+                          disabled={!insights.exception_alerts.enabled}
+                        />
+                        <Toggle
+                          checked={insights.exception_alerts.unpaid_spike}
+                          onChange={(unpaid_spike) =>
+                            patchInsights(setForm, {
+                              exception_alerts: { ...insights.exception_alerts, unpaid_spike },
+                            })
+                          }
+                          label="Unpaid spike"
+                          disabled={!insights.exception_alerts.enabled}
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </>
           ) : null}

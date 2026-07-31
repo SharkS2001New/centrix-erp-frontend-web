@@ -14,6 +14,7 @@ import {
 } from "@/components/dashboard/dashboard-shared";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
+import { AiDashboardInsightCards } from "@/components/ai/ai-dashboard-insight-cards";
 
 const MODULE_LINKS = [
   { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.dashboard.sales.view },
@@ -118,6 +119,8 @@ export function OverviewDashboard() {
         onError={setDashError}
         refreshKey={reportsRefreshKey}
       />
+
+      <AiDashboardInsightCards />
 
       <DashboardSection title="Quick access" subtitle="Jump to a module dashboard" className="mt-8">
         <DashboardQuickLinks links={quickLinks} />

@@ -36,6 +36,7 @@ import { formatReportCell, formatReportKes } from "@/lib/reports/format";
 import { isInventoryQtyField, isLpoPackQtyField } from "@/lib/inventory-qty-display";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
 import { ReportCellLink } from "@/components/reports/report-cell-link";
+import { AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import {
   CatalogPageShell,
   Field,
@@ -75,6 +76,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [branchId, setBranchId] = useState("");
   const [queryFilters, setQueryFilters] = useState({});
   const [branches, setBranches] = useState([]);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const showDateFilters = reportShowsDateRange(reportKey);
   const hasQueryFilters = (REPORT_EXTRA_FILTERS[reportKey]?.length ?? 0) > 0;
@@ -202,6 +204,17 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     [rows, reportSummary],
   );
 
+  const aiFilters = useMemo(
+    () => ({
+      from: fromDate,
+      to: toDate,
+      branch_id: branchId || undefined,
+      ...queryFilters,
+      ...(payrollRunId ? { payroll_run_id: payrollRunId } : {}),
+    }),
+    [fromDate, toDate, branchId, queryFilters, payrollRunId],
+  );
+
   return (
     <>
       <CatalogPageShell
@@ -227,6 +240,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               extraLines: recordHeaderLines,
             }}
             disabled={loading}
+            onAnalyzeWithAi={() => setAiOpen(true)}
           />
         ) : null
       }
@@ -359,6 +373,16 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
       </div>
     </CatalogPageShell>
+      <AiInsightPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        title={`Analyze: ${label ?? reportKey ?? "Report"}`}
+        mode="report"
+        reportKey={reportKey}
+        filters={aiFilters}
+        rows={rows}
+        summary={reportSummary}
+      />
     </>
   );
 }

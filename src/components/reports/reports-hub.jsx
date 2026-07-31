@@ -16,6 +16,7 @@ import { CatalogPageShell, inputClassName } from "@/components/catalog/catalog-s
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportsOverviewSummary } from "@/components/reports/reports-overview-summary";
 import { DashboardErrorBanner, DashboardSection } from "@/components/dashboard/dashboard-shared";
+import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import {
   buildReportCategories,
@@ -88,6 +89,8 @@ export function ReportsHub() {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState("cards");
   const [activeCategory, setActiveCategory] = useState("all");
+  const [stockPulseOpen, setStockPulseOpen] = useState(false);
+  const [salesBriefOpen, setSalesBriefOpen] = useState(false);
 
   useEffect(() => {
     apiRequest("/reports/")
@@ -150,22 +153,25 @@ export function ReportsHub() {
   const customReportCount = allReports.filter((r) => r.isCustom).length;
 
   return (
+    <>
     <CatalogPageShell
       title={WORKSPACE_REPORT_OVERVIEW_LABEL}
       subtitle={workspaceLabel}
     >
       <AdminBreadcrumb items={[{ label: WORKSPACE_REPORT_OVERVIEW_LABEL }]} />
 
-      {hasPermission(P.reports.builder.view) ? (
-        <div className="mb-6 flex flex-wrap gap-3">
+      <div className="mb-6 flex flex-wrap gap-3">
+        {hasPermission(P.reports.builder.view) ? (
           <Link
             href="/reports/builder"
             className="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
           >
             + Create custom report
           </Link>
-        </div>
-      ) : null}
+        ) : null}
+        <AiAnalyzeButton label="Stock Pulse" onClick={() => setStockPulseOpen(true)} />
+        <AiAnalyzeButton label="Sales brief" onClick={() => setSalesBriefOpen(true)} />
+      </div>
 
       <DashboardErrorBanner message={error ?? dashError} />
 
@@ -272,6 +278,19 @@ export function ReportsHub() {
         </div>
       </DashboardSection>
     </CatalogPageShell>
+    <AiInsightPanel
+      open={stockPulseOpen}
+      onClose={() => setStockPulseOpen(false)}
+      title="Stock Pulse"
+      mode="stock_pulse"
+    />
+    <AiInsightPanel
+      open={salesBriefOpen}
+      onClose={() => setSalesBriefOpen(false)}
+      title="Sales brief"
+      mode="sales_brief"
+    />
+    </>
   );
 }
 

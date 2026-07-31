@@ -33,6 +33,7 @@ import {
   ORG_DOCUMENT_DESIGN_TEMPLATES,
   orgDocumentTemplateMeta,
 } from "@/lib/document-print-templates";
+import { formatPrintPhones } from "@/lib/document-print-phones";
 
 const PRINTOUT_TAB_BTN =
   "rounded-md px-3 py-1.5 text-sm font-medium transition whitespace-nowrap";
@@ -100,6 +101,77 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
         {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
       </span>
     </label>
+  );
+}
+
+/** Use company Tel 1/2, or set dedicated numbers for this document type. */
+function DocumentPrintPhonesFields({
+  form,
+  setForm,
+  useSameKey,
+  phonesKey,
+  organization = null,
+  title = "Phone numbers",
+  description = "Company Tel 1 and Tel 2 from Admin → Company are the primary numbers on thermal receipts.",
+}) {
+  const companyLine = formatPrintPhones({
+    tel1: organization?.primary_tel,
+    tel2: organization?.secondary_tel,
+  });
+  const useSame = form[useSameKey] !== false;
+  const phones = form[phonesKey] ?? { tel1: "", tel2: "" };
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+      <SectionHeading title={title} description={description} />
+      {companyLine ? (
+        <p className="text-xs text-slate-500">
+          Company Tel 1 / Tel 2: <span className="font-medium text-slate-700">{companyLine}</span>
+        </p>
+      ) : (
+        <p className="text-xs text-amber-700">
+          Set Tel 1 / Tel 2 under Admin → Company — those primary numbers print on thermal receipts.
+        </p>
+      )}
+      <Toggle
+        label="Use same numbers as company Tel 1 & Tel 2"
+        checked={useSame}
+        onChange={(v) => setForm((f) => ({ ...f, [useSameKey]: v }))}
+        description="When off, set different phone numbers for this document type only."
+      />
+      {!useSame ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Tel 1">
+            <input
+              type="text"
+              className={inputClassName()}
+              value={phones.tel1 ?? ""}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  [phonesKey]: { ...(f[phonesKey] ?? {}), tel1: e.target.value },
+                }))
+              }
+              placeholder="Primary phone for this document"
+            />
+          </Field>
+          <Field label="Tel 2">
+            <input
+              type="text"
+              className={inputClassName()}
+              value={phones.tel2 ?? ""}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  [phonesKey]: { ...(f[phonesKey] ?? {}), tel2: e.target.value },
+                }))
+              }
+              placeholder="Secondary phone (optional)"
+            />
+          </Field>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -188,7 +260,7 @@ function DocumentFooterField({ footerKey, form, setForm }) {
   );
 }
 
-function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
+function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization = null }) {
   const orderFormat = form.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
   const showBranchSetting = showThermal || showA4;
@@ -314,6 +386,18 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
           </p>
         </div>
       </div>
+
+      <div>
+        <DocumentPrintPhonesFields
+          form={form}
+          setForm={setForm}
+          useSameKey="use_same_print_phones_for_other"
+          phonesKey="other_print_phones"
+          organization={organization}
+          title="Other document phones"
+          description="Credit notes, GRNs, supplier returns, and similar branded A4 documents. Thermal and A4 tax invoices always use company Tel 1 & Tel 2."
+        />
+      </div>
     </div>
   );
 }
@@ -368,13 +452,26 @@ function PaymentInstructionsSharedSection({ form, setForm, hasMobileSales, idPre
   );
 }
 
-function ThermalReceiptsTab({ form, setForm, hasMobileSales }) {
+function ThermalReceiptsTab({ form, setForm, hasMobileSales, organization = null }) {
   return (
     <div className="space-y-3">
       <SectionHeading
         title="Thermal receipts"
         description="POS and backoffice narrow receipt printers."
       />
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <p className="font-medium text-slate-900">Phone numbers (Tel 1 / Tel 2)</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Thermal receipts and A4 tax invoices always print company Tel 1 and Tel 2 from Admin → Company
+          {organization?.primary_tel || organization?.secondary_tel
+            ? `: ${formatPrintPhones({
+                tel1: organization?.primary_tel,
+                tel2: organization?.secondary_tel,
+              })}`
+            : " (set them there if missing)"}.
+          Proforma, LPO, and other documents can use different numbers on their tabs.
+        </p>
+      </div>
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -411,7 +508,7 @@ function ThermalReceiptsTab({ form, setForm, hasMobileSales }) {
   );
 }
 
-function A4InvoicesTab({ form, setForm, hasMobileSales }) {
+function A4InvoicesTab({ form, setForm }) {
   return (
     <div className="space-y-3">
       <SectionHeading
@@ -446,17 +543,23 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
           onChange={(e) => setForm((f) => ({ ...f, invoice_valid_days: e.target.value }))}
         />
       </Field>
+      <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+        Phone numbers match thermal receipts (company Tel 1 & Tel 2 from Admin → Company). Proforma and
+        LPO can use different numbers on their tabs.
+      </p>
       <Toggle
         label="Show payment instructions on A4 sales invoices"
         checked={form.show_invoice_payment_details}
         onChange={(v) => setForm((f) => ({ ...f, show_invoice_payment_details: v }))}
+        description="Bank / M-Pesa details printed only on A4 tax invoices — separate from thermal receipts and proformas."
       />
-      <PaymentInstructionsSharedSection
-        form={form}
-        setForm={setForm}
-        hasMobileSales={hasMobileSales}
-        idPrefix="printouts-invoice"
-      />
+      {form.show_invoice_payment_details ? (
+        <ReceiptPaymentDetailsEditor
+          value={form.invoice_payment_details}
+          onChange={(value) => setForm((f) => ({ ...f, invoice_payment_details: value }))}
+          idPrefix="printouts-invoice-pay"
+        />
+      ) : null}
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
           title="Document footer"
@@ -470,7 +573,7 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
   );
 }
 
-function ProformaInvoicesTab({ form, setForm, hasMobileSales }) {
+function ProformaInvoicesTab({ form, setForm, organization = null }) {
   return (
     <div className="space-y-3">
       <SectionHeading
@@ -505,18 +608,26 @@ function ProformaInvoicesTab({ form, setForm, hasMobileSales }) {
           onChange={(e) => setForm((f) => ({ ...f, proforma_valid_days: e.target.value }))}
         />
       </Field>
+      <DocumentPrintPhonesFields
+        form={form}
+        setForm={setForm}
+        useSameKey="use_same_print_phones_for_proforma"
+        phonesKey="proforma_print_phones"
+        organization={organization}
+        title="Proforma phone numbers"
+        description="Tel lines on proforma invoices. Uncheck to use different numbers than company Tel 1 & Tel 2 (thermal)."
+      />
       <Toggle
         label="Show payment instructions"
         checked={form.show_proforma_payment_details}
         onChange={(v) => setForm((f) => ({ ...f, show_proforma_payment_details: v }))}
-        description="Uses the same payment details configured for invoices/receipts."
+        description="Bank / M-Pesa details printed only on proforma invoices — separate from thermal receipts and A4 invoices."
       />
       {form.show_proforma_payment_details ? (
-        <PaymentInstructionsSharedSection
-          form={form}
-          setForm={setForm}
-          hasMobileSales={hasMobileSales}
-          idPrefix="printouts-proforma"
+        <ReceiptPaymentDetailsEditor
+          value={form.proforma_payment_details}
+          onChange={(value) => setForm((f) => ({ ...f, proforma_payment_details: value }))}
+          idPrefix="printouts-proforma-pay"
         />
       ) : null}
       <Toggle
@@ -609,7 +720,7 @@ function ProformaInvoicesTab({ form, setForm, hasMobileSales }) {
   );
 }
 
-function LpoPrintoutsTab({ form, setForm }) {
+function LpoPrintoutsTab({ form, setForm, organization = null }) {
   return (
     <div className="space-y-3">
       <SectionHeading title="Local purchase orders (LPO)" />
@@ -629,6 +740,15 @@ function LpoPrintoutsTab({ form, setForm }) {
         form={form}
         setForm={setForm}
         variantKey="lpo"
+      />
+      <DocumentPrintPhonesFields
+        form={form}
+        setForm={setForm}
+        useSameKey="use_same_print_phones_for_lpo"
+        phonesKey="lpo_print_phones"
+        organization={organization}
+        title="LPO phone numbers"
+        description="Tel lines on LPO / delivery note headers. Uncheck to use different numbers than company Tel 1 & Tel 2."
       />
       <MultilinePrintNotesField
         label="Default delivery notes"
@@ -1057,6 +1177,7 @@ export function PrintoutsSettingsPanel({
 
   function renderActiveTab() {
     if (!form) return null;
+    const organization = previewContext?.organization ?? null;
 
     if (activeTab === "general") {
       return (
@@ -1065,20 +1186,28 @@ export function PrintoutsSettingsPanel({
           setForm={setForm}
           hasSales={hasSales}
           sections={sections}
+          organization={organization}
         />
       );
     }
     if (activeTab === "receipt" && hasSales) {
-      return <ThermalReceiptsTab form={form} setForm={setForm} hasMobileSales={hasMobileSales} />;
+      return (
+        <ThermalReceiptsTab
+          form={form}
+          setForm={setForm}
+          hasMobileSales={hasMobileSales}
+          organization={organization}
+        />
+      );
     }
     if (activeTab === "invoice" && hasSales) {
-      return <A4InvoicesTab form={form} setForm={setForm} hasMobileSales={hasMobileSales} />;
+      return <A4InvoicesTab form={form} setForm={setForm} />;
     }
     if (activeTab === "proforma" && hasSales) {
-      return <ProformaInvoicesTab form={form} setForm={setForm} hasMobileSales={hasMobileSales} />;
+      return <ProformaInvoicesTab form={form} setForm={setForm} organization={organization} />;
     }
     if (activeTab === "lpo" && hasProcurement) {
-      return <LpoPrintoutsTab form={form} setForm={setForm} />;
+      return <LpoPrintoutsTab form={form} setForm={setForm} organization={organization} />;
     }
     if (activeTab === "loading_sheet" && hasRoutePrintouts) {
       return (

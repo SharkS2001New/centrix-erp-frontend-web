@@ -147,6 +147,7 @@ export function buildSaleReceiptHtml(
     salesSettings = null,
     preparedBy = null,
     user = null,
+    organization = null,
   } = {},
 ) {
   if (!sale) return "";
@@ -170,6 +171,10 @@ export function buildSaleReceiptHtml(
     showBranchOnReceipt,
     branch,
     seller,
+    organization,
+    documentType: "receipt",
+    salesSettings,
+    moduleSettings,
   });
   const tillNo = sale.pos_terminal_id ?? sale.branch_id ?? branch?.id ?? "1";
   const servedByName = (() => {
@@ -356,6 +361,9 @@ export function buildSaleReceiptHtml(
     .payment-title { text-align: left; font-weight: 700; letter-spacing: .04em; margin: 0 0 6px; font-size: ${px(9)}; }
     .pay-instructions { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #000; font-size: ${px(9)}; text-align: left; max-width: 100%; }
     .pay-instructions .pay-lines { margin: 0; }
+    .pay-instructions .pay-block { margin: 0 0 6px; }
+    .pay-instructions .pay-block:last-child { margin-bottom: 0; }
+    .pay-instructions .pay-block-title { font-weight: 700; margin: 0 0 3px; letter-spacing: .02em; }
     .pay-instructions .pay-line { margin: 3px 0; line-height: 1.45; text-align: left; word-break: break-word; overflow-wrap: anywhere; }
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { font-weight: var(--print-w-body, 600); }

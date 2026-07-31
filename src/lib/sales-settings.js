@@ -49,7 +49,8 @@ const SALES_DEFAULTS = {
   enable_cheque_number: false,
   enable_payment_date: false,
   enable_credit_payment: true,
-  allow_credit_pay_now: false,
+  /** Collect small / partial payments on outstanding orders (backoffice Collect payment). */
+  allow_credit_pay_now: true,
   show_checkout_on_create_order: true,
   /** External POS (/pos) — complete sale with checkout. Independent of backoffice Create order. */
   show_pos_checkout_on_create: true,
@@ -85,12 +86,14 @@ const SALES_DEFAULTS = {
   use_same_payment_details_for_routes: true,
   pos_receipt_payment_details: {
     title: "Payment details",
-    lines: [],
+    blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+    lines: [{ label: "", value: "" }],
     note: "",
   },
   route_receipt_payment_details: {
     title: "Payment details",
-    lines: [],
+    blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+    lines: [{ label: "", value: "" }],
     note: "",
   },
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
@@ -399,7 +402,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   enable_cheque_number: false,
   enable_payment_date: false,
   enable_credit_payment: true,
-  allow_credit_pay_now: false,
+  allow_credit_pay_now: true,
   show_checkout_on_create_order: true,
   enable_checkout_customer_name: false,
   add_route_markup_prices: false,
@@ -416,12 +419,36 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   use_same_payment_details_for_routes: true,
   pos_receipt_payment_details: {
     title: "Payment details",
-    lines: [{ label: "M-Pesa Paybill", value: "" }, { label: "Account no.", value: "" }],
+    blocks: [
+      {
+        title: "",
+        lines: [
+          { label: "M-Pesa Paybill", value: "" },
+          { label: "Account no.", value: "" },
+        ],
+      },
+    ],
+    lines: [
+      { label: "M-Pesa Paybill", value: "" },
+      { label: "Account no.", value: "" },
+    ],
     note: "",
   },
   route_receipt_payment_details: {
     title: "Payment details",
-    lines: [{ label: "M-Pesa Paybill", value: "" }, { label: "Account no.", value: "" }],
+    blocks: [
+      {
+        title: "",
+        lines: [
+          { label: "M-Pesa Paybill", value: "" },
+          { label: "Account no.", value: "" },
+        ],
+      },
+    ],
+    lines: [
+      { label: "M-Pesa Paybill", value: "" },
+      { label: "Account no.", value: "" },
+    ],
     note: "",
   },
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
@@ -532,10 +559,6 @@ export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
     next.enable_redeemable_points = false;
   }
 
-  if (next.allow_credit_pay_now && next.enable_credit_payment) {
-    next.enable_credit_payment = false;
-  }
-
   return next;
 }
 
@@ -586,10 +609,14 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     invoice_document_template: _invoiceDocumentTemplate,
     invoice_print_delivery_terms: _invoicePrintDeliveryTerms,
     invoice_print_footer_lines: _invoicePrintFooterLines,
+    invoice_payment_details: _invoicePaymentDetails,
     proforma_valid_days: _proformaValidDays,
     show_print_proforma_invoice_option: _showPrintProformaInvoiceOption,
     proforma_document_template: _proformaDocumentTemplate,
     show_proforma_payment_details: _showProformaPaymentDetails,
+    proforma_payment_details: _proformaPaymentDetails,
+    use_same_print_phones_for_proforma: _useSamePrintPhonesForProforma,
+    proforma_print_phones: _proformaPrintPhones,
     show_proforma_terms: _showProformaTerms,
     proforma_print_terms: _proformaPrintTerms,
     show_proforma_vat_note: _showProformaVatNote,
@@ -1055,9 +1082,7 @@ export function mergeSalesSettings(moduleSettings) {
   if (sales.allow_credit_pay_now == null && sales.allow_partial_payment != null) {
     sales.allow_credit_pay_now = Boolean(sales.allow_partial_payment);
   }
-  if (sales.allow_credit_pay_now && sales.enable_credit_payment) {
-    sales.enable_credit_payment = false;
-  }
+  // Credit checkout and collect-small-payments work together (debtors pay in installments).
   if (
     !sales.enable_retail_pricing &&
     !sales.retail_shop_wholesale_store_stock &&
@@ -1392,10 +1417,13 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
       hasPosSales &&
       hasCustomers &&
       Boolean(sales.enable_credit_payment),
+    // Partial / small payments on Collect payment: explicit setting, or any credit-sales path
+    // (POS inline credit checkout / save-then-pay debtors).
     allowPartialPayment:
       checkoutContext === "order_payment" &&
       Boolean(modules.sales) &&
-      Boolean(sales.allow_credit_pay_now),
+      (Boolean(sales.allow_credit_pay_now) ||
+        (hasCustomers && Boolean(sales.enable_credit_payment))),
     /** Collecting against an existing sale — never accept more than balance due. */
     rejectOverpayment: checkoutContext === "order_payment",
     enableCheckoutCustomerName:

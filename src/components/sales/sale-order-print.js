@@ -215,11 +215,11 @@ export async function printSaleOrder(sale, options = {}) {
   }
 
   let printWindow = options.printWindow ?? null;
-  // Prefer Centrix Print Agent — avoid opening a blank iframe before enrichment,
-  // and skip WAN lookups that hang on a dropped/slow link.
+  // Prefer Centrix Print Agent for thermal receipts — avoid opening a blank iframe
+  // before enrichment (passing printWindow forces browser printing in dispatchPrintJob).
   const offlineSale = isOfflineSalePrint(sale, options);
-  // Skip the browser print iframe when Centrix Print Agent is configured.
-  const deferPrintWindow = !printWindow && isPrintAgentEnabled();
+  const deferPrintWindow =
+    !printWindow && isPrintAgentEnabled() && documentType === "receipt";
   if (!printWindow && !deferPrintWindow) {
     printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
     if (!printWindow) {
@@ -354,6 +354,7 @@ export async function printSaleOrder(sale, options = {}) {
       route,
       sale: saleForPrint,
       overrideDetails: options.paymentInstructions ?? null,
+      documentType: isProforma ? "proforma" : documentType === "invoice" ? "invoice" : "receipt",
     });
 
     const printedBy = resolvePrintedByUser(options.printedBy ?? options.user);

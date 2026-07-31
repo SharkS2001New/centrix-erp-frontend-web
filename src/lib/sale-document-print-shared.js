@@ -7,6 +7,7 @@ import {
 } from "@/lib/sale-line-items";
 import { buildReportOrgHeaderHtml, resolveReportBranding } from "@/lib/reports/report-branding";
 import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
+import { resolveDocumentPrintPhonesLine } from "@/lib/document-print-phones";
 
 /** Mirrors orgSalesDiscountFeaturesActive in sales-settings (inline to keep print path self-contained). */
 function discountFeaturesEnabledForPrint(moduleSettings) {
@@ -89,24 +90,50 @@ export function resolveSaleDocumentBranding({
 }
 
 /**
- * Store contact lines for thermal receipts and A4 sales invoices.
- * When branch details are enabled, prefers the order branch; missing branch fields fall back to organization.
+ * Store contact lines for thermal receipts and A4 sales invoices / proformas.
+ * Phones: thermal always uses company Tel 1/2; invoice/proforma may use dedicated print phones.
+ * When branch details are enabled and the branch has a phone, that overrides for sales docs.
  */
-export function resolveSaleDocumentStoreContact({ showBranchOnReceipt, branch, seller }) {
+export function resolveSaleDocumentStoreContact({
+  showBranchOnReceipt,
+  branch,
+  seller,
+  organization = null,
+  documentType = "receipt",
+  salesSettings = null,
+  moduleSettings = null,
+} = {}) {
+  const org =
+    organization ??
+    (seller
+      ? {
+          primary_tel: seller.phone,
+          secondary_tel: seller.secondary_phone,
+          org_address: seller.address,
+        }
+      : null);
+
+  const resolvedPhones = resolveDocumentPrintPhonesLine({
+    documentType,
+    organization: org,
+    salesSettings: salesSettings ?? moduleSettings?.sales ?? null,
+    moduleSettings,
+  });
+  const fallbackPhones = [seller?.phone, seller?.secondary_phone].filter(Boolean).join(" / ");
+  const storePhones = resolvedPhones || fallbackPhones;
+
   if (!showBranchOnReceipt) {
     return {
       branchName: null,
       storeAddress: seller?.address ?? "",
-      storePhones: [seller?.phone, seller?.secondary_phone].filter(Boolean).join(" / "),
+      storePhones,
     };
   }
 
   return {
     branchName: branch?.name ?? null,
     storeAddress: branch?.address ?? seller?.address ?? "",
-    storePhones: branch?.phone
-      ? String(branch.phone)
-      : [seller?.phone, seller?.secondary_phone].filter(Boolean).join(" / "),
+    storePhones: branch?.phone ? String(branch.phone) : storePhones,
   };
 }
 

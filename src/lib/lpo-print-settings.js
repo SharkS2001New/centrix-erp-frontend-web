@@ -1,3 +1,9 @@
+import {
+  documentPrintPhonesFormFields,
+  documentPrintPhonesPayloadFields,
+  emptyPrintPhones,
+} from "@/lib/document-print-phones";
+
 export const DEFAULT_LPO_DELIVERY_NOTES = [
   "Order valid for 7 days from the date of this LPO.",
   "No goods shall be received without an Invoice or Delivery note.",
@@ -31,6 +37,8 @@ export const PROCUREMENT_PRINT_DEFAULTS = {
   lpo_print_validity_days: "7",
   lpo_print_checked_by: "",
   lpo_print_authorised_by: "",
+  use_same_print_phones_for_lpo: true,
+  lpo_print_phones: emptyPrintPhones(),
 };
 
 export function linesFromMultilineText(text) {
@@ -125,6 +133,7 @@ export function lpoPrintFormFromApi(res) {
     lpo_print_validity_days: String(procurement.lpo_print_validity_days ?? "7"),
     lpo_print_checked_by: String(procurement.lpo_print_checked_by ?? ""),
     lpo_print_authorised_by: String(procurement.lpo_print_authorised_by ?? ""),
+    ...documentPrintPhonesFormFields(procurement, { prefix: "lpo" }),
   };
 }
 
@@ -138,5 +147,6 @@ export function lpoPrintPayloadFromForm(form) {
     lpo_print_validity_days: Number(form.lpo_print_validity_days) || 7,
     lpo_print_checked_by: String(form.lpo_print_checked_by ?? "").trim(),
     lpo_print_authorised_by: String(form.lpo_print_authorised_by ?? "").trim(),
+    ...documentPrintPhonesPayloadFields(form, { prefix: "lpo" }),
   };
 }

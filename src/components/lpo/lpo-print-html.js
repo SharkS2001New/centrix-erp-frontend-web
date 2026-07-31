@@ -7,6 +7,7 @@ import {
   buildReportWatermarkHtml,
 } from "@/lib/reports/report-branding";
 import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
+import { resolveDocumentPrintPhonesLine } from "@/lib/document-print-phones";
 import {
   resolveLpoDeliveryNotes,
   resolveLpoFooterLines,
@@ -120,9 +121,11 @@ export function buildLpoPrintHtml({
     "lpo",
   );
   const orgName = organization?.org_name ?? buyer.name ?? "";
-  const orgPhones = [organization?.primary_tel, organization?.secondary_tel]
-    .filter(Boolean)
-    .join(" / ");
+  const orgPhones = resolveDocumentPrintPhonesLine({
+    documentType: "lpo",
+    organization,
+    procurementSettings: printSettings,
+  });
   const logoUrl =
     logoDataUrl ||
     (organizationHasLogo(organization) && organization?.id

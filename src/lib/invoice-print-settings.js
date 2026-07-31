@@ -1,3 +1,9 @@
+import {
+  DEFAULT_POS_RECEIPT_PAYMENT_LINES,
+  receiptPaymentDetailsFromApi,
+  receiptPaymentDetailsToPayload,
+} from "@/lib/receipt-payment-details";
+
 export const DEFAULT_INVOICE_DELIVERY_TERMS = [
   "Order valid for the period shown above.",
   "No goods shall be received without an invoice or delivery note.",
@@ -22,6 +28,12 @@ export const INVOICE_PRINT_DEFAULTS = {
   invoice_document_template: "default",
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
+  /** Dedicated bank / paybill block for A4 tax invoices — not shared with thermal or proforma. */
+  invoice_payment_details: {
+    title: "Payment details",
+    lines: [],
+    note: "",
+  },
 };
 
 export function linesFromMultilineText(text) {
@@ -48,6 +60,18 @@ export function resolveInvoiceFooterLines(salesSettings = {}, { organizationName
 
 export function invoicePrintFormFromApi(sales = {}) {
   const merged = { ...INVOICE_PRINT_DEFAULTS, ...sales };
+  // Migrate: orgs without a dedicated invoice block still see POS details until they save separately.
+  const hasOwnInvoicePayment = Object.prototype.hasOwnProperty.call(
+    sales,
+    "invoice_payment_details",
+  );
+  const invoicePaymentSource = hasOwnInvoicePayment
+    ? sales.invoice_payment_details
+    : (sales.pos_receipt_payment_details ?? {
+        title: "Payment details",
+        lines: DEFAULT_POS_RECEIPT_PAYMENT_LINES.map((line) => ({ ...line })),
+        note: "",
+      });
   return {
     invoice_document_template: String(
       merged.invoice_document_template ?? INVOICE_PRINT_DEFAULTS.invoice_document_template,
@@ -58,6 +82,7 @@ export function invoicePrintFormFromApi(sales = {}) {
     invoice_print_footer_lines: String(
       merged.invoice_print_footer_lines ?? INVOICE_PRINT_DEFAULTS.invoice_print_footer_lines,
     ),
+    invoice_payment_details: receiptPaymentDetailsFromApi(invoicePaymentSource),
   };
 }
 
@@ -66,5 +91,12 @@ export function invoicePrintPayloadFromForm(form) {
     invoice_document_template: String(form.invoice_document_template ?? "default"),
     invoice_print_delivery_terms: String(form.invoice_print_delivery_terms ?? ""),
     invoice_print_footer_lines: String(form.invoice_print_footer_lines ?? ""),
+    invoice_payment_details: receiptPaymentDetailsToPayload(
+      form.invoice_payment_details ?? {
+        title: "Payment details",
+        lines: [],
+        note: "",
+      },
+    ),
   };
 }

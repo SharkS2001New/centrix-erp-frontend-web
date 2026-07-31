@@ -35,7 +35,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     try {
       const res = await apiRequest(`${apiBase}/settings`, {
         method: "PATCH",
-        body: aiPayloadFromForm(aiForm),
+        body: aiPayloadFromForm(aiForm, { includeInsights: false }),
       });
       setAiForm(aiFormFromApi(res));
       notifySuccess("Platform AI credentials saved.");

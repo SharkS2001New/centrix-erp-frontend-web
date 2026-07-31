@@ -65,6 +65,10 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import {
+  isSaleOrderBrowserPrintWindowRequired,
+  openSaleOrderPrintWindow,
+} from "@/lib/print-dispatch";
+import {
   OrderLineItemsTable,
   OrderPaymentsSection,
   saleBranchLabel,
@@ -722,11 +726,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       capabilities?.module_settings,
       capabilities,
     );
-    const printWindow =
-      cachedType !== "both"
-        ? openBlankPrintWindow(printWindowFeatures(cachedType))
-        : null;
-    if (cachedType !== "both" && !printWindow) {
+    const printWindow = openSaleOrderPrintWindow(cachedType);
+    if (isSaleOrderBrowserPrintWindowRequired(cachedType) && !printWindow) {
       notifyError(PRINT_BLOCKED_MESSAGE);
       return;
     }

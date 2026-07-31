@@ -3,10 +3,12 @@ import {
   applyDiscountApprovalFormUpdates,
   canApproveDiscountRequests,
   defaultBackofficeCheckoutOnCreate,
+  getCheckoutPaymentConfig,
   getPosSalesConfig,
   isDiscountApprovalEnabled,
   isDiscountApprovalEnabledForChannel,
   loadingListNavHref,
+  mergeSalesSettings,
   resolveCancelOrderStatuses,
   resolveCollectPaymentStatuses,
   resolveCustomerReturnStatuses,
@@ -327,5 +329,48 @@ describe("sales-settings mobile loading sheets", () => {
         module_settings: { sales: { enable_mobile_orders: false } },
       }),
     ).toBe(false);
+  });
+});
+
+describe("collect small / partial payments on order payment", () => {
+  const caps = {
+    modules: { sales: true, "sales.pos": true, customers_suppliers: true },
+  };
+
+  it("allows partial collect when allow_credit_pay_now is on", () => {
+    const cfg = getCheckoutPaymentConfig(
+      {
+        sales: {
+          allow_credit_pay_now: true,
+          enable_credit_payment: false,
+        },
+      },
+      { checkoutContext: "order_payment", capabilities: caps },
+    );
+    expect(cfg.allowPartialPayment).toBe(true);
+  });
+
+  it("allows partial collect when POS credit checkout is on even if allow_credit_pay_now is off", () => {
+    const cfg = getCheckoutPaymentConfig(
+      {
+        sales: {
+          allow_credit_pay_now: false,
+          enable_credit_payment: true,
+        },
+      },
+      { checkoutContext: "order_payment", capabilities: caps },
+    );
+    expect(cfg.allowPartialPayment).toBe(true);
+  });
+
+  it("does not force credit checkout off when both settings are on", () => {
+    const merged = mergeSalesSettings({
+      sales: {
+        allow_credit_pay_now: true,
+        enable_credit_payment: true,
+      },
+    });
+    expect(merged.enable_credit_payment).toBe(true);
+    expect(merged.allow_credit_pay_now).toBe(true);
   });
 });

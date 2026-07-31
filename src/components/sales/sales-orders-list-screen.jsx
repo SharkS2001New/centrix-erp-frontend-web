@@ -77,10 +77,14 @@ import {
 } from "@/lib/sales-settings";
 import {
   disposePrintWindow,
-  openBlankPrintWindow,
-  printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
+import {
+  isSaleOrderBrowserPrintWindowRequired,
+  openSaleOrderPrintWindow,
+  shouldUsePrintAgentForDocument,
+} from "@/lib/print-dispatch";
+import { warmPrintAgentHealth } from "@/lib/print-agent";
 import { useConfirm } from "@/lib/use-confirm";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
 import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
@@ -110,6 +114,31 @@ const ORDERS_TABLE_SORT_FIRST_DIR = {
   order_num: "desc",
   order_total: "desc",
 };
+
+/** Fetch this many order details in parallel before printing the chunk. */
+const BATCH_PRINT_CHUNK_SIZE = 5;
+
+function chunkItems(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function saleHasPrintableItems(sale) {
+  return Array.isArray(sale?.items);
+}
+
+/** Print jobs run in the background — do not freeze the table UI. */
+function isPrintBatchBusy(busy) {
+  return (
+    busy === "print" ||
+    busy === "print-load" ||
+    busy === "print-all" ||
+    busy === "print-all-load"
+  );
+}
 
 function indexPaymentRefs(payments) {
   const map = new Map();
@@ -733,26 +762,29 @@ export default function SalesOrdersListScreen({
     void loadOrders();
   }
 
-  async function printOrder(sale, documentType = null) {
+  async function printOrder(sale, documentType = null, { batch = false } = {}) {
     if (!sale?.id) return false;
 
     const cachedType =
       documentType ?? defaultOrderListPrintDocumentType(capabilities?.module_settings, capabilities);
-    const printWindow =
-      cachedType !== "both"
-        ? openBlankPrintWindow(printWindowFeatures(cachedType))
-        : null;
-    if (cachedType !== "both" && !printWindow) {
+    // When Centrix Print Agent is configured, do not pre-open a browser window for
+    // thermal receipts — that forces browser printing and skips the agent.
+    const printWindow = openSaleOrderPrintWindow(cachedType);
+    if (isSaleOrderBrowserPrintWindowRequired(cachedType) && !printWindow) {
       setActionMessage(PRINT_BLOCKED_MESSAGE);
       return false;
     }
 
     try {
       const key = String(sale.id);
-      let detail = detailsById[key] ?? sale;
-      if (detail?.items === undefined) {
+      let detail = saleHasPrintableItems(sale) ? sale : (detailsById[key] ?? sale);
+      if (!saleHasPrintableItems(detail)) {
         const loaded = await loadOrderDetail(sale.id);
         if (loaded) detail = loaded;
+      }
+      if (!detail) {
+        disposePrintWindow(printWindow);
+        return false;
       }
       const printed = await printSaleOrder(detail, {
         organization,
@@ -762,6 +794,9 @@ export default function SalesOrdersListScreen({
         uomById,
         user,
         printWindow,
+        skipSaleRefresh: saleHasPrintableItems(detail),
+        skipSettingsRefresh: batch,
+        skipOrganizationRefresh: batch,
         ...(documentType ? { documentType } : {}),
       });
       if (!printed) {
@@ -774,6 +809,99 @@ export default function SalesOrdersListScreen({
       setActionMessage(e instanceof Error ? e.message : "Print failed");
       return false;
     }
+  }
+
+  /**
+   * Pipeline: while printing chunk N, prefetch chunk N+1 so printing stays continuous.
+   * Runs without a blocking overlay so the user can keep using the screen.
+   */
+  async function printOrdersInChunks(printable, documentType, { loadingBusy, printingBusy } = {}) {
+    if (!printable.length) return { printed: 0, failed: 0 };
+
+    if (shouldUsePrintAgentForDocument(documentType)) {
+      void warmPrintAgentHealth();
+    }
+
+    const detailCache = new Map(
+      Object.entries(detailsById).filter(([, sale]) => saleHasPrintableItems(sale)),
+    );
+
+    async function fetchChunkDetails(chunk) {
+      return mapWithConcurrency(
+        chunk,
+        async (sale) => {
+          const key = String(sale.id);
+          if (detailCache.has(key)) return detailCache.get(key);
+          if (saleHasPrintableItems(sale)) {
+            detailCache.set(key, sale);
+            return sale;
+          }
+          try {
+            const loaded = await apiRequest(`/sales/${sale.id}`, { loading: false });
+            if (loaded) {
+              detailCache.set(key, loaded);
+              setDetailsById((prev) => ({ ...prev, [key]: loaded }));
+            }
+            return loaded;
+          } catch {
+            return null;
+          }
+        },
+        BATCH_PRINT_CHUNK_SIZE,
+      );
+    }
+
+    const chunks = chunkItems(printable, BATCH_PRINT_CHUNK_SIZE);
+    let printed = 0;
+    let failed = 0;
+
+    // Kick off the first fetch immediately.
+    let nextDetailsPromise = chunks.length > 0 ? fetchChunkDetails(chunks[0]) : null;
+
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+      const chunk = chunks[chunkIndex];
+      const from = chunkIndex * BATCH_PRINT_CHUNK_SIZE + 1;
+      const to = from + chunk.length - 1;
+      const hasNext = chunkIndex + 1 < chunks.length;
+
+      if (loadingBusy) setBatchBusy(loadingBusy);
+      setActionMessage(
+        printable.length === 1
+          ? "Loading receipt…"
+          : hasNext
+            ? `Loading receipts ${from}–${to} of ${printable.length} (prefetching next)…`
+            : `Loading receipts ${from}–${to} of ${printable.length}…`,
+      );
+
+      const details = await nextDetailsPromise;
+
+      // Prefetch the next chunk while this one prints.
+      nextDetailsPromise = hasNext ? fetchChunkDetails(chunks[chunkIndex + 1]) : null;
+
+      if (printingBusy) setBatchBusy(printingBusy);
+      setActionMessage(
+        printable.length === 1
+          ? "Printing in background…"
+          : hasNext
+            ? `Printing ${from}–${to} of ${printable.length} (loading next batch)…`
+            : `Printing ${from}–${to} of ${printable.length}…`,
+      );
+
+      for (let i = 0; i < chunk.length; i += 1) {
+        const detail = details[i] ?? chunk[i];
+        if (!detail?.id || !saleHasPrintableItems(detail)) {
+          failed += 1;
+          continue;
+        }
+        const ok = await printOrder(detail, documentType, { batch: true });
+        if (ok) printed += 1;
+        else failed += 1;
+        // Yield so React can paint and the UI stays responsive.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    return { printed, failed };
   }
 
   function patchSaleInState(updated) {
@@ -912,7 +1040,7 @@ export default function SalesOrdersListScreen({
       return;
     }
 
-    setBatchBusy("print");
+    setBatchBusy("print-load");
     setActionMessage(null);
     try {
       let documentType = defaultOrderListPrintDocumentType(
@@ -924,13 +1052,10 @@ export default function SalesOrdersListScreen({
         if (!documentType) return;
       }
 
-      let printed = 0;
-      let failed = 0;
-      for (const sale of printable) {
-        const ok = await printOrder(sale, documentType);
-        if (ok) printed += 1;
-        else failed += 1;
-      }
+      const { printed, failed } = await printOrdersInChunks(printable, documentType, {
+        loadingBusy: "print-load",
+        printingBusy: "print",
+      });
 
       const parts = [`Printed ${printed} of ${printable.length}`];
       if (skipped > 0) parts.push(`${skipped} skipped`);
@@ -990,18 +1115,15 @@ export default function SalesOrdersListScreen({
       }
 
       const formatLabel = documentType === "invoice" ? "A4 invoice" : "thermal receipt";
-      setBatchBusy("print-all");
+      setBatchBusy("print-all-load");
       setActionMessage(
-        `Printing ${printable.length} ${formatLabel}${printable.length === 1 ? "" : "s"}…`,
+        `Loading ${printable.length} ${formatLabel}${printable.length === 1 ? "" : "s"}…`,
       );
 
-      let printed = 0;
-      let failed = 0;
-      for (const sale of printable) {
-        const success = await printOrder(sale, documentType);
-        if (success) printed += 1;
-        else failed += 1;
-      }
+      const { printed, failed } = await printOrdersInChunks(printable, documentType, {
+        loadingBusy: "print-all-load",
+        printingBusy: "print-all",
+      });
 
       const parts = [
         `Printed ${printed} of ${printable.length} (${formatLabel}${printable.length === 1 ? "" : "s"})`,
@@ -1130,7 +1252,11 @@ export default function SalesOrdersListScreen({
   const hasExternalPos = useMemo(() => isExternalPosEnabled(capabilities), [capabilities]);
   const orderPrintAriaLabel = useMemo(() => orderListPrintAriaLabel(capabilities), [capabilities]);
 
-  const showTransitionOverlay = Boolean(transitionBusyId) || fulfillment.busy || Boolean(batchBusy);
+  const printJobBusy = isPrintBatchBusy(batchBusy);
+  const blockingBatchBusy = Boolean(batchBusy) && !printJobBusy;
+  // Print jobs are background — keep the table usable. Cancel/merge still block briefly.
+  const showTransitionOverlay =
+    Boolean(transitionBusyId) || fulfillment.busy || blockingBatchBusy;
 
   const contextMenuItems = useMemo(() => {
     if (!contextMenu?.sale) return [];
@@ -1405,8 +1531,8 @@ export default function SalesOrdersListScreen({
                   className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
                   aria-hidden
                 />
-                {batchBusy === "print-all-load"
-                  ? "Loading orders to print…"
+                {batchBusy === "print-all-load" || batchBusy === "print-load"
+                  ? "Loading receipts…"
                   : batchBusy === "print-all"
                     ? "Printing all orders…"
                     : batchBusy === "print"
@@ -1587,7 +1713,7 @@ export default function SalesOrdersListScreen({
                                 : null
                             }
                             restoreLabel={restoreLabel}
-                            actionBusy={transitionBusyId === sale.id || Boolean(batchBusy)}
+                            actionBusy={transitionBusyId === sale.id || blockingBatchBusy}
                             showBranchColumn={showBranchColumn}
                             branchName={saleBranchLabel(sale, branchById)}
                             showRouteColumn={showRouteColumn}
@@ -1715,9 +1841,11 @@ export default function SalesOrdersListScreen({
           onClick={() => void printSelectedOrders()}
           className="theme-primary-btn rounded-lg px-4 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {batchBusy === "print"
-            ? "Printing…"
-            : `Print${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+          {batchBusy === "print-load"
+            ? "Loading…"
+            : batchBusy === "print"
+              ? "Printing…"
+              : `Print${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
         </button>
         {!routeOrdersOnly && hasPermission(P.sales.orders.edit) ? (
           <button

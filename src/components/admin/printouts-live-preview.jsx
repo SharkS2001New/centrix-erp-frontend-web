@@ -135,7 +135,9 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
 
   if (previewType === "invoice") {
     const showBranchOnReceipt = Boolean(sales.show_branch_on_receipt);
-    const paymentInstructions = receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
+    const paymentInstructions = receiptPaymentDetailsToPayload(
+      sales.invoice_payment_details ?? sales.pos_receipt_payment_details,
+    );
     return buildSaleInvoiceHtml(sale, {
       seller,
       branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,
@@ -157,7 +159,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
 
   if (previewType === "proforma") {
     const showBranchOnReceipt = Boolean(sales.show_branch_on_receipt);
-    const paymentInstructions = receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
+    const paymentInstructions = receiptPaymentDetailsToPayload(sales.proforma_payment_details);
     return buildSaleInvoiceHtml(sale, {
       seller,
       branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,

@@ -363,31 +363,24 @@ function PaymentFieldsTab({
   hasCustomers,
   mpesaPlatformEnabled,
 }) {
+  const creditSalesRelevant = Boolean(hasCustomers);
+  const showCollectSmallPayments =
+    creditSalesRelevant || Boolean(salesForm.enable_credit_payment) || !hasPosSales;
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
-        Used when recording payment on a saved order (Sales → Orders → Make payment).
+        Used when recording payment on a saved order (Sales → Orders → Collect payment).
         {hasPosSales ? " External POS checkout also uses these payment method fields." : ""}
       </p>
-      {!salesForm.enable_credit_payment || !hasPosSales ? (
+      {showCollectSmallPayments ? (
         <Toggle
-          label="Allow split payment on saved orders"
-          description="Payment can be full or partial and split across cash, M-Pesa, banks, and other methods. Turn off to require full payment in one go. Cannot be used with POS credit customer checkout."
+          label="Allow collecting small payments"
+          description="On Collect payment (and Make payment), staff can record less than the full balance — e.g. KES 500 on a KES 5,000 credit sale — and leave the rest outstanding. Turn off to require settling the full balance in one go. Works with save-then-pay and with direct checkout credit sales."
           checked={salesForm.allow_credit_pay_now}
-          onChange={(v) =>
-            setSalesForm((f) => ({
-              ...f,
-              allow_credit_pay_now: v,
-              enable_credit_payment: v ? false : f.enable_credit_payment,
-            }))
-          }
+          onChange={(v) => setSalesForm((f) => ({ ...f, allow_credit_pay_now: v }))}
         />
-      ) : (
-        <p className="text-xs text-amber-700">
-          Split payment on saved orders is unavailable while POS credit customer checkout is enabled.
-          Disable credit customer on the Tills & checkout tab to use split payment here.
-        </p>
-      )}
+      ) : null}
       <Toggle
         label="Payment date field"
         description="When off, payment uses today's date automatically."
@@ -547,24 +540,20 @@ function TillsCheckoutSettingsTab({
                 <p className="theme-subtext text-xs">
                   Enable the Customers module to show a credit customer search field at POS checkout.
                 </p>
-              ) : !salesForm.allow_credit_pay_now ? (
+              ) : (
                 <Toggle
                   label="Credit customer field at POS checkout"
-                  description="Shows a searchable credit customer field at checkout. Unpaid balance posts to the customer's account. Cash, M-Pesa, and bank lines must be entered in full — not split-partial mode. Cannot be used with split payment on saved orders."
+                  description="Shows a searchable credit customer field at checkout. Unpaid balance posts to the customer's account (inline credit sale). Use Recording payments → Allow collecting small payments so debtors can settle outstanding balances in installments on Collect payment."
                   checked={salesForm.enable_credit_payment}
                   onChange={(v) =>
                     setSalesForm((f) => ({
                       ...f,
                       enable_credit_payment: v,
-                      allow_credit_pay_now: v ? false : f.allow_credit_pay_now,
+                      // Credit debtors almost always need installment collect — keep it on when enabling.
+                      allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
                     }))
                   }
                 />
-              ) : (
-                <p className="text-xs text-amber-700">
-                  Credit customer at POS checkout is unavailable while split payment on saved orders is enabled.
-                  Turn off split payment on the Recording payments tab to configure POS credit checkout.
-                </p>
               )}
             </>
           )}

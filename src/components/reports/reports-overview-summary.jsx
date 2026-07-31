@@ -6,6 +6,7 @@ import { StatCard } from "@/components/catalog/catalog-shared";
 import { formatHrKesFull } from "@/components/hr/hr-shared";
 import { DashboardKpiGrid, DashboardSection } from "@/components/dashboard/dashboard-shared";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
+import { AiDashboardInsightCards } from "@/components/ai/ai-dashboard-insight-cards";
 import { WORKSPACE_DASHBOARD_SCOPES } from "@/lib/workspace-reports";
 
 export function ReportsOverviewSummary({
@@ -37,6 +38,8 @@ export function ReportsOverviewSummary({
       {showSalesDashboard ? (
         <ReportsDashboardSection workspaceScope={workspaceId} onError={onError} compact />
       ) : null}
+
+      <AiDashboardInsightCards className="mt-6" />
 
       {workspaceId === "hr" ? <HrReportsMetrics onError={onError} /> : null}
     </DashboardSection>

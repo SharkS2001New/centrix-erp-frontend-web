@@ -14,6 +14,7 @@ import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { buildReportExportRequest, queueReportExport } from "@/lib/report-export-api";
 import { EXPORT_EMPTY_ROWS_MESSAGE } from "@/lib/background-task-errors";
 import { canExportPdf, PDF_EXPORT_MAX_ROWS } from "@/lib/report-export-limits";
+import { AiAnalyzeButton } from "@/components/ai/ai-insight-panel";
 
 /**
  * @param {object} props
@@ -31,6 +32,7 @@ import { canExportPdf, PDF_EXPORT_MAX_ROWS } from "@/lib/report-export-limits";
  * @param {object} [props.footerRow]
  * @param {number} [props.estimatedRowCount]
  * @param {boolean} [props.disabled]
+ * @param {(() => void)|null} [props.onAnalyzeWithAi]
  */
 export function ReportExportToolbar({
   filename,
@@ -43,6 +45,7 @@ export function ReportExportToolbar({
   footerRow = null,
   estimatedRowCount = null,
   disabled = false,
+  onAnalyzeWithAi = null,
 }) {
   const { organization, generalSettings } = useAuth();
   const { runBackgroundTask, busy: backgroundBusy } = useBackgroundTasks();
@@ -129,6 +132,9 @@ export function ReportExportToolbar({
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex flex-wrap items-center gap-2">
+        {onAnalyzeWithAi ? (
+          <AiAnalyzeButton disabled={disabled || busy || backgroundBusy} onClick={onAnalyzeWithAi} />
+        ) : null}
         <button
           type="button"
           disabled={blocked || !pdfAllowed}

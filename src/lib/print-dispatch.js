@@ -1,4 +1,9 @@
-import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
+import {
+  openPrintWindow,
+  fillPrintWindow,
+  openBlankPrintWindow,
+  printWindowFeatures,
+} from "@/lib/open-print-window";
 import {
   injectPrintDocumentBaseline,
   prepareThermalPrintHtml,
@@ -23,6 +28,31 @@ function preparePrintHtml(html, jobType = "receipt") {
     return prepareThermalPrintHtml(html);
   }
   return injectPrintDocumentBaseline(html);
+}
+
+/**
+ * Thermal receipts use Centrix Print Agent when configured.
+ * A4 invoice / proforma still use the browser print dialog.
+ */
+export function shouldUsePrintAgentForDocument(documentType = "receipt") {
+  return isPrintAgentEnabled() && documentType === "receipt";
+}
+
+/**
+ * Pre-open a blank browser print window only when needed (popup-blocker safe).
+ * Returns null when Centrix Print Agent will handle the thermal receipt — passing a
+ * printWindow into dispatchPrintJob forces browser printing and skips the agent.
+ */
+export function openSaleOrderPrintWindow(documentType) {
+  if (documentType === "both" || documentType == null) return null;
+  if (shouldUsePrintAgentForDocument(documentType)) return null;
+  return openBlankPrintWindow(printWindowFeatures(documentType));
+}
+
+/** True when a missing printWindow means the browser blocked the popup (not agent path). */
+export function isSaleOrderBrowserPrintWindowRequired(documentType) {
+  if (documentType === "both" || documentType == null) return false;
+  return !shouldUsePrintAgentForDocument(documentType);
 }
 
 async function tryAgentPrint({ preparedHtml, copies, jobType, config }) {

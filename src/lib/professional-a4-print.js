@@ -204,14 +204,19 @@ export function professionalA4Styles(
     margin: 6px 0 12px;
   }
 
+  /* Do not keep the whole closing block on one page — that pushes payment/terms
+     onto a blank second page when the line table is short. Only avoid splitting
+     small atomic chunks. */
   .closing {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-inside: auto;
+    page-break-inside: auto;
   }
   .totals {
     display: flex;
     justify-content: flex-end;
     margin: 4px 0 12px;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .totals-box {
     min-width: 240px;
@@ -253,6 +258,8 @@ export function professionalA4Styles(
     padding: 8px 10px;
     border: 1px solid #222;
     font-size: ${px(10)};
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .pay-box .pay-title,
   .pay-instructions .pay-title {
@@ -261,6 +268,9 @@ export function professionalA4Styles(
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
+  .pay-instructions .pay-block { margin: 0 0 8px; }
+  .pay-instructions .pay-block:last-of-type { margin-bottom: 0; }
+  .pay-instructions .pay-block-title { font-weight: 700; margin: 0 0 4px; }
   .pay-box .pay-line,
   .pay-instructions .pay-line {
     display: flex;
@@ -280,6 +290,8 @@ export function professionalA4Styles(
     text-align: right;
     font-size: ${px(11)};
     font-style: italic;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .signatures p { margin: 0 0 10px; }
   .signatures .sig-label { font-weight: 700; font-style: italic; }
@@ -299,6 +311,8 @@ export function professionalA4Styles(
     margin: 12px 0 0;
     font-size: ${px(11)};
     max-width: 420px;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .sig-row {
     display: flex;

@@ -22,10 +22,12 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { getOrderDocumentType } from "@/lib/sales-settings";
 import {
   disposePrintWindow,
-  openBlankPrintWindow,
-  printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
+import {
+  isSaleOrderBrowserPrintWindowRequired,
+  openSaleOrderPrintWindow,
+} from "@/lib/print-dispatch";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -150,11 +152,8 @@ function LegacyOrdersContent() {
     if (!row?.id || printingId) return;
 
     const cachedType = documentType ?? getOrderDocumentType(capabilities?.module_settings);
-    const printWindow =
-      cachedType !== "both"
-        ? openBlankPrintWindow(printWindowFeatures(cachedType))
-        : null;
-    if (cachedType !== "both" && !printWindow) {
+    const printWindow = openSaleOrderPrintWindow(cachedType);
+    if (isSaleOrderBrowserPrintWindowRequired(cachedType) && !printWindow) {
       notifyError(PRINT_BLOCKED_MESSAGE);
       return;
     }

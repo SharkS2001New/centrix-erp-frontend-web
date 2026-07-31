@@ -28,6 +28,11 @@ import {
   receiptPaymentDetailsToPayload,
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
 } from "@/lib/receipt-payment-details";
+import {
+  documentPrintPhonesFormFields,
+  documentPrintPhonesPayloadFields,
+  emptyPrintPhones,
+} from "@/lib/document-print-phones";
 import { isPlatformMobileOrdersEnabled } from "@/lib/platform-org-features";
 import { salesOrganizationFormFromApi } from "@/lib/sales-settings";
 
@@ -52,10 +57,17 @@ export const EMPTY_PRINTOUTS_FORM = {
   use_same_payment_details_for_routes: true,
   pos_receipt_payment_details: {
     title: "Payment details",
-    lines: [],
+    blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+    lines: [{ label: "", value: "" }],
     note: "",
   },
   route_receipt_payment_details: {
+    title: "Payment details",
+    blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+    lines: [{ label: "", value: "" }],
+    note: "",
+  },
+  invoice_payment_details: {
     title: "Payment details",
     lines: [],
     note: "",
@@ -68,6 +80,12 @@ export const EMPTY_PRINTOUTS_FORM = {
   show_print_proforma_invoice_option: true,
   proforma_document_template: "default",
   show_proforma_payment_details: true,
+  proforma_payment_details: {
+    title: "Payment details",
+    blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+    lines: [{ label: "", value: "" }],
+    note: "",
+  },
   show_proforma_terms: true,
   proforma_print_terms: PROFORMA_PRINT_DEFAULTS.proforma_print_terms,
   show_proforma_vat_note: true,
@@ -81,6 +99,12 @@ export const EMPTY_PRINTOUTS_FORM = {
   show_proforma_valid_until: true,
   show_proforma_payment_terms: true,
   show_proforma_totals_breakdown: true,
+  use_same_print_phones_for_proforma: true,
+  proforma_print_phones: emptyPrintPhones(),
+  use_same_print_phones_for_lpo: true,
+  lpo_print_phones: emptyPrintPhones(),
+  use_same_print_phones_for_other: true,
+  other_print_phones: emptyPrintPhones(),
   lpo_document_template: "default",
   lpo_print_delivery_notes: "",
   lpo_print_kebs_warning: "",
@@ -216,6 +240,7 @@ export function printoutsGeneralFormFromApi(res) {
     ...printFontFormFromGeneral(merged),
     ...documentLogoFormFromGeneral(merged),
     ...printFooterFormFromGeneral(merged),
+    ...documentPrintPhonesFormFields(merged, { prefix: "other" }),
   };
 }
 
@@ -262,6 +287,7 @@ export function printoutsGeneralPayloadFromForm(form) {
     ...printFontPayloadFromForm(form),
     ...documentLogoPayloadFromForm(form),
     ...printFooterPayloadFromForm(form),
+    ...documentPrintPhonesPayloadFields(form, { prefix: "other" }),
   };
 }
 

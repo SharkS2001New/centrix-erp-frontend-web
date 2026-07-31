@@ -3,8 +3,17 @@ import { stringifyPrintField } from "@/lib/sale-document-print-shared";
 
 export { sampleReceiptPreviewSale } from "@/lib/print-preview-samples";
 
+export const MAX_PAYMENT_DETAIL_BLOCKS = 6;
+export const MAX_PAYMENT_LINES_PER_BLOCK = 10;
+
+export const EMPTY_PAYMENT_DETAIL_BLOCK = {
+  title: "",
+  lines: [{ label: "", value: "" }],
+};
+
 export const EMPTY_RECEIPT_PAYMENT_DETAILS = {
   title: "Payment details",
+  blocks: [{ ...EMPTY_PAYMENT_DETAIL_BLOCK, lines: [{ label: "", value: "" }] }],
   lines: [{ label: "", value: "" }],
   note: "",
 };
@@ -15,64 +24,135 @@ export const DEFAULT_POS_RECEIPT_PAYMENT_LINES = [
   { label: "Till number", value: "" },
 ];
 
-export function normalizeReceiptPaymentDetails(details) {
-  if (!details || typeof details !== "object") {
-    return { ...EMPTY_RECEIPT_PAYMENT_DETAILS, lines: [{ label: "", value: "" }] };
+function normalizeLine(line) {
+  if (typeof line === "string") {
+    const text = line.trim();
+    if (!text) return { label: "", value: "" };
+    const split = text.match(/^([^:]+):\s*(.*)$/);
+    if (split) {
+      return { label: split[1].trim(), value: split[2].trim() };
+    }
+    return { label: "", value: text };
+  }
+  if (Array.isArray(line)) {
+    return {
+      label: stringifyPrintField(line[0]),
+      value: stringifyPrintField(line[1]),
+    };
+  }
+  return {
+    label: stringifyPrintField(line?.label),
+    value: stringifyPrintField(line?.value),
+  };
+}
+
+function normalizeLines(rawLines, { keepEmptyLines = false, maxLines = MAX_PAYMENT_LINES_PER_BLOCK } = {}) {
+  const source = Array.isArray(rawLines) ? rawLines : [];
+  let lines = source.map(normalizeLine);
+  if (!keepEmptyLines) {
+    lines = lines.filter((line) => line.label || line.value);
+  }
+  lines = lines.slice(0, maxLines);
+  if (!lines.length) {
+    lines = [{ label: "", value: "" }];
+  }
+  return lines;
+}
+
+function normalizeBlock(block, options = {}) {
+  if (!block || typeof block !== "object") {
+    return {
+      title: "",
+      lines: normalizeLines([], options),
+    };
+  }
+  return {
+    title: stringifyPrintField(block.title),
+    lines: normalizeLines(block.lines, options),
+  };
+}
+
+function blocksFromDetails(details, options = {}) {
+  if (Array.isArray(details?.blocks) && details.blocks.length > 0) {
+    return details.blocks
+      .slice(0, MAX_PAYMENT_DETAIL_BLOCKS)
+      .map((block) => normalizeBlock(block, options));
   }
 
-  const rawLines = Array.isArray(details.lines) ? details.lines : [];
-  const lines = rawLines
-    .map((line) => {
-      if (typeof line === "string") {
-        const text = line.trim();
-        if (!text) return { label: "", value: "" };
-        const split = text.match(/^([^:]+):\s*(.*)$/);
-        if (split) {
-          return { label: split[1].trim(), value: split[2].trim() };
-        }
-        return { label: "", value: text };
-      }
-      if (Array.isArray(line)) {
-        return {
-          label: stringifyPrintField(line[0]),
-          value: stringifyPrintField(line[1]),
-        };
-      }
-      return {
-        label: stringifyPrintField(line?.label),
-        value: stringifyPrintField(line?.value),
-      };
-    })
-    .filter((line) => line.label || line.value)
-    .slice(0, 12);
+  // Legacy single-block shape: { title, lines, note }
+  const legacyLines = Array.isArray(details?.lines) ? details.lines : [];
+  return [
+    normalizeBlock(
+      {
+        title: "",
+        lines: legacyLines,
+      },
+      options,
+    ),
+  ];
+}
+
+/**
+ * @param {object|null|undefined} details
+ * @param {{ keepEmptyLines?: boolean }} [options]
+ */
+export function normalizeReceiptPaymentDetails(details, options = {}) {
+  const { keepEmptyLines = false } = options;
+
+  if (!details || typeof details !== "object") {
+    return {
+      ...EMPTY_RECEIPT_PAYMENT_DETAILS,
+      blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+      lines: [{ label: "", value: "" }],
+    };
+  }
+
+  const blocks = blocksFromDetails(details, { keepEmptyLines });
+  const flatLines = blocks.flatMap((block) => block.lines);
 
   return {
     title: stringifyPrintField(details.title) || "Payment details",
-    lines: lines.length ? lines : [{ label: "", value: "" }],
+    blocks,
+    // Keep top-level lines for older callers / form fields that still read .lines
+    lines: flatLines.length ? flatLines : [{ label: "", value: "" }],
     note: stringifyPrintField(details.note),
   };
 }
 
 export function receiptPaymentDetailsFromApi(details) {
-  return normalizeReceiptPaymentDetails(details ?? EMPTY_RECEIPT_PAYMENT_DETAILS);
+  return normalizeReceiptPaymentDetails(details ?? EMPTY_RECEIPT_PAYMENT_DETAILS, {
+    keepEmptyLines: true,
+  });
 }
 
 export function receiptPaymentDetailsToPayload(details) {
-  const normalized = normalizeReceiptPaymentDetails(details);
-  const lines = normalized.lines.filter((line) => line.label || line.value);
-  if (!lines.length && !normalized.note.trim()) {
+  const normalized = normalizeReceiptPaymentDetails(details, { keepEmptyLines: false });
+  const blocks = normalized.blocks
+    .map((block) => ({
+      title: block.title,
+      lines: block.lines.filter((line) => line.label || line.value),
+    }))
+    .filter((block) => block.lines.length > 0 || Boolean(block.title));
+
+  if (!blocks.length && !normalized.note.trim()) {
     return null;
   }
+
+  const lines = blocks.flatMap((block) => block.lines);
+
   return {
     title: normalized.title,
+    blocks: blocks.length
+      ? blocks
+      : [{ title: "", lines: [] }],
     lines,
     note: normalized.note,
   };
 }
 
 export function hasReceiptPaymentDetailsContent(details) {
-  const normalized = normalizeReceiptPaymentDetails(details);
-  return normalized.lines.some((line) => line.label || line.value) || Boolean(normalized.note);
+  const payload = receiptPaymentDetailsToPayload(details);
+  return Boolean(payload?.lines?.length || payload?.note);
 }
 
 /**
@@ -82,19 +162,34 @@ export function hasReceiptPaymentDetailsContent(details) {
  * @param {object|null} options.route
  * @param {object|null} options.sale
  * @param {object|null} options.overrideDetails - admin preview / unsaved form
+ * @param {"receipt"|"invoice"|"proforma"} [options.documentType]
  */
 export function resolveReceiptPaymentDetails({
   moduleSettings = null,
   route = null,
   sale = null,
   overrideDetails = null,
+  documentType = "receipt",
 } = {}) {
   if (overrideDetails) {
-    const payload = receiptPaymentDetailsToPayload(overrideDetails);
-    return payload;
+    return receiptPaymentDetailsToPayload(overrideDetails);
   }
 
   const sales = moduleSettings?.sales ?? moduleSettings ?? {};
+
+  // Each document type has its own bank / paybill block.
+  if (documentType === "proforma") {
+    return receiptPaymentDetailsToPayload(sales.proforma_payment_details);
+  }
+  if (documentType === "invoice") {
+    const rawSales = moduleSettings?.sales ?? {};
+    // Prefer dedicated invoice block when saved; otherwise keep legacy POS details.
+    if (Object.prototype.hasOwnProperty.call(rawSales, "invoice_payment_details")) {
+      return receiptPaymentDetailsToPayload(rawSales.invoice_payment_details);
+    }
+    return receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
+  }
+
   const routeContext = sale ? isRouteOrderSale(sale) || sale.channel === "mobile" : false;
 
   if (routeContext && route?.receipt_payment_details) {
@@ -130,27 +225,40 @@ export function buildReceiptPaymentDetailsHtml(details, { layout = "thermal" } =
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
-  const lineRows = (payload.lines ?? [])
-    .map(
-      (line) =>
-        `<div class="pay-line"><span class="pay-label">${escapeHtml(line.label)}${line.label ? ":" : ""}</span> <span class="pay-value">${escapeHtml(line.value || "—")}</span></div>`,
-    )
+  const blocks =
+    Array.isArray(payload.blocks) && payload.blocks.length > 0
+      ? payload.blocks
+      : [{ title: "", lines: payload.lines ?? [] }];
+
+  const blocksHtml = blocks
+    .map((block) => {
+      const blockTitle = block.title
+        ? `<div class="pay-block-title">${escapeHtml(block.title)}</div>`
+        : "";
+      const lineRows = (block.lines ?? [])
+        .map(
+          (line) =>
+            `<div class="pay-line"><span class="pay-label">${escapeHtml(line.label)}${
+              line.label ? ":" : ""
+            }</span> <span class="pay-value">${escapeHtml(line.value || "—")}</span></div>`,
+        )
+        .join("");
+      return `<div class="pay-block">${blockTitle}${lineRows}</div>`;
+    })
     .join("");
 
-  const note = payload.note
-    ? `<div class="pay-note">${escapeHtml(payload.note)}</div>`
-    : "";
+  const note = payload.note ? `<div class="pay-note">${escapeHtml(payload.note)}</div>` : "";
 
   if (layout === "a4") {
     return `<div class="pay-instructions">
       <p class="pay-title">${escapeHtml(payload.title || "Payment details")}</p>
-      ${lineRows}
+      ${blocksHtml}
       ${note}
     </div>`;
   }
 
   return `<div class="pay-instructions">
     <div class="payment-title">${escapeHtml(payload.title || "Payment details")}</div>
-    <div class="pay-lines">${lineRows}${note}</div>
+    <div class="pay-lines">${blocksHtml}${note}</div>
   </div>`;
 }

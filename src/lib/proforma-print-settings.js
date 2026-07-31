@@ -1,4 +1,14 @@
 import { linesFromMultilineText } from "@/lib/invoice-print-settings";
+import {
+  DEFAULT_POS_RECEIPT_PAYMENT_LINES,
+  receiptPaymentDetailsFromApi,
+  receiptPaymentDetailsToPayload,
+} from "@/lib/receipt-payment-details";
+import {
+  documentPrintPhonesFormFields,
+  documentPrintPhonesPayloadFields,
+  emptyPrintPhones,
+} from "@/lib/document-print-phones";
 
 export const DEFAULT_PROFORMA_BANNER =
   "This is a proforma invoice for payment purposes — not a tax invoice.";
@@ -23,6 +33,14 @@ export const PROFORMA_PRINT_DEFAULTS = {
   proforma_document_template: "default",
   proforma_valid_days: 7,
   show_proforma_payment_details: true,
+  /** Dedicated bank / paybill block for proforma only — not shared with thermal receipts. */
+  proforma_payment_details: {
+    title: "Payment details",
+    lines: [],
+    note: "",
+  },
+  use_same_print_phones_for_proforma: true,
+  proforma_print_phones: emptyPrintPhones(),
   show_proforma_terms: true,
   proforma_print_terms: DEFAULT_PROFORMA_TERMS.join("\n"),
   show_proforma_vat_note: true,
@@ -55,6 +73,14 @@ export function proformaPrintFormFromApi(sales = {}) {
         PROFORMA_PRINT_DEFAULTS.proforma_valid_days,
     ),
     show_proforma_payment_details: merged.show_proforma_payment_details !== false,
+    proforma_payment_details: receiptPaymentDetailsFromApi(
+      merged.proforma_payment_details ?? {
+        title: "Payment details",
+        lines: DEFAULT_POS_RECEIPT_PAYMENT_LINES.map((line) => ({ ...line })),
+        note: "",
+      },
+    ),
+    ...documentPrintPhonesFormFields(merged, { prefix: "proforma" }),
     show_proforma_terms: merged.show_proforma_terms !== false,
     proforma_print_terms: terms,
     show_proforma_vat_note: merged.show_proforma_vat_note !== false,
@@ -81,6 +107,14 @@ export function proformaPrintPayloadFromForm(form) {
     proforma_document_template: String(form.proforma_document_template ?? "default"),
     proforma_valid_days: Number(form.proforma_valid_days) || 0,
     show_proforma_payment_details: Boolean(form.show_proforma_payment_details),
+    proforma_payment_details: receiptPaymentDetailsToPayload(
+      form.proforma_payment_details ?? {
+        title: "Payment details",
+        lines: [],
+        note: "",
+      },
+    ),
+    ...documentPrintPhonesPayloadFields(form, { prefix: "proforma" }),
     show_proforma_terms: Boolean(form.show_proforma_terms),
     proforma_print_terms: String(form.proforma_print_terms ?? ""),
     show_proforma_vat_note: Boolean(form.show_proforma_vat_note),

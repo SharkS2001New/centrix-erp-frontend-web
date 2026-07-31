@@ -14,6 +14,7 @@ import {
   reportWatermarkCss,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
+import { resolveDocumentPrintPhonesLine } from "@/lib/document-print-phones";
 
 export function escapeHtml(value) {
   return String(value ?? "")
@@ -53,8 +54,12 @@ export function resolveDocumentBranding({ organization = null, generalSettings =
   return resolveReportBranding({ organization, generalSettings });
 }
 
-export function buildOrgContactLines(organization) {
-  const phones = [organization?.primary_tel, organization?.secondary_tel].filter(Boolean).join(" / ");
+export function buildOrgContactLines(organization, { generalSettings = null } = {}) {
+  const phones = resolveDocumentPrintPhonesLine({
+    documentType: "other",
+    organization,
+    generalSettings,
+  });
   return {
     address: organization?.org_address ?? "",
     email: organization?.org_email ?? "",
@@ -151,7 +156,7 @@ export function buildBrandedA4DocumentHtml({
   pageLabel = "Page 1 of 1",
 }) {
   const resolvedBranding = branding ?? resolveDocumentBranding({ organization, generalSettings });
-  const orgContact = buildOrgContactLines(organization);
+  const orgContact = buildOrgContactLines(organization, { generalSettings });
   const orgHeaderHtml = resolvedBranding.showHeader
     ? buildReportOrgHeaderHtml(resolvedBranding)
     : orgContact.address || resolvedBranding.organizationName

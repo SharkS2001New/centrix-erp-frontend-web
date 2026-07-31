@@ -20,10 +20,12 @@ import {
 } from "@/lib/legacy-archive-api";
 import {
   disposePrintWindow,
-  openBlankPrintWindow,
-  printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
+import {
+  isSaleOrderBrowserPrintWindowRequired,
+  openSaleOrderPrintWindow,
+} from "@/lib/print-dispatch";
 import { notifyError } from "@/lib/notify";
 import { getOrderDocumentType } from "@/lib/sales-settings";
 
@@ -129,9 +131,8 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
     if (printing) return;
 
     const cachedType = documentType ?? getOrderDocumentType(capabilities?.module_settings);
-    const printWindow =
-      cachedType !== "both" ? openBlankPrintWindow(printWindowFeatures(cachedType)) : null;
-    if (cachedType !== "both" && !printWindow) {
+    const printWindow = openSaleOrderPrintWindow(cachedType);
+    if (isSaleOrderBrowserPrintWindowRequired(cachedType) && !printWindow) {
       notifyError(PRINT_BLOCKED_MESSAGE);
       return;
     }
