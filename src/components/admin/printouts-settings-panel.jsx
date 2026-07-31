@@ -385,7 +385,7 @@ function ThermalReceiptsTab({ form, setForm, hasMobileSales }) {
         form={form}
         setForm={setForm}
         variantKey="receipt"
-        description="Thermal receipts usually use a small centered logo."
+        description="Optional on narrow thermal printers. Off by default — turn on only if you want the company logo on receipts."
       />
       <Toggle
         label="Show payment instructions on thermal receipts"

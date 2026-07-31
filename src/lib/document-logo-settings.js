@@ -37,7 +37,7 @@ export const DOCUMENT_LOGO_THERMAL_SIZE_PX = {
 export const DOCUMENT_LOGO_VARIANTS = {
   receipt: {
     label: "Thermal receipt",
-    defaultShow: true,
+    defaultShow: false,
     defaultPosition: "center",
     defaultSize: "small",
     positions: ["center", "left", "right"],

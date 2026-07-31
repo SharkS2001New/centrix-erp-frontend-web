@@ -10,7 +10,7 @@ import { parseServerDurationMs } from "./latency-split";
 import { notifyError as showErrorToast } from "./notify";
 import { handleCacheInvalidation } from "./cache-invalidation";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
-import { compressImageFileIfNeeded } from "./image-compress";
+import { compressImageFileIfNeeded, compressPresetForUpload } from "./image-compress";
 import { humanizeKraDeviceErrorMessage } from "./kra-device-errors";
 
 const baseUrl = () => apiV1BaseUrl();
@@ -566,9 +566,14 @@ async function performApiRequest(path, url, options = {}) {
   }
 }
 
-/** Multipart upload (e.g. customer shop image). */
-export async function apiUpload(path, file, fieldName = "image") {
-  const uploadFile = await compressImageFileIfNeeded(file);
+/** Multipart upload (e.g. customer shop image, org logo). */
+export async function apiUpload(path, file, fieldName = "image", compressOptions = {}) {
+  const preset =
+    compressOptions.preset ?? compressPresetForUpload(path, fieldName);
+  const uploadFile = await compressImageFileIfNeeded(file, {
+    preset,
+    ...compressOptions,
+  });
   const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
   const token = getToken();
   const formData = new FormData();
@@ -602,7 +607,7 @@ export async function apiUpload(path, file, fieldName = "image") {
 }
 
 export async function uploadCustomerShopImage(customerNum, file) {
-  return apiUpload(`/customers/${customerNum}/shop-image`, file);
+  return apiUpload(`/customers/${customerNum}/shop-image`, file, "image", { preset: "photo" });
 }
 
 export async function apiFetchBlob(path) {
@@ -638,12 +643,12 @@ export function lpoAttachmentFilePath(attachmentId) {
 }
 
 export async function uploadEmployeePhoto(employeeId, file) {
-  return apiUpload(`/employees/${employeeId}/photo`, file);
+  return apiUpload(`/employees/${employeeId}/photo`, file, "image", { preset: "photo" });
 }
 
 export async function uploadOrganizationLogo(organizationId, file, options = {}) {
   const path = options.uploadPath ?? `/organizations/${organizationId}/logo`;
-  return apiUpload(path, file);
+  return apiUpload(path, file, "image", { preset: "logo", ...options.compress });
 }
 
 /** Multipart upload of multiple files; returns a Blob (e.g. ZIP download).
@@ -654,7 +659,9 @@ export async function apiUploadFilesForBlob(path, files, fieldName = "files", ex
   const token = getToken();
   const formData = new FormData();
   for (const file of files) {
-    const uploadFile = await compressImageFileIfNeeded(file);
+    const uploadFile = await compressImageFileIfNeeded(file, {
+      preset: compressPresetForUpload(path, fieldName),
+    });
     formData.append(`${fieldName}[]`, uploadFile);
   }
   for (const [key, value] of Object.entries(extraFields)) {
@@ -739,10 +746,16 @@ export async function capturePodDelivery(saleId, payload) {
   if (payload.gps_lng != null) formData.append("gps_lng", String(payload.gps_lng));
   if (payload.lines?.length) formData.append("lines", JSON.stringify(payload.lines));
   if (payload.photo instanceof File) {
-    formData.append("photo", await compressImageFileIfNeeded(payload.photo));
+    formData.append(
+      "photo",
+      await compressImageFileIfNeeded(payload.photo, { preset: "photo" }),
+    );
   }
   if (payload.signature instanceof File) {
-    formData.append("signature", await compressImageFileIfNeeded(payload.signature));
+    formData.append(
+      "signature",
+      await compressImageFileIfNeeded(payload.signature, { preset: "document" }),
+    );
   }
 
   const headers = { Accept: "application/json" };
@@ -788,8 +801,9 @@ export async function apiUploadForm(path, fields, fileField = "file") {
   const formData = new FormData();
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined || value === null) continue;
-    if (key === fileField && value instanceof File) {
-      formData.append(key, await compressImageFileIfNeeded(value));
+    if (value instanceof File) {
+      const preset = compressPresetForUpload(path, key === fileField ? fileField : key);
+      formData.append(key, await compressImageFileIfNeeded(value, { preset }));
     } else {
       formData.append(key, String(value));
     }
@@ -832,7 +846,8 @@ export async function apiRequestMultipart(path, fields, options = {}) {
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined || value === null) continue;
     if (value instanceof File) {
-      formData.append(key, value);
+      const preset = compressPresetForUpload(path, key);
+      formData.append(key, await compressImageFileIfNeeded(value, { preset }));
     } else if (typeof value === "object") {
       formData.append(key, JSON.stringify(value));
     } else {

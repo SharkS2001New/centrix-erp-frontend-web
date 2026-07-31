@@ -37,12 +37,20 @@ export function DocumentLogoSettingsFields({
   const keys = documentLogoFormKeys(variantKey);
   if (!config) return null;
 
-  const show = form?.[keys.show] !== false;
-  const position = normalizeDocumentLogoPosition(
-    form?.[keys.position] ?? config.defaultPosition,
-    variantKey,
-  );
-  const size = normalizeDocumentLogoSize(form?.[keys.size] ?? config.defaultSize, variantKey);
+  const resolved = {
+    show:
+      form?.[keys.show] === undefined || form?.[keys.show] === null
+        ? config.defaultShow
+        : Boolean(form[keys.show]),
+    position: normalizeDocumentLogoPosition(
+      form?.[keys.position] ?? config.defaultPosition,
+      variantKey,
+    ),
+    size: normalizeDocumentLogoSize(form?.[keys.size] ?? config.defaultSize, variantKey),
+  };
+  const show = resolved.show;
+  const position = resolved.position;
+  const size = resolved.size;
   const positions = (config.positions ?? DOCUMENT_LOGO_POSITIONS.map((row) => row.id))
     .map((id) => DOCUMENT_LOGO_POSITIONS.find((row) => row.id === id))
     .filter(Boolean);

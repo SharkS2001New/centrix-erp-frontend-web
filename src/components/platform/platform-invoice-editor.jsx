@@ -29,6 +29,7 @@ import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-a
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
+import { compressImageFileIfNeeded } from "@/lib/image-compress";
 
 function Field({ label, children, className = "" }) {
   return (
@@ -57,11 +58,12 @@ function isEmptyPlatformInvoiceDraft(value) {
 }
 
 async function imageFileToDataUrl(file) {
+  const compressed = await compressImageFileIfNeeded(file, { preset: "logo" });
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.onerror = () => reject(new Error("Could not read image file."));
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(compressed);
   });
 }
 
