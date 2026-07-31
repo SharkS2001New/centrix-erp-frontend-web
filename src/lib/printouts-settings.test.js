@@ -9,7 +9,7 @@ describe("resolvePrintoutSections", () => {
       mobile_orders_enabled: false,
     });
     expect(sections.hasRoutePrintouts).toBe(false);
-    expect(sections.availableKinds).toEqual(["receipt", "invoice"]);
+    expect(sections.availableKinds).toEqual(["receipt", "invoice", "proforma"]);
   });
 
   it("adds route printouts when distribution is enabled", () => {
@@ -34,6 +34,7 @@ describe("resolvePrintoutSections", () => {
     expect(sections.availableKinds).toEqual([
       "receipt",
       "invoice",
+      "proforma",
       "loading_sheet",
       "picking_list",
       "trip_chart",
