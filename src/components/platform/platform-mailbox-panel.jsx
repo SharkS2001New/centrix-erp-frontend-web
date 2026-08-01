@@ -949,7 +949,7 @@ export function PlatformMailboxPanel() {
             <option value="test">SMTP tests</option>
           </select>
         ) : null}
-        <div className="relative min-w-[12rem] flex-1 max-w-md">
+        <div className="relative w-72 flex-1 max-w-xl sm:w-96">
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="7" />

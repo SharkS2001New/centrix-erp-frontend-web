@@ -189,11 +189,12 @@ export function AdminAuditScreen() {
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Audit trail" }]} />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="min-w-[200px] flex-1">
+        <div className="w-72 flex-1 max-w-xl sm:w-96">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search module, record, action, IP…"
+            className="w-full min-w-0"
           />
         </div>
         <label className="block text-xs font-medium text-slate-500">

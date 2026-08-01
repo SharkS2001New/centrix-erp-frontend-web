@@ -134,7 +134,6 @@ export function AccountingCustomerInvoicesScreen() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search invoice #, customer…"
-          className="min-w-[220px]"
         />
         <FilterSelect
           label="Status"

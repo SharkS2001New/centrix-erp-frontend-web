@@ -912,7 +912,6 @@ export function HrAttendanceScreen() {
                 value={recordSearch}
                 onChange={(e) => setRecordSearch(e.target.value)}
                 placeholder="Name, code, or status"
-                className="min-w-[14rem]"
               />
             </Field>
           </div>

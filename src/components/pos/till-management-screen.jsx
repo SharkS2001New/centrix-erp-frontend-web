@@ -565,7 +565,7 @@ export function TillManagementScreen() {
                 value={tillSearch}
                 onChange={(e) => { setTillSearch(e.target.value); setTillPage(1); }}
                 placeholder="Search till code, name, or branch…"
-                className="min-w-[220px] flex-1 max-w-md"
+                className="min-w-0 w-full flex-1 max-w-xl"
               />
               <FilterSelect
                 value={tillBranchFilter}
@@ -687,7 +687,7 @@ export function TillManagementScreen() {
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
                 placeholder="Search session, till, cashier…"
-                className="max-w-md"
+                className="max-w-xl"
               />
               <FilterSelect
                 value={historyStatus}

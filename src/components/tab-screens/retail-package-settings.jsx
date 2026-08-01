@@ -427,7 +427,6 @@ export function RetailPackageSettingsScreen() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by product name or code…"
-            className="max-w-none min-w-[220px]"
           />
           <FilterSelect
             value={categoryFilter}

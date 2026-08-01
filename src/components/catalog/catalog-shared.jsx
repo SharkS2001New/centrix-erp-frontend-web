@@ -164,7 +164,8 @@ export function SearchInput({ value, onChange, placeholder, className = "" }) {
     <div
       className={[
         "relative",
-        fillsWidth ? "min-w-0 w-full" : "min-w-[12rem] shrink-0",
+        // Explicit width so flex toolbars (UOMs, categories, etc.) don't stay content-sized.
+        fillsWidth ? "min-w-0 w-full" : "w-72 shrink-0 sm:w-96",
         className,
       ]
         .filter(Boolean)

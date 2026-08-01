@@ -210,7 +210,7 @@ function DeductionTypeFormFields({ form, setForm, employees = [] }) {
                 value={empSearch}
                 onChange={(e) => setEmpSearch(e.target.value)}
                 placeholder="Search employees…"
-                className={`${inputClassName()} max-w-xs`}
+            className={`${inputClassName()} w-72 sm:w-96 max-w-md`}
               />
               <button
                 type="button"

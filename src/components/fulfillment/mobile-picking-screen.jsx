@@ -528,7 +528,7 @@ export function MobilePickingScreen() {
           value={search}
           onChange={setSearch}
           placeholder="Search trip, route, driver, vehicle…"
-          className="min-w-[14rem] flex-1"
+          className="min-w-0 w-full flex-1"
         />
       </FilterToolbar>
 

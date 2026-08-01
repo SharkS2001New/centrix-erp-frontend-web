@@ -229,7 +229,7 @@ export function PriceHistoryScreen() {
       </div>
 
       <div className="mb-3.5 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[220px] flex-1">
+        <div className="relative w-72 flex-1 max-w-xl sm:w-96">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="search"

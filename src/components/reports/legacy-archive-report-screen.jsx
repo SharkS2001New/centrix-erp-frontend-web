@@ -618,7 +618,7 @@ export function LegacyArchiveReportScreen() {
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
           />
         </div>
-        <div className="min-w-[12rem] flex-1">
+        <div className="w-72 flex-1 sm:w-96">
           <label className="mb-1 block text-xs font-medium text-slate-500">Search</label>
           <input
             type="search"

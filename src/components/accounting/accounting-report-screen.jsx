@@ -247,7 +247,7 @@ export function AccountingReportScreen({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search entry #, account, description…"
-              className="min-w-[220px] flex-1"
+              className="min-w-0 w-full flex-1"
             />
           ) : null}
           <Field label="From">

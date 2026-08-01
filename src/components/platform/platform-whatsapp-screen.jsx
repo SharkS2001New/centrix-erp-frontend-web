@@ -548,7 +548,7 @@ function WhatsappTestPanel() {
 
           <div className="flex gap-2">
             <input
-              className={inputClassName()}
+              className={`${inputClassName()} min-w-0 flex-1`}
               value={catalogQ}
               onChange={(e) => setCatalogQ(e.target.value)}
               placeholder="Search products by name or code…"

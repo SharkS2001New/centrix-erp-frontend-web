@@ -205,7 +205,6 @@ export function HrCrudPage({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search…"
-              className="w-full max-w-xs"
             />
           ) : null}
           <PrimaryButton type="button" onClick={openCreate}>

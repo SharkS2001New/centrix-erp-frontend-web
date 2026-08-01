@@ -186,7 +186,7 @@ export function ReportsHub() {
           <input
             type="search"
             placeholder="Search reports…"
-            className={`${inputClassName()} w-56`}
+            className={`${inputClassName()} w-72 sm:w-96 max-w-md`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

@@ -241,7 +241,6 @@ export function EmployeeLeaveHub({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search employees…"
-            className="max-w-xs"
           />
           <PrimaryButton type="button" onClick={() => openCreate()}>
             Assign leave / off day

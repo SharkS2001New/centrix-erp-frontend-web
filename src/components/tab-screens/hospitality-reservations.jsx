@@ -176,7 +176,7 @@ function ReservationsManager() {
           <option value="no_show">No-show</option>
         </select>
         <input
-          className={inputClassName()}
+          className={`${inputClassName()} w-72 sm:w-96`}
           placeholder="Search guest / code…"
           value={q}
           onChange={(e) => setQ(e.target.value)}

@@ -595,7 +595,7 @@ export function InventoryStockTakeIdScreen() {
           <Field label="Search">
             <input
               type="search"
-              className={`${FILTER_CONTROL_CLASS} min-w-[14rem]`}
+              className={`${FILTER_CONTROL_CLASS} w-72 sm:w-96`}
               value={search}
               onChange={(e) => {
                 if (dirty) {
