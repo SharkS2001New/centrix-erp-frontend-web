@@ -610,6 +610,21 @@ export async function uploadCustomerShopImage(customerNum, file) {
   return apiUpload(`/customers/${customerNum}/shop-image`, file, "image", { preset: "photo" });
 }
 
+export async function uploadProductImage(productCode, file) {
+  return apiUpload(
+    `/products/${encodeURIComponent(productCode)}/image`,
+    file,
+    "image",
+    { preset: "photo" },
+  );
+}
+
+export async function deleteProductImage(productCode) {
+  return apiRequest(`/products/${encodeURIComponent(productCode)}/image`, {
+    method: "DELETE",
+  });
+}
+
 export async function apiFetchBlob(path) {
   const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
   const token = getToken();

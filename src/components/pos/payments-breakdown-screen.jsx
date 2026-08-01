@@ -38,7 +38,7 @@ const EXPORT_COLUMNS = [
   { key: "paid_at", label: "Paid at" },
   { key: "cashier", label: "Cashier" },
   { key: "session", label: "Session" },
-  { key: "notes", label: "Notes" },
+  { key: "payment_method", label: "Payment method" },
 ];
 
 function formatPaidAt(value) {
@@ -87,7 +87,13 @@ function mixedBadgeText(row, methods = []) {
   return names.length ? `Mixed payment · ${names.join(", ")}` : "Mixed payment order";
 }
 
-function mapPaymentExportRow(row, methods = []) {
+function paymentMethodLabel(row, methodName, methods = []) {
+  const mixed = mixedBadgeText(row, methods);
+  if (mixed) return mixed;
+  return methodName || "—";
+}
+
+function mapPaymentExportRow(row, methodName, methods = []) {
   return {
     order: row.order_num != null ? `Order #${row.order_num}` : "—",
     customer_name: row.customer_name || "Walk-in",
@@ -95,8 +101,13 @@ function mapPaymentExportRow(row, methods = []) {
     paid_at: formatPaidAt(row.paid_at),
     cashier: row.cashier_name || "—",
     session: rowSessionText(row),
-    notes: mixedBadgeText(row, methods) || "",
+    payment_method: paymentMethodLabel(row, methodName, methods),
   };
+}
+
+function printSectionTitle(methodName, pageNumber) {
+  const label = String(methodName || "Payment").replace(/\s+alone$/i, "").trim();
+  return `Print ${label} Payments, Page ${pageNumber}`;
 }
 
 function PaymentsMethodTabs({ methods, activeCode, onChange }) {
@@ -295,7 +306,7 @@ export function PaymentsBreakdownScreen() {
   const activeIsMpesa = String(methodCode ?? "").toUpperCase() === "MPESA";
   const methodName = summary.method_name || tenderDisplayName(methodCode, methods);
 
-  const exportSearchParams = useMemo(
+  const exportBaseParams = useMemo(
     () => ({
       from_date: fromDate || undefined,
       to_date: toDate || undefined,
@@ -303,7 +314,6 @@ export function PaymentsBreakdownScreen() {
       cashier_id: cashierId || undefined,
       float_session_id: floatSessionId || undefined,
       session_status: sessionStatus !== "all" ? sessionStatus : undefined,
-      method_code: methodCode || undefined,
       q: debouncedQ.trim() || undefined,
     }),
     [
@@ -313,7 +323,6 @@ export function PaymentsBreakdownScreen() {
       cashierId,
       floatSessionId,
       sessionStatus,
-      methodCode,
       debouncedQ,
     ],
   );
@@ -331,29 +340,69 @@ export function PaymentsBreakdownScreen() {
   }, [cashierId, cashierOptions]);
 
   const getExportRows = useCallback(async () => {
-    const rawRows = await loadFullReportDataset(
-      "/reports/payments-breakdown",
-      exportSearchParams,
-      { message: "Loading payments for export…" },
-    );
-    return (rawRows ?? []).map((row) => mapPaymentExportRow(row, methods));
-  }, [exportSearchParams, methods]);
+    const exportTabs = methods.length
+      ? methods
+      : [{
+          method_code: methodCode,
+          method_name: methodName,
+          total_amount: summary.total_amount,
+          order_count: summary.order_count,
+        }];
 
-  const exportFooterRow = useMemo(
-    () => ({
-      order: "Tab total",
-      customer_name: "",
-      amount: formatAccountingAmount(summary.total_amount ?? 0),
-      paid_at: "",
-      cashier: "",
-      session: "",
-      notes: `${summary.order_count ?? 0} orders`,
-    }),
-    [summary.total_amount, summary.order_count],
+    const allRows = [];
+    for (let i = 0; i < exportTabs.length; i += 1) {
+      const method = exportTabs[i];
+      const label = method.method_name || tenderDisplayName(method.method_code, methods);
+      allRows.push({
+        __section_title: printSectionTitle(label, i + 1),
+      });
+
+      const rawRows = await loadFullReportDataset(
+        "/reports/payments-breakdown",
+        {
+          ...exportBaseParams,
+          method_code: method.method_code || undefined,
+        },
+        { message: `Loading ${label} payments for export…` },
+      );
+
+      const mapped = (rawRows ?? []).map((row) =>
+        mapPaymentExportRow(row, label, methods),
+      );
+      allRows.push(...mapped);
+
+      allRows.push({
+        order: `${label} total`,
+        customer_name: "",
+        amount: formatAccountingAmount(method.total_amount ?? 0),
+        paid_at: "",
+        cashier: "",
+        session: "",
+        payment_method: `${method.order_count ?? mapped.length} orders`,
+      });
+    }
+
+    return allRows;
+  }, [
+    methods,
+    methodCode,
+    methodName,
+    summary.total_amount,
+    summary.order_count,
+    exportBaseParams,
+  ]);
+
+  const exportEstimatedRows = useMemo(
+    () =>
+      methods.reduce(
+        (sum, method) => sum + Number(method.order_count ?? 0),
+        0,
+      ) || Number(data?.total ?? summary.order_count ?? 0),
+    [methods, data?.total, summary.order_count],
   );
 
   const exportExtraLines = useMemo(() => {
-    const lines = [`Method: ${methodName}`, `Cashier: ${cashierName}`];
+    const lines = [`Cashier: ${cashierName}`];
     if (sessionStatus !== "all") {
       lines.push(`Session status: ${sessionStatus}`);
     }
@@ -364,14 +413,16 @@ export function PaymentsBreakdownScreen() {
     if (debouncedQ.trim()) {
       lines.push(`Search: ${debouncedQ.trim()}`);
     }
+    lines.push(`Methods: ${methods.map((m) => m.method_name).filter(Boolean).join(", ") || methodName}`);
     return lines;
   }, [
-    methodName,
     cashierName,
     sessionStatus,
     floatSessionId,
     sessions,
     debouncedQ,
+    methods,
+    methodName,
   ]);
 
   return (
@@ -380,13 +431,13 @@ export function PaymentsBreakdownScreen() {
       subtitle="Paid orders by tender — split payments show on each method with a mixed badge"
       action={
         <ReportExportToolbar
-          filename={`payments-breakdown-${methodCode || "all"}-${fromDate || "from"}-${toDate || "to"}`}
+          filename={`payments-breakdown-${fromDate || "from"}-${toDate || "to"}`}
           title="Payments breakdown"
-          subtitle={`${methodName} · ${branchName}`}
+          subtitle={branchName}
           columns={EXPORT_COLUMNS}
           getRows={getExportRows}
-          footerRow={exportFooterRow}
-          estimatedRowCount={data?.total ?? summary.order_count ?? 0}
+          footerRow={null}
+          estimatedRowCount={exportEstimatedRows}
           meta={{
             fromDate,
             toDate,

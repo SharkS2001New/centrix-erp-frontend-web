@@ -22,7 +22,7 @@ export const HOSPITALITY_SERVICE_CATALOG = [
   { key: "night_audit", label: "Night audit", description: "End-of-day close and room charge posting." },
   { key: "extra_outlets", label: "Extra outlets", description: "Manage outlets beyond the default Main outlet." },
   { key: "floor_tables", label: "Floor tables", description: "Create and manage restaurant / bar tables." },
-  { key: "table_pos", label: "Table POS mode", description: "Cashier must select a table before saving or collecting payment." },
+  { key: "table_pos", label: "Table POS mode", description: "Cashier must select a table before adding items, saving, or collecting payment." },
   { key: "room_charge", label: "Room charge from POS", description: "Post bar checks to a guest folio." },
 ];
 

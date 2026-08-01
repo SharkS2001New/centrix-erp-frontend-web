@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, uploadProductImage } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
@@ -28,6 +28,7 @@ import { productsCatalogHref } from "@/lib/products-list-state";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { productPhotoFileUrl } from "@/components/media/entity-photo-display";
 
 export function ProductsCodeEditScreen() {
   const params = useParams();
@@ -58,6 +59,7 @@ export function ProductsCodeEditScreen() {
   const [form, setForm] = useState(EMPTY_PRODUCT_FORM);
   const [serverForm, setServerForm] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
   const [subcategoryModalOpen, setSubcategoryModalOpen] = useState(false);
   const [productLoading, setProductLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -111,6 +113,12 @@ export function ProductsCodeEditScreen() {
       }
       setServerForm(next);
       setForm(next);
+      setImageFile(null);
+      if (product.image_path || product.image_url) {
+        setImagePreview(productPhotoFileUrl(productCode));
+      } else {
+        setImagePreview(null);
+      }
     } catch (e) {
       if (e?.name === "AbortError" || abortSignal?.aborted) return;
       setLoadError(e instanceof Error ? e.message : "Failed to load product");
@@ -155,7 +163,8 @@ export function ProductsCodeEditScreen() {
     if (imagePreview?.startsWith("blob:")) {
       URL.revokeObjectURL(imagePreview);
     }
-    setImagePreview(URL.createObjectURL(file));
+    setImageFile(file || null);
+    setImagePreview(file ? URL.createObjectURL(file) : null);
   }
 
   function handleSubcategoryCreated(sub) {
@@ -198,6 +207,9 @@ export function ProductsCodeEditScreen() {
         method: "PUT",
         body,
       });
+      if (imageFile) {
+        await uploadProductImage(productCode, imageFile);
+      }
       await saveRetailPackageSetting(form, productCode, { hotelCatalogue });
       setIsDirty(false);
       clearDraft();

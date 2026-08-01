@@ -1418,10 +1418,12 @@ export function OrganizationModuleToggles({
                         onSalesChange({
                           ...(salesPlatform ?? {}),
                           hotel_pos_collect_payment: collect,
-                          // Save-order mode needs unpaid + later collection.
-                          hospitality_payment_workflow: collect
-                            ? workflow
-                            : { ...workflow, unpaid: true, paid: true },
+                          // XOR: pay-now disables unpaid; save-later requires unpaid.
+                          hospitality_payment_workflow: {
+                            ...workflow,
+                            unpaid: !collect,
+                            paid: true,
+                          },
                         });
                       }}
                     >
@@ -1429,22 +1431,26 @@ export function OrganizationModuleToggles({
                       <option value="save">Save order — print unpaid receipt, pay later</option>
                     </select>
                     <p className="theme-subtext mt-1 text-xs">
-                      Save order creates unpaid checks; cashiers collect payment from the unpaid queue.
-                      Collect payment opens Pay for full settlement at the counter.
+                      These modes are mutually exclusive. Collect payment shows Pay only; Save order
+                      shows Save unpaid only (cashiers collect later from held / unpaid).
                     </p>
                   </OrgRegisterField>
                   <div>
                     <p className="theme-heading text-sm font-semibold">Payment statuses</p>
                     <p className="theme-subtext mt-1 text-xs">
-                      Hospitality only uses unpaid, partially paid, and paid. Disable statuses this org
-                      should not use.
+                      Hospitality uses unpaid, partially paid, and paid. Unpaid is locked to match
+                      checkout mode above.
                     </p>
                     <div className="mt-2 space-y-2">
                       {HOSPITALITY_PAYMENT_WORKFLOW_CATALOG.map((step) => {
                         const workflow = normalizeHospitalityPaymentWorkflow(
                           salesPlatform?.hospitality_payment_workflow,
                         );
-                        const locked = step.key === "paid";
+                        const collectMode = salesPlatform?.hotel_pos_collect_payment !== false;
+                        const locked =
+                          step.key === "paid" ||
+                          (step.key === "unpaid" &&
+                            (collectMode || salesPlatform?.hotel_pos_collect_payment === false));
                         return (
                           <label
                             key={step.key}
@@ -1455,7 +1461,11 @@ export function OrganizationModuleToggles({
                             <input
                               type="checkbox"
                               className="mt-1 rounded border-[var(--theme-border)]"
-                              checked={Boolean(workflow[step.key])}
+                              checked={
+                                step.key === "unpaid"
+                                  ? salesPlatform?.hotel_pos_collect_payment === false
+                                  : Boolean(workflow[step.key])
+                              }
                               disabled={locked}
                               onChange={(e) =>
                                 onSalesChange({
@@ -1464,6 +1474,10 @@ export function OrganizationModuleToggles({
                                     ...workflow,
                                     [step.key]: e.target.checked,
                                     paid: true,
+                                    unpaid:
+                                      step.key === "unpaid"
+                                        ? e.target.checked
+                                        : workflow.unpaid,
                                   },
                                 })
                               }

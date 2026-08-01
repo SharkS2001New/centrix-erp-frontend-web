@@ -447,6 +447,10 @@ function match_hospitality_night_audit(pathname) {
   return pathname === "/hospitality/night-audit";
 }
 
+function match_hospitality_orders(pathname) {
+  return pathname === "/hospitality/orders";
+}
+
 function match_hospitality_outlets(pathname) {
   return pathname === "/hospitality/outlets";
 }
@@ -1386,6 +1390,12 @@ export const SCREEN_REGISTRY = [
     title: "Night Audit",
     route: "/hospitality/night-audit",
     match: match_hospitality_night_audit,
+  },
+  {
+    id: "hospitality-orders",
+    title: "F&B Orders",
+    route: "/hospitality/orders",
+    match: match_hospitality_orders,
   },
   {
     id: "hospitality-outlets",

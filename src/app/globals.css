@@ -3403,9 +3403,100 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
   color: var(--theme-primary);
 }
 
-.hotel-pos-search {
+/* Inputs follow Hotel POS template colors (not global dark/light alone). */
+.hotel-pos-root .theme-input.hotel-pos-field,
+.hotel-pos-root .theme-input.hotel-pos-field:focus {
+  background-color: var(--theme-input-bg, var(--theme-surface)) !important;
+  color: var(--theme-text) !important;
+  border: 1px solid var(--theme-border) !important;
+  box-shadow: none;
+}
+
+.hotel-pos-root .theme-input.hotel-pos-field::placeholder {
+  color: var(--theme-text-muted, #64748b);
+}
+
+.hotel-pos-root .theme-input.hotel-pos-field:focus {
+  outline: none;
+  border-color: var(--theme-primary) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-primary) 25%, transparent);
+}
+
+.hotel-pos-root .theme-input.hotel-pos-field option {
+  background-color: var(--theme-input-bg, var(--theme-surface));
+  color: var(--theme-text);
+}
+
+.hotel-pos-header {
+  background-color: var(--theme-page-bg);
+  border-bottom: 1px solid var(--theme-border);
+  color: var(--theme-text);
+}
+
+.hotel-pos-header .pos-header-brand-strong {
+  color: var(--theme-text);
+}
+
+.hotel-pos-header .pos-header-brand-light {
+  color: var(--theme-text-muted, #64748b);
+}
+
+.hotel-pos-header .pos-header-action-btn {
   background: var(--theme-surface);
-  backdrop-filter: blur(8px);
+  border-color: var(--theme-border);
+  color: var(--theme-text);
+}
+
+.hotel-pos-header .pos-header-action-btn:hover:not(:disabled) {
+  border-color: var(--theme-primary);
+  background: var(--theme-surface-muted, var(--theme-surface));
+}
+
+.hotel-pos-header .hotel-pos-header-btn-active {
+  border-color: var(--theme-primary) !important;
+  background: var(--theme-primary-subtle) !important;
+  color: var(--theme-accent-text, var(--theme-primary)) !important;
+}
+
+.hotel-pos-header-sub {
+  background: color-mix(in srgb, var(--theme-surface) 88%, var(--theme-page-bg));
+}
+
+.hotel-pos-status-footer {
+  border-top: 1px solid var(--theme-border);
+  background: var(--theme-surface);
+  color: var(--theme-text);
+}
+
+.hotel-pos-status-footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.hotel-pos-status-footer-label {
+  color: var(--theme-text-muted, #64748b);
+  font-weight: 600;
+}
+
+.hotel-pos-status-footer-value {
+  color: var(--theme-accent-text, var(--theme-primary));
+  font-weight: 700;
+}
+
+.hotel-pos-status-footer-link--ok {
+  color: #059669;
+}
+
+.hotel-pos-status-footer-link--slow {
+  color: #d97706;
+}
+
+.hotel-pos-status-footer-link--down {
+  color: #dc2626;
 }
 
 .hotel-pos-tile {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, uploadProductImage } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
@@ -50,6 +50,7 @@ export function ProductsNewScreen() {
 
   const [form, setForm] = useState(EMPTY_PRODUCT_FORM);
   const [imagePreview, setImagePreview] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
   const [subcategoryModalOpen, setSubcategoryModalOpen] = useState(false);
   const [generatingSku, setGeneratingSku] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -107,7 +108,8 @@ export function ProductsNewScreen() {
     if (imagePreview?.startsWith("blob:")) {
       URL.revokeObjectURL(imagePreview);
     }
-    setImagePreview(URL.createObjectURL(file));
+    setImageFile(file || null);
+    setImagePreview(file ? URL.createObjectURL(file) : null);
   }
 
   async function onGenerateSku() {
@@ -170,6 +172,9 @@ export function ProductsNewScreen() {
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
+      if (imageFile) {
+        await uploadProductImage(code, imageFile);
+      }
       await saveRetailPackageSetting(form, code, { hotelCatalogue });
       setIsDirty(false);
       clearDraft();

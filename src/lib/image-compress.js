@@ -199,7 +199,12 @@ export function compressPresetForUpload(path = "", fieldName = "image") {
   ) {
     return "document";
   }
-  if (haystack.includes("photo") || haystack.includes("shop-image") || haystack.includes("face")) {
+  if (
+    haystack.includes("photo") ||
+    haystack.includes("shop-image") ||
+    haystack.includes("/image") ||
+    haystack.includes("face")
+  ) {
     return "photo";
   }
   return "default";

@@ -99,6 +99,10 @@ export function customerPhotoFileUrl(customerNum) {
   return `${apiBaseOrigin()}/api/v1/customers/${customerNum}/shop-image/file`;
 }
 
+export function productPhotoFileUrl(productCode) {
+  return `${apiBaseOrigin()}/api/v1/products/${encodeURIComponent(productCode)}/image/file`;
+}
+
 export function employeePhotoFileUrl(employeeId) {
   return `${apiBaseOrigin()}/api/v1/employees/${employeeId}/photo/file`;
 }

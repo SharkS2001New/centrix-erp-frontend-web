@@ -860,6 +860,24 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
+    id: "hospitality_sales",
+    label: "Sales & orders",
+    icon: "🧾",
+    collapsible: true,
+    items: [
+      {
+        href: "/hospitality/orders",
+        label: "F&B orders",
+        module: "hospitality.backend",
+        permissionAny: [
+          P.hospitality.dashboard.view,
+          P.hospitality.reports.view,
+          P.hotel_bar_pos.checks.view,
+        ],
+      },
+    ],
+  },
+  {
     id: "hospitality_ops",
     label: "Operations",
     icon: "🧹",

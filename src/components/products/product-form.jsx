@@ -188,6 +188,14 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
 
+  if (hotelCatalogue) {
+    body.product_weight = null;
+    body.supplier_id = null;
+    body.discount_type = "percentage";
+    body.discount_percentage = 0;
+    body.discount_value = 0;
+  }
+
   if (includeShelfLocation) {
     body.shelf_location = form.shelf_location?.trim() || null;
   }
@@ -531,20 +539,22 @@ export function ProductFormFields({
         </div>
       </Field>
 
-      <Field label="Supplier">
-        <select
-          value={form.supplier_id}
-          onChange={(e) => onChange("supplier_id", e.target.value)}
-          className={inputClassName()}
-        >
-          <option value="">Select supplier</option>
-          {suppliers.map((s) => (
-            <option key={s.id} value={String(s.id)}>
-              {s.supplier_name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {!hotelCatalogue ? (
+        <Field label="Supplier">
+          <select
+            value={form.supplier_id}
+            onChange={(e) => onChange("supplier_id", e.target.value)}
+            className={inputClassName()}
+          >
+            <option value="">Select supplier</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={String(s.id)}>
+                {s.supplier_name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
 
       <Field label="Unit of measure" required>
         <select
@@ -580,19 +590,21 @@ export function ProductFormFields({
         ) : null}
       </Field>
 
-      <Field label="Product weight (kg)">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.product_weight}
-          onChange={(e) => onChange("product_weight", e.target.value)}
-          className={inputClassName()}
-          placeholder="Optional"
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          Used to calculate total order weight when loading deliveries onto a vehicle.
-        </p>
-      </Field>
+      {!hotelCatalogue ? (
+        <Field label="Product weight (kg)">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.product_weight}
+            onChange={(e) => onChange("product_weight", e.target.value)}
+            className={inputClassName()}
+            placeholder="Optional"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Used to calculate total order weight when loading deliveries onto a vehicle.
+          </p>
+        </Field>
+      ) : null}
 
       <EntityPhotoField
         label="Product image (optional)"
@@ -656,10 +668,14 @@ export function ProductFormFields({
           className={inputClassName()}
           placeholder="0.00"
         />
-        <p className="mt-1 text-xs text-slate-500">Wholesale price charged per {packLabel}.</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {hotelCatalogue
+            ? `Menu price charged per ${packLabel} on Hotel POS.`
+            : `Wholesale price charged per ${packLabel}.`}
+        </p>
       </Field>
 
-      {allowDiscounts ? (
+      {!hotelCatalogue && allowDiscounts ? (
         <>
           <Field label="Discount type">
             <select

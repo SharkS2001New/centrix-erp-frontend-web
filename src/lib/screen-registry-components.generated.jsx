@@ -279,6 +279,9 @@ export const SCREEN_COMPONENTS = {
   "hospitality-night-audit": lazy(() =>
     import("@/components/tab-screens/hospitality-night-audit").then((m) => ({ default: m.HospitalityNightAuditScreen })),
   ),
+  "hospitality-orders": lazy(() =>
+    import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityOrdersScreen })),
+  ),
   "hospitality-outlets": lazy(() =>
     import("@/components/tab-screens/hospitality-outlets").then((m) => ({ default: m.HospitalityOutletsScreen })),
   ),
