@@ -35,6 +35,17 @@ function isValidKenyanMobile(phone) {
   return /^(0?7\d{8}|2547\d{8})$/.test(normalizeKenyanPhoneInput(phone));
 }
 
+/** Local M-Pesa entry: 07XXXXXXXX, digits only, max 10. */
+function formatMpesaPhoneLocal(value) {
+  let digits = normalizeKenyanPhoneInput(value);
+  if (digits.startsWith("254") && digits.length >= 12) {
+    digits = `0${digits.slice(3)}`;
+  } else if (digits.startsWith("7") && !digits.startsWith("07")) {
+    digits = `0${digits}`;
+  }
+  return digits.slice(0, 10);
+}
+
 function PosField({ label, children }) {
   return (
     <label className="block">
@@ -184,7 +195,14 @@ export function PosPaymentPanel({
   const [stkBusy, setStkBusy] = useState(false);
   const [stkWatching, setStkWatching] = useState(false);
   const [stkInfo, setStkInfo] = useState(null);
+  /** idle | sending | waiting_pin | applying | completing */
+  const [stkPhase, setStkPhase] = useState("idle");
   const [stkAppliedLock, setStkAppliedLock] = useState(false);
+  const [stkPromptOpen, setStkPromptOpen] = useState(false);
+  const [stkPromptPhone, setStkPromptPhone] = useState("");
+  const [stkPromptAmount, setStkPromptAmount] = useState("0");
+  const [stkCandidates, setStkCandidates] = useState(null);
+  const [mpesaPayerName, setMpesaPayerName] = useState("");
   const [bankType, setBankType] = useState("");
   const [bankAmount, setBankAmount] = useState("0");
   const [bankRef, setBankRef] = useState("");
@@ -248,11 +266,17 @@ export function PosPaymentPanel({
     const mpesaPrefill = Math.max(0, Number(prefillMpesaAmount) || 0);
     setMpesaAmount(mpesaPrefill > 0 ? String(mpesaPrefill) : "0");
     setMpesaCode(String(prefillMpesaCode ?? "").trim());
-    setMpesaPhone(String(prefillMpesaPhone ?? "").trim());
+    setMpesaPhone(formatMpesaPhoneLocal(prefillMpesaPhone ?? ""));
     setStkAppliedLock(mpesaPrefill > 0);
     setStkBusy(false);
     setStkWatching(false);
     setStkInfo(null);
+    setStkPhase("idle");
+    setStkPromptOpen(false);
+    setStkPromptPhone("");
+    setStkPromptAmount("0");
+    setStkCandidates(null);
+    setMpesaPayerName("");
     lastStkAmountRef.current = null;
     setBankType("");
     setBankAmount("0");
@@ -545,8 +569,11 @@ export function PosPaymentPanel({
       // Paid sale linked to a registered customer (receipt / KRA PIN) — not credit A/R.
       body.customer_num = linkedReceiptCustomer.customer_num;
       body.customer_name_override = linkedReceiptCustomer.customer_name;
-    } else if (cfg.enableCheckoutCustomerName && walkInCustomerName.trim()) {
-      body.customer_name_override = walkInCustomerName.trim();
+    } else {
+      const mpesaName = String(mpesaPayerName || walkInCustomerName || "").trim();
+      if (mpesaName) {
+        body.customer_name_override = mpesaName;
+      }
     }
 
     return body;
@@ -784,6 +811,7 @@ export function PosPaymentPanel({
 
   function stopStkWatch() {
     setStkWatching(false);
+    setStkPhase((phase) => (phase === "waiting_pin" ? "idle" : phase));
     if (stkPollRef.current) {
       window.clearTimeout(stkPollRef.current);
       stkPollRef.current = null;
@@ -799,13 +827,38 @@ export function PosPaymentPanel({
     return due;
   }
 
+  /** Remaining bill excluding typed (unapplied) M-Pesa — used to prefill the STK popup. */
+  function resolveStkPromptPrefillAmount() {
+    const typedMpesa = mpesaFieldsLocked ? 0 : parseDecimalInput(mpesaAmount);
+    return Math.max(0, Math.ceil(checkoutTotal - (amountPaid - typedMpesa)));
+  }
+
+  function openStkPrompt() {
+    if (!stkPushAvailable || stkBusy || stkWatching || saving) return;
+    const remaining = resolveStkPromptPrefillAmount();
+    if (remaining < 1) {
+      setLocalError("Nothing left to pay on this order.");
+      return;
+    }
+    setLocalError(null);
+    setStkPromptPhone(formatMpesaPhoneLocal(mpesaPhone || prefillMpesaPhone || ""));
+    setStkPromptAmount(String(remaining));
+    setStkPromptOpen(true);
+    window.requestAnimationFrame(() => focusPaymentField(mpesaPhoneRef));
+  }
+
+  function closeStkPrompt() {
+    if (stkBusy) return;
+    setStkPromptOpen(false);
+  }
+
   function syncPanelFromAppliedCart(nextCart, amountDue) {
     const applied = Math.max(0, Number(nextCart?.mpesa_payment_amount ?? 0));
     const remaining = Math.max(0, Number(amountDue ?? 0));
     setMpesaAmount(applied > 0 ? String(applied) : "0");
     setMpesaCode(String(nextCart?.mpesa_transaction_code ?? "").trim());
     if (nextCart?.mpesa_phone) {
-      setMpesaPhone(String(nextCart.mpesa_phone));
+      setMpesaPhone(formatMpesaPhoneLocal(nextCart.mpesa_phone));
     }
     setStkAppliedLock(applied > 0);
     setSessionBillTotal(remaining);
@@ -813,35 +866,69 @@ export function PosPaymentPanel({
     return { applied, remaining };
   }
 
-  async function completeAfterFullMpesa(nextCart) {
+  async function completeAfterFullMpesa(nextCart, { customerName } = {}) {
+    const payerName = String(customerName || mpesaPayerName || "").trim();
+    if (payerName) {
+      setMpesaPayerName(payerName);
+      setWalkInCustomerName(payerName);
+    }
     stopStkWatch();
+    setStkCandidates(null);
     setStkBusy(true);
+    setStkPhase("completing");
     setLocalError(null);
+    setStep("saving");
     try {
       if (onStkFullyPaid) {
-        const sale = await onStkFullyPaid(nextCart);
+        const sale = await onStkFullyPaid(nextCart, { customerName: payerName || null });
         if (!sale) {
-          setStkInfo("M-Pesa received in full. Complete the order to finish.");
+          setStep("payment");
+          setStkPhase("idle");
+          setStkInfo(
+            payerName
+              ? `M-Pesa received in full from ${payerName}. Complete the order to finish.`
+              : "M-Pesa received in full. Complete the order to finish.",
+          );
           return;
         }
         setCompletedOrder({
           orderNum: sale.order_num,
           statusLabel: checkoutStatusLabel(sale),
         });
+        setStkPhase("idle");
         setStep("complete");
         return;
       }
-      setStkInfo("M-Pesa received in full. Press Complete to finish and print.");
+      setStep("payment");
+      setStkPhase("idle");
+      setStkInfo(
+        payerName
+          ? `M-Pesa received in full from ${payerName}. Press Complete to finish and print.`
+          : "M-Pesa received in full. Press Complete to finish and print.",
+      );
     } catch (err) {
+      setStep("payment");
+      setStkPhase("idle");
       setLocalError(err instanceof Error ? err.message : "Checkout failed");
     } finally {
       setStkBusy(false);
     }
   }
 
-  async function applyStkCandidate(paymentId, paymentAmount) {
-    if (!cartId || !paymentId) return false;
-    const paymentCeil = Math.max(0, Math.ceil(Number(paymentAmount) || 0));
+  function rememberMpesaPayerName(payment) {
+    const name = String(payment?.payer_name ?? "").trim();
+    if (!name) return "";
+    setMpesaPayerName(name);
+    setWalkInCustomerName(name);
+    return name;
+  }
+
+  async function applyStkCandidate(paymentOrId, paymentAmount) {
+    if (!cartId) return false;
+    const paymentId = typeof paymentOrId === "object" ? paymentOrId?.id : paymentOrId;
+    const paymentMeta = typeof paymentOrId === "object" ? paymentOrId : null;
+    if (!paymentId) return false;
+    const paymentCeil = Math.max(0, Math.ceil(Number(paymentAmount ?? paymentMeta?.amount) || 0));
     const stkCeil = Math.max(0, Math.ceil(Number(lastStkAmountRef.current) || 0));
     const toApply = Math.min(paymentCeil || stkCeil, stkCeil || paymentCeil);
     if (toApply < 1) {
@@ -849,23 +936,30 @@ export function PosPaymentPanel({
       return false;
     }
 
+    const payerName = rememberMpesaPayerName(paymentMeta);
+
     setStkBusy(true);
+    setStkPhase("applying");
     setLocalError(null);
+    setStkCandidates(null);
     try {
       const res = await apiRequest(`/sales/carts/${cartId}/payment/mpesa/apply`, {
         method: "POST",
         body: { payment_id: paymentId, amount: toApply },
       });
+      const appliedName = rememberMpesaPayerName(res.payment) || payerName;
       const { applied, remaining } = syncPanelFromAppliedCart(res.cart, res.amount_due);
       const txn = res.payment?.transaction_id ? ` (${res.payment.transaction_id})` : "";
+      const who = appliedName ? ` from ${appliedName}` : "";
 
       if (remaining <= 0.01) {
-        setStkInfo(`M-Pesa ${formatSaleKes(applied)}${txn} received — completing order…`);
-        await completeAfterFullMpesa(res.cart);
+        setStkInfo(`M-Pesa ${formatSaleKes(applied)}${who}${txn} received — completing order…`);
+        await completeAfterFullMpesa(res.cart, { customerName: appliedName });
       } else {
         stopStkWatch();
+        setStkPhase("idle");
         setStkInfo(
-          `M-Pesa ${formatSaleKes(applied)}${txn} applied. Collect balance ${formatSaleKes(remaining)} then complete to print.`,
+          `M-Pesa ${formatSaleKes(applied)}${who}${txn} applied. Collect balance ${formatSaleKes(remaining)} then complete to print.`,
         );
         window.requestAnimationFrame(() => focusPaymentField(cashAmountRef));
       }
@@ -873,11 +967,20 @@ export function PosPaymentPanel({
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Failed to apply M-Pesa payment.";
       setLocalError(msg);
+      setStkPhase("idle");
       stopStkWatch();
       return false;
     } finally {
       setStkBusy(false);
     }
+  }
+
+  function filterStkCandidates(candidates, expectedAmount) {
+    const list = Array.isArray(candidates) ? candidates : [];
+    const expected = Math.ceil(Number(expectedAmount) || 0);
+    if (expected < 1) return list;
+    const matched = list.filter((c) => Math.ceil(Number(c.amount) || 0) === expected);
+    return matched.length > 0 ? matched : list;
   }
 
   async function pollStkStatus({ silent = true } = {}) {
@@ -890,7 +993,7 @@ export function PosPaymentPanel({
       });
       if (res.cart) {
         onCartUpdated?.(res.cart);
-        if (res.cart.mpesa_phone) setMpesaPhone(res.cart.mpesa_phone);
+        if (res.cart.mpesa_phone) setMpesaPhone(formatMpesaPhoneLocal(res.cart.mpesa_phone));
       }
 
       if (res.stk_error) {
@@ -904,15 +1007,24 @@ export function PosPaymentPanel({
         return { continue: false, res };
       }
 
-      const candidates = res.candidates ?? [];
-      if (res.status === "completed" && candidates.length > 0) {
-        const match =
-          candidates.find((c) => {
-            const amt = Math.ceil(Number(c.amount) || 0);
-            return lastStkAmountRef.current && amt === Math.ceil(lastStkAmountRef.current);
-          }) ?? candidates[0];
+      const expectedAmount =
+        Number(res.stk_paid_amount ?? res.stk_amount ?? lastStkAmountRef.current) || 0;
+      const candidates = filterStkCandidates(res.candidates ?? [], expectedAmount);
+
+      if (res.status === "completed" && candidates.length > 1) {
+        stopStkWatch();
+        setStkPhase("idle");
+        setStkCandidates(candidates);
+        setStkInfo(
+          `${candidates.length} M-Pesa payments of ${formatSaleKes(expectedAmount)} found — select the customer.`,
+        );
+        return { continue: false, res };
+      }
+
+      if (res.status === "completed" && candidates.length === 1) {
+        setStkPhase("applying");
         setStkInfo("M-Pesa payment received — applying…");
-        await applyStkCandidate(match.id, match.amount);
+        await applyStkCandidate(candidates[0], candidates[0].amount);
         return { continue: false, res };
       }
 
@@ -923,13 +1035,15 @@ export function PosPaymentPanel({
         return { continue: false, res };
       }
 
-      if (!silent && res.status === "pending") {
+      if (res.status === "pending") {
+        setStkPhase("waiting_pin");
         setStkInfo("Waiting for the customer to enter their M-Pesa PIN…");
       }
       return { continue: true, res };
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Could not check M-Pesa payment status.";
       setLocalError(msg);
+      setStkPhase("idle");
       stopStkWatch();
       return { continue: false };
     }
@@ -937,35 +1051,45 @@ export function PosPaymentPanel({
 
   async function handlePromptUserStk() {
     if (!stkPushAvailable || stkBusy || saving) return;
-    const phoneRaw = normalizeKenyanPhoneInput(mpesaPhone);
-    if (!isValidKenyanMobile(phoneRaw)) {
-      setLocalError("Enter a valid Kenyan mobile number like 0712345678.");
+    const phoneRaw = normalizeKenyanPhoneInput(stkPromptPhone);
+    if (!isValidKenyanMobile(phoneRaw) || formatMpesaPhoneLocal(stkPromptPhone).length !== 10) {
+      setLocalError("Enter a valid M-Pesa number like 0712345678 (10 digits).");
       focusPaymentField(mpesaPhoneRef);
       return;
     }
-    const payAmount = resolveStkPushAmount();
+    const maxDue = resolveStkPromptPrefillAmount();
+    const payAmount = Math.min(
+      Math.max(0, Math.ceil(parseDecimalInput(stkPromptAmount) || 0)),
+      maxDue,
+    );
     if (payAmount < 1) {
-      setLocalError("Nothing left to pay on this order.");
+      setLocalError("Enter an M-Pesa amount of at least 1.");
       return;
     }
+
+    const phoneLocal = formatMpesaPhoneLocal(stkPromptPhone);
+    setMpesaPhone(phoneLocal);
     if (!mpesaFieldsLocked) {
       setMpesaAmount(String(payAmount));
     }
 
+    setStkPromptOpen(false);
     setStkBusy(true);
+    setStkPhase("sending");
     setLocalError(null);
     setStkInfo(null);
     try {
       const res = await apiRequest(`/sales/carts/${cartId}/payment/mpesa/stk-push`, {
         method: "POST",
         body: {
-          phone_number: phoneForMpesaApi(mpesaPhone),
+          phone_number: phoneForMpesaApi(phoneLocal),
           amount: payAmount,
         },
       });
 
       if (res.error?.errorMessage) {
         setLocalError(res.error.errorMessage);
+        setStkPhase("idle");
         return;
       }
 
@@ -973,11 +1097,13 @@ export function PosPaymentPanel({
       lastStkAmountRef.current = payAmount;
       const customerMessage =
         res.success?.CustomerMessage ||
-        `STK push sent to ${phoneForMpesaApi(mpesaPhone)}. Ask the customer to enter their M-Pesa PIN.`;
+        `STK push sent to ${phoneForMpesaApi(phoneLocal)}. Ask the customer to enter their M-Pesa PIN.`;
       setStkInfo(customerMessage);
+      setStkPhase("waiting_pin");
       setStkWatching(true);
     } catch (e) {
       setLocalError(e instanceof ApiError ? e.message : "Failed to send M-Pesa STK push.");
+      setStkPhase("idle");
     } finally {
       setStkBusy(false);
     }
@@ -1169,6 +1295,14 @@ export function PosPaymentPanel({
 
   function handleShellClose() {
     if (saving || step === "saving" || step === "complete") return;
+    if (stkCandidates?.length) {
+      setStkCandidates(null);
+      return;
+    }
+    if (stkPromptOpen) {
+      closeStkPrompt();
+      return;
+    }
     if (step === "customerName") {
       setStep("confirm");
       setLocalError(null);
@@ -1362,6 +1496,86 @@ export function PosPaymentPanel({
       </PosNestedDialog>
     ) : null;
 
+  const stkWaitCopy = (() => {
+    switch (stkPhase) {
+      case "sending":
+        return {
+          title: "SENDING M-PESA PROMPT",
+          heading: "Sending prompt…",
+          detail: "Please wait while the payment request is sent to the customer phone.",
+        };
+      case "waiting_pin":
+        return {
+          title: "WAITING FOR M-PESA",
+          heading: "Waiting for PIN…",
+          detail:
+            stkInfo ||
+            "Ask the customer to enter their M-Pesa PIN. This screen will update when payment arrives.",
+        };
+      case "applying":
+        return {
+          title: "APPLYING M-PESA",
+          heading: "Applying payment…",
+          detail: "Matching the M-Pesa payment to this order.",
+        };
+      case "completing":
+        return {
+          title: "COMPLETING ORDER",
+          heading: "Completing sale…",
+          detail: "Saving the order and preparing the receipt.",
+        };
+      default:
+        return null;
+    }
+  })();
+
+  const stkWaitOverlay =
+    step === "payment" &&
+    stkWaitCopy &&
+    (stkBusy || stkWatching) &&
+    !(Array.isArray(stkCandidates) && stkCandidates.length > 1) ? (
+      <PosNestedDialog
+        title={stkWaitCopy.title}
+        titleId="mpesa-stk-wait-title"
+        role="status"
+        ariaLive="polite"
+        footer={
+          stkPhase === "waiting_pin" ? (
+            <div className={POS_DIALOG_FOOTER_SINGLE}>
+              <button
+                type="button"
+                disabled={stkBusy}
+                onClick={() => {
+                  stopStkWatch();
+                  setStkPhase("idle");
+                  setStkInfo(
+                    "M-Pesa wait cancelled. You can prompt again or complete with other methods.",
+                  );
+                }}
+                className={`${POS_DIALOG_SECONDARY_BTN} w-full`}
+              >
+                Cancel wait
+              </button>
+            </div>
+          ) : null
+        }
+      >
+        <div className="flex flex-col items-center px-2 py-4 text-center">
+          <div
+            className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-primary)]"
+            aria-hidden
+          />
+          <p className="text-sm font-semibold">{stkWaitCopy.heading}</p>
+          <p className="theme-text-muted mt-2 text-sm">{stkWaitCopy.detail}</p>
+          {(error || localError) ? (
+            <p className="theme-alert-error mt-3 w-full rounded px-3 py-2 text-sm">
+              {error || localError}
+            </p>
+          ) : null}
+        </div>
+      </PosNestedDialog>
+    ) : null;
+
   const savingOverlay =
     step === "saving" ? (
       <PosNestedDialog
@@ -1374,7 +1588,10 @@ export function PosPaymentPanel({
             <div className={POS_DIALOG_FOOTER_SINGLE}>
               <button
                 type="button"
-                onClick={() => setStep("payment")}
+                onClick={() => {
+                  setStkPhase("idle");
+                  setStep("payment");
+                }}
                 className={`${POS_DIALOG_SECONDARY_BTN} w-full`}
               >
                 Go back
@@ -1391,8 +1608,14 @@ export function PosPaymentPanel({
               className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-primary)]"
               aria-hidden
             />
-            <p className="text-sm font-semibold">Saving…</p>
-            <p className="theme-text-muted mt-2 text-sm">Please wait.</p>
+            <p className="text-sm font-semibold">
+              {stkPhase === "completing" ? "Completing M-Pesa sale…" : "Saving…"}
+            </p>
+            <p className="theme-text-muted mt-2 text-sm">
+              {stkPhase === "completing"
+                ? "Please wait while the order is saved and the receipt is prepared."
+                : "Please wait."}
+            </p>
           </div>
         )}
       </PosNestedDialog>
@@ -1447,8 +1670,158 @@ export function PosPaymentPanel({
       </PosNestedDialog>
     ) : null;
 
+  const stkPromptOverlay =
+    step === "payment" && stkPromptOpen ? (
+      <PosNestedDialog
+        title="M-PESA PROMPT"
+        titleId="mpesa-stk-prompt-title"
+        footer={
+          <div className={POS_DIALOG_FOOTER}>
+            <button
+              type="button"
+              disabled={stkBusy || saving}
+              onClick={() => void handlePromptUserStk()}
+              className={POS_DIALOG_PRIMARY_BTN}
+            >
+              {stkBusy ? "Sending…" : "Send prompt"}
+            </button>
+            <button
+              type="button"
+              disabled={stkBusy}
+              onClick={closeStkPrompt}
+              className={POS_DIALOG_SECONDARY_BTN}
+            >
+              Cancel
+            </button>
+          </div>
+        }
+      >
+        <p className="mb-3 text-sm">Enter the customer M-Pesa number and amount to request.</p>
+        <div className="space-y-3">
+          <PosField label="M-Pesa number">
+            <input
+              ref={mpesaPhoneRef}
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              maxLength={10}
+              className={inputCls}
+              value={stkPromptPhone}
+              disabled={stkBusy || saving}
+              onChange={(e) => {
+                setStkPromptPhone(formatMpesaPhoneLocal(e.target.value));
+                setLocalError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void handlePromptUserStk();
+                }
+              }}
+              placeholder="07XXXXXXXX"
+            />
+          </PosField>
+          <PosField label="Amount">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              className={inputCls}
+              value={stkPromptAmount}
+              disabled={stkBusy || saving}
+              onFocus={handlePaymentAmountFocus}
+              onChange={(e) => {
+                handlePaymentAmountChange(setStkPromptAmount, e.target.value, stkPromptAmount);
+                setLocalError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void handlePromptUserStk();
+                  return;
+                }
+                handlePaymentAmountKeyDown(e, stkPromptAmount, setStkPromptAmount, { ceil: true });
+              }}
+            />
+          </PosField>
+          <p className="theme-text-muted text-[11px]">
+            Prefills the balance due ({formatSaleKes(resolveStkPromptPrefillAmount())}). Edit if the
+            customer pays only part via M-Pesa.
+          </p>
+        </div>
+        {(error || localError) ? (
+          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
+        ) : null}
+      </PosNestedDialog>
+    ) : null;
+
+  const stkCandidateOverlay =
+    step === "payment" && Array.isArray(stkCandidates) && stkCandidates.length > 1 ? (
+      <PosNestedDialog
+        title="SELECT M-PESA PAYMENT"
+        titleId="mpesa-candidate-title"
+        footer={
+          <div className={POS_DIALOG_FOOTER_SINGLE}>
+            <button
+              type="button"
+              disabled={stkBusy}
+              onClick={() => setStkCandidates(null)}
+              className={`${POS_DIALOG_SECONDARY_BTN} w-full`}
+            >
+              Cancel
+            </button>
+          </div>
+        }
+      >
+        <p className="mb-3 text-sm">
+          Several customers paid the same amount. Select the payment for this receipt.
+        </p>
+        <ul className="space-y-2">
+          {stkCandidates.map((payment) => {
+            const name = String(payment.payer_name ?? "").trim() || "Unknown customer";
+            const phone = String(payment.phone_number ?? "").trim();
+            const amount = Number(payment.amount) || 0;
+            return (
+              <li
+                key={payment.id}
+                className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3"
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-[var(--theme-text)]">{name}</p>
+                    <p className="theme-text-muted text-[11px]">
+                      {formatSaleKes(amount)}
+                      {phone ? ` · ${phone}` : ""}
+                      {payment.transaction_id ? ` · ${payment.transaction_id}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={stkBusy || saving}
+                  onClick={() => void applyStkCandidate(payment, payment.amount)}
+                  className={`${POS_DIALOG_PRIMARY_BTN} w-full`}
+                >
+                  Select this payment
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {(error || localError) ? (
+          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
+        ) : null}
+      </PosNestedDialog>
+    ) : null;
+
   const dialogOverlay =
-    completeOverlay ?? savingOverlay ?? customerNameOverlay ?? confirmOverlay;
+    completeOverlay ??
+    savingOverlay ??
+    stkWaitOverlay ??
+    customerNameOverlay ??
+    confirmOverlay ??
+    stkCandidateOverlay ??
+    stkPromptOverlay;
 
   return (
     <PosDialogShell
@@ -1561,29 +1934,13 @@ export function PosPaymentPanel({
           ) : null}
           {!cashOnlyOffline && cfg.enableMpesaAmount && stkPushAvailable ? (
             <div className="space-y-2">
-              <PosField label="M-Pesa phone">
-                <input
-                  ref={mpesaPhoneRef}
-                  type="tel"
-                  inputMode="tel"
-                  className={inputCls}
-                  value={mpesaPhone}
-                  disabled={stkBusy || stkWatching || saving}
-                  onChange={(e) => {
-                    setMpesaPhone(e.target.value);
-                    setLocalError(null);
-                  }}
-                  onKeyDown={handleAuxiliaryPaymentKeyDown}
-                  placeholder="0712345678"
-                />
-              </PosField>
               <button
                 type="button"
-                disabled={stkBusy || stkWatching || saving || resolveStkPushAmount() < 1}
-                onClick={() => void handlePromptUserStk()}
+                disabled={stkBusy || stkWatching || saving || resolveStkPromptPrefillAmount() < 1}
+                onClick={openStkPrompt}
                 className={POS_DIALOG_PRIMARY_BTN}
               >
-                {stkWatching ? "Waiting for PIN…" : stkBusy ? "Sending…" : "Prompt user"}
+                {stkWatching ? "Waiting for PIN…" : stkBusy ? "Sending…" : "Prompt User"}
               </button>
               {stkInfo ? (
                 <p className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-medium text-emerald-900">

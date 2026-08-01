@@ -320,6 +320,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     },
     require_pos_till_float: false,
     external_pos_layout: "modern",
+    hotel_pos_grid_columns: 4,
     enable_pos_cash_rounding: false,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
@@ -371,6 +372,8 @@ export function salesPlatformFromApi(apiPayload) {
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     external_pos_layout:
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
+    hotel_pos_grid_columns:
+      Number(apiPayload.hotel_pos_grid_columns) === 5 ? 5 : 4,
     enable_pos_cash_rounding: Object.prototype.hasOwnProperty.call(
       apiPayload,
       "enable_pos_cash_rounding",
@@ -1242,6 +1245,28 @@ export function OrganizationModuleToggles({
                     </select>
                     <p className="theme-subtext mt-1 text-xs">
                       Only affects the external POS workspace (/pos). Backoffice Create order keeps the modern layout.
+                    </p>
+                  </OrgRegisterField>
+                </div>
+              ) : null}
+              {workspace.id === "hotel_bar_pos" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <OrgRegisterField label="Hotel POS product grid">
+                    <select
+                      className={inputClass}
+                      value={Number(salesPlatform?.hotel_pos_grid_columns) === 5 ? 5 : 4}
+                      onChange={(e) =>
+                        onSalesChange({
+                          ...(salesPlatform ?? {}),
+                          hotel_pos_grid_columns: Number(e.target.value),
+                        })
+                      }
+                    >
+                      <option value={4}>4 columns</option>
+                      <option value={5}>5 columns</option>
+                    </select>
+                    <p className="theme-subtext mt-1 text-xs">
+                      How many product tiles across on the Hotel &amp; Bar POS menu. Most-sold items stay on top.
                     </p>
                   </OrgRegisterField>
                 </div>

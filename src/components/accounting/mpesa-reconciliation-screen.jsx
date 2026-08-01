@@ -45,6 +45,7 @@ export function MpesaReconciliationScreen() {
   }, [load]);
 
   const payments = data?.payments ?? [];
+  const matchedPayments = data?.matched_payments ?? [];
   const hint = data?.settings?.payment_account_hint;
 
   const totalUnmatched = useMemo(
@@ -119,7 +120,7 @@ export function MpesaReconciliationScreen() {
   return (
     <CatalogPageShell
       title="M-Pesa reconciliation"
-      description="Match paybill and till payments to sales orders. Customers should use their order number as the account reference."
+      description="Match paybill and till payments to sales orders. POS STK payments are linked automatically when the order is completed."
       breadcrumb={
         <AppBreadcrumb
           items={[
@@ -153,14 +154,18 @@ export function MpesaReconciliationScreen() {
         </p>
       </div>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Unmatched payments</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{payments.length}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Total amount</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Unmatched total</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{formatAccountingAmount(totalUnmatched)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Recently matched</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{matchedPayments.length}</p>
         </div>
       </div>
 
@@ -268,6 +273,58 @@ export function MpesaReconciliationScreen() {
           })}
         </div>
       )}
+
+      {matchedPayments.length > 0 ? (
+        <div className="mt-10">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Recently matched
+          </h2>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Transaction</th>
+                  <th className="px-4 py-3">Order</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Payer</th>
+                  <th className="px-4 py-3">Matched</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {matchedPayments.map((payment) => (
+                  <tr key={payment.id}>
+                    <td className="px-4 py-3 font-medium text-slate-900">{payment.transaction_id}</td>
+                    <td className="px-4 py-3">
+                      {payment.applied_sale_id && payment.order_num ? (
+                        <Link
+                          href={`/sales/orders/${payment.applied_sale_id}`}
+                          className="font-medium text-sky-700 hover:underline"
+                        >
+                          Order #{payment.order_num}
+                        </Link>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{formatAccountingAmount(payment.amount)}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {payment.payer_name || payment.phone_number || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {payment.matched_at ? formatShortDate(payment.matched_at) : "—"}
+                      {payment.match_method ? (
+                        <span className="ml-2 text-xs text-slate-400">
+                          {String(payment.match_method).replaceAll("_", " ")}
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
         </>
       )}
     </CatalogPageShell>

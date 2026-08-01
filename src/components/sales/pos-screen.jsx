@@ -4890,7 +4890,7 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
-  async function handleMpesaOrderComplete(updatedCart) {
+  async function handleMpesaOrderComplete(updatedCart, options = {}) {
     const payNow = Number(updatedCart?.mpesa_payment_amount ?? cartRef.current?.mpesa_payment_amount ?? 0);
     if (payNow <= 0) return null;
 
@@ -4917,7 +4917,10 @@ export function PosScreen({ standalone = false }) {
       deduct_stock: true,
     };
 
-    if (posSalesConfig.enableCheckoutCustomerName) {
+    const mpesaCustomerName = String(options.customerName ?? "").trim();
+    if (mpesaCustomerName) {
+      body.customer_name_override = mpesaCustomerName;
+    } else if (posSalesConfig.enableCheckoutCustomerName) {
       body.customer_name_override = "Walk-in";
     }
 
@@ -6842,7 +6845,9 @@ export function PosScreen({ standalone = false }) {
                   onCartUpdated={setCart}
                   onMessage={setStatusMessage}
                   onPaymentApplied={() => setPaymentOpen(true)}
-                  onCompleteOrder={(updatedCart) => void handleMpesaOrderComplete(updatedCart)}
+                  onCompleteOrder={(updatedCart, options) =>
+                    void handleMpesaOrderComplete(updatedCart, options)
+                  }
                 />
               </div>
             ) : null}
@@ -7595,7 +7600,7 @@ export function PosScreen({ standalone = false }) {
           cartRef.current = nextCart;
           setCart(nextCart);
         }}
-        onStkFullyPaid={(updatedCart) => handleMpesaOrderComplete(updatedCart)}
+        onStkFullyPaid={(updatedCart, options) => handleMpesaOrderComplete(updatedCart, options)}
         saving={busy}
         error={paymentError}
         onComplete={handleCheckout}

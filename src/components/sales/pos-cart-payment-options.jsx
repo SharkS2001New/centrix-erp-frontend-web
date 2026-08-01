@@ -30,7 +30,7 @@ function focusWithoutScroll(el) {
   el?.focus({ preventScroll: true });
 }
 
-function PayOptionDialog({ open, title, onClose, children, footer, embedded = false }) {
+function PayOptionDialog({ open, title, onClose, children, footer, embedded = false, waitOverlay = null }) {
   useLayoutEffect(() => {
     if (!open || embedded) return undefined;
     return lockBodyScroll();
@@ -39,11 +39,11 @@ function PayOptionDialog({ open, title, onClose, children, footer, embedded = fa
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
-      if (e.key === "Escape") onClose?.();
+      if (e.key === "Escape" && !waitOverlay) onClose?.();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, waitOverlay]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -51,13 +51,13 @@ function PayOptionDialog({ open, title, onClose, children, footer, embedded = fa
     <div
       className={`${posModalOverlayClass(embedded, "z-[100]")}${embedded ? "" : " bg-black/40"}`}
       onMouseDown={embedded ? undefined : (e) => {
-        if (e.target === e.currentTarget) onClose?.();
+        if (e.target === e.currentTarget && !waitOverlay) onClose?.();
       }}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className={`${posModalPanelClass(embedded, "theme-modal w-full max-w-sm overflow-hidden rounded-lg border shadow-2xl")}`}
+        className={`relative ${posModalPanelClass(embedded, "theme-modal w-full max-w-sm overflow-hidden rounded-lg border shadow-2xl")}`}
       >
         <div className="theme-dialog-header px-4 py-3">
           <h3 className="text-center text-sm font-bold uppercase tracking-wide">{title}</h3>
@@ -66,6 +66,7 @@ function PayOptionDialog({ open, title, onClose, children, footer, embedded = fa
         {footer ? (
           <div className="theme-dialog-footer grid grid-cols-2 gap-2 p-3">{footer}</div>
         ) : null}
+        {waitOverlay}
       </div>
     </div>,
   );
@@ -149,6 +150,8 @@ export function PosCartPaymentOptions({
   const [mpesaCandidates, setMpesaCandidates] = useState([]);
   const [working, setWorking] = useState(false);
   const [watchingMpesa, setWatchingMpesa] = useState(false);
+  /** idle | sending | waiting_pin | applying | completing */
+  const [mpesaPhase, setMpesaPhase] = useState("idle");
   const [mpesaMode, setMpesaMode] = useState("check");
   const [activeDialog, setActiveDialog] = useState(null);
   const pollTimerRef = useRef(null);
@@ -317,6 +320,7 @@ export function PosCartPaymentOptions({
 
   function stopMpesaWatch() {
     setWatchingMpesa(false);
+    setMpesaPhase((phase) => (phase === "waiting_pin" ? "idle" : phase));
     if (pollTimerRef.current) {
       window.clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
@@ -325,6 +329,7 @@ export function PosCartPaymentOptions({
 
   function closeDialog() {
     stopMpesaWatch();
+    setMpesaPhase("idle");
     setMpesaError(null);
     setMpesaInfo(null);
     setMpesaCandidates([]);
@@ -519,8 +524,32 @@ export function PosCartPaymentOptions({
         if (!silent) onMessage?.(res.result_desc);
       } else {
         setMpesaError(null);
-        if (res.status === "completed" && candidates.length > 0) {
-          setMpesaInfo("M-Pesa payment received. Tap Use payment to apply it to this order.");
+        const expected =
+          Math.ceil(Number(res.stk_paid_amount ?? res.stk_amount ?? lastStkPayAmountRef.current) || 0);
+        const amountMatched =
+          expected >= 1
+            ? candidates.filter((c) => Math.ceil(Number(c.amount) || 0) === expected)
+            : candidates;
+        const matched = amountMatched.length > 0 ? amountMatched : candidates;
+
+        if (res.status === "completed" && matched.length === 1) {
+          setMpesaPhase("applying");
+          setMpesaInfo("M-Pesa payment received — applying…");
+          await applyMpesaCandidate(matched[0], matched[0].amount);
+          return res;
+        }
+        if (res.status === "completed" && matched.length > 1) {
+          setMpesaPhase("idle");
+          stopMpesaWatch();
+          setMpesaCandidates(matched);
+          setMpesaInfo(
+            `${matched.length} payments of ${formatSaleKes(expected)} found — select the customer.`,
+          );
+        } else if (res.status === "completed" && matched.length > 0) {
+          setMpesaPhase("idle");
+          setMpesaInfo("M-Pesa payment received. Tap Select this payment to apply it.");
+        } else if (res.status === "pending") {
+          setMpesaPhase("waiting_pin");
         }
       }
 
@@ -555,12 +584,16 @@ export function PosCartPaymentOptions({
     }
     setMpesaError(null);
     setMpesaInfo("Checking for M-Pesa payments every few seconds…");
+    setMpesaPhase("waiting_pin");
     setWatchingMpesa(true);
   }
 
-  async function applyMpesaCandidate(paymentId, paymentAmount) {
-    if (!cart?.id || !paymentId) return;
-    const cappedApply = mpesaApplyAmountForPayment(paymentAmount);
+  async function applyMpesaCandidate(paymentOrId, paymentAmount) {
+    if (!cart?.id) return;
+    const paymentId = typeof paymentOrId === "object" ? paymentOrId?.id : paymentOrId;
+    const paymentMeta = typeof paymentOrId === "object" ? paymentOrId : null;
+    if (!paymentId) return;
+    const cappedApply = mpesaApplyAmountForPayment(paymentAmount ?? paymentMeta?.amount);
     if (!cappedApply) {
       onMessage?.("Enter the M-Pesa amount the customer paid.");
       return;
@@ -569,7 +602,9 @@ export function PosCartPaymentOptions({
       onMessage?.("Payment amount is too small to apply.");
       return;
     }
+    const payerName = String(paymentMeta?.payer_name ?? "").trim();
     setWorking(true);
+    setMpesaPhase("applying");
     setMpesaError(null);
     try {
       const res = await apiRequest(`/sales/carts/${cart.id}/payment/mpesa/apply`, {
@@ -581,25 +616,30 @@ export function PosCartPaymentOptions({
       const applied = Number(res.applied_amount ?? 0);
       const remaining = Number(res.amount_due ?? 0);
       const isFullPayment = remaining <= 0.01;
-      const msg = `M-Pesa applied: ${formatSaleKes(applied)}${
+      const appliedName = String(res.payment?.payer_name ?? payerName).trim();
+      const who = appliedName ? ` from ${appliedName}` : "";
+      const msg = `M-Pesa applied${who}: ${formatSaleKes(applied)}${
         res.payment?.transaction_id ? ` (${res.payment.transaction_id})` : ""
       }${isFullPayment ? "" : ` · Balance due ${formatSaleKes(remaining)}`}`;
       onMessage?.(msg);
 
       if (isFullPayment) {
+        setMpesaPhase("completing");
         stopMpesaWatch();
         closeDialog();
-        onCompleteOrder?.(res.cart);
+        onCompleteOrder?.(res.cart, { customerName: appliedName || null });
       } else {
+        setMpesaPhase("idle");
         const nextDue = Math.max(0, Math.ceil(remaining));
         setCheckAmount(nextDue > 0 ? String(nextDue) : "");
         setMpesaInfo(
-          `${formatSaleKes(applied)} applied. Balance due ${formatSaleKes(remaining)} — check for more payments or collect the rest at checkout.`,
+          `${formatSaleKes(applied)}${who} applied. Balance due ${formatSaleKes(remaining)} — check for more payments or collect the rest at checkout.`,
         );
       }
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Failed to apply M-Pesa payment.";
       setMpesaError(msg);
+      setMpesaPhase("idle");
       onMessage?.(msg);
     } finally {
       setWorking(false);
@@ -648,6 +688,7 @@ export function PosCartPaymentOptions({
     const payAmount = Math.min(entered, maxDue);
 
     setWorking(true);
+    setMpesaPhase("sending");
     setMpesaError(null);
     onMessage?.(null);
     try {
@@ -663,6 +704,7 @@ export function PosCartPaymentOptions({
         const msg = res.error.errorMessage;
         setMpesaError(msg);
         onMessage?.(msg);
+        setMpesaPhase("idle");
         return;
       }
 
@@ -677,10 +719,12 @@ export function PosCartPaymentOptions({
       onMessage?.(customerMessage);
       setMpesaMode("check");
       setMpesaInfo("STK sent. Checking for payment every few seconds…");
+      setMpesaPhase("waiting_pin");
       setWatchingMpesa(true);
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Failed to request M-Pesa push";
       setMpesaError(msg);
+      setMpesaPhase("idle");
       onMessage?.(msg);
     } finally {
       setWorking(false);
@@ -735,6 +779,57 @@ export function PosCartPaymentOptions({
               : "Redeem points"
         }
         onClose={closeDialog}
+        waitOverlay={
+          activeDialog === "mpesa" &&
+          (working || watchingMpesa) &&
+          mpesaPhase !== "idle" &&
+          mpesaCandidates.length <= 1 ? (
+            <div
+              className="absolute inset-0 z-20 flex items-center justify-center bg-black/45 p-4"
+              role="status"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div className="theme-modal w-full max-w-xs rounded-lg border p-5 text-center shadow-xl">
+                <div
+                  className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-primary)]"
+                  aria-hidden
+                />
+                <p className="text-sm font-semibold">
+                  {mpesaPhase === "sending"
+                    ? "Sending prompt…"
+                    : mpesaPhase === "waiting_pin"
+                      ? "Waiting for PIN…"
+                      : mpesaPhase === "applying"
+                        ? "Applying payment…"
+                        : mpesaPhase === "completing"
+                          ? "Completing sale…"
+                          : "Please wait…"}
+                </p>
+                <p className="theme-text-muted mt-2 text-xs">
+                  {mpesaPhase === "waiting_pin"
+                    ? "Ask the customer to enter their M-Pesa PIN."
+                    : mpesaPhase === "completing"
+                      ? "Saving the order and preparing the receipt."
+                      : "Please wait."}
+                </p>
+                {mpesaPhase === "waiting_pin" ? (
+                  <button
+                    type="button"
+                    className={`${cancelBtnClass} mt-4 w-full`}
+                    onClick={() => {
+                      stopMpesaWatch();
+                      setMpesaPhase("idle");
+                      setMpesaInfo("Wait cancelled. You can check again or prompt again.");
+                    }}
+                  >
+                    Cancel wait
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null
+        }
         footer={
           activeDialog === "mpesa" ? (
             mpesaMode === "stk" && stkPushAvailable ? (
@@ -995,13 +1090,16 @@ export function PosCartPaymentOptions({
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">
+                          {String(payment.payer_name ?? "").trim() || "Unknown customer"}
+                        </p>
+                        <p className="text-sm font-bold text-slate-800">
                           {formatSaleKes(payment.amount)}
                         </p>
                         <p className="text-[11px] text-slate-600">
+                          {payment.phone_number ? `${payment.phone_number} · ` : ""}
                           {payment.transaction_id}
                           {payment.received_at ? ` · ${formatMpesaTime(payment.received_at)}` : ""}
                         </p>
-                        <p className="text-[10px] uppercase text-slate-500">{payment.source}</p>
                       </div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2">
@@ -1016,10 +1114,10 @@ export function PosCartPaymentOptions({
                       <button
                         type="button"
                         disabled={disabled || !mpesaApplyAmountForPayment(payment.amount)}
-                        onClick={() => void applyMpesaCandidate(payment.id, payment.amount)}
+                        onClick={() => void applyMpesaCandidate(payment, payment.amount)}
                         className="rounded-md bg-[var(--theme-primary)] px-2 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
                       >
-                        Use {formatSaleKes(mpesaApplyAmountForPayment(payment.amount) ?? 0)}
+                        Select this payment
                       </button>
                     </div>
                   </div>

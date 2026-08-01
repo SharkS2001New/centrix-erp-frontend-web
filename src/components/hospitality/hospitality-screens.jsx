@@ -3,37 +3,7 @@
 import Link from "next/link";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 
-/** Empty Hotel & Bar POS shell — checks use hospitality_* tables, not sales/carts. */
-export function HotelBarPosScreen() {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col p-6">
-      <div className="mx-auto w-full max-w-3xl rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-8">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--theme-text-subtle)]">
-          Hotel &amp; Bar POS
-        </p>
-        <h1 className="theme-heading mt-2 text-2xl font-semibold">Front terminal</h1>
-        <p className="theme-subtext mt-2 text-sm leading-relaxed">
-          Kenya-ready hospitality POS scaffold. Open checks, outlets, and room charges will live here —
-          stored in <code className="text-xs">hospitality_checks</code>, not retail{" "}
-          <code className="text-xs">sales</code> / <code className="text-xs">temporary_carts</code>.
-        </p>
-        <ul className="theme-subtext mt-4 list-disc space-y-1 pl-5 text-sm">
-          <li>Counter, table, takeaway, and room-service modes (capability toggles)</li>
-          <li>Cash, M-Pesa, card, and folio posting</li>
-          <li>Shared products / VAT / payment methods only — no sales-order reuse</li>
-        </ul>
-        <div className="mt-6">
-          <Link
-            href="/choose-workspace"
-            className="text-sm font-medium text-[#185FA5] hover:underline"
-          >
-            Switch workspace
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
+export { HotelBarPosScreen } from "@/components/hospitality/hotel-bar-pos-screen";
 
 export function HospitalityDashboardScreen() {
   return (
