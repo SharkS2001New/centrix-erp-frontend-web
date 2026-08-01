@@ -62,6 +62,8 @@ export const EMPTY_PRODUCT_FORM = {
   reorder_packs: "",
   shelf_location: "",
   sell_on_retail: false,
+  sell_on_bar: true,
+  sell_on_hotel: true,
   retail_package_id: "",
   retail_pricing_tiers: [defaultRetailPricingTier(null)],
   vat_id: "",
@@ -151,6 +153,8 @@ export function productToForm(product, retailPackage = null, uom = null) {
     reorder_packs: reorderPacks,
     shelf_location: product.shelf_location ?? "",
     sell_on_retail: product.sell_on_retail === 1 || product.sell_on_retail === true,
+    sell_on_bar: product.sell_on_bar !== 0 && product.sell_on_bar !== false,
+    sell_on_hotel: product.sell_on_hotel !== 0 && product.sell_on_hotel !== false,
     vat_id: product.vat_id ? String(product.vat_id) : "",
     catalog_scope: product.catalog_scope === "branch" || product.branch_id ? "branch" : "organization",
     branch_id: product.branch_id != null ? String(product.branch_id) : "",
@@ -175,6 +179,8 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     product_weight: parseDecimalInput(form.product_weight) || null,
     supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
     sell_on_retail: Boolean(form.sell_on_retail),
+    sell_on_bar: Boolean(form.sell_on_bar),
+    sell_on_hotel: Boolean(form.sell_on_hotel),
     vat_id: form.vat_id ? Number(form.vat_id) : undefined,
     reorder_point: reorderBaseFromForm(form, uom),
     deleted_at: form.is_active ? null : new Date().toISOString(),
@@ -766,6 +772,30 @@ export function ProductFormFields({
             productUom={selectedUom}
           />
         ) : null}
+      </div>
+
+      <div className="md:col-span-2 xl:col-span-3 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Hotel &amp; Bar POS menu
+        </p>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.sell_on_bar}
+            onChange={(e) => onChange("sell_on_bar", e.target.checked)}
+            className="mt-0.5 rounded border-slate-300"
+          />
+          <span>Sell on Bar POS — shown to cashiers tied to a Bar outlet</span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.sell_on_hotel}
+            onChange={(e) => onChange("sell_on_hotel", e.target.checked)}
+            className="mt-0.5 rounded border-slate-300"
+          />
+          <span>Sell on Hotel POS — shown to cashiers tied to a Hotel / restaurant outlet</span>
+        </label>
       </div>
 
       <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">

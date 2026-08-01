@@ -208,6 +208,7 @@ ${Number(meta.totalExpenses ?? s.session_expenses) > 0 ? `<div class="row"><span
 ${meta.showFloat ? `<div class="row"><span>Expected net sales</span><span>${kesNum(resolveExpectedNetSales({
   openingFloat: s.opening_float,
   totalSales: s.net_sales,
+  debtorCollections: s.paid_debtors,
   expenses: meta.totalExpenses ?? s.session_expenses,
   cashMovementsIn: s.cash_movements_in,
   cashMovementsOut: s.cash_movements_out,
@@ -246,6 +247,9 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
     push("Sales", "Expenses", `-${kesNum(report?.total_expenses ?? s.session_expenses)}`);
   }
   if (requireTillFloat) {
+    if (Number(s.paid_debtors) > 0) {
+      push("Sales", "Invoice sales (paid debtors)", kesNum(s.paid_debtors));
+    }
     push(
       "Sales",
       "Expected net sales",
@@ -253,6 +257,7 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
         resolveExpectedNetSales({
           openingFloat: s.opening_float,
           totalSales: s.net_sales,
+          debtorCollections: s.paid_debtors,
           expenses: report?.total_expenses ?? s.session_expenses,
           cashMovementsIn: s.cash_movements_in,
           cashMovementsOut: s.cash_movements_out,
@@ -300,13 +305,18 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   }
 
   if (report?.debtors) {
-    push("Debtors", "New credit sales", kesNum(report.debtors.new_credit_sales));
-    push("Debtors", "Payments received", kesNum(report.debtors.payments_received));
-    push("Debtors", "Closing debtors", kesNum(report.debtors.closing));
+    const newCredit = Number(report.debtors.new_credit_sales ?? 0);
+    const paymentsReceived = Number(report.debtors.payments_received ?? 0);
+    const closing = Number(report.debtors.closing ?? 0);
+    if (newCredit > 0 || paymentsReceived > 0 || closing > 0) {
+      if (newCredit > 0) push("Debtors", "New credit sales", kesNum(newCredit));
+      if (paymentsReceived > 0) push("Debtors", "Payments received", kesNum(paymentsReceived));
+      if (closing > 0) push("Debtors", "Closing debtors", kesNum(closing));
+    }
   }
 
   if (requireTillFloat && report?.net_position != null) {
-    push("Net position", "Net position", kesNum(report.net_position));
+    push("Net position", "Expected closing", kesNum(report.net_position));
   }
 
   return rows;
@@ -405,6 +415,7 @@ export function EndOfDayReportScreen() {
       resolveExpectedNetSales({
         openingFloat: summary.opening_float,
         totalSales: summary.net_sales,
+        debtorCollections: summary.paid_debtors,
         expenses: report?.total_expenses ?? summary.session_expenses,
         cashMovementsIn: summary.cash_movements_in,
         cashMovementsOut: summary.cash_movements_out,
@@ -413,6 +424,7 @@ export function EndOfDayReportScreen() {
     [
       summary.net_sales,
       summary.opening_float,
+      summary.paid_debtors,
       summary.expected_net_sales,
       summary.net_cash_expected,
       summary.session_expenses,
@@ -697,7 +709,7 @@ export function EndOfDayReportScreen() {
               <StatCard
                 label="Expected net sales"
                 value={formatTillKes(expectedNetSales)}
-                hint="Opening float + total sales − expenses"
+                hint="Paid sales + paid debtors + float − expenses"
               />
             ) : null}
             {Number(report?.total_expenses) > 0 ? (
@@ -920,6 +932,7 @@ export function EndOfDayReportScreen() {
               </Panel>
             ) : null}
 
+            {Number(report?.total_expenses ?? 0) > 0 || (report.expenses ?? []).length > 0 ? (
             <Panel
               title="Expenses summary"
               action={
@@ -948,15 +961,25 @@ export function EndOfDayReportScreen() {
                 </>
               )}
             </Panel>
+            ) : null}
 
+            {Number(report.debtors?.new_credit_sales ?? 0) > 0
+              || Number(report.debtors?.payments_received ?? 0) > 0
+              || Number(report.debtors?.closing ?? 0) > 0 ? (
             <Panel title="Debtor summary">
-              <SummaryRow label="Opening debtors" value="—" />
-              <SummaryRow label="New sales (credit)" value={formatTillKes(report.debtors?.new_credit_sales)} />
-              <SummaryRow label="Payments received" value={formatTillKes(report.debtors?.payments_received)} tone="success" />
-              <div className="mt-2 border-t border-[var(--theme-border)] pt-2">
-                <SummaryRow label="Closing debtors" value={formatTillKes(report.debtors?.closing)} tone="danger" bold />
-              </div>
+              {Number(report.debtors?.new_credit_sales ?? 0) > 0 ? (
+                <SummaryRow label="New sales (credit)" value={formatTillKes(report.debtors?.new_credit_sales)} />
+              ) : null}
+              {Number(report.debtors?.payments_received ?? 0) > 0 ? (
+                <SummaryRow label="Payments received" value={formatTillKes(report.debtors?.payments_received)} tone="success" />
+              ) : null}
+              {Number(report.debtors?.closing ?? 0) > 0 ? (
+                <div className="mt-2 border-t border-[var(--theme-border)] pt-2">
+                  <SummaryRow label="Credit outstanding" value={formatTillKes(report.debtors?.closing)} tone="danger" bold />
+                </div>
+              ) : null}
             </Panel>
+            ) : null}
           </div>
 
           {isMonthly && (report?.daily_breakdown ?? []).length > 0 ? (
@@ -990,25 +1013,13 @@ export function EndOfDayReportScreen() {
           <div className="mt-6 theme-panel rounded-xl border p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-center gap-3 text-center text-sm">
               <HighlightMetric
-                label="Expected net sales"
+                label="Expected closing"
                 value={formatTillKes(expectedNetSales)}
                 variant="primary"
               />
-              <span className="theme-subtext text-xl">−</span>
-              <HighlightMetric
-                label="Closing debtors"
-                value={formatTillKes(report.debtors?.closing)}
-                variant="warning"
-              />
-              <span className="theme-subtext text-xl">=</span>
-              <HighlightMetric
-                label="Net position"
-                value={formatTillKes(report.net_position)}
-                variant="success"
-              />
             </div>
             <p className="theme-subtext mt-3 text-center text-xs">
-              Expected closing = opening float + total sales − expenses
+              Expected closing = paid sales + paid debtors + float − expenses
             </p>
           </div>
           ) : null}

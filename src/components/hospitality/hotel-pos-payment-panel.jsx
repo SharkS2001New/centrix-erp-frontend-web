@@ -85,6 +85,8 @@ export function HotelPosPaymentPanel({
   error = null,
   onComplete,
   allowPartial = false,
+  roomChargeEnabled = false,
+  openFolios = [],
 }) {
   const cfg = paymentConfig ?? {};
   const total = round2(billTotal);
@@ -100,6 +102,8 @@ export function HotelPosPaymentPanel({
   const [bankRef, setBankRef] = useState("");
   const [cheque, setCheque] = useState(0);
   const [chequeNo, setChequeNo] = useState("");
+  const [roomCharge, setRoomCharge] = useState(0);
+  const [folioId, setFolioId] = useState("");
   const [localError, setLocalError] = useState(null);
   const [keypad, setKeypad] = useState(null); // { method, title, value }
 
@@ -116,6 +120,8 @@ export function HotelPosPaymentPanel({
     setBankRef("");
     setCheque(0);
     setChequeNo("");
+    setRoomCharge(0);
+    setFolioId("");
     setLocalError(null);
     setKeypad(null);
   }, [open, total]);
@@ -128,7 +134,13 @@ export function HotelPosPaymentPanel({
     let bank = 0;
     if (cfg.useBankSelect) bank = bankAmount;
     else bank = equity + kcb + otherBank;
-    return round2(cash + (cfg.enableMpesaAmount ? mpesa : 0) + bank + (cfg.showCheque ? cheque : 0));
+    return round2(
+      cash +
+        (cfg.enableMpesaAmount ? mpesa : 0) +
+        bank +
+        (cfg.showCheque ? cheque : 0) +
+        (roomChargeEnabled ? roomCharge : 0),
+    );
   }, [
     cash,
     mpesa,
@@ -137,6 +149,8 @@ export function HotelPosPaymentPanel({
     otherBank,
     bankAmount,
     cheque,
+    roomCharge,
+    roomChargeEnabled,
     cfg.useBankSelect,
     cfg.enableMpesaAmount,
     cfg.showCheque,
@@ -154,6 +168,7 @@ export function HotelPosPaymentPanel({
       other: !cfg.useBankSelect && cfg.showOtherBank ? otherBank : 0,
       bank: cfg.useBankSelect && cfg.showBankAmount ? bankAmount : 0,
       cheque: cfg.showCheque ? cheque : 0,
+      room: roomChargeEnabled ? roomCharge : 0,
     };
     const sum = Object.entries(parts)
       .filter(([key]) => key !== method)
@@ -185,6 +200,9 @@ export function HotelPosPaymentPanel({
       case "cheque":
         setCheque(v);
         break;
+      case "room":
+        setRoomCharge(v);
+        break;
       default:
         break;
     }
@@ -199,6 +217,7 @@ export function HotelPosPaymentPanel({
     setOtherBank(0);
     setBankAmount(0);
     setCheque(0);
+    setRoomCharge(0);
     setMethodAmount(method, total);
   }
 
@@ -215,6 +234,7 @@ export function HotelPosPaymentPanel({
       other: otherBank,
       bank: bankAmount,
       cheque,
+      room: roomCharge,
     }[method];
     setKeypad({ method, title, value: String(current || 0) });
   }
@@ -223,6 +243,10 @@ export function HotelPosPaymentPanel({
     setLocalError(null);
     if (amountPaid <= 0) {
       setLocalError("Enter a payment amount.");
+      return;
+    }
+    if (roomChargeEnabled && roomCharge > 0 && !folioId) {
+      setLocalError("Select a guest folio for room charge.");
       return;
     }
     if (!allowPartial && amountPaid + 0.001 < total) {
@@ -271,9 +295,17 @@ export function HotelPosPaymentPanel({
         reference: chequeNo.trim() || null,
       });
     }
+    if (roomChargeEnabled && roomCharge > 0) {
+      payments.push({ method_code: "ROOM", amount: roomCharge });
+    }
 
     try {
-      await onComplete?.({ payments, amount_paid: amountPaid, bill_total: total });
+      await onComplete?.({
+        payments,
+        amount_paid: amountPaid,
+        bill_total: total,
+        folio_id: roomCharge > 0 && folioId ? Number(folioId) : undefined,
+      });
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : "Payment failed");
     }
@@ -419,6 +451,31 @@ export function HotelPosPaymentPanel({
                       onChange={(e) => setChequeNo(e.target.value)}
                     />
                   ) : null
+                }
+              />
+            ) : null}
+
+            {roomChargeEnabled ? (
+              <HotelPosMethodBlock
+                {...methodBlockProps}
+                method="room"
+                label="Room charge"
+                value={roomCharge}
+                balanceForMethod={amountExcluding("room")}
+                extra={
+                  <select
+                    className="theme-input mt-2 w-full rounded-xl px-3 py-2 text-sm"
+                    value={folioId}
+                    onChange={(e) => setFolioId(e.target.value)}
+                  >
+                    <option value="">Select open folio…</option>
+                    {(openFolios || []).map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.folio_number} · {f.guest_name}
+                        {f.room_number ? ` · Rm ${f.room_number}` : ""}
+                      </option>
+                    ))}
+                  </select>
                 }
               />
             ) : null}

@@ -13,6 +13,7 @@ import {
   holdHotelCheck,
   listCollectibleHotelChecks,
   listHotelFloorTables,
+  listOpenHotelFolios,
   openHotelCheck,
   removeHotelCheckLine,
   resumeHotelCheck,
@@ -69,6 +70,11 @@ export function HotelBarPosScreen() {
   const [queueChecks, setQueueChecks] = useState([]);
   const [payOpen, setPayOpen] = useState(false);
   const [payError, setPayError] = useState(null);
+  const [roomChargeEnabled, setRoomChargeEnabled] = useState(
+    isHospitalityServiceEnabled(capabilities, "room_charge"),
+  );
+  const [openFolios, setOpenFolios] = useState([]);
+  const [menuOutlet, setMenuOutlet] = useState(null);
   const searchRef = useRef(null);
   const catalogScrollRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
@@ -89,6 +95,7 @@ export function HotelBarPosScreen() {
     setCatalogLimit(hotelSettings.catalogLimit);
     setStockDeductOnSettle(hotelSettings.stockDeductOnSettle);
     setTablePosEnabled(isHospitalityServiceEnabled(capabilities, "table_pos"));
+    setRoomChargeEnabled(isHospitalityServiceEnabled(capabilities, "room_charge"));
     setUnpaidEnabled(paymentWorkflow.unpaid);
     setPartialEnabled(paymentWorkflow.partially_paid);
   }, [
@@ -120,6 +127,9 @@ export function HotelBarPosScreen() {
           setUnpaidEnabled(wf.unpaid);
           setPartialEnabled(wf.partially_paid);
         }
+        if (settings?.outlet) {
+          setMenuOutlet(settings.outlet);
+        }
         if (settings?.table_pos_enabled || settings?.floor_tables_enabled) {
           const tablesRes = await listHotelFloorTables();
           if (!cancelled) {
@@ -148,6 +158,7 @@ export function HotelBarPosScreen() {
     if (res?.collect_payment != null) setCollectPayment(Boolean(res.collect_payment));
     if (res?.catalog_limit != null) setCatalogLimit(Number(res.catalog_limit) || 30);
     if (res?.stock_deduct_on_settle != null) setStockDeductOnSettle(Boolean(res.stock_deduct_on_settle));
+    if (res?.outlet) setMenuOutlet(res.outlet);
     setCatalogHasMore(Boolean(res?.has_more));
     setCatalogNextOffset(res?.next_offset ?? null);
   }, []);
@@ -233,6 +244,9 @@ export function HotelBarPosScreen() {
 
   async function startFreshCheck() {
     const body = { branch_id: user?.branch_id ?? undefined };
+    if (menuOutlet?.id) {
+      body.outlet_id = Number(menuOutlet.id);
+    }
     if (tablePosEnabled && selectedTableId) {
       body.floor_table_id = Number(selectedTableId);
     }
@@ -399,17 +413,25 @@ export function HotelBarPosScreen() {
     }
   }
 
-  function handlePrimaryComplete() {
+  async function handlePrimaryComplete() {
     if (!check?.id || !check.lines?.length || busy) return;
     if (collectPayment) {
       setPayError(null);
+      if (roomChargeEnabled) {
+        try {
+          const foliosRes = await listOpenHotelFolios();
+          setOpenFolios(foliosRes?.data ?? []);
+        } catch {
+          setOpenFolios([]);
+        }
+      }
       setPayOpen(true);
       return;
     }
     void handleSaveOrder();
   }
 
-  async function handlePaymentComplete({ payments }) {
+  async function handlePaymentComplete({ payments, folio_id }) {
     if (!check?.id) return;
     setBusy(true);
     setPayError(null);
@@ -418,6 +440,7 @@ export function HotelBarPosScreen() {
       const res = await settleHotelCheck(check.id, {
         payments,
         floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
+        folio_id,
       });
       const next = res?.check;
       const status = next?.status;
@@ -481,11 +504,17 @@ export function HotelBarPosScreen() {
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-text)]">
                   Hotel &amp; Bar
+                  {menuOutlet?.menu_channel_label ? (
+                    <span className="ml-2 rounded-full bg-[color-mix(in_srgb,var(--theme-primary)_14%,transparent)] px-2 py-0.5 text-[10px] font-bold tracking-wide text-[var(--theme-primary)]">
+                      {menuOutlet.menu_channel_label} menu
+                    </span>
+                  ) : null}
                 </p>
                 <h1 className="theme-heading mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
                   Tap to sell
                 </h1>
                 <p className="theme-subtext mt-1 text-xs">
+                  {menuOutlet?.name ? `${menuOutlet.name} · ` : ""}
                   {searching
                     ? "Search results · scroll for more"
                     : `Most sold (last 5 days) · ${catalogLimit} at a time · scroll for more`}
@@ -861,6 +890,8 @@ export function HotelBarPosScreen() {
         saving={busy}
         error={payError}
         allowPartial={partialEnabled}
+        roomChargeEnabled={roomChargeEnabled}
+        openFolios={openFolios}
         onComplete={handlePaymentComplete}
       />
     </div>

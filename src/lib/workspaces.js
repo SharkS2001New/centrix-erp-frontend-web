@@ -39,6 +39,9 @@ export const WORKSPACE_SECTION_IDS = {
     "hospitality_dashboard",
     "hospitality_rooms",
     "hospitality_ops",
+    "hospitality_catalogue",
+    "hospitality_stock",
+    "hospitality_purchasing",
     "reports",
   ],
   admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax"],
@@ -64,7 +67,15 @@ export const WORKSPACE_NAV_ZONES = {
   hospitality_backoffice: [
     {
       label: null,
-      sectionIds: ["hospitality_dashboard", "hospitality_rooms", "hospitality_ops", "reports"],
+      sectionIds: [
+        "hospitality_dashboard",
+        "hospitality_rooms",
+        "hospitality_ops",
+        "hospitality_catalogue",
+        "hospitality_stock",
+        "hospitality_purchasing",
+        "reports",
+      ],
     },
   ],
   admin: [
@@ -114,7 +125,16 @@ export const WORKSPACE_DASHBOARD_HREFS = WORKSPACE_ANALYTICS_HREFS;
 export const WORKSPACE_PATH_PREFIXES = {
   pos: ["/pos", "/sales/pos"],
   hotel_bar_pos: ["/hotel-bar-pos"],
-  hospitality_backoffice: ["/hospitality"],
+  hospitality_backoffice: [
+    "/hospitality",
+    "/products",
+    "/categories",
+    "/uoms",
+    "/inventory",
+    "/suppliers",
+    "/lpo",
+    "/purchases",
+  ],
   backoffice: [
     "/dashboard",
     "/sales",
@@ -229,6 +249,13 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
       return true;
     }
     return false;
+  }
+
+  if (workspaceId === "hospitality_backoffice") {
+    if (item.href?.startsWith("/hospitality")) {
+      return true;
+    }
+    return pathBelongsToWorkspace(item.href, "hospitality_backoffice");
   }
 
   if (workspaceId === "backoffice") {

@@ -78,7 +78,7 @@ export async function resumeHotelCheck(checkId) {
   });
 }
 
-export async function settleHotelCheck(checkId, { amount, payments, floor_table_id } = {}) {
+export async function settleHotelCheck(checkId, { amount, payments, floor_table_id, folio_id } = {}) {
   const body = {};
   if (Array.isArray(payments) && payments.length) {
     body.payments = payments;
@@ -89,10 +89,15 @@ export async function settleHotelCheck(checkId, { amount, payments, floor_table_
     body.method = "CASH";
   }
   if (floor_table_id) body.floor_table_id = floor_table_id;
+  if (folio_id) body.folio_id = folio_id;
   return apiRequest(`/hospitality/pos/checks/${checkId}/settle`, {
     method: "POST",
     body,
   });
+}
+
+export async function listOpenHotelFolios() {
+  return apiRequest("/hospitality/folios/open", { loading: false });
 }
 
 export async function saveHotelCheck(checkId, { floor_table_id } = {}) {

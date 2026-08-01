@@ -142,12 +142,25 @@ export function PosReportView({
     value: formatTillKes(row.total),
   }));
 
+  const debtorCollections = Number(sales.debtor_collections ?? sales.invoice_sales ?? 0);
   const salesItems = [
-    {
-      label: "Total expenses",
-      value: formatTillKes(sessionExpenses),
-      valueClassName: sessionExpenses > 0 ? "text-red-700" : undefined,
-    },
+    ...(debtorCollections > 0
+      ? [
+          {
+            label: "Invoice sales (paid debtors)",
+            value: formatTillKes(debtorCollections),
+          },
+        ]
+      : []),
+    ...(sessionExpenses > 0
+      ? [
+          {
+            label: "Total expenses",
+            value: formatTillKes(sessionExpenses),
+            valueClassName: "text-red-700",
+          },
+        ]
+      : []),
   ];
 
   const salesSummaryItems = resolveTillSalesSummaryRows(report, session, {
@@ -203,7 +216,7 @@ export function PosReportView({
           <ReportSummaryRows items={paymentItems} />
         </ReportSection>
 
-        <ReportSummaryRows items={salesItems} />
+        {salesItems.length > 0 ? <ReportSummaryRows items={salesItems} /> : null}
 
         <ReportSection title="Sales summary">
           <ReportSummaryRows items={salesSummaryItems} />

@@ -40,6 +40,15 @@ const EMPTY_ROOM = {
   is_active: true,
 };
 
+const EMPTY_PLAN = {
+  room_type_id: "",
+  code: "",
+  name: "",
+  amount: "0",
+  is_default: false,
+  is_active: true,
+};
+
 export function HospitalityRoomsScreen() {
   const { capabilities } = useAuth();
   const roomsEnabled = isHospitalityServiceEnabled(capabilities, "rooms");
@@ -74,14 +83,21 @@ function HospitalityRoomsManager() {
   const [editingRoomId, setEditingRoomId] = useState(null);
   const [roomForm, setRoomForm] = useState(EMPTY_ROOM);
 
+  const [ratePlans, setRatePlans] = useState([]);
+  const [planDrawer, setPlanDrawer] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState(null);
+  const [planForm, setPlanForm] = useState(EMPTY_PLAN);
+
   const loadData = useCallback(async () => {
     try {
-      const [typesRes, roomsRes] = await Promise.all([
+      const [typesRes, roomsRes, plansRes] = await Promise.all([
         apiRequest("/hospitality/room-types", { searchParams: { per_page: 100 } }),
         apiRequest("/hospitality/rooms", { searchParams: { per_page: 200 } }),
+        apiRequest("/hospitality/rate-plans"),
       ]);
       setRoomTypes(typesRes?.data ?? typesRes ?? []);
       setRooms(roomsRes?.data ?? roomsRes ?? []);
+      setRatePlans(plansRes?.data ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load rooms");
     } finally {
@@ -232,10 +248,26 @@ function HospitalityRoomsManager() {
     <CatalogPageShell
       title="Rooms"
       subtitle="Room types and room inventory for this hotel. Main outlet is always available for Hotel & Bar POS."
-      actions={
+      action={
         <div className="flex flex-wrap gap-2">
           <button type="button" className={SECONDARY_BTN_CLASS} onClick={openCreateType}>
             Add room type
+          </button>
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={!roomTypes.length}
+            onClick={() => {
+              setEditingPlanId(null);
+              setPlanForm({
+                ...EMPTY_PLAN,
+                room_type_id: roomTypes[0]?.id ? String(roomTypes[0].id) : "",
+              });
+              setFormError(null);
+              setPlanDrawer(true);
+            }}
+          >
+            Add rate plan
           </button>
           <PrimaryButton onClick={openCreateRoom} disabled={!roomTypes.length}>
             Add room
@@ -281,6 +313,82 @@ function HospitalityRoomsManager() {
                             <PencilIcon />
                           </IconButton>
                           <IconButton title="Delete" onClick={() => void deleteType(row)}>
+                            <TrashIcon />
+                          </IconButton>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <h2 className="theme-heading mb-2 text-sm font-semibold uppercase tracking-wide">Rate plans</h2>
+            <div className={TABLE_SHELL_CLASS}>
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className={TABLE_HEAD_ROW_CLASS}>
+                    <th className="px-3 py-2 text-left">Code</th>
+                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">Room type</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                    <th className="px-3 py-2 text-left">Default</th>
+                    <th className="px-3 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!ratePlans.length ? (
+                    <tr>
+                      <td colSpan={6} className="theme-subtext px-3 py-8 text-center">
+                        Optional named rates (BAR, Rack). Night audit uses default plan or room type base rate.
+                      </td>
+                    </tr>
+                  ) : (
+                    ratePlans.map((row) => (
+                      <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
+                        <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
+                        <td className="px-3 py-2">{row.name}</td>
+                        <td className="px-3 py-2">{row.room_type_name || "—"}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {Number(row.amount ?? 0).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2">{row.is_default ? "Yes" : "—"}</td>
+                        <td className="px-3 py-2 text-right">
+                          <IconButton
+                            title="Edit"
+                            onClick={() => {
+                              setEditingPlanId(row.id);
+                              setPlanForm({
+                                room_type_id: String(row.room_type_id),
+                                code: row.code || "",
+                                name: row.name || "",
+                                amount: String(row.amount ?? 0),
+                                is_default: Boolean(row.is_default),
+                                is_active: row.is_active !== false,
+                              });
+                              setFormError(null);
+                              setPlanDrawer(true);
+                            }}
+                          >
+                            <PencilIcon />
+                          </IconButton>
+                          <IconButton
+                            title="Delete"
+                            onClick={() =>
+                              void (async () => {
+                                if (!(await confirm({ title: "Delete rate plan?", message: row.name }))) return;
+                                try {
+                                  await apiRequest(`/hospitality/rate-plans/${row.id}`, { method: "DELETE" });
+                                  notifySuccess("Rate plan deleted");
+                                  await loadData();
+                                } catch (e) {
+                                  notifyError(e instanceof ApiError ? e.message : "Delete failed");
+                                }
+                              })()
+                            }
+                          >
                             <TrashIcon />
                           </IconButton>
                         </td>
@@ -450,6 +558,108 @@ function HospitalityRoomsManager() {
               type="checkbox"
               checked={roomForm.is_active}
               onChange={(e) => setRoomForm((p) => ({ ...p, is_active: e.target.checked }))}
+            />
+            Active
+          </label>
+          <PrimaryButton type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </PrimaryButton>
+        </form>
+      </FormDrawer>
+
+      <FormDrawer
+        open={planDrawer}
+        title={editingPlanId ? "Edit rate plan" : "Add rate plan"}
+        onClose={() => setPlanDrawer(false)}
+        error={formError}
+      >
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void (async () => {
+              setSaving(true);
+              setFormError(null);
+              const body = {
+                room_type_id: Number(planForm.room_type_id),
+                code: planForm.code.trim().toUpperCase(),
+                name: planForm.name.trim(),
+                amount: Number(planForm.amount) || 0,
+                is_default: Boolean(planForm.is_default),
+                is_active: Boolean(planForm.is_active),
+              };
+              try {
+                if (editingPlanId) {
+                  await apiRequest(`/hospitality/rate-plans/${editingPlanId}`, { method: "PUT", body });
+                  notifySuccess("Rate plan updated");
+                } else {
+                  await apiRequest("/hospitality/rate-plans", { method: "POST", body });
+                  notifySuccess("Rate plan created");
+                }
+                setPlanDrawer(false);
+                await loadData();
+              } catch (err) {
+                setFormError(err instanceof ApiError ? err.message : "Save failed");
+              } finally {
+                setSaving(false);
+              }
+            })();
+          }}
+        >
+          <Field label="Room type">
+            <select
+              className={inputClassName}
+              required
+              value={planForm.room_type_id}
+              onChange={(e) => setPlanForm((p) => ({ ...p, room_type_id: e.target.value }))}
+            >
+              <option value="">Select…</option>
+              {roomTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Code">
+            <input
+              className={inputClassName}
+              required
+              value={planForm.code}
+              onChange={(e) => setPlanForm((p) => ({ ...p, code: e.target.value }))}
+            />
+          </Field>
+          <Field label="Name">
+            <input
+              className={inputClassName}
+              required
+              value={planForm.name}
+              onChange={(e) => setPlanForm((p) => ({ ...p, name: e.target.value }))}
+            />
+          </Field>
+          <Field label="Amount / night">
+            <input
+              type="number"
+              min="0"
+              step="any"
+              className={inputClassName}
+              value={planForm.amount}
+              onChange={(e) => setPlanForm((p) => ({ ...p, amount: e.target.value }))}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={planForm.is_default}
+              onChange={(e) => setPlanForm((p) => ({ ...p, is_default: e.target.checked }))}
+            />
+            Default for this room type
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={planForm.is_active}
+              onChange={(e) => setPlanForm((p) => ({ ...p, is_active: e.target.checked }))}
             />
             Active
           </label>

@@ -147,7 +147,7 @@ export const P = {
   inventory: {
     dashboard: { view: "dashboard.inventory.view" },
     stock: { view: "inventory.stock.view" },
-    receipts: { view: "inventory.receipts.view" },
+    receipts: { view: "inventory.receipts.view", create: "inventory.receipts.create", approve: "inventory.receipts.approve" },
     movements: { view: "inventory.movements.view" },
     transfers: { view: "inventory.transfers.view", create: "inventory.transfers.create" },
     damages: { view: "inventory.damages.view" },

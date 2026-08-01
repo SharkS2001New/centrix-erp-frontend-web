@@ -167,7 +167,12 @@ export function buildPosTillReportHtml({
     ...paymentPrintRows(report),
   ];
 
-  const salesExpenseRows = [row("Total expenses", amt(sessionExpenses))];
+  const salesExpenseRows = [
+    ...(Number(report?.sales?.debtor_collections ?? report?.sales?.invoice_sales ?? 0) > 0
+      ? [row("Invoice sales (paid debtors)", amt(report.sales.debtor_collections ?? report.sales.invoice_sales))]
+      : []),
+    ...(sessionExpenses > 0 ? [row("Total expenses", amt(sessionExpenses))] : []),
+  ];
 
   const salesSummaryRowItems = [
     sectionRow("Sales summary"),

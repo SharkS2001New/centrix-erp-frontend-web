@@ -48,6 +48,7 @@ export function cashMovementHint(type) {
 export function resolveExpectedNetSales({
   openingFloat,
   totalSales,
+  debtorCollections = 0,
   expenses = 0,
   cashMovementsIn = 0,
   cashMovementsOut = 0,
@@ -56,9 +57,11 @@ export function resolveExpectedNetSales({
   if (expectedNetSales != null && expectedNetSales !== "") {
     return Number(expectedNetSales);
   }
+  // Legacy x/zreport_summary: ORDTTL + DBTTL + FLOATTTL − EXPTTL
   return (
     Number(openingFloat ?? 0)
     + Number(totalSales ?? 0)
+    + Number(debtorCollections ?? 0)
     - Number(expenses ?? 0)
     - Number(cashMovementsOut ?? 0)
     + Number(cashMovementsIn ?? 0)
@@ -418,6 +421,7 @@ export function resolveTillSalesSummaryRows(report, _session, { showFloatBreakdo
   const expectedAmount = resolveExpectedNetSales({
     openingFloat,
     totalSales: netSales,
+    debtorCollections: Number(sales.debtor_collections ?? sales.invoice_sales ?? 0),
     expenses: sessionExpenses,
     cashMovementsIn: cashIn,
     cashMovementsOut: cashOut,

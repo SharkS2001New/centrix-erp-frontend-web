@@ -181,6 +181,7 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain("Payment summary");
     expect(html).toContain("Cash payment");
     expect(html).toContain("M-Pesa payments");
+    expect(html).toContain("Invoice sales (paid debtors)");
     expect(html).not.toContain("Total paid debtors");
     expect(html).toContain("Sales summary");
     expect(html).toContain("Gross sales");
@@ -209,6 +210,7 @@ describe("buildPosTillReportHtml", () => {
     expect(html).toContain("M-Pesa payments");
     expect(html).toContain("Equity payment");
     expect(html).toContain("K.C.B payment");
+    expect(html).toContain("Invoice sales (paid debtors)");
     expect(html).not.toContain("Total paid debtors");
     expect(html).toContain("Total expenses");
     expect(html).toContain("Sales summary");

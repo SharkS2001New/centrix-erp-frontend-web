@@ -63,6 +63,7 @@ const EMPTY_FORM = {
   email: "",
   username: "",
   branch_id: "",
+  hospitality_outlet_id: "",
   role_id: "",
   password: "",
   must_change_password: true,
@@ -99,6 +100,7 @@ export function AdminUsersScreen() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
   const [branches, setBranches] = useState([]);
+  const [hospitalityOutlets, setHospitalityOutlets] = useState([]);
   const [roles, setRoles] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [tills, setTills] = useState([]);
@@ -134,6 +136,10 @@ export function AdminUsersScreen() {
   const mobileOrdersEnabled = isOrgMobileSalesEnabled(effectiveCapabilities);
   const mobileAppEnabled = mobileOrdersEnabled || effectiveCapabilities?.driver_mobile_enabled === true;
   const posEnabled = Boolean(effectiveCapabilities?.modules?.["sales.pos"]);
+  const hospitalityPosEnabled = Boolean(
+    effectiveCapabilities?.modules?.["hospitality.bar_pos"] ||
+      effectiveCapabilities?.deployment_profile === "hotel_bar",
+  );
   const allowedLoginChannelSet = useMemo(
     () => new Set(defaultLoginChannelsForCapabilities(effectiveCapabilities)),
     [effectiveCapabilities],
@@ -208,11 +214,17 @@ export function AdminUsersScreen() {
           }),
         );
       }
+      const hospitalityOutletReqIndex = hospitalityPosEnabled ? requests.length : -1;
+      if (hospitalityPosEnabled) {
+        requests.push(apiRequest("/hospitality/outlets"));
+      }
 
       const results = await Promise.allSettled(requests);
       const [branchRes, roleRes, matrixRes] = results;
       const routeRes = routeReqIndex >= 0 ? results[routeReqIndex] : null;
       const tillRes = tillReqIndex >= 0 ? results[tillReqIndex] : null;
+      const hospitalityOutletRes =
+        hospitalityOutletReqIndex >= 0 ? results[hospitalityOutletReqIndex] : null;
 
       if (branchRes.status === "rejected") {
         throw branchRes.reason;
@@ -250,12 +262,24 @@ export function AdminUsersScreen() {
       } else {
         setTills([]);
       }
+
+      if (hospitalityPosEnabled) {
+        if (hospitalityOutletRes?.status === "fulfilled") {
+          const outletRows =
+            hospitalityOutletRes.value?.data ?? hospitalityOutletRes.value ?? [];
+          setHospitalityOutlets(Array.isArray(outletRows) ? outletRows : []);
+        } else {
+          setHospitalityOutlets([]);
+        }
+      } else {
+        setHospitalityOutlets([]);
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load users");
     } finally {
       setLoading(false);
     }
-  }, [organizationId, adminPath, mobileAppEnabled, posEnabled]);
+  }, [organizationId, adminPath, mobileAppEnabled, posEnabled, hospitalityPosEnabled]);
 
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;
@@ -371,6 +395,9 @@ export function AdminUsersScreen() {
       email: row.email ?? "",
       username: row.username ?? "",
       branch_id: row.branch_id ? String(row.branch_id) : "",
+      hospitality_outlet_id: row.hospitality_outlet_id
+        ? String(row.hospitality_outlet_id)
+        : "",
       role_id: row.role_id ? String(row.role_id) : "",
       password: "",
       must_change_password: true,
@@ -583,10 +610,16 @@ export function AdminUsersScreen() {
         email: form.email.trim() || null,
         username: form.username.trim(),
         branch_id: form.branch_id ? Number(form.branch_id) : null,
+        hospitality_outlet_id: form.hospitality_outlet_id
+          ? Number(form.hospitality_outlet_id)
+          : null,
         role_id: Number(form.role_id),
         access_scope: form.access_scope,
         login_channels: normalizeLoginChannels(form.login_channels, allowedLoginChannelSet),
       };
+      if (!hospitalityPosEnabled) {
+        delete body.hospitality_outlet_id;
+      }
       if (userHasMobileChannel(form.login_channels)) {
         body.assigned_route_ids = (form.assigned_route_ids ?? [])
           .map((id) => Number(id))
@@ -984,6 +1017,32 @@ export function AdminUsersScreen() {
                 Lock this cashier to a till (Till01–Till10), or choose “Create next till” /
                 leave auto so POS assigns the lowest free unlocked till on declare float.
                 Tills locked to another cashier are never auto-assigned.
+              </p>
+            </Field>
+          ) : null}
+          {hospitalityPosEnabled ? (
+            <Field label="Hotel & Bar outlet">
+              <HrSearchableSelect
+                value={form.hospitality_outlet_id}
+                onChange={(v) => setForm((f) => ({ ...f, hospitality_outlet_id: v }))}
+                options={[
+                  { value: "", label: "Default (Main bar)" },
+                  ...hospitalityOutlets
+                    .filter((o) => o.is_active !== false)
+                    .map((o) => {
+                      const channel =
+                        String(o.outlet_type || "").toLowerCase() === "bar" ? "Bar" : "Hotel";
+                      return {
+                        value: String(o.id),
+                        label: `${o.name || o.code} · ${channel}`,
+                      };
+                    }),
+                ]}
+                placeholder="Select outlet"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Bar outlets show only Bar products; Hotel / restaurant outlets show only Hotel
+                products. Create outlets under Hospitality → Outlets.
               </p>
             </Field>
           ) : null}

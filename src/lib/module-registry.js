@@ -72,6 +72,13 @@ export const REPORT_MODULE_BY_SLUG = {
   headcount: "hr_payroll.reports",
   "contract-expiry": "hr_payroll.reports",
   "hr-dashboard-kpi": "hr_payroll.reports",
+
+  "hospitality-occupancy": "hospitality.reports",
+  "hospitality-arrivals-departures": "hospitality.reports",
+  "hospitality-folio-balances": "hospitality.reports",
+  "hospitality-fnb-checks": "hospitality.reports",
+  "hospitality-profit-loss": "hospitality.reports",
+  "hospitality-eod-cashier": "hospitality.reports",
 };
 
 /** @param {string} slug */

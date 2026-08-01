@@ -139,6 +139,7 @@ export function HospitalityOutletsScreen() {
       action={
         extraEnabled ? (
           <PrimaryButton
+            showIcon
             onClick={() => {
               setEditingId(null);
               setForm({ code: "", name: "", outlet_type: "bar", is_active: true });

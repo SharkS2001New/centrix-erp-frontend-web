@@ -183,6 +183,20 @@ export const REPORT_CATEGORY_DEFS = [
       "hr-dashboard-kpi",
     ],
   },
+  {
+    id: "hospitality",
+    title: "Hospitality",
+    description: "Rooms, folios, arrivals, and Hotel POS F&B",
+    icon: "hotel",
+    keys: [
+      "hospitality-occupancy",
+      "hospitality-arrivals-departures",
+      "hospitality-folio-balances",
+      "hospitality-fnb-checks",
+      "hospitality-profit-loss",
+      "hospitality-eod-cashier",
+    ],
+  },
 ];
 
 /**

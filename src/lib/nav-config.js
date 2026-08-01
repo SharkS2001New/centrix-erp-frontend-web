@@ -888,6 +888,103 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
+    id: "hospitality_catalogue",
+    label: "Menu & products",
+    icon: "📋",
+    collapsible: true,
+    items: [
+      {
+        href: "/products",
+        label: "Products catalogue",
+        module: null,
+        permission: P.catalogue.products.view,
+      },
+      {
+        href: "/categories",
+        label: "Categories",
+        module: null,
+        permission: P.catalogue.categories.view,
+      },
+      {
+        href: "/uoms",
+        label: "Units of measure",
+        module: null,
+        permission: P.catalogue.uoms.view,
+      },
+    ],
+  },
+  {
+    id: "hospitality_stock",
+    label: "Stock & receiving",
+    icon: "📦",
+    collapsible: true,
+    items: [
+      {
+        href: "/inventory/stock",
+        label: "Stock on hand",
+        module: "inventory",
+        permission: P.inventory.stock.view,
+      },
+      {
+        href: "/inventory/receipts",
+        label: "Goods received",
+        module: "inventory",
+        permission: P.inventory.receipts.view,
+      },
+      {
+        href: "/inventory/receipts/receive",
+        label: "Receive stock",
+        module: "inventory",
+        permission: P.inventory.receipts.create,
+      },
+      {
+        href: "/inventory/transactions",
+        label: "Stock movements",
+        module: "inventory",
+        permission: P.inventory.movements.view,
+      },
+      {
+        href: "/inventory/adjustments",
+        label: "Stock adjustments",
+        module: "inventory",
+        permission: P.inventory.adjustments.view,
+      },
+    ],
+  },
+  {
+    id: "hospitality_purchasing",
+    label: "Purchasing",
+    icon: "🚚",
+    collapsible: true,
+    items: [
+      {
+        href: "/suppliers",
+        label: "Suppliers",
+        module: "customers_suppliers",
+        permission: P.purchasing.suppliers.view,
+        exact: true,
+      },
+      {
+        href: "/lpo",
+        label: "Purchase orders (LPO)",
+        module: "customers_suppliers",
+        permission: P.purchasing.lpo.view,
+      },
+      {
+        href: "/lpo/new",
+        label: "New LPO",
+        module: "customers_suppliers",
+        permission: P.purchasing.lpo.create,
+      },
+      {
+        href: "/suppliers/payments",
+        label: "Supplier payments",
+        module: "customers_suppliers",
+        permission: P.purchasing.supplier_payments.view,
+      },
+    ],
+  },
+  {
     id: "admin_dashboard",
     label: "Dashboard",
     icon: "📊",

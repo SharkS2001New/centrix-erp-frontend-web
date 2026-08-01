@@ -32,7 +32,8 @@ export const PROVISIONABLE_WORKSPACES = [
   {
     id: "hospitality_backoffice",
     label: "Hospitality Backoffice",
-    description: "Rooms, front desk, folios, housekeeping, and hotel operations.",
+    description:
+      "Rooms, front desk, folios, housekeeping, menu products, LPO, and stock receiving for hotel operations.",
     icon: "building",
   },
   {
@@ -152,6 +153,12 @@ function enableWorkspacePatch(workspaceId) {
         "hospitality.backend": true,
         "hospitality.dashboard": true,
         "hospitality.reports": true,
+        // Hotel ops need shared catalogue, stock, LPO & goods receive (not retail sales).
+        inventory: true,
+        "inventory.dashboard": true,
+        "inventory.reports": true,
+        customers_suppliers: true,
+        "customers_suppliers.reports": true,
       };
     case "distribution":
       return { distribution: true };
@@ -186,6 +193,11 @@ function disableWorkspacePatch(workspaceId) {
         "hospitality.backend": false,
         "hospitality.dashboard": false,
         "hospitality.reports": false,
+        inventory: false,
+        "inventory.dashboard": false,
+        "inventory.reports": false,
+        customers_suppliers: false,
+        "customers_suppliers.reports": false,
       };
     case "distribution":
       return { distribution: false };

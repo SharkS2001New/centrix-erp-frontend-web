@@ -7,6 +7,7 @@ import { reportModuleForSlug } from "@/lib/module-registry";
 import { reportPermissionCode } from "@/lib/permission-codes";
 import { REPORT_CATEGORY_DEFS, reportHref, isMultiBranchReportKey } from "@/lib/reports/catalog-ui";
 import { DISTRIBUTION_REPORT_DEFS } from "@/lib/reports/distribution-reports";
+import { HOSPITALITY_REPORT_DEFS } from "@/lib/reports/hospitality-reports";
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
 import { HR_REPORT_DEFS } from "@/lib/reports/hr-reports";
 
@@ -21,6 +22,7 @@ const GROUP_BY_CATEGORY = {
   finance: "Finance reports",
   compliance: "Compliance reports",
   hr: "Payroll & workforce",
+  hospitality: "Hospitality reports",
   other: "Other reports",
 };
 
@@ -39,6 +41,9 @@ function lookupReportLabel(key) {
   const distribution = DISTRIBUTION_REPORT_DEFS.find((row) => row.key === key);
   if (distribution?.label) return distribution.label;
 
+  const hospitality = HOSPITALITY_REPORT_DEFS.find((row) => row.key === key);
+  if (hospitality?.label) return hospitality.label;
+
   const def = REPORT_DEFINITIONS[key];
   if (def?.title) return def.title.replace(/ Report$/i, "");
 
@@ -54,6 +59,9 @@ function lookupReportIcon(key, href) {
 
   const distribution = DISTRIBUTION_REPORT_DEFS.find((row) => row.key === key);
   if (distribution?.icon) return distribution.icon;
+
+  const hospitality = HOSPITALITY_REPORT_DEFS.find((row) => row.key === key);
+  if (hospitality?.icon) return hospitality.icon;
 
   return resolveNavHrefIcon(href);
 }
