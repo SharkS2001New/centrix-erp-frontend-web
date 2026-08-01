@@ -67,7 +67,10 @@ export function AiInsightPanel({
     setInsight(null);
     setError(null);
     setDeliverMsg(null);
-    void runAnalyze();
+    const timer = window.setTimeout(() => {
+      void runAnalyze();
+    }, 50);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode, reportKey]);
 

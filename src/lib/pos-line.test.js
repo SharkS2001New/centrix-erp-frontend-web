@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { cartLineDisplayUnitPrice, computePosLine } from "@/lib/pos-line";
+import {
+  cartLineDisplayUnitPrice,
+  computePosLine,
+  posEntryToBaseQty,
+  resolvePosQuantity,
+} from "@/lib/pos-line";
 
 const sugarUom = {
   conversion_factor: 50,
@@ -33,6 +38,25 @@ const sugarRetailPackage = {
     },
   ],
 };
+
+describe("F12 qty Enter keeps typed quantity", () => {
+  it("retail session uses typed qty as kg (never × conversion factor)", () => {
+    expect(posEntryToBaseQty("5", sugarProduct, false, sugarRetailPackage)).toBe(5);
+    expect(posEntryToBaseQty("5", sugarProduct, false, null)).toBe(5);
+    expect(resolvePosQuantity("5", sugarProduct, null, false).baseQty).toBe(5);
+  });
+
+  it("wholesale session keeps typed pack count (5 bags → 5 × factor base)", () => {
+    expect(posEntryToBaseQty("5", sugarProduct, true, sugarRetailPackage)).toBe(250);
+    expect(resolvePosQuantity("5", sugarProduct, sugarRetailPackage, true).packQty).toBe(5);
+  });
+
+  it("switching modes does not rescale the number the cashier typed", () => {
+    // Same field value "5" after F12: retail → 5 kg, wholesale → 5 bags.
+    expect(posEntryToBaseQty("5", sugarProduct, false, sugarRetailPackage)).toBe(5);
+    expect(posEntryToBaseQty("5", sugarProduct, true, sugarRetailPackage)).toBe(250);
+  });
+});
 
 describe("computePosLine retail amount vs unit", () => {
   it("keeps wholesale unit and adds markup on amount for 25/50/75 kg", () => {

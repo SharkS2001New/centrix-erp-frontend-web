@@ -123,70 +123,77 @@ export function posQuantityFieldMeta(
  *
  * `baseQty` is always in the smallest UOM (kg, pcs, …) — this is what cart lines,
  * sales, and stock ledger use. Display labels (e.g. "1 bag") are derived from baseQty.
+ *
+ * F12 retail session: the number the cashier types is always small units (never × factor).
+ * Wholesale session: the number is full packs when conversion_factor > 1.
  */
 export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesale) {
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
   const qty = Math.max(0, Number(entryQty) || 0);
   const tiers = tiersForRetailPackage(retailPackage, uom);
-  const retailPricing = usesPosRetailPricing(sellWholesale, product, retailPackage);
+  const retailSession = isPosRetailSession(sellWholesale);
 
-  if (!retailPricing) {
-    const packQty = qty;
-    const fullOnly = uomIsFullPackageOnly(uom);
-    const baseQty = fullOnly || factor <= 1 ? qty : displayToBaseQty(qty, factor);
-    const wholesaleTiers = tiersWithPriceMode(tiers, "wholesale");
-    const tier = tierForQuantity(wholesaleTiers, baseQty);
-    const measureLevel =
-      tier?.measure_level || (fullOnly || factor > 1 ? "full" : "small");
+  // Retail / kg mode: keep the typed qty as-is in small units (do not × conversion).
+  // Applies even when the product has no retail tiers — otherwise F12 retail still
+  // treated entry as wholesale packs and multiplied by conversion_factor.
+  if (retailSession) {
+    const baseQty = qty;
+    const packQty = factor > 1 ? baseToDisplayQty(baseQty, factor) : qty;
+    const tierExact = tierForQuantity(tiers, qty);
+    const tierQty = qty > 0 ? qty : 1;
+    const activeTier =
+      tierExact ??
+      (tiers.length > 0
+        ? tierForQuantity(tiers, tierQty, { extendPastMax: true })
+        : null);
+
+    if (!activeTier) {
+      return {
+        baseQty,
+        packQty,
+        measureLevel: "small",
+        packagingLabel: measureLevelLabel(uom, "small"),
+        tier: null,
+        isRetail: true,
+        pricingRetail: false,
+        retailSession: true,
+      };
+    }
+
+    const measureLevel = activeTier.measure_level || "small";
+    // Past the last capped tier (e.g. 75kg when max is 50) still retail-prices with
+    // accumulated markup — same extendPastMax behaviour as linePrice().
+    const inRetailPricing = Boolean(activeTier);
     return {
       baseQty,
       packQty,
       measureLevel,
       packagingLabel: measureLevelLabel(uom, measureLevel),
-      tier,
-      isRetail: false,
-      pricingRetail: false,
-      retailSession: false,
-    };
-  }
-
-  const tierExact = tierForQuantity(tiers, qty);
-  const baseQty = qty;
-  const packQty = factor > 1 ? baseToDisplayQty(baseQty, factor) : qty;
-
-  const tierQty = qty > 0 ? qty : 1;
-  const activeTier =
-    tierExact ??
-    tierForQuantity(tiers, tierQty, { extendPastMax: true });
-
-  if (!activeTier) {
-    const measureLevel = factor > 1 ? "full" : "small";
-    return {
-      baseQty,
-      packQty,
-      measureLevel,
-      packagingLabel: measureLevelLabel(uom, measureLevel),
-      tier: null,
-      isRetail: false,
-      pricingRetail: false,
+      tier: activeTier,
+      isRetail: true,
+      pricingRetail: inRetailPricing,
       retailSession: true,
     };
   }
 
-  const measureLevel = activeTier.measure_level || "small";
-  // Past the last capped tier (e.g. 75kg when max is 50) still retail-prices with
-  // accumulated markup — same extendPastMax behaviour as linePrice().
-  const inRetailPricing = Boolean(activeTier);
+  // Wholesale session: entry is pack count when conversion_factor > 1.
+  const packQty = qty;
+  const fullOnly = uomIsFullPackageOnly(uom);
+  const baseQty = fullOnly || factor <= 1 ? qty : displayToBaseQty(qty, factor);
+  const wholesaleTiers = tiersWithPriceMode(tiers, "wholesale");
+  const tier = tierForQuantity(wholesaleTiers, baseQty);
+  const measureLevel =
+    tier?.measure_level || (fullOnly || factor > 1 ? "full" : "small");
   return {
     baseQty,
     packQty,
     measureLevel,
     packagingLabel: measureLevelLabel(uom, measureLevel),
-    tier: activeTier,
-    isRetail: inRetailPricing,
-    pricingRetail: inRetailPricing,
-    retailSession: true,
+    tier,
+    isRetail: false,
+    pricingRetail: false,
+    retailSession: false,
   };
 }
 

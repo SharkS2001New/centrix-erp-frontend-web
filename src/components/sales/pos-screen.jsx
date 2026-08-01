@@ -1160,10 +1160,6 @@ export function PosScreen({ standalone = false }) {
 
   /** True only while revising a previous booked/completed receipt (not a restored held park). */
   const isCartEditSession = Boolean(cart?.held_order_num && cart?.superseded_sale_id);
-  const hasEditedOrderDraftChanges = useMemo(
-    () => editedOrderHasLocalDraftChanges(cart),
-    [cart],
-  );
   const isEditableResubmit = Boolean(cart?.discount_resubmit && isCartEditSession);
   /** Modern POS: revising a completed order (hold disabled; Complete saves + prints). */
   const modernOrderEditLocked = Boolean(
@@ -5439,8 +5435,8 @@ export function PosScreen({ standalone = false }) {
         }
         setStatusMessage(
           keepEditing
-            ? `Editing offline order #${orderNum} — Alt+P reprint; F10 after you change lines.`
-            : `Loaded offline order #${orderNum} — Alt+P reprint; change lines, then F10 to update.`,
+            ? `Editing offline order #${orderNum} — Alt+P reprint; F10 to complete (even if unchanged).`
+            : `Loaded offline order #${orderNum} — Alt+P reprint; F10 to complete (even if unchanged).`,
         );
         if (standalone) {
           notifySuccess(`Editing offline order #${orderNum}.`);
@@ -5526,11 +5522,11 @@ export function PosScreen({ standalone = false }) {
       }
       const label = restoredCart?.held_order_num ?? saleId;
       setPaymentOpen(false);
-      setStatusMessage(
-        keepEditing
-          ? `Order #${label} updated — Alt+P reprint; F10 after you change lines.`
-          : `Order #${label} loaded — Alt+P reprint; add or change lines, then F10 to update.`,
-      );
+        setStatusMessage(
+          keepEditing
+            ? `Order #${label} updated — Alt+P reprint; F10 to complete (even if unchanged).`
+            : `Order #${label} loaded — Alt+P reprint; F10 to complete (even if unchanged).`,
+        );
     } catch (e) {
       const message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (
@@ -5834,13 +5830,17 @@ export function PosScreen({ standalone = false }) {
     const activeCart = cartRef.current ?? cart;
 
     if (activeCart?.held_order_num) {
-      if (!editedOrderHasLocalDraftChanges(activeCart)) {
-        flashPosShortcutMessage("Add or change items before completing this order (F10).");
-        return;
-      }
       if (!activeCart?.lines?.length) {
         flashPosShortcutMessage("Add items before completing payment (F10).");
         return;
+      }
+
+      // Opening a previous order already tombstones the original sale — F10 must still
+      // complete even when no lines changed (rebooks the same items).
+      if (!editedOrderHasLocalDraftChanges(activeCart)) {
+        flashPosShortcutMessage("No updates done — completing this order with the same items.", {
+          error: false,
+        });
       }
 
       // Keep edits local — flush to server only when payment confirms (handleCheckout).
@@ -7521,9 +7521,7 @@ export function PosScreen({ standalone = false }) {
                   label="Complete"
                   title={
                     modernOrderEditLocked
-                      ? hasEditedOrderDraftChanges
-                        ? "Complete payment and update this order (F10)"
-                        : "Add or change items to update this order (F10)"
+                      ? "Complete payment and save this order (F10) — works even if lines are unchanged"
                       : checkoutBlocked
                         ? "Wait for the line to finish saving"
                         : "Complete payment (F10)"
@@ -7533,7 +7531,6 @@ export function PosScreen({ standalone = false }) {
                   disabled={
                     busy
                     || !cart?.lines?.length
-                    || (isCartEditSession && !hasEditedOrderDraftChanges)
                     || (cartStockBlocked && !isCartEditSession)
                     || (!modernOrderEditLocked && (lineBusy || checkoutBlocked))
                   }
