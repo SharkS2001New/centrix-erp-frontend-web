@@ -6,7 +6,8 @@ export function HospitalityHousekeepingScreen() {
   return (
     <HospitalityPlaceholderScreen
       title="Housekeeping"
-      description="Room status and turnaround tasks."
+      description="Room status board (clean / dirty / OOO)."
+      serviceKey="housekeeping"
     />
   );
 }

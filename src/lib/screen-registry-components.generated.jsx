@@ -405,6 +405,9 @@ export const SCREEN_COMPONENTS = {
   "sales-orders": lazy(() =>
     import("@/components/tab-screens/sales-orders").then((m) => ({ default: m.SalesOrdersScreen })),
   ),
+  "sales-payments-breakdown": lazy(() =>
+    import("@/components/tab-screens/sales-payments-breakdown").then((m) => ({ default: m.SalesPaymentsBreakdownScreen })),
+  ),
   "sales-picking-lists": lazy(() =>
     import("@/components/tab-screens/sales-picking-lists").then((m) => ({ default: m.SalesPickingListsScreen })),
   ),

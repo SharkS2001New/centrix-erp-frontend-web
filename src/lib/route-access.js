@@ -68,6 +68,14 @@ const POS_ROUTE_RULES = [
     permission: P.pos.end_of_day.view,
     altPermissions: [P.reports.hub.view],
   },
+  {
+    prefix: "/sales/payments-breakdown",
+    permission: P.pos.end_of_day.view,
+    altPermissions: [
+      P.pos.till_management.view,
+      P.payments.sale_payments.view,
+    ],
+  },
 ];
 
 /** Suppliers list nav is exact — child paths need explicit rules. */

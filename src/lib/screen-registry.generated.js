@@ -615,6 +615,10 @@ function match_sales_orders(pathname) {
   return pathname === "/sales/orders";
 }
 
+function match_sales_payments_breakdown(pathname) {
+  return pathname === "/sales/payments-breakdown";
+}
+
 function match_sales_picking_lists(pathname) {
   return pathname === "/sales/picking-lists";
 }
@@ -1626,6 +1630,12 @@ export const SCREEN_REGISTRY = [
     title: "Orders",
     route: "/sales/orders",
     match: match_sales_orders,
+  },
+  {
+    id: "sales-payments-breakdown",
+    title: "Payments Breakdown",
+    route: "/sales/payments-breakdown",
+    match: match_sales_payments_breakdown,
   },
   {
     id: "sales-picking-lists",

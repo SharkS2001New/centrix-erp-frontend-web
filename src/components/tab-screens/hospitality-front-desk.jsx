@@ -6,7 +6,8 @@ export function HospitalityFrontDeskScreen() {
   return (
     <HospitalityPlaceholderScreen
       title="Front desk"
-      description="Check-in, check-out, walk-ins, and room moves."
+      description="Check-in, check-out, and room assignment."
+      serviceKey="front_desk"
     />
   );
 }

@@ -4970,7 +4970,15 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleSaveOrder({ walkIn, walkInName, customer, hold = false } = {}) {
-    if (!cart?.id) return;
+    const activeCartEarly = cartRef.current ?? cart;
+    if (!activeCartEarly?.id) {
+      const message = hold
+        ? "Add items before holding this order."
+        : "Add items before saving this order.";
+      setSaveOrderError(message);
+      flashPosShortcutMessage(message);
+      return;
+    }
     if (!hold && posSalesConfig.showCheckoutOnCreate) {
       setSaveOrderError("Save order is disabled while checkout on create order is enabled.");
       return;
@@ -5086,6 +5094,15 @@ export function PosScreen({ standalone = false }) {
   function openSaveOrderDialog(mode) {
     if (mode === "hold" && (modernOrderEditLocked || isCartEditSession)) {
       flashPosShortcutMessage("Cannot hold while editing a previous order.");
+      return;
+    }
+    const activeCart = cartRef.current ?? cart;
+    if (!(activeCart?.lines?.length > 0)) {
+      flashPosShortcutMessage(
+        mode === "hold"
+          ? "Add items before holding this order."
+          : "Add items before saving this order.",
+      );
       return;
     }
     setSaveOrderError(null);
@@ -6035,6 +6052,11 @@ export function PosScreen({ standalone = false }) {
       if (isPosAltKeyEvent(e)) {
         altHeld = phase === "keydown";
         notePosAltKeyEvent(e, phase);
+        // Claim Alt on keydown so Windows/Chrome menu mnemonics (Alt then H/P)
+        // cannot steal the chord before our letter handler runs.
+        if (phase === "keydown") {
+          e.preventDefault();
+        }
         return;
       }
 
@@ -6082,7 +6104,12 @@ export function PosScreen({ standalone = false }) {
           handledOnKeyDownAt[altStampKey] = Date.now();
         }
 
-        if (isModalOpen(state)) return;
+        if (isModalOpen(state)) {
+          actions.flashPosShortcutMessage?.(
+            "Close the open dialog first, then try the shortcut again.",
+          );
+          return;
+        }
 
         actions.closeProductSearchDropdown?.();
         if (altLetter === "h") {
@@ -6092,6 +6119,11 @@ export function PosScreen({ standalone = false }) {
         }
         if (altLetter === "f") {
           if (state.activeSession) setFloatDetailsOpen(true);
+          else {
+            actions.flashPosShortcutMessage?.(
+              "Open a till session (declare float) before viewing float details.",
+            );
+          }
           return;
         }
         if (altLetter === "p") {

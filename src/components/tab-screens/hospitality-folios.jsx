@@ -6,7 +6,8 @@ export function HospitalityFoliosScreen() {
   return (
     <HospitalityPlaceholderScreen
       title="Guest folios"
-      description="Open folios, room charges, and folio payments."
+      description="Guest accounts, charges, and folio payments."
+      serviceKey="folios"
     />
   );
 }

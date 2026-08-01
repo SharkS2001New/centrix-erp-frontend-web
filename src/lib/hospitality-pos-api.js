@@ -1,10 +1,16 @@
 import { apiRequest } from "@/lib/api";
 
-export async function fetchHotelPosCatalog({ q = "", perPage = 120, popularDays = 90 } = {}) {
+export async function fetchHotelPosCatalog({
+  q = "",
+  perPage = 30,
+  popularDays = 5,
+  offset = 0,
+} = {}) {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   params.set("per_page", String(perPage));
   params.set("popular_days", String(popularDays));
+  params.set("offset", String(Math.max(0, offset)));
   return apiRequest(`/hospitality/pos/catalog?${params.toString()}`, { loading: false });
 }
 
@@ -60,10 +66,25 @@ export async function resumeHotelCheck(checkId) {
   });
 }
 
-export async function settleHotelCheck(checkId, { amount } = {}) {
+export async function settleHotelCheck(checkId, { amount, payments } = {}) {
+  const body = {};
+  if (Array.isArray(payments) && payments.length) {
+    body.payments = payments;
+  } else if (amount != null) {
+    body.amount = amount;
+    body.method = "CASH";
+  } else {
+    body.method = "CASH";
+  }
   return apiRequest(`/hospitality/pos/checks/${checkId}/settle`, {
     method: "POST",
-    body: amount != null ? { amount, method: "CASH" } : { method: "CASH" },
+    body,
+  });
+}
+
+export async function saveHotelCheck(checkId) {
+  return apiRequest(`/hospitality/pos/checks/${checkId}/save`, {
+    method: "POST",
   });
 }
 

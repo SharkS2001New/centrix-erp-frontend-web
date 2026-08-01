@@ -43,6 +43,7 @@ export const NAV_HREF_ICONS = {
   "/sales/pos": "sales",
   "/sales/end-of-day": "clock",
   "/sales/till-management": "wallet",
+  "/sales/payments-breakdown": "wallet",
   "/admin/till-printing": "receipt",
 
   // Pricing & tax

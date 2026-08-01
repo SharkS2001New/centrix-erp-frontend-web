@@ -272,7 +272,7 @@ export function ClassicPosCartTable({
               onFocus={(e) => e.target.select()}
               onChange={(e) => onOrderNoChange?.(e.target.value)}
               onKeyDown={(e) => {
-                if (isPosFunctionKeyEvent(e)) return;
+                if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
                 if (e.key === "Enter") {
                   e.preventDefault();
                   onOrderNoSubmit?.();

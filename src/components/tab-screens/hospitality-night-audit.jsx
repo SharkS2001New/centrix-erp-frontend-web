@@ -6,7 +6,8 @@ export function HospitalityNightAuditScreen() {
   return (
     <HospitalityPlaceholderScreen
       title="Night audit"
-      description="Day close, occupancy snapshot, and cashier variances."
+      description="End-of-day close and room charge posting."
+      serviceKey="night_audit"
     />
   );
 }

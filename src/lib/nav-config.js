@@ -12,6 +12,7 @@ import { isReportNavEnabled } from "@/lib/nav-feature-gates";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
+import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 
 function buildReportNavItems() {
   return [
@@ -137,6 +138,16 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.pos",
         permission: P.pos.till_management.view,
         requireTillFloat: true,
+      },
+      {
+        href: "/sales/payments-breakdown",
+        label: "Payments breakdown",
+        module: "sales.pos",
+        permissionAny: [
+          P.pos.end_of_day.view,
+          P.pos.till_management.view,
+          P.payments.sale_payments.view,
+        ],
       },
     ],
   },
@@ -817,24 +828,28 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Rooms",
         module: "hospitality.backend",
         permission: P.hospitality.rooms.view,
+        requireHospitalityService: "rooms",
       },
       {
         href: "/hospitality/reservations",
         label: "Reservations",
         module: "hospitality.backend",
         permission: P.hospitality.reservations.view,
+        requireHospitalityService: "reservations",
       },
       {
         href: "/hospitality/front-desk",
         label: "Front desk",
         module: "hospitality.backend",
         permission: P.hospitality.frontdesk.view,
+        requireHospitalityService: "front_desk",
       },
       {
         href: "/hospitality/folios",
         label: "Guest folios",
         module: "hospitality.backend",
         permission: P.hospitality.folios.view,
+        requireHospitalityService: "folios",
       },
     ],
   },
@@ -849,10 +864,11 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Housekeeping",
         module: "hospitality.backend",
         permission: P.hospitality.housekeeping.view,
+        requireHospitalityService: "housekeeping",
       },
       {
         href: "/hospitality/outlets",
-        label: "Outlets & floor",
+        label: "Outlets",
         module: "hospitality.backend",
         permission: P.hospitality.outlets.view,
       },
@@ -861,6 +877,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Night audit",
         module: "hospitality.backend",
         permission: P.hospitality.night_audit.view,
+        requireHospitalityService: "night_audit",
       },
       {
         href: "/hospitality/settings",
@@ -1055,6 +1072,12 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;
   if (item.requireOrgMobileSales && !isOrgMobileSalesEnabled(capabilities)) return false;
   if (item.requireLegacyArchive && !isLegacyArchiveEnabled(capabilities)) return false;
+  if (
+    item.requireHospitalityService &&
+    !isHospitalityServiceEnabled(capabilities, item.requireHospitalityService)
+  ) {
+    return false;
+  }
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;

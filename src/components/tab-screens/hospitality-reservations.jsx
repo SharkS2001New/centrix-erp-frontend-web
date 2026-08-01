@@ -7,6 +7,7 @@ export function HospitalityReservationsScreen() {
     <HospitalityPlaceholderScreen
       title="Reservations"
       description="Bookings, arrivals calendar, and deposits."
+      serviceKey="reservations"
     />
   );
 }

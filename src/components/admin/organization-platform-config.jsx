@@ -38,6 +38,11 @@ import {
   provisionableWorkspacesForProfile,
   workspaceToggleIcon,
 } from "@/lib/workspace-modules";
+import {
+  HOSPITALITY_SERVICE_CATALOG,
+  HOSPITALITY_SERVICE_DEFAULTS,
+  normalizeHospitalityServices,
+} from "@/lib/hospitality-services";
 import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
 import { PlatformFormSection } from "@/components/admin/platform-form-section";
 import { useConfirm } from "@/lib/use-confirm";
@@ -321,6 +326,9 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     require_pos_till_float: false,
     external_pos_layout: "modern",
     hotel_pos_grid_columns: 4,
+    hotel_pos_collect_payment: true,
+    hotel_pos_catalog_limit: 30,
+    hospitality_services: { ...HOSPITALITY_SERVICE_DEFAULTS },
     enable_pos_cash_rounding: false,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
@@ -374,6 +382,13 @@ export function salesPlatformFromApi(apiPayload) {
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
     hotel_pos_grid_columns:
       Number(apiPayload.hotel_pos_grid_columns) === 5 ? 5 : 4,
+    hotel_pos_collect_payment: apiPayload.hotel_pos_collect_payment !== false,
+    hotel_pos_catalog_limit: (() => {
+      const n = Number(apiPayload.hotel_pos_catalog_limit);
+      if (!Number.isFinite(n) || n < 8) return 30;
+      return Math.min(60, Math.max(8, Math.round(n)));
+    })(),
+    hospitality_services: normalizeHospitalityServices(apiPayload.hospitality_services),
     enable_pos_cash_rounding: Object.prototype.hasOwnProperty.call(
       apiPayload,
       "enable_pos_cash_rounding",
@@ -1250,7 +1265,7 @@ export function OrganizationModuleToggles({
                 </div>
               ) : null}
               {workspace.id === "hotel_bar_pos" && enabled && typeof onSalesChange === "function" ? (
-                <div className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
                   <OrgRegisterField label="Hotel POS product grid">
                     <select
                       className={inputClass}
@@ -1266,9 +1281,97 @@ export function OrganizationModuleToggles({
                       <option value={5}>5 columns</option>
                     </select>
                     <p className="theme-subtext mt-1 text-xs">
-                      How many product tiles across on the Hotel &amp; Bar POS menu. Most-sold items stay on top.
+                      How many product tiles across. Most-sold items stay on top.
                     </p>
                   </OrgRegisterField>
+                  <OrgRegisterField label="Menu items shown (before search)">
+                    <select
+                      className={inputClass}
+                      value={Number(salesPlatform?.hotel_pos_catalog_limit) || 30}
+                      onChange={(e) =>
+                        onSalesChange({
+                          ...(salesPlatform ?? {}),
+                          hotel_pos_catalog_limit: Number(e.target.value),
+                        })
+                      }
+                    >
+                      <option value={20}>20</option>
+                      <option value={30}>30</option>
+                      <option value={40}>40</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <p className="theme-subtext mt-1 text-xs">
+                      Tap grid shows this many top sellers. Staff search for the rest.
+                    </p>
+                  </OrgRegisterField>
+                  <OrgRegisterField label="Checkout mode">
+                    <select
+                      className={inputClass}
+                      value={salesPlatform?.hotel_pos_collect_payment === false ? "save" : "collect"}
+                      onChange={(e) =>
+                        onSalesChange({
+                          ...(salesPlatform ?? {}),
+                          hotel_pos_collect_payment: e.target.value === "collect",
+                        })
+                      }
+                    >
+                      <option value="collect">Collect payment (Pay opens payment screen)</option>
+                      <option value="save">Save order directly (payment optional)</option>
+                    </select>
+                    <p className="theme-subtext mt-1 text-xs">
+                      Same idea as External POS checkout-on-create — collect now vs save for later.
+                    </p>
+                  </OrgRegisterField>
+                </div>
+              ) : null}
+              {workspace.id === "hospitality_backoffice" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <div>
+                    <p className="theme-heading text-sm font-semibold">Hospitality services</p>
+                    <p className="theme-subtext mt-1 text-xs">
+                      Default surface is Main outlet (always) + Rooms. Enable additional services for this
+                      organization.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 opacity-80">
+                      <input type="checkbox" className="mt-1 rounded" checked disabled readOnly />
+                      <span className="min-w-0">
+                        <span className="theme-heading block text-sm font-medium">Main outlet</span>
+                        <span className="theme-subtext block text-xs">
+                          Always available for Hotel &amp; Bar POS. Not a toggle.
+                        </span>
+                      </span>
+                    </label>
+                    {HOSPITALITY_SERVICE_CATALOG.map((svc) => {
+                      const services = normalizeHospitalityServices(salesPlatform?.hospitality_services);
+                      return (
+                        <label
+                          key={svc.key}
+                          className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1 rounded border-[var(--theme-border)]"
+                            checked={Boolean(services[svc.key])}
+                            onChange={(e) =>
+                              onSalesChange({
+                                ...(salesPlatform ?? {}),
+                                hospitality_services: {
+                                  ...services,
+                                  [svc.key]: e.target.checked,
+                                },
+                              })
+                            }
+                          />
+                          <span className="min-w-0">
+                            <span className="theme-heading block text-sm font-medium">{svc.label}</span>
+                            <span className="theme-subtext block text-xs">{svc.description}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : null}
             </div>

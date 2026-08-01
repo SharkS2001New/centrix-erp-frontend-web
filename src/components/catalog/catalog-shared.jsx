@@ -633,6 +633,27 @@ export const TABLE_SUBSECTION_ROW_CLASS =
 export const SECONDARY_BTN_CLASS =
   "theme-secondary-btn inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed";
 
+export function SecondaryButton({
+  children,
+  onClick,
+  type = "button",
+  disabled,
+  className = "",
+  ...rest
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`${SECONDARY_BTN_CLASS} ${className}`}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function inputClassName() {
   return INPUT_CLASS;
 }
