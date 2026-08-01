@@ -286,29 +286,38 @@ export function workspaceToggleIcon(iconKey) {
 
 /**
  * Applications shown on the platform Applications tab for a deployment profile.
- * Hotel tenants only expose Hotel POS + Hotel Backoffice (+ shared Accounting/HR/Admin).
+ * Commerce and hospitality never share POS / backoffice apps in this picker.
  *
  * @param {string | null | undefined} profileKey
- * @param {Array<{ key: string, application_ids?: string[] | null }>} profilePresets
+ * @param {Array<{ key: string, application_ids?: string[] | null, industry?: string }>} profilePresets
  */
 export function provisionableWorkspacesForProfile(profileKey, profilePresets = []) {
+  const COMMERCE_APP_IDS = ["pos", "backoffice", "distribution", "accounting", "hr", "admin"];
+  const HOSPITALITY_APP_IDS = ["hotel_bar_pos", "hospitality_backoffice", "accounting", "hr", "admin"];
+
   const profile = profilePresets.find((p) => p.key === profileKey);
   let ids = profile?.application_ids;
 
-  // Client fallback if API has not yet returned application_ids for hotel.
-  if (ids === undefined && profileKey === "hotel_bar") {
-    ids = ["hotel_bar_pos", "hospitality_backoffice", "accounting", "hr", "admin"];
-  }
+  const isHospitality =
+    profile?.industry === "hospitality" || profileKey === "hotel_bar";
 
-  if (ids === null || ids === undefined) {
-    return sortProvisionableWorkspaces();
+  // Client fallbacks when API has not yet returned application_ids.
+  if (ids === undefined || ids === null) {
+    ids = isHospitality ? HOSPITALITY_APP_IDS : COMMERCE_APP_IDS;
   }
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return [];
   }
 
-  const allowed = new Set(ids);
+  // Belt-and-suspenders: never mix industries even if a preset is misconfigured.
+  const allowed = new Set(
+    ids.filter((id) =>
+      isHospitality
+        ? !["pos", "backoffice", "distribution"].includes(id)
+        : !["hotel_bar_pos", "hospitality_backoffice"].includes(id),
+    ),
+  );
   return sortProvisionableWorkspaces(PROVISIONABLE_WORKSPACES.filter((ws) => allowed.has(ws.id)));
 }
 
