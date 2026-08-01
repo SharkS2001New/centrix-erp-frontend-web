@@ -291,10 +291,40 @@ export function workspaceToggleIcon(iconKey) {
  * @param {string | null | undefined} profileKey
  * @param {Array<{ key: string, application_ids?: string[] | null, industry?: string }>} profilePresets
  */
-export function provisionableWorkspacesForProfile(profileKey, profilePresets = []) {
-  const COMMERCE_APP_IDS = ["pos", "backoffice", "distribution", "accounting", "hr", "admin"];
-  const HOSPITALITY_APP_IDS = ["hotel_bar_pos", "hospitality_backoffice", "accounting", "hr", "admin"];
+/** Application IDs allowed for Retail & Distribution tenants. */
+export const COMMERCE_APP_IDS = ["pos", "backoffice", "distribution", "accounting", "hr", "admin"];
 
+/** Application IDs allowed for Hotel & Hospitality tenants. */
+export const HOSPITALITY_APP_IDS = [
+  "hotel_bar_pos",
+  "hospitality_backoffice",
+  "accounting",
+  "hr",
+  "admin",
+];
+
+/** @param {"commerce" | "hospitality" | string | null | undefined} industryId */
+export function appIdsForIndustry(industryId) {
+  return industryId === "hospitality" ? HOSPITALITY_APP_IDS : COMMERCE_APP_IDS;
+}
+
+/**
+ * Drop opposite-industry shells from a workspace/app list.
+ * @param {Array<{ id: string }>} workspaces
+ * @param {"commerce" | "hospitality" | string | null | undefined} industryId
+ */
+export function filterWorkspacesByIndustry(workspaces, industryId) {
+  if (!Array.isArray(workspaces) || workspaces.length === 0) return [];
+  const allowed = new Set(appIdsForIndustry(industryId));
+  // Mobile / manager are commerce permission apps (not always in provisionable list).
+  if (industryId !== "hospitality") {
+    allowed.add("mobile");
+    allowed.add("manager");
+  }
+  return workspaces.filter((ws) => allowed.has(ws.id));
+}
+
+export function provisionableWorkspacesForProfile(profileKey, profilePresets = []) {
   const profile = profilePresets.find((p) => p.key === profileKey);
   let ids = profile?.application_ids;
 

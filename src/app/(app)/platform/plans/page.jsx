@@ -13,11 +13,11 @@ import {
 import { PLATFORM_BILLING_MODULES } from "@/lib/platform-invoices";
 import {
   LICENSE_BASIS_OPTIONS,
-  LICENSABLE_WORKSPACES,
   PLAN_INTERVALS,
   emptyPlanForm,
   formatBillingMoney,
   licenseBasisLabel,
+  licensableWorkspacesForIndustry,
   planFormToPayload,
   planModuleLabels,
   planRecordToForm,
@@ -353,29 +353,58 @@ export default function PlatformPlansPage() {
                   ))}
                 </select>
               </label>
-              <div>
-                <p className="mb-2 text-xs font-medium text-slate-600">Licensed Centrix applications</p>
-                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                  {LICENSABLE_WORKSPACES.map((ws) => (
-                    <li key={ws.id}>
-                      <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={(form.workspace_keys ?? []).includes(ws.id)}
-                          onChange={() => toggleWorkspace(ws.id)}
-                        />
-                        <span>
-                          <span className="font-medium">{ws.label}</span>
-                          {ws.id === "admin" ? (
-                            <span className="ml-1 text-xs text-emerald-700">(included free)</span>
-                          ) : null}
-                          <span className="mt-0.5 block text-xs text-slate-500">{ws.description}</span>
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-slate-600">Licensed Centrix applications</p>
+                {[
+                  {
+                    key: "commerce",
+                    label: "Retail & Distribution",
+                    workspaces: licensableWorkspacesForIndustry("commerce").filter(
+                      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
+                    ),
+                  },
+                  {
+                    key: "hospitality",
+                    label: "Hotel & Hospitality",
+                    workspaces: licensableWorkspacesForIndustry("hospitality").filter(
+                      (ws) => !["accounting", "hr", "admin"].includes(ws.id),
+                    ),
+                  },
+                  {
+                    key: "shared",
+                    label: "Shared",
+                    workspaces: licensableWorkspacesForIndustry("commerce").filter((ws) =>
+                      ["accounting", "hr", "admin"].includes(ws.id),
+                    ),
+                  },
+                ].map((group) => (
+                  <div key={group.key}>
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {group.label}
+                    </p>
+                    <ul className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                      {group.workspaces.map((ws) => (
+                        <li key={ws.id}>
+                          <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={(form.workspace_keys ?? []).includes(ws.id)}
+                              onChange={() => toggleWorkspace(ws.id)}
+                            />
+                            <span>
+                              <span className="font-medium">{ws.label}</span>
+                              {ws.id === "admin" ? (
+                                <span className="ml-1 text-xs text-emerald-700">(included free)</span>
+                              ) : null}
+                              <span className="mt-0.5 block text-xs text-slate-500">{ws.description}</span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
               <div>
                 <p className="mb-2 text-xs font-medium text-slate-600">Invoice billing modules (optional detail)</p>

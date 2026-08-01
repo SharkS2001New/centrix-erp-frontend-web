@@ -19,7 +19,7 @@ const DASHBOARD_LINKS = [
   { href: "/hospitality/housekeeping", label: "Housekeeping", service: "housekeeping" },
   { href: "/hospitality/outlets", label: "Outlets & tables", service: null },
   { href: "/hospitality/night-audit", label: "Night audit", service: "night_audit" },
-  { href: "/products", label: "Products catalogue", service: null },
+  { href: "/products", label: "Menu catalogue", service: null },
   { href: "/lpo", label: "Purchase orders (LPO)", service: null },
   { href: "/lpo/new", label: "New LPO", service: null },
   { href: "/inventory/receipts/receive", label: "Receive stock", service: null },

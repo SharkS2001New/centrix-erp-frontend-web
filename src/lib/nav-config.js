@@ -895,13 +895,13 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       {
         href: "/products",
-        label: "Products catalogue",
+        label: "Menu catalogue",
         module: null,
         permission: P.catalogue.products.view,
       },
       {
         href: "/categories",
-        label: "Categories",
+        label: "Menu categories",
         module: null,
         permission: P.catalogue.categories.view,
       },

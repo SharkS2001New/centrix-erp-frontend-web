@@ -13,7 +13,6 @@ import {
   CONTRACT_KINDS,
   CONTRACT_STATUSES,
   LICENSE_BASIS_OPTIONS,
-  LICENSABLE_WORKSPACES,
   PLAN_INTERVALS,
   contractFormToPayload,
   contractKindHelp,
@@ -21,8 +20,10 @@ import {
   contractRecordToForm,
   defaultKenyaPlatformContractTerms,
   formatBillingMoney,
+  licensableWorkspacesForIndustry,
   resolveAgreementPrices,
 } from "@/lib/platform-billing";
+import { industryForProfile } from "@/lib/erp-industries";
 import { buildPlatformContractHtml, printPlatformContract } from "@/lib/platform-contract-print";
 import { PlatformContractViewer } from "@/components/platform/platform-contract-viewer";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
@@ -283,6 +284,19 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
     }
   }
 
+  const selectedOrganization = useMemo(
+    () => organizations.find((row) => String(row.id) === String(form.organization_id)) ?? null,
+    [organizations, form.organization_id],
+  );
+  const contractIndustry = useMemo(() => {
+    if (selectedOrganization?.industry) return selectedOrganization.industry;
+    return industryForProfile(selectedOrganization?.deployment_profile);
+  }, [selectedOrganization]);
+  const licensableWorkspaces = useMemo(
+    () => licensableWorkspacesForIndustry(contractIndustry),
+    [contractIndustry],
+  );
+
   if (loading) {
     return <p className="text-sm text-slate-500">Loading…</p>;
   }
@@ -509,8 +523,13 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
 
           <section className="theme-panel space-y-3 rounded-xl border p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Licensed Centrix applications</h2>
+            <p className="text-xs text-slate-500">
+              {contractIndustry === "hospitality"
+                ? "Hotel & Hospitality apps only for this organization."
+                : "Retail & Distribution apps only for this organization."}
+            </p>
             <ul className="grid gap-1 sm:grid-cols-2">
-              {LICENSABLE_WORKSPACES.map((ws) => (
+              {licensableWorkspaces.map((ws) => (
                 <li key={ws.id}>
                   <label className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
                     <input

@@ -51,6 +51,17 @@ export function AdminRolesScreen() {
 
   const loadPermissionsCatalog = useCallback(async () => {
     const res = await apiRequest(adminPath("/roles/permissions/matrix"));
+    const capsIndustry =
+      capabilities?.industry ??
+      (capabilities?.deployment_profile === "hotel_bar" ? "hospitality" : null);
+    if (capsIndustry && res.industry && capsIndustry !== res.industry) {
+      notifyError(
+        `Permission matrix industry (${res.industry}) does not match this organization (${capsIndustry}). Refresh and try again.`,
+      );
+      setPermissionApplications([]);
+      setPermissionGroups([]);
+      return;
+    }
     setPermissionApplications(res.applications ?? []);
     setPermissionGroups(res.groups ?? []);
     if (res.industry) {
@@ -62,7 +73,7 @@ export function AdminRolesScreen() {
             : res.industry,
       );
     }
-  }, [adminPath]);
+  }, [adminPath, capabilities?.industry, capabilities?.deployment_profile]);
 
   const loadRolePermissions = useCallback(async (roleId) => {
     const id = normalizeRoleId(roleId);

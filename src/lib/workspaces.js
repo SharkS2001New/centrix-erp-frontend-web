@@ -11,6 +11,7 @@ import {
   WORKSPACE_ICONS,
   sortWorkspaces,
 } from "@/lib/workspace-constants";
+import { filterWorkspacesByIndustry } from "@/lib/workspace-modules";
 
 export { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS, sortWorkspaces } from "@/lib/workspace-constants";
 
@@ -176,7 +177,12 @@ export function workspaceLoginChannel(workspaceId) {
 
 /** @param {object} capabilities */
 export function workspacesFromCapabilities(capabilities) {
-  return sortWorkspaces(capabilities?.workspaces ?? []);
+  const industry =
+    capabilities?.industry ??
+    (capabilities?.deployment_profile === "hotel_bar" ? "hospitality" : "commerce");
+  return sortWorkspaces(
+    filterWorkspacesByIndustry(capabilities?.workspaces ?? [], industry),
+  );
 }
 
 /** @param {string} workspaceId */

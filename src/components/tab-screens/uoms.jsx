@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductGroupCountsCached, fetchUomsCached, invalidateReferenceResource } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import {
   defaultSmallLabelForType,
   uomCategory,
@@ -144,7 +146,9 @@ function StockReportPreview({ form }) {
 }
 
 export function UomsScreen() {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const { workspaceId } = useTabWorkspace();
+  const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const confirm = useConfirm();
   const [uoms, setUoms] = useState([]);
   const [productCountByUom, setProductCountByUom] = useState(() => new Map());
@@ -431,7 +435,11 @@ export function UomsScreen() {
   return (
     <CatalogPageShell
       title="Units of measure"
-      subtitle="Define how stock is counted — small units with optional packs, or full package only for wholesale items"
+      subtitle={
+        hotelCatalogue
+          ? "Define how hotel stock is counted — bottles, portions, cases, and recipe units"
+          : "Define how stock is counted — small units with optional packs, or full package only for wholesale items"
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -618,8 +626,9 @@ export function UomsScreen() {
           onChange={(v) => updateField("uses_small_packaging", v)}
         />
         <p className="-mt-2 text-[11px] leading-relaxed text-slate-500">
-          Turn off for wholesale-only products sold in full packages only — e.g. 20L jericans with no
-          retail piece count.
+          {hotelCatalogue
+            ? "Turn off for items sold only as a full package on Hotel POS — e.g. a case of beer with no single-bottle breakout."
+            : "Turn off for wholesale-only products sold in full packages only — e.g. 20L jericans with no retail piece count."}
         </p>
 
         {fullPackageOnly ? (

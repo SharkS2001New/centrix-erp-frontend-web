@@ -14,6 +14,8 @@ import {
   fetchVatsCached,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
@@ -454,6 +456,8 @@ export function ProductsCodeScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { capabilities, user } = useAuth();
+  const { workspaceId } = useTabWorkspace();
+  const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const productCodeRaw = params?.code;
   const productCode =
@@ -584,7 +588,7 @@ export function ProductsCodeScreen() {
       fetchSuppliersCached(orgId),
       fetchUomsCached(orgId),
       fetchVatsCached(orgId),
-      productCode
+      productCode && !hotelCatalogue
         ? fetchRetailPackagesForProductCodes([productCode]).catch(() => [])
         : Promise.resolve([]),
       apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
@@ -606,7 +610,7 @@ export function ProductsCodeScreen() {
     setGlobalReorderLevel(
       threshold != null && threshold !== "" ? Number(threshold) : null,
     );
-  }, [productCode, user?.organization_id]);
+  }, [productCode, user?.organization_id, hotelCatalogue]);
 
   const loadProduct = useCallback(async () => {
     if (!productCode) return;
@@ -732,7 +736,7 @@ export function ProductsCodeScreen() {
       <div className="p-8">
         <AppBreadcrumb
           items={[
-            { label: "Products", href: productsCatalogHref() },
+            { label: hotelCatalogue ? "Menu products" : "Products", href: productsCatalogHref() },
             { label: productCode },
           ]}
         />
@@ -760,7 +764,7 @@ export function ProductsCodeScreen() {
     <div className="theme-workspace min-h-full">
       <AppBreadcrumb
         items={[
-          { label: "Products", href: productsCatalogHref() },
+          { label: hotelCatalogue ? "Menu products" : "Products", href: productsCatalogHref() },
           { label: enriched.product_name || enriched.product_code },
         ]}
       />
@@ -773,9 +777,19 @@ export function ProductsCodeScreen() {
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge active={enriched.is_active} />
                 <StockBadge tone={stock.tone} label={stock.label} />
-                {enriched.sell_on_retail_label === "Sells W/R" ? (
+                {!hotelCatalogue && enriched.sell_on_retail_label === "Sells W/R" ? (
                   <span className="inline-flex rounded-full bg-[var(--theme-primary-subtle)] px-2.5 py-0.5 text-xs font-medium text-[var(--theme-accent-text)] ring-1 ring-[var(--theme-border)]">
                     Retail
+                  </span>
+                ) : null}
+                {hotelCatalogue && (enriched.sell_on_bar === 1 || enriched.sell_on_bar === true) ? (
+                  <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20">
+                    Bar
+                  </span>
+                ) : null}
+                {hotelCatalogue && (enriched.sell_on_hotel === 1 || enriched.sell_on_hotel === true) ? (
+                  <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20">
+                    Hotel
                   </span>
                 ) : null}
               </div>
@@ -909,7 +923,18 @@ export function ProductsCodeScreen() {
                 <DetailItem label={`Discount on ${priceUnitLabel}`}>
                   {enriched.discount_label}
                 </DetailItem>
-                <DetailItem label="Pricing channel">{enriched.pricing_mode}</DetailItem>
+                {!hotelCatalogue ? (
+                  <DetailItem label="Pricing channel">{enriched.pricing_mode}</DetailItem>
+                ) : (
+                  <DetailItem label="POS channels">
+                    {[
+                      enriched.sell_on_bar === 1 || enriched.sell_on_bar === true ? "Bar" : null,
+                      enriched.sell_on_hotel === 1 || enriched.sell_on_hotel === true ? "Hotel" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "None"}
+                  </DetailItem>
+                )}
                 <DetailItem label="VAT status">{enriched.vat_label}</DetailItem>
                 <DetailItem label="Profit margin">
                   {profitMargin != null ? `${profitMargin}%` : "—"}
@@ -925,7 +950,9 @@ export function ProductsCodeScreen() {
                   </DetailItem>
                 ) : null}
                 <DetailItem label="Reorder level">{reorderLabel}</DetailItem>
-                <DetailItem label="Retail sales">{enriched.sell_on_retail_label}</DetailItem>
+                {!hotelCatalogue ? (
+                  <DetailItem label="Retail sales">{enriched.sell_on_retail_label}</DetailItem>
+                ) : null}
               </SectionCard>
 
               <SectionCard title="Record" description="Audit trail">
@@ -938,7 +965,7 @@ export function ProductsCodeScreen() {
               </SectionCard>
             </div>
 
-            {retail ? (
+            {!hotelCatalogue && retail ? (
               <section className="rounded-xl border border-[var(--theme-border)] bg-gradient-to-br from-[var(--theme-primary-subtle)] to-[var(--theme-surface)] shadow-sm">
                 <div className="border-b border-[var(--theme-border)] px-5 py-3.5">
                   <h2 className="theme-accent-label text-sm font-semibold">Retail package settings</h2>
@@ -974,7 +1001,7 @@ export function ProductsCodeScreen() {
                   </Link>
                 </div>
               </section>
-            ) : enriched.pricing_mode === "Sells W/R" ? (
+            ) : !hotelCatalogue && enriched.pricing_mode === "Sells W/R" ? (
               <section className="rounded-xl border border-amber-200 bg-amber-50/50 px-5 py-4 text-sm text-amber-900">
                 Sells on retail but no package tiers configured.{" "}
                 <Link href="/retail-package-settings" className="font-medium underline">

@@ -1,5 +1,9 @@
 import { PLATFORM_BILLING_MODULES } from "@/lib/platform-invoices";
-import { PROVISIONABLE_WORKSPACES } from "@/lib/workspace-modules";
+import {
+  PROVISIONABLE_WORKSPACES,
+  appIdsForIndustry,
+  filterWorkspacesByIndustry,
+} from "@/lib/workspace-modules";
 
 /** @typedef {"monthly" | "annual"} BillingInterval */
 /** @typedef {"org" | "user"} LicenseBasis */
@@ -31,12 +35,23 @@ export const LICENSE_BASIS_OPTIONS = [
   },
 ];
 
-/** Centrix applications that can be licensed (matches Choose application + External POS). */
+/** Centrix applications that can be licensed (full catalog — filter with licensableWorkspacesForIndustry). */
 export const LICENSABLE_WORKSPACES = PROVISIONABLE_WORKSPACES.map((ws) => ({
   id: ws.id,
   label: ws.label,
   description: ws.description,
 }));
+
+/**
+ * License checkboxes for a tenant industry — never mix Hotel shells with Retail & Distribution.
+ * @param {"commerce" | "hospitality" | string | null | undefined} industryId
+ */
+export function licensableWorkspacesForIndustry(industryId) {
+  const allowed = new Set(appIdsForIndustry(industryId));
+  return filterWorkspacesByIndustry(LICENSABLE_WORKSPACES, industryId).filter((ws) =>
+    allowed.has(ws.id),
+  );
+}
 
 export const SUBSCRIPTION_STATUSES = [
   { id: "trialing", label: "Trialing" },
