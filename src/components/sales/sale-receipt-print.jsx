@@ -213,6 +213,7 @@ export function buildSaleReceiptHtml(
     showDiscountColumn,
     layout: "thermal",
     legacyPrint: isLegacySale(sale),
+    showFullPackageUomOnDocuments: salesSettings?.show_full_package_uom_on_documents === true,
   });
   const tableHead = buildSaleDocumentTableHead({
     showDiscountColumn,

@@ -340,11 +340,20 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 </div>
               ) : null}
 
-              {actionResult?.path ? (
+              {actionResult?.path || actionResult?.href ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                  <p className="font-medium text-emerald-900">Created successfully</p>
-                  <Link href={actionResult.path} className="mt-1 inline-block text-emerald-700 underline">
-                    Open {decodeURIComponent(actionResult.path.replace(/^\/products\//, ""))}
+                  <p className="font-medium text-emerald-900">
+                    {actionResult.navigate ? "Ready to open" : "Created successfully"}
+                  </p>
+                  {actionResult?.note ? (
+                    <p className="mt-1 text-xs text-emerald-800">{actionResult.note}</p>
+                  ) : null}
+                  <Link
+                    href={actionResult.path || actionResult.href}
+                    className="mt-1 inline-block text-emerald-700 underline"
+                    onClick={() => setOpen(false)}
+                  >
+                    {actionResult.path || actionResult.href}
                   </Link>
                 </div>
               ) : null}

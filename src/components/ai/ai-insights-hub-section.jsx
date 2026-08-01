@@ -8,12 +8,17 @@ import {
   canShowAiInsights,
   canUseAiInsights,
 } from "@/lib/ai-insights";
+import { AI_INSIGHT_DIGESTS, AI_INSIGHT_ON_DEMAND } from "@/lib/ai-settings";
 import { AiInsightPanel, AiAnalyzeButton } from "@/components/ai/ai-insight-panel";
 import { DashboardSection } from "@/components/dashboard/dashboard-shared";
 
+const HUB_BUTTONS = [
+  ...AI_INSIGHT_DIGESTS.slice(0, 6),
+  ...AI_INSIGHT_ON_DEMAND.filter((d) => d.key !== "explain_screen"),
+];
+
 /**
  * Always-visible AI Insights entry on Reports (and similar hubs).
- * Shows actions when ready, or a clear reason / settings link when not.
  */
 export function AiInsightsHubSection({ className = "mb-8" }) {
   const { capabilities, hasPermission } = useAuth();
@@ -22,10 +27,10 @@ export function AiInsightsHubSection({ className = "mb-8" }) {
   const blocked = aiInsightsBlockedReason({ capabilities, hasPermission });
   const [panel, setPanel] = useState(null);
 
-  // Still show a hint for admins who enabled Insights but lack ai.assist themselves.
   const insightsOn = capabilities?.ai_assistant?.insights?.enabled !== false;
   const orgAiOn = Boolean(capabilities?.ai_assistant?.enabled);
   const showAdminHint = !show && orgAiOn && insightsOn;
+  const active = HUB_BUTTONS.find((b) => b.key === panel);
 
   if (!show && !showAdminHint) return null;
 
@@ -33,15 +38,18 @@ export function AiInsightsHubSection({ className = "mb-8" }) {
     <>
       <DashboardSection
         title="AI Insights"
-        subtitle="Stock Pulse, Sales brief, and Analyze with AI on individual reports"
+        subtitle="Morning digests, debtors, tills, demand, and Explain on Orders / reports"
         className={className}
       >
         {show && ready ? (
           <div className="flex flex-wrap gap-2">
-            <AiAnalyzeButton label="Stock Pulse" onClick={() => setPanel("stock_pulse")} />
-            <AiAnalyzeButton label="Sales brief" onClick={() => setPanel("sales_brief")} />
+            {HUB_BUTTONS.map((b) => (
+              <AiAnalyzeButton key={b.key} label={b.label} onClick={() => setPanel(b.key)} />
+            ))}
             <p className="w-full text-xs text-slate-500">
-              Open any report and use <span className="font-medium">Analyze with AI</span> next to Print / CSV.
+              On Orders, Customer statement, or any report, use{" "}
+              <span className="font-medium">Explain this screen</span> /{" "}
+              <span className="font-medium">Analyze with AI</span> for page-aware findings.
             </p>
           </div>
         ) : (
@@ -50,7 +58,7 @@ export function AiInsightsHubSection({ className = "mb-8" }) {
             {showAdminHint ? (
               <p className="mt-2 text-xs text-amber-900/80">
                 Insights is enabled for the organization, but your role also needs{" "}
-                <span className="font-medium">Use AI assistant</span> to see Analyze / Stock Pulse.
+                <span className="font-medium">Use AI assistant</span>.
               </p>
             ) : null}
             <Link href="/settings?tab=ai" className="mt-2 inline-block font-medium text-[var(--theme-primary)] hover:underline">
@@ -63,8 +71,8 @@ export function AiInsightsHubSection({ className = "mb-8" }) {
       <AiInsightPanel
         open={panel != null}
         onClose={() => setPanel(null)}
-        title={panel === "stock_pulse" ? "Stock Pulse" : "Sales brief"}
-        mode={panel === "stock_pulse" ? "stock_pulse" : "sales_brief"}
+        title={active?.label || "AI Insights"}
+        mode={panel || "sales_brief"}
       />
     </>
   );

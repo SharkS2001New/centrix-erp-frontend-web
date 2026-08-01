@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { apiRequest, ApiError } from "@/lib/api";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
@@ -18,6 +19,21 @@ import {
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 import { CENTRIX_POS_COMPLETE_PAYMENT_EVENT } from "@/lib/pos-keyboard-shortcuts";
+
+function normalizeKenyanPhoneInput(value) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function phoneForMpesaApi(phone) {
+  const digits = normalizeKenyanPhoneInput(phone);
+  if (digits.startsWith("254") && digits.length === 12) return `0${digits.slice(3)}`;
+  if (digits.startsWith("7") && digits.length === 9) return `0${digits}`;
+  return digits;
+}
+
+function isValidKenyanMobile(phone) {
+  return /^(0?7\d{8}|2547\d{8})$/.test(normalizeKenyanPhoneInput(phone));
+}
 
 function PosField({ label, children }) {
   return (
@@ -143,7 +159,12 @@ export function PosPaymentPanel({
   prefillMpesaAmount = 0,
   prefillMpesaCode = "",
   prefillWalkInCustomerName = "",
+  prefillMpesaPhone = "",
   lockMpesaFields = false,
+  cartId = null,
+  enableStkPush = false,
+  onCartUpdated,
+  onStkFullyPaid,
   saving,
   error,
   onComplete,
@@ -159,6 +180,11 @@ export function PosPaymentPanel({
   const [cashAmount, setCashAmount] = useState("0");
   const [mpesaAmount, setMpesaAmount] = useState("0");
   const [mpesaCode, setMpesaCode] = useState("");
+  const [mpesaPhone, setMpesaPhone] = useState("");
+  const [stkBusy, setStkBusy] = useState(false);
+  const [stkWatching, setStkWatching] = useState(false);
+  const [stkInfo, setStkInfo] = useState(null);
+  const [stkAppliedLock, setStkAppliedLock] = useState(false);
   const [bankType, setBankType] = useState("");
   const [bankAmount, setBankAmount] = useState("0");
   const [bankRef, setBankRef] = useState("");
@@ -186,6 +212,7 @@ export function PosPaymentPanel({
   const completeOkRef = useRef(null);
   const cashAmountRef = useRef(null);
   const mpesaAmountRef = useRef(null);
+  const mpesaPhoneRef = useRef(null);
   const equityAmountRef = useRef(null);
   const kcbAmountRef = useRef(null);
   const bankAmountRef = useRef(null);
@@ -193,8 +220,12 @@ export function PosPaymentPanel({
   const enterActionRef = useRef(() => {});
   const completeFromKeyboardRef = useRef(() => {});
   const prevOpenRef = useRef(false);
+  const stkPollRef = useRef(null);
+  const lastStkAmountRef = useRef(null);
 
   const cfg = paymentConfig ?? {};
+  const stkPushAvailable = Boolean(enableStkPush && cartId && !cashOnlyOffline);
+  const mpesaFieldsLocked = Boolean(lockMpesaFields || stkAppliedLock);
 
   useEffect(() => setMounted(true), []);
 
@@ -217,6 +248,12 @@ export function PosPaymentPanel({
     const mpesaPrefill = Math.max(0, Number(prefillMpesaAmount) || 0);
     setMpesaAmount(mpesaPrefill > 0 ? String(mpesaPrefill) : "0");
     setMpesaCode(String(prefillMpesaCode ?? "").trim());
+    setMpesaPhone(String(prefillMpesaPhone ?? "").trim());
+    setStkAppliedLock(mpesaPrefill > 0);
+    setStkBusy(false);
+    setStkWatching(false);
+    setStkInfo(null);
+    lastStkAmountRef.current = null;
     setBankType("");
     setBankAmount("0");
     setBankRef("");
@@ -230,7 +267,66 @@ export function PosPaymentPanel({
     setReceiptCustomerNum("");
     setSelectedReceiptCustomer(null);
     setReceiptCustomerOptions([]);
-  }, [open, billTotal, prefillMpesaAmount, prefillMpesaCode, prefillWalkInCustomerName]);
+  }, [
+    open,
+    billTotal,
+    prefillMpesaAmount,
+    prefillMpesaCode,
+    prefillMpesaPhone,
+    prefillWalkInCustomerName,
+  ]);
+
+  useEffect(() => {
+    if (!open) {
+      setStkWatching(false);
+      if (stkPollRef.current) {
+        window.clearTimeout(stkPollRef.current);
+        stkPollRef.current = null;
+      }
+    }
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      if (stkPollRef.current) {
+        window.clearTimeout(stkPollRef.current);
+        stkPollRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!stkWatching || !cartId || !open || step !== "payment") {
+      return undefined;
+    }
+    let cancelled = false;
+    let delayMs = 3000;
+
+    async function tick() {
+      if (cancelled) return;
+      const result = await pollStkStatus({ silent: true });
+      if (cancelled || !result?.continue) {
+        stopStkWatch();
+        return;
+      }
+      stkPollRef.current = window.setTimeout(() => {
+        void tick();
+      }, delayMs);
+      delayMs = Math.min(12000, Math.floor(delayMs * 1.25));
+    }
+
+    void tick();
+
+    return () => {
+      cancelled = true;
+      if (stkPollRef.current) {
+        window.clearTimeout(stkPollRef.current);
+        stkPollRef.current = null;
+      }
+    };
+    // pollStkStatus closes over latest amounts; re-bind when watch toggles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional watch-session scope
+  }, [stkWatching, cartId, open, step]);
 
   useEffect(() => {
     if (!open || step !== "saving" || !error) return;
@@ -260,9 +356,13 @@ export function PosPaymentPanel({
         parseDecimalInput(kcbAmount) +
         parseDecimalInput(otherBankAmount);
     }
+    // Cart-applied M-Pesa is already deducted from billTotal/amount due — do not
+    // count the locked field toward the remaining balance again.
+    const mpesaTender =
+      cfg.enableMpesaAmount && !mpesaFieldsLocked ? parseDecimalInput(mpesaAmount) : 0;
     return (
       parseDecimalInput(cashAmount) +
-      (cfg.enableMpesaAmount ? parseDecimalInput(mpesaAmount) : 0) +
+      mpesaTender +
       bankTotal +
       (cfg.showCheque ? parseDecimalInput(chequeAmount) : 0)
     );
@@ -277,6 +377,7 @@ export function PosPaymentPanel({
     cfg.useBankSelect,
     cfg.showCheque,
     cfg.enableMpesaAmount,
+    mpesaFieldsLocked,
   ]);
 
   const checkoutTotal = sessionBillTotal || Number(billTotal) || 0;
@@ -336,7 +437,11 @@ export function PosPaymentPanel({
   function primaryMethodCode() {
     const parts = [
       { code: "CASH", amount: parseDecimalInput(cashAmount) },
-      { code: "MPESA", amount: cfg.enableMpesaAmount ? parseDecimalInput(mpesaAmount) : 0 },
+      {
+        code: "MPESA",
+        amount:
+          cfg.enableMpesaAmount && !mpesaFieldsLocked ? parseDecimalInput(mpesaAmount) : 0,
+      },
       { code: "CHEQUE", amount: cfg.showCheque ? parseDecimalInput(chequeAmount) : 0 },
     ];
     if (cfg.useBankSelect) {
@@ -362,7 +467,8 @@ export function PosPaymentPanel({
   }
 
   function validatePaymentFieldDetails() {
-    const mpesa = cfg.enableMpesaAmount ? parseDecimalInput(mpesaAmount) : 0;
+    const mpesa =
+      cfg.enableMpesaAmount && !mpesaFieldsLocked ? parseDecimalInput(mpesaAmount) : 0;
     if (mpesa > 0 && cfg.enableMpesaCode && !mpesaCode.trim()) {
       return "Enter the M-Pesa transaction code.";
     }
@@ -399,13 +505,13 @@ export function PosPaymentPanel({
       allowPartialPayment: cfg.allowPartialPayment,
     });
 
-    const cartMpesa = lockMpesaFields
-      ? Math.max(0, Number(prefillMpesaAmount) || 0)
+    const cartMpesa = mpesaFieldsLocked
+      ? Math.max(0, parseDecimalInput(mpesaAmount) || Number(prefillMpesaAmount) || 0)
       : 0;
     const paymentSplits = alignPaymentSplitsToPayNow(
       buildCheckoutPaymentSplits(cfg, {
         cashAmount,
-        mpesaAmount,
+        mpesaAmount: mpesaFieldsLocked ? String(cartMpesa) : mpesaAmount,
         chequeAmount,
         equityAmount,
         kcbAmount,
@@ -676,6 +782,207 @@ export function PosPaymentPanel({
     handlePaymentNavigationKey(e);
   }
 
+  function stopStkWatch() {
+    setStkWatching(false);
+    if (stkPollRef.current) {
+      window.clearTimeout(stkPollRef.current);
+      stkPollRef.current = null;
+    }
+  }
+
+  function resolveStkPushAmount() {
+    const due = Math.max(0, Math.ceil(checkoutTotal - amountPaid));
+    if (due < 1) return 0;
+    if (mpesaFieldsLocked) return due;
+    const entered = Math.ceil(parseDecimalInput(mpesaAmount) || 0);
+    if (entered >= 1) return Math.min(entered, due);
+    return due;
+  }
+
+  function syncPanelFromAppliedCart(nextCart, amountDue) {
+    const applied = Math.max(0, Number(nextCart?.mpesa_payment_amount ?? 0));
+    const remaining = Math.max(0, Number(amountDue ?? 0));
+    setMpesaAmount(applied > 0 ? String(applied) : "0");
+    setMpesaCode(String(nextCart?.mpesa_transaction_code ?? "").trim());
+    if (nextCart?.mpesa_phone) {
+      setMpesaPhone(String(nextCart.mpesa_phone));
+    }
+    setStkAppliedLock(applied > 0);
+    setSessionBillTotal(remaining);
+    onCartUpdated?.(nextCart);
+    return { applied, remaining };
+  }
+
+  async function completeAfterFullMpesa(nextCart) {
+    stopStkWatch();
+    setStkBusy(true);
+    setLocalError(null);
+    try {
+      if (onStkFullyPaid) {
+        const sale = await onStkFullyPaid(nextCart);
+        if (!sale) {
+          setStkInfo("M-Pesa received in full. Complete the order to finish.");
+          return;
+        }
+        setCompletedOrder({
+          orderNum: sale.order_num,
+          statusLabel: checkoutStatusLabel(sale),
+        });
+        setStep("complete");
+        return;
+      }
+      setStkInfo("M-Pesa received in full. Press Complete to finish and print.");
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Checkout failed");
+    } finally {
+      setStkBusy(false);
+    }
+  }
+
+  async function applyStkCandidate(paymentId, paymentAmount) {
+    if (!cartId || !paymentId) return false;
+    const paymentCeil = Math.max(0, Math.ceil(Number(paymentAmount) || 0));
+    const stkCeil = Math.max(0, Math.ceil(Number(lastStkAmountRef.current) || 0));
+    const toApply = Math.min(paymentCeil || stkCeil, stkCeil || paymentCeil);
+    if (toApply < 1) {
+      setLocalError("Payment amount is too small to apply.");
+      return false;
+    }
+
+    setStkBusy(true);
+    setLocalError(null);
+    try {
+      const res = await apiRequest(`/sales/carts/${cartId}/payment/mpesa/apply`, {
+        method: "POST",
+        body: { payment_id: paymentId, amount: toApply },
+      });
+      const { applied, remaining } = syncPanelFromAppliedCart(res.cart, res.amount_due);
+      const txn = res.payment?.transaction_id ? ` (${res.payment.transaction_id})` : "";
+
+      if (remaining <= 0.01) {
+        setStkInfo(`M-Pesa ${formatSaleKes(applied)}${txn} received — completing order…`);
+        await completeAfterFullMpesa(res.cart);
+      } else {
+        stopStkWatch();
+        setStkInfo(
+          `M-Pesa ${formatSaleKes(applied)}${txn} applied. Collect balance ${formatSaleKes(remaining)} then complete to print.`,
+        );
+        window.requestAnimationFrame(() => focusPaymentField(cashAmountRef));
+      }
+      return true;
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "Failed to apply M-Pesa payment.";
+      setLocalError(msg);
+      stopStkWatch();
+      return false;
+    } finally {
+      setStkBusy(false);
+    }
+  }
+
+  async function pollStkStatus({ silent = true } = {}) {
+    if (!cartId) return { continue: false };
+    const phone = phoneForMpesaApi(mpesaPhone);
+    if (!phone) return { continue: false };
+    try {
+      const res = await apiRequest(`/sales/carts/${cartId}/payment/mpesa/status`, {
+        searchParams: { phone },
+      });
+      if (res.cart) {
+        onCartUpdated?.(res.cart);
+        if (res.cart.mpesa_phone) setMpesaPhone(res.cart.mpesa_phone);
+      }
+
+      if (res.stk_error) {
+        setLocalError(res.stk_error);
+        stopStkWatch();
+        return { continue: false, res };
+      }
+      if (res.status === "failed") {
+        setLocalError(res.result_desc || "M-Pesa STK push failed or was cancelled.");
+        stopStkWatch();
+        return { continue: false, res };
+      }
+
+      const candidates = res.candidates ?? [];
+      if (res.status === "completed" && candidates.length > 0) {
+        const match =
+          candidates.find((c) => {
+            const amt = Math.ceil(Number(c.amount) || 0);
+            return lastStkAmountRef.current && amt === Math.ceil(lastStkAmountRef.current);
+          }) ?? candidates[0];
+        setStkInfo("M-Pesa payment received — applying…");
+        await applyStkCandidate(match.id, match.amount);
+        return { continue: false, res };
+      }
+
+      if (res.status === "completed" && Number(res.amount_due ?? 1) <= 0.01 && res.cart) {
+        const { applied } = syncPanelFromAppliedCart(res.cart, res.amount_due);
+        setStkInfo(`M-Pesa ${formatSaleKes(applied)} received — completing order…`);
+        await completeAfterFullMpesa(res.cart);
+        return { continue: false, res };
+      }
+
+      if (!silent && res.status === "pending") {
+        setStkInfo("Waiting for the customer to enter their M-Pesa PIN…");
+      }
+      return { continue: true, res };
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "Could not check M-Pesa payment status.";
+      setLocalError(msg);
+      stopStkWatch();
+      return { continue: false };
+    }
+  }
+
+  async function handlePromptUserStk() {
+    if (!stkPushAvailable || stkBusy || saving) return;
+    const phoneRaw = normalizeKenyanPhoneInput(mpesaPhone);
+    if (!isValidKenyanMobile(phoneRaw)) {
+      setLocalError("Enter a valid Kenyan mobile number like 0712345678.");
+      focusPaymentField(mpesaPhoneRef);
+      return;
+    }
+    const payAmount = resolveStkPushAmount();
+    if (payAmount < 1) {
+      setLocalError("Nothing left to pay on this order.");
+      return;
+    }
+    if (!mpesaFieldsLocked) {
+      setMpesaAmount(String(payAmount));
+    }
+
+    setStkBusy(true);
+    setLocalError(null);
+    setStkInfo(null);
+    try {
+      const res = await apiRequest(`/sales/carts/${cartId}/payment/mpesa/stk-push`, {
+        method: "POST",
+        body: {
+          phone_number: phoneForMpesaApi(mpesaPhone),
+          amount: payAmount,
+        },
+      });
+
+      if (res.error?.errorMessage) {
+        setLocalError(res.error.errorMessage);
+        return;
+      }
+
+      if (res.cart) onCartUpdated?.(res.cart);
+      lastStkAmountRef.current = payAmount;
+      const customerMessage =
+        res.success?.CustomerMessage ||
+        `STK push sent to ${phoneForMpesaApi(mpesaPhone)}. Ask the customer to enter their M-Pesa PIN.`;
+      setStkInfo(customerMessage);
+      setStkWatching(true);
+    } catch (e) {
+      setLocalError(e instanceof ApiError ? e.message : "Failed to send M-Pesa STK push.");
+    } finally {
+      setStkBusy(false);
+    }
+  }
+
   function checkoutStatusLabel(sale) {
     if (sale.status === "completed") return "Sale completed";
     if (sale.status === "paid") return "Order paid";
@@ -772,6 +1079,10 @@ export function PosPaymentPanel({
     setCashAmount(String(Math.ceil(Number(billTotal) || 0)));
     setMpesaAmount("0");
     setMpesaCode("");
+    setMpesaPhone("");
+    setStkAppliedLock(false);
+    setStkWatching(false);
+    setStkInfo(null);
     setBankAmount("0");
     setBankRef("");
     setEquityAmount("0");
@@ -1150,7 +1461,13 @@ export function PosPaymentPanel({
         <div className={`relative z-10 ${POS_DIALOG_FOOTER}`}>
           <button
             type="button"
-            disabled={isCheckoutProcessing(saving, step) || !canComplete || step !== "payment"}
+            disabled={
+              isCheckoutProcessing(saving, step) ||
+              stkBusy ||
+              stkWatching ||
+              !canComplete ||
+              step !== "payment"
+            }
             onClick={handleRequestComplete}
             className={POS_DIALOG_PRIMARY_BTN}
           >
@@ -1174,6 +1491,12 @@ export function PosPaymentPanel({
           <dt>Bill Total</dt>
           <dd className="font-bold">{formatSaleKes(checkoutTotal)}</dd>
         </div>
+        {mpesaFieldsLocked && parseDecimalInput(mpesaAmount) > 0 ? (
+          <div className="flex justify-between text-emerald-800">
+            <dt>M-Pesa applied</dt>
+            <dd className="font-bold">{formatSaleKes(parseDecimalInput(mpesaAmount))}</dd>
+          </div>
+        ) : null}
         <div className="flex justify-between">
           <dt>Amount Paid</dt>
           <dd className="font-bold">{formatSaleKes(amountPaid)}</dd>
@@ -1226,23 +1549,56 @@ export function PosPaymentPanel({
                 type="number"
                 min="0"
                 step="any"
-                className={`${inputCls} ${lockMpesaFields ? "theme-input-readonly cursor-not-allowed" : ""}`}
+                className={`${inputCls} ${mpesaFieldsLocked ? "theme-input-readonly cursor-not-allowed" : ""}`}
                 value={mpesaAmount}
-                readOnly={lockMpesaFields}
-                disabled={lockMpesaFields}
+                readOnly={mpesaFieldsLocked}
+                disabled={mpesaFieldsLocked}
                 onFocus={handlePaymentAmountFocus}
                 onChange={(e) => handlePaymentAmountChange(setMpesaAmount, e.target.value, mpesaAmount)}
                 onKeyDown={(e) => handlePaymentAmountKeyDown(e, mpesaAmount, setMpesaAmount)}
               />
             </PosField>
           ) : null}
+          {!cashOnlyOffline && cfg.enableMpesaAmount && stkPushAvailable ? (
+            <div className="space-y-2">
+              <PosField label="M-Pesa phone">
+                <input
+                  ref={mpesaPhoneRef}
+                  type="tel"
+                  inputMode="tel"
+                  className={inputCls}
+                  value={mpesaPhone}
+                  disabled={stkBusy || stkWatching || saving}
+                  onChange={(e) => {
+                    setMpesaPhone(e.target.value);
+                    setLocalError(null);
+                  }}
+                  onKeyDown={handleAuxiliaryPaymentKeyDown}
+                  placeholder="0712345678"
+                />
+              </PosField>
+              <button
+                type="button"
+                disabled={stkBusy || stkWatching || saving || resolveStkPushAmount() < 1}
+                onClick={() => void handlePromptUserStk()}
+                className={POS_DIALOG_PRIMARY_BTN}
+              >
+                {stkWatching ? "Waiting for PIN…" : stkBusy ? "Sending…" : "Prompt user"}
+              </button>
+              {stkInfo ? (
+                <p className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-medium text-emerald-900">
+                  {stkInfo}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {cfg.enableMpesaAmount && cfg.enableMpesaCode ? (
             <PosField label="M-Pesa code">
               <input
-                className={`${inputCls} ${lockMpesaFields ? "theme-input-readonly cursor-not-allowed" : ""}`}
+                className={`${inputCls} ${mpesaFieldsLocked ? "theme-input-readonly cursor-not-allowed" : ""}`}
                 value={mpesaCode}
-                readOnly={lockMpesaFields}
-                disabled={lockMpesaFields}
+                readOnly={mpesaFieldsLocked}
+                disabled={mpesaFieldsLocked}
                 onChange={(e) => setMpesaCode(e.target.value)}
                 onKeyDown={handleAuxiliaryPaymentKeyDown}
                 placeholder="Transaction code"

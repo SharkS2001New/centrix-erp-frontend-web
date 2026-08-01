@@ -238,6 +238,19 @@ export async function printSaleOrder(sale, options = {}) {
       options.skipSaleRefresh && hasCompleteItems
         ? sale
         : await ensureSaleForPrint(sale);
+
+    // Tax invoice / thermal receipt require fulfillable stock (proforma is exempt).
+    if (
+      documentType !== "proforma" &&
+      !options.skipStockPrintGate &&
+      loadedSale?.can_print_invoice === false
+    ) {
+      disposePrintWindow(printWindow);
+      throw new Error(
+        "Cannot print invoice — stock is not available for one or more items on this order. Restock or enable Allow negative stock in inventory settings.",
+      );
+    }
+
     const saleForPrint = enrichSaleLinesForQtyPrint(loadedSale, {
       productByCode: options.productByCode ?? null,
       uomById: options.uomById ?? null,

@@ -395,7 +395,11 @@ export function resolveSaleLinePrintColumns(
   };
 }
 
-export function saleLineQtyLabel(line, uomById, { legacyPrint = false, sale = null } = {}) {
+export function saleLineQtyLabel(
+  line,
+  uomById,
+  { legacyPrint = false, sale = null, showFullPackageUomOnDocuments = false } = {},
+) {
   if (isLegacySaleLine(line, { legacyPrint, sale })) {
     return legacySaleLineQtyLabel(line);
   }
@@ -404,7 +408,10 @@ export function saleLineQtyLabel(line, uomById, { legacyPrint = false, sale = nu
   const isRetailLine = Number(line?.on_wholesale_retail) === 1;
 
   if (uom) {
-    return formatSaleLineQtyDisplay(line?.quantity, uom, { isRetailLine });
+    return formatSaleLineQtyDisplay(line?.quantity, uom, {
+      isRetailLine,
+      showFullPackageUomOnDocuments,
+    });
   }
 
   if (line?.uom) {
@@ -415,7 +422,11 @@ export function saleLineQtyLabel(line, uomById, { legacyPrint = false, sale = nu
 }
 
 /** Thermal receipt — quantity count and packaging label for a single QTY cell. */
-export function saleLinePrintQtyPackage(line, uomById, { legacyPrint = false, sale = null } = {}) {
+export function saleLinePrintQtyPackage(
+  line,
+  uomById,
+  { legacyPrint = false, sale = null, showFullPackageUomOnDocuments = false } = {},
+) {
   if (isLegacySaleLine(line, { legacyPrint, sale })) {
     return legacySaleLinePrintQtyPackage(line);
   }
@@ -425,7 +436,10 @@ export function saleLinePrintQtyPackage(line, uomById, { legacyPrint = false, sa
   const isRetailLine = Number(line?.on_wholesale_retail) === 1;
 
   if (uom) {
-    return saleLineQtyPartsForPrint(baseQty, uom, { isRetailLine });
+    return saleLineQtyPartsForPrint(baseQty, uom, {
+      isRetailLine,
+      showFullPackageUomOnDocuments,
+    });
   }
 
   // Without conversion metadata, never pair base qty with a pack label ("25 bag").

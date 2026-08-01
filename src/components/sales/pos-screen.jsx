@@ -4891,10 +4891,14 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleMpesaOrderComplete(updatedCart) {
-    const payNow = Number(updatedCart?.mpesa_payment_amount ?? cart?.mpesa_payment_amount ?? 0);
-    if (payNow <= 0) return;
+    const payNow = Number(updatedCart?.mpesa_payment_amount ?? cartRef.current?.mpesa_payment_amount ?? 0);
+    if (payNow <= 0) return null;
 
-    const total = cartSummary.amountDue + payNow;
+    const summary = cartSummaryRef.current ?? cartSummary;
+    const total =
+      Number(summary?.total ?? 0) > 0
+        ? Number(summary.total)
+        : Number(summary?.amountDue ?? 0) + payNow;
     const status = resolveCheckoutStatus({
       channel,
       isCredit: false,
@@ -4907,7 +4911,7 @@ export function PosScreen({ standalone = false }) {
     const body = {
       pay_now: payNow,
       payment_method_code: "MPESA",
-      payment_reference: updatedCart?.mpesa_transaction_code ?? cart?.mpesa_transaction_code ?? null,
+      payment_reference: updatedCart?.mpesa_transaction_code ?? cartRef.current?.mpesa_transaction_code ?? null,
       status,
       is_credit_sale: false,
       deduct_stock: true,
@@ -4932,6 +4936,7 @@ export function PosScreen({ standalone = false }) {
         searchInputRef.current?.focus();
       });
     }
+    return sale ?? null;
   }
 
   async function handleContinueNextOrder() {
@@ -5832,6 +5837,11 @@ export function PosScreen({ standalone = false }) {
     if (activeCart?.held_order_num) {
       if (!activeCart?.lines?.length) {
         flashPosShortcutMessage("Add items before completing payment (F10).");
+        return;
+      }
+
+      if (cartStockBlocked) {
+        flashPosShortcutMessage("Fix stock issues before completing payment.");
         return;
       }
 
@@ -7531,7 +7541,7 @@ export function PosScreen({ standalone = false }) {
                   disabled={
                     busy
                     || !cart?.lines?.length
-                    || (cartStockBlocked && !isCartEditSession)
+                    || cartStockBlocked
                     || (!modernOrderEditLocked && (lineBusy || checkoutBlocked))
                   }
                   onClick={() => openCompletePayment()}
@@ -7575,8 +7585,17 @@ export function PosScreen({ standalone = false }) {
         paymentConfig={checkoutPaymentConfig}
         prefillMpesaAmount={cart?.mpesa_payment_amount}
         prefillMpesaCode={cart?.mpesa_transaction_code}
+        prefillMpesaPhone={cart?.mpesa_phone}
         prefillWalkInCustomerName={prefilledEditCustomerName}
         lockMpesaFields={Number(cart?.mpesa_payment_amount ?? 0) > 0}
+        cartId={cart?.id ?? null}
+        enableStkPush={enableStkPushOnPos}
+        onCartUpdated={(nextCart) => {
+          if (!nextCart) return;
+          cartRef.current = nextCart;
+          setCart(nextCart);
+        }}
+        onStkFullyPaid={(updatedCart) => handleMpesaOrderComplete(updatedCart)}
         saving={busy}
         error={paymentError}
         onComplete={handleCheckout}

@@ -351,6 +351,14 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
                 onChange={(v) => setForm((f) => ({ ...f, show_branch_on_receipt: v }))}
               />
             ) : null}
+            {showBranchSetting ? (
+              <Toggle
+                label="Show full-package UOM on sales documents"
+                description="For products marked “Full package only — wholesale, no small unit breakdown” (e.g. ASIS sold by bale), print the package name with quantity (1 bale). When off (default), print only the quantity (1) on thermal receipts, A4 invoices, proformas, and delivery notes. Products with a small-unit breakdown are unchanged."
+                checked={Boolean(form.show_full_package_uom_on_documents)}
+                onChange={(v) => setForm((f) => ({ ...f, show_full_package_uom_on_documents: v }))}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

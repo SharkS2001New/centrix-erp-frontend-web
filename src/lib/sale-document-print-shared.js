@@ -258,7 +258,13 @@ export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout 
 
 export function buildSaleDocumentLineRows(
   items,
-  { uomById = null, showDiscountColumn = false, layout = "thermal", legacyPrint = false } = {},
+  {
+    uomById = null,
+    showDiscountColumn = false,
+    layout = "thermal",
+    legacyPrint = false,
+    showFullPackageUomOnDocuments = false,
+  } = {},
 ) {
   const rows = items ?? [];
   const colspan =
@@ -272,7 +278,7 @@ export function buildSaleDocumentLineRows(
     .map((line) => {
       const description = escapeHtml(saleLineProductLabel(line));
       const uom = legacyPrint ? null : saleLineUom(line, uomById);
-      const linePrintOptions = { legacyPrint };
+      const linePrintOptions = { legacyPrint, showFullPackageUomOnDocuments };
 
       if (layout === "thermal") {
         const { unitPrice, discount, amount } = resolveSaleLinePrintColumns(line, {

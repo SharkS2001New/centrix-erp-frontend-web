@@ -85,11 +85,13 @@ function deliveryNotePrintStyles(generalSettings = null) {
   `;
 }
 
-function buildDeliveryNoteLineRows(items) {
+function buildDeliveryNoteLineRows(items, { showFullPackageUomOnDocuments = false } = {}) {
   return (items ?? [])
     .map((item) => {
       const productName = saleLineProductLabel(item);
-      const { quantity, package: packageLabel } = saleLinePrintQtyPackage(item, null);
+      const { quantity, package: packageLabel } = saleLinePrintQtyPackage(item, null, {
+        showFullPackageUomOnDocuments,
+      });
 
       return `
       <tr>
@@ -105,7 +107,7 @@ function buildDeliveryNoteLineRows(items) {
 
 /**
  * Printable delivery note for a single order/stop on a trip.
- * @param {{ organization?: object, organizationName?: string, sale: object, trip?: object, stopNumber?: number, printedBy?: string | null, generalSettings?: object | null, documentFooterText?: string }} options
+ * @param {{ organization?: object, organizationName?: string, sale: object, trip?: object, stopNumber?: number, printedBy?: string | null, generalSettings?: object | null, documentFooterText?: string, salesSettings?: object | null }} options
  */
 export function printDeliveryNote({
   organization = null,
@@ -116,6 +118,7 @@ export function printDeliveryNote({
   printedBy = null,
   generalSettings = null,
   documentFooterText = "",
+  salesSettings = null,
 }) {
   const items = sale?.items ?? [];
   const branding = resolveReportBranding({
@@ -142,7 +145,9 @@ export function printDeliveryNote({
     hour12: false,
   });
   const printedByName = resolvePrintedByUser(printedBy) ?? "—";
-  const rows = buildDeliveryNoteLineRows(items);
+  const rows = buildDeliveryNoteLineRows(items, {
+    showFullPackageUomOnDocuments: salesSettings?.show_full_package_uom_on_documents === true,
+  });
 
   const html = `<!DOCTYPE html>
 <html>

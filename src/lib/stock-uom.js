@@ -337,8 +337,14 @@ export function formatPosCartQty(baseQty, uom) {
 /**
  * Sale/cart/receipt qty by retail vs wholesale mode.
  * Retail: small units (e.g. 75 kg). Wholesale: pack count (e.g. 1.5 bag).
+ * Full-package-only UOMs omit the package label on documents unless
+ * `showFullPackageUomOnDocuments` is true (org printout setting).
  */
-export function formatSaleLineQtyDisplay(baseQty, uom, { isRetailLine = false } = {}) {
+export function formatSaleLineQtyDisplay(
+  baseQty,
+  uom,
+  { isRetailLine = false, showFullPackageUomOnDocuments = false } = {},
+) {
   const base = Number(baseQty ?? 0);
   if (!uom) {
     return formatMixedStockDisplay(base, 1).text;
@@ -347,6 +353,10 @@ export function formatSaleLineQtyDisplay(baseQty, uom, { isRetailLine = false } 
   if (isRetailLine) {
     return `${formatDisplayQty(base)} ${smallPackagingLabel(uom)}`;
   }
+  if (uomIsFullPackageOnly(uom) && !showFullPackageUomOnDocuments) {
+    const qty = factor > 1 ? baseToDisplayQty(base, factor) : base;
+    return formatDisplayQty(qty);
+  }
   if (factor > 1) {
     return `${formatDisplayQty(baseToDisplayQty(base, factor))} ${fullPackageLabel(uom)}`;
   }
@@ -354,7 +364,11 @@ export function formatSaleLineQtyDisplay(baseQty, uom, { isRetailLine = false } 
 }
 
 /** Thermal receipt qty + package columns for a saved sale line. */
-export function saleLineQtyPartsForPrint(baseQty, uom, { isRetailLine = false } = {}) {
+export function saleLineQtyPartsForPrint(
+  baseQty,
+  uom,
+  { isRetailLine = false, showFullPackageUomOnDocuments = false } = {},
+) {
   const base = Number(baseQty ?? 0);
   if (!uom) {
     const fallback = formatMixedStockDisplay(base, 1);
@@ -363,6 +377,10 @@ export function saleLineQtyPartsForPrint(baseQty, uom, { isRetailLine = false } 
   const factor = uomConversionFactor(uom);
   if (isRetailLine) {
     return { quantity: formatDisplayQty(base), package: smallPackagingLabel(uom) };
+  }
+  if (uomIsFullPackageOnly(uom) && !showFullPackageUomOnDocuments) {
+    const qty = factor > 1 ? baseToDisplayQty(base, factor) : base;
+    return { quantity: formatDisplayQty(qty), package: "" };
   }
   if (factor > 1) {
     return {

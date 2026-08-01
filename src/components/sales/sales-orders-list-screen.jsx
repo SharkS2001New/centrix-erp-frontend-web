@@ -3,7 +3,7 @@
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { mapWithConcurrency, fetchAllPages } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -12,6 +12,7 @@ import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { fetchBranchesCached, fetchRoutesAndUomsCached } from "@/lib/reference-data-cache";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
+import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   getOrderWorkflow,
@@ -159,6 +160,7 @@ export default function SalesOrdersListScreen({
   routeOrdersDateRangeDays = 30,
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission } = useAuth();
   const { floatSessionId } = usePosSession();
@@ -198,6 +200,13 @@ export default function SalesOrdersListScreen({
   const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
+
+  useEffect(() => {
+    const q = searchParams?.get?.("q");
+    if (q != null && String(q).trim() !== "") {
+      setSearch(String(q));
+    }
+  }, [searchParams]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [routeFilter, setRouteFilter] = useState("all");
@@ -221,6 +230,7 @@ export default function SalesOrdersListScreen({
   const [paymentRefsBySaleId, setPaymentRefsBySaleId] = useState(() => new Map());
   const [contextMenu, setContextMenu] = useState(null);
   const [batchBusy, setBatchBusy] = useState(null);
+  const [explainOpen, setExplainOpen] = useState(false);
   const {
     selectedIds,
     selectedCount,
@@ -1372,6 +1382,11 @@ export default function SalesOrdersListScreen({
             >
               {loading || listLoading ? "Refreshing…" : "Refresh"}
             </button>
+            <AiAnalyzeButton
+              label="Explain this screen"
+              disabled={loading || listLoading || !(rows?.length)}
+              onClick={() => setExplainOpen(true)}
+            />
             {queueConfig?.slug === "mobile" ? (
               <button
                 type="button"
@@ -1894,6 +1909,33 @@ export default function SalesOrdersListScreen({
           </button>
         ) : null}
       </BatchActionBar>
+      <AiInsightPanel
+        open={explainOpen}
+        onClose={() => setExplainOpen(false)}
+        title="Explain orders list"
+        mode="explain_screen"
+        screenKey={queueConfig?.slug ? `sales_orders_${queueConfig.slug}` : "sales_orders"}
+        filters={{
+          q: debouncedSearch || undefined,
+          status: statusFilter,
+          source: sourceFilter,
+          route: routeFilter,
+          from: appliedFromDate,
+          to: appliedToDate,
+          min_total: minTotalFilter || undefined,
+        }}
+        rows={(rows ?? []).slice(0, 80).map((s) => ({
+          id: s.id,
+          order_num: s.order_num,
+          customer: s.customer_name || s.customer_name_override || s.customer_num,
+          status: s.status,
+          channel: s.channel,
+          order_total: s.order_total,
+          amount_paid: s.amount_paid,
+          balance_due: saleBalanceDue(s),
+        }))}
+        summary={orderSummary}
+      />
     </CatalogPageShell>
   );
 }

@@ -111,8 +111,11 @@ function metaRow(label, value, { emphasize = false } = {}) {
   </div>`;
 }
 
-function lineSpecification(line, uomById, legacyPrint) {
-  const { package: packageLabel } = saleLinePrintQtyPackage(line, uomById, { legacyPrint });
+function lineSpecification(line, uomById, legacyPrint, showFullPackageUomOnDocuments) {
+  const { package: packageLabel } = saleLinePrintQtyPackage(line, uomById, {
+    legacyPrint,
+    showFullPackageUomOnDocuments,
+  });
   if (packageLabel) return packageLabel;
   const code = line.product_code ?? line.sku ?? "";
   return code ? String(code) : "—";
@@ -120,16 +123,24 @@ function lineSpecification(line, uomById, legacyPrint) {
 
 function buildProfessionalSaleRows(
   items,
-  { uomById = null, showDiscountColumn = false, legacyPrint = false } = {},
+  {
+    uomById = null,
+    showDiscountColumn = false,
+    legacyPrint = false,
+    showFullPackageUomOnDocuments = false,
+  } = {},
 ) {
   return (items ?? []).map((line, index) => {
     const uom = legacyPrint ? null : saleLineUom(line, uomById);
     const cols = resolveSaleLinePrintColumns(line, { uom, legacyPrint });
-    const { quantity } = saleLinePrintQtyPackage(line, uomById, { legacyPrint });
+    const { quantity } = saleLinePrintQtyPackage(line, uomById, {
+      legacyPrint,
+      showFullPackageUomOnDocuments,
+    });
     const row = {
       no: String(index + 1),
       description: saleLineProductLabel(line),
-      specification: lineSpecification(line, uomById, legacyPrint),
+      specification: lineSpecification(line, uomById, legacyPrint, showFullPackageUomOnDocuments),
       qty: quantity,
       unit_price: formatPrintAmount(cols.unitPrice),
       amount: formatPrintAmount(cols.amount),
@@ -243,6 +254,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     showDiscountColumn,
     layout: "a4",
     legacyPrint: isLegacySale(sale),
+    showFullPackageUomOnDocuments: salesSettings?.show_full_package_uom_on_documents === true,
   });
   const tableHead = buildSaleDocumentTableHead({
     showDiscountColumn,
@@ -579,6 +591,7 @@ function buildProformaInvoiceHtml(sale, options) {
       uomById,
       showDiscountColumn,
       legacyPrint: isLegacySale(sale),
+      showFullPackageUomOnDocuments: salesSettings?.show_full_package_uom_on_documents === true,
     }),
     total: {
       totalLabel: "TOTAL :",

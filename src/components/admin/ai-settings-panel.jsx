@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
-import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
+import { aiFormFromApi, aiPayloadFromForm, AI_INSIGHT_DIGESTS } from "@/lib/ai-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
@@ -140,14 +140,13 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
               <div className="border-t border-slate-200 pt-6">
                 <h3 className="text-base font-medium text-slate-900">AI Insights</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Analyze reports, Stock Pulse, and Sales briefs. After saving, open{" "}
+                  Morning digests (debtors, tills, exceptions, forecasts), on-demand product/customer
+                  insights, and page Explain on Orders / Customer statement / reports. Open{" "}
                   <Link href="/reports" className="text-[var(--theme-primary)] hover:underline">
                     Reports
                   </Link>{" "}
-                  — look for the <span className="font-medium">AI Insights</span> section (Stock Pulse /
-                  Sales brief). On any report, use <span className="font-medium">Analyze with AI</span> next
-                  to Print / CSV. Users also need the <span className="font-medium">Use AI assistant</span>{" "}
-                  permission on their role.
+                  for the <span className="font-medium">AI Insights</span> hub. Users need{" "}
+                  <span className="font-medium">Use AI assistant</span> on their role.
                 </p>
 
                 <div className="mt-4 space-y-3">
@@ -237,90 +236,60 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                         />
                       </Field>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-3 rounded-lg border border-slate-200 px-4 py-3">
-                          <Toggle
-                            checked={insights.stock_pulse.enabled}
-                            onChange={(enabled) =>
-                              patchInsights(setForm, {
-                                stock_pulse: { ...insights.stock_pulse, enabled },
-                              })
-                            }
-                            label="Daily Stock Pulse"
-                            description="Scheduled digest of low stock and movers."
-                          />
-                          <Field label="Send at (HH:MM)">
-                            <input
-                              type="time"
-                              className={inputClassName()}
-                              value={insights.stock_pulse.schedule_time}
-                              onChange={(e) =>
-                                patchInsights(setForm, {
-                                  stock_pulse: { ...insights.stock_pulse, schedule_time: e.target.value },
-                                })
-                              }
-                            />
-                          </Field>
-                          <Field label="Lookback days">
-                            <input
-                              type="number"
-                              min={1}
-                              max={90}
-                              className={inputClassName()}
-                              value={insights.stock_pulse.lookback_days}
-                              onChange={(e) =>
-                                patchInsights(setForm, {
-                                  stock_pulse: {
-                                    ...insights.stock_pulse,
-                                    lookback_days: Number(e.target.value) || 14,
-                                  },
-                                })
-                              }
-                            />
-                          </Field>
-                        </div>
-
-                        <div className="space-y-3 rounded-lg border border-slate-200 px-4 py-3">
-                          <Toggle
-                            checked={insights.sales_brief.enabled}
-                            onChange={(enabled) =>
-                              patchInsights(setForm, {
-                                sales_brief: { ...insights.sales_brief, enabled },
-                              })
-                            }
-                            label="Daily Sales brief"
-                            description="Scheduled sales and cash snapshot."
-                          />
-                          <Field label="Send at (HH:MM)">
-                            <input
-                              type="time"
-                              className={inputClassName()}
-                              value={insights.sales_brief.schedule_time}
-                              onChange={(e) =>
-                                patchInsights(setForm, {
-                                  sales_brief: { ...insights.sales_brief, schedule_time: e.target.value },
-                                })
-                              }
-                            />
-                          </Field>
-                          <Field label="Lookback days">
-                            <input
-                              type="number"
-                              min={1}
-                              max={90}
-                              className={inputClassName()}
-                              value={insights.sales_brief.lookback_days}
-                              onChange={(e) =>
-                                patchInsights(setForm, {
-                                  sales_brief: {
-                                    ...insights.sales_brief,
-                                    lookback_days: Number(e.target.value) || 7,
-                                  },
-                                })
-                              }
-                            />
-                          </Field>
-                        </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {AI_INSIGHT_DIGESTS.map((digest) => {
+                          const row = insights[digest.key] ?? {
+                            enabled: false,
+                            schedule_time: digest.time,
+                            lookback_days: digest.lookback,
+                          };
+                          return (
+                            <div
+                              key={digest.key}
+                              className="space-y-3 rounded-lg border border-slate-200 px-4 py-3"
+                            >
+                              <Toggle
+                                checked={Boolean(row.enabled)}
+                                onChange={(enabled) =>
+                                  patchInsights(setForm, {
+                                    [digest.key]: { ...row, enabled },
+                                  })
+                                }
+                                label={digest.label}
+                                description="Scheduled digest when enabled."
+                              />
+                              <Field label="Send at (HH:MM)">
+                                <input
+                                  type="time"
+                                  className={inputClassName()}
+                                  value={row.schedule_time || digest.time}
+                                  onChange={(e) =>
+                                    patchInsights(setForm, {
+                                      [digest.key]: { ...row, schedule_time: e.target.value },
+                                    })
+                                  }
+                                />
+                              </Field>
+                              <Field label="Lookback days">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={90}
+                                  className={inputClassName()}
+                                  value={row.lookback_days ?? digest.lookback}
+                                  onChange={(e) =>
+                                    patchInsights(setForm, {
+                                      [digest.key]: {
+                                        ...row,
+                                        lookback_days: Number(e.target.value) || digest.lookback,
+                                      },
+                                    })
+                                  }
+                                />
+                              </Field>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       <div className="space-y-2 rounded-lg border border-slate-200 px-4 py-3">
@@ -331,8 +300,8 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                               exception_alerts: { ...insights.exception_alerts, enabled },
                             })
                           }
-                          label="Exception alerts"
-                          description="Short threshold-based alerts (future digests)."
+                          label="Exception radar (morning)"
+                          description="Sends the Exception radar digest when enabled (low stock, unpaid, discounts, voids)."
                         />
                         <Toggle
                           checked={insights.exception_alerts.low_stock}
@@ -341,7 +310,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                               exception_alerts: { ...insights.exception_alerts, low_stock },
                             })
                           }
-                          label="Low stock"
+                          label="Include low stock"
                           disabled={!insights.exception_alerts.enabled}
                         />
                         <Toggle
@@ -351,7 +320,27 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                               exception_alerts: { ...insights.exception_alerts, unpaid_spike },
                             })
                           }
-                          label="Unpaid spike"
+                          label="Include unpaid spike"
+                          disabled={!insights.exception_alerts.enabled}
+                        />
+                        <Toggle
+                          checked={insights.exception_alerts.unusual_discounts}
+                          onChange={(unusual_discounts) =>
+                            patchInsights(setForm, {
+                              exception_alerts: { ...insights.exception_alerts, unusual_discounts },
+                            })
+                          }
+                          label="Include unusual discounts"
+                          disabled={!insights.exception_alerts.enabled}
+                        />
+                        <Toggle
+                          checked={insights.exception_alerts.void_cancel_bursts}
+                          onChange={(void_cancel_bursts) =>
+                            patchInsights(setForm, {
+                              exception_alerts: { ...insights.exception_alerts, void_cancel_bursts },
+                            })
+                          }
+                          label="Include void/cancel bursts"
                           disabled={!insights.exception_alerts.enabled}
                         />
                       </div>

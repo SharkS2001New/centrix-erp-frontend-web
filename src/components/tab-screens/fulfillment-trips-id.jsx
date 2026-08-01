@@ -464,6 +464,7 @@ export function FulfillmentTripsIdScreen() {
         stopNumber,
         printedBy: user?.full_name ?? user?.username ?? null,
         generalSettings: generalSettings(),
+        salesSettings: capabilities?.module_settings?.sales ?? null,
         documentFooterText: resolvePrintFooter(
           mergeGeneralSettings(capabilities?.module_settings),
           "loading_sheet",

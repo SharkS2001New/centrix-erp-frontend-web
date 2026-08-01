@@ -48,7 +48,7 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
 
   if (!show) return null;
 
-  const displayCards = cards.slice(0, 3);
+  const displayCards = cards.slice(0, 4);
 
   return (
     <>
@@ -60,6 +60,8 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
           <div className="flex flex-wrap gap-2">
             <AiAnalyzeButton label="Stock Pulse" onClick={() => setPanel("stock_pulse")} />
             <AiAnalyzeButton label="Sales brief" onClick={() => setPanel("sales_brief")} />
+            <AiAnalyzeButton label="Debtors" onClick={() => setPanel("debtors_brief")} />
+            <AiAnalyzeButton label="Exceptions" onClick={() => setPanel("exception_radar")} />
           </div>
         }
       >
@@ -77,7 +79,7 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
                 key={card.id}
                 type="button"
                 className="text-left"
-                onClick={() => setPanel(card.insight_type === "stock_pulse" ? "stock_pulse" : "sales_brief")}
+                onClick={() => setPanel(card.insight_type || "sales_brief")}
               >
                 <StatCard
                   label={card.label}
@@ -105,15 +107,22 @@ export function AiDashboardInsightCards({ className = "mt-8" }) {
           </div>
         ) : null}
         {!loading && !error && !displayCards.length ? (
-          <p className="text-sm text-slate-500">No insight cards yet. Try Stock Pulse or Sales brief.</p>
+          <p className="text-sm text-slate-500">No insight cards yet. Try Stock Pulse, Debtors, or Exception radar.</p>
         ) : null}
       </DashboardSection>
 
       <AiInsightPanel
         open={panel != null}
         onClose={() => setPanel(null)}
-        title={panel === "stock_pulse" ? "Stock Pulse" : "Sales brief"}
-        mode={panel === "stock_pulse" ? "stock_pulse" : "sales_brief"}
+        title={
+          {
+            stock_pulse: "Stock Pulse",
+            sales_brief: "Sales brief",
+            debtors_brief: "Credit / debtors brief",
+            exception_radar: "Exception radar",
+          }[panel] || "AI Insights"
+        }
+        mode={panel || "sales_brief"}
       />
     </>
   );

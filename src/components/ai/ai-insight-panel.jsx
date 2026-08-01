@@ -14,12 +14,17 @@ export function AiInsightPanel({
   open,
   onClose,
   title = "AI Insights",
-  mode = "report", // report | stock_pulse | sales_brief
+  mode = "report", // report | explain_screen | catalog type key
   reportKey = null,
+  screenKey = null,
   filters = {},
   rows = [],
   summary = null,
   initialQuestion = "",
+  productCode = null,
+  productQuery = null,
+  customerNum = null,
+  lookbackDays = null,
 }) {
   const { capabilities, hasPermission } = useAuth();
   const allowed = canUseAiInsights({ capabilities, hasPermission });
@@ -37,15 +42,40 @@ export function AiInsightPanel({
     setDeliverMsg(null);
     try {
       let res;
-      if (mode === "stock_pulse") {
-        res = await apiRequest("/ai/insights/stock-pulse", { method: "POST", body: {} });
-      } else if (mode === "sales_brief") {
-        res = await apiRequest("/ai/insights/sales-brief", { method: "POST", body: {} });
-      } else {
+      if (mode === "stock_pulse" || mode === "sales_brief") {
+        res = await apiRequest(`/ai/insights/${mode.replace("_", "-")}`, { method: "POST", body: {} });
+      } else if (mode === "explain_screen" || mode === "explain") {
+        res = await apiRequest("/ai/insights/explain-screen", {
+          method: "POST",
+          body: {
+            screen_key: reportKey || screenKey || "screen",
+            filters,
+            rows: (rows ?? []).slice(0, 80),
+            summary,
+            question: question.trim() || undefined,
+          },
+        });
+      } else if (mode === "report") {
         res = await apiRequest("/ai/insights/analyze-report", {
           method: "POST",
           body: {
             report_key: reportKey || "report",
+            filters,
+            rows: (rows ?? []).slice(0, 80),
+            summary,
+            question: question.trim() || undefined,
+          },
+        });
+      } else {
+        res = await apiRequest("/ai/insights/run", {
+          method: "POST",
+          body: {
+            type: mode,
+            product_code: productCode || undefined,
+            product_query: productQuery || undefined,
+            customer_num: customerNum || undefined,
+            lookback_days: lookbackDays || undefined,
+            screen_key: screenKey || reportKey || undefined,
             filters,
             rows: (rows ?? []).slice(0, 80),
             summary,
@@ -60,7 +90,20 @@ export function AiInsightPanel({
     } finally {
       setBusy(false);
     }
-  }, [allowed, mode, reportKey, filters, rows, summary, question]);
+  }, [
+    allowed,
+    mode,
+    reportKey,
+    screenKey,
+    filters,
+    rows,
+    summary,
+    question,
+    productCode,
+    productQuery,
+    customerNum,
+    lookbackDays,
+  ]);
 
   useEffect(() => {
     if (!open) return;

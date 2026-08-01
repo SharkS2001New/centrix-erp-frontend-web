@@ -32,12 +32,14 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
+import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
 
 export function CustomerStatementScreen() {
   const searchParams = useSearchParams();
   const { organization, generalSettings } = useAuth();
   const initialCustomer = searchParams.get("customer") ?? "";
   const defaultRange = useMemo(() => defaultDateRange(365), []);
+  const [explainOpen, setExplainOpen] = useState(false);
 
   const [customerNum, setCustomerNum] = useState(initialCustomer);
   const [appliedCustomer, setAppliedCustomer] = useState(initialCustomer);
@@ -189,6 +191,11 @@ export function CustomerStatementScreen() {
         onClick: handlePrint,
         disabled: loading || !customer || lines.length === 0,
       }}
+      onAnalyzeWithAi={
+        appliedCustomer && lines.length
+          ? () => setExplainOpen(true)
+          : undefined
+      }
       exportConfig={
         appliedCustomer
           ? {
@@ -332,6 +339,28 @@ export function CustomerStatementScreen() {
       {appliedCustomer && !loading ? (
         <ReportTable columns={columns} rows={lines} emptyLabel="No transactions for this customer." />
       ) : null}
+      <AiInsightPanel
+        open={explainOpen}
+        onClose={() => setExplainOpen(false)}
+        title="Explain customer statement"
+        mode="explain_screen"
+        screenKey="customer_statement"
+        filters={{
+          customer_num: appliedCustomer,
+          from: fromDate,
+          to: toDate,
+        }}
+        rows={(lines ?? []).slice(0, 80)}
+        summary={{
+          outstanding,
+          credit_limit: creditLimit,
+          ...(summary ?? {}),
+          customer: customer
+            ? { customer_num: customer.customer_num, customer_name: customer.customer_name }
+            : null,
+        }}
+        customerNum={appliedCustomer || undefined}
+      />
     </ReportPageShell>
   );
 }

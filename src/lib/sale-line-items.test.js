@@ -235,4 +235,52 @@ describe("sale line receipt packaging qty", () => {
       package: "bag",
     });
   });
+
+  it("omits full-package-only UOM label on documents by default", () => {
+    const baleUom = {
+      id: 2,
+      full_name: "bale",
+      uom_type: "bale",
+      conversion_factor: 1,
+      uses_small_packaging: false,
+    };
+    const uoms = new Map([[2, baleUom]]);
+    const line = {
+      product_code: "ASIS50G",
+      quantity: 1,
+      on_wholesale_retail: 0,
+      product: { unit_id: 2, unit: baleUom },
+    };
+    expect(saleLinePrintQtyPackage(line, uoms)).toEqual({
+      quantity: "1",
+      package: "",
+    });
+    expect(saleLineQtyLabel(line, uoms)).toBe("1");
+  });
+
+  it("shows full-package-only UOM when org enables it on documents", () => {
+    const baleUom = {
+      id: 2,
+      full_name: "bale",
+      uom_type: "bale",
+      conversion_factor: 1,
+      uses_small_packaging: false,
+    };
+    const uoms = new Map([[2, baleUom]]);
+    const line = {
+      product_code: "ASIS50G",
+      quantity: 1,
+      on_wholesale_retail: 0,
+      product: { unit_id: 2, unit: baleUom },
+    };
+    expect(
+      saleLinePrintQtyPackage(line, uoms, { showFullPackageUomOnDocuments: true }),
+    ).toEqual({
+      quantity: "1",
+      package: "bale",
+    });
+    expect(saleLineQtyLabel(line, uoms, { showFullPackageUomOnDocuments: true })).toBe(
+      "1 bale",
+    );
+  });
 });
