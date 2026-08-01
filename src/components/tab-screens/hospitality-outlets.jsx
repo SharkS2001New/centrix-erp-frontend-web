@@ -12,7 +12,7 @@ import {
   FormDrawer,
   inputClassName,
   PrimaryButton,
-  SECONDARY_BTN_CLASS,
+  SecondaryButton,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
@@ -21,46 +21,110 @@ import {
 export function HospitalityOutletsScreen() {
   const { capabilities } = useAuth();
   const extraEnabled = isHospitalityServiceEnabled(capabilities, "extra_outlets");
+  const tablesEnabled = isHospitalityServiceEnabled(capabilities, "floor_tables");
   const [outlets, setOutlets] = useState([]);
+  const [tables, setTables] = useState([]);
+  const [selectedOutletId, setSelectedOutletId] = useState("");
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [form, setForm] = useState({ code: "", name: "", outlet_type: "bar" });
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ code: "", name: "", outlet_type: "bar", is_active: true });
+  const [tableForm, setTableForm] = useState({ code: "", label: "", seats: "4", zone: "" });
   const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState(null);
 
-  const loadData = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
       const res = await apiRequest("/hospitality/outlets");
-      setOutlets(res?.data ?? []);
+      const list = res?.data ?? [];
+      setOutlets(list);
+      const outletId = selectedOutletId || list[0]?.id;
+      if (outletId) setSelectedOutletId(String(outletId));
+      if (tablesEnabled && outletId) {
+        const t = await apiRequest("/hospitality/floor-tables", {
+          searchParams: { outlet_id: outletId },
+        });
+        setTables(t?.data ?? []);
+      } else {
+        setTables([]);
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load outlets");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedOutletId, tablesEnabled]);
 
-  useTabAwareDataLoad(loadData);
+  useTabAwareDataLoad(load);
 
   async function saveOutlet(e) {
     e.preventDefault();
     setSaving(true);
-    setFormError(null);
     try {
-      await apiRequest("/hospitality/outlets", {
-        method: "POST",
-        body: {
-          code: form.code.trim(),
-          name: form.name.trim(),
-          outlet_type: form.outlet_type,
-        },
-      });
-      notifySuccess("Outlet created");
+      if (editingId) {
+        await apiRequest(`/hospitality/outlets/${editingId}`, {
+          method: "PATCH",
+          body: {
+            name: form.name.trim(),
+            outlet_type: form.outlet_type,
+            is_active: form.is_active,
+            ...(form.code ? { code: form.code.trim() } : {}),
+          },
+        });
+        notifySuccess("Outlet updated");
+      } else {
+        await apiRequest("/hospitality/outlets", {
+          method: "POST",
+          body: {
+            code: form.code.trim(),
+            name: form.name.trim(),
+            outlet_type: form.outlet_type,
+          },
+        });
+        notifySuccess("Outlet created");
+      }
       setDrawerOpen(false);
-      await loadData();
+      await load();
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Save failed");
+      notifyError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveTable(e) {
+    e.preventDefault();
+    if (!selectedOutletId) return;
+    setSaving(true);
+    try {
+      await apiRequest("/hospitality/floor-tables", {
+        method: "POST",
+        body: {
+          outlet_id: Number(selectedOutletId),
+          code: tableForm.code.trim(),
+          label: tableForm.label.trim(),
+          seats: Number(tableForm.seats) || 4,
+          zone: tableForm.zone || null,
+        },
+      });
+      notifySuccess("Table created");
+      setTableForm({ code: "", label: "", seats: "4", zone: "" });
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Table save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleTable(table) {
+    try {
+      await apiRequest(`/hospitality/floor-tables/${table.id}`, {
+        method: "PATCH",
+        body: { is_active: !table.is_active },
+      });
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Update failed");
     }
   }
 
@@ -69,15 +133,15 @@ export function HospitalityOutletsScreen() {
       title="Outlets"
       subtitle={
         extraEnabled
-          ? "Main outlet is always present. Extra outlets are enabled for this organization."
-          : "Default Main outlet for Hotel & Bar POS. Ask platform admin to enable Extra outlets for more."
+          ? "Main outlet plus extra outlets. Floor tables appear when enabled."
+          : "Default Main outlet for Hotel & Bar POS."
       }
-      actions={
+      action={
         extraEnabled ? (
           <PrimaryButton
             onClick={() => {
-              setForm({ code: "", name: "", outlet_type: "bar" });
-              setFormError(null);
+              setEditingId(null);
+              setForm({ code: "", name: "", outlet_type: "bar", is_active: true });
               setDrawerOpen(true);
             }}
           >
@@ -89,74 +153,205 @@ export function HospitalityOutletsScreen() {
       {loading ? (
         <p className="theme-subtext text-sm">Loading…</p>
       ) : (
-        <div className={TABLE_SHELL_CLASS}>
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className={TABLE_HEAD_ROW_CLASS}>
-                <th className="px-3 py-2 text-left">Code</th>
-                <th className="px-3 py-2 text-left">Name</th>
-                <th className="px-3 py-2 text-left">Type</th>
-                <th className="px-3 py-2 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {outlets.map((row) => (
-                <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
-                  <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
-                  <td className="px-3 py-2 font-medium">{row.name}</td>
-                  <td className="px-3 py-2 capitalize">{row.outlet_type}</td>
-                  <td className="px-3 py-2">{row.is_active === false ? "Inactive" : "Active"}</td>
+        <>
+          <div className={TABLE_SHELL_CLASS}>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className={TABLE_HEAD_ROW_CLASS}>
+                  <th className="px-3 py-2 text-left">Code</th>
+                  <th className="px-3 py-2 text-left">Name</th>
+                  <th className="px-3 py-2 text-left">Type</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {outlets.map((o) => (
+                  <tr key={o.id} className={TABLE_BODY_ROW_CLASS}>
+                    <td className="px-3 py-2 font-medium">{o.code}</td>
+                    <td className="px-3 py-2">{o.name}</td>
+                    <td className="px-3 py-2 capitalize">{o.outlet_type}</td>
+                    <td className="px-3 py-2">{o.is_active ? "Active" : "Inactive"}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        className="text-xs font-semibold underline"
+                        onClick={() => {
+                          setEditingId(o.id);
+                          setForm({
+                            code: o.code || "",
+                            name: o.name || "",
+                            outlet_type: o.outlet_type || "bar",
+                            is_active: o.is_active !== false,
+                          });
+                          setDrawerOpen(true);
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {tablesEnabled ? (
+            <section className="mt-8 space-y-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <h2 className="theme-heading text-base font-semibold">Floor tables</h2>
+                <select
+                  className={inputClassName()}
+                  value={selectedOutletId}
+                  onChange={(e) => setSelectedOutletId(e.target.value)}
+                >
+                  {outlets.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+                <SecondaryButton onClick={() => void load()}>Refresh tables</SecondaryButton>
+              </div>
+              <form
+                className="grid gap-2 rounded-xl border border-[var(--theme-border)] p-3 sm:grid-cols-5"
+                onSubmit={saveTable}
+              >
+                <Field label="Code">
+                  <input
+                    required
+                    className={inputClassName()}
+                    value={tableForm.code}
+                    onChange={(e) => setTableForm((f) => ({ ...f, code: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Label">
+                  <input
+                    required
+                    className={inputClassName()}
+                    value={tableForm.label}
+                    onChange={(e) => setTableForm((f) => ({ ...f, label: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Seats">
+                  <input
+                    type="number"
+                    min="1"
+                    className={inputClassName()}
+                    value={tableForm.seats}
+                    onChange={(e) => setTableForm((f) => ({ ...f, seats: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Zone">
+                  <input
+                    className={inputClassName()}
+                    value={tableForm.zone}
+                    onChange={(e) => setTableForm((f) => ({ ...f, zone: e.target.value }))}
+                  />
+                </Field>
+                <div className="flex items-end">
+                  <PrimaryButton showIcon={false} type="submit" disabled={saving}>
+                    Add table
+                  </PrimaryButton>
+                </div>
+              </form>
+              <div className={TABLE_SHELL_CLASS}>
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className={TABLE_HEAD_ROW_CLASS}>
+                      <th className="px-3 py-2 text-left">Code</th>
+                      <th className="px-3 py-2 text-left">Label</th>
+                      <th className="px-3 py-2 text-left">Seats</th>
+                      <th className="px-3 py-2 text-left">Zone</th>
+                      <th className="px-3 py-2 text-left">Active</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tables.map((t) => (
+                      <tr key={t.id} className={TABLE_BODY_ROW_CLASS}>
+                        <td className="px-3 py-2">{t.code}</td>
+                        <td className="px-3 py-2">{t.label}</td>
+                        <td className="px-3 py-2">{t.seats}</td>
+                        <td className="px-3 py-2">{t.zone || "—"}</td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            className="text-xs font-semibold underline"
+                            onClick={() => void toggleTable(t)}
+                          >
+                            {t.is_active ? "Deactivate" : "Activate"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!tables.length ? (
+                      <tr>
+                        <td colSpan={5} className="theme-subtext px-3 py-6 text-center">
+                          No tables for this outlet.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : (
+            <p className="theme-subtext mt-4 text-sm">
+              Floor tables are off. Ask platform admin to enable Floor tables / Table POS.
+            </p>
+          )}
+        </>
       )}
 
-      {!extraEnabled ? (
-        <p className="theme-subtext mt-4 rounded-xl border border-dashed border-[var(--theme-border)] px-4 py-3 text-sm">
-          Floor tables, table POS, and additional bars/restaurants stay off until enabled under Platform →
-          Organization → Applications → Hotel &amp; Bar POS services.
-        </p>
-      ) : null}
-
-      <FormDrawer open={drawerOpen} title="Add outlet" onClose={() => setDrawerOpen(false)} error={formError}>
-        <form className="space-y-3" onSubmit={(e) => void saveOutlet(e)}>
-          <Field label="Code">
-            <input
-              className={inputClassName}
-              value={form.code}
-              onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
-              required
-            />
-          </Field>
+      <FormDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        title={editingId ? "Edit outlet" : "Add outlet"}
+      >
+        <form className="space-y-3" onSubmit={saveOutlet}>
+          {!editingId || form.code !== "MAIN" ? (
+            <Field label="Code">
+              <input
+                required={!editingId}
+                disabled={editingId && form.code === "MAIN"}
+                className={inputClassName()}
+                value={form.code}
+                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+              />
+            </Field>
+          ) : null}
           <Field label="Name">
             <input
-              className={inputClassName}
-              value={form.name}
-              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
               required
+              className={inputClassName()}
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
           </Field>
           <Field label="Type">
             <select
-              className={inputClassName}
+              className={inputClassName()}
               value={form.outlet_type}
-              onChange={(e) => setForm((p) => ({ ...p, outlet_type: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, outlet_type: e.target.value }))}
             >
               <option value="bar">Bar</option>
               <option value="restaurant">Restaurant</option>
               <option value="other">Other</option>
             </select>
           </Field>
-          <div className="flex gap-2">
-            <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setDrawerOpen(false)}>
-              Cancel
-            </button>
-            <PrimaryButton type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </PrimaryButton>
-          </div>
+          {editingId ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.is_active}
+                onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+              />
+              Active
+            </label>
+          ) : null}
+          <PrimaryButton showIcon={false} type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </PrimaryButton>
         </form>
       </FormDrawer>
     </CatalogPageShell>

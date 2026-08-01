@@ -14,6 +14,10 @@ export async function fetchHotelPosCatalog({
   return apiRequest(`/hospitality/pos/catalog?${params.toString()}`, { loading: false });
 }
 
+export async function fetchHotelPosSettings() {
+  return apiRequest("/hospitality/pos/settings", { loading: false });
+}
+
 export async function openHotelCheck(body = {}) {
   return apiRequest("/hospitality/pos/checks", {
     method: "POST",
@@ -23,6 +27,14 @@ export async function openHotelCheck(body = {}) {
 
 export async function fetchHotelCheck(checkId) {
   return apiRequest(`/hospitality/pos/checks/${checkId}`, { loading: false });
+}
+
+export async function assignHotelCheckTable(checkId, floorTableId) {
+  return apiRequest(`/hospitality/pos/checks/${checkId}/table`, {
+    method: "PATCH",
+    body: { floor_table_id: floorTableId || null },
+    loading: false,
+  });
 }
 
 export async function addHotelCheckLine(checkId, productCode, qty = 1) {
@@ -66,7 +78,7 @@ export async function resumeHotelCheck(checkId) {
   });
 }
 
-export async function settleHotelCheck(checkId, { amount, payments } = {}) {
+export async function settleHotelCheck(checkId, { amount, payments, floor_table_id } = {}) {
   const body = {};
   if (Array.isArray(payments) && payments.length) {
     body.payments = payments;
@@ -76,18 +88,34 @@ export async function settleHotelCheck(checkId, { amount, payments } = {}) {
   } else {
     body.method = "CASH";
   }
+  if (floor_table_id) body.floor_table_id = floor_table_id;
   return apiRequest(`/hospitality/pos/checks/${checkId}/settle`, {
     method: "POST",
     body,
   });
 }
 
-export async function saveHotelCheck(checkId) {
+export async function saveHotelCheck(checkId, { floor_table_id } = {}) {
+  const body = {};
+  if (floor_table_id) body.floor_table_id = floor_table_id;
   return apiRequest(`/hospitality/pos/checks/${checkId}/save`, {
     method: "POST",
+    body,
   });
 }
 
+export async function listCollectibleHotelChecks() {
+  return apiRequest("/hospitality/pos/checks/collectible", { loading: false });
+}
+
+/** @deprecated use listCollectibleHotelChecks */
 export async function listHeldHotelChecks() {
-  return apiRequest("/hospitality/pos/checks/held", { loading: false });
+  return listCollectibleHotelChecks();
+}
+
+export async function listHotelFloorTables(outletId = null) {
+  const params = new URLSearchParams();
+  if (outletId) params.set("outlet_id", String(outletId));
+  const qs = params.toString();
+  return apiRequest(`/hospitality/floor-tables${qs ? `?${qs}` : ""}`, { loading: false });
 }

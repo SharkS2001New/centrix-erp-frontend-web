@@ -13,6 +13,65 @@ function round2(v) {
   return Math.round(n(v) * 100) / 100;
 }
 
+function HotelPosMethodBlock({
+  method,
+  label,
+  value,
+  extra = null,
+  saving = false,
+  total = 0,
+  balanceForMethod = 0,
+  onPayFull,
+  onPayBalance,
+  onOpenKeypad,
+}) {
+  return (
+    <div className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
+          {label}
+        </p>
+        <p className="text-lg font-bold tabular-nums">{formatHotelMoney(value)}</p>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          type="button"
+          disabled={saving || total <= 0}
+          onClick={() => onPayFull?.(method)}
+          className="theme-primary-btn rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase leading-tight disabled:opacity-40"
+        >
+          Full
+          <span className="mt-0.5 block font-semibold normal-case opacity-90">
+            {formatHotelMoney(total)}
+          </span>
+        </button>
+        <button
+          type="button"
+          disabled={saving || balanceForMethod <= 0}
+          onClick={() => onPayBalance?.(method)}
+          className="theme-secondary-btn rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase leading-tight disabled:opacity-40"
+          title="Pay remaining balance after other methods"
+        >
+          Balance
+          <span className="mt-0.5 block font-semibold normal-case opacity-90">
+            {formatHotelMoney(balanceForMethod)}
+          </span>
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => onOpenKeypad?.(method, label)}
+          className="theme-secondary-btn rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase leading-tight disabled:opacity-40"
+        >
+          Amount
+          <span className="mt-0.5 block font-semibold normal-case opacity-90">Keypad</span>
+        </button>
+      </div>
+      {extra}
+    </div>
+  );
+}
+
 /**
  * Touch-first Collect payment for Hotel POS — same methods as retail POS payment config,
  * with Full / Balance / Keypad taps for amounts (split-payment aware).
@@ -25,6 +84,7 @@ export function HotelPosPaymentPanel({
   saving = false,
   error = null,
   onComplete,
+  allowPartial = false,
 }) {
   const cfg = paymentConfig ?? {};
   const total = round2(billTotal);
@@ -161,7 +221,11 @@ export function HotelPosPaymentPanel({
 
   async function handleConfirm() {
     setLocalError(null);
-    if (amountPaid + 0.001 < total) {
+    if (amountPaid <= 0) {
+      setLocalError("Enter a payment amount.");
+      return;
+    }
+    if (!allowPartial && amountPaid + 0.001 < total) {
       setLocalError("Payment total is less than the bill. Use Pay balance on a method, or enter more.");
       return;
     }
@@ -217,54 +281,13 @@ export function HotelPosPaymentPanel({
 
   if (!open) return null;
 
-  function MethodBlock({ method, label, value, extra = null }) {
-    const balanceForMethod = amountExcluding(method);
-    return (
-      <div className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
-            {label}
-          </p>
-          <p className="text-lg font-bold tabular-nums">{formatHotelMoney(value)}</p>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            disabled={saving || total <= 0}
-            onClick={() => payFull(method)}
-            className="theme-primary-btn rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase leading-tight disabled:opacity-40"
-          >
-            Full
-            <span className="mt-0.5 block font-semibold normal-case opacity-90">
-              {formatHotelMoney(total)}
-            </span>
-          </button>
-          <button
-            type="button"
-            disabled={saving || balanceForMethod <= 0}
-            onClick={() => payBalance(method)}
-            className="theme-secondary-btn rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase leading-tight disabled:opacity-40"
-            title="Pay remaining balance after other methods"
-          >
-            Balance
-            <span className="mt-0.5 block font-semibold normal-case opacity-90">
-              {formatHotelMoney(balanceForMethod)}
-            </span>
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => openKeypad(method, label)}
-            className="theme-secondary-btn rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase leading-tight disabled:opacity-40"
-          >
-            Amount
-            <span className="mt-0.5 block font-semibold normal-case opacity-90">Keypad</span>
-          </button>
-        </div>
-        {extra}
-      </div>
-    );
-  }
+  const methodBlockProps = {
+    saving,
+    total,
+    onPayFull: payFull,
+    onPayBalance: payBalance,
+    onOpenKeypad: openKeypad,
+  };
 
   return (
     <>
@@ -291,13 +314,21 @@ export function HotelPosPaymentPanel({
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-            <MethodBlock method="cash" label="Cash" value={cash} />
+            <HotelPosMethodBlock
+              {...methodBlockProps}
+              method="cash"
+              label="Cash"
+              value={cash}
+              balanceForMethod={amountExcluding("cash")}
+            />
 
             {cfg.enableMpesaAmount ? (
-              <MethodBlock
+              <HotelPosMethodBlock
+                {...methodBlockProps}
                 method="mpesa"
                 label="M-Pesa"
                 value={mpesa}
+                balanceForMethod={amountExcluding("mpesa")}
                 extra={
                   cfg.enableMpesaCode ? (
                     <input
@@ -325,10 +356,12 @@ export function HotelPosPaymentPanel({
                   ))}
                 </select>
                 {cfg.showBankAmount ? (
-                  <MethodBlock
+                  <HotelPosMethodBlock
+                    {...methodBlockProps}
                     method="bank"
                     label="Bank"
                     value={bankAmount}
+                    balanceForMethod={amountExcluding("bank")}
                     extra={
                       <input
                         className="theme-input mt-2 w-full rounded-xl px-3 py-2 text-sm"
@@ -343,24 +376,40 @@ export function HotelPosPaymentPanel({
             ) : null}
 
             {!cfg.useBankSelect && cfg.showEquityBank ? (
-              <MethodBlock method="equity" label="Equity Bank" value={equity} />
+              <HotelPosMethodBlock
+                {...methodBlockProps}
+                method="equity"
+                label="Equity Bank"
+                value={equity}
+                balanceForMethod={amountExcluding("equity")}
+              />
             ) : null}
             {!cfg.useBankSelect && cfg.showKcbBank ? (
-              <MethodBlock method="kcb" label="KCB" value={kcb} />
+              <HotelPosMethodBlock
+                {...methodBlockProps}
+                method="kcb"
+                label="KCB"
+                value={kcb}
+                balanceForMethod={amountExcluding("kcb")}
+              />
             ) : null}
             {!cfg.useBankSelect && cfg.showOtherBank ? (
-              <MethodBlock
+              <HotelPosMethodBlock
+                {...methodBlockProps}
                 method="other"
                 label={cfg.otherBankLabel || "Other bank"}
                 value={otherBank}
+                balanceForMethod={amountExcluding("other")}
               />
             ) : null}
 
             {cfg.showCheque ? (
-              <MethodBlock
+              <HotelPosMethodBlock
+                {...methodBlockProps}
                 method="cheque"
                 label="Cheque"
                 value={cheque}
+                balanceForMethod={amountExcluding("cheque")}
                 extra={
                   cfg.showChequeNumber ? (
                     <input

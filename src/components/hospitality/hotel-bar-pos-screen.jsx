@@ -6,10 +6,13 @@ import { useAuth } from "@/contexts/auth-context";
 import { ApiError } from "@/lib/api";
 import {
   addHotelCheckLine,
+  assignHotelCheckTable,
   clearHotelCheck,
   fetchHotelPosCatalog,
+  fetchHotelPosSettings,
   holdHotelCheck,
-  listHeldHotelChecks,
+  listCollectibleHotelChecks,
+  listHotelFloorTables,
   openHotelCheck,
   removeHotelCheckLine,
   resumeHotelCheck,
@@ -22,10 +25,13 @@ import {
   normalizeHotelPosGridColumns,
   resolveHotelPosSettings,
 } from "@/lib/hotel-pos-settings";
+import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
+import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PosActionButton } from "@/components/sales/pos-action-button";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
+import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 
 function dedupeError(e) {
   if (e instanceof ApiError) return e.message;
@@ -36,10 +42,18 @@ function dedupeError(e) {
 export function HotelBarPosScreen() {
   const { capabilities, user } = useAuth();
   const hotelSettings = resolveHotelPosSettings(capabilities);
+  const paymentWorkflow = resolveHospitalityPaymentWorkflow(capabilities);
   const [gridColumns, setGridColumns] = useState(hotelSettings.gridColumns);
   const [collectPayment, setCollectPayment] = useState(hotelSettings.collectPayment);
   const [catalogLimit, setCatalogLimit] = useState(hotelSettings.catalogLimit);
   const [stockDeductOnSettle, setStockDeductOnSettle] = useState(hotelSettings.stockDeductOnSettle);
+  const [tablePosEnabled, setTablePosEnabled] = useState(
+    isHospitalityServiceEnabled(capabilities, "table_pos"),
+  );
+  const [unpaidEnabled, setUnpaidEnabled] = useState(paymentWorkflow.unpaid);
+  const [partialEnabled, setPartialEnabled] = useState(paymentWorkflow.partially_paid);
+  const [floorTables, setFloorTables] = useState([]);
+  const [selectedTableId, setSelectedTableId] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [products, setProducts] = useState([]);
@@ -51,8 +65,8 @@ export function HotelBarPosScreen() {
   const [check, setCheck] = useState(null);
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [heldOpen, setHeldOpen] = useState(false);
-  const [heldChecks, setHeldChecks] = useState([]);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [queueChecks, setQueueChecks] = useState([]);
   const [payOpen, setPayOpen] = useState(false);
   const [payError, setPayError] = useState(null);
   const searchRef = useRef(null);
@@ -74,12 +88,54 @@ export function HotelBarPosScreen() {
     setCollectPayment(hotelSettings.collectPayment);
     setCatalogLimit(hotelSettings.catalogLimit);
     setStockDeductOnSettle(hotelSettings.stockDeductOnSettle);
+    setTablePosEnabled(isHospitalityServiceEnabled(capabilities, "table_pos"));
+    setUnpaidEnabled(paymentWorkflow.unpaid);
+    setPartialEnabled(paymentWorkflow.partially_paid);
   }, [
     hotelSettings.gridColumns,
     hotelSettings.collectPayment,
     hotelSettings.catalogLimit,
     hotelSettings.stockDeductOnSettle,
+    capabilities,
+    paymentWorkflow.unpaid,
+    paymentWorkflow.partially_paid,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await fetchHotelPosSettings();
+        if (cancelled) return;
+        if (settings?.hotel_pos_collect_payment != null) {
+          setCollectPayment(Boolean(settings.hotel_pos_collect_payment));
+        }
+        if (settings?.table_pos_enabled != null) {
+          setTablePosEnabled(Boolean(settings.table_pos_enabled));
+        }
+        if (settings?.payment_workflow) {
+          const wf = resolveHospitalityPaymentWorkflow({
+            hospitality_payment_workflow: settings.payment_workflow,
+          });
+          setUnpaidEnabled(wf.unpaid);
+          setPartialEnabled(wf.partially_paid);
+        }
+        if (settings?.table_pos_enabled || settings?.floor_tables_enabled) {
+          const tablesRes = await listHotelFloorTables();
+          if (!cancelled) {
+            setFloorTables(Array.isArray(tablesRes?.data) ? tablesRes.data : []);
+          }
+        } else {
+          setFloorTables([]);
+        }
+      } catch {
+        /* capabilities fallback already applied */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 220);
@@ -176,10 +232,29 @@ export function HotelBarPosScreen() {
   }, [loadMoreCatalog, products.length, catalogHasMore]);
 
   async function startFreshCheck() {
-    const opened = await openHotelCheck({ branch_id: user?.branch_id ?? undefined });
+    const body = { branch_id: user?.branch_id ?? undefined };
+    if (tablePosEnabled && selectedTableId) {
+      body.floor_table_id = Number(selectedTableId);
+    }
+    const opened = await openHotelCheck(body);
     setCheck(opened?.check ?? null);
     setSelectedLineId(null);
     return opened?.check ?? null;
+  }
+
+  async function ensureTableAssigned(activeCheck) {
+    if (!tablePosEnabled) return activeCheck;
+    const tableId = selectedTableId || activeCheck?.floor_table_id;
+    if (!tableId) {
+      throw new Error("Select a table before saving or collecting payment.");
+    }
+    if (Number(activeCheck?.floor_table_id) === Number(tableId)) {
+      return activeCheck;
+    }
+    const res = await assignHotelCheckTable(activeCheck.id, Number(tableId));
+    const next = res?.check ?? activeCheck;
+    setCheck(next);
+    return next;
   }
 
   async function handleTapProduct(product) {
@@ -187,7 +262,12 @@ export function HotelBarPosScreen() {
     setBusy(true);
     try {
       let active = check;
-      if (!active?.id || active.status === "settled" || active.status === "void") {
+      if (
+        !active?.id ||
+        active.status === "paid" ||
+        active.status === "settled" ||
+        active.status === "void"
+      ) {
         active = await startFreshCheck();
       }
       if (!active?.id) throw new Error("Could not open check.");
@@ -231,10 +311,16 @@ export function HotelBarPosScreen() {
 
   async function handleHold() {
     if (!check?.id || !check.lines?.length || busy) return;
+    if (!unpaidEnabled) {
+      notifyError("Unpaid orders are not enabled for this organization.");
+      return;
+    }
     setBusy(true);
     try {
-      await holdHotelCheck(check.id);
-      notifySuccess(`Check ${check.check_number} held.`);
+      await ensureTableAssigned(check);
+      const res = await holdHotelCheck(check.id);
+      printHospitalityCheckReceipt(res?.check ?? check, { title: "Unpaid order" });
+      notifySuccess(`Order ${check.check_number} saved unpaid.`);
       await startFreshCheck();
     } catch (e) {
       notifyError(dedupeError(e));
@@ -245,10 +331,18 @@ export function HotelBarPosScreen() {
 
   async function handleSaveOrder() {
     if (!check?.id || !check.lines?.length || busy) return;
+    if (!unpaidEnabled) {
+      notifyError("Unpaid orders are not enabled. Use Collect payment.");
+      return;
+    }
     setBusy(true);
     try {
-      await saveHotelCheck(check.id);
-      notifySuccess(`Order ${check.check_number} saved.`);
+      await ensureTableAssigned(check);
+      const res = await saveHotelCheck(check.id, {
+        floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
+      });
+      printHospitalityCheckReceipt(res?.check ?? check, { title: "Unpaid order" });
+      notifySuccess(`Order ${check.check_number} saved unpaid — receipt printed.`);
       await startFreshCheck();
     } catch (e) {
       notifyError(dedupeError(e));
@@ -257,26 +351,47 @@ export function HotelBarPosScreen() {
     }
   }
 
-  async function openHeldList() {
-    setHeldOpen(true);
+  async function openCollectibleList() {
+    setQueueOpen(true);
     try {
-      const res = await listHeldHotelChecks();
-      setHeldChecks(Array.isArray(res?.checks) ? res.checks : []);
+      const res = await listCollectibleHotelChecks();
+      setQueueChecks(Array.isArray(res?.checks) ? res.checks : []);
     } catch (e) {
       notifyError(dedupeError(e));
-      setHeldChecks([]);
+      setQueueChecks([]);
     }
   }
 
-  async function handleResumeHeld(held) {
-    if (!held?.id || busy) return;
+  async function handleResumeHeld(row) {
+    if (!row?.id || busy) return;
     setBusy(true);
     try {
-      const res = await resumeHotelCheck(held.id);
-      setCheck(res?.check ?? null);
+      const res = await resumeHotelCheck(row.id);
+      const next = res?.check ?? row;
+      setCheck(next);
+      if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
       setSelectedLineId(null);
-      setHeldOpen(false);
-      notifySuccess(`Resumed ${held.check_number}`);
+      setQueueOpen(false);
+      notifySuccess(`Opened ${row.check_number}`);
+    } catch (e) {
+      notifyError(dedupeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCollectFromQueue(row) {
+    if (!row?.id || busy) return;
+    setBusy(true);
+    try {
+      const res = await resumeHotelCheck(row.id);
+      const next = res?.check ?? row;
+      setCheck(next);
+      if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
+      setSelectedLineId(null);
+      setQueueOpen(false);
+      setPayError(null);
+      setPayOpen(true);
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -299,18 +414,32 @@ export function HotelBarPosScreen() {
     setBusy(true);
     setPayError(null);
     try {
-      const res = await settleHotelCheck(check.id, { payments });
-      notifySuccess(`Paid ${res?.check?.check_number ?? ""} — ${formatHotelMoney(res?.check?.total)}`);
-      setPayOpen(false);
-      await startFreshCheck();
+      await ensureTableAssigned(check);
+      const res = await settleHotelCheck(check.id, {
+        payments,
+        floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
+      });
+      const next = res?.check;
+      const status = next?.status;
+      if (status === "paid" || status === "settled") {
+        printHospitalityCheckReceipt(next, { title: "Paid receipt" });
+        notifySuccess(`Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`);
+        setPayOpen(false);
+        await startFreshCheck();
+      } else {
+        printHospitalityCheckReceipt(next, { title: "Partial payment" });
+        notifySuccess(
+          `Partial payment on ${next?.check_number ?? ""} — balance ${formatHotelMoney(next?.balance_due)}`,
+        );
+        setCheck(next);
+        setPayOpen(false);
+      }
       void loadCatalog(debouncedSearch, { offset: 0, append: false });
     } catch (e) {
       const message = dedupeError(e);
       setPayError(message);
       if (/stock|recipe|ingredient|inventory/i.test(message)) {
-        notifyError(
-          `${message} Configure recipes under Hospitality → Settings.`,
-        );
+        notifyError(`${message} Configure recipes under Hospitality → Settings.`);
       }
       throw e;
     } finally {
@@ -365,10 +494,10 @@ export function HotelBarPosScreen() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => void openHeldList()}
+                  onClick={() => void openCollectibleList()}
                   className="theme-secondary-btn rounded-full px-4 py-2 text-xs font-semibold"
                 >
-                  Held
+                  Unpaid
                 </button>
                 <Link
                   href="/choose-workspace"
@@ -378,6 +507,31 @@ export function HotelBarPosScreen() {
                 </Link>
               </div>
             </div>
+            {tablePosEnabled ? (
+              <div className="mt-3">
+                <label className="theme-subtext mb-1 block text-[11px] font-semibold uppercase tracking-wide">
+                  Table {tablePosEnabled ? "(required to save / pay)" : ""}
+                </label>
+                <select
+                  className="theme-input w-full rounded-xl px-3 py-2.5 text-sm"
+                  value={selectedTableId}
+                  onChange={(e) => setSelectedTableId(e.target.value)}
+                >
+                  <option value="">Select table…</option>
+                  {floorTables.map((table) => (
+                    <option key={table.id} value={String(table.id)}>
+                      {table.label || table.code}
+                      {table.zone ? ` · ${table.zone}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {!floorTables.length ? (
+                  <p className="theme-subtext mt-1 text-[11px]">
+                    No tables yet — enable Floor tables and add them under Hospitality → Outlets.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <div className="relative mt-4">
               <input
                 ref={searchRef}
@@ -548,12 +702,28 @@ export function HotelBarPosScreen() {
           <div className="shrink-0 border-t border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-4 shadow-[0_-12px_40px_-28px_rgba(0,0,0,0.5)]">
             <div className="mb-3 flex items-end justify-between">
               <div>
-                <p className="theme-subtext text-[11px] uppercase tracking-wide">Total</p>
+                <p className="theme-subtext text-[11px] uppercase tracking-wide">
+                  {Number(check?.amount_paid) > 0 ? "Balance" : "Total"}
+                </p>
                 <p className="text-2xl font-bold tabular-nums text-[var(--theme-accent-text)]">
-                  {formatHotelMoney(check?.total ?? 0)}
+                  {formatHotelMoney(
+                    Number(check?.balance_due ?? Math.max(0, Number(check?.total ?? 0) - Number(check?.amount_paid ?? 0))),
+                  )}
                 </p>
               </div>
-              <p className="theme-subtext text-xs">VAT incl. {formatHotelMoney(check?.vat_total ?? 0)}</p>
+              <div className="text-right">
+                <p className="theme-subtext text-xs">VAT incl. {formatHotelMoney(check?.vat_total ?? 0)}</p>
+                {Number(check?.amount_paid) > 0 ? (
+                  <p className="theme-subtext text-xs">
+                    Paid {formatHotelMoney(check.amount_paid)} / {formatHotelMoney(check.total)}
+                  </p>
+                ) : null}
+                {check?.floor_table ? (
+                  <p className="theme-subtext text-xs">
+                    Table {check.floor_table.label || check.floor_table.code}
+                  </p>
+                ) : null}
+              </div>
             </div>
             <div className="grid grid-cols-4 gap-2">
               <PosActionButton
@@ -568,15 +738,15 @@ export function HotelBarPosScreen() {
                 title="Clear all lines"
                 icon="⌫"
                 iconClass="pos-cart-action-icon--warn"
-                disabled={busy || !hasLines}
+                disabled={busy || !hasLines || Number(check?.amount_paid) > 0}
                 onClick={() => void handleClear()}
               />
               <PosActionButton
                 label="Hold"
-                title="Hold this check"
+                title="Save as unpaid"
                 icon="⏸"
                 iconClass="pos-cart-action-icon--warn"
-                disabled={busy || !hasLines}
+                disabled={busy || !hasLines || !unpaidEnabled}
                 onClick={() => void handleHold()}
               />
               {collectPayment ? (
@@ -590,22 +760,24 @@ export function HotelBarPosScreen() {
               ) : (
                 <PosActionButton
                   label="Save"
-                  title="Save order without payment"
+                  title="Save unpaid order and print receipt"
                   icon="✓"
-                  disabled={busy || !hasLines}
+                  disabled={busy || !hasLines || !unpaidEnabled}
                   onClick={() => void handleSaveOrder()}
                 />
               )}
             </div>
             {collectPayment ? (
-              <button
-                type="button"
-                disabled={busy || !hasLines}
-                onClick={() => void handleSaveOrder()}
-                className="theme-secondary-btn mt-2 w-full rounded-xl py-2.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-40"
-              >
-                Save without payment
-              </button>
+              unpaidEnabled ? (
+                <button
+                  type="button"
+                  disabled={busy || !hasLines}
+                  onClick={() => void handleSaveOrder()}
+                  className="theme-secondary-btn mt-2 w-full rounded-xl py-2.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-40"
+                >
+                  Save unpaid (pay later)
+                </button>
+              ) : null
             ) : (
               <button
                 type="button"
@@ -616,46 +788,59 @@ export function HotelBarPosScreen() {
                 }}
                 className="theme-secondary-btn mt-2 w-full rounded-xl py-2.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-40"
               >
-                Collect payment instead
+                Collect payment
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {heldOpen ? (
+      {queueOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
           <div className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] shadow-xl">
             <div className="flex items-center justify-between border-b border-[var(--theme-border)] px-4 py-3">
-              <h2 className="theme-heading text-base font-semibold">Held checks</h2>
+              <h2 className="theme-heading text-base font-semibold">Unpaid &amp; partial</h2>
               <button
                 type="button"
                 className="theme-secondary-btn rounded-lg px-3 py-1 text-xs font-semibold"
-                onClick={() => setHeldOpen(false)}
+                onClick={() => setQueueOpen(false)}
               >
                 Close
               </button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto p-2">
-              {!heldChecks.length ? (
-                <p className="theme-subtext px-3 py-8 text-center text-sm">No held checks</p>
+              {!queueChecks.length ? (
+                <p className="theme-subtext px-3 py-8 text-center text-sm">No unpaid orders</p>
               ) : (
-                heldChecks.map((row) => (
-                  <button
+                queueChecks.map((row) => (
+                  <div
                     key={row.id}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void handleResumeHeld(row)}
-                    className="mb-1 flex w-full items-center justify-between rounded-xl px-3 py-3 text-left hover:bg-[var(--theme-hover)]"
+                    className="mb-1 flex items-center gap-2 rounded-xl px-3 py-3 hover:bg-[var(--theme-hover)]"
                   >
-                    <span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleResumeHeld(row)}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <span className="theme-heading block text-sm font-semibold">{row.check_number}</span>
-                      <span className="theme-subtext text-xs">
-                        {(row.lines ?? []).length} line(s)
+                      <span className="theme-subtext text-xs capitalize">
+                        {String(row.status ?? "").replace(/_/g, " ")}
+                        {row.floor_table?.label || row.floor_table?.code
+                          ? ` · ${row.floor_table.label || row.floor_table.code}`
+                          : ""}
+                        {` · bal ${formatHotelMoney(row.balance_due ?? row.total)}`}
                       </span>
-                    </span>
-                    <span className="text-sm font-bold">{formatHotelMoney(row.total)}</span>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleCollectFromQueue(row)}
+                      className="theme-secondary-btn shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    >
+                      Collect
+                    </button>
+                  </div>
                 ))
               )}
             </div>
@@ -668,10 +853,14 @@ export function HotelBarPosScreen() {
         onClose={() => {
           if (!busy) setPayOpen(false);
         }}
-        billTotal={Number(check?.total ?? 0)}
+        billTotal={Number(
+          check?.balance_due ??
+            Math.max(0, Number(check?.total ?? 0) - Number(check?.amount_paid ?? 0)),
+        )}
         paymentConfig={paymentConfig}
         saving={busy}
         error={payError}
+        allowPartial={partialEnabled}
         onComplete={handlePaymentComplete}
       />
     </div>

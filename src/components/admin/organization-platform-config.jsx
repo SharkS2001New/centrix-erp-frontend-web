@@ -43,6 +43,11 @@ import {
   HOSPITALITY_SERVICE_DEFAULTS,
   normalizeHospitalityServices,
 } from "@/lib/hospitality-services";
+import {
+  HOSPITALITY_PAYMENT_WORKFLOW_CATALOG,
+  HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS,
+  normalizeHospitalityPaymentWorkflow,
+} from "@/lib/hospitality-payment-workflow";
 import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
 import { PlatformFormSection } from "@/components/admin/platform-form-section";
 import { useConfirm } from "@/lib/use-confirm";
@@ -329,6 +334,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     hotel_pos_collect_payment: true,
     hotel_pos_catalog_limit: 30,
     hospitality_services: { ...HOSPITALITY_SERVICE_DEFAULTS },
+    hospitality_payment_workflow: { ...HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS },
     enable_pos_cash_rounding: false,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
@@ -389,6 +395,9 @@ export function salesPlatformFromApi(apiPayload) {
       return Math.min(60, Math.max(8, Math.round(n)));
     })(),
     hospitality_services: normalizeHospitalityServices(apiPayload.hospitality_services),
+    hospitality_payment_workflow: normalizeHospitalityPaymentWorkflow(
+      apiPayload.hospitality_payment_workflow,
+    ),
     enable_pos_cash_rounding: Object.prototype.hasOwnProperty.call(
       apiPayload,
       "enable_pos_cash_rounding",
@@ -1308,20 +1317,73 @@ export function OrganizationModuleToggles({
                     <select
                       className={inputClass}
                       value={salesPlatform?.hotel_pos_collect_payment === false ? "save" : "collect"}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const collect = e.target.value === "collect";
+                        const workflow = normalizeHospitalityPaymentWorkflow(
+                          salesPlatform?.hospitality_payment_workflow,
+                        );
                         onSalesChange({
                           ...(salesPlatform ?? {}),
-                          hotel_pos_collect_payment: e.target.value === "collect",
-                        })
-                      }
+                          hotel_pos_collect_payment: collect,
+                          // Save-order mode needs unpaid + later collection.
+                          hospitality_payment_workflow: collect
+                            ? workflow
+                            : { ...workflow, unpaid: true, paid: true },
+                        });
+                      }}
                     >
-                      <option value="collect">Collect payment (Pay opens payment screen)</option>
-                      <option value="save">Save order directly (payment optional)</option>
+                      <option value="collect">Collect payment — buy and pay now</option>
+                      <option value="save">Save order — print unpaid receipt, pay later</option>
                     </select>
                     <p className="theme-subtext mt-1 text-xs">
-                      Same idea as External POS checkout-on-create — collect now vs save for later.
+                      Save order creates unpaid checks; cashiers collect payment from the unpaid queue.
+                      Collect payment opens Pay for full settlement at the counter.
                     </p>
                   </OrgRegisterField>
+                  <div>
+                    <p className="theme-heading text-sm font-semibold">Payment statuses</p>
+                    <p className="theme-subtext mt-1 text-xs">
+                      Hospitality only uses unpaid, partially paid, and paid. Disable statuses this org
+                      should not use.
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {HOSPITALITY_PAYMENT_WORKFLOW_CATALOG.map((step) => {
+                        const workflow = normalizeHospitalityPaymentWorkflow(
+                          salesPlatform?.hospitality_payment_workflow,
+                        );
+                        const locked = step.key === "paid";
+                        return (
+                          <label
+                            key={step.key}
+                            className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 ${
+                              locked ? "opacity-80" : ""
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1 rounded border-[var(--theme-border)]"
+                              checked={Boolean(workflow[step.key])}
+                              disabled={locked}
+                              onChange={(e) =>
+                                onSalesChange({
+                                  ...(salesPlatform ?? {}),
+                                  hospitality_payment_workflow: {
+                                    ...workflow,
+                                    [step.key]: e.target.checked,
+                                    paid: true,
+                                  },
+                                })
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="theme-heading block text-sm font-medium">{step.label}</span>
+                              <span className="theme-subtext block text-xs">{step.description}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               ) : null}
               {workspace.id === "hospitality_backoffice" && enabled && typeof onSalesChange === "function" ? (
@@ -1329,8 +1391,8 @@ export function OrganizationModuleToggles({
                   <div>
                     <p className="theme-heading text-sm font-semibold">Hospitality services</p>
                     <p className="theme-subtext mt-1 text-xs">
-                      Default surface is Main outlet (always) + Rooms. Enable additional services for this
-                      organization.
+                      Main outlet is always on. Enable Rooms, tables, and other services per organization.
+                      Hotel &amp; Bar POS sells with or without Rooms.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -1360,6 +1422,10 @@ export function OrganizationModuleToggles({
                                 hospitality_services: {
                                   ...services,
                                   [svc.key]: e.target.checked,
+                                  // Table POS implies floor tables management.
+                                  ...(svc.key === "table_pos" && e.target.checked
+                                    ? { floor_tables: true }
+                                    : {}),
                                 },
                               })
                             }

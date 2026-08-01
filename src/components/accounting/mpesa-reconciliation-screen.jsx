@@ -44,7 +44,7 @@ export function MpesaReconciliationScreen() {
     load();
   }, [load]);
 
-  const payments = data?.payments ?? [];
+  const payments = useMemo(() => data?.payments ?? [], [data?.payments]);
   const matchedPayments = data?.matched_payments ?? [];
   const hint = data?.settings?.payment_account_hint;
 

@@ -14,15 +14,15 @@ export const HOSPITALITY_SERVICE_DEFAULTS = {
 };
 
 export const HOSPITALITY_SERVICE_CATALOG = [
-  { key: "rooms", label: "Rooms", description: "Room types and room inventory (default on)." },
+  { key: "rooms", label: "Rooms", description: "Room types and inventory. Optional — Hotel & Bar POS sells without rooms." },
   { key: "reservations", label: "Reservations", description: "Booking calendar and reservation management." },
   { key: "front_desk", label: "Front desk", description: "Check-in / check-out and room assignment." },
   { key: "folios", label: "Guest folios", description: "Guest accounts, charges, and folio payments." },
   { key: "housekeeping", label: "Housekeeping", description: "Room status board (clean / dirty / OOO)." },
   { key: "night_audit", label: "Night audit", description: "End-of-day close and room charge posting." },
   { key: "extra_outlets", label: "Extra outlets", description: "Manage outlets beyond the default Main outlet." },
-  { key: "floor_tables", label: "Floor tables", description: "Restaurant / bar table map for dine-in." },
-  { key: "table_pos", label: "Table POS mode", description: "Open checks by table on Hotel & Bar POS." },
+  { key: "floor_tables", label: "Floor tables", description: "Create and manage restaurant / bar tables." },
+  { key: "table_pos", label: "Table POS mode", description: "Cashier must select a table before saving or collecting payment." },
   { key: "room_charge", label: "Room charge from POS", description: "Post bar checks to a guest folio." },
 ];
 
