@@ -69,7 +69,6 @@ import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import {
   defaultOrderListPrintDocumentType,
   getOrdersListDefaultDateRange,
-  getOrdersListSearchDays,
   getOrdersListSort,
   isOrgMobileSalesEnabled,
   orderListDateRangeUsesArchive,
@@ -318,11 +317,6 @@ export default function SalesOrdersListScreen({
     return `${labels[tableSort] ?? tableSort} (${dir})`;
   }, [tableSortActive, tableSort, tableSortDir]);
 
-  const ordersSearchDays = useMemo(
-    () => getOrdersListSearchDays(capabilities?.module_settings),
-    [capabilities?.module_settings],
-  );
-
   useEffect(() => {
     const range =
       routeOrdersOnly && routeOrdersDateRangeDays
@@ -535,13 +529,6 @@ export default function SalesOrdersListScreen({
       if (sourceFromColumn) extra.filter_source = sourceFromColumn;
 
       const searchQ = normalizeSalesListSearchQuery(debouncedSearch);
-      // Searching expands the effective date window using the platform search days setting.
-      if (searchQ && appliedFromDate && appliedToDate) {
-        const searchRange = defaultDateRange(ordersSearchDays);
-        if (String(appliedFromDate) > String(searchRange.from)) {
-          extra.from_date = searchRange.from;
-        }
-      }
 
       return buildPageParams({
         page: pageNum,
@@ -563,7 +550,6 @@ export default function SalesOrdersListScreen({
       routeFilter,
       cashierFilter,
       ordersListSort,
-      ordersSearchDays,
       debouncedColumnFilters,
     ],
   );
@@ -1587,11 +1573,7 @@ export default function SalesOrdersListScreen({
                 {listScope?.hot_window_days ||
                   queueConfig?.dateRangeDays ||
                   ORDERS_HOT_WINDOW_DAYS}{" "}
-                days
-                {debouncedSearch.trim()
-                  ? `, or search is scoped to the last ${ordersSearchDays} days`
-                  : ""}
-                .
+                days.
               </span>
             </span>
           </div>

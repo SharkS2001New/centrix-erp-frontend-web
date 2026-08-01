@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { ApiError } from "@/lib/api";
 import {
@@ -34,28 +33,16 @@ import {
   normalizeHotelPosThemeTemplate,
 } from "@/lib/hotel-pos-theme-templates";
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
-import {
-  hotelPosModuleShortcuts,
-  isHospitalityServiceEnabled,
-} from "@/lib/hospitality-services";
+import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PRODUCT_NAME } from "@/lib/branding";
-import { getStoredWorkspace } from "@/lib/auth-storage";
-import {
-  persistWorkspaceRouteBeforeSwitch,
-  rememberWorkspacePath,
-} from "@/lib/workspace-navigation";
-import { resolveAvailableWorkspaces } from "@/lib/workspaces";
-import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
-import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { PosActionButton } from "@/components/sales/pos-action-button";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { HotelPosStatusFooter } from "@/components/hospitality/hotel-pos-status-footer";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { EntityPhotoDisplay, productPhotoFileUrl } from "@/components/media/entity-photo-display";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
@@ -93,9 +80,7 @@ function dedupeError(e) {
 }
 
 export function HotelBarPosScreen() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const { capabilities, user, organization, isSuperAdmin, switchWorkspace } = useAuth();
+  const { capabilities, user, organization } = useAuth();
   const hotelSettings = resolveHotelPosSettings(capabilities);
   const paymentWorkflow = resolveHospitalityPaymentWorkflow(capabilities);
   const [gridColumns, setGridColumns] = useState(hotelSettings.gridColumns);
@@ -128,7 +113,6 @@ export function HotelBarPosScreen() {
   const [check, setCheck] = useState(null);
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [openingModule, setOpeningModule] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueChecks, setQueueChecks] = useState([]);
   const [payOpen, setPayOpen] = useState(false);
@@ -143,28 +127,6 @@ export function HotelBarPosScreen() {
   const catalogScrollRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
   const catalogRequestIdRef = useRef(0);
-
-  const accessCtx = useMemo(
-    () =>
-      buildAccessContext({
-        user,
-        organization,
-        capabilities,
-        requireTillFloat: resolveTillFloatNavFlag(capabilities),
-        isSuperAdmin,
-      }),
-    [capabilities, isSuperAdmin, organization, user],
-  );
-
-  const hasHospitalityBackoffice = useMemo(
-    () => resolveAvailableWorkspaces(accessCtx, capabilities).some((w) => w.id === "hospitality_backoffice"),
-    [accessCtx, capabilities],
-  );
-
-  const moduleShortcuts = useMemo(
-    () => (hasHospitalityBackoffice ? hotelPosModuleShortcuts(capabilities) : []),
-    [capabilities, hasHospitalityBackoffice],
-  );
 
   const showGuestField = guestNameEnabled || serviceMode === "room_service";
   const showTableField = tablePosEnabled && serviceMode === "dine_in";
@@ -418,22 +380,6 @@ export function HotelBarPosScreen() {
     const next = res?.check ?? activeCheck;
     setCheck(next);
     return next;
-  }
-
-  async function openHospitalityModule(href) {
-    if (!href || openingModule || busy) return;
-    setOpeningModule(true);
-    try {
-      const currentId = getStoredWorkspace() || "hotel_bar_pos";
-      persistWorkspaceRouteBeforeSwitch(user?.id, organization?.id, currentId, pathname);
-      rememberWorkspacePath(user?.id, organization?.id, "hospitality_backoffice", href);
-      await switchWorkspace("hospitality_backoffice");
-      router.replace(href);
-      router.refresh();
-    } catch (e) {
-      notifyError(dedupeError(e) || "Could not open module.");
-      setOpeningModule(false);
-    }
   }
 
   async function handleTapProduct(product) {
@@ -746,39 +692,32 @@ export function HotelBarPosScreen() {
       data-hotel-pos-theme={themeTemplate}
       style={themeVars}
     >
-      {openingModule ? <WorkspaceOpeningScreen message="Opening" /> : null}
       <div className="hotel-pos-atmosphere pointer-events-none absolute inset-0" aria-hidden />
 
       <div className="pos-header hotel-pos-header relative z-50 shrink-0 shadow-sm">
-        <div className="pos-header-bar flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 lg:px-5">
-          <div className="pos-header-brand-wrap shrink-0">
+        <div className="pos-header-bar grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 lg:px-5">
+          <div className="pos-header-brand-wrap justify-self-start">
             <CentrixLogoHeader
               markSize={28}
               title={PRODUCT_NAME}
               orgSubtitle={organization?.org_name ?? ""}
             />
           </div>
-          <div className="min-w-0 flex-1 px-1">
-            {menuOutlet?.name || menuOutlet?.menu_channel_label ? (
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="theme-subtext font-semibold uppercase tracking-wide">Hotel POS</span>
-                {menuOutlet?.name ? <span className="theme-subtext">· {menuOutlet.name}</span> : null}
-                {menuOutlet?.menu_channel_label ? (
-                  <span className="hotel-pos-channel-pill rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide">
-                    {menuOutlet.menu_channel_label} menu
-                  </span>
-                ) : null}
-              </div>
-            ) : (
-              <span className="theme-subtext text-[11px] font-semibold uppercase tracking-wide">
-                Hotel POS
-              </span>
-            )}
+          <div className="hotel-pos-header-context min-w-0 justify-self-center px-2 text-center">
+            <p className="theme-heading text-[11px] font-semibold uppercase tracking-[0.08em] sm:text-xs">
+              Hotel POS
+            </p>
+            {(menuOutlet?.name || menuOutlet?.menu_channel_label) ? (
+              <p className="theme-subtext mt-0.5 truncate text-[11px] sm:text-xs">
+                {[menuOutlet?.name, menuOutlet?.menu_channel_label ? `${menuOutlet.menu_channel_label} menu` : null]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : null}
           </div>
-          <div className="hotel-pos-header-tools relative z-[60] flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="hotel-pos-header-tools relative z-[60] flex shrink-0 items-center justify-end gap-1.5 justify-self-end sm:gap-2">
             <NotificationBell />
             <WorkspaceSwitcher />
-            <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
             <UserAccountMenu
               showName={false}
               triggerClassName="pos-header-action-btn inline-flex items-center rounded-md p-1"
@@ -790,7 +729,11 @@ export function HotelBarPosScreen() {
       <div className="relative z-0 flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden">
         <div className="hotel-pos-menu-pane flex min-h-0 min-w-0 flex-1 flex-col border-b border-[var(--theme-border)]/80 lg:border-b-0 lg:border-r">
           <div className="shrink-0 space-y-3 px-3 pb-2 pt-3 sm:px-4 lg:px-5">
-            <div className="hotel-pos-chip-scroll flex gap-2 overflow-x-auto pb-0.5">
+            <div
+              className="hotel-pos-chip-scroll flex justify-center gap-2 overflow-x-auto pb-0.5"
+              role="toolbar"
+              aria-label="Menu filter"
+            >
               {MENU_FILTER_CHIPS.map((chip) => (
                 <button
                   key={chip.id || "all"}
@@ -803,24 +746,6 @@ export function HotelBarPosScreen() {
                   }`}
                 >
                   {chip.label}
-                </button>
-              ))}
-              {moduleShortcuts.length ? (
-                <span className="hotel-pos-chip-divider mx-0.5 shrink-0 self-center" aria-hidden />
-              ) : null}
-              {moduleShortcuts.map((mod) => (
-                <button
-                  key={mod.id}
-                  type="button"
-                  title={`Open ${mod.label}`}
-                  disabled={openingModule}
-                  onClick={() => void openHospitalityModule(mod.href)}
-                  className="hotel-pos-chip hotel-pos-chip-module shrink-0"
-                >
-                  {mod.label}
-                  <span className="hotel-pos-chip-external" aria-hidden>
-                    ↗
-                  </span>
                 </button>
               ))}
             </div>

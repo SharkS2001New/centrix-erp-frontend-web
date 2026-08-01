@@ -90,7 +90,7 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
         ) : null}
         <li>
           <span className="font-medium">Orders list:</span> Filter last {ordersListDays} days ·
-          search last {ordersSearchDays} days · {ordersListSortLabel}
+          search within date filters · {ordersListSortLabel}
         </li>
         {capabilities?.module_settings?.sales?.order_expiry_enabled !== false ? (
           <li>

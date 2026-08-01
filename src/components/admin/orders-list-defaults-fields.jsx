@@ -41,9 +41,9 @@ export function OrdersListDefaultsFields({ value, onChange, idPrefix = "orders-l
           onChange={(e) => patch({ orders_list_search_days: e.target.value })}
         />
         <p className="mt-1 text-xs text-slate-500">
-          When staff search by order number or customer, expand the date scope to this many days
-          (default 30 / 1 month). Must be at least as wide as the default date filter. Distribution
-          setups typically need a wider window than wholesale/retail.
+          Fallback when search is used without From/To dates (default 30 / 1 month). When staff set
+          date filters on Sales → Orders, search stays inside those filters. Must be at least as
+          wide as the default date filter.
         </p>
       </Field>
       <Field label="Default sort order">
