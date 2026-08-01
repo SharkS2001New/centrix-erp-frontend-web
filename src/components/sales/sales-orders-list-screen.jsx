@@ -9,7 +9,8 @@ import { mapWithConcurrency, fetchAllPages } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
-import { fetchBranchesCached, fetchRoutesAndUomsCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached, fetchRoutesAndUomsCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { filterByOrganization } from "@/lib/admin";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
@@ -210,6 +211,7 @@ export default function SalesOrdersListScreen({
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [routeFilter, setRouteFilter] = useState("all");
+  const [cashierFilter, setCashierFilter] = useState("all");
   const [minTotalFilter, setMinTotalFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -226,6 +228,7 @@ export default function SalesOrdersListScreen({
   const [actionMessage, setActionMessage] = useState(null);
   const [uomById, setUomById] = useState(() => new Map());
   const [branches, setBranches] = useState([]);
+  const [sellers, setSellers] = useState([]);
   const [routeById, setRouteById] = useState(() => new Map());
   const [paymentRefsBySaleId, setPaymentRefsBySaleId] = useState(() => new Map());
   const [contextMenu, setContextMenu] = useState(null);
@@ -283,6 +286,16 @@ export default function SalesOrdersListScreen({
       })),
     ];
   }, [routeById]);
+
+  const sellerFilterOptions = useMemo(() => {
+    const list = sellers
+      .map((u) => ({
+        value: String(u.id),
+        label: u.full_name?.trim() || u.username || `User #${u.id}`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return [{ value: "all", label: "All users" }, ...list];
+  }, [sellers]);
 
   const ordersListSort = useMemo(() => {
     if (tableSort) {
@@ -359,6 +372,22 @@ export default function SalesOrdersListScreen({
     fetchBranchesCached(orgId)
       .then((list) => setBranches(list))
       .catch(() => setBranches([]));
+  }, [user?.organization_id]);
+
+  useEffect(() => {
+    const orgId = user?.organization_id;
+    if (!orgId) {
+      setSellers([]);
+      return;
+    }
+    fetchUsersCached(orgId)
+      .then((list) => {
+        const scoped = filterByOrganization(list ?? [], orgId).filter(
+          (u) => u.is_active !== false,
+        );
+        setSellers(scoped);
+      })
+      .catch(() => setSellers([]));
   }, [user?.organization_id]);
 
   useEffect(() => {
@@ -450,6 +479,9 @@ export default function SalesOrdersListScreen({
       if (queueConfig?.fixedPaymentStatusFilter) {
         filters.payment_status = queueConfig.fixedPaymentStatusFilter;
       }
+      if (cashierFilter && cashierFilter !== "all") {
+        filters.cashier_id = cashierFilter;
+      }
 
       const extra = {
         exclude_status: "held",
@@ -529,6 +561,7 @@ export default function SalesOrdersListScreen({
       routeOrdersOnly,
       minTotalFilter,
       routeFilter,
+      cashierFilter,
       ordersListSort,
       ordersSearchDays,
       debouncedColumnFilters,
@@ -1298,7 +1331,7 @@ export default function SalesOrdersListScreen({
   useEffect(() => {
     setPage(1);
     clearSelection();
-  }, [debouncedSearch, statusFilter, sourceFilter, minTotalFilter, appliedFromDate, appliedToDate, queueSlug, clearSelection]);
+  }, [debouncedSearch, statusFilter, sourceFilter, minTotalFilter, cashierFilter, appliedFromDate, appliedToDate, queueSlug, clearSelection]);
 
   useEffect(() => {
     clearSelection();
@@ -1383,7 +1416,7 @@ export default function SalesOrdersListScreen({
               {loading || listLoading ? "Refreshing…" : "Refresh"}
             </button>
             <AiAnalyzeButton
-              label="Explain this screen"
+              label="Analyze this page with AI"
               disabled={loading || listLoading || !(rows?.length)}
               onClick={() => setExplainOpen(true)}
             />
@@ -1418,88 +1451,102 @@ export default function SalesOrdersListScreen({
         )
       }
       toolbar={
-        <FilterToolbar>
-          <SearchInput
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search product, customer, amount, S0034…"
-          />
-          <Field label="From">
-            <input
-              type="date"
-              className={FILTER_CONTROL_CLASS}
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value || isoDate())}
-            />
-          </Field>
-          <Field label="To">
-            <input
-              type="date"
-              className={FILTER_CONTROL_CLASS}
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value || isoDate())}
-            />
-          </Field>
-          <button
-            type="button"
-            onClick={applyDateFilter}
-            className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
-          >
-            Filter
-          </button>
-          {showRouteFilter ? (
-            <Field label="Route">
-              <FilterSelect
-                value={routeFilter}
-                onChange={(e) => handleRouteFilterChange(e.target.value)}
-                options={routeFilterOptions}
+        <div className="mb-4 space-y-3">
+          <FilterToolbar className="mb-0">
+            <Field label="From">
+              <input
+                type="date"
+                className={FILTER_CONTROL_CLASS}
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value || isoDate())}
               />
             </Field>
-          ) : null}
-          <Field label="Status">
-            <select
-              value={effectiveStatusFilter ?? "all"}
-              disabled={queueConfig?.lockStatusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
-            >
-              {statusOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {showSourceFilter ? (
-            <Field label="Source">
+            <Field label="To">
+              <input
+                type="date"
+                className={FILTER_CONTROL_CLASS}
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value || isoDate())}
+              />
+            </Field>
+            {showRouteFilter ? (
+              <Field label="Route">
+                <FilterSelect
+                  value={routeFilter}
+                  onChange={(e) => handleRouteFilterChange(e.target.value)}
+                  options={routeFilterOptions}
+                />
+              </Field>
+            ) : null}
+            <Field label="Status">
               <select
-                value={effectiveSourceFilter ?? "all"}
-                disabled={queueConfig?.lockSourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
+                value={effectiveStatusFilter ?? "all"}
+                disabled={queueConfig?.lockStatusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
                 className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
               >
-                {sourceOptions.map((o) => (
+                {statusOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
               </select>
             </Field>
-          ) : null}
-          <Field label="Order total">
-            <select
-              value={minTotalFilter}
-              onChange={(e) => setMinTotalFilter(e.target.value)}
-              className={FILTER_CONTROL_CLASS}
+            {showSourceFilter ? (
+              <Field label="Source">
+                <select
+                  value={effectiveSourceFilter ?? "all"}
+                  disabled={queueConfig?.lockSourceFilter}
+                  onChange={(e) => setSourceFilter(e.target.value)}
+                  className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
+                >
+                  {sourceOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : null}
+            <Field label="Order total">
+              <select
+                value={minTotalFilter}
+                onChange={(e) => setMinTotalFilter(e.target.value)}
+                className={FILTER_CONTROL_CLASS}
+              >
+                {ORDER_MIN_TOTAL_OPTIONS.map((o) => (
+                  <option key={o.value || "all"} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="User">
+              <FilterSelect
+                value={cashierFilter}
+                onChange={(e) => setCashierFilter(e.target.value)}
+                options={sellerFilterOptions}
+              />
+            </Field>
+            <button
+              type="button"
+              onClick={applyDateFilter}
+              className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
             >
-              {ORDER_MIN_TOTAL_OPTIONS.map((o) => (
-                <option key={o.value || "all"} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </FilterToolbar>
+              Filter
+            </button>
+          </FilterToolbar>
+          <div className="grid grid-cols-12 gap-3">
+            <div className="col-span-12 md:col-span-8 lg:col-span-6">
+              <SearchInput
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search product, customer, amount, S0034…"
+                className="w-full min-w-0 shrink"
+              />
+            </div>
+          </div>
+        </div>
       }
       banner={
         actionMessage || printJobBusy ? (
@@ -1912,7 +1959,7 @@ export default function SalesOrdersListScreen({
       <AiInsightPanel
         open={explainOpen}
         onClose={() => setExplainOpen(false)}
-        title="Explain orders list"
+        title="Analyze orders with AI"
         mode="explain_screen"
         screenKey={queueConfig?.slug ? `sales_orders_${queueConfig.slug}` : "sales_orders"}
         filters={{
@@ -1920,6 +1967,7 @@ export default function SalesOrdersListScreen({
           status: statusFilter,
           source: sourceFilter,
           route: routeFilter,
+          cashier_id: cashierFilter !== "all" ? cashierFilter : undefined,
           from: appliedFromDate,
           to: appliedToDate,
           min_total: minTotalFilter || undefined,

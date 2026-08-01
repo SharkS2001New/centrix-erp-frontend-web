@@ -342,7 +342,7 @@ export function CustomerStatementScreen() {
       <AiInsightPanel
         open={explainOpen}
         onClose={() => setExplainOpen(false)}
-        title="Explain customer statement"
+        title="Analyze customer statement with AI"
         mode="explain_screen"
         screenKey="customer_statement"
         filters={{

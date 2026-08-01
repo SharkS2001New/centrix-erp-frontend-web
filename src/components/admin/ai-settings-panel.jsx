@@ -141,7 +141,8 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                 <h3 className="text-base font-medium text-slate-900">AI Insights</h3>
                 <p className="mt-1 text-sm text-slate-500">
                   Morning digests (debtors, tills, exceptions, forecasts), on-demand product/customer
-                  insights, and page Explain on Orders / Customer statement / reports. Open{" "}
+                  insights, and <span className="font-medium">Analyze this page with AI</span> on
+                  Orders / Customer statement / reports. Open{" "}
                   <Link href="/reports" className="text-[var(--theme-primary)] hover:underline">
                     Reports
                   </Link>{" "}

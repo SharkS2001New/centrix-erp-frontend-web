@@ -38,7 +38,7 @@ export function AiInsightsHubSection({ className = "mb-8" }) {
     <>
       <DashboardSection
         title="AI Insights"
-        subtitle="Morning digests, debtors, tills, demand, and Explain on Orders / reports"
+        subtitle="Morning digests, debtors, tills, demand, and page analysis on Orders / reports"
         className={className}
       >
         {show && ready ? (
@@ -48,8 +48,8 @@ export function AiInsightsHubSection({ className = "mb-8" }) {
             ))}
             <p className="w-full text-xs text-slate-500">
               On Orders, Customer statement, or any report, use{" "}
-              <span className="font-medium">Explain this screen</span> /{" "}
-              <span className="font-medium">Analyze with AI</span> for page-aware findings.
+              <span className="font-medium">Analyze this page with AI</span> for
+              findings based on what you are viewing.
             </p>
           </div>
         ) : (

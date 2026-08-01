@@ -19,7 +19,7 @@ export const AI_INSIGHT_ON_DEMAND = [
   { key: "product_demand", label: "Product demand" },
   { key: "customer_360", label: "Customer 360" },
   { key: "procurement_companion", label: "Procurement companion" },
-  { key: "explain_screen", label: "Explain this screen" },
+  { key: "explain_screen", label: "Analyze this page with AI" },
 ];
 
 function defaultBrief(lookback = 7, time = "07:00") {

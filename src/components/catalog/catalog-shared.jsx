@@ -159,15 +159,24 @@ export function PrimaryLink({ href, children, showIcon = true, permission, modul
 }
 
 export function SearchInput({ value, onChange, placeholder, className = "" }) {
+  const fillsWidth = /\bw-full\b/.test(className) || /\bmin-w-0\b/.test(className);
   return (
-    <div className={`relative min-w-[12rem] shrink-0 ${className}`}>
+    <div
+      className={[
+        "relative",
+        fillsWidth ? "min-w-0 w-full" : "min-w-[12rem] shrink-0",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 theme-subtext" />
       <input
         type="search"
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="theme-input theme-input-focus h-[38px] w-full min-w-[12rem] rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
+        className="theme-input theme-input-focus h-[38px] w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
       />
     </div>
   );
