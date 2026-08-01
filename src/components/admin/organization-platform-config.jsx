@@ -68,6 +68,7 @@ import {
 } from "@/lib/login-channels";
 import { platformCapabilitiesFromOrgConfig } from "@/lib/sales-channels";
 import { OrganizationBillingPanel } from "@/components/platform/organization-billing-panel";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -1044,7 +1045,9 @@ export function OrganizationConfigTabs({
 }) {
   const tabs = mode === "register" ? REGISTER_ORG_TABS : MANAGE_ORG_TABS;
   const [activeTab, setActiveTab] = useState("profile");
+  const [seedingHotelDemo, setSeedingHotelDemo] = useState(false);
   const isHospitality = industry === "hospitality" || deploymentProfile === "hotel_bar";
+  const resolvedOrgId = organizationId ?? organization?.id;
   const visibleTabs = isHospitality
     ? tabs.filter((tab) => tab.id !== "sales" && tab.id !== "workflow")
     : tabs;
@@ -1054,6 +1057,25 @@ export function OrganizationConfigTabs({
       setActiveTab("profile");
     }
   }, [isHospitality, activeTab]);
+
+  async function seedHotelDemoData() {
+    if (!resolvedOrgId || seedingHotelDemo) return;
+    setSeedingHotelDemo(true);
+    try {
+      const res = await apiRequest(
+        `/admin/organizations/${resolvedOrgId}/hospitality/seed-demo-data`,
+        { method: "POST" },
+      );
+      notifySuccess(
+        res?.message ??
+          `Seeded ${res?.products ?? 0} menu products and ${res?.tables ?? 0} tables.`,
+      );
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to seed Hotel POS demo data");
+    } finally {
+      setSeedingHotelDemo(false);
+    }
+  }
 
   return (
     <div className="w-full min-w-0 space-y-4">
@@ -1101,17 +1123,34 @@ export function OrganizationConfigTabs({
       ) : null}
 
       {activeTab === "modules" ? (
-        <OrganizationModuleToggles
-          moduleOptions={moduleOptions}
-          enabledModules={enabledModules}
-          onToggle={onToggleModule}
-          onSetModules={onSetModules}
-          mobileOrdersEnabled={mobileOrdersEnabled}
-          deploymentProfile={deploymentProfile}
-          profilePresets={profilePresets}
-          salesPlatform={salesPlatform}
-          onSalesChange={onSalesChange}
-        />
+        <>
+          <OrganizationModuleToggles
+            moduleOptions={moduleOptions}
+            enabledModules={enabledModules}
+            onToggle={onToggleModule}
+            onSetModules={onSetModules}
+            mobileOrdersEnabled={mobileOrdersEnabled}
+            deploymentProfile={deploymentProfile}
+            profilePresets={profilePresets}
+            salesPlatform={salesPlatform}
+            onSalesChange={onSalesChange}
+          />
+          {mode === "manage" && isHospitality && resolvedOrgId ? (
+            <PlatformFormSection
+              title="Hotel POS demo data"
+              description="Seed 20 menu products (Food + Drinks), floor tables, and the main outlet for Hotel POS testing. Safe to re-run — existing HTL-* codes are updated."
+            >
+              <button
+                type="button"
+                disabled={seedingHotelDemo}
+                onClick={() => void seedHotelDemoData()}
+                className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+              >
+                {seedingHotelDemo ? "Seeding…" : "Seed Hotel POS demo data"}
+              </button>
+            </PlatformFormSection>
+          ) : null}
+        </>
       ) : null}
 
       {activeTab === "users" && mode === "manage" ? (

@@ -35,6 +35,7 @@ export const NAV_HREF_ICONS = {
 
   // Products
   "/products": "box",
+  "/products/deleted": "archive",
   "/categories": "folder",
   "/uoms": "measure",
   "/retail-package-settings": "package",

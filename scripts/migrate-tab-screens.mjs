@@ -30,6 +30,11 @@ const PREFERRED_SCREENS = {
     exportName: "CustomersListScreen",
     title: "Customers",
   },
+  "products-deleted": {
+    importPath: "@/components/tab-screens/products-deleted",
+    exportName: "ProductsDeletedScreen",
+    title: "Deleted products",
+  },
 };
 
 function walkPages(dir, out = []) {

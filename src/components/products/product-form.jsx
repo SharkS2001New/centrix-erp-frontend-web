@@ -861,6 +861,9 @@ export function ProductFormFields({
               Inactive
             </label>
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Inactive products move to Deleted products and are hidden from POS, backoffice sell, and mobile sales.
+          </p>
         </div>
       ) : null}
     </div>

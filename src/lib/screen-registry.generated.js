@@ -239,7 +239,7 @@ function match_lpo_lpoNo_supplier_return(pathname) {
 function match_products_code_edit(pathname) {
   const m = pathname.match("^/products/([^/]+)/edit$");
   if (!m) return false;
-  if (["new"].includes(m[1])) return false;
+  if (["deleted","new"].includes(m[1])) return false;
   return true;
 }
 
@@ -349,6 +349,10 @@ function match_admin_branches(pathname) {
 
 function match_admin_company(pathname) {
   return pathname === "/admin/company";
+}
+
+function match_admin_hotel_settings(pathname) {
+  return pathname === "/admin/hotel-settings";
 }
 
 function match_admin_kra_responses(pathname) {
@@ -547,6 +551,10 @@ function match_pos_tills(pathname) {
   return pathname === "/pos/tills";
 }
 
+function match_products_deleted(pathname) {
+  return pathname === "/products/deleted";
+}
+
 function match_products_new(pathname) {
   return pathname === "/products/new";
 }
@@ -700,7 +708,7 @@ function match_lpo_lpoNo(pathname) {
 function match_products_code(pathname) {
   const m = pathname.match("^/products/([^/]+)$");
   if (!m) return false;
-  if (["new"].includes(m[1])) return false;
+  if (["deleted","new"].includes(m[1])) return false;
   return true;
 }
 
@@ -1236,6 +1244,12 @@ export const SCREEN_REGISTRY = [
     match: match_admin_company,
   },
   {
+    id: "admin-hotel-settings",
+    title: "Hotel Settings",
+    route: "/admin/hotel-settings",
+    match: match_admin_hotel_settings,
+  },
+  {
     id: "admin-kra-responses",
     title: "Kra Responses",
     route: "/admin/kra-responses",
@@ -1528,6 +1542,12 @@ export const SCREEN_REGISTRY = [
     title: "Tills",
     route: "/pos/tills",
     match: match_pos_tills,
+  },
+  {
+    id: "products-deleted",
+    title: "Deleted products",
+    route: "/products/deleted",
+    match: match_products_deleted,
   },
   {
     id: "products-new",

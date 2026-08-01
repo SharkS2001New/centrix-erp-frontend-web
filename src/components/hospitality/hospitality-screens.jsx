@@ -25,7 +25,7 @@ const DASHBOARD_LINKS = [
   { href: "/inventory/receipts/receive", label: "Receive stock", service: null },
   { href: "/inventory/receipts", label: "Goods received", service: null },
   { href: "/inventory/stock", label: "Stock on hand", service: null },
-  { href: "/hospitality/settings", label: "Settings & F&B stock", service: null },
+  { href: "/admin/hotel-settings", label: "Hotel settings", service: null },
 ];
 
 function Kpi({ label, value, hint }) {
@@ -92,7 +92,7 @@ export function HospitalityDashboardScreen() {
             Configure recipes and enable deduct on Hotel POS settle under Settings.
           </p>
           <Link
-            href="/hospitality/settings"
+            href="/admin/hotel-settings"
             className="mt-3 inline-block text-xs font-semibold uppercase tracking-wide underline"
           >
             Open setup guide &amp; recipes →

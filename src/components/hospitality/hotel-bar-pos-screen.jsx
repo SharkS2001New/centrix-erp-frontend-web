@@ -38,6 +38,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { PosActionButton } from "@/components/sales/pos-action-button";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 
 function dedupeError(e) {
   if (e instanceof ApiError) return e.message;
@@ -59,6 +60,8 @@ export function HotelBarPosScreen() {
     isHospitalityServiceEnabled(capabilities, "table_pos"),
   );
   const [unpaidEnabled, setUnpaidEnabled] = useState(paymentWorkflow.unpaid);
+  const [menuGroup, setMenuGroup] = useState("");
+  const [heldCount, setHeldCount] = useState(0);
   const [partialEnabled, setPartialEnabled] = useState(paymentWorkflow.partially_paid);
   const [floorTables, setFloorTables] = useState([]);
   const [selectedTableId, setSelectedTableId] = useState("");
@@ -196,6 +199,7 @@ export function HotelBarPosScreen() {
           perPage: catalogLimit,
           popularDays: 5,
           offset,
+          menuGroup,
         });
         if (requestId !== catalogRequestIdRef.current) return;
         const batch = Array.isArray(res?.items) ? res.items : [];
@@ -227,12 +231,26 @@ export function HotelBarPosScreen() {
         }
       }
     },
-    [catalogLimit, applyCatalogMeta],
+    [catalogLimit, applyCatalogMeta, menuGroup],
   );
 
   useEffect(() => {
     void loadCatalog(debouncedSearch, { offset: 0, append: false });
-  }, [debouncedSearch, loadCatalog]);
+  }, [debouncedSearch, loadCatalog, menuGroup]);
+
+  const refreshHeldCount = useCallback(async () => {
+    try {
+      const res = await listCollectibleHotelChecks();
+      const checks = Array.isArray(res?.checks) ? res.checks : [];
+      setHeldCount(checks.length);
+    } catch {
+      /* ignore background count errors */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshHeldCount();
+  }, [refreshHeldCount]);
 
   const loadMoreCatalog = useCallback(() => {
     if (catalogLoading || catalogLoadingMore || !catalogHasMore) return;
@@ -385,6 +403,7 @@ export function HotelBarPosScreen() {
       });
       notifySuccess(`Order ${check.check_number} saved unpaid.`);
       await startFreshCheck();
+      void refreshHeldCount();
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -411,6 +430,7 @@ export function HotelBarPosScreen() {
       });
       notifySuccess(`Order ${check.check_number} saved unpaid — receipt printed.`);
       await startFreshCheck();
+      void refreshHeldCount();
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -422,7 +442,9 @@ export function HotelBarPosScreen() {
     setQueueOpen(true);
     try {
       const res = await listCollectibleHotelChecks();
-      setQueueChecks(Array.isArray(res?.checks) ? res.checks : []);
+      const checks = Array.isArray(res?.checks) ? res.checks : [];
+      setQueueChecks(checks);
+      setHeldCount(checks.length);
     } catch (e) {
       notifyError(dedupeError(e));
       setQueueChecks([]);
@@ -578,7 +600,7 @@ export function HotelBarPosScreen() {
                   ) : null}
                 </p>
                 <h1 className="theme-heading mt-1 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Tap to sell
+                  Hotel POS
                 </h1>
                 <p className="theme-subtext mt-1 text-xs">
                   {menuOutlet?.name ? `${menuOutlet.name} · ` : ""}
@@ -587,21 +609,46 @@ export function HotelBarPosScreen() {
                     : `Most sold (last 5 days) · ${catalogLimit} at a time · scroll for more`}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => void openCollectibleList()}
+                  className="theme-secondary-btn hotel-pos-ghost-btn relative rounded-full px-4 py-2 text-xs font-semibold"
+                >
+                  Held / unpaid
+                  {heldCount > 0 ? (
+                    <span className="ml-1.5 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-[var(--theme-primary)] px-1 text-[10px] font-bold text-[var(--theme-primary-fg,#fff)]">
+                      {heldCount > 99 ? "99+" : heldCount}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void startFreshCheck()}
                   className="theme-secondary-btn hotel-pos-ghost-btn rounded-full px-4 py-2 text-xs font-semibold"
                 >
-                  Unpaid
+                  New check
                 </button>
-                <Link
-                  href="/choose-workspace"
-                  className="theme-subtext rounded-full px-3 py-2 text-xs font-medium hover:underline"
-                >
-                  Switch
-                </Link>
+                <WorkspaceSwitcher />
               </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                { id: "", label: "All" },
+                { id: "food", label: "Food" },
+                { id: "drinks", label: "Drinks" },
+              ].map((chip) => (
+                <button
+                  key={chip.id || "all"}
+                  type="button"
+                  aria-pressed={menuGroup === chip.id}
+                  onClick={() => setMenuGroup(chip.id)}
+                  className="hotel-pos-menu-chip rounded-full px-3.5 py-1.5 text-xs font-semibold"
+                >
+                  {chip.label}
+                </button>
+              ))}
             </div>
             {tablePosEnabled ? (
               <div className="mt-3">
@@ -623,7 +670,7 @@ export function HotelBarPosScreen() {
                 </select>
                 {!floorTables.length ? (
                   <p className="theme-subtext mt-1 text-[11px]">
-                    No tables yet — enable Floor tables and add them under Hospitality → Outlets.
+                    No tables yet — enable Floor tables and add them under Operations → Outlets, or ask a platform admin to seed Hotel POS demo data.
                   </p>
                 ) : null}
               </div>
@@ -642,14 +689,14 @@ export function HotelBarPosScreen() {
             {stockDeductOnSettle ? (
               <p className="theme-subtext mt-2 text-[11px] leading-relaxed">
                 Stock deduct on settle is on — ingredients move when you collect payment.{" "}
-                <Link href="/hospitality/settings" className="font-semibold underline">
+                <Link href="/admin/hotel-settings" className="font-semibold underline">
                   Recipes &amp; setup
                 </Link>
               </p>
             ) : (
               <p className="theme-subtext mt-2 text-[11px] leading-relaxed">
                 Kitchen stock balancing is off until configured.{" "}
-                <Link href="/hospitality/settings" className="font-semibold underline">
+                <Link href="/admin/hotel-settings" className="font-semibold underline">
                   Setup guide
                 </Link>
               </p>
@@ -819,7 +866,7 @@ export function HotelBarPosScreen() {
                 ) : null}
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               <PosActionButton
                 label="Remove"
                 title="Remove selected line"
@@ -842,6 +889,14 @@ export function HotelBarPosScreen() {
                 iconClass="pos-cart-action-icon--warn"
                 disabled={busy || !hasLines || !unpaidEnabled}
                 onClick={() => void handleHold()}
+              />
+              <PosActionButton
+                label="Held"
+                title="View held and unpaid checks"
+                icon="☰"
+                badge={heldCount}
+                disabled={busy}
+                onClick={() => void openCollectibleList()}
               />
               {collectPayment ? (
                 <PosActionButton
@@ -894,7 +949,7 @@ export function HotelBarPosScreen() {
                 !["open", "unpaid", "held"].includes(String(check?.status))
               }
               onClick={() => void handleVoid()}
-              className="mt-2 w-full rounded-xl border border-red-300 bg-red-50 py-2.5 text-xs font-semibold uppercase tracking-wide text-red-700 disabled:opacity-40"
+              className="hotel-pos-danger-btn mt-2 w-full rounded-xl py-2.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-40"
             >
               Void check
             </button>

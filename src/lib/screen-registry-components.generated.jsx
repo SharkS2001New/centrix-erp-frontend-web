@@ -207,6 +207,9 @@ export const SCREEN_COMPONENTS = {
   "admin-company": lazy(() =>
     import("@/components/tab-screens/admin-company").then((m) => ({ default: m.AdminCompanyScreen })),
   ),
+  "admin-hotel-settings": lazy(() =>
+    import("@/components/tab-screens/hospitality-settings").then((m) => ({ default: m.HospitalitySettingsScreen })),
+  ),
   "admin-kra-responses": lazy(() =>
     import("@/components/tab-screens/admin-kra-responses").then((m) => ({ default: m.AdminKraResponsesScreen })),
   ),
@@ -353,6 +356,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "pos-tills": lazy(() =>
     import("@/components/tab-screens/pos-tills").then((m) => ({ default: m.PosTillsScreen })),
+  ),
+  "products-deleted": lazy(() =>
+    import("@/components/tab-screens/products-deleted").then((m) => ({ default: m.ProductsDeletedScreen })),
   ),
   "products-new": lazy(() =>
     import("@/components/tab-screens/products-new").then((m) => ({ default: m.ProductsNewScreen })),

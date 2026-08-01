@@ -32,7 +32,7 @@ export function DeleteProductDialog({ open, product, saving, error, onClose, onC
         </h2>
         <p className="mt-3 text-sm text-slate-600">
           {alreadyInactive
-            ? "This inactive product will be permanently removed:"
+            ? "This deleted product will be permanently removed:"
             : "Are you sure you want to delete:"}
         </p>
         <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900">
@@ -42,7 +42,7 @@ export function DeleteProductDialog({ open, product, saving, error, onClose, onC
         <p className="mt-3 text-sm text-slate-500">
           {alreadyInactive
             ? "This cannot be undone."
-            : "The product will be marked inactive and can be restored later from Inactive products."}
+            : "The product will move to Deleted products. You can restore it from there, or permanently delete it."}
         </p>
 
         {error ? (

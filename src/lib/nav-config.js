@@ -101,6 +101,12 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.catalogue.products.view,
       },
       {
+        href: "/products/deleted",
+        label: "Deleted products",
+        module: null,
+        permission: P.catalogue.products.view,
+      },
+      {
         href: "/categories",
         label: "Categories",
         module: null,
@@ -879,12 +885,6 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hospitality.night_audit.view,
         requireHospitalityService: "night_audit",
       },
-      {
-        href: "/hospitality/settings",
-        label: "Hospitality settings",
-        module: "hospitality.backend",
-        permission: P.hospitality.settings.view,
-      },
     ],
   },
   {
@@ -896,6 +896,12 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/products",
         label: "Menu catalogue",
+        module: null,
+        permission: P.catalogue.products.view,
+      },
+      {
+        href: "/products/deleted",
+        label: "Deleted menu products",
         module: null,
         permission: P.catalogue.products.view,
       },
@@ -1025,6 +1031,13 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Organization settings",
         requireOperationalModule: true,
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        orgAdminOnly: true,
+      },
+      {
+        href: "/admin/hotel-settings",
+        label: "Hotel settings",
+        module: "hospitality.backend",
+        permission: P.hospitality.settings.view,
         orgAdminOnly: true,
       },
       {

@@ -264,15 +264,25 @@ function groupProducts(products) {
   return tree;
 }
 
-export function ProductsScreen() {
+export function ProductsScreen({ mode = "catalogue" } = {}) {
+  const deletedMode = mode === "deleted";
   const router = useAppRouter();
   const confirm = useConfirm();
   const { capabilities, user } = useAuth();
   const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
-  const listCopy = hotelCatalogue ? hotelCatalogueListCopy() : retailCatalogueListCopy();
+  const listCopy = deletedMode
+    ? {
+        title: hotelCatalogue ? "Deleted menu products" : "Deleted products",
+        subtitle:
+          "Soft-deleted catalogue items. Restore them to the catalogue, or permanently delete.",
+        addLabel: null,
+      }
+    : hotelCatalogue
+      ? hotelCatalogueListCopy()
+      : retailCatalogueListCopy();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
+  const kraDeviceEnabled = !deletedMode && isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const selectionEnabled = true;
   const [products, setProducts] = useState([]);
   const [totalProducts, setTotalProducts] = useState(0);
@@ -307,7 +317,8 @@ export function ProductsScreen() {
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
   const [pricingFilter, setPricingFilter] = useState("all");
-  const [activeFilter, setActiveFilter] = useState("all");
+  // Catalogue is active-only; deleted products live on /products/deleted.
+  const [activeFilter, setActiveFilter] = useState(deletedMode ? "inactive" : "active");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const { sort, sortDir, sortActive, toggleSort, clearSort } = useTableSort(SORT_STORAGE_KEY);
@@ -352,6 +363,11 @@ export function ProductsScreen() {
     if (listStateRestored.current) return;
     listStateRestored.current = true;
 
+    if (deletedMode) {
+      listStateReady.current = true;
+      return;
+    }
+
     const saved = readProductsListState();
     if (!saved) {
       listStateReady.current = true;
@@ -373,33 +389,36 @@ export function ProductsScreen() {
     if (saved.subCategoryFilter) setSubCategoryFilter(saved.subCategoryFilter);
     if (saved.stockFilter) setStockFilter(saved.stockFilter);
     if (saved.pricingFilter) setPricingFilter(saved.pricingFilter);
-    if (saved.activeFilter) setActiveFilter(saved.activeFilter);
     if (saved.stockBranchId && !user?.branch_id) setStockBranchId(saved.stockBranchId);
     if (saved.pageSize) setPageSize(saved.pageSize);
     if (saved.page && saved.page > 1) setPage(saved.page);
     listStateReady.current = true;
-  }, [router, searchParams, setPageSize, user?.branch_id]);
+  }, [deletedMode, router, searchParams, setPageSize, user?.branch_id]);
 
   useEffect(() => {
-    if (!listStateReady.current) return;
+    setActiveFilter(deletedMode ? "inactive" : "active");
+  }, [deletedMode]);
+
+  useEffect(() => {
+    if (!listStateReady.current || deletedMode) return;
     writeProductsListState({
       q: debouncedSearch.trim(),
       categoryFilter,
       subCategoryFilter,
       stockFilter,
       pricingFilter,
-      activeFilter,
+      activeFilter: "active",
       stockBranchId,
       page,
       pageSize,
     });
   }, [
+    deletedMode,
     debouncedSearch,
     categoryFilter,
     subCategoryFilter,
     stockFilter,
     pricingFilter,
-    activeFilter,
     stockBranchId,
     page,
     pageSize,
@@ -507,8 +526,7 @@ export function ProductsScreen() {
           category_id: categoryFilter !== "all" ? categoryFilter : undefined,
         },
         extra: {
-          status:
-            activeFilter === "inactive" ? "inactive" : activeFilter === "all" ? "all" : "active",
+          status: deletedMode ? "inactive" : "active",
           stock_status: stockFilter !== "all" ? stockFilter : undefined,
           pricing: pricingFilter !== "all" ? pricingFilter : undefined,
           branch_id: effectiveStockBranchId ?? undefined,
@@ -551,7 +569,7 @@ export function ProductsScreen() {
     subCategoryFilter,
     stockFilter,
     pricingFilter,
-    activeFilter,
+    deletedMode,
     effectiveStockBranchId,
     sort,
     sortDir,
@@ -590,11 +608,29 @@ export function ProductsScreen() {
       });
       setDeleteOpen(false);
       setDeletingProduct(null);
+      notifySuccess(
+        deletedMode
+          ? "Product permanently deleted"
+          : "Product moved to Deleted products",
+      );
       await reloadAll();
     } catch (e) {
       setDeleteError(e instanceof ApiError ? e.message : "Delete failed");
     } finally {
       setDeleteSaving(false);
+    }
+  }
+
+  async function restoreProduct(product) {
+    if (!product?.product_code) return;
+    try {
+      await apiRequest(`/products/${encodeURIComponent(product.product_code)}/restore`, {
+        method: "POST",
+      });
+      notifySuccess("Product restored to catalogue");
+      await reloadAll();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Restore failed");
     }
   }
 
@@ -663,15 +699,14 @@ export function ProductsScreen() {
         category_id: categoryFilter !== "all" ? categoryFilter : undefined,
       },
       extra: {
-        status:
-          activeFilter === "inactive" ? "inactive" : activeFilter === "all" ? "all" : "active",
+        status: deletedMode ? "inactive" : "active",
         stock_status: stockFilter !== "all" ? stockFilter : undefined,
         pricing: pricingFilter !== "all" ? pricingFilter : undefined,
         branch_id: effectiveStockBranchId ?? undefined,
       },
     });
   }, [
-    activeFilter,
+    deletedMode,
     categoryFilter,
     debouncedSearch,
     effectiveStockBranchId,
@@ -752,7 +787,7 @@ export function ProductsScreen() {
       return;
     }
     setPage(1);
-  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter, effectiveStockBranchId, pageSize, sort, sortDir]);
+  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, deletedMode, effectiveStockBranchId, pageSize, sort, sortDir]);
 
   const activeSortLabel = useMemo(() => {
     if (!sort) return null;
@@ -808,9 +843,11 @@ export function ProductsScreen() {
     if (ids.length === 0) return;
 
     const ok = await confirm({
-      title: "Delete selected products",
-      message: `Delete ${ids.length} product${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
-      confirmLabel: "Delete",
+      title: deletedMode ? "Permanently delete selected products" : "Delete selected products",
+      message: deletedMode
+        ? `Permanently delete ${ids.length} product${ids.length === 1 ? "" : "s"}? This cannot be undone.`
+        : `Move ${ids.length} product${ids.length === 1 ? "" : "s"} to Deleted products? You can restore them later.`,
+      confirmLabel: deletedMode ? "Delete permanently" : "Delete",
       destructive: true,
     });
     if (!ok) return;
@@ -909,17 +946,25 @@ export function ProductsScreen() {
           >
             {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
-          <ProductImportExport
-            totalCount={totalProducts}
-            exportSearchParams={buildExportSearchParams}
-            exportColumns={exportColumns}
-            onImported={reloadAll}
-          />
-          <PermissionGate permission={P.catalogue.products.create}>
-            <PrimaryLink href="/products/new" permission={P.catalogue.products.create}>
-              {listCopy.addLabel}
-            </PrimaryLink>
-          </PermissionGate>
+          {!deletedMode ? (
+            <>
+              <ProductImportExport
+                totalCount={totalProducts}
+                exportSearchParams={buildExportSearchParams}
+                exportColumns={exportColumns}
+                onImported={reloadAll}
+              />
+              <PermissionGate permission={P.catalogue.products.create}>
+                <PrimaryLink href="/products/new" permission={P.catalogue.products.create}>
+                  {listCopy.addLabel}
+                </PrimaryLink>
+              </PermissionGate>
+            </>
+          ) : (
+            <Link href="/products" className={SECONDARY_BTN_CLASS}>
+              Back to catalogue
+            </Link>
+          )}
         </div>
       </div>
 
@@ -1032,15 +1077,6 @@ export function ProductsScreen() {
               ]}
             />
           )}
-          <FilterSelect
-            value={activeFilter}
-            onChange={(e) => setActiveFilter(e.target.value)}
-            options={[
-              { value: "all", label: "All products" },
-              { value: "active", label: "Active only" },
-              { value: "inactive", label: "Inactive only" },
-            ]}
-          />
           <ColumnPicker
             open={columnsOpen}
             onToggle={() => setColumnsOpen((v) => !v)}
@@ -1104,7 +1140,9 @@ export function ProductsScreen() {
                 {pageSlice.length === 0 ? (
                   <tr>
                     <td colSpan={tableColCount} className="theme-subtext px-4 py-12 text-center">
-                      No products match your filters.
+                      {deletedMode
+                        ? "No deleted products match your filters."
+                        : "No products match your filters."}
                     </td>
                   </tr>
                 ) : (
@@ -1121,12 +1159,23 @@ export function ProductsScreen() {
                       onToggleSection={toggleSection}
                       visibleColumns={visibleColumns}
                       tableColCount={tableColCount}
-                      onView={(code) => router.push(`/products/${encodeURIComponent(code)}`)}
-                      onEdit={(product) =>
-                        router.push(`/products/${encodeURIComponent(product.product_code)}/edit`)
+                      onView={
+                        deletedMode
+                          ? undefined
+                          : (code) => router.push(`/products/${encodeURIComponent(code)}`)
                       }
+                      onEdit={
+                        deletedMode
+                          ? undefined
+                          : (product) =>
+                              router.push(
+                                `/products/${encodeURIComponent(product.product_code)}/edit`,
+                              )
+                      }
+                      onRestore={deletedMode ? restoreProduct : undefined}
                       onDelete={openDeleteDialog}
-                      onPriceSaved={reloadAll}
+                      onPriceSaved={deletedMode ? undefined : reloadAll}
+                      deletedMode={deletedMode}
                     />
                   ))
                 )}
@@ -1199,8 +1248,10 @@ function CategoryGroup({
   tableColCount,
   onView,
   onEdit,
+  onRestore,
   onDelete,
   onPriceSaved,
+  deletedMode = false,
 }) {
   const categoryKey = `category:${categoryName}`;
   const categoryCollapsed = isCollapsed(categoryKey);
@@ -1237,8 +1288,10 @@ function CategoryGroup({
               visibleColumns={visibleColumns}
               onView={onView}
               onEdit={onEdit}
+              onRestore={onRestore}
               onDelete={onDelete}
               onPriceSaved={onPriceSaved}
+              deletedMode={deletedMode}
             />
           )),
         )}
@@ -1254,8 +1307,10 @@ function ProductRow({
   visibleColumns,
   onView,
   onEdit,
+  onRestore,
   onDelete,
   onPriceSaved,
+  deletedMode = false,
 }) {
   return (
     <tr className={`${TABLE_BODY_ROW_CLASS} bg-[var(--theme-surface)]`}>
@@ -1270,30 +1325,51 @@ function ProductRow({
         <td key={col.id} className={`px-3 py-3 ${alignClass(col.align)}`}>
           {col.id === "actions" ? (
             <div className="flex items-center justify-center gap-1">
-              <ActionButton
-                label="View product"
-                className="theme-subtext hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
-                onClick={() => onView?.(product.product_code)}
-              >
-                <EyeIcon />
-              </ActionButton>
-              <ActionButton
-                label="Edit product"
-                className="theme-subtext hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
-                onClick={() => onEdit?.(product)}
-              >
-                <PencilIcon />
-              </ActionButton>
-              <ActionButton
-                label="Delete product"
-                className="text-red-500 hover:bg-red-50 hover:text-red-600"
-                onClick={() => onDelete?.(product)}
-              >
-                <TrashIcon />
-              </ActionButton>
+              {deletedMode ? (
+                <>
+                  <ActionButton
+                    label="Restore product"
+                    className="theme-subtext hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
+                    onClick={() => onRestore?.(product)}
+                  >
+                    <RestoreIcon />
+                  </ActionButton>
+                  <ActionButton
+                    label="Permanently delete product"
+                    className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                    onClick={() => onDelete?.(product)}
+                  >
+                    <TrashIcon />
+                  </ActionButton>
+                </>
+              ) : (
+                <>
+                  <ActionButton
+                    label="View product"
+                    className="theme-subtext hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
+                    onClick={() => onView?.(product.product_code)}
+                  >
+                    <EyeIcon />
+                  </ActionButton>
+                  <ActionButton
+                    label="Edit product"
+                    className="theme-subtext hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
+                    onClick={() => onEdit?.(product)}
+                  >
+                    <PencilIcon />
+                  </ActionButton>
+                  <ActionButton
+                    label="Delete product"
+                    className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                    onClick={() => onDelete?.(product)}
+                  >
+                    <TrashIcon />
+                  </ActionButton>
+                </>
+              )}
             </div>
           ) : (
-            renderProductCell(product, col.id, onPriceSaved)
+            renderProductCell(product, col.id, deletedMode ? undefined : onPriceSaved)
           )}
         </td>
       ))}
@@ -1306,12 +1382,16 @@ function renderProductCell(product, columnId, onPriceSaved) {
     case "product":
       return (
         <div className="min-w-0">
-          <Link
-            href={`/products/${encodeURIComponent(product.product_code)}`}
-            className="theme-link text-sm font-medium"
-          >
-            {product.product_name}
-          </Link>
+          {product.deleted_at ? (
+            <p className="text-sm font-medium text-[var(--theme-text)]">{product.product_name}</p>
+          ) : (
+            <Link
+              href={`/products/${encodeURIComponent(product.product_code)}`}
+              className="theme-link text-sm font-medium"
+            >
+              {product.product_name}
+            </Link>
+          )}
           <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
           <p className="theme-subtext mt-0.5 text-xs">
             {product.category_name} · {product.subcategory_name}
@@ -1705,6 +1785,15 @@ function TrashIcon() {
       <path d="M10 11v6" />
       <path d="M14 11v6" />
       <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  );
+}
+
+function RestoreIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
     </svg>
   );
 }

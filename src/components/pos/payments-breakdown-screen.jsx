@@ -11,6 +11,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { notifyError } from "@/lib/notify";
 import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
@@ -18,6 +19,7 @@ import { filterByOrganization } from "@/lib/admin";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { loadFullReportDataset } from "@/lib/paginated-fetch";
 
 const TENDER_LABELS = {
   CASH: "Cash",
@@ -28,6 +30,16 @@ const TENDER_LABELS = {
   BANK: "Bank",
   CREDIT: "Debtors",
 };
+
+const EXPORT_COLUMNS = [
+  { key: "order", label: "Order" },
+  { key: "customer_name", label: "Customer name" },
+  { key: "amount", label: "Amount", align: "right" },
+  { key: "paid_at", label: "Paid at" },
+  { key: "cashier", label: "Cashier" },
+  { key: "session", label: "Session" },
+  { key: "notes", label: "Notes" },
+];
 
 function formatPaidAt(value) {
   if (!value) return "—";
@@ -49,6 +61,42 @@ function sessionLabel(session) {
   const cashier = session.cashier_name ? ` · ${session.cashier_name}` : "";
   const date = session.session_date ? ` · ${session.session_date}` : "";
   return `${till}${cashier}${date}${status ? ` (${status})` : ""}`;
+}
+
+function rowSessionText(row) {
+  const till = row.till_number || row.till_name || "—";
+  const status = row.session_status ? ` (${row.session_status})` : "";
+  return `${till}${status}`;
+}
+
+function tenderDisplayName(code, methods = []) {
+  const fromCatalog = methods.find((m) => m.method_code === code);
+  if (fromCatalog?.method_name) {
+    return String(fromCatalog.method_name).replace(/\s+alone$/i, "");
+  }
+  return TENDER_LABELS[code] ?? code;
+}
+
+function mixedBadgeText(row, methods = []) {
+  if (!row?.is_mixed) return null;
+  const others = Array.isArray(row.other_methods) ? row.other_methods : [];
+  if (others.length === 0) return "Mixed payment order";
+  const names = others
+    .map((m) => m.method_name || tenderDisplayName(m.method_code, methods))
+    .filter(Boolean);
+  return names.length ? `Mixed payment · ${names.join(", ")}` : "Mixed payment order";
+}
+
+function mapPaymentExportRow(row, methods = []) {
+  return {
+    order: row.order_num != null ? `Order #${row.order_num}` : "—",
+    customer_name: row.customer_name || "Walk-in",
+    amount: formatAccountingAmount(row.amount),
+    paid_at: formatPaidAt(row.paid_at),
+    cashier: row.cashier_name || "—",
+    session: rowSessionText(row),
+    notes: mixedBadgeText(row, methods) || "",
+  };
 }
 
 function PaymentsMethodTabs({ methods, activeCode, onChange }) {
@@ -245,31 +293,109 @@ export function PaymentsBreakdownScreen() {
 
   const emptyMethodLabel = summary.method_name || methodCode || "payment";
   const activeIsMpesa = String(methodCode ?? "").toUpperCase() === "MPESA";
+  const methodName = summary.method_name || tenderDisplayName(methodCode, methods);
 
-  const tenderLabel = (code) => {
-    const fromCatalog = methods.find((m) => m.method_code === code);
-    if (fromCatalog?.method_name) {
-      return String(fromCatalog.method_name).replace(/\s+alone$/i, "");
+  const exportSearchParams = useMemo(
+    () => ({
+      from_date: fromDate || undefined,
+      to_date: toDate || undefined,
+      branch_id: branchId || undefined,
+      cashier_id: cashierId || undefined,
+      float_session_id: floatSessionId || undefined,
+      session_status: sessionStatus !== "all" ? sessionStatus : undefined,
+      method_code: methodCode || undefined,
+      q: debouncedQ.trim() || undefined,
+    }),
+    [
+      fromDate,
+      toDate,
+      branchId,
+      cashierId,
+      floatSessionId,
+      sessionStatus,
+      methodCode,
+      debouncedQ,
+    ],
+  );
+
+  const branchName = useMemo(() => {
+    if (!branchId) return "All branches";
+    const match = branches.find((b) => String(b.id) === String(branchId));
+    return match?.branch_name ?? match?.name ?? `Branch ${branchId}`;
+  }, [branchId, branches]);
+
+  const cashierName = useMemo(() => {
+    if (!cashierId) return "All cashiers";
+    const match = cashierOptions.find((c) => c.value === cashierId);
+    return match?.label ?? `Cashier ${cashierId}`;
+  }, [cashierId, cashierOptions]);
+
+  const getExportRows = useCallback(async () => {
+    const rawRows = await loadFullReportDataset(
+      "/reports/payments-breakdown",
+      exportSearchParams,
+      { message: "Loading payments for export…" },
+    );
+    return (rawRows ?? []).map((row) => mapPaymentExportRow(row, methods));
+  }, [exportSearchParams, methods]);
+
+  const exportFooterRow = useMemo(
+    () => ({
+      order: "Tab total",
+      customer_name: "",
+      amount: formatAccountingAmount(summary.total_amount ?? 0),
+      paid_at: "",
+      cashier: "",
+      session: "",
+      notes: `${summary.order_count ?? 0} orders`,
+    }),
+    [summary.total_amount, summary.order_count],
+  );
+
+  const exportExtraLines = useMemo(() => {
+    const lines = [`Method: ${methodName}`, `Cashier: ${cashierName}`];
+    if (sessionStatus !== "all") {
+      lines.push(`Session status: ${sessionStatus}`);
     }
-    return TENDER_LABELS[code] ?? code;
-  };
-
-  function mixedBadgeText(row) {
-    if (!row?.is_mixed) return null;
-    const others = Array.isArray(row.other_methods) ? row.other_methods : [];
-    if (others.length === 0) return "Mixed payment order";
-    const names = others
-      .map((m) => m.method_name || tenderLabel(m.method_code))
-      .filter(Boolean);
-    return names.length
-      ? `Mixed payment · ${names.join(", ")}`
-      : "Mixed payment order";
-  }
+    if (floatSessionId) {
+      const session = sessions.find((s) => String(s.id) === String(floatSessionId));
+      lines.push(`Session: ${sessionLabel(session)}`);
+    }
+    if (debouncedQ.trim()) {
+      lines.push(`Search: ${debouncedQ.trim()}`);
+    }
+    return lines;
+  }, [
+    methodName,
+    cashierName,
+    sessionStatus,
+    floatSessionId,
+    sessions,
+    debouncedQ,
+  ]);
 
   return (
     <CatalogPageShell
       title="Payments breakdown"
       subtitle="Paid orders by tender — split payments show on each method with a mixed badge"
+      action={
+        <ReportExportToolbar
+          filename={`payments-breakdown-${methodCode || "all"}-${fromDate || "from"}-${toDate || "to"}`}
+          title="Payments breakdown"
+          subtitle={`${methodName} · ${branchName}`}
+          columns={EXPORT_COLUMNS}
+          getRows={getExportRows}
+          footerRow={exportFooterRow}
+          estimatedRowCount={data?.total ?? summary.order_count ?? 0}
+          meta={{
+            fromDate,
+            toDate,
+            branchName,
+            extraLines: exportExtraLines,
+          }}
+          disabled={loading || methods.length === 0}
+        />
+      }
     >
       <div className="theme-panel mb-6 grid gap-4 rounded-xl border p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
         <Field label="From">
@@ -442,7 +568,7 @@ export function PaymentsBreakdownScreen() {
               </thead>
               <tbody className="divide-y divide-[var(--theme-border)]">
                 {rows.map((row) => {
-                  const mixedText = mixedBadgeText(row);
+                  const mixedText = mixedBadgeText(row, methods);
                   return (
                   <tr key={`${row.sale_id}-${row.method_code ?? methodCode}`}>
                     <td className="px-4 py-3">
