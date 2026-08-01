@@ -12,7 +12,6 @@ import {
 import {
   getOrdersListSort,
   normalizeOrdersListDefaultDays,
-  normalizeOrdersListSearchDays,
   ORDERS_LIST_SORT_OPTIONS,
   resolveEnablePosCashRounding,
 } from "@/lib/sales-settings";
@@ -23,10 +22,6 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
   const sales = capabilities?.module_settings?.sales ?? {};
   const workflow = sales.order_workflow;
   const ordersListDays = normalizeOrdersListDefaultDays(sales.orders_list_default_days);
-  const ordersSearchDays = normalizeOrdersListSearchDays(
-    sales.orders_list_search_days,
-    ordersListDays,
-  );
   const ordersListSortLabel = useMemo(() => {
     const sort = getOrdersListSort(capabilities?.module_settings);
     return ORDERS_LIST_SORT_OPTIONS.find((option) => option.value === sort)?.label ?? sort;
