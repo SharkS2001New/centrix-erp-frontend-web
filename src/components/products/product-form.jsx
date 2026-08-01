@@ -30,11 +30,13 @@ import {
 } from "@/components/customers/customer-form";
 import { EntityPhotoField } from "@/components/media/entity-photo-field";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import {
   defaultProductBranchId,
   isMultiBranchCatalog,
 } from "@/lib/catalog-scope";
+import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import {
   fetchBranchesCached,
   fetchCatalogReferenceDataCached,
@@ -163,7 +165,7 @@ export function productToForm(product, retailPackage = null, uom = null) {
   };
 }
 
-export function buildProductBody(form, uom = null, { allowDiscounts = true, openingStockBranchId = null, includeShelfLocation = false } = {}) {
+export function buildProductBody(form, uom = null, { allowDiscounts = true, openingStockBranchId = null, includeShelfLocation = false, hotelCatalogue = false } = {}) {
   const unitPrice = parseDecimalInput(form.unit_price);
   const body = {
     product_code: form.product_code.trim(),
@@ -178,7 +180,7 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     discount_value: 0,
     product_weight: parseDecimalInput(form.product_weight) || null,
     supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
-    sell_on_retail: Boolean(form.sell_on_retail),
+    sell_on_retail: hotelCatalogue ? false : Boolean(form.sell_on_retail),
     sell_on_bar: Boolean(form.sell_on_bar),
     sell_on_hotel: Boolean(form.sell_on_hotel),
     vat_id: form.vat_id ? Number(form.vat_id) : undefined,
@@ -245,7 +247,10 @@ export async function loadRetailPackageForProduct(productCode) {
   return rows[0] ?? null;
 }
 
-export async function saveRetailPackageSetting(form, productCode) {
+export async function saveRetailPackageSetting(form, productCode, { hotelCatalogue = false } = {}) {
+  if (hotelCatalogue) {
+    return;
+  }
   if (!form.sell_on_retail) {
     if (form.retail_package_id) {
       await apiRequest(`/retail-package-settings/${form.retail_package_id}`, {
@@ -267,8 +272,8 @@ export async function saveRetailPackageSetting(form, productCode) {
   await apiRequest("/retail-package-settings", { method: "POST", body });
 }
 
-export function validateRetailPackage(form) {
-  if (!form.sell_on_retail) return null;
+export function validateRetailPackage(form, { hotelCatalogue = false } = {}) {
+  if (hotelCatalogue || !form.sell_on_retail) return null;
   const tiers = pricingTiersToApi(form.retail_pricing_tiers);
   if (!tiers.length) {
     return "Add at least one retail pricing tier when sell on retail is enabled.";
@@ -427,6 +432,8 @@ export function ProductFormFields({
   branches = [],
 }) {
   const { capabilities, user } = useAuth();
+  const { workspaceId } = useTabWorkspace();
+  const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const multiBranch = isMultiBranchCatalog(capabilities);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const categoryById = useMemo(
@@ -545,7 +552,7 @@ export function ProductFormFields({
           onChange={(e) => {
             const value = e.target.value;
             onChange("unit_id", value);
-            if (form.sell_on_retail) {
+            if (!hotelCatalogue && form.sell_on_retail) {
               const nextUom = activeUoms.find((u) => String(u.id) === String(value)) ?? null;
               if (!form.retail_pricing_tiers?.length) {
                 onChange("retail_pricing_tiers", [defaultRetailPricingTier(nextUom)]);
@@ -596,17 +603,34 @@ export function ProductFormFields({
       <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pricing</p>
         <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600">
-          Wholesale prices are per <strong>{packLabel}</strong>
-          {selectedUom && uomHasFullPack(selectedUom) ? (
+          {hotelCatalogue ? (
             <>
-              {" "}
-              (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+              Menu prices are per <strong>{packLabel}</strong>
+              {selectedUom && uomHasFullPack(selectedUom) ? (
+                <>
+                  {" "}
+                  (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+                </>
+              ) : (
+                <> (base {smallLabel})</>
+              )}
+              . Cost and selling price apply to that same unit on Hotel POS.
             </>
           ) : (
-            <> (base {smallLabel})</>
+            <>
+              Wholesale prices are per <strong>{packLabel}</strong>
+              {selectedUom && uomHasFullPack(selectedUom) ? (
+                <>
+                  {" "}
+                  (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+                </>
+              ) : (
+                <> (base {smallLabel})</>
+              )}
+              . Cost, selling price, and discounts all apply to that same wholesale unit — e.g. price
+              for one bag of sugar, not per kg.
+            </>
           )}
-          . Cost, selling price, and discounts all apply to that same wholesale unit — e.g. price
-          for one bag of sugar, not per kg.
         </p>
       </div>
 
@@ -749,54 +773,56 @@ export function ProductFormFields({
         </div>
       ) : null}
 
-      <div className="md:col-span-2 xl:col-span-3">
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={form.sell_on_retail}
-            onChange={(e) => {
-              const checked = e.target.checked;
-              onChange("sell_on_retail", checked);
-              if (checked) {
-                onChange("retail_pricing_tiers", [defaultRetailPricingTier(selectedUom)]);
-              }
-            }}
-            className="mt-0.5 rounded border-slate-300"
-          />
-          <span>Sell on retail — configure pack sizes and markups below</span>
-        </label>
-        {form.sell_on_retail ? (
-          <RetailPackageFields
-            form={form}
-            onChange={onChange}
-            productUom={selectedUom}
-          />
-        ) : null}
-      </div>
-
-      <div className="md:col-span-2 xl:col-span-3 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Hotel &amp; Bar POS menu
-        </p>
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={form.sell_on_bar}
-            onChange={(e) => onChange("sell_on_bar", e.target.checked)}
-            className="mt-0.5 rounded border-slate-300"
-          />
-          <span>Sell on Bar POS — shown to cashiers tied to a Bar outlet</span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={form.sell_on_hotel}
-            onChange={(e) => onChange("sell_on_hotel", e.target.checked)}
-            className="mt-0.5 rounded border-slate-300"
-          />
-          <span>Sell on Hotel POS — shown to cashiers tied to a Hotel / restaurant outlet</span>
-        </label>
-      </div>
+      {!hotelCatalogue ? (
+        <div className="md:col-span-2 xl:col-span-3">
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.sell_on_retail}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                onChange("sell_on_retail", checked);
+                if (checked) {
+                  onChange("retail_pricing_tiers", [defaultRetailPricingTiers(selectedUom)]);
+                }
+              }}
+              className="mt-0.5 rounded border-slate-300"
+            />
+            <span>Sell on retail — configure pack sizes and markups below</span>
+          </label>
+          {form.sell_on_retail ? (
+            <RetailPackageFields
+              form={form}
+              onChange={onChange}
+              productUom={selectedUom}
+            />
+          ) : null}
+        </div>
+      ) : (
+        <div className="md:col-span-2 xl:col-span-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Hotel POS menu channels
+          </p>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.sell_on_bar}
+              onChange={(e) => onChange("sell_on_bar", e.target.checked)}
+              className="mt-0.5 rounded border-slate-300"
+            />
+            <span>Sell on Bar POS — shown to cashiers tied to a Bar outlet</span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.sell_on_hotel}
+              onChange={(e) => onChange("sell_on_hotel", e.target.checked)}
+              className="mt-0.5 rounded border-slate-300"
+            />
+            <span>Sell on Hotel POS — shown to cashiers tied to a Hotel / restaurant outlet</span>
+          </label>
+        </div>
+      )}
 
       <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inventory</p>

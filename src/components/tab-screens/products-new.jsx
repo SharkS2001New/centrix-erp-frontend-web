@@ -24,12 +24,14 @@ import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
+import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 
 export function ProductsNewScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const { capabilities, user } = useAuth();
-  const { enabled: tabWorkspaceEnabled, clearTabDirty } = useTabWorkspace();
+  const { enabled: tabWorkspaceEnabled, clearTabDirty, workspaceId } = useTabWorkspace();
+  const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const {
@@ -145,7 +147,7 @@ export function ProductsNewScreen() {
       setFormError("Select a unit of measure.");
       return;
     }
-    const retailError = validateRetailPackage(form);
+    const retailError = validateRetailPackage(form, { hotelCatalogue });
     if (retailError) {
       setFormError(retailError);
       return;
@@ -163,11 +165,12 @@ export function ProductsNewScreen() {
         allowDiscounts,
         openingStockBranchId: resolveOpeningStockBranchId(form, user),
         includeShelfLocation,
+        hotelCatalogue,
       });
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
-      await saveRetailPackageSetting(form, code);
+      await saveRetailPackageSetting(form, code, { hotelCatalogue });
       setIsDirty(false);
       clearDraft();
       if (tabWorkspaceEnabled) clearTabDirty(pathname);
@@ -182,9 +185,13 @@ export function ProductsNewScreen() {
   return (
     <ProductFormPageShell
       backHref="/products"
-      backLabel="← Back to products"
-      title="Add product"
-      subtitle="Register a new product with pricing and opening stock"
+      backLabel={hotelCatalogue ? "← Back to menu products" : "← Back to products"}
+      title={hotelCatalogue ? "Add menu product" : "Add product"}
+      subtitle={
+        hotelCatalogue
+          ? "Register a Hotel POS menu item with channels, pricing, and opening stock"
+          : "Register a new product with pricing and opening stock"
+      }
     >
       {loading ? (
         <p className="text-sm text-slate-500">Loading…</p>

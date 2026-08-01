@@ -41,6 +41,12 @@ import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import {
+  hotelCatalogueListCopy,
+  isHotelCatalogueContext,
+  retailCatalogueListCopy,
+} from "@/lib/catalog-mode";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { loadReferenceDataPhased } from "@/lib/paginated-fetch";
 import {
@@ -194,6 +200,7 @@ function enrichProduct(
   supplierById,
   retailByCode,
   globalThreshold,
+  hotelCatalogue = false,
 ) {
   const sub = subById.get(String(product.subcategory_id ?? ""));
   const cat = sub ? catById.get(String(sub.category_id ?? "")) : null;
@@ -213,6 +220,10 @@ function enrichProduct(
 
   const pricing =
     product.sell_on_retail === 1 || product.sell_on_retail === true ? "Sells W/R" : "Wholesale";
+  const menuChannels = [
+    product.sell_on_bar === 1 || product.sell_on_bar === true ? "Bar" : null,
+    product.sell_on_hotel === 1 || product.sell_on_hotel === true ? "Hotel" : null,
+  ].filter(Boolean);
 
   return {
     ...product,
@@ -235,6 +246,8 @@ function enrichProduct(
     shop_stock_status: locationStockStatus(shop, reorderPoint),
     store_stock_status: locationStockStatus(store, reorderPoint),
     pricing,
+    menu_channels: menuChannels,
+    hotel_catalogue: hotelCatalogue,
     shop_qty: shop,
     store_qty: store,
   };
@@ -255,6 +268,9 @@ export function ProductsScreen() {
   const router = useAppRouter();
   const confirm = useConfirm();
   const { capabilities, user } = useAuth();
+  const { workspaceId } = useTabWorkspace();
+  const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const listCopy = hotelCatalogue ? hotelCatalogueListCopy() : retailCatalogueListCopy();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const selectionEnabled = true;
@@ -400,9 +416,16 @@ export function ProductsScreen() {
   const visibleColumns = useMemo(
     () =>
       visibleColumnIds
-        .map((id) => PRODUCT_COLUMNS.find((c) => c.id === id))
+        .map((id) => {
+          const col = PRODUCT_COLUMNS.find((c) => c.id === id);
+          if (!col) return null;
+          if (hotelCatalogue && col.id === "pricing") {
+            return { ...col, label: "Menu channels" };
+          }
+          return col;
+        })
         .filter(Boolean),
-    [visibleColumnIds],
+    [visibleColumnIds, hotelCatalogue],
   );
   const exportColumns = useMemo(
     () => productExportColumnsFromVisibleIds(visibleColumnIds),
@@ -502,7 +525,7 @@ export function ProductsScreen() {
       setTotalPages(parsed.totalPages);
 
       const codes = parsed.items.map((p) => p.product_code).filter(Boolean);
-      if (codes.length) {
+      if (codes.length && !hotelCatalogue) {
         void fetchRetailPackagesForProductCodes(codes)
           .then((rows) => {
             setRetailPackages((prev) => {
@@ -512,6 +535,8 @@ export function ProductsScreen() {
             });
           })
           .catch(() => {});
+      } else if (hotelCatalogue) {
+        setRetailPackages([]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load products");
@@ -531,6 +556,7 @@ export function ProductsScreen() {
     sort,
     sortDir,
     user?.organization_id,
+    hotelCatalogue,
   ]);
 
   const reloadAll = useCallback(async () => {
@@ -604,6 +630,7 @@ export function ProductsScreen() {
           supplierById,
           retailByCode,
           globalReorderThreshold,
+          hotelCatalogue,
         );
         const audit = resolveProductAudit(p, userById);
         return {
@@ -621,6 +648,7 @@ export function ProductsScreen() {
       supplierById,
       retailByCode,
       globalReorderThreshold,
+      hotelCatalogue,
       userById,
     ],
   );
@@ -867,9 +895,9 @@ export function ProductsScreen() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="theme-heading text-2xl font-semibold">Products</h1>
+          <h1 className="theme-heading text-2xl font-semibold">{listCopy.title}</h1>
           <p className="theme-subtext mt-1 text-sm">
-            Manage catalogue items, pricing and stock levels
+            {listCopy.subtitle}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -889,7 +917,7 @@ export function ProductsScreen() {
           />
           <PermissionGate permission={P.catalogue.products.create}>
             <PrimaryLink href="/products/new" permission={P.catalogue.products.create}>
-              Add product
+              {listCopy.addLabel}
             </PrimaryLink>
           </PermissionGate>
         </div>
@@ -983,15 +1011,27 @@ export function ProductsScreen() {
               }))}
             />
           ) : null}
-          <FilterSelect
-            value={pricingFilter}
-            onChange={(e) => setPricingFilter(e.target.value)}
-            options={[
-              { value: "all", label: "All pricing" },
-              { value: "retail", label: "Sells W/R" },
-              { value: "wholesale", label: "Wholesale" },
-            ]}
-          />
+          {!hotelCatalogue ? (
+            <FilterSelect
+              value={pricingFilter}
+              onChange={(e) => setPricingFilter(e.target.value)}
+              options={[
+                { value: "all", label: "All pricing" },
+                { value: "retail", label: "Sells W/R" },
+                { value: "wholesale", label: "Wholesale" },
+              ]}
+            />
+          ) : (
+            <FilterSelect
+              value={pricingFilter}
+              onChange={(e) => setPricingFilter(e.target.value)}
+              options={[
+                { value: "all", label: "All menu channels" },
+                { value: "bar", label: "Bar POS" },
+                { value: "hotel", label: "Hotel POS" },
+              ]}
+            />
+          )}
           <FilterSelect
             value={activeFilter}
             onChange={(e) => setActiveFilter(e.target.value)}
@@ -1338,7 +1378,11 @@ function renderProductCell(product, columnId, onPriceSaved) {
     case "vat":
       return <VatBadge treatment={product.vat_treatment} />;
     case "pricing":
-      return <PricingBadge type={product.pricing} />;
+      return product.hotel_catalogue ? (
+        <MenuChannelBadges channels={product.menu_channels} />
+      ) : (
+        <PricingBadge type={product.pricing} />
+      );
     case "updated":
       return <UserDateCell name={product.audit_name} date={product.audit_date} />;
     default:
@@ -1590,6 +1634,24 @@ function ChevronToggle({ expanded }) {
     <span className="theme-subtext inline-flex h-5 w-5 shrink-0 items-center justify-center rounded">
       {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
     </span>
+  );
+}
+
+function MenuChannelBadges({ channels }) {
+  if (!channels?.length) {
+    return <span className="theme-subtext text-xs">Not on POS</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {channels.map((ch) => (
+        <span
+          key={ch}
+          className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20"
+        >
+          {ch}
+        </span>
+      ))}
+    </div>
   );
 }
 

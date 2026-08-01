@@ -8,7 +8,6 @@ import {
   Field,
   PaginationBar,
   SearchInput,
-  formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
@@ -28,15 +27,19 @@ const TENDER_LABELS = {
   CARD: "Card",
   BANK: "Bank",
   CREDIT: "Debtors",
-  MIXED: "Mixed",
 };
 
-function isMpesaMethod(code) {
-  return String(code ?? "").toUpperCase() === "MPESA";
-}
-
-function isMixedMethod(code) {
-  return String(code ?? "").toUpperCase() === "MIXED";
+function formatPaidAt(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-KE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function sessionLabel(session) {
@@ -240,16 +243,8 @@ export function PaymentsBreakdownScreen() {
     setPage(1);
   };
 
-  const activeIsMpesa = isMpesaMethod(methodCode);
-  const activeIsMixed = isMixedMethod(methodCode);
-  const activeMethod = methods.find((m) => m.method_code === methodCode);
-  const showReferenceColumn =
-    activeIsMpesa
-    || activeIsMixed
-    || Boolean(activeMethod?.requires_reference);
-  const showTendersColumn = activeIsMixed;
-  const refLabel = activeIsMpesa ? "M-Pesa code" : "Reference";
   const emptyMethodLabel = summary.method_name || methodCode || "payment";
+  const activeIsMpesa = String(methodCode ?? "").toUpperCase() === "MPESA";
 
   const tenderLabel = (code) => {
     const fromCatalog = methods.find((m) => m.method_code === code);
@@ -259,18 +254,22 @@ export function PaymentsBreakdownScreen() {
     return TENDER_LABELS[code] ?? code;
   };
 
-  function formatTendersDynamic(tenders) {
-    if (!tenders || typeof tenders !== "object") return "—";
-    const parts = Object.entries(tenders)
-      .filter(([, amount]) => Number(amount) > 0)
-      .map(([code, amount]) => `${tenderLabel(code)} ${formatAccountingAmount(amount)}`);
-    return parts.length ? parts.join(" · ") : "—";
+  function mixedBadgeText(row) {
+    if (!row?.is_mixed) return null;
+    const others = Array.isArray(row.other_methods) ? row.other_methods : [];
+    if (others.length === 0) return "Mixed payment order";
+    const names = others
+      .map((m) => m.method_name || tenderLabel(m.method_code))
+      .filter(Boolean);
+    return names.length
+      ? `Mixed payment · ${names.join(", ")}`
+      : "Mixed payment order";
   }
 
   return (
     <CatalogPageShell
       title="Payments breakdown"
-      subtitle="Paid orders by tender — cash, M-Pesa, banks, debtors, and mixed payments"
+      subtitle="Paid orders by tender — split payments show on each method with a mixed badge"
     >
       <div className="theme-panel mb-6 grid gap-4 rounded-xl border p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
         <Field label="From">
@@ -388,7 +387,7 @@ export function PaymentsBreakdownScreen() {
         </div>
       </div>
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-3">
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Tab total</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
@@ -403,6 +402,12 @@ export function PaymentsBreakdownScreen() {
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Visible tabs total</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
             {formatAccountingAmount(summary.grand_total ?? 0)}
+          </p>
+        </div>
+        <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
+          <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Visible tabs orders</p>
+          <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
+            {summary.grand_order_count ?? 0}
           </p>
         </div>
       </div>
@@ -428,40 +433,45 @@ export function PaymentsBreakdownScreen() {
               <thead className="bg-[var(--theme-page-bg)] text-left text-xs font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
                 <tr>
                   <th className="px-4 py-3">Order</th>
-                  {showReferenceColumn ? <th className="px-4 py-3">{refLabel}</th> : null}
-                  {showTendersColumn ? <th className="px-4 py-3">Tenders</th> : null}
+                  <th className="px-4 py-3">Customer name</th>
                   <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Paid at</th>
                   <th className="px-4 py-3">Cashier</th>
                   <th className="px-4 py-3">Session</th>
-                  <th className="px-4 py-3">Customer</th>
-                  <th className="px-4 py-3">Paid at</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--theme-border)]">
-                {rows.map((row) => (
-                  <tr key={`${row.sale_id}-${row.alone_method ?? methodCode}`}>
+                {rows.map((row) => {
+                  const mixedText = mixedBadgeText(row);
+                  return (
+                  <tr key={`${row.sale_id}-${row.method_code ?? methodCode}`}>
                     <td className="px-4 py-3">
-                      {row.sale_id && row.order_num != null ? (
-                        <Link
-                          href={`/sales/orders/${row.sale_id}`}
-                          className="font-medium text-[var(--theme-primary)] hover:underline"
-                        >
-                          Order #{row.order_num}
-                        </Link>
-                      ) : (
-                        <span className="text-[var(--theme-text-muted)]">—</span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {row.sale_id && row.order_num != null ? (
+                          <Link
+                            href={`/sales/orders/${row.sale_id}`}
+                            className="font-medium text-[var(--theme-primary)] hover:underline"
+                          >
+                            Order #{row.order_num}
+                          </Link>
+                        ) : (
+                          <span className="text-[var(--theme-text-muted)]">—</span>
+                        )}
+                        {mixedText ? (
+                          <span className="inline-flex w-fit max-w-full items-center rounded-md border border-[var(--theme-border)] bg-[var(--theme-page-bg)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
+                            {mixedText}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
-                    {showReferenceColumn ? (
-                      <td className="px-4 py-3 font-mono text-[var(--theme-text)]">
-                        {row.reference_number || row.mpesa_code || "—"}
-                      </td>
-                    ) : null}
-                    {showTendersColumn ? (
-                      <td className="px-4 py-3 text-[var(--theme-text)]">{formatTendersDynamic(row.tenders)}</td>
-                    ) : null}
+                    <td className="px-4 py-3 text-[var(--theme-text)]">
+                      {row.customer_name || "Walk-in"}
+                    </td>
                     <td className="px-4 py-3 font-medium text-[var(--theme-text)]">
                       {formatAccountingAmount(row.amount)}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--theme-text-muted)]">
+                      {formatPaidAt(row.paid_at)}
                     </td>
                     <td className="px-4 py-3 text-[var(--theme-text-muted)]">{row.cashier_name || "—"}</td>
                     <td className="px-4 py-3 text-[var(--theme-text-muted)]">
@@ -472,12 +482,9 @@ export function PaymentsBreakdownScreen() {
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-[var(--theme-text-muted)]">{row.customer_name || "Walk-in"}</td>
-                    <td className="px-4 py-3 text-[var(--theme-text-muted)]">
-                      {row.paid_at ? formatShortDate(row.paid_at) : "—"}
-                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

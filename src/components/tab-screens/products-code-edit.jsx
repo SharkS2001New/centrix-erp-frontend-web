@@ -27,14 +27,16 @@ import { SubcategoryCreateModal } from "@/components/products/subcategory-create
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
+import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 
 export function ProductsCodeEditScreen() {
   const params = useParams();
   const router = useRouter();
   const pathname = usePathname();
   const { abortSignal } = useTabPaneActive();
-  const { enabled: tabWorkspaceEnabled, clearTabDirty } = useTabWorkspace();
+  const { enabled: tabWorkspaceEnabled, clearTabDirty, workspaceId } = useTabWorkspace();
   const { capabilities, user } = useAuth();
+  const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const productCode = decodeURIComponent(params.code);
@@ -96,12 +98,17 @@ export function ProductsCodeEditScreen() {
           searchParams: branchId ? { branch_id: branchId } : {},
           signal: abortSignal ?? undefined,
         }),
-        loadRetailPackageForProduct(productCode).catch(() => null),
+        hotelCatalogue
+          ? Promise.resolve(null)
+          : loadRetailPackageForProduct(productCode).catch(() => null),
       ]);
       if (abortSignal?.aborted) return;
       const product = productRes.data ?? productRes;
       const uom = uoms.find((u) => String(u.id) === String(product.unit_id)) ?? null;
       const next = productToForm({ ...product, is_active: !product.deleted_at }, retailPackage, uom);
+      if (hotelCatalogue) {
+        next.sell_on_retail = false;
+      }
       setServerForm(next);
       setForm(next);
     } catch (e) {
@@ -110,7 +117,7 @@ export function ProductsCodeEditScreen() {
     } finally {
       setProductLoading(false);
     }
-  }, [abortSignal, productCode, uoms, user?.branch_id, capabilities]);
+  }, [abortSignal, productCode, uoms, user?.branch_id, capabilities, hotelCatalogue]);
 
   const { isActive } = useTabPaneActive();
 
@@ -171,7 +178,7 @@ export function ProductsCodeEditScreen() {
       setFormError("Select a unit of measure.");
       return;
     }
-    const retailError = validateRetailPackage(form);
+    const retailError = validateRetailPackage(form, { hotelCatalogue });
     if (retailError) {
       setFormError(retailError);
       return;
@@ -186,12 +193,12 @@ export function ProductsCodeEditScreen() {
     setFormError(null);
     try {
       const uom = uoms.find((u) => String(u.id) === String(form.unit_id)) ?? null;
-      const body = buildProductBody(form, uom, { allowDiscounts, includeShelfLocation });
+      const body = buildProductBody(form, uom, { allowDiscounts, includeShelfLocation, hotelCatalogue });
       await apiRequest(`/products/${encodeURIComponent(productCode)}`, {
         method: "PUT",
         body,
       });
-      await saveRetailPackageSetting(form, productCode);
+      await saveRetailPackageSetting(form, productCode, { hotelCatalogue });
       setIsDirty(false);
       clearDraft();
       if (tabWorkspaceEnabled) clearTabDirty(pathname);
@@ -208,8 +215,8 @@ export function ProductsCodeEditScreen() {
   return (
     <ProductFormPageShell
       backHref={`/products/${encodeURIComponent(productCode)}`}
-      backLabel="← Back to product"
-      title="Edit product"
+      backLabel={hotelCatalogue ? "← Back to menu product" : "← Back to product"}
+      title={hotelCatalogue ? "Edit menu product" : "Edit product"}
       subtitle={title}
     >
       {loading ? (

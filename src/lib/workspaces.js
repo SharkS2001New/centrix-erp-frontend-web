@@ -169,6 +169,8 @@ export function workspaceIcon(iconKey) {
 
 /** API login channel for a product workspace (stored on the session token). */
 export function workspaceLoginChannel(workspaceId) {
+  // Only retail External POS uses the POS token channel.
+  // Hotel POS uses the web/backoffice channel (hospitality APIs).
   return workspaceId === "pos" ? POS_LOGIN_CHANNEL : WEB_LOGIN_CHANNEL;
 }
 
