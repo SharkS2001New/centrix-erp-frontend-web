@@ -1751,19 +1751,35 @@ html[data-theme="light"] .pos-workspace-standalone tbody tr {
 }
 
 .hotel-pos-root .pos-cart-action-btn:not(:disabled) {
-  min-height: 2.75rem;
+  min-height: 3.75rem;
   border: 1px solid var(--pos-btn-border);
   background-color: var(--pos-btn-fill);
   color: var(--theme-text);
   box-shadow: var(--pos-btn-shadow);
+  padding: 0.55rem 0.35rem;
 }
 
 .hotel-pos-root .pos-cart-action-btn:not(:disabled) .pos-cart-action-icon {
   color: var(--theme-primary);
+  font-size: 1.15rem;
 }
 
 .hotel-pos-root .pos-cart-action-btn:not(:disabled) .pos-cart-action-label {
   color: var(--theme-text);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.hotel-pos-root .pos-cart-action-btn:disabled {
+  min-height: 3.75rem;
+}
+
+.hotel-pos-root .pos-cart-action-btn:disabled .pos-cart-action-icon {
+  font-size: 1.15rem;
+}
+
+.hotel-pos-root .pos-cart-action-btn:disabled .pos-cart-action-label {
+  font-size: 0.72rem;
 }
 
 .hotel-pos-root .pos-cart-action-btn:hover:not(:disabled) {
@@ -1849,6 +1865,8 @@ html[data-theme="light"] .hotel-pos-root .pos-cart-action-icon--complete {
   background: var(--theme-surface);
   color: var(--theme-text);
   box-shadow: var(--pos-btn-shadow, 0 1px 2px rgba(15, 23, 42, 0.08));
+  min-height: 2.5rem;
+  font-size: 0.8125rem;
 }
 
 .hotel-pos-root .app-topbar-app-switcher:hover {
@@ -3431,6 +3449,7 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
   background-color: var(--theme-page-bg);
   border-bottom: 1px solid var(--theme-border);
   color: var(--theme-text);
+  isolation: isolate;
 }
 
 .hotel-pos-header .pos-header-brand-strong {
@@ -3445,6 +3464,9 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
   background: var(--theme-surface);
   border-color: var(--theme-border);
   color: var(--theme-text);
+  min-height: 2.5rem;
+  padding-inline: 0.85rem;
+  font-size: 0.8125rem;
 }
 
 .hotel-pos-header .pos-header-action-btn:hover:not(:disabled) {
@@ -3456,6 +3478,103 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
   border-color: var(--theme-primary) !important;
   background: var(--theme-primary-subtle) !important;
   color: var(--theme-accent-text, var(--theme-primary)) !important;
+}
+
+.hotel-pos-chip-scroll {
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.hotel-pos-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.35rem;
+  padding: 0.4rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--theme-border-strong, #94a3b8);
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.hotel-pos-chip:hover:not(:disabled) {
+  border-color: var(--theme-primary);
+  background: var(--theme-surface-muted, var(--theme-surface));
+}
+
+.hotel-pos-chip-active {
+  border-color: var(--theme-primary) !important;
+  background: var(--theme-primary) !important;
+  color: #fff !important;
+}
+
+.hotel-pos-chip-module {
+  border-style: dashed;
+  color: var(--theme-accent-text, var(--theme-primary));
+}
+
+.hotel-pos-chip-external {
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+
+.hotel-pos-chip-divider {
+  width: 1px;
+  height: 1.4rem;
+  background: var(--theme-border);
+}
+
+.hotel-pos-service-mode {
+  min-height: 2.75rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--theme-border-strong, #94a3b8);
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.5rem 0.35rem;
+}
+
+.hotel-pos-service-mode-active {
+  border-color: var(--theme-primary) !important;
+  background: var(--theme-primary) !important;
+  color: #fff !important;
+}
+
+.hotel-pos-primary-cta {
+  background: var(--theme-primary);
+  color: #fff;
+  box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--theme-primary) 80%, transparent);
+}
+
+.hotel-pos-primary-cta:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.hotel-pos-secondary-cta {
+  border: 1px solid var(--theme-border-strong, #94a3b8);
+  background: var(--theme-surface);
+  color: var(--theme-text);
+}
+
+.hotel-pos-secondary-cta:hover:not(:disabled) {
+  border-color: var(--theme-primary);
+}
+
+.hotel-pos-tile-media {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.hotel-pos-header-tools .velzon-user-dropdown,
+.hotel-pos-header-tools .velzon-apps-dropdown {
+  z-index: 80;
 }
 
 .hotel-pos-header-sub {
@@ -3471,20 +3590,23 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 .hotel-pos-status-footer-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem 1.25rem;
-  padding: 0.55rem 0.85rem;
-  font-size: 11px;
+  gap: 0.75rem 1.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.02em;
+  line-height: 1.35;
 }
 
 .hotel-pos-status-footer-label {
   color: var(--theme-text-muted, #64748b);
   font-weight: 600;
+  font-size: 0.75rem;
 }
 
 .hotel-pos-status-footer-value {
   color: var(--theme-accent-text, var(--theme-primary));
   font-weight: 700;
+  font-size: 0.8125rem;
 }
 
 .hotel-pos-status-footer-link--ok {
@@ -3501,14 +3623,14 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 
 .hotel-pos-tile {
   border-radius: var(--hotel-pos-tile-radius, 1.15rem);
-  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+  border: 1px solid var(--theme-border-strong, #94a3b8);
   background:
     linear-gradient(
       165deg,
-      color-mix(in srgb, var(--theme-primary) 6%, var(--theme-surface)) 0%,
+      color-mix(in srgb, var(--theme-primary) 8%, var(--theme-surface)) 0%,
       var(--theme-surface) 42%
     );
-  box-shadow: 0 10px 28px -20px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .hotel-pos-tile:hover {

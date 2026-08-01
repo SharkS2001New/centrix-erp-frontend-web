@@ -53,3 +53,62 @@ export function isHospitalityServiceEnabled(capabilitiesOrSettings, serviceKey) 
   const services = resolveHospitalityServices(capabilitiesOrSettings);
   return Boolean(services[serviceKey]);
 }
+
+/**
+ * Hotel POS header chips that open Hospitality Backoffice modules on tap.
+ * Only services that are enabled for the org are returned (plus Orders).
+ */
+export const HOTEL_POS_MODULE_SHORTCUT_DEFS = [
+  { id: "rooms", service: "rooms", label: "Rooms", short: "Rooms", href: "/hospitality/rooms" },
+  {
+    id: "reservations",
+    service: "reservations",
+    label: "Reservations",
+    short: "Reserv.",
+    href: "/hospitality/reservations",
+  },
+  {
+    id: "front_desk",
+    service: "front_desk",
+    label: "Front desk",
+    short: "Desk",
+    href: "/hospitality/front-desk",
+  },
+  { id: "folios", service: "folios", label: "Folios", short: "Folios", href: "/hospitality/folios" },
+  {
+    id: "housekeeping",
+    service: "housekeeping",
+    label: "Housekeeping",
+    short: "HK",
+    href: "/hospitality/housekeeping",
+  },
+  {
+    id: "outlets",
+    service: "extra_outlets",
+    label: "Outlets",
+    short: "Outlets",
+    href: "/hospitality/outlets",
+  },
+  {
+    id: "night_audit",
+    service: "night_audit",
+    label: "Night audit",
+    short: "Audit",
+    href: "/hospitality/night-audit",
+  },
+  {
+    id: "orders",
+    service: null,
+    label: "Orders",
+    short: "Orders",
+    href: "/hospitality/orders",
+    always: true,
+  },
+];
+
+export function hotelPosModuleShortcuts(capabilitiesOrSettings) {
+  return HOTEL_POS_MODULE_SHORTCUT_DEFS.filter((item) => {
+    if (item.always) return true;
+    return isHospitalityServiceEnabled(capabilitiesOrSettings, item.service);
+  }).map(({ id, label, short, href }) => ({ id, label, short, href }));
+}

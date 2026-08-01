@@ -18,6 +18,7 @@ import {
  *     check_receipt_copies?: number,
  *     show_outlet_on_check_receipt?: boolean,
  *     show_organization_on_check_receipt?: boolean,
+ *     enable_check_guest_name?: boolean,
  *     check_receipt_footer?: string,
  *     use_same_print_phones_for_check?: boolean,
  *     check_print_phones?: { tel1?: string, tel2?: string },
@@ -36,6 +37,7 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
 
   const showOrg = printSettings?.show_organization_on_check_receipt !== false;
   const showOutlet = printSettings?.show_outlet_on_check_receipt !== false;
+  const showGuestName = printSettings?.enable_check_guest_name === true;
   const footer = String(printSettings?.check_receipt_footer ?? "Thank you").trim() || "Thank you";
   const useSamePhones = printSettings?.use_same_print_phones_for_check !== false;
   const phones = useSamePhones
@@ -67,6 +69,7 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
   const status = String(check.status ?? "").replace(/_/g, " ");
   const tableLabel = check.floor_table?.label || check.floor_table?.code || "";
   const outletLabel = check.outlet?.name || check.outlet?.code || "";
+  const guestName = String(check.guest_name ?? "").trim();
   const paid = Number(check.amount_paid) || 0;
   const total = Number(check.total) || 0;
   const vat = Number(check.vat_total) || 0;
@@ -161,6 +164,7 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
     <p class="meta meta-left">Status: ${escapeHtml(status)}</p>
     ${showOutlet && outletLabel ? `<p class="meta meta-left">Outlet: ${escapeHtml(outletLabel)}</p>` : ""}
     ${tableLabel ? `<p class="meta meta-left">Table: ${escapeHtml(tableLabel)}</p>` : ""}
+    ${showGuestName && guestName ? `<p class="meta meta-left">Guest: ${escapeHtml(guestName)}</p>` : ""}
     <table>
       <thead>
         <tr>

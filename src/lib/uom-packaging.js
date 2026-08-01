@@ -3,11 +3,17 @@
 /** Category + default small-unit label for each UOM type. */
 export const UOM_TYPE_DEFINITIONS = [
   { value: "piece", category: "count", defaultSmall: "piece" },
+  { value: "plate", category: "count", defaultSmall: "plate", hospitality: true },
+  { value: "portion", category: "count", defaultSmall: "portion", hospitality: true },
+  { value: "glass", category: "count", defaultSmall: "glass", hospitality: true },
+  { value: "bottle", category: "count", defaultSmall: "bottle", hospitality: true },
+  { value: "shot", category: "count", defaultSmall: "shot", hospitality: true },
+  { value: "cup", category: "count", defaultSmall: "cup", hospitality: true },
   { value: "carton", category: "count", defaultSmall: "piece" },
   { value: "bag", category: "count", defaultSmall: "kg" },
   { value: "bale", category: "count", defaultSmall: "piece" },
   { value: "box", category: "count", defaultSmall: "piece" },
-  { value: "crate", category: "count", defaultSmall: "piece" },
+  { value: "crate", category: "count", defaultSmall: "bottle" },
   { value: "bundle", category: "count", defaultSmall: "piece" },
   { value: "dozen", category: "count", defaultSmall: "piece" },
   { value: "pack", category: "count", defaultSmall: "piece" },
@@ -23,6 +29,38 @@ export const UOM_TYPE_DEFINITIONS = [
   { value: "ml", category: "volume", defaultSmall: "ml" },
   { value: "m", category: "length", defaultSmall: "m" },
   { value: "cm", category: "length", defaultSmall: "cm" },
+];
+
+/** Serving / stock units shown first for Hotel Backoffice. */
+export const HOSPITALITY_UOM_TYPE_VALUES = [
+  "piece",
+  "plate",
+  "portion",
+  "glass",
+  "bottle",
+  "shot",
+  "cup",
+  "ml",
+  "l",
+  "kg",
+  "g",
+  "crate",
+  "pack",
+  "carton",
+];
+
+/** One-click presets when creating a hotel serving unit. */
+export const HOSPITALITY_UOM_QUICK_PRESETS = [
+  { label: "Piece", uom_type: "piece", full_name: "Piece", small: "piece" },
+  { label: "Plate", uom_type: "plate", full_name: "Plate", small: "plate" },
+  { label: "Portion", uom_type: "portion", full_name: "Portion", small: "portion" },
+  { label: "Glass", uom_type: "glass", full_name: "Glass", small: "glass" },
+  { label: "Bottle", uom_type: "bottle", full_name: "Bottle", small: "bottle" },
+  { label: "Shot", uom_type: "shot", full_name: "Shot", small: "shot" },
+  { label: "Cup", uom_type: "cup", full_name: "Cup", small: "cup" },
+  { label: "ml", uom_type: "ml", full_name: "Millilitre", small: "ml" },
+  { label: "Litre", uom_type: "l", full_name: "Litre", small: "litres" },
+  { label: "kg", uom_type: "kg", full_name: "Kilogram", small: "kg" },
 ];
 
 const UOM_TYPE_BY_VALUE = Object.fromEntries(
@@ -41,6 +79,24 @@ export const UOM_TYPE_OPTIONS = UOM_TYPE_DEFINITIONS.map((d) => ({
   label: `${d.value} — ${CATEGORY_LABELS[d.category] ?? d.category}`,
 }));
 
+export function hospitalityUomTypeOptions() {
+  const preferred = new Set(HOSPITALITY_UOM_TYPE_VALUES);
+  const primary = HOSPITALITY_UOM_TYPE_VALUES.map((value) => {
+    const def = UOM_TYPE_BY_VALUE[value];
+    return {
+      value,
+      label: def
+        ? `${value} — ${CATEGORY_LABELS[def.category] ?? def.category}`
+        : value,
+    };
+  });
+  const rest = UOM_TYPE_DEFINITIONS.filter((d) => !preferred.has(d.value)).map((d) => ({
+    value: d.value,
+    label: `${d.value} — ${CATEGORY_LABELS[d.category] ?? d.category}`,
+  }));
+  return [...primary, ...rest];
+}
+
 export const UOM_TYPE_FILTER_OPTIONS = [
   { value: "all", label: "All types" },
   { value: "count", label: "Count" },
@@ -54,7 +110,22 @@ export function uomCategory(uomType) {
   const def = UOM_TYPE_BY_VALUE[t];
   if (def) return def.category;
 
-  if (["piece", "pcs", "unit", "count"].includes(t)) return "count";
+  if (
+    [
+      "piece",
+      "pcs",
+      "unit",
+      "count",
+      "plate",
+      "portion",
+      "glass",
+      "bottle",
+      "shot",
+      "cup",
+    ].includes(t)
+  ) {
+    return "count";
+  }
   if (["kilogram", "gram"].includes(t)) return "weight";
   if (["liter", "millilitre", "milliliter"].includes(t)) return "volume";
   if (["meter", "metre", "mm"].includes(t)) return "length";

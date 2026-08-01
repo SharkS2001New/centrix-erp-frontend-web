@@ -9,6 +9,8 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import {
   defaultSmallLabelForType,
+  hospitalityUomTypeOptions,
+  HOSPITALITY_UOM_QUICK_PRESETS,
   uomCategory,
   uomConversionSummary,
   uomFromForm,
@@ -54,10 +56,16 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 
-const PACK_FILTER_OPTIONS = [
+const RETAIL_PACK_FILTER_OPTIONS = [
   { value: "all", label: "All units" },
   { value: "single", label: "Single (×1)" },
   { value: "pack", label: "Packs (×>1)" },
+];
+
+const HOTEL_PACK_FILTER_OPTIONS = [
+  { value: "all", label: "All units" },
+  { value: "single", label: "Serving units (×1)" },
+  { value: "pack", label: "Cases / multi-packs" },
 ];
 
 const EMPTY_FORM = {
@@ -71,6 +79,7 @@ const EMPTY_FORM = {
   conversion_factor: "1",
   uom_type: "piece",
   is_active: true,
+  hotel_advanced_case: false,
 };
 
 function UomTypeBadge({ uomType }) {
@@ -241,22 +250,59 @@ export function UomsScreen() {
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
   const uomById = useMemo(() => new Map(uoms.map((u) => [String(u.id), u])), [uoms]);
 
-  const formTitle = drawerMode === "create" ? "Add UOM" : "Edit UOM";
+  const formTitle = drawerMode === "create"
+    ? hotelCatalogue
+      ? "Add serving unit"
+      : "Add UOM"
+    : hotelCatalogue
+      ? "Edit serving unit"
+      : "Edit UOM";
+  const typeOptions = hotelCatalogue ? hospitalityUomTypeOptions() : UOM_TYPE_OPTIONS;
+  const packFilterOptions = hotelCatalogue ? HOTEL_PACK_FILTER_OPTIONS : RETAIL_PACK_FILTER_OPTIONS;
   const fullPackageOnly = form.uses_small_packaging === false;
+  const hotelSimpleMode = hotelCatalogue && !form.hotel_advanced_case && !fullPackageOnly;
   const formFactor = fullPackageOnly ? 1 : uomConversionFactor(form.conversion_factor);
   const fullSectionNum = form.has_middle_pack ? 3 : 2;
 
   function openCreateDrawer() {
     setDrawerMode("create");
     setEditingId(null);
-    setForm({ ...EMPTY_FORM });
+    setForm({
+      ...EMPTY_FORM,
+      ...(hotelCatalogue
+        ? {
+            full_name: "Piece",
+            small_packaging_label: "piece",
+            uom_type: "piece",
+            conversion_factor: "1",
+            hotel_advanced_case: false,
+          }
+        : {}),
+    });
     setFormError(null);
     setDrawerOpen(true);
+  }
+
+  function applyHotelPreset(preset) {
+    setForm((prev) => ({
+      ...prev,
+      full_name: preset.full_name,
+      small_packaging_label: preset.small,
+      uom_type: preset.uom_type,
+      conversion_factor: "1",
+      uses_small_packaging: true,
+      has_middle_pack: false,
+      middle_packaging_label: "",
+      middle_factor: "",
+      hotel_advanced_case: false,
+    }));
   }
 
   function openEditDrawer(uom) {
     setDrawerMode("edit");
     setEditingId(uom.id);
+    const factor = Number(uom.conversion_factor ?? 1);
+    const advanced = hotelCatalogue && (factor > 1 || uomHasMiddlePack(uom) || uomIsFullPackageOnly(uom));
     setForm({
       measure_name: uom.measure_name ?? "",
       uses_small_packaging: uomUsesSmallPackaging(uom),
@@ -266,8 +312,9 @@ export function UomsScreen() {
       middle_factor: uom.middle_factor != null ? String(uom.middle_factor) : "",
       full_name: uom.full_name ?? "",
       conversion_factor: String(uom.conversion_factor ?? 1),
-      uom_type: uom.uom_type ?? "piece",
+      uom_type: uom.uom_type === "pcs" ? "piece" : (uom.uom_type ?? "piece"),
       is_active: uom.is_active !== false,
+      hotel_advanced_case: advanced,
     });
     setFormError(null);
     setDrawerOpen(true);
@@ -302,15 +349,23 @@ export function UomsScreen() {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
+    const hotelSimple = hotelCatalogue && !form.hotel_advanced_case && form.uses_small_packaging !== false;
     const fullPackageOnlySave = form.uses_small_packaging === false;
-    const conversionFactor = fullPackageOnlySave ? 1 : parseFloat(form.conversion_factor);
+    const conversionFactor = hotelSimple || fullPackageOnlySave ? 1 : parseFloat(form.conversion_factor);
     const useMiddle =
-      !fullPackageOnlySave && form.has_middle_pack && form.middle_packaging_label.trim();
+      !hotelSimple &&
+      !fullPackageOnlySave &&
+      form.has_middle_pack &&
+      form.middle_packaging_label.trim();
+    const name = form.full_name.trim() || form.small_packaging_label.trim();
     const body = {
-      full_name: form.full_name.trim(),
+      full_name: name,
       measure_name: form.measure_name.trim() || null,
       uses_small_packaging: !fullPackageOnlySave,
-      small_packaging_label: form.small_packaging_label.trim() || defaultSmallLabelForType(form.uom_type),
+      small_packaging_label:
+        form.small_packaging_label.trim() ||
+        defaultSmallLabelForType(form.uom_type) ||
+        name.toLowerCase(),
       middle_packaging_label: useMiddle ? form.middle_packaging_label.trim() : null,
       middle_factor:
         useMiddle && form.middle_factor !== "" ? parseFloat(form.middle_factor) : null,
@@ -434,10 +489,10 @@ export function UomsScreen() {
 
   return (
     <CatalogPageShell
-      title="Units of measure"
+      title={hotelCatalogue ? "Serving & stock units" : "Units of measure"}
       subtitle={
         hotelCatalogue
-          ? "Define how hotel stock is counted — bottles, portions, cases, and recipe units"
+          ? "How menu items and kitchen stock are counted — plate, glass, bottle, portion, ml, kg. Cases are optional for bar crates."
           : "Define how stock is counted — small units with optional packs, or full package only for wholesale items"
       }
       action={
@@ -451,8 +506,12 @@ export function UomsScreen() {
             {loading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogDataImportButton
-            title="Import units of measure"
-            description="Upload CSV or Excel with measure_name, full_name, conversion_factor, uom_type, and optional packaging labels."
+            title={hotelCatalogue ? "Import serving units" : "Import units of measure"}
+            description={
+              hotelCatalogue
+                ? "Upload CSV or Excel with full_name, uom_type, and conversion_factor (usually 1 for serving units)."
+                : "Upload CSV or Excel with measure_name, full_name, conversion_factor, uom_type, and optional packaging labels."
+            }
             sampleHeaders={[
               "measure_name",
               "full_name",
@@ -464,21 +523,29 @@ export function UomsScreen() {
               "uom_type",
               "is_active",
             ]}
-            sampleRow={["Piece", "Piece", "true", "piece", "", "", "1", "piece", "true"]}
+            sampleRow={
+              hotelCatalogue
+                ? ["", "Plate", "true", "plate", "", "", "1", "plate", "true"]
+                : ["Piece", "Piece", "true", "piece", "", "", "1", "piece", "true"]
+            }
             apiPath="/uoms/import-batch"
-            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["measure_name"])}
+            normalizeRows={(rows) =>
+              filterNonEmptyImportRows(rows, hotelCatalogue ? ["full_name"] : ["measure_name"])
+            }
             onImported={loadData}
             importPage="uoms"
           />
           <CatalogListExport
-            title="Units of measure"
+            title={hotelCatalogue ? "Serving units" : "Units of measure"}
             apiPath="/uoms"
             columns={UOM_EXPORT_COLUMNS}
             totalCount={uoms.length}
             getSearchParams={() => ({ per_page: 200 })}
             disabled={loading}
           />
-          <PrimaryButton onClick={openCreateDrawer}>Add UOM</PrimaryButton>
+          <PrimaryButton onClick={openCreateDrawer}>
+            {hotelCatalogue ? "Add unit" : "Add UOM"}
+          </PrimaryButton>
         </div>
       }
       toolbar={
@@ -486,7 +553,7 @@ export function UomsScreen() {
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search units…"
+            placeholder={hotelCatalogue ? "Search serving units…" : "Search units…"}
           />
           <FilterSelect
             value={typeFilter}
@@ -496,7 +563,7 @@ export function UomsScreen() {
           <FilterSelect
             value={packFilter}
             onChange={(e) => setPackFilter(e.target.value)}
-            options={PACK_FILTER_OPTIONS}
+            options={packFilterOptions}
           />
         </div>
       }
@@ -514,10 +581,10 @@ export function UomsScreen() {
                     indeterminate={someOnPageSelected}
                     onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
                   />
-                  <th className="px-4 py-2.5">Hierarchy</th>
-                  <th className="px-4 py-2.5">Example stock</th>
+                  <th className="px-4 py-2.5">{hotelCatalogue ? "Unit" : "Hierarchy"}</th>
+                  <th className="px-4 py-2.5">{hotelCatalogue ? "Stock example" : "Example stock"}</th>
                   <th className="px-4 py-2.5">Type</th>
-                  <th className="px-4 py-2.5">Products</th>
+                  <th className="px-4 py-2.5">{hotelCatalogue ? "Menu items" : "Products"}</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="w-[90px] px-4 py-2.5">Actions</th>
                 </tr>
@@ -546,7 +613,9 @@ export function UomsScreen() {
                           <span className="font-medium text-slate-900">{uomHierarchyChain(uom)}</span>
                           {uomIsFullPackageOnly(uom) ? (
                             <span className="mt-0.5 block text-xs text-amber-700">
-                              Full package only — wholesale, no small unit breakdown
+                              {hotelCatalogue
+                                ? "Sold as whole unit only — no breakout"
+                                : "Full package only — wholesale, no small unit breakdown"}
                             </span>
                           ) : Number(uom.conversion_factor ?? 1) > 1 ? (
                             <span className="mt-0.5 block text-xs text-slate-500">
@@ -555,6 +624,10 @@ export function UomsScreen() {
                               {uomHasMiddlePack(uom)
                                 ? ` · 1 ${uom.middle_packaging_label} = ${uom.middle_factor} ${uom.small_packaging_label ?? "units"}`
                                 : ""}
+                            </span>
+                          ) : hotelCatalogue ? (
+                            <span className="mt-0.5 block text-xs text-slate-500">
+                              Serving / sell unit
                             </span>
                           ) : null}
                         </td>
@@ -608,43 +681,137 @@ export function UomsScreen() {
         onSubmit={saveForm}
         saving={saving}
         error={formError}
-        submitLabel={drawerMode === "create" ? "Save UOM" : "Save changes"}
+        submitLabel={
+          drawerMode === "create"
+            ? hotelCatalogue
+              ? "Save unit"
+              : "Save UOM"
+            : "Save changes"
+        }
       >
-        <Field label="Measure name (optional)">
-          <input
-            type="text"
-            value={form.measure_name}
-            onChange={(e) => updateField("measure_name", e.target.value)}
-            className={inputClassName()}
-            placeholder="e.g. Sugars — distinguishes same hierarchy, different packages"
-          />
-        </Field>
+        {hotelCatalogue && drawerMode === "create" ? (
+          <div className="mb-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Quick add
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {HOSPITALITY_UOM_QUICK_PRESETS.map((preset) => (
+                <button
+                  key={preset.uom_type}
+                  type="button"
+                  onClick={() => applyHotelPreset(preset)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:border-[#185FA5] hover:text-[#185FA5]"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
+        {!hotelSimpleMode ? (
+          <Field label="Measure name (optional)">
+            <input
+              type="text"
+              value={form.measure_name}
+              onChange={(e) => updateField("measure_name", e.target.value)}
+              className={inputClassName()}
+              placeholder={
+                hotelCatalogue
+                  ? "Optional group label — e.g. Bar glassware"
+                  : "e.g. Sugars — distinguishes same hierarchy, different packages"
+              }
+            />
+          </Field>
+        ) : null}
+
+        {hotelSimpleMode ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Unit name" required>
+                <input
+                  type="text"
+                  value={form.full_name}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    updateField("full_name", value);
+                    updateField(
+                      "small_packaging_label",
+                      value.trim() ? value.trim().toLowerCase() : form.small_packaging_label,
+                    );
+                  }}
+                  required
+                  className={inputClassName()}
+                  placeholder="e.g. Plate, Glass, Bottle"
+                />
+              </Field>
+              <Field label="Category">
+                <select
+                  value={form.uom_type}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    updateField("uom_type", value);
+                    const small = defaultSmallLabelForType(value);
+                    if (!form.full_name.trim()) {
+                      updateField("full_name", small.charAt(0).toUpperCase() + small.slice(1));
+                    }
+                    updateField("small_packaging_label", small);
+                  }}
+                  required
+                  className={inputClassName()}
+                >
+                  {typeOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              Menu items sell as 1 {form.full_name || "unit"} on Hotel POS. Use this for plates,
+              glasses, bottles, and portions.
+            </p>
+            <Toggle
+              label="Advanced: case / crate (multi-pack)"
+              checked={Boolean(form.hotel_advanced_case)}
+              onChange={(v) => updateField("hotel_advanced_case", v)}
+            />
+            <p className="-mt-2 text-[11px] leading-relaxed text-slate-500">
+              Turn on only when stock is bought in cases (e.g. 24 bottles) and broken into singles.
+            </p>
+          </>
+        ) : (
+          <>
         <Toggle
-          label="Use small unit breakdown (pieces, kg, litres, etc.)"
+          label={
+            hotelCatalogue
+              ? "Break into smaller sell units (bottles, portions, etc.)"
+              : "Use small unit breakdown (pieces, kg, litres, etc.)"
+          }
           checked={form.uses_small_packaging !== false}
           onChange={(v) => updateField("uses_small_packaging", v)}
         />
         <p className="-mt-2 text-[11px] leading-relaxed text-slate-500">
           {hotelCatalogue
-            ? "Turn off for items sold only as a full package on Hotel POS — e.g. a case of beer with no single-bottle breakout."
+            ? "Turn off for items sold only as a whole case on Hotel POS — e.g. a sealed crate with no single-bottle breakout."
             : "Turn off for wholesale-only products sold in full packages only — e.g. 20L jericans with no retail piece count."}
         </p>
 
         {fullPackageOnly ? (
           <>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Full package (stock unit)
+              {hotelCatalogue ? "Case / whole unit" : "Full package (stock unit)"}
             </p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Full package name">
+              <Field label={hotelCatalogue ? "Unit name" : "Full package name"}>
                 <input
                   type="text"
                   value={form.full_name}
                   onChange={(e) => updateField("full_name", e.target.value)}
                   required
                   className={inputClassName()}
-                  placeholder="e.g. Jerican, Drum, Bale"
+                  placeholder={hotelCatalogue ? "e.g. Case, Crate" : "e.g. Jerican, Drum, Bale"}
                 />
               </Field>
               <Field label="Category">
@@ -654,7 +821,7 @@ export function UomsScreen() {
                   required
                   className={inputClassName()}
                 >
-                  {UOM_TYPE_OPTIONS.map((opt) => (
+                  {typeOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -673,14 +840,14 @@ export function UomsScreen() {
           1. {form.small_packaging_label?.trim() || "Base"} unit (always 1 = this unit)
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Small unit name">
+          <Field label={hotelCatalogue ? "Sell unit name" : "Small unit name"}>
             <input
               type="text"
               value={form.small_packaging_label}
               onChange={(e) => updateField("small_packaging_label", e.target.value)}
               required
               className={inputClassName()}
-              placeholder="e.g. piece, kg, litres"
+              placeholder={hotelCatalogue ? "e.g. bottle, glass, portion" : "e.g. piece, kg, litres"}
             />
           </Field>
           <Field label="Category">
@@ -690,7 +857,7 @@ export function UomsScreen() {
               required
               className={inputClassName()}
             >
-              {UOM_TYPE_OPTIONS.map((opt) => (
+              {typeOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -699,11 +866,13 @@ export function UomsScreen() {
           </Field>
         </div>
 
-        <Toggle
-          label="Use middle packs (e.g. outers, dozens between full bale and pieces)"
-          checked={form.has_middle_pack}
-          onChange={(v) => updateField("has_middle_pack", v)}
-        />
+        {!hotelCatalogue ? (
+          <Toggle
+            label="Use middle packs (e.g. outers, dozens between full bale and pieces)"
+            checked={form.has_middle_pack}
+            onChange={(v) => updateField("has_middle_pack", v)}
+          />
+        ) : null}
 
         {form.has_middle_pack ? (
           <>
@@ -736,20 +905,20 @@ export function UomsScreen() {
         ) : null}
 
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {fullSectionNum}. Full package (optional — set factor to 1 to skip)
+          {fullSectionNum}. {hotelCatalogue ? "Case / multi-pack (optional)" : "Full package (optional — set factor to 1 to skip)"}
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Full package name">
+          <Field label={hotelCatalogue ? "Case name" : "Full package name"}>
             <input
               type="text"
               value={form.full_name}
               onChange={(e) => updateField("full_name", e.target.value)}
               required
               className={inputClassName()}
-              placeholder="e.g. Bag, Bale, Carton"
+              placeholder={hotelCatalogue ? "e.g. Case of beer" : "e.g. Bag, Bale, Carton"}
             />
           </Field>
-          <Field label={`${form.small_packaging_label || "units"} per full package`}>
+          <Field label={`${form.small_packaging_label || "units"} per ${hotelCatalogue ? "case" : "full package"}`}>
             <input
               type="number"
               value={form.conversion_factor}
@@ -763,13 +932,33 @@ export function UomsScreen() {
         </div>
         <p className="text-[11px] leading-relaxed text-slate-500">
           {formFactor === 1
-            ? `Stock counted only in ${form.small_packaging_label || "small units"} (no full package split).`
-            : `1 ${form.full_name || "pack"} = ${formFactor} ${form.small_packaging_label || "units"}. e.g. 60 ${form.small_packaging_label} → 1 ${form.full_name}, 10 ${form.small_packaging_label}.`}
+            ? `Stock counted only in ${form.small_packaging_label || "small units"} (no case split).`
+            : `1 ${form.full_name || "case"} = ${formFactor} ${form.small_packaging_label || "units"}.`}
         </p>
+        {hotelCatalogue ? (
+          <button
+            type="button"
+            className="text-left text-xs font-semibold text-[#185FA5] hover:underline"
+            onClick={() => {
+              updateField("hotel_advanced_case", false);
+              updateField("conversion_factor", "1");
+              updateField("has_middle_pack", false);
+              updateField("uses_small_packaging", true);
+              if (!form.full_name.trim() && form.small_packaging_label.trim()) {
+                const small = form.small_packaging_label.trim();
+                updateField("full_name", small.charAt(0).toUpperCase() + small.slice(1));
+              }
+            }}
+          >
+            ← Back to simple serving unit
+          </button>
+        ) : null}
+          </>
+        )}
           </>
         )}
 
-        <StockReportPreview form={form} />
+        {!hotelSimpleMode ? <StockReportPreview form={form} /> : null}
 
         <Toggle label="Active" checked={form.is_active} onChange={(v) => updateField("is_active", v)} />
       </FormDrawer>

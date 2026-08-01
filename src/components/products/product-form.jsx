@@ -459,14 +459,30 @@ export function ProductFormFields({
     [activeUoms, form.unit_id],
   );
 
-  const packLabel = selectedUom && uomHasFullPack(selectedUom)
-    ? fullPackageLabel(selectedUom)
-    : "full package";
-  const smallLabel = selectedUom ? smallPackagingLabel(selectedUom) : "unit";
+  const packLabel =
+    selectedUom && uomHasFullPack(selectedUom)
+      ? fullPackageLabel(selectedUom)
+      : selectedUom
+        ? smallPackagingLabel(selectedUom)
+        : hotelCatalogue
+          ? "serving"
+          : "unit";
+  const smallLabel = selectedUom ? smallPackagingLabel(selectedUom) : hotelCatalogue ? "serving" : "unit";
 
   const suggestedUom = useMemo(() => {
+    if (hotelCatalogue) {
+      const preferred = ["plate", "portion", "glass", "bottle", "piece", "cup", "shot"];
+      for (const type of preferred) {
+        const match = activeUoms.find(
+          (u) =>
+            Number(u.conversion_factor ?? 1) === 1 &&
+            String(u.uom_type ?? "").toLowerCase() === type,
+        );
+        if (match) return match;
+      }
+    }
     return activeUoms.find((u) => Number(u.conversion_factor ?? 1) === 1) ?? activeUoms[0] ?? null;
-  }, [activeUoms]);
+  }, [activeUoms, hotelCatalogue]);
 
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2 xl:grid-cols-3">
@@ -655,7 +671,11 @@ export function ProductFormFields({
           className={inputClassName()}
           placeholder="0.00"
         />
-        <p className="mt-1 text-xs text-slate-500">What you pay suppliers per {packLabel}.</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {hotelCatalogue
+            ? `What you pay per ${packLabel} (ingredient or purchase cost).`
+            : `What you pay suppliers per ${packLabel}.`}
+        </p>
       </Field>
 
       <Field label={`Selling price per ${packLabel} (KES)`} required>

@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { ApiError } from "@/lib/api";
 import {
   addHotelCheckLine,
+  assignHotelCheckGuest,
   assignHotelCheckTable,
   clearHotelCheck,
   fetchHotelPosCatalog,
@@ -32,11 +34,22 @@ import {
   normalizeHotelPosThemeTemplate,
 } from "@/lib/hotel-pos-theme-templates";
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
-import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import {
+  hotelPosModuleShortcuts,
+  isHospitalityServiceEnabled,
+} from "@/lib/hospitality-services";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PRODUCT_NAME } from "@/lib/branding";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import {
+  persistWorkspaceRouteBeforeSwitch,
+  rememberWorkspacePath,
+} from "@/lib/workspace-navigation";
+import { resolveAvailableWorkspaces } from "@/lib/workspaces";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
+import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { PosActionButton } from "@/components/sales/pos-action-button";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { HotelPosStatusFooter } from "@/components/hospitality/hotel-pos-status-footer";
@@ -48,7 +61,17 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { isPrintAgentEnabled, warmPrintAgentHealth } from "@/lib/print-agent";
 
-const hotelPosHeaderBtnClassName = "pos-header-action-btn";
+const MENU_FILTER_CHIPS = [
+  { id: "", label: "All", short: "All" },
+  { id: "food", label: "Food", short: "Food" },
+  { id: "drinks", label: "Drinks", short: "Drinks" },
+];
+
+const SERVICE_MODES = [
+  { id: "dine_in", label: "Dine in", short: "Dine in" },
+  { id: "room_service", label: "Room service", short: "Room" },
+  { id: "take_away", label: "Take away", short: "Takeaway" },
+];
 
 async function printCheckReceiptSafe(check, options) {
   try {
@@ -70,7 +93,9 @@ function dedupeError(e) {
 }
 
 export function HotelBarPosScreen() {
-  const { capabilities, user, organization } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { capabilities, user, organization, isSuperAdmin, switchWorkspace } = useAuth();
   const hotelSettings = resolveHotelPosSettings(capabilities);
   const paymentWorkflow = resolveHospitalityPaymentWorkflow(capabilities);
   const [gridColumns, setGridColumns] = useState(hotelSettings.gridColumns);
@@ -79,11 +104,15 @@ export function HotelBarPosScreen() {
   const [stockDeductOnSettle, setStockDeductOnSettle] = useState(hotelSettings.stockDeductOnSettle);
   const [themeTemplate, setThemeTemplate] = useState(hotelSettings.themeTemplate);
   const [checkPrintSettings, setCheckPrintSettings] = useState(null);
+  const [guestNameEnabled, setGuestNameEnabled] = useState(false);
+  const [guestNameDraft, setGuestNameDraft] = useState("");
   const [tablePosEnabled, setTablePosEnabled] = useState(
     isHospitalityServiceEnabled(capabilities, "table_pos"),
   );
   const [unpaidEnabled, setUnpaidEnabled] = useState(paymentWorkflow.unpaid);
   const [menuGroup, setMenuGroup] = useState("");
+  const [serviceMode, setServiceMode] = useState("dine_in");
+  const [chargeToRoom, setChargeToRoom] = useState(false);
   const [heldCount, setHeldCount] = useState(0);
   const [partialEnabled, setPartialEnabled] = useState(paymentWorkflow.partially_paid);
   const [floorTables, setFloorTables] = useState([]);
@@ -99,6 +128,7 @@ export function HotelBarPosScreen() {
   const [check, setCheck] = useState(null);
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [openingModule, setOpeningModule] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueChecks, setQueueChecks] = useState([]);
   const [payOpen, setPayOpen] = useState(false);
@@ -113,6 +143,31 @@ export function HotelBarPosScreen() {
   const catalogScrollRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
   const catalogRequestIdRef = useRef(0);
+
+  const accessCtx = useMemo(
+    () =>
+      buildAccessContext({
+        user,
+        organization,
+        capabilities,
+        requireTillFloat: resolveTillFloatNavFlag(capabilities),
+        isSuperAdmin,
+      }),
+    [capabilities, isSuperAdmin, organization, user],
+  );
+
+  const hasHospitalityBackoffice = useMemo(
+    () => resolveAvailableWorkspaces(accessCtx, capabilities).some((w) => w.id === "hospitality_backoffice"),
+    [accessCtx, capabilities],
+  );
+
+  const moduleShortcuts = useMemo(
+    () => (hasHospitalityBackoffice ? hotelPosModuleShortcuts(capabilities) : []),
+    [capabilities, hasHospitalityBackoffice],
+  );
+
+  const showGuestField = guestNameEnabled || serviceMode === "room_service";
+  const showTableField = tablePosEnabled && serviceMode === "dine_in";
 
   const paymentConfig = useMemo(
     () =>
@@ -145,6 +200,15 @@ export function HotelBarPosScreen() {
   ]);
 
   useEffect(() => {
+    if (serviceMode === "room_service" && roomChargeEnabled && collectPayment) {
+      setChargeToRoom(true);
+    }
+    if (serviceMode === "take_away") {
+      setChargeToRoom(false);
+    }
+  }, [serviceMode, roomChargeEnabled, collectPayment]);
+
+  useEffect(() => {
     if (!isPrintAgentEnabled()) return;
     void warmPrintAgentHealth();
   }, []);
@@ -166,10 +230,12 @@ export function HotelBarPosScreen() {
             check_receipt_copies: settings.check_receipt_copies ?? 1,
             show_outlet_on_check_receipt: settings.show_outlet_on_check_receipt !== false,
             show_organization_on_check_receipt: settings.show_organization_on_check_receipt !== false,
+            enable_check_guest_name: Boolean(settings.enable_check_guest_name),
             check_receipt_footer: settings.check_receipt_footer ?? "Thank you",
             use_same_print_phones_for_check: settings.use_same_print_phones_for_check !== false,
             check_print_phones: settings.check_print_phones ?? { tel1: "", tel2: "" },
           });
+          setGuestNameEnabled(Boolean(settings.enable_check_guest_name));
         }
         if (settings?.table_pos_enabled != null) {
           setTablePosEnabled(Boolean(settings.table_pos_enabled));
@@ -316,17 +382,19 @@ export function HotelBarPosScreen() {
     if (menuOutlet?.id) {
       body.outlet_id = Number(menuOutlet.id);
     }
-    if (tablePosEnabled && selectedTableId) {
+    if (showTableField && selectedTableId) {
       body.floor_table_id = Number(selectedTableId);
     }
     const opened = await openHotelCheck(body);
     setCheck(opened?.check ?? null);
     setSelectedLineId(null);
+    setGuestNameDraft("");
+    setChargeToRoom(false);
     return opened?.check ?? null;
   }
 
   async function ensureTableAssigned(activeCheck) {
-    if (!tablePosEnabled) return activeCheck;
+    if (!showTableField) return activeCheck;
     const tableId = selectedTableId || activeCheck?.floor_table_id;
     if (!tableId) {
       tableSelectRef.current?.focus();
@@ -341,10 +409,37 @@ export function HotelBarPosScreen() {
     return next;
   }
 
+  async function ensureGuestAssigned(activeCheck) {
+    if (!showGuestField || !activeCheck?.id) return activeCheck;
+    const name = String(guestNameDraft ?? "").trim();
+    const current = String(activeCheck.guest_name ?? "").trim();
+    if (name === current) return activeCheck;
+    const res = await assignHotelCheckGuest(activeCheck.id, name || null);
+    const next = res?.check ?? activeCheck;
+    setCheck(next);
+    return next;
+  }
+
+  async function openHospitalityModule(href) {
+    if (!href || openingModule || busy) return;
+    setOpeningModule(true);
+    try {
+      const currentId = getStoredWorkspace() || "hotel_bar_pos";
+      persistWorkspaceRouteBeforeSwitch(user?.id, organization?.id, currentId, pathname);
+      rememberWorkspacePath(user?.id, organization?.id, "hospitality_backoffice", href);
+      await switchWorkspace("hospitality_backoffice");
+      router.replace(href);
+      router.refresh();
+    } catch (e) {
+      notifyError(dedupeError(e) || "Could not open module.");
+      setOpeningModule(false);
+    }
+  }
+
   async function handleTapProduct(product) {
     if (!product?.product_code || busy) return;
 
-    if (tablePosEnabled) {
+    if (showTableField) {
       const tableId = selectedTableId || check?.floor_table_id;
       if (!tableId) {
         notifyError("Select a table before adding items to the ticket.");
@@ -366,7 +461,16 @@ export function HotelBarPosScreen() {
       }
       if (!active?.id) throw new Error("Could not open check.");
       const res = await addHotelCheckLine(active.id, product.product_code, 1);
-      setCheck(res?.check ?? null);
+      let next = res?.check ?? null;
+      if (next?.id && showGuestField && String(guestNameDraft ?? "").trim()) {
+        try {
+          const guestRes = await assignHotelCheckGuest(next.id, guestNameDraft.trim());
+          next = guestRes?.check ?? next;
+        } catch {
+          /* guest name is optional; line add already succeeded */
+        }
+      }
+      setCheck(next);
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -435,8 +539,10 @@ export function HotelBarPosScreen() {
     setBusy(true);
     try {
       await ensureTableAssigned(check);
-      const res = await holdHotelCheck(check.id);
-      await printCheckReceiptSafe(res?.check ?? check, {
+      let active = check;
+      active = await ensureGuestAssigned(active);
+      const res = await holdHotelCheck(active.id);
+      await printCheckReceiptSafe(res?.check ?? active, {
         title: "Unpaid order",
         organization,
         printSettings: checkPrintSettings,
@@ -460,10 +566,11 @@ export function HotelBarPosScreen() {
     setBusy(true);
     try {
       await ensureTableAssigned(check);
-      const res = await saveHotelCheck(check.id, {
+      let active = await ensureGuestAssigned(check);
+      const res = await saveHotelCheck(active.id, {
         floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
       });
-      await printCheckReceiptSafe(res?.check ?? check, {
+      await printCheckReceiptSafe(res?.check ?? active, {
         title: "Unpaid order",
         organization,
         printSettings: checkPrintSettings,
@@ -499,6 +606,7 @@ export function HotelBarPosScreen() {
       const next = res?.check ?? row;
       setCheck(next);
       if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
+      setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
       setSelectedLineId(null);
       setQueueOpen(false);
       notifySuccess(`Opened ${row.check_number}`);
@@ -517,6 +625,7 @@ export function HotelBarPosScreen() {
       const next = res?.check ?? row;
       setCheck(next);
       if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
+      setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
       setSelectedLineId(null);
       setQueueOpen(false);
       setPayError(null);
@@ -552,7 +661,8 @@ export function HotelBarPosScreen() {
     setPayError(null);
     try {
       await ensureTableAssigned(check);
-      const res = await settleHotelCheck(check.id, {
+      let active = await ensureGuestAssigned(check);
+      const res = await settleHotelCheck(active.id, {
         payments,
         floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
         folio_id,
@@ -618,6 +728,17 @@ export function HotelBarPosScreen() {
     [gridColumns],
   );
   const themeVars = useMemo(() => hotelPosThemeCssVars(themeTemplate), [themeTemplate]);
+  const primaryCtaLabel = collectPayment
+    ? chargeToRoom && roomChargeEnabled
+      ? "Charge to room"
+      : "Pay"
+    : "Save";
+  const emptyTicketHint =
+    serviceMode === "room_service"
+      ? "Enter room / guest, then tap a menu item"
+      : showTableField
+        ? "Choose a table, then tap a menu item to add it here"
+        : "Tap a menu item to add it here";
 
   return (
     <div
@@ -625,9 +746,10 @@ export function HotelBarPosScreen() {
       data-hotel-pos-theme={themeTemplate}
       style={themeVars}
     >
+      {openingModule ? <WorkspaceOpeningScreen message="Opening" /> : null}
       <div className="hotel-pos-atmosphere pointer-events-none absolute inset-0" aria-hidden />
 
-      <div className="pos-header hotel-pos-header relative z-[1] shrink-0 shadow-sm">
+      <div className="pos-header hotel-pos-header relative z-50 shrink-0 shadow-sm">
         <div className="pos-header-bar flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 lg:px-5">
           <div className="pos-header-brand-wrap shrink-0">
             <CentrixLogoHeader
@@ -636,72 +758,24 @@ export function HotelBarPosScreen() {
               orgSubtitle={organization?.org_name ?? ""}
             />
           </div>
-          <div className="pos-header-actions flex min-w-0 flex-1 items-center justify-center gap-2 px-1">
-            <button
-              type="button"
-              disabled={busy}
-              title="Held / unpaid checks"
-              onClick={() => void openCollectibleList()}
-              className={hotelPosHeaderBtnClassName}
-            >
-              <span className="pos-header-btn-label" data-short="Held">
-                Held / unpaid
+          <div className="min-w-0 flex-1 px-1">
+            {menuOutlet?.name || menuOutlet?.menu_channel_label ? (
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="theme-subtext font-semibold uppercase tracking-wide">Hotel POS</span>
+                {menuOutlet?.name ? <span className="theme-subtext">· {menuOutlet.name}</span> : null}
+                {menuOutlet?.menu_channel_label ? (
+                  <span className="hotel-pos-channel-pill rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide">
+                    {menuOutlet.menu_channel_label} menu
+                  </span>
+                ) : null}
+              </div>
+            ) : (
+              <span className="theme-subtext text-[11px] font-semibold uppercase tracking-wide">
+                Hotel POS
               </span>
-              {heldCount > 0 ? (
-                <span className="pos-header-action-badge">
-                  {heldCount > 99 ? "99+" : heldCount}
-                </span>
-              ) : null}
-            </button>
-            <button
-              type="button"
-              disabled={busy || !hasLines || Number(check?.amount_paid) > 0}
-              title="Clear all lines"
-              onClick={() => void handleClear()}
-              className={hotelPosHeaderBtnClassName}
-            >
-              <span className="pos-header-btn-label" data-short="Clear">
-                Clear
-              </span>
-            </button>
-            <button
-              type="button"
-              disabled={
-                busy ||
-                !check?.id ||
-                Number(check?.amount_paid) > 0 ||
-                !["open", "unpaid", "held"].includes(String(check?.status))
-              }
-              title="Void check"
-              onClick={() => void handleVoid()}
-              className={hotelPosHeaderBtnClassName}
-            >
-              <span className="pos-header-btn-label" data-short="Void">
-                Void
-              </span>
-            </button>
-            {[
-              { id: "", label: "All", short: "All" },
-              { id: "food", label: "Food", short: "Food" },
-              { id: "drinks", label: "Drinks", short: "Drinks" },
-            ].map((chip) => (
-              <button
-                key={chip.id || "all"}
-                type="button"
-                aria-pressed={menuGroup === chip.id}
-                title={`Show ${chip.label.toLowerCase()} menu`}
-                onClick={() => setMenuGroup(chip.id)}
-                className={`${hotelPosHeaderBtnClassName}${
-                  menuGroup === chip.id ? " hotel-pos-header-btn-active" : ""
-                }`}
-              >
-                <span className="pos-header-btn-label" data-short={chip.short}>
-                  {chip.label}
-                </span>
-              </button>
-            ))}
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="hotel-pos-header-tools relative z-[60] flex shrink-0 items-center gap-1.5 sm:gap-2">
             <NotificationBell />
             <WorkspaceSwitcher />
             <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
@@ -711,33 +785,185 @@ export function HotelBarPosScreen() {
             />
           </div>
         </div>
-        {menuOutlet?.name || menuOutlet?.menu_channel_label ? (
-          <div className="hotel-pos-header-sub flex flex-wrap items-center gap-2 border-t border-[var(--theme-border)] px-3 py-1.5 text-[11px] sm:px-4 lg:px-5">
-            <span className="theme-subtext font-semibold uppercase tracking-wide">
-              Hotel POS
-            </span>
-            {menuOutlet?.name ? (
-              <span className="theme-subtext">· {menuOutlet.name}</span>
-            ) : null}
-            {menuOutlet?.menu_channel_label ? (
-              <span className="hotel-pos-channel-pill rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide">
-                {menuOutlet.menu_channel_label} menu
-              </span>
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
-      <div className="relative z-[1] flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden">
+      <div className="relative z-0 flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden">
         <div className="hotel-pos-menu-pane flex min-h-0 min-w-0 flex-1 flex-col border-b border-[var(--theme-border)]/80 lg:border-b-0 lg:border-r">
-          <div className="shrink-0 px-3 pb-2 pt-3 sm:px-4 lg:px-5">
-            <div
-              className={`grid gap-2 ${
-                tablePosEnabled ? "grid-cols-1 sm:grid-cols-12" : "grid-cols-1"
-              }`}
-            >
-              {tablePosEnabled ? (
-                <div className="sm:col-span-3">
+          <div className="shrink-0 space-y-3 px-3 pb-2 pt-3 sm:px-4 lg:px-5">
+            <div className="hotel-pos-chip-scroll flex gap-2 overflow-x-auto pb-0.5">
+              {MENU_FILTER_CHIPS.map((chip) => (
+                <button
+                  key={chip.id || "all"}
+                  type="button"
+                  aria-pressed={menuGroup === chip.id}
+                  title={`Show ${chip.label.toLowerCase()} menu`}
+                  onClick={() => setMenuGroup(chip.id)}
+                  className={`hotel-pos-chip shrink-0${
+                    menuGroup === chip.id ? " hotel-pos-chip-active" : ""
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+              {moduleShortcuts.length ? (
+                <span className="hotel-pos-chip-divider mx-0.5 shrink-0 self-center" aria-hidden />
+              ) : null}
+              {moduleShortcuts.map((mod) => (
+                <button
+                  key={mod.id}
+                  type="button"
+                  title={`Open ${mod.label}`}
+                  disabled={openingModule}
+                  onClick={() => void openHospitalityModule(mod.href)}
+                  className="hotel-pos-chip hotel-pos-chip-module shrink-0"
+                >
+                  {mod.label}
+                  <span className="hotel-pos-chip-external" aria-hidden>
+                    ↗
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <label className="sr-only" htmlFor="hotel-pos-search-item">
+              Search item
+            </label>
+            <input
+              id="hotel-pos-search-item"
+              ref={searchRef}
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search item…"
+              className="theme-input hotel-pos-field w-full rounded-xl px-4 py-2.5 text-sm"
+              autoComplete="off"
+            />
+            {showTableField && !floorTables.length ? (
+              <p className="theme-subtext text-[11px]">
+                No tables yet — enable Floor tables and add them under Operations → Outlets.
+              </p>
+            ) : null}
+            {stockDeductOnSettle ? (
+              <p className="theme-subtext text-[11px] leading-relaxed">
+                Stock deduct on settle is on.{" "}
+                <Link href="/admin/hotel-settings" className="font-semibold underline">
+                  Hotel F&amp;B settings
+                </Link>
+              </p>
+            ) : null}
+          </div>
+
+          <div ref={catalogScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
+            {catalogLoading && !products.length ? (
+              <p className="theme-subtext py-20 text-center text-sm">Loading menu…</p>
+            ) : !products.length ? (
+              <p className="theme-subtext py-20 text-center text-sm">
+                {debouncedSearch ? "No products match your search." : "No products in catalogue yet."}
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-3" style={gridStyle}>
+                  {products.map((product) => {
+                    const hasImage = Boolean(product.has_image || product.image_url);
+                    return (
+                      <button
+                        key={product.product_code}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void handleTapProduct(product)}
+                        className="hotel-pos-tile group relative flex min-h-[7.5rem] flex-col overflow-hidden text-left transition duration-150 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50"
+                      >
+                        <div className="hotel-pos-tile-shine pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition group-hover:opacity-100" />
+                        {hasImage ? (
+                          <div className="hotel-pos-tile-media relative aspect-[4/3] w-full overflow-hidden bg-[var(--theme-surface-muted)]">
+                            <EntityPhotoDisplay
+                              fileUrl={productPhotoFileUrl(product.product_code)}
+                              alt={product.product_name}
+                              className="h-full w-full object-cover"
+                              placeholderClassName="flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400"
+                            />
+                            {product.is_popular ? (
+                              <span className="hotel-pos-top-badge absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+                                Top
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div className="flex min-h-0 flex-1 flex-col justify-between gap-2 p-3.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="theme-heading line-clamp-2 text-[15px] font-semibold leading-snug">
+                              {product.product_name}
+                            </span>
+                            {!hasImage && product.is_popular ? (
+                              <span className="hotel-pos-top-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+                                Top
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex items-end justify-between gap-2">
+                            <p className="text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
+                              {formatHotelMoney(product.unit_price)}
+                            </p>
+                            <span className="hotel-pos-add-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide opacity-80 group-hover:opacity-100">
+                              Add
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div ref={loadMoreSentinelRef} className="h-8 w-full" aria-hidden />
+                {catalogLoadingMore ? (
+                  <p className="theme-subtext py-3 text-center text-xs">Loading more…</p>
+                ) : null}
+                {!catalogHasMore && products.length > 0 ? (
+                  <p className="theme-subtext py-3 text-center text-[11px]">
+                    {searching ? "End of search results" : "All menu items loaded"}
+                  </p>
+                ) : null}
+              </>
+            )}
+          </div>
+
+          <HotelPosStatusFooter user={user} heldCount={heldCount} version="1.0.0" />
+        </div>
+
+        <div className="hotel-pos-check-pane flex min-h-0 w-full flex-col lg:w-[min(100%,26rem)] xl:w-[30rem] shrink-0">
+          <div className="shrink-0 space-y-3 border-b border-[var(--theme-border)] px-4 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--theme-accent-text)]">
+                  Check
+                </p>
+                <p className="theme-heading mt-0.5 font-mono text-lg font-semibold">
+                  {check?.check_number ?? "New"}
+                </p>
+              </div>
+              <span className="hotel-pos-status-pill rounded-full px-3 py-1 text-[11px] font-semibold capitalize">
+                {check?.status ?? "ready"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {SERVICE_MODES.map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  aria-pressed={serviceMode === mode.id}
+                  onClick={() => setServiceMode(mode.id)}
+                  className={`hotel-pos-service-mode${
+                    serviceMode === mode.id ? " hotel-pos-service-mode-active" : ""
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              {showTableField ? (
+                <div className={showGuestField || roomChargeEnabled ? undefined : "sm:col-span-2"}>
                   <label className="sr-only" htmlFor="hotel-pos-table-select">
                     Choose table
                   </label>
@@ -758,136 +984,55 @@ export function HotelBarPosScreen() {
                   </select>
                 </div>
               ) : null}
-              <div className={tablePosEnabled ? "sm:col-span-9" : undefined}>
-                <label className="sr-only" htmlFor="hotel-pos-search-item">
-                  Search item
-                </label>
-                <input
-                  id="hotel-pos-search-item"
-                  ref={searchRef}
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search item…"
-                  className="theme-input hotel-pos-field w-full rounded-xl px-4 py-2.5 text-sm"
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-            {tablePosEnabled && !floorTables.length ? (
-              <p className="theme-subtext mt-1.5 text-[11px]">
-                No tables yet — enable Floor tables and add them under Operations → Outlets.
-              </p>
-            ) : null}
-            {stockDeductOnSettle ? (
-              <p className="theme-subtext mt-1.5 text-[11px] leading-relaxed">
-                Stock deduct on settle is on.{" "}
-                <Link href="/admin/hotel-settings" className="font-semibold underline">
-                  Recipes &amp; setup
-                </Link>
-              </p>
-            ) : null}
-          </div>
-
-          <div ref={catalogScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
-            {catalogLoading && !products.length ? (
-              <p className="theme-subtext py-20 text-center text-sm">Loading menu…</p>
-            ) : !products.length ? (
-              <p className="theme-subtext py-20 text-center text-sm">
-                {debouncedSearch ? "No products match your search." : "No products in catalogue yet."}
-              </p>
-            ) : (
-              <>
-                <div className="grid gap-3" style={gridStyle}>
-                  {products.map((product) => (
-                    <button
-                      key={product.product_code}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void handleTapProduct(product)}
-                      className="hotel-pos-tile group relative flex min-h-[6.5rem] flex-col justify-between overflow-hidden p-3.5 text-left transition duration-150 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50"
-                    >
-                      <div className="hotel-pos-tile-shine pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition group-hover:opacity-100" />
-                      <div className="flex min-h-0 flex-1 gap-2.5">
-                        {product.has_image || product.image_url ? (
-                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[var(--theme-surface-muted)] ring-1 ring-[var(--theme-border)]">
-                            <EntityPhotoDisplay
-                              fileUrl={productPhotoFileUrl(product.product_code)}
-                              alt={product.product_name}
-                              className="h-full w-full object-cover"
-                              placeholderClassName="flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400"
-                            />
-                          </div>
-                        ) : null}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="theme-heading line-clamp-2 text-[15px] font-semibold leading-snug">
-                              {product.product_name}
-                            </span>
-                            {product.is_popular ? (
-                              <span className="hotel-pos-top-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
-                                Top
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-end justify-between gap-2">
-                        <p className="text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
-                          {formatHotelMoney(product.unit_price)}
-                        </p>
-                        <span className="hotel-pos-add-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide opacity-80 group-hover:opacity-100">
-                          Add
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+              {showGuestField ? (
+                <div className={showTableField || roomChargeEnabled ? undefined : "sm:col-span-2"}>
+                  <label className="sr-only" htmlFor="hotel-pos-guest-name">
+                    {serviceMode === "room_service" ? "Room / guest" : "Guest name"}
+                  </label>
+                  <input
+                    id="hotel-pos-guest-name"
+                    type="text"
+                    value={guestNameDraft}
+                    onChange={(e) => setGuestNameDraft(e.target.value)}
+                    placeholder={
+                      serviceMode === "room_service"
+                        ? "Room / guest (e.g. 101 — John)"
+                        : "Guest name (optional)"
+                    }
+                    className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
+                    autoComplete="off"
+                    maxLength={160}
+                  />
                 </div>
-                <div ref={loadMoreSentinelRef} className="h-8 w-full" aria-hidden />
-                {catalogLoadingMore ? (
-                  <p className="theme-subtext py-3 text-center text-xs">Loading more…</p>
-                ) : null}
-                {!catalogHasMore && products.length > 0 ? (
-                  <p className="theme-subtext py-3 text-center text-[11px]">
-                    {searching ? "End of search results" : "All menu items loaded"}
-                  </p>
-                ) : null}
-              </>
-            )}
-          </div>
-
-          <HotelPosStatusFooter user={user} heldCount={heldCount} version="1.0.0" />
-        </div>
-
-        <div className="hotel-pos-check-pane flex min-h-0 w-full flex-col lg:w-[min(100%,26rem)] xl:w-[30rem] shrink-0">
-          <div className="shrink-0 px-4 py-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--theme-accent-text)]">
-                  Check
-                </p>
-                <p className="theme-heading mt-0.5 font-mono text-lg font-semibold">
-                  {check?.check_number ?? "New"}
-                </p>
-              </div>
-              <span className="hotel-pos-status-pill rounded-full px-3 py-1 text-[11px] font-semibold capitalize">
-                {check?.status ?? "ready"}
-              </span>
+              ) : null}
+              {roomChargeEnabled ? (
+                <div className={showTableField || showGuestField ? undefined : "sm:col-span-2"}>
+                  <label className="sr-only" htmlFor="hotel-pos-order-type">
+                    Order type
+                  </label>
+                  <select
+                    id="hotel-pos-order-type"
+                    className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
+                    value={chargeToRoom ? "room" : "pay"}
+                    onChange={(e) => setChargeToRoom(e.target.value === "room")}
+                    disabled={!collectPayment}
+                  >
+                    <option value="pay">Collect payment</option>
+                    <option value="room">Charge to room</option>
+                  </select>
+                </div>
+              ) : null}
             </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
             {!hasLines ? (
-              <div className="hotel-pos-empty-ticket mx-2 rounded-2xl px-4 py-14 text-center">
+              <div className="hotel-pos-empty-ticket mx-2 mt-3 rounded-2xl px-4 py-14 text-center">
                 <p className="theme-heading text-sm font-semibold">Ticket is empty</p>
-                <p className="theme-subtext mt-1 text-xs">
-                  {tablePosEnabled
-                    ? "Choose a table, then tap a menu item to add it here"
-                    : "Tap a menu item to add it here"}
-                </p>
+                <p className="theme-subtext mt-1 text-xs">{emptyTicketHint}</p>
               </div>
             ) : (
-              <ul className="space-y-2 px-2 pb-2">
+              <ul className="space-y-2 px-2 py-3">
                 {lines.map((line) => {
                   const selected = selectedLineId === line.id;
                   return (
@@ -985,7 +1130,8 @@ export function HotelBarPosScreen() {
                 ) : null}
               </div>
             </div>
-            <div className={`grid gap-2 ${collectPayment ? "grid-cols-4" : "grid-cols-5"}`}>
+
+            <div className="mb-2.5 grid grid-cols-3 gap-2">
               <PosActionButton
                 label="Remove"
                 title="Remove selected line"
@@ -1001,55 +1147,48 @@ export function HotelBarPosScreen() {
                 disabled={busy || !hasLines || Number(check?.amount_paid) > 0}
                 onClick={() => void handleClear()}
               />
-              {collectPayment ? (
-                <>
-                  <PosActionButton
-                    label="Held"
-                    title="View held and unpaid checks"
-                    icon="☰"
-                    badge={heldCount}
-                    disabled={busy}
-                    onClick={() => void openCollectibleList()}
-                  />
-                  <PosActionButton
-                    label="Pay"
-                    title="Collect payment"
-                    icon="💳"
-                    disabled={busy || !hasLines}
-                    onClick={handlePrimaryComplete}
-                  />
-                </>
-              ) : (
-                <>
-                  <PosActionButton
-                    label="Hold"
-                    title="Save as unpaid"
-                    icon="⏸"
-                    iconClass="pos-cart-action-icon--warn"
-                    disabled={busy || !hasLines || !unpaidEnabled}
-                    onClick={() => void handleHold()}
-                  />
-                  <PosActionButton
-                    label="Held"
-                    title="View held and unpaid checks"
-                    icon="☰"
-                    badge={heldCount}
-                    disabled={busy}
-                    onClick={() => void openCollectibleList()}
-                  />
-                  <PosActionButton
-                    label="Save"
-                    title="Save unpaid order and print receipt"
-                    icon="✓"
-                    disabled={busy || !hasLines || !unpaidEnabled}
-                    onClick={() => void handleSaveOrder()}
-                  />
-                </>
-              )}
+              <PosActionButton
+                label="Held"
+                title="View held and unpaid checks"
+                icon="☰"
+                badge={heldCount}
+                disabled={busy}
+                onClick={() => void openCollectibleList()}
+              />
             </div>
+
+            {collectPayment ? (
+              <button
+                type="button"
+                disabled={busy || !hasLines}
+                onClick={() => void handlePrimaryComplete()}
+                className="hotel-pos-primary-cta w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+              >
+                {primaryCtaLabel}
+              </button>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  disabled={busy || !hasLines || !unpaidEnabled}
+                  onClick={() => void handleHold()}
+                  className="hotel-pos-secondary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+                >
+                  Hold
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !hasLines || !unpaidEnabled}
+                  onClick={() => void handleSaveOrder()}
+                  className="hotel-pos-primary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+                >
+                  Save
+                </button>
+              </div>
+            )}
             {collectPayment ? null : (
-              <p className="theme-subtext mt-2 text-center text-[11px]">
-                Save unpaid mode — collect payment later from Held / unpaid.
+              <p className="theme-subtext mt-2 text-center text-xs">
+                Save unpaid mode — collect payment later from Held.
               </p>
             )}
             <button
@@ -1061,7 +1200,7 @@ export function HotelBarPosScreen() {
                 !["open", "unpaid", "held"].includes(String(check?.status))
               }
               onClick={() => void handleVoid()}
-              className="hotel-pos-danger-btn mt-2 w-full rounded-xl py-2.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-40"
+              className="hotel-pos-danger-btn mt-3 w-full rounded-xl py-3.5 text-sm font-semibold uppercase tracking-wide disabled:opacity-40"
             >
               Void check
             </button>
@@ -1137,6 +1276,7 @@ export function HotelBarPosScreen() {
         allowPartial={partialEnabled}
         roomChargeEnabled={roomChargeEnabled}
         openFolios={openFolios}
+        preferRoomCharge={chargeToRoom && roomChargeEnabled}
         onComplete={handlePaymentComplete}
       />
     </div>

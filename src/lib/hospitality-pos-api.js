@@ -39,6 +39,14 @@ export async function assignHotelCheckTable(checkId, floorTableId) {
   });
 }
 
+export async function assignHotelCheckGuest(checkId, guestName) {
+  return apiRequest(`/hospitality/pos/checks/${checkId}/guest`, {
+    method: "PATCH",
+    body: { guest_name: guestName || null },
+    loading: false,
+  });
+}
+
 export async function addHotelCheckLine(checkId, productCode, qty = 1) {
   return apiRequest(`/hospitality/pos/checks/${checkId}/lines`, {
     method: "POST",

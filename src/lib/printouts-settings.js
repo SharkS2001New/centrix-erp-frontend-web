@@ -56,6 +56,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   check_receipt_copies: "1",
   show_outlet_on_check_receipt: true,
   show_organization_on_check_receipt: true,
+  enable_check_guest_name: false,
   use_same_print_phones_for_check: true,
   check_print_phones: emptyPrintPhones(),
   show_full_package_uom_on_documents: false,
@@ -311,6 +312,7 @@ export function printoutsHospitalityFormFromApi(res = {}) {
     check_receipt_copies: String(h.check_receipt_copies ?? 1),
     show_outlet_on_check_receipt: h.show_outlet_on_check_receipt !== false,
     show_organization_on_check_receipt: h.show_organization_on_check_receipt !== false,
+    enable_check_guest_name: Boolean(h.enable_check_guest_name),
     print_footer_hospitality_check: String(h.check_receipt_footer ?? "Thank you"),
     use_same_print_phones_for_check: h.use_same_print_phones_for_check !== false,
     check_print_phones: {
@@ -325,6 +327,7 @@ export function printoutsHospitalityPayloadFromForm(form) {
     check_receipt_copies: Math.min(3, Math.max(1, Number(form.check_receipt_copies) || 1)),
     show_outlet_on_check_receipt: Boolean(form.show_outlet_on_check_receipt),
     show_organization_on_check_receipt: Boolean(form.show_organization_on_check_receipt),
+    enable_check_guest_name: Boolean(form.enable_check_guest_name),
     check_receipt_footer: String(form.print_footer_hospitality_check ?? "").trim(),
     use_same_print_phones_for_check: Boolean(form.use_same_print_phones_for_check),
     check_print_phones: {

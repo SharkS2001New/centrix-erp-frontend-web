@@ -87,6 +87,7 @@ export function HotelPosPaymentPanel({
   allowPartial = false,
   roomChargeEnabled = false,
   openFolios = [],
+  preferRoomCharge = false,
 }) {
   const cfg = paymentConfig ?? {};
   const total = round2(billTotal);
@@ -120,11 +121,11 @@ export function HotelPosPaymentPanel({
     setBankRef("");
     setCheque(0);
     setChequeNo("");
-    setRoomCharge(0);
+    setRoomCharge(preferRoomCharge && roomChargeEnabled && total > 0 ? total : 0);
     setFolioId("");
     setLocalError(null);
     setKeypad(null);
-  }, [open, total]);
+  }, [open, total, preferRoomCharge, roomChargeEnabled]);
 
   useEffect(() => {
     if (error) setLocalError(error);

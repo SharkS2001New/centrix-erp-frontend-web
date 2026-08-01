@@ -959,6 +959,12 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
         checked={form.show_outlet_on_check_receipt !== false}
         onChange={(v) => setForm((f) => ({ ...f, show_outlet_on_check_receipt: v }))}
       />
+      <Toggle
+        label="Ask for guest / customer name on Hotel POS"
+        description="Off by default (same as retail checkout). When on, cashiers can enter a name on the ticket and it prints on check receipts."
+        checked={Boolean(form.enable_check_guest_name)}
+        onChange={(v) => setForm((f) => ({ ...f, enable_check_guest_name: v }))}
+      />
       <DocumentPrintPhonesFields
         form={form}
         setForm={setForm}

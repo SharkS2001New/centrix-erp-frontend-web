@@ -451,6 +451,12 @@ function match_hospitality_orders(pathname) {
   return pathname === "/hospitality/orders";
 }
 
+function match_hospitality_orders_id(pathname) {
+  const m = pathname.match("^/hospitality/orders/([^/]+)$");
+  if (!m) return false;
+  return true;
+}
+
 function match_hospitality_outlets(pathname) {
   return pathname === "/hospitality/outlets";
 }
@@ -1249,7 +1255,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "admin-hotel-settings",
-    title: "Hotel Settings",
+    title: "Hotel F&B Settings",
     route: "/admin/hotel-settings",
     match: match_admin_hotel_settings,
   },
@@ -1396,6 +1402,12 @@ export const SCREEN_REGISTRY = [
     title: "F&B Orders",
     route: "/hospitality/orders",
     match: match_hospitality_orders,
+  },
+  {
+    id: "hospitality-orders-id",
+    title: "F&B Order",
+    route: "/hospitality/orders/[id]",
+    match: match_hospitality_orders_id,
   },
   {
     id: "hospitality-outlets",

@@ -873,6 +873,7 @@ const NAV_SECTION_DEFINITIONS = [
           P.hospitality.dashboard.view,
           P.hospitality.reports.view,
           P.hotel_bar_pos.checks.view,
+          P.hospitality.settings.view,
         ],
       },
     ],
@@ -931,7 +932,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/uoms",
-        label: "Units of measure",
+        label: "Serving units",
         module: null,
         permission: P.catalogue.uoms.view,
       },
@@ -1053,7 +1054,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/admin/hotel-settings",
-        label: "Hotel settings",
+        label: "Hotel F&B settings",
         module: "hospitality.backend",
         permission: P.hospitality.settings.view,
         orgAdminOnly: true,
