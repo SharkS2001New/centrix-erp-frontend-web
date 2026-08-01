@@ -204,7 +204,8 @@ ${meta.showDiscounts ? `<div class="row"><span>Discounts</span><span>${kesNum(s.
 ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.opening_float)}</span></div>` : ""}
 ${Number(s.cash_movements_out) > 0 ? `<div class="row"><span>Safe drops</span><span>-${kesNum(s.cash_movements_out)}</span></div>` : ""}
 ${Number(s.cash_movements_in) > 0 ? `<div class="row"><span>Cash in</span><span>${kesNum(s.cash_movements_in)}</span></div>` : ""}
-${Number(meta.totalExpenses ?? s.session_expenses) > 0 ? `<div class="row"><span>Expenses</span><span>-${kesNum(meta.totalExpenses ?? s.session_expenses)}</span></div>` : ""}
+<div class="row"><span>Invoice sales (paid debtors)</span><span>${kesNum(s.paid_debtors)}</span></div>
+<div class="row"><span>Expenses</span><span>-${kesNum(meta.totalExpenses ?? s.session_expenses)}</span></div>
 ${meta.showFloat ? `<div class="row"><span>Expected net sales</span><span>${kesNum(resolveExpectedNetSales({
   openingFloat: s.opening_float,
   totalSales: s.net_sales,
@@ -243,13 +244,9 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   if (requireTillFloat) push("Sales", "Opening float", kesNum(s.opening_float));
   if (Number(s.cash_movements_out) > 0) push("Sales", "Safe drops", `-${kesNum(s.cash_movements_out)}`);
   if (Number(s.cash_movements_in) > 0) push("Sales", "Cash in", kesNum(s.cash_movements_in));
-  if (Number(report?.total_expenses ?? s.session_expenses) > 0) {
-    push("Sales", "Expenses", `-${kesNum(report?.total_expenses ?? s.session_expenses)}`);
-  }
+  push("Sales", "Expenses", `-${kesNum(report?.total_expenses ?? s.session_expenses ?? 0)}`);
   if (requireTillFloat) {
-    if (Number(s.paid_debtors) > 0) {
-      push("Sales", "Invoice sales (paid debtors)", kesNum(s.paid_debtors));
-    }
+    push("Sales", "Invoice sales (paid debtors)", kesNum(s.paid_debtors ?? 0));
     push(
       "Sales",
       "Expected net sales",
@@ -300,20 +297,11 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   for (const row of report?.expenses ?? []) {
     push("Expenses", expenseSummaryRowLabel(row), kesNum(row.amount));
   }
-  if ((report?.expenses ?? []).length) {
-    push("Expenses", "Total expenses", kesNum(report.total_expenses));
-  }
+  push("Expenses", "Total expenses", kesNum(report?.total_expenses ?? 0));
 
-  if (report?.debtors) {
-    const newCredit = Number(report.debtors.new_credit_sales ?? 0);
-    const paymentsReceived = Number(report.debtors.payments_received ?? 0);
-    const closing = Number(report.debtors.closing ?? 0);
-    if (newCredit > 0 || paymentsReceived > 0 || closing > 0) {
-      if (newCredit > 0) push("Debtors", "New credit sales", kesNum(newCredit));
-      if (paymentsReceived > 0) push("Debtors", "Payments received", kesNum(paymentsReceived));
-      if (closing > 0) push("Debtors", "Closing debtors", kesNum(closing));
-    }
-  }
+  push("Debtors", "New credit sales", kesNum(report?.debtors?.new_credit_sales ?? 0));
+  push("Debtors", "Payments received", kesNum(report?.debtors?.payments_received ?? 0));
+  push("Debtors", "Closing debtors", kesNum(report?.debtors?.closing ?? 0));
 
   if (requireTillFloat && report?.net_position != null) {
     push("Net position", "Expected closing", kesNum(report.net_position));
@@ -712,9 +700,7 @@ export function EndOfDayReportScreen() {
                 hint="Paid sales + paid debtors + float − expenses"
               />
             ) : null}
-            {Number(report?.total_expenses) > 0 ? (
-              <StatCard label="Total expenses" value={formatTillKes(report.total_expenses)} hint="Till session expenses" />
-            ) : null}
+            <StatCard label="Total expenses" value={formatTillKes(report?.total_expenses ?? 0)} hint="Till session expenses" />
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -738,13 +724,17 @@ export function EndOfDayReportScreen() {
               {Number(summary.cash_movements_in) > 0 ? (
                 <SummaryRow label="Cash in" value={formatTillKes(summary.cash_movements_in)} tone="success" />
               ) : null}
-              {Number(report?.total_expenses ?? summary.session_expenses) > 0 ? (
+              {requireTillFloat ? (
                 <SummaryRow
-                  label="Expenses"
-                  value={`-${formatTillKes(report?.total_expenses ?? summary.session_expenses)}`}
-                  tone="danger"
+                  label="Invoice sales (paid debtors)"
+                  value={formatTillKes(summary.paid_debtors ?? 0)}
                 />
               ) : null}
+              <SummaryRow
+                label="Expenses"
+                value={`-${formatTillKes(report?.total_expenses ?? summary.session_expenses ?? 0)}`}
+                tone="danger"
+              />
               {requireTillFloat ? (
                 <div className="mt-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-primary-subtle)] px-3 py-2">
                   <SummaryRow
@@ -932,7 +922,6 @@ export function EndOfDayReportScreen() {
               </Panel>
             ) : null}
 
-            {Number(report?.total_expenses ?? 0) > 0 || (report.expenses ?? []).length > 0 ? (
             <Panel
               title="Expenses summary"
               action={
@@ -942,7 +931,7 @@ export function EndOfDayReportScreen() {
               }
             >
               {(report.expenses ?? []).length === 0 ? (
-                <p className="theme-subtext text-sm">No expenses recorded.</p>
+                <SummaryRow label="Total expenses" value={formatTillKes(0)} bold />
               ) : (
                 <>
                   <table className="w-full border-collapse text-sm">
@@ -961,25 +950,14 @@ export function EndOfDayReportScreen() {
                 </>
               )}
             </Panel>
-            ) : null}
 
-            {Number(report.debtors?.new_credit_sales ?? 0) > 0
-              || Number(report.debtors?.payments_received ?? 0) > 0
-              || Number(report.debtors?.closing ?? 0) > 0 ? (
             <Panel title="Debtor summary">
-              {Number(report.debtors?.new_credit_sales ?? 0) > 0 ? (
-                <SummaryRow label="New sales (credit)" value={formatTillKes(report.debtors?.new_credit_sales)} />
-              ) : null}
-              {Number(report.debtors?.payments_received ?? 0) > 0 ? (
-                <SummaryRow label="Payments received" value={formatTillKes(report.debtors?.payments_received)} tone="success" />
-              ) : null}
-              {Number(report.debtors?.closing ?? 0) > 0 ? (
-                <div className="mt-2 border-t border-[var(--theme-border)] pt-2">
-                  <SummaryRow label="Credit outstanding" value={formatTillKes(report.debtors?.closing)} tone="danger" bold />
-                </div>
-              ) : null}
+              <SummaryRow label="New sales (credit)" value={formatTillKes(report.debtors?.new_credit_sales ?? 0)} />
+              <SummaryRow label="Payments received" value={formatTillKes(report.debtors?.payments_received ?? 0)} tone="success" />
+              <div className="mt-2 border-t border-[var(--theme-border)] pt-2">
+                <SummaryRow label="Credit outstanding" value={formatTillKes(report.debtors?.closing ?? 0)} tone="danger" bold />
+              </div>
             </Panel>
-            ) : null}
           </div>
 
           {isMonthly && (report?.daily_breakdown ?? []).length > 0 ? (

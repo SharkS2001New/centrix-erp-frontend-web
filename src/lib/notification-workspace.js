@@ -8,7 +8,7 @@ const MODULES_BY_WORKSPACE = {
   admin: ["admin"],
   pos: ["sales"],
   hotel_bar_pos: ["hospitality"],
-  hospitality_backoffice: ["hospitality"],
+  hospitality_backoffice: ["hospitality", "purchasing", "inventory"],
   distribution: [],
 };
 
@@ -20,7 +20,16 @@ const MODULES_BY_WORKSPACE = {
 const PREFIXES_BY_WORKSPACE = {
   pos: ["/pos", "/sales/pos"],
   hotel_bar_pos: ["/hotel-bar-pos"],
-  hospitality_backoffice: ["/hospitality"],
+  hospitality_backoffice: [
+    "/hospitality",
+    "/inventory",
+    "/products",
+    "/categories",
+    "/uoms",
+    "/suppliers",
+    "/lpo",
+    "/purchases",
+  ],
   backoffice: [
     "/dashboard",
     "/sales",
@@ -93,7 +102,18 @@ export function notificationBelongsToWorkspace(item, workspaceId) {
 
   const requestType = String(item?.action_request?.type ?? "").toLowerCase();
   if (requestType && BACKOFFICE_ONLY_REQUEST_TYPES.has(requestType)) {
-    return workspaceId === "backoffice" || (workspaceId === "pos" && requestType === "discount");
+    if (workspaceId === "backoffice") return true;
+    if (workspaceId === "pos" && requestType === "discount") return true;
+    // Hotel backoffice owns LPO / stock approvals for hospitality tenants.
+    if (
+      workspaceId === "hospitality_backoffice" &&
+      ["lpo", "lpo_approval", "stock_adjustment", "stock_transfer", "stock_take", "damage", "supplier_return"].includes(
+        requestType,
+      )
+    ) {
+      return true;
+    }
+    return false;
   }
 
   if (isDiscountLikeNotification(item)) {

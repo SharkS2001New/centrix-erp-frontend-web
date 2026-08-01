@@ -13,7 +13,11 @@ export const WORKSPACE_REPORT_MODULES = {
   accounting: ["accounting.reports"],
   hr: ["hr_payroll.reports"],
   distribution: ["distribution.reports"],
-  hospitality_backoffice: ["hospitality.reports"],
+  hospitality_backoffice: [
+    "hospitality.reports",
+    "inventory.reports",
+    "customers_suppliers.reports",
+  ],
 };
 
 /** All product workspaces expose /reports as Report overview. */
@@ -25,7 +29,7 @@ export const WORKSPACE_ANALYTICS_HREFS = {
   accounting: ["/accounting"],
   hr: ["/hr"],
   distribution: ["/fulfillment"],
-  hospitality_backoffice: ["/hospitality"],
+  hospitality_backoffice: ["/hospitality", "/inventory"],
 };
 
 /** KPI / chart scopes for embedded analytics sections. */

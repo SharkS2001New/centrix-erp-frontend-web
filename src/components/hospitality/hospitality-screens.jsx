@@ -19,6 +19,12 @@ const DASHBOARD_LINKS = [
   { href: "/hospitality/housekeeping", label: "Housekeeping", service: "housekeeping" },
   { href: "/hospitality/outlets", label: "Outlets & tables", service: null },
   { href: "/hospitality/night-audit", label: "Night audit", service: "night_audit" },
+  { href: "/products", label: "Products catalogue", service: null },
+  { href: "/lpo", label: "Purchase orders (LPO)", service: null },
+  { href: "/lpo/new", label: "New LPO", service: null },
+  { href: "/inventory/receipts/receive", label: "Receive stock", service: null },
+  { href: "/inventory/receipts", label: "Goods received", service: null },
+  { href: "/inventory/stock", label: "Stock on hand", service: null },
   { href: "/hospitality/settings", label: "Settings & F&B stock", service: null },
 ];
 
@@ -56,7 +62,7 @@ export function HospitalityDashboardScreen() {
   return (
     <CatalogPageShell
       title="Hospitality"
-      subtitle="Rooms, front desk, folios, and Hotel POS — separate from retail sales."
+      subtitle="Hotel operations plus menu products, LPO, and stock receiving — without the retail backoffice."
     >
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -96,6 +96,10 @@ export function isProvisionableWorkspaceEnabled(workspace, enabledModules = {}) 
     case "pos":
       return Boolean(enabledModules["sales.pos"]);
     case "backoffice":
+      // Retail backoffice. Do not treat hotel inventory/purchasing as retail Backoffice.
+      if (Boolean(enabledModules["hospitality.backend"]) || Boolean(enabledModules["hospitality.bar_pos"])) {
+        return Boolean(enabledModules["sales.backend"]);
+      }
       return (
         Boolean(enabledModules["sales.backend"]) ||
         Boolean(enabledModules.inventory) ||
@@ -193,11 +197,6 @@ function disableWorkspacePatch(workspaceId) {
         "hospitality.backend": false,
         "hospitality.dashboard": false,
         "hospitality.reports": false,
-        inventory: false,
-        "inventory.dashboard": false,
-        "inventory.reports": false,
-        customers_suppliers: false,
-        "customers_suppliers.reports": false,
       };
     case "distribution":
       return { distribution: false };

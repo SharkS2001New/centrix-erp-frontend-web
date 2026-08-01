@@ -189,7 +189,7 @@ export function HospitalitySettingsScreen() {
       });
       setStockForm(hospitalityStockFormFromApi(res));
       setSetupGuide(res?.setup_guide ?? null);
-      notifySuccess("Hospitality stock settings saved");
+      notifySuccess("Hospitality settings saved");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not save settings");
     } finally {
@@ -403,6 +403,85 @@ export function HospitalitySettingsScreen() {
                   onClick={() => void saveStockSettings()}
                 >
                   {saving ? "Saving…" : "Save stock settings"}
+                </PrimaryButton>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section id="pos-email-reports" className="space-y-3">
+          <h2 className="theme-heading text-base font-semibold">POS maths email reports</h2>
+          <p className="theme-subtext text-sm">
+            Send Hotel &amp; Bar receipts and cashier totals to as many email addresses as you need.
+            Hourly emails list every receipt sold in that hour plus running day totals per cashier up to
+            that hour. Daily emails send the full day rollup. Optional: email each receipt as soon as it
+            is settled.
+          </p>
+          <div className="space-y-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4">
+            <Toggle
+              disabled={!canEdit || saving}
+              checked={stockForm.pos_email_enabled}
+              onChange={(v) => setStockForm((f) => ({ ...f, pos_email_enabled: v }))}
+              label="Enable Hotel POS maths emails"
+              description="Requires organization email / SMTP to be configured under Notifications."
+            />
+            <Toggle
+              disabled={!canEdit || saving || !stockForm.pos_email_enabled}
+              checked={stockForm.pos_email_send_hourly}
+              onChange={(v) => setStockForm((f) => ({ ...f, pos_email_send_hourly: v }))}
+              label="Send hourly digest"
+              description="At the top of each hour: receipts sold in the previous hour + running totals per cashier for the day so far."
+            />
+            <Toggle
+              disabled={!canEdit || saving || !stockForm.pos_email_enabled}
+              checked={stockForm.pos_email_send_daily}
+              onChange={(v) => setStockForm((f) => ({ ...f, pos_email_send_daily: v }))}
+              label="Send daily end-of-day maths"
+              description="Full-day receipts and cashier totals at the time below."
+            />
+            <Field label="Daily email time (24h)">
+              <input
+                type="time"
+                className={inputClassName()}
+                disabled={
+                  !canEdit ||
+                  saving ||
+                  !stockForm.pos_email_enabled ||
+                  !stockForm.pos_email_send_daily
+                }
+                value={stockForm.pos_email_daily_at}
+                onChange={(e) => setStockForm((f) => ({ ...f, pos_email_daily_at: e.target.value }))}
+              />
+            </Field>
+            <Toggle
+              disabled={!canEdit || saving || !stockForm.pos_email_enabled}
+              checked={stockForm.pos_email_send_on_settle}
+              onChange={(v) => setStockForm((f) => ({ ...f, pos_email_send_on_settle: v }))}
+              label="Email each receipt as soon as it is settled"
+              description="Sends the receipt lines plus that cashier’s day-to-date totals immediately when a check is paid."
+            />
+            <Field label="Email recipients (comma or newline separated — add as many as you need)">
+              <textarea
+                className={`${inputClassName()} min-h-[88px]`}
+                disabled={!canEdit || saving || !stockForm.pos_email_enabled}
+                placeholder="owner@hotel.com, accounts@hotel.com, manager@hotel.com"
+                value={stockForm.pos_email_recipients_text}
+                onChange={(e) =>
+                  setStockForm((f) => ({ ...f, pos_email_recipients_text: e.target.value }))
+                }
+              />
+              <p className="theme-subtext mt-1 text-xs">
+                Up to 50 addresses. Invalid emails are dropped when saving.
+              </p>
+            </Field>
+            {canEdit ? (
+              <div className="pt-2">
+                <PrimaryButton
+                  showIcon={false}
+                  disabled={saving}
+                  onClick={() => void saveStockSettings()}
+                >
+                  {saving ? "Saving…" : "Save email report settings"}
                 </PrimaryButton>
               </div>
             ) : null}
