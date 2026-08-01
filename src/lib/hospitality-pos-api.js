@@ -109,6 +109,12 @@ export async function saveHotelCheck(checkId, { floor_table_id } = {}) {
   });
 }
 
+export async function voidHotelCheck(checkId) {
+  return apiRequest(`/hospitality/pos/checks/${checkId}/void`, {
+    method: "POST",
+  });
+}
+
 export async function listCollectibleHotelChecks() {
   return apiRequest("/hospitality/pos/checks/collectible", { loading: false });
 }

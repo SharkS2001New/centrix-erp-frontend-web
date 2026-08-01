@@ -15,6 +15,7 @@ import {
   printoutsDistributionPayloadFromForm,
   printoutsFormFromApis,
   printoutsGeneralPayloadFromForm,
+  printoutsHospitalityPayloadFromForm,
   printoutsProcurementPayloadFromForm,
   printoutsSalesPayloadFromForm,
   resolvePrintoutSections,
@@ -75,6 +76,7 @@ const PRINTOUT_TABS = [
   { id: "receipt", label: "Thermal receipts", requiresSales: true },
   { id: "invoice", label: "A4 invoices", requiresSales: true },
   { id: "proforma", label: "Proforma", requiresSales: true },
+  { id: "hospitality_check", label: "Hotel checks", requiresHospitality: true },
   { id: "lpo", label: "LPO", requiresProcurement: true },
   { id: "loading_sheet", label: "Loading sheets", requiresRoutePrintouts: true },
   { id: "picking_list", label: "Picking lists", requiresRoutePrintouts: true },
@@ -293,7 +295,9 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
               </li>
             ))
           ) : (
-            <li className="text-slate-500">Enable Sales or Procurement to configure printouts.</li>
+            <li className="text-slate-500">
+              Enable Sales, Hospitality, or Procurement to configure printouts.
+            </li>
           )}
         </ul>
         <p className="mt-2 text-xs text-slate-500">{routeNote}</p>
@@ -926,6 +930,57 @@ function TripChartListsTab({ form, setForm }) {
   );
 }
 
+function HospitalityCheckTab({ form, setForm, organization = null }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeading
+        title="Hotel & Bar check receipts"
+        description="Independent from retail thermal / A4 sales printouts. Used when Hotel POS prints unpaid or paid checks."
+      />
+      <Field label="Receipt copies">
+        <select
+          className={inputClassName()}
+          value={form.check_receipt_copies}
+          onChange={(e) => setForm((f) => ({ ...f, check_receipt_copies: e.target.value }))}
+        >
+          <option value="1">Single receipt</option>
+          <option value="2">Double receipt</option>
+          <option value="3">Triple receipt</option>
+        </select>
+      </Field>
+      <Toggle
+        label="Show organization name on check receipts"
+        checked={form.show_organization_on_check_receipt !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_organization_on_check_receipt: v }))}
+      />
+      <Toggle
+        label="Show outlet / channel on check receipts"
+        description="Prints the Bar or Hotel outlet name tied to the check."
+        checked={form.show_outlet_on_check_receipt !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_outlet_on_check_receipt: v }))}
+      />
+      <DocumentPrintPhonesFields
+        form={form}
+        setForm={setForm}
+        useSameKey="use_same_print_phones_for_check"
+        phonesKey="check_print_phones"
+        organization={organization}
+        title="Phone numbers on hotel checks"
+        description="Defaults to company Tel 1 / Tel 2. Override for hotel front desk or bar numbers if needed."
+      />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Check receipt footer"
+          description="Closing line on Hotel POS check receipts (separate from retail receipt footers)."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="hospitality_check" form={form} setForm={setForm} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PayrollReceiptsTab({ form, setForm }) {
   return (
     <div className="space-y-3">
@@ -989,7 +1044,15 @@ export function PrintoutsSettingsPanel({
   const [activeTab, setActiveTab] = useState("general");
 
   const sections = resolvePrintoutSections(capabilities);
-  const { hasSales, hasProcurement, hasMobileSales, hasRoutePrintouts, hasDistribution, hasHrPayroll } = sections;
+  const {
+    hasSales,
+    hasHospitality,
+    hasProcurement,
+    hasMobileSales,
+    hasRoutePrintouts,
+    hasDistribution,
+    hasHrPayroll,
+  } = sections;
   const orderFormat = form?.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
 
@@ -997,6 +1060,7 @@ export function PrintoutsSettingsPanel({
     () =>
       PRINTOUT_TABS.filter((tab) => {
         if (tab.requiresSales && !hasSales) return false;
+        if (tab.requiresHospitality && !hasHospitality) return false;
         if (tab.id === "receipt" && (!hasSales || !showThermal)) return false;
         if (tab.id === "invoice" && (!hasSales || !showA4)) return false;
         if (tab.requiresProcurement && !hasProcurement) return false;
@@ -1004,7 +1068,7 @@ export function PrintoutsSettingsPanel({
         if (tab.requiresHrPayroll && !hasHrPayroll) return false;
         return true;
       }),
-    [hasHrPayroll, hasProcurement, hasRoutePrintouts, hasSales, showA4, showThermal],
+    [hasHospitality, hasHrPayroll, hasProcurement, hasRoutePrintouts, hasSales, showA4, showThermal],
   );
 
   useEffect(() => {
@@ -1040,10 +1104,11 @@ export function PrintoutsSettingsPanel({
       // Loading-sheet column flags live under distribution settings, but the API is also
       // available when sales.mobile is on (field-sales loading/picking without Distribution).
       const canLoadDistributionPrint = hasDistribution || hasMobileSales;
-      const [generalResult, salesResult, procurementResult, distributionResult] =
+      const [generalResult, salesResult, hospitalityResult, procurementResult, distributionResult] =
         await Promise.allSettled([
           apiRequest(settingsPath("general")),
           hasSales ? apiRequest(settingsPath("sales")) : Promise.resolve(null),
+          hasHospitality ? apiRequest(settingsPath("hospitality")) : Promise.resolve(null),
           hasProcurement ? apiRequest(settingsPath("procurement")) : Promise.resolve(null),
           canLoadDistributionPrint
             ? apiRequest(settingsPath("distribution"))
@@ -1057,6 +1122,7 @@ export function PrintoutsSettingsPanel({
         nextForm = printoutsFormFromApis({
           generalRes: valueFrom(generalResult),
           salesRes: valueFrom(salesResult),
+          hospitalityRes: valueFrom(hospitalityResult),
           procurementRes: valueFrom(procurementResult),
           distributionRes: valueFrom(distributionResult),
         });
@@ -1075,6 +1141,7 @@ export function PrintoutsSettingsPanel({
       const failures = [
         generalResult.status === "rejected" ? "general" : null,
         salesResult.status === "rejected" ? "sales" : null,
+        hospitalityResult.status === "rejected" ? "hospitality" : null,
         procurementResult.status === "rejected" ? "procurement" : null,
         (hasDistribution || hasMobileSales) && distributionResult.status === "rejected"
           ? "distribution"
@@ -1082,9 +1149,13 @@ export function PrintoutsSettingsPanel({
       ].filter(Boolean);
 
       if (failures.length > 0) {
-        const firstError = [generalResult, salesResult, procurementResult, distributionResult].find(
-          (result) => result.status === "rejected",
-        )?.reason;
+        const firstError = [
+          generalResult,
+          salesResult,
+          hospitalityResult,
+          procurementResult,
+          distributionResult,
+        ].find((result) => result.status === "rejected")?.reason;
         const detail =
           firstError instanceof ApiError
             ? firstError.message
@@ -1106,7 +1177,7 @@ export function PrintoutsSettingsPanel({
     } finally {
       setLoading(false);
     }
-  }, [hasDistribution, hasMobileSales, hasProcurement, hasSales, setError, settingsPath]);
+  }, [hasDistribution, hasHospitality, hasMobileSales, hasProcurement, hasSales, setError, settingsPath]);
 
   useEffect(() => {
     load();
@@ -1135,6 +1206,16 @@ export function PrintoutsSettingsPanel({
             apiRequest(settingsPath("sales"), {
               method: "PATCH",
               body: printoutsSalesPayloadFromForm(form),
+            }),
+        });
+      }
+      if (hasHospitality) {
+        steps.push({
+          label: "hospitality",
+          run: () =>
+            apiRequest(settingsPath("hospitality"), {
+              method: "PATCH",
+              body: printoutsHospitalityPayloadFromForm(form),
             }),
         });
       }
@@ -1214,6 +1295,11 @@ export function PrintoutsSettingsPanel({
     if (activeTab === "proforma" && hasSales) {
       return <ProformaInvoicesTab form={form} setForm={setForm} organization={organization} />;
     }
+    if (activeTab === "hospitality_check" && hasHospitality) {
+      return (
+        <HospitalityCheckTab form={form} setForm={setForm} organization={organization} />
+      );
+    }
     if (activeTab === "lpo" && hasProcurement) {
       return <LpoPrintoutsTab form={form} setForm={setForm} organization={organization} />;
     }
@@ -1239,7 +1325,7 @@ export function PrintoutsSettingsPanel({
 
     return (
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        Sales, procurement, route, and payroll printout options appear here when those features are enabled for
+        Sales, hospitality, procurement, route, and payroll printout options appear here when those features are enabled for
         your organization.
       </p>
     );

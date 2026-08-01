@@ -1,4 +1,9 @@
-/** Hotel & Bar POS layout helpers — platform-controlled grid density. */
+/** Hotel & Bar POS layout helpers — platform-controlled grid density + theme. */
+
+import {
+  normalizeHotelPosThemeTemplate,
+  resolveHotelPosThemeTemplate,
+} from "@/lib/hotel-pos-theme-templates";
 
 export const HOTEL_POS_GRID_COLUMNS_DEFAULT = 4;
 export const HOTEL_POS_GRID_COLUMNS_ALLOWED = [4, 5];
@@ -34,12 +39,18 @@ export function resolveHotelPosSettings(moduleSettingsOrCapabilities = null) {
     ),
     stockDeductOnSettle: Boolean(hospitality?.stock_deduct_on_settle),
     blockSettleIfInsufficient: hospitality?.block_settle_if_insufficient !== false,
+    themeTemplate: normalizeHotelPosThemeTemplate(
+      hospitality?.hotel_pos_theme_template ??
+        moduleSettingsOrCapabilities?.hotel_pos_theme_template,
+    ),
   };
 }
 
 export function resolveHotelPosGridColumns(moduleSettingsOrCapabilities = null) {
   return resolveHotelPosSettings(moduleSettingsOrCapabilities).gridColumns;
 }
+
+export { resolveHotelPosThemeTemplate };
 
 export function formatHotelMoney(amount) {
   const n = Number(amount);

@@ -74,11 +74,20 @@ export const REPORT_MODULE_BY_SLUG = {
   "hr-dashboard-kpi": "hr_payroll.reports",
 
   "hospitality-occupancy": "hospitality.reports",
+  "hospitality-kpi-occupancy": "hospitality.reports",
   "hospitality-arrivals-departures": "hospitality.reports",
   "hospitality-folio-balances": "hospitality.reports",
+  "hospitality-room-revenue": "hospitality.reports",
   "hospitality-fnb-checks": "hospitality.reports",
+  "hospitality-fnb-by-outlet": "hospitality.reports",
+  "hospitality-fnb-by-hour": "hospitality.reports",
+  "hospitality-fnb-by-category": "hospitality.reports",
+  "hospitality-open-checks": "hospitality.reports",
+  "hospitality-voids": "hospitality.reports",
+  "hospitality-manager-flash": "hospitality.reports",
   "hospitality-profit-loss": "hospitality.reports",
   "hospitality-eod-cashier": "hospitality.reports",
+  "hospitality-consumption-variance": "hospitality.reports",
 };
 
 /** @param {string} slug */

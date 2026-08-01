@@ -1,7 +1,7 @@
 import { HotelBarPosShell } from "@/components/layout/hotel-bar-pos-shell";
 
 export const metadata = {
-  title: "Hotel & Bar POS",
+  title: "Hotel POS",
   description: "Centrix hospitality front POS",
 };
 

@@ -20,12 +20,17 @@ import {
   saveHotelCheck,
   settleHotelCheck,
   updateHotelCheckLineQty,
+  voidHotelCheck,
 } from "@/lib/hospitality-pos-api";
 import {
   formatHotelMoney,
   normalizeHotelPosGridColumns,
   resolveHotelPosSettings,
 } from "@/lib/hotel-pos-settings";
+import {
+  hotelPosThemeCssVars,
+  normalizeHotelPosThemeTemplate,
+} from "@/lib/hotel-pos-theme-templates";
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
@@ -41,13 +46,15 @@ function dedupeError(e) {
 }
 
 export function HotelBarPosScreen() {
-  const { capabilities, user } = useAuth();
+  const { capabilities, user, organization } = useAuth();
   const hotelSettings = resolveHotelPosSettings(capabilities);
   const paymentWorkflow = resolveHospitalityPaymentWorkflow(capabilities);
   const [gridColumns, setGridColumns] = useState(hotelSettings.gridColumns);
   const [collectPayment, setCollectPayment] = useState(hotelSettings.collectPayment);
   const [catalogLimit, setCatalogLimit] = useState(hotelSettings.catalogLimit);
   const [stockDeductOnSettle, setStockDeductOnSettle] = useState(hotelSettings.stockDeductOnSettle);
+  const [themeTemplate, setThemeTemplate] = useState(hotelSettings.themeTemplate);
+  const [checkPrintSettings, setCheckPrintSettings] = useState(null);
   const [tablePosEnabled, setTablePosEnabled] = useState(
     isHospitalityServiceEnabled(capabilities, "table_pos"),
   );
@@ -94,6 +101,7 @@ export function HotelBarPosScreen() {
     setCollectPayment(hotelSettings.collectPayment);
     setCatalogLimit(hotelSettings.catalogLimit);
     setStockDeductOnSettle(hotelSettings.stockDeductOnSettle);
+    setThemeTemplate(hotelSettings.themeTemplate);
     setTablePosEnabled(isHospitalityServiceEnabled(capabilities, "table_pos"));
     setRoomChargeEnabled(isHospitalityServiceEnabled(capabilities, "room_charge"));
     setUnpaidEnabled(paymentWorkflow.unpaid);
@@ -103,6 +111,7 @@ export function HotelBarPosScreen() {
     hotelSettings.collectPayment,
     hotelSettings.catalogLimit,
     hotelSettings.stockDeductOnSettle,
+    hotelSettings.themeTemplate,
     capabilities,
     paymentWorkflow.unpaid,
     paymentWorkflow.partially_paid,
@@ -116,6 +125,19 @@ export function HotelBarPosScreen() {
         if (cancelled) return;
         if (settings?.hotel_pos_collect_payment != null) {
           setCollectPayment(Boolean(settings.hotel_pos_collect_payment));
+        }
+        if (settings?.hotel_pos_theme_template) {
+          setThemeTemplate(normalizeHotelPosThemeTemplate(settings.hotel_pos_theme_template));
+        }
+        if (settings) {
+          setCheckPrintSettings({
+            check_receipt_copies: settings.check_receipt_copies ?? 1,
+            show_outlet_on_check_receipt: settings.show_outlet_on_check_receipt !== false,
+            show_organization_on_check_receipt: settings.show_organization_on_check_receipt !== false,
+            check_receipt_footer: settings.check_receipt_footer ?? "Thank you",
+            use_same_print_phones_for_check: settings.use_same_print_phones_for_check !== false,
+            check_print_phones: settings.check_print_phones ?? { tel1: "", tel2: "" },
+          });
         }
         if (settings?.table_pos_enabled != null) {
           setTablePosEnabled(Boolean(settings.table_pos_enabled));
@@ -323,6 +345,29 @@ export function HotelBarPosScreen() {
     }
   }
 
+  async function handleVoid() {
+    if (!check?.id || busy) return;
+    if (Number(check.amount_paid) > 0) {
+      notifyError("Cannot void a check that has payments.");
+      return;
+    }
+    if (!["open", "unpaid", "held"].includes(String(check.status))) {
+      notifyError("Only open or unpaid checks can be voided.");
+      return;
+    }
+    if (!window.confirm(`Void check ${check.check_number}? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await voidHotelCheck(check.id);
+      notifySuccess(`Check ${check.check_number} voided.`);
+      await startFreshCheck();
+    } catch (e) {
+      notifyError(dedupeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleHold() {
     if (!check?.id || !check.lines?.length || busy) return;
     if (!unpaidEnabled) {
@@ -333,7 +378,11 @@ export function HotelBarPosScreen() {
     try {
       await ensureTableAssigned(check);
       const res = await holdHotelCheck(check.id);
-      printHospitalityCheckReceipt(res?.check ?? check, { title: "Unpaid order" });
+      printHospitalityCheckReceipt(res?.check ?? check, {
+        title: "Unpaid order",
+        organization,
+        printSettings: checkPrintSettings,
+      });
       notifySuccess(`Order ${check.check_number} saved unpaid.`);
       await startFreshCheck();
     } catch (e) {
@@ -355,7 +404,11 @@ export function HotelBarPosScreen() {
       const res = await saveHotelCheck(check.id, {
         floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
       });
-      printHospitalityCheckReceipt(res?.check ?? check, { title: "Unpaid order" });
+      printHospitalityCheckReceipt(res?.check ?? check, {
+        title: "Unpaid order",
+        organization,
+        printSettings: checkPrintSettings,
+      });
       notifySuccess(`Order ${check.check_number} saved unpaid — receipt printed.`);
       await startFreshCheck();
     } catch (e) {
@@ -445,12 +498,20 @@ export function HotelBarPosScreen() {
       const next = res?.check;
       const status = next?.status;
       if (status === "paid" || status === "settled") {
-        printHospitalityCheckReceipt(next, { title: "Paid receipt" });
+        printHospitalityCheckReceipt(next, {
+          title: "Paid receipt",
+          organization,
+          printSettings: checkPrintSettings,
+        });
         notifySuccess(`Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`);
         setPayOpen(false);
         await startFreshCheck();
       } else {
-        printHospitalityCheckReceipt(next, { title: "Partial payment" });
+        printHospitalityCheckReceipt(next, {
+          title: "Partial payment",
+          organization,
+          printSettings: checkPrintSettings,
+        });
         notifySuccess(
           `Partial payment on ${next?.check_number ?? ""} — balance ${formatHotelMoney(next?.balance_due)}`,
         );
@@ -494,18 +555,24 @@ export function HotelBarPosScreen() {
     () => ({ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }),
     [gridColumns],
   );
+  const themeVars = useMemo(() => hotelPosThemeCssVars(themeTemplate), [themeTemplate]);
 
   return (
-    <div className="hotel-pos-root flex min-h-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(1200px_600px_at_10%_-10%,color-mix(in_srgb,var(--theme-primary)_18%,transparent),transparent),var(--theme-page-bg)]">
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col border-b border-[var(--theme-border)]/80 lg:border-b-0 lg:border-r">
-          <div className="shrink-0 px-4 pb-3 pt-4 sm:px-5">
+    <div
+      className="hotel-pos-root relative flex min-h-0 flex-1 flex-col overflow-hidden"
+      data-hotel-pos-theme={themeTemplate}
+      style={themeVars}
+    >
+      <div className="hotel-pos-atmosphere pointer-events-none absolute inset-0" aria-hidden />
+      <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden">
+        <div className="hotel-pos-menu-pane flex min-h-0 min-w-0 flex-1 flex-col border-b border-[var(--theme-border)]/80 lg:border-b-0 lg:border-r">
+          <div className="hotel-pos-hero shrink-0 px-4 pb-3 pt-4 sm:px-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-text)]">
                   Hotel &amp; Bar
                   {menuOutlet?.menu_channel_label ? (
-                    <span className="ml-2 rounded-full bg-[color-mix(in_srgb,var(--theme-primary)_14%,transparent)] px-2 py-0.5 text-[10px] font-bold tracking-wide text-[var(--theme-primary)]">
+                    <span className="hotel-pos-channel-pill ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide">
                       {menuOutlet.menu_channel_label} menu
                     </span>
                   ) : null}
@@ -524,7 +591,7 @@ export function HotelBarPosScreen() {
                 <button
                   type="button"
                   onClick={() => void openCollectibleList()}
-                  className="theme-secondary-btn rounded-full px-4 py-2 text-xs font-semibold"
+                  className="theme-secondary-btn hotel-pos-ghost-btn rounded-full px-4 py-2 text-xs font-semibold"
                 >
                   Unpaid
                 </button>
@@ -568,7 +635,7 @@ export function HotelBarPosScreen() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search menu…"
-                className="theme-input w-full rounded-2xl border-0 bg-[var(--theme-surface)] px-4 py-3.5 text-sm shadow-sm ring-1 ring-[var(--theme-border)] focus:ring-2 focus:ring-[var(--theme-primary)]"
+                className="theme-input hotel-pos-search w-full rounded-2xl border-0 px-4 py-3.5 text-sm shadow-sm ring-1 ring-[var(--theme-border)] focus:ring-2 focus:ring-[var(--theme-primary)]"
                 autoComplete="off"
               />
             </div>
@@ -605,16 +672,16 @@ export function HotelBarPosScreen() {
                       type="button"
                       disabled={busy}
                       onClick={() => void handleTapProduct(product)}
-                      className="group relative flex min-h-[6.25rem] flex-col justify-between overflow-hidden rounded-2xl border border-[var(--theme-border)]/70 bg-[var(--theme-surface)] p-3.5 text-left shadow-[0_8px_24px_-18px_rgba(0,0,0,0.45)] transition duration-150 hover:-translate-y-0.5 hover:border-[var(--theme-primary)] hover:shadow-[0_16px_32px_-20px_rgba(0,0,0,0.55)] active:scale-[0.98] disabled:opacity-50"
+                      className="hotel-pos-tile group relative flex min-h-[6.5rem] flex-col justify-between overflow-hidden p-3.5 text-left transition duration-150 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50"
                     >
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-[var(--theme-primary)] to-transparent opacity-0 transition group-hover:opacity-70" />
+                      <div className="hotel-pos-tile-shine pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition group-hover:opacity-100" />
                       <div>
                         <div className="flex items-start justify-between gap-2">
                           <span className="theme-heading line-clamp-2 text-[15px] font-semibold leading-snug">
                             {product.product_name}
                           </span>
                           {product.is_popular ? (
-                            <span className="shrink-0 rounded-full bg-amber-100/90 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-950">
+                            <span className="hotel-pos-top-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
                               Top
                             </span>
                           ) : null}
@@ -624,7 +691,7 @@ export function HotelBarPosScreen() {
                         <p className="text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
                           {formatHotelMoney(product.unit_price)}
                         </p>
-                        <span className="rounded-full bg-[var(--theme-primary-subtle)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[var(--theme-text)] opacity-80 group-hover:opacity-100">
+                        <span className="hotel-pos-add-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide opacity-80 group-hover:opacity-100">
                           Add
                         </span>
                       </div>
@@ -645,7 +712,7 @@ export function HotelBarPosScreen() {
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full flex-col bg-[color-mix(in_srgb,var(--theme-surface)_92%,var(--theme-page-bg))] lg:w-[min(100%,26rem)] xl:w-[30rem] shrink-0">
+        <div className="hotel-pos-check-pane flex min-h-0 w-full flex-col lg:w-[min(100%,26rem)] xl:w-[30rem] shrink-0">
           <div className="shrink-0 px-4 py-4">
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -656,7 +723,7 @@ export function HotelBarPosScreen() {
                   {check?.check_number ?? "New"}
                 </p>
               </div>
-              <span className="rounded-full border border-[var(--theme-border)] px-3 py-1 text-[11px] font-semibold capitalize">
+              <span className="hotel-pos-status-pill rounded-full px-3 py-1 text-[11px] font-semibold capitalize">
                 {check?.status ?? "ready"}
               </span>
             </div>
@@ -664,7 +731,7 @@ export function HotelBarPosScreen() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
             {!hasLines ? (
-              <div className="mx-2 rounded-2xl border border-dashed border-[var(--theme-border)] px-4 py-14 text-center">
+              <div className="hotel-pos-empty-ticket mx-2 rounded-2xl px-4 py-14 text-center">
                 <p className="theme-heading text-sm font-semibold">Ticket is empty</p>
                 <p className="theme-subtext mt-1 text-xs">Tap a menu item to add it here</p>
               </div>
@@ -677,10 +744,8 @@ export function HotelBarPosScreen() {
                       <button
                         type="button"
                         onClick={() => setSelectedLineId(line.id)}
-                        className={`flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition ${
-                          selected
-                            ? "bg-[var(--theme-primary-subtle)] ring-1 ring-[var(--theme-primary)]"
-                            : "bg-[var(--theme-surface)] ring-1 ring-[var(--theme-border)]/60 hover:ring-[var(--theme-primary)]/40"
+                        className={`hotel-pos-line flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition ${
+                          selected ? "hotel-pos-line-selected" : ""
                         }`}
                       >
                         <div className="min-w-0 flex-1">
@@ -728,7 +793,7 @@ export function HotelBarPosScreen() {
             )}
           </div>
 
-          <div className="shrink-0 border-t border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-4 shadow-[0_-12px_40px_-28px_rgba(0,0,0,0.5)]">
+          <div className="hotel-pos-totals shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
             <div className="mb-3 flex items-end justify-between">
               <div>
                 <p className="theme-subtext text-[11px] uppercase tracking-wide">
@@ -820,6 +885,19 @@ export function HotelBarPosScreen() {
                 Collect payment
               </button>
             )}
+            <button
+              type="button"
+              disabled={
+                busy ||
+                !check?.id ||
+                Number(check?.amount_paid) > 0 ||
+                !["open", "unpaid", "held"].includes(String(check?.status))
+              }
+              onClick={() => void handleVoid()}
+              className="mt-2 w-full rounded-xl border border-red-300 bg-red-50 py-2.5 text-xs font-semibold uppercase tracking-wide text-red-700 disabled:opacity-40"
+            >
+              Void check
+            </button>
           </div>
         </div>
       </div>

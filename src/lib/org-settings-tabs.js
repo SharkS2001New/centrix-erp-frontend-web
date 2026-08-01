@@ -15,6 +15,9 @@ export const ORG_SETTINGS_TAB_MODULES = {
   printouts: [
     "admin",
     "sales",
+    "hospitality",
+    "hospitality.bar_pos",
+    "hospitality.backend",
     "inventory",
     "customers_suppliers",
     "accounting",
@@ -31,7 +34,7 @@ export const ORG_SETTINGS_TAB_MODULES = {
   finance: ["accounting", "payments"],
   accounting: ["accounting"],
   ai: ["admin"],
-  whatsapp: ["sales", "admin"],
+  whatsapp: ["sales"],
   hr: ["hr_payroll"],
   notifications: ["admin"],
   security: ["admin"],
@@ -104,6 +107,9 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
       return moduleEnabled(capabilities, "admin");
 
     case "whatsapp":
+      if (!moduleEnabled(capabilities, "sales")) {
+        return false;
+      }
       if (!isPlatformWhatsappEnabled(capabilities)) {
         return false;
       }

@@ -3259,3 +3259,120 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 .classic-pos-scan-dropdown .classic-pos-find-table tbody tr:hover td {
   background: var(--classic-row-selected);
 }
+
+/* ── Hotel & Bar POS theme templates (scoped under .hotel-pos-root) ── */
+.hotel-pos-root {
+  color: var(--theme-text);
+  background-color: var(--theme-page-bg);
+}
+
+.hotel-pos-atmosphere {
+  background:
+    radial-gradient(
+      1100px 520px at 8% -8%,
+      var(--hotel-pos-glow, color-mix(in srgb, var(--theme-primary) 22%, transparent)),
+      transparent 62%
+    ),
+    radial-gradient(
+      900px 480px at 92% 0%,
+      color-mix(in srgb, var(--theme-primary) 10%, transparent),
+      transparent 55%
+    ),
+    var(--theme-page-bg);
+}
+
+.hotel-pos-channel-pill {
+  background: var(--theme-primary-subtle);
+  color: var(--theme-primary);
+}
+
+.hotel-pos-search {
+  background: var(--theme-surface);
+  backdrop-filter: blur(8px);
+}
+
+.hotel-pos-tile {
+  border-radius: var(--hotel-pos-tile-radius, 1.15rem);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--theme-primary) 6%, var(--theme-surface)) 0%,
+      var(--theme-surface) 42%
+    );
+  box-shadow: 0 10px 28px -20px rgba(0, 0, 0, 0.45);
+}
+
+.hotel-pos-tile:hover {
+  border-color: var(--theme-primary);
+  box-shadow: 0 18px 34px -18px rgba(0, 0, 0, 0.5);
+}
+
+.hotel-pos-tile-shine {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--theme-primary),
+    transparent
+  );
+}
+
+.hotel-pos-top-badge {
+  background: color-mix(in srgb, #f59e0b 22%, var(--theme-surface));
+  color: color-mix(in srgb, #92400e 70%, var(--theme-text));
+}
+
+.hotel-pos-add-chip {
+  background: var(--theme-primary-subtle);
+  color: var(--theme-text);
+}
+
+.hotel-pos-check-pane {
+  background: var(--hotel-pos-check-bg, color-mix(in srgb, var(--theme-surface) 92%, var(--theme-page-bg)));
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  box-shadow: -18px 0 48px -36px rgba(0, 0, 0, 0.35);
+}
+
+.hotel-pos-status-pill {
+  border: 1px solid var(--theme-border);
+  background: var(--theme-surface);
+  color: var(--theme-text);
+}
+
+.hotel-pos-empty-ticket {
+  border: 1px dashed var(--theme-border);
+  background: color-mix(in srgb, var(--theme-surface) 70%, transparent);
+}
+
+.hotel-pos-line {
+  background: var(--theme-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-border) 65%, transparent);
+}
+
+.hotel-pos-line:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-primary) 45%, transparent);
+}
+
+.hotel-pos-line-selected {
+  background: var(--theme-primary-subtle);
+  box-shadow: inset 0 0 0 1px var(--theme-primary);
+}
+
+.hotel-pos-totals {
+  background: color-mix(in srgb, var(--theme-surface) 94%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 -16px 40px -28px rgba(0, 0, 0, 0.45);
+}
+
+.hotel-pos-ghost-btn {
+  backdrop-filter: blur(6px);
+}
+
+.hotel-pos-root[data-hotel-pos-theme="midnight"] .hotel-pos-top-badge {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fde68a;
+}
+
+.hotel-pos-root[data-hotel-pos-theme="midnight"] .hotel-pos-tile {
+  box-shadow: 0 12px 32px -18px rgba(0, 0, 0, 0.75);
+}

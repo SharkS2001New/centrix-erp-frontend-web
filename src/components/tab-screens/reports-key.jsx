@@ -10,6 +10,10 @@ import {
   DISTRIBUTION_REPORT_DEFS,
   distributionReportSubtitle,
 } from "@/lib/reports/distribution-reports";
+import {
+  HOSPITALITY_REPORT_DEFS,
+  hospitalityReportSubtitle,
+} from "@/lib/reports/hospitality-reports";
 import { StructuredReportScreen } from "@/components/reports/structured-report-screen";
 import { GenericReportScreen } from "@/components/reports/generic-report-screen";
 import { apiRequest } from "@/lib/api";
@@ -17,7 +21,7 @@ import { AppRouteLoading } from "@/components/shared/app-route-loading";
 
 /** Known generic reports that must not depend on GET /reports (reports.view-only catalog). */
 const KNOWN_GENERIC_REPORT_META = Object.fromEntries(
-  [...HR_REPORT_DEFS, ...DISTRIBUTION_REPORT_DEFS].map((r) => [
+  [...HR_REPORT_DEFS, ...DISTRIBUTION_REPORT_DEFS, ...HOSPITALITY_REPORT_DEFS].map((r) => [
     r.key,
     { key: r.key, path: `/reports/${r.key}`, label: r.label },
   ]),
@@ -118,7 +122,12 @@ function ReportViewerPageContent() {
       reportKey={reportKey}
       label={resolvedMeta.label}
       apiPath={resolvedMeta.path}
-      subtitle={hrReportSubtitle(reportKey) ?? distributionReportSubtitle(reportKey) ?? undefined}
+      subtitle={
+        hrReportSubtitle(reportKey) ??
+        distributionReportSubtitle(reportKey) ??
+        hospitalityReportSubtitle(reportKey) ??
+        undefined
+      }
     />
   );
 }

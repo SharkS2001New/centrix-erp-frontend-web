@@ -44,6 +44,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   ...documentLogoFormDefaults(),
   print_footer_receipt: defaultReceiptBodyFooterForAdmin(),
   print_footer_a4_invoice: "",
+  print_footer_hospitality_check: "Thank you",
   print_footer_lpo: "",
   print_footer_loading_sheet: "",
   print_footer_picking_list: "",
@@ -52,6 +53,11 @@ export const EMPTY_PRINTOUTS_FORM = {
   order_document_type: "receipt",
   receipt_copies: "1",
   show_branch_on_receipt: true,
+  check_receipt_copies: "1",
+  show_outlet_on_check_receipt: true,
+  show_organization_on_check_receipt: true,
+  use_same_print_phones_for_check: true,
+  check_print_phones: emptyPrintPhones(),
   show_full_package_uom_on_documents: false,
   show_receipt_payment_details: true,
   show_invoice_payment_details: true,
@@ -129,6 +135,7 @@ export const PRINTOUT_KIND_LABELS = {
   receipt: "Thermal receipts",
   invoice: "A4 invoices",
   proforma: "Proforma invoices",
+  hospitality_check: "Hotel check receipts",
   lpo: "Local purchase orders (LPO)",
   loading_sheet: "Loading sheets",
   picking_list: "Picking lists",
@@ -176,6 +183,9 @@ export function orderPrintFormatSections(orderDocumentType) {
 export function resolvePrintoutSections(capabilities) {
   const modules = capabilities?.modules ?? {};
   const hasSales = Boolean(modules.sales);
+  const hasHospitality = Boolean(
+    modules.hospitality || modules["hospitality.bar_pos"] || modules["hospitality.backend"],
+  );
   const hasProcurement = Boolean(modules.customers_suppliers);
   const hasDistribution = Boolean(modules.distribution);
   const hasHrPayroll = Boolean(modules.hr_payroll);
@@ -184,6 +194,8 @@ export function resolvePrintoutSections(capabilities) {
 
   const footerKeys = Object.keys(PRINT_FOOTER_LABELS).filter((key) => {
     if (key === "receipt" || key === "invoice") return hasSales;
+    // Hotel check footer is edited on the Hotel checks tab (hospitality settings), not General.
+    if (key === "hospitality_check") return false;
     if (key === "lpo") return hasProcurement;
     if (key === "loading_sheet" || key === "picking_list" || key === "trip_chart") {
       return hasRoutePrintouts;
@@ -196,6 +208,7 @@ export function resolvePrintoutSections(capabilities) {
     hasSales ? "receipt" : null,
     hasSales ? "invoice" : null,
     hasSales ? "proforma" : null,
+    hasHospitality ? "hospitality_check" : null,
     hasProcurement ? "lpo" : null,
     hasRoutePrintouts ? "loading_sheet" : null,
     hasRoutePrintouts ? "picking_list" : null,
@@ -207,6 +220,7 @@ export function resolvePrintoutSections(capabilities) {
     hasSales ? "receipt" : null,
     hasSales ? "invoice" : null,
     hasSales ? "proforma" : null,
+    hasHospitality ? "hospitality_check" : null,
     hasProcurement ? "lpo" : null,
     hasRoutePrintouts ? "loading_sheet" : null,
     hasRoutePrintouts ? "picking_list" : null,
@@ -218,6 +232,7 @@ export function resolvePrintoutSections(capabilities) {
 
   return {
     hasSales,
+    hasHospitality,
     hasProcurement,
     hasDistribution,
     hasMobileSales,
@@ -227,7 +242,8 @@ export function resolvePrintoutSections(capabilities) {
     previewTypes,
     availableKinds,
     needsWork,
-    hasModuleSections: hasSales || hasProcurement || hasRoutePrintouts || hasHrPayroll,
+    hasModuleSections:
+      hasSales || hasHospitality || hasProcurement || hasRoutePrintouts || hasHrPayroll,
   };
 }
 
@@ -271,13 +287,50 @@ export function printoutsDistributionFormFromApi(res) {
   return loadingSheetPrintFormFromApi(res);
 }
 
-export function printoutsFormFromApis({ generalRes, salesRes, procurementRes, distributionRes } = {}) {
+export function printoutsFormFromApis({
+  generalRes,
+  salesRes,
+  hospitalityRes,
+  procurementRes,
+  distributionRes,
+} = {}) {
   return {
     ...EMPTY_PRINTOUTS_FORM,
     ...(generalRes ? printoutsGeneralFormFromApi(generalRes) : {}),
     ...(salesRes ? printoutsSalesFormFromApi(salesRes) : {}),
+    ...(hospitalityRes ? printoutsHospitalityFormFromApi(hospitalityRes) : {}),
     ...(procurementRes ? printoutsProcurementFormFromApi(procurementRes) : {}),
     ...(distributionRes ? printoutsDistributionFormFromApi(distributionRes) : {}),
+  };
+}
+
+export function printoutsHospitalityFormFromApi(res = {}) {
+  const h = res?.hospitality ?? res ?? {};
+  const phones = h.check_print_phones ?? {};
+  return {
+    check_receipt_copies: String(h.check_receipt_copies ?? 1),
+    show_outlet_on_check_receipt: h.show_outlet_on_check_receipt !== false,
+    show_organization_on_check_receipt: h.show_organization_on_check_receipt !== false,
+    print_footer_hospitality_check: String(h.check_receipt_footer ?? "Thank you"),
+    use_same_print_phones_for_check: h.use_same_print_phones_for_check !== false,
+    check_print_phones: {
+      tel1: String(phones.tel1 ?? ""),
+      tel2: String(phones.tel2 ?? ""),
+    },
+  };
+}
+
+export function printoutsHospitalityPayloadFromForm(form) {
+  return {
+    check_receipt_copies: Math.min(3, Math.max(1, Number(form.check_receipt_copies) || 1)),
+    show_outlet_on_check_receipt: Boolean(form.show_outlet_on_check_receipt),
+    show_organization_on_check_receipt: Boolean(form.show_organization_on_check_receipt),
+    check_receipt_footer: String(form.print_footer_hospitality_check ?? "").trim(),
+    use_same_print_phones_for_check: Boolean(form.use_same_print_phones_for_check),
+    check_print_phones: {
+      tel1: String(form.check_print_phones?.tel1 ?? "").trim(),
+      tel2: String(form.check_print_phones?.tel2 ?? "").trim(),
+    },
   };
 }
 

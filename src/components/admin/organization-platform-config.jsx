@@ -48,6 +48,11 @@ import {
   HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS,
   normalizeHospitalityPaymentWorkflow,
 } from "@/lib/hospitality-payment-workflow";
+import {
+  HOTEL_POS_THEME_DEFAULT,
+  HOTEL_POS_THEME_TEMPLATES,
+  normalizeHotelPosThemeTemplate,
+} from "@/lib/hotel-pos-theme-templates";
 import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
 import { PlatformFormSection } from "@/components/admin/platform-form-section";
 import { useConfirm } from "@/lib/use-confirm";
@@ -259,7 +264,7 @@ export function OrganizationTenantProfile({
             </select>
             <p className="mt-1 text-xs text-slate-500">
               {industry === "hospitality"
-                ? "Hotel & Hospitality setup. Applications tab shows Hotel & Bar POS and Hospitality Backoffice only."
+                ? "Hotel & Hospitality setup. Applications tab shows Hotel POS and Hotel Backoffice only."
                 : deploymentProfile === "custom"
                   ? "Start from a blank setup and enable only the applications you need on the Applications tab."
                   : "Preset within this industry. Changing it updates the default application toggles."}
@@ -333,6 +338,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     hotel_pos_grid_columns: 4,
     hotel_pos_collect_payment: true,
     hotel_pos_catalog_limit: 30,
+    hotel_pos_theme_template: HOTEL_POS_THEME_DEFAULT,
     hospitality_services: { ...HOSPITALITY_SERVICE_DEFAULTS },
     hospitality_payment_workflow: { ...HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS },
     enable_pos_cash_rounding: false,
@@ -394,6 +400,9 @@ export function salesPlatformFromApi(apiPayload) {
       if (!Number.isFinite(n) || n < 8) return 30;
       return Math.min(60, Math.max(8, Math.round(n)));
     })(),
+    hotel_pos_theme_template: normalizeHotelPosThemeTemplate(
+      apiPayload.hotel_pos_theme_template,
+    ),
     hospitality_services: normalizeHospitalityServices(apiPayload.hospitality_services),
     hospitality_payment_workflow: normalizeHospitalityPaymentWorkflow(
       apiPayload.hospitality_payment_workflow,
@@ -1199,7 +1208,7 @@ export function OrganizationModuleToggles({
       title="Applications"
       description={
         isHotelProfile
-          ? "For Hotel & Bar tenants, only these two applications can be enabled or disabled. They do not use retail sales / POS carts."
+          ? "For hotel tenants, only Hotel POS and Hotel Backoffice (plus Accounting / HR / Admin) can be enabled. They do not use retail sales / POS carts."
           : "Choose which applications appear on the login workspace screen for this organization. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
       }
     >
@@ -1275,6 +1284,51 @@ export function OrganizationModuleToggles({
               ) : null}
               {workspace.id === "hotel_bar_pos" && enabled && typeof onSalesChange === "function" ? (
                 <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <OrgRegisterField label="Hotel POS theme template">
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {HOTEL_POS_THEME_TEMPLATES.map((theme) => {
+                        const selected =
+                          normalizeHotelPosThemeTemplate(salesPlatform?.hotel_pos_theme_template) ===
+                          theme.id;
+                        return (
+                          <button
+                            key={theme.id}
+                            type="button"
+                            onClick={() =>
+                              onSalesChange({
+                                ...(salesPlatform ?? {}),
+                                hotel_pos_theme_template: theme.id,
+                              })
+                            }
+                            className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                              selected
+                                ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-2 ring-[#185FA5]/40"
+                                : "border-slate-200 bg-white hover:border-slate-300"
+                            }`}
+                          >
+                            <span className="mb-2 flex gap-1">
+                              {(theme.preview ?? []).map((color) => (
+                                <span
+                                  key={color}
+                                  className="h-4 w-4 rounded-full border border-black/10"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </span>
+                            <span className="block text-sm font-semibold text-slate-900">
+                              {theme.label}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                              {theme.description}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="theme-subtext mt-2 text-xs">
+                      Applies only to Hotel &amp; Bar POS. Backoffice keeps the standard Centrix theme.
+                    </p>
+                  </OrgRegisterField>
                   <OrgRegisterField label="Hotel POS product grid">
                     <select
                       className={inputClass}

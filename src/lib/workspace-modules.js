@@ -24,14 +24,14 @@ export const PROVISIONABLE_WORKSPACES = [
   },
   {
     id: "hotel_bar_pos",
-    label: "Hotel & Bar POS",
+    label: "Hotel POS",
     description:
-      "Hospitality front POS (bar, restaurant, room charge). Uses hospitality checks — not retail sales. Also enables Hospitality Backoffice.",
+      "Hotel front POS (bar, restaurant, room charge). Uses hospitality checks — not retail sales. Also enables Hotel Backoffice.",
     icon: "hospitality",
   },
   {
     id: "hospitality_backoffice",
-    label: "Hospitality Backoffice",
+    label: "Hotel Backoffice",
     description:
       "Rooms, front desk, folios, housekeeping, menu products, LPO, and stock receiving for hotel operations.",
     icon: "building",
@@ -286,7 +286,7 @@ export function workspaceToggleIcon(iconKey) {
 
 /**
  * Applications shown on the platform Applications tab for a deployment profile.
- * Hotel & Bar only exposes the two hospitality apps.
+ * Hotel tenants only expose Hotel POS + Hotel Backoffice (+ shared Accounting/HR/Admin).
  *
  * @param {string | null | undefined} profileKey
  * @param {Array<{ key: string, application_ids?: string[] | null }>} profilePresets
@@ -297,7 +297,7 @@ export function provisionableWorkspacesForProfile(profileKey, profilePresets = [
 
   // Client fallback if API has not yet returned application_ids for hotel.
   if (ids === undefined && profileKey === "hotel_bar") {
-    ids = ["hotel_bar_pos", "hospitality_backoffice"];
+    ids = ["hotel_bar_pos", "hospitality_backoffice", "accounting", "hr", "admin"];
   }
 
   if (ids === null || ids === undefined) {
