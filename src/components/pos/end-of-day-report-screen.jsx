@@ -770,31 +770,31 @@ export function EndOfDayReportScreen() {
               ) : (
                 <div className="space-y-4">
                   {cashierSalesRows.map((row) => {
-                    const isSelected = cashierId && String(row.cashier_id) === cashierId;
-                    return (
+                      const isSelected = cashierId && String(row.cashier_id) === cashierId;
+                      return (
                       <div
-                        key={row.cashier_id}
+                          key={row.cashier_id}
                         className="border-b border-[var(--theme-border)] pb-4 last:border-b-0 last:pb-0"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setCashierId(String(row.cashier_id))}
-                          className={`theme-link mb-1 text-sm font-semibold hover:underline ${isSelected ? "underline" : ""}`}
                         >
-                          {row.cashier ?? "—"}
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => setCashierId(String(row.cashier_id))}
+                          className={`theme-link mb-1 text-sm font-semibold hover:underline ${isSelected ? "underline" : ""}`}
+                            >
+                              {row.cashier ?? "—"}
+                            </button>
                         <SummaryRow label="Total sales" value={formatTillKes(row.gross_sales)} bold />
                         <SummaryRow label="VAT" value={formatTillKes(row.total_vat)} />
                         <SummaryRow label="Transactions" value={row.transactions ?? 0} />
                         <SummaryRow label="Cash" value={formatTillKes(row.cash_collected)} />
                         <SummaryRow label="M-Pesa" value={formatTillKes(row.mpesa_collected)} />
                         <SummaryRow label="Bank" value={formatTillKes(row.bank_collected)} />
-                        {requireTillFloat ? (
+                          {requireTillFloat ? (
                           <SummaryRow label="Float" value={formatTillKes(row.opening_float)} />
-                        ) : null}
+                          ) : null}
                       </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               )}
               {cashierId ? (
@@ -814,19 +814,19 @@ export function EndOfDayReportScreen() {
                 <p className="theme-subtext text-sm">No till sessions for this date.</p>
               ) : (
                 <>
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
                         <th className="pb-2 pr-3">Session</th>
-                        <th className="pb-2 pr-3">Till</th>
-                        <th className="pb-2 pr-3">Cashier</th>
+                      <th className="pb-2 pr-3">Till</th>
+                      <th className="pb-2 pr-3">Cashier</th>
                         <th className="pb-2 pr-3 text-right">Float</th>
                         <th className="pb-2 pr-3 text-right">Sales</th>
                         <th className="pb-2 pr-3 text-right">Expenses</th>
                         <th className="pb-2 text-right">Expected</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                    </tr>
+                  </thead>
+                  <tbody>
                       {(report.sessions ?? report.tills ?? []).map((row, i) => {
                         const sid = row.float_session_id != null ? String(row.float_session_id) : "";
                         const isSelected = floatSessionId && sid === floatSessionId;
@@ -857,13 +857,13 @@ export function EndOfDayReportScreen() {
                                 {row.closed_at ? ` – ${formatReportTime(row.closed_at)}` : " – open"}
                               </div>
                             </td>
-                            <td className="py-2.5 pr-3 font-medium text-[var(--theme-text)]">
-                              {row.till_number}
-                              {row.till_name ? ` · ${row.till_name}` : ""}
-                            </td>
-                            <td className="theme-text-muted py-2.5 pr-3">{row.cashier ?? "—"}</td>
+                        <td className="py-2.5 pr-3 font-medium text-[var(--theme-text)]">
+                          {row.till_number}
+                          {row.till_name ? ` · ${row.till_name}` : ""}
+                        </td>
+                        <td className="theme-text-muted py-2.5 pr-3">{row.cashier ?? "—"}</td>
                             <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.opening_float)}</td>
-                            <td className="py-2.5 pr-3 text-right text-[var(--theme-text)]">{formatTillKes(row.gross_sales)}</td>
+                        <td className="py-2.5 pr-3 text-right text-[var(--theme-text)]">{formatTillKes(row.gross_sales)}</td>
                             <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.session_expenses)}</td>
                             <td className="py-2.5 text-right font-medium text-[var(--theme-text)]">
                               {formatTillKes(row.expected_net_sales)}
@@ -910,16 +910,16 @@ export function EndOfDayReportScreen() {
                             <td className="py-2 text-right font-medium text-[var(--theme-text)]">
                               {formatTillKes(row.amount)}
                             </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
                     <div className="mt-3 border-t border-[var(--theme-border)] pt-2">
                       <SummaryRow label="Total float" value={formatTillKes(floatBreakdownTotal)} bold />
                     </div>
                   </>
-                )}
-              </Panel>
+              )}
+            </Panel>
             ) : null}
 
             <Panel

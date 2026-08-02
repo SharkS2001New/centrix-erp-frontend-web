@@ -624,14 +624,14 @@ export function PaymentsBreakdownScreen() {
                   <tr key={`${row.sale_id}-${row.method_code ?? methodCode}`}>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        {row.sale_id && row.order_num != null ? (
-                          <Link
-                            href={`/sales/orders/${row.sale_id}`}
+                      {row.sale_id && row.order_num != null ? (
+                        <Link
+                          href={`/sales/orders/${row.sale_id}`}
                             className="font-medium text-[var(--theme-primary)] hover:underline"
-                          >
-                            Order #{row.order_num}
-                          </Link>
-                        ) : (
+                        >
+                          Order #{row.order_num}
+                        </Link>
+                      ) : (
                           <span className="text-[var(--theme-text-muted)]">—</span>
                         )}
                         {mixedText ? (
@@ -643,7 +643,7 @@ export function PaymentsBreakdownScreen() {
                     </td>
                     <td className="px-4 py-3 text-[var(--theme-text)]">
                       {row.customer_name || "Walk-in"}
-                    </td>
+                      </td>
                     <td className="px-4 py-3 font-medium text-[var(--theme-text)]">
                       {formatAccountingAmount(row.amount)}
                     </td>

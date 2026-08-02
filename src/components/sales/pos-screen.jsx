@@ -334,10 +334,6 @@ function posProductDisplayName(record) {
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
 const POS_CHECKOUT_TIMEOUT_MS = 90_000;
 
-function isServerPosCartId(id) {
-  return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
-}
-
 function presentLocalOfflineCart(local) {
   if (!local) return null;
   return {
@@ -1136,6 +1132,7 @@ export function PosScreen({ standalone = false }) {
   const editAutosaveTimerRef = useRef(null);
   const editAutosaveInFlightRef = useRef(false);
   const skipEditAutosaveRef = useRef(false);
+  const [editAutosaveBusy, setEditAutosaveBusy] = useState(false);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
   const [applyingAdvisedDiscounts, setApplyingAdvisedDiscounts] = useState(false);
@@ -1372,15 +1369,15 @@ export function PosScreen({ standalone = false }) {
       let rows = [];
       try {
         const baseExtra = {
-          for_pos_order_edit: 1,
-          channel: "pos",
-          order_source: "pos",
-          with_items: 0,
-          sort: "order_num",
-          sort_dir: "desc",
+            for_pos_order_edit: 1,
+            channel: "pos",
+            order_source: "pos",
+            with_items: 0,
+            sort: "order_num",
+            sort_dir: "desc",
           from_date: today,
           to_date: today,
-          date_field: "placed",
+            date_field: "placed",
           ...(cashierId != null ? { cashier_id: cashierId } : {}),
         };
         rows = await fetchRows(
@@ -1391,18 +1388,18 @@ export function PosScreen({ standalone = false }) {
               ...baseExtra,
               status_in: statusIn,
               exclude_statuses: "held,draft,cancelled,expired",
-            },
-          }),
-        );
+          },
+        }),
+      );
 
-        if (!rows.length) {
-          rows = await fetchRows(
-            buildPageParams({
-              page: 1,
+      if (!rows.length) {
+        rows = await fetchRows(
+          buildPageParams({
+            page: 1,
               perPage: 15,
               extra: baseExtra,
-            }),
-          );
+          }),
+        );
         }
       } catch {
         // Offline / slow: still show queued local sales for edit.
@@ -1620,7 +1617,7 @@ export function PosScreen({ standalone = false }) {
   ]);
   const previousOrderEditReadyToPrint = useMemo(() => {
     if (!instantAutoEditSync || !isCartEditSession) return false;
-    if (offlineSyncing || editAutosaveInFlightRef.current) return false;
+    if (offlineSyncing || editAutosaveBusy) return false;
     if (editedOrderHasLocalDraftChanges(cart)) return false;
     if (pendingSync > 0) return false;
     return (cart?.lines?.length ?? 0) > 0;
@@ -1628,6 +1625,7 @@ export function PosScreen({ standalone = false }) {
     instantAutoEditSync,
     isCartEditSession,
     offlineSyncing,
+    editAutosaveBusy,
     pendingSync,
     cart,
   ]);
@@ -2408,7 +2406,7 @@ export function PosScreen({ standalone = false }) {
             const list = (await searchOffline(trimmed, 40)).map((p) =>
               enrichProductForLpo(p, uomMap, vatMap),
             );
-            if (seq !== searchSeq.current) return;
+        if (seq !== searchSeq.current) return;
             setSearchResults(list);
             setProductByCode((prev) => {
               const next = { ...prev };
@@ -3106,14 +3104,14 @@ export function PosScreen({ standalone = false }) {
     if (replaceLine) {
       if (String(replaceLine.product_code) === String(product.product_code)) {
         setStatusMessage("Choose a different product to swap onto this line.");
-        return;
-      }
+      return;
+    }
       const replaceRetail = cartLineRetailStockFlag(replaceLine);
       const quantity = posEntryQtyFromBaseQty(
-        Number(replaceLine.quantity ?? 0),
-        product,
-        retailPackage,
-        Boolean(replaceRetail),
+          Number(replaceLine.quantity ?? 0),
+          product,
+          retailPackage,
+          Boolean(replaceRetail),
       );
       const nextSwapDraft = {
         lineId: replaceLine.id,
@@ -3740,22 +3738,22 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       const runReplace = async () => {
-        try {
-          const ok = await replaceCartLineWithProduct(
-            replaceLine,
-            selectedProduct,
-            lineForm.quantity,
-            discount,
-            override,
-          );
-          if (ok) {
-            setReplacingLineId(null);
-            setStatusMessage(
+      try {
+        const ok = await replaceCartLineWithProduct(
+          replaceLine,
+          selectedProduct,
+          lineForm.quantity,
+          discount,
+          override,
+        );
+        if (ok) {
+          setReplacingLineId(null);
+          setStatusMessage(
               `Replaced ${posProductDisplayName(replaceLine)} with ${posProductDisplayName(selectedProduct)}.`,
-            );
-          }
-        } catch (e) {
-          setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
+          );
+        }
+      } catch (e) {
+        setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
         }
       };
       if (cartRef.current?.held_order_num || cartRef.current?.offline) {
@@ -3796,28 +3794,28 @@ export function PosScreen({ standalone = false }) {
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
     const run = async () => {
-      try {
-        const ok = await commitCartLine({
-          product: selectedProduct,
-          computed,
-          incrementBaseQty: computed.baseQty,
-          mergeTarget,
-          editingId: editingLineId,
-          editingRef: editingLineRef ?? cartLineRef(editingLine),
-          discount,
-          override,
-          successMessage: null,
-          unlockUiEarly: classicLayout,
-        });
-        if (!ok) return;
-      } catch (e) {
-        setStatusMessage(
-          e instanceof ApiError
-            ? e.message
-            : wasEditing
-              ? "Failed to update line"
-              : "Failed to add line",
-        );
+    try {
+      const ok = await commitCartLine({
+        product: selectedProduct,
+        computed,
+        incrementBaseQty: computed.baseQty,
+        mergeTarget,
+        editingId: editingLineId,
+        editingRef: editingLineRef ?? cartLineRef(editingLine),
+        discount,
+        override,
+        successMessage: null,
+        unlockUiEarly: classicLayout,
+      });
+      if (!ok) return;
+    } catch (e) {
+      setStatusMessage(
+        e instanceof ApiError
+          ? e.message
+          : wasEditing
+            ? "Failed to update line"
+            : "Failed to add line",
+      );
       }
     };
 
@@ -4758,14 +4756,14 @@ export function PosScreen({ standalone = false }) {
       void printSaleOrder(
         sale,
         fastPosPrintOptions(sale, {
-          capabilities,
-          organization,
-          organizationName: capabilities?.profile_label,
-          uomById,
+        capabilities,
+        organization,
+        organizationName: capabilities?.profile_label,
+        uomById,
           productByCode,
-          user,
-          preparedBy: user?.full_name ?? user?.username ?? null,
-          documentType,
+        user,
+        preparedBy: user?.full_name ?? user?.username ?? null,
+        documentType,
           // Checkout returns kra_response for immediate thermal QR print.
           kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
         }),
@@ -4842,12 +4840,12 @@ export function PosScreen({ standalone = false }) {
       }
       if (body?.is_credit_sale) {
         setPaymentError("Credit sales are not available offline.");
-        return null;
-      }
-      setBusy(true);
-      setPaymentError(null);
-      setReceiptPrintStatus(null);
-      try {
+      return null;
+    }
+    setBusy(true);
+    setPaymentError(null);
+    setReceiptPrintStatus(null);
+    try {
         const local = {
           id: isServerPosCartId(activeCart.id) ? activeCart.id : "active",
           lines: (activeCart.lines ?? []).map((l) => ({
@@ -5054,7 +5052,7 @@ export function PosScreen({ standalone = false }) {
       // "Use KRA device for sales" is on even if this till's cached capabilities
       // still think KRA is off (previously that raced a short timeout and failed).
       let sale = await runBlockingTask(checkoutRequest, {
-        message: "Completing sale…",
+            message: "Completing sale…",
         detail: submitKra
           ? "Submitting receipt to the KRA device. Please wait."
           : "Please wait.",
@@ -5137,7 +5135,7 @@ export function PosScreen({ standalone = false }) {
       void (async () => {
         if (skipEditAutosaveRef.current) return;
         if (editAutosaveInFlightRef.current) {
-          scheduleEditedOrderAutosave();
+      scheduleEditedOrderAutosave();
           return;
         }
         const cartNow = cartRef.current;
@@ -5149,6 +5147,7 @@ export function PosScreen({ standalone = false }) {
         if (!lines.length) return;
 
         editAutosaveInFlightRef.current = true;
+        setEditAutosaveBusy(true);
         try {
           const local = {
             ...cartNow,
@@ -5174,6 +5173,7 @@ export function PosScreen({ standalone = false }) {
           );
           void refreshOfflineCounts();
           const results = await flushOutboxNow();
+          let syncedOrderNum = null;
           for (const row of results ?? []) {
             if (
               row?.ok &&
@@ -5181,7 +5181,23 @@ export function PosScreen({ standalone = false }) {
               Number(row.order_num) === Number(cartNow.held_order_num) &&
               row.sale?.id
             ) {
+              syncedOrderNum = cartNow.held_order_num;
               await refreshPreviousOrderEditCartAfterSync(row.sale);
+            }
+          }
+          const afterCart = cartRef.current;
+          if (
+            syncedOrderNum != null &&
+            afterCart?.held_order_num != null &&
+            Number(afterCart.held_order_num) === Number(syncedOrderNum) &&
+            !editedOrderHasLocalDraftChanges(afterCart)
+          ) {
+            const syncedMsg = previousOrderEditModeMessages(syncedOrderNum, {
+              kraFiscalize: false,
+            }).synced;
+            if (syncedMsg) {
+              setStatusMessage(syncedMsg);
+              if (standalone) notifySuccess(syncedMsg);
             }
           }
         } catch (e) {
@@ -5193,6 +5209,7 @@ export function PosScreen({ standalone = false }) {
           );
         } finally {
           editAutosaveInFlightRef.current = false;
+          setEditAutosaveBusy(false);
         }
       })();
     }, 400);
@@ -5511,10 +5528,25 @@ export function PosScreen({ standalone = false }) {
     const isOfflineCart = Boolean(activeCart?.offline || activeCart?.offline_client_sale_uuid);
 
     if (hasLines || editingPrevious || isOfflineCart) {
+      const editSummary = summarizeLocalPosCart(activeCart);
+      const kraFiscalize = editingPrevious
+        ? shouldSubmitKraOnCheckout(
+            capabilities?.module_settings,
+            capabilities,
+            editSummary?.total ?? editSummary?.amountDue,
+          )
+        : false;
+      const leaveMsgs = editingPrevious
+        ? previousOrderEditModeMessages(activeCart.held_order_num, {
+            kraFiscalize,
+            offline: isOfflineCart,
+          })
+        : null;
       const ok = await confirm({
         title: "New order",
         message: editingPrevious
-          ? "Clear this order from the workspace and start a new order? Unsaved changes will be discarded."
+          ? leaveMsgs?.leaveConfirm ??
+            "Clear this order from the workspace and start a new order? Unsaved changes will be discarded."
           : "Clear this workspace and start a new order?",
         confirmLabel: "Start New Order",
         cancelLabel: "Cancel",
@@ -5644,13 +5676,13 @@ export function PosScreen({ standalone = false }) {
       const result = await printSaleOrder(
         sale,
         fastPosPrintOptions(sale, {
-          capabilities,
-          organization,
-          organizationName: capabilities?.profile_label,
-          uomById,
+        capabilities,
+        organization,
+        organizationName: capabilities?.profile_label,
+        uomById,
           productByCode,
-          user,
-          preparedBy: user?.full_name ?? user?.username ?? null,
+        user,
+        preparedBy: user?.full_name ?? user?.username ?? null,
           documentType:
             resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
           kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
@@ -5765,24 +5797,24 @@ export function PosScreen({ standalone = false }) {
     }
 
     if (isOfflinePendingSaleId(saleId)) {
-      const hasOpenLines = (cart?.lines?.length ?? 0) > 0;
-      if (hasOpenLines && !replace) {
-        const ok = await confirm({
-          title: "Load previous order",
-          message:
-            "Your workspace has an open order. Clear it and load the previous order?",
-          confirmLabel: "Continue",
-          cancelLabel: "Cancel",
-          destructive: true,
-        });
-        if (!ok) return;
-        replace = true;
-      }
+    const hasOpenLines = (cart?.lines?.length ?? 0) > 0;
+    if (hasOpenLines && !replace) {
+      const ok = await confirm({
+        title: "Load previous order",
+        message:
+          "Your workspace has an open order. Clear it and load the previous order?",
+        confirmLabel: "Continue",
+        cancelLabel: "Cancel",
+        destructive: true,
+      });
+      if (!ok) return;
+      replace = true;
+    }
 
-      setBusy(true);
+    setBusy(true);
       beginPreviousOrderLoading();
-      setOrderEditError(null);
-      try {
+    setOrderEditError(null);
+    try {
         if (replace && cart?.offline_client_sale_uuid && cart.offline_client_sale_uuid !== parseOfflineSaleUuid(saleId)) {
           await abandonOfflineSaleEdit(cart);
         }
@@ -5836,11 +5868,13 @@ export function PosScreen({ standalone = false }) {
         }
         setStatusMessage(
           keepEditing
-            ? `Editing offline order #${orderNum} — Alt+P reprint; F10 to complete (even if unchanged).`
-            : `Loaded offline order #${orderNum} — Alt+P reprint; F10 to complete (even if unchanged).`,
+            ? `Editing offline order #${orderNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`
+            : `Loaded offline order #${orderNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`,
         );
-        if (standalone) {
-          notifySuccess(`Editing offline order #${orderNum}.`);
+        if (standalone && orderNum != null) {
+          notifySuccess(
+            previousOrderEditModeMessages(orderNum, { offline: true }).loaded,
+          );
         }
         void refreshOfflineCounts();
       } catch (e) {
@@ -5880,8 +5914,8 @@ export function PosScreen({ standalone = false }) {
       );
       const [restoredRaw, fetchedSale] = await Promise.all([
         apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
-          method: "POST",
-          body: { replace },
+        method: "POST",
+        body: { replace },
         }),
         needSaleDetail
           ? apiRequest(`/sales/${saleId}`, { loading: false, reportIssues: false }).catch(() => null)
@@ -5929,12 +5963,16 @@ export function PosScreen({ standalone = false }) {
         capabilities,
         restoredSummary?.total ?? restoredSummary?.amountDue,
       );
+      const editMsgs = previousOrderEditModeMessages(label, { kraFiscalize });
       const editHint = previousOrderEditWorkspaceHint({ kraFiscalize });
       setStatusMessage(
         keepEditing
           ? `Order #${label} updated — ${editHint}`
           : `Order #${label} loaded — ${editHint}`,
       );
+      if (standalone) {
+        notifySuccess(editMsgs.loaded);
+      }
     } catch (e) {
       const message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (
@@ -6060,25 +6098,25 @@ export function PosScreen({ standalone = false }) {
 
     beginPreviousOrderLoading();
     try {
-      let orders = sessionPosOrders;
-      if (!orders.length) {
-        setStatusMessage("Loading completed POS orders…");
-        orders = await loadCompletedPosOrders();
-      }
-      if (!orders.length) {
-        const message =
-          "No completed POS order to open yet. Complete a sale first, then click the order # to reopen it.";
-        setOrderEditError(message);
-        setStatusMessage(message);
-        return;
-      }
+    let orders = sessionPosOrders;
+    if (!orders.length) {
+      setStatusMessage("Loading completed POS orders…");
+      orders = await loadCompletedPosOrders();
+    }
+    if (!orders.length) {
+      const message =
+        "No completed POS order to open yet. Complete a sale first, then click the order # to reopen it.";
+      setOrderEditError(message);
+      setStatusMessage(message);
+      return;
+    }
 
-      const row = orders[0];
-      orderNoUserEditedRef.current = false;
-      setEditBrowseIndex(0);
-      setEditOrderNo(String(row.order_num));
-      setOrderEditError(null);
-      await restoreOrderForEdit(row.id, { saleSnapshot: row });
+    const row = orders[0];
+    orderNoUserEditedRef.current = false;
+    setEditBrowseIndex(0);
+    setEditOrderNo(String(row.order_num));
+    setOrderEditError(null);
+    await restoreOrderForEdit(row.id, { saleSnapshot: row });
     } finally {
       endPreviousOrderLoading();
     }
@@ -6123,11 +6161,11 @@ export function PosScreen({ standalone = false }) {
 
     beginPreviousOrderLoading();
     try {
-      let orders = sessionPosOrders;
-      if (!orders.length) {
-        setStatusMessage("Loading completed POS orders…");
-        orders = await loadCompletedPosOrders();
-      }
+    let orders = sessionPosOrders;
+    if (!orders.length) {
+      setStatusMessage("Loading completed POS orders…");
+      orders = await loadCompletedPosOrders();
+    }
       const heldNum = cartRef.current?.held_order_num ?? cart?.held_order_num;
       // Walk older than the order currently being edited (list is newest-first).
       let startIndex = 0;
@@ -6139,17 +6177,17 @@ export function PosScreen({ standalone = false }) {
       }
       const row = orders[startIndex];
       if (!row) {
-        const message =
+      const message =
           "No older completed POS orders found. Save or finish this edit, then use ←.";
-        setOrderEditError(message);
-        setStatusMessage(message);
-        return;
-      }
+      setOrderEditError(message);
+      setStatusMessage(message);
+      return;
+    }
 
-      orderNoUserEditedRef.current = false;
+    orderNoUserEditedRef.current = false;
       setSessionPosOrders(orders);
       setEditBrowseIndex(startIndex);
-      setEditOrderNo(String(row.order_num));
+    setEditOrderNo(String(row.order_num));
       await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
     } finally {
       endPreviousOrderLoading();
@@ -6160,19 +6198,19 @@ export function PosScreen({ standalone = false }) {
     if (!classicCanGoNext || orderEditBusy) return;
     beginPreviousOrderLoading();
     try {
-      if (editBrowseIndex > 0) {
-        const nextIndex = editBrowseIndex - 1;
+    if (editBrowseIndex > 0) {
+      const nextIndex = editBrowseIndex - 1;
         const orders =
           sessionPosOrders.length > 0 ? sessionPosOrders : await loadCompletedPosOrders();
         const row = orders[nextIndex];
-        if (!row) return;
-        setEditBrowseIndex(nextIndex);
-        setEditOrderNo(String(row.order_num));
+      if (!row) return;
+      setEditBrowseIndex(nextIndex);
+      setEditOrderNo(String(row.order_num));
         await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
-        return;
-      }
-      await handleNewOrder();
-      orderNoUserEditedRef.current = false;
+      return;
+    }
+    await handleNewOrder();
+    orderNoUserEditedRef.current = false;
     } finally {
       endPreviousOrderLoading();
     }
@@ -6248,10 +6286,10 @@ export function PosScreen({ standalone = false }) {
       // KRA-off: edits save + sync automatically — F10 is not required.
       if (!kraOn) {
         scheduleEditedOrderAutosave();
-        flashPosShortcutMessage(
-          "Edits save automatically — use Alt+P to reprint the revised receipt.",
-          { error: false },
-        );
+        const f10Hint = previousOrderEditModeMessages(activeCart.held_order_num, {
+          kraFiscalize: false,
+        }).f10;
+        flashPosShortcutMessage(f10Hint, { error: false });
         return;
       }
 
@@ -6265,12 +6303,11 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // KRA-on: still need F10 so the revised receipt is fiscalized with QR.
-      if (!editedOrderHasLocalDraftChanges(activeCart)) {
-        flashPosShortcutMessage("No updates done — completing this order with the same items.", {
-          error: false,
-        });
-      }
+      // KRA-on: F10 completes and fiscalizes the revised receipt.
+      flashPosShortcutMessage(
+        previousOrderEditModeMessages(activeCart.held_order_num, { kraFiscalize: true }).f10,
+        { error: false },
+      );
 
       setPaymentError(null);
       closeProductSearchDropdown();
@@ -6281,8 +6318,8 @@ export function PosScreen({ standalone = false }) {
     if (activeCart?.held_order_num) {
       if (!activeCart?.lines?.length) {
         flashPosShortcutMessage("Add items before completing payment (F10).");
-        return;
-      }
+      return;
+    }
 
       if (cartStockBlocked) {
         flashPosShortcutMessage("Fix stock issues before completing payment.");
@@ -6295,7 +6332,7 @@ export function PosScreen({ standalone = false }) {
         });
       }
 
-      setPaymentError(null);
+    setPaymentError(null);
       closeProductSearchDropdown();
       setPaymentOpen(true);
       return;
@@ -6529,15 +6566,15 @@ export function PosScreen({ standalone = false }) {
           actions.flashPosShortcutMessage?.(
             "Close the open dialog first, then try the shortcut again.",
           );
-          return;
-        }
+        return;
+      }
 
         actions.closeProductSearchDropdown?.();
         if (altLetter === "h") {
           // Same path as the Hold button — no extra confirm gate.
           actions.openSaveOrderDialog("hold");
-          return;
-        }
+        return;
+      }
         if (altLetter === "f") {
           if (state.activeSession) setFloatDetailsOpen(true);
           else {
@@ -6550,8 +6587,8 @@ export function PosScreen({ standalone = false }) {
         if (altLetter === "p") {
           void actions.handlePrintReceipt();
         }
-        return;
-      }
+          return;
+        }
 
       if (e.key === "Escape") {
         claimPosFunctionKeyEvent(e);
@@ -6658,7 +6695,7 @@ export function PosScreen({ standalone = false }) {
                   className={posHeaderBtnClassName}
                 >
                   <span className="pos-header-btn-label" data-short="Held">
-                    Held orders
+                  Held orders
                   </span>
                   {heldOrdersCount > 0 ? (
                     <span className="pos-header-action-badge">
@@ -6679,7 +6716,7 @@ export function PosScreen({ standalone = false }) {
                       className={posHeaderBtnClassName}
                     >
                       <span className="pos-header-btn-label" data-short="Float">
-                        Float details
+                      Float details
                       </span>
                     </button>
                     <button
@@ -6693,7 +6730,7 @@ export function PosScreen({ standalone = false }) {
                       className={posHeaderBtnClassName}
                     >
                       <span className="pos-header-btn-label" data-short="Expense">
-                        Record expense
+                      Record expense
                       </span>
                     </button>
                   </>
@@ -6706,7 +6743,7 @@ export function PosScreen({ standalone = false }) {
                   className={posHeaderBtnClassName}
                 >
                   <span className="pos-header-btn-label" data-short="Price">
-                    Price checker
+                  Price checker
                   </span>
                 </button>
                 <button
@@ -6721,7 +6758,7 @@ export function PosScreen({ standalone = false }) {
                           ? instantAutoEditSync
                             ? "Reprint revised receipt (Alt+P)"
                             : "Reprint this order"
-                          : "Complete an order first"
+                      : "Complete an order first"
                   }
                   onClick={() => void handlePrintReceipt()}
                   className={posHeaderBtnClassName}
@@ -7394,13 +7431,42 @@ export function PosScreen({ standalone = false }) {
             ) : null}
           </div>
           ) : null}
+          {kraEditCheckoutRequired && isCartEditSession && !cartResubmitMessage ? (
+            <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+                <p className="text-xs leading-relaxed">
+                  Revising order #{cart.held_order_num}. Edit lines locally, then press{" "}
+                  <strong>F10</strong> to complete payment and fiscalize the revised receipt (KRA
+                  QR). Alt+P reprints the draft before you complete.
+                </p>
+              </div>
+            </div>
+          ) : null}
           {instantAutoEditSync && isCartEditSession && !cartResubmitMessage ? (
             <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
-              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-950">
+              <div
+                className={`mb-3 rounded-lg border px-3 py-2.5 text-sm ${
+                  previousOrderEditReadyToPrint
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    : "border-sky-200 bg-sky-50 text-sky-950"
+                }`}
+              >
                 <p className="text-xs leading-relaxed">
-                  Revising order #{cart.held_order_num}. Edits save automatically — use Alt+P or
-                  Reprint to print the revised receipt.
-                  {offlineSyncing || pendingSync > 0 ? " Syncing in background…" : null}
+                  {previousOrderEditReadyToPrint ? (
+                    <>
+                      Order #{cart.held_order_num} saved on server.{" "}
+                      <strong>Print the revised receipt</strong> — Alt+P or Reprint.
+                    </>
+                  ) : (
+                    <>
+                      Revising order #{cart.held_order_num}. Edits save instantly —{" "}
+                      <strong>F10 is not required</strong>. When finished, print with Alt+P or
+                      Reprint.
+                      {offlineSyncing || editAutosaveBusy || pendingSync > 0
+                        ? " Syncing in background…"
+                        : null}
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -8000,33 +8066,37 @@ export function PosScreen({ standalone = false }) {
               {posSalesConfig.showCheckoutOnCreate || modernOrderEditLocked ? (
                 instantAutoEditSync && modernOrderEditLocked ? (
                   <PosActionButton
-                    label="Reprint"
-                    title="Reprint revised receipt (Alt+P)"
+                    label={previousOrderEditReadyToPrint ? "Print receipt" : "Reprint"}
+                    title={
+                      previousOrderEditReadyToPrint
+                        ? "Order saved — print the revised receipt (Alt+P)"
+                        : "Reprint revised receipt (Alt+P)"
+                    }
                     icon="🖨"
                     iconClass="pos-cart-action-icon--complete"
                     disabled={busy || !cart?.lines?.length || receiptPrintStatus === "pending"}
                     onClick={() => void handlePrintReceipt()}
                   />
                 ) : (
-                  <PosActionButton
-                    label="Complete"
-                    title={
+                <PosActionButton
+                  label="Complete"
+                  title={
                       modernOrderEditLocked
                         ? "Complete payment and save this order (F10) — works even if lines are unchanged"
                         : checkoutBlocked
-                          ? "Wait for the line to finish saving"
-                          : "Complete payment (F10)"
-                    }
-                    icon="🛒"
-                    iconClass="pos-cart-action-icon--complete"
+                      ? "Wait for the line to finish saving"
+                      : "Complete payment (F10)"
+                  }
+                  icon="🛒"
+                  iconClass="pos-cart-action-icon--complete"
                     disabled={
                       busy
                       || !cart?.lines?.length
                       || cartStockBlocked
                       || (!modernOrderEditLocked && (lineBusy || checkoutBlocked))
                     }
-                    onClick={() => openCompletePayment()}
-                  />
+                  onClick={() => openCompletePayment()}
+                />
                 )
               ) : (
                 <PosActionButton
