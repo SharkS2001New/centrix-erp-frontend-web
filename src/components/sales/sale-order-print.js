@@ -5,6 +5,7 @@ import {
   ensureSaleForPrint,
   fetchPrintModuleSettings,
 } from "@/lib/print-module-settings";
+import { withPosReceiptTicket } from "@/lib/pos-offline";
 import { enrichSaleLinesForQtyPrint, saleLineProductName } from "@/lib/sale-line-items";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
@@ -234,10 +235,12 @@ export async function printSaleOrder(sale, options = {}) {
       Array.isArray(sale.items) &&
       sale.items.length > 0 &&
       !sale.items.some((line) => line?.product_code && !saleLineProductName(line));
-    const loadedSale =
+    const loadedSale = withPosReceiptTicket(
       options.skipSaleRefresh && hasCompleteItems
         ? sale
-        : await ensureSaleForPrint(sale);
+        : await ensureSaleForPrint(sale),
+      sale,
+    );
 
     // Tax invoice / thermal receipt require fulfillable stock (proforma is exempt).
     if (

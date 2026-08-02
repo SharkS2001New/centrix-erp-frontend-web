@@ -69,15 +69,34 @@ export async function ensureSaleForPrint(sale) {
 
   const existingKra = sale.kra_response ?? sale.kraResponse ?? null;
 
+  const preserveCheckoutSnapshot = (loaded) => {
+    if (!loaded) return loaded;
+    const posOrderNum =
+      loaded.pos_order_num ??
+      sale.pos_order_num ??
+      sale.next_pos_order_num ??
+      null;
+    const posOrderDate =
+      loaded.pos_order_date ?? sale.pos_order_date ?? sale.next_pos_order_date ?? null;
+    return {
+      ...loaded,
+      ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
+      ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
+      channel: loaded.channel ?? sale.channel,
+      order_source: loaded.order_source ?? sale.order_source,
+    };
+  };
+
   for (const endpoint of endpoints) {
     try {
       const loaded = await apiRequest(endpoint, { loading: false, reportIssues: false });
       if (!loaded) continue;
+      const merged = preserveCheckoutSnapshot(loaded);
       // Preserve checkout KRA payload if the refreshed sale omitted it (cache / older API).
-      if (existingKra && !loaded.kra_response && !loaded.kraResponse) {
-        return { ...loaded, kra_response: existingKra };
+      if (existingKra && !merged.kra_response && !merged.kraResponse) {
+        return { ...merged, kra_response: existingKra };
       }
-      return loaded;
+      return merged;
     } catch {
       // try next endpoint
     }

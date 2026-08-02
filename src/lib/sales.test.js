@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatCashSalesNumber,
   isOrderEditActionVisible,
   isOrderEditVisible,
   resolvePaymentMethodByCode,
@@ -409,5 +410,23 @@ describe("orderActionStageOptionsFromWorkflow", () => {
 
     expect(steps.map((s) => s.key)).toEqual(["booked", "paid"]);
     expect(steps[0].label).toBe("Reserved");
+  });
+});
+
+describe("formatCashSalesNumber", () => {
+  it("uses pos_order_num for POS channel sales", () => {
+    expect(
+      formatCashSalesNumber({ channel: "pos", pos_order_num: 6, order_num: 33 }),
+    ).toBe("6");
+  });
+
+  it("falls back to next_pos_order_num when pos_order_num is missing", () => {
+    expect(
+      formatCashSalesNumber({ channel: "pos", next_pos_order_num: 6, order_num: 33 }),
+    ).toBe("6");
+  });
+
+  it("does not fall back to S00xx for POS channel", () => {
+    expect(formatCashSalesNumber({ channel: "pos", order_num: 33 })).toBe("—");
   });
 });

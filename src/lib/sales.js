@@ -184,7 +184,7 @@ export function formatOrderNumber(saleOrNum) {
 export function formatPosOrderNumber(saleOrNum) {
   if (saleOrNum == null || saleOrNum === "") return "—";
   if (typeof saleOrNum === "object") {
-    const num = saleOrNum.pos_order_num;
+    const num = saleOrNum.pos_order_num ?? saleOrNum.next_pos_order_num;
     if (num == null || num === "") return "—";
     return String(num);
   }

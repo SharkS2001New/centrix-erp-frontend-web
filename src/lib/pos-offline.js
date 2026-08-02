@@ -427,6 +427,43 @@ export function summarizeLocalPosCart(cart) {
   };
 }
 
+/** POS ticket # fields from cart / sale snapshot (for receipts). */
+export function posTicketFieldsFromCart(cart) {
+  if (!cart) return { pos_order_num: null, pos_order_date: null };
+  const posOrderNum =
+    cart.pos_order_num != null && Number(cart.pos_order_num) > 0
+      ? Number(cart.pos_order_num)
+      : cart.next_pos_order_num != null && Number(cart.next_pos_order_num) > 0
+        ? Number(cart.next_pos_order_num)
+        : null;
+  const posOrderDate =
+    normalizePosOrderDate(cart.pos_order_date) ??
+    normalizePosOrderDate(cart.next_pos_order_date) ??
+    (posOrderNum != null ? normalizePosOrderDate(new Date().toISOString()) : null);
+  return { pos_order_num: posOrderNum, pos_order_date: posOrderDate };
+}
+
+/** Merge POS ticket # onto a sale for thermal print (preserves checkout snapshot). */
+export function withPosReceiptTicket(sale, cartOrSource = null) {
+  if (!sale) return sale;
+  const ticket = posTicketFieldsFromCart(cartOrSource ?? sale);
+  const posOrderNum =
+    sale.pos_order_num != null && Number(sale.pos_order_num) > 0
+      ? Number(sale.pos_order_num)
+      : ticket.pos_order_num;
+  const posOrderDate =
+    normalizePosOrderDate(sale.pos_order_date) ??
+    ticket.pos_order_date ??
+    null;
+  return {
+    ...sale,
+    channel: sale.channel ?? cartOrSource?.channel ?? "pos",
+    order_source: sale.order_source ?? cartOrSource?.order_source ?? "pos",
+    ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
+    ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
+  };
+}
+
 /**
  * Complete a local cash sale: reserved order # (or reuse for edits), queue outbox, clear cart.
  * Supports:
@@ -520,11 +557,33 @@ export async function completeOfflineCashSale({
     posOrderNum = Number(cart.pos_order_num);
     posOrderDate = normalizePosOrderDate(cart.pos_order_date) ?? posOrderDate;
   }
+  if (posOrderNum == null) {
+    const fromCart = posTicketFieldsFromCart(cart);
+    if (fromCart.pos_order_num != null) {
+      posOrderNum = fromCart.pos_order_num;
+      posOrderDate = fromCart.pos_order_date ?? posOrderDate;
+    }
+  }
   posOrderDate = normalizePosOrderDate(posOrderDate);
   const createdAtIso =
     existingOutbox?.sale_payload?.created_at ??
     existingOutbox?.sale_payload?.completed_at ??
     nowIso;
+
+  // Prefer the cart/body customer; fall back to a prior outbox revision so edits
+  // do not wipe the buyer and sync as Walk-in (TemporaryCart has no customer columns).
+  const customerNumRaw =
+    cart.customer_num ??
+    existingOutbox?.sale_payload?.customer_num ??
+    existingOutbox?.checkout_body?.customer_num ??
+    null;
+  const customerNum =
+    customerNumRaw != null && Number(customerNumRaw) > 0 ? Number(customerNumRaw) : null;
+  const customerNameOverride =
+    String(cart.customer_name_override ?? "").trim() ||
+    String(existingOutbox?.sale_payload?.customer_name_override ?? "").trim() ||
+    String(existingOutbox?.checkout_body?.customer_name_override ?? "").trim() ||
+    null;
 
   const saleItems = [];
   for (const [index, line] of (cart.lines ?? []).entries()) {
@@ -598,8 +657,8 @@ export async function completeOfflineCashSale({
     cash: payNow,
     completed_at: nowIso,
     created_at: createdAtIso,
-    customer_num: cart.customer_num ?? null,
-    customer_name_override: cart.customer_name_override ?? null,
+    customer_num: customerNum,
+    customer_name_override: customerNameOverride,
     offline_pending_sync: true,
     superseded_sale_id: supersededSaleId,
     items: saleItems,
@@ -657,8 +716,8 @@ export async function completeOfflineCashSale({
       // Revision only for previous-order edits — new sales keep a stable uuid key for retry dedupe.
       ...(syncKind === "previous_order_edit" ? { content_revision: contentRevision } : {}),
       float_session_id: sale.float_session_id,
-      customer_num: sale.customer_num,
-      customer_name_override: sale.customer_name_override,
+      customer_num: customerNum,
+      customer_name_override: customerNameOverride,
       total_vat: sale.total_vat,
       sales_workspace: "pos",
     },
@@ -864,6 +923,19 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     row.sale_payload?.pos_order_num;
   const posNum = posNumRaw != null ? Number(posNumRaw) : null;
 
+  const customerNumRaw =
+    extras.customer_num ??
+    row.checkout_body?.customer_num ??
+    row.sale_payload?.customer_num ??
+    null;
+  const customerNum =
+    customerNumRaw != null && Number(customerNumRaw) > 0 ? Number(customerNumRaw) : null;
+  const customerNameOverride =
+    String(extras.customer_name_override ?? "").trim() ||
+    String(row.checkout_body?.customer_name_override ?? "").trim() ||
+    String(row.sale_payload?.customer_name_override ?? "").trim() ||
+    null;
+
   const body = {
     ...row.checkout_body,
     order_num: orderNum,
@@ -884,6 +956,12 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     body.pos_order_date = posDate;
   } else {
     delete body.pos_order_date;
+  }
+  if (customerNum != null) {
+    body.customer_num = customerNum;
+  }
+  if (customerNameOverride) {
+    body.customer_name_override = customerNameOverride;
   }
   return body;
 }
