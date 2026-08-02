@@ -23,7 +23,7 @@ import {
   DOCUMENT_LOGO_THERMAL_SIZE_PX,
 } from "@/lib/document-logo-settings";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
-import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, formatCashSalesNumber, saleCustomerLabel } from "@/lib/sales";
 import { isLegacySale } from "@/lib/sale-line-items";
 import { buildThermalVatChargeGroups } from "@/lib/sales-vat";
 import {
@@ -160,6 +160,7 @@ export function buildSaleReceiptHtml(
 
   const items = sale.items ?? [];
   const orderNo = formatOrderNumber(sale);
+  const cashSalesNo = formatCashSalesNumber(sale);
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
   const customerPhone =
     sale.customer_phone ?? sale.customer_mobile ?? customer?.phone_number ?? customer?.additional_phone ?? "";
@@ -301,7 +302,7 @@ export function buildSaleReceiptHtml(
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Receipt ${escapeHtml(orderNo)}</title>
+  <title>Receipt ${escapeHtml(cashSalesNo)}</title>
   <style>
     @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
@@ -412,7 +413,8 @@ export function buildSaleReceiptHtml(
     ${seller?.tax_pin ? `<div class="company-meta">PIN: ${escapeHtml(seller.tax_pin)}</div>` : ""}
     <div class="meta-grid">
       <div class="meta-full"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
-      <div class="meta-full"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(orderNo)}</div>
+      <div class="meta-full"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(cashSalesNo)}</div>
+      <div class="meta-full"><span class="meta-label">Order #:</span> ${escapeHtml(orderNo)}</div>
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(String(customerName).toUpperCase())}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>

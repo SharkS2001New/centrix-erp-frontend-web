@@ -165,6 +165,42 @@ export async function idbListPendingOutbox() {
     .sort((a, b) => Number(a.created_at_ms ?? 0) - Number(b.created_at_ms ?? 0));
 }
 
+/** Rows left mid-sync after a crash/reload — reclaim for retry. */
+export async function idbReclaimStuckSyncingOutbox({ olderThanMs = 60_000 } = {}) {
+  const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
+  const cutoff = Date.now() - olderThanMs;
+  let reclaimed = 0;
+  for (const row of rows) {
+    if (row.sync_status !== "syncing") continue;
+    const started = Number(row.sync_started_at_ms ?? row.updated_at_ms ?? 0);
+    if (started && started > cutoff) continue;
+    await idbPutOutboxSale({
+      ...row,
+      sync_status: "pending",
+      sync_started_at_ms: null,
+      updated_at_ms: Date.now(),
+    });
+    reclaimed += 1;
+  }
+  return reclaimed;
+}
+
+export async function idbMarkOutboxSyncing(uuid) {
+  const existing = await idbGetOutboxSale(uuid);
+  if (!existing) return false;
+  if (existing.sync_status !== "pending" && existing.sync_status !== "error") {
+    return false;
+  }
+  await idbPutOutboxSale({
+    ...existing,
+    sync_status: "syncing",
+    sync_started_at_ms: Date.now(),
+    revision_at_sync: Number(existing.content_revision ?? 0),
+    updated_at_ms: Date.now(),
+  });
+  return true;
+}
+
 export async function idbCountPendingOutbox() {
   const pending = await idbListPendingOutbox();
   return pending.length;
@@ -173,16 +209,62 @@ export async function idbCountPendingOutbox() {
 export async function idbMarkOutboxSynced(uuid, serverSale, extras = {}) {
   const existing = await idbGetOutboxSale(uuid);
   if (!existing) return;
+
+  // Another edit re-queued this row while sync was in flight — keep pending.
+  if (existing.sync_status === "pending" || existing.sync_status === "error") {
+    await idbPutOutboxSale({
+      ...existing,
+      server_sale_id: serverSale?.id ?? existing.server_sale_id,
+      server_order_num: serverSale?.order_num ?? existing.server_order_num ?? existing.order_num,
+      updated_at_ms: Date.now(),
+    });
+    return;
+  }
+
+  const revisionNow = Number(existing.content_revision ?? 0);
+  const revisionAtSync = Number(existing.revision_at_sync ?? 0);
+  if (existing.sync_status === "syncing" && revisionNow !== revisionAtSync) {
+    await idbPutOutboxSale({
+      ...existing,
+      sync_status: "pending",
+      sync_started_at_ms: null,
+      revision_at_sync: null,
+      server_sale_id: serverSale?.id ?? existing.server_sale_id,
+      server_order_num: serverSale?.order_num ?? existing.server_order_num ?? existing.order_num,
+      // Cart was consumed by checkout — next sync restores the new sale.
+      server_cart_id: null,
+      superseded_sale_id:
+        existing.sync_kind === "previous_order_edit" && serverSale?.id
+          ? Number(serverSale.id)
+          : existing.superseded_sale_id,
+      updated_at_ms: Date.now(),
+    });
+    return;
+  }
+
   await idbPutOutboxSale({
     ...existing,
     sync_status: "synced",
     synced_at_ms: Date.now(),
+    sync_started_at_ms: null,
+    revision_at_sync: null,
     server_sale_id: serverSale?.id ?? null,
     server_order_num: serverSale?.order_num ?? existing.order_num,
     printed_order_num: existing.order_num,
     needs_reprint: Boolean(extras.needs_reprint),
     order_num_changed: Boolean(extras.order_num_changed),
     original_order_num: extras.original_order_num ?? existing.order_num,
+    // After previous-order checkout the edit cart is gone; next edit restores this sale.
+    server_cart_id:
+      existing.sync_kind === "previous_order_edit" ? null : existing.server_cart_id,
+    superseded_sale_id:
+      existing.sync_kind === "previous_order_edit" && serverSale?.id
+        ? Number(serverSale.id)
+        : existing.superseded_sale_id,
+    sale_payload:
+      serverSale && typeof serverSale === "object"
+        ? { ...(existing.sale_payload ?? {}), ...serverSale, offline_pending_sync: false }
+        : existing.sale_payload,
   });
 }
 

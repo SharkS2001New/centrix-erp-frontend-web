@@ -149,18 +149,23 @@ import {
   abandonOfflineSaleEdit,
   adoptOnlineCartForOffline,
   beginOfflineSaleEdit,
+  buildPreviousOrderEditPrintSale,
   clearLocalPosCart,
   clearPreviousOrderEditDraft,
   completeOfflineCashSale,
   getPosOfflineProduct,
+  isLocalFirstCashCheckout,
+  isServerPosCartId,
   listOfflinePendingSalesForEdit,
   loadOrCreateLocalPosCart,
   loadPreviousOrderEditDraft,
   parseOfflineSaleUuid,
+  peekPosOfflineOrderNumberCount,
   saveLocalPosCart,
   savePreviousOrderEditDraft,
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
+  upsertPreviousOrderEditOutbox,
 } from "@/lib/pos-offline";
 import {
   CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
@@ -405,14 +410,56 @@ function offlinePrintOptions(sale, base = {}) {
   };
 }
 
-/** Prefer the loaded previous order while editing; otherwise the last completed sale. */
+function previousOrderEditWorkspaceHint({ kraFiscalize = false, offline = false } = {}) {
+  if (offline) {
+    return "Alt+P reprint; F10 to complete (even if unchanged).";
+  }
+  if (kraFiscalize) {
+    return "Edit lines locally; F10 completes payment and fiscalizes the revised receipt (KRA QR). Alt+P reprints before complete.";
+  }
+  return "Edits save instantly — no F10. When finished, Alt+P or Reprint to print the revised receipt.";
+}
+
+/** Standalone toast / banner copy for previous-order edit modes. */
+function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline = false } = {}) {
+  const label = orderNum != null ? `#${orderNum}` : "this order";
+  if (offline) {
+    return {
+      loaded: `Order ${label} loaded. Alt+P reprint; F10 to complete.`,
+      f10: "F10 completes this offline order.",
+      synced: null,
+      leaveConfirm:
+        "Clear this order and start a new one? Unsaved offline changes may be lost.",
+    };
+  }
+  if (kraFiscalize) {
+    return {
+      loaded: `Order ${label} loaded. Edit lines, then F10 to complete and fiscalize the revised receipt.`,
+      f10: "F10 completes payment and sends the revised receipt to KRA (QR on receipt).",
+      synced: null,
+      leaveConfirm:
+        "Leave this edit? Line changes are not saved until you complete with F10. Print only after F10 fiscalizes.",
+    };
+  }
+  return {
+    loaded: `Order ${label} loaded. Each change saves automatically — F10 is not required. Print the revised receipt with Alt+P when finished.`,
+    f10: "F10 is not required — edits save automatically. Use Alt+P or Reprint when finished.",
+    synced: `Order ${label} saved on server. Print the revised receipt (Alt+P or Reprint).`,
+    leaveConfirm:
+      "Finish editing? Print the revised receipt (Alt+P) if you have not yet, then start a new order.",
+  };
+}
+
+/** Prefer the revised cart while editing; otherwise the last completed sale. */
 function resolvePosReprintSale({
   isCartEditSession,
   editSourceSale,
   completedSale,
   sessionPosOrders,
   lastReceiptFallback,
+  editCartSnapshot = null,
 }) {
+  if (isCartEditSession && editCartSnapshot?.items?.length) return editCartSnapshot;
   if (isCartEditSession && editSourceSale?.id) return editSourceSale;
   if (completedSale?.id) return completedSale;
   if (sessionPosOrders?.[0]?.id) return sessionPosOrders[0];
@@ -468,6 +515,7 @@ export function PosScreen({ standalone = false }) {
     lastSyncMessage,
     searchOffline,
     refreshCounts: refreshOfflineCounts,
+    flushOutboxNow,
   } = usePosOfflineSupport({ enabled: standalone });
   const classicCurrencySettings = useMemo(
     () => mergeGeneralSettings(capabilities?.module_settings),
@@ -1171,6 +1219,10 @@ export function PosScreen({ standalone = false }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: seed from storage once per user/branch
     [user?.id, user?.branch_id, completedSale?.id],
   );
+  const editCartPrintSnapshot = useMemo(() => {
+    if (!isCartEditSession || !cart) return null;
+    return buildPreviousOrderEditPrintSale(cart, { user, organization });
+  }, [isCartEditSession, cart, user, organization]);
   const reprintSale = useMemo(
     () =>
       resolvePosReprintSale({
@@ -1179,8 +1231,16 @@ export function PosScreen({ standalone = false }) {
         completedSale,
         sessionPosOrders,
         lastReceiptFallback,
+        editCartSnapshot: editCartPrintSnapshot,
       }),
-    [isCartEditSession, editSourceSale, completedSale, sessionPosOrders, lastReceiptFallback],
+    [
+      isCartEditSession,
+      editSourceSale,
+      completedSale,
+      sessionPosOrders,
+      lastReceiptFallback,
+      editCartPrintSnapshot,
+    ],
   );
   const reprintReceiptLabel = reprintSale?.order_num
     ? `Reprint receipt #${reprintSale.order_num}`
@@ -1528,6 +1588,49 @@ export function PosScreen({ standalone = false }) {
   cartRef.current = cart;
   cartSummaryRef.current = cartSummary;
   productByCodeRef.current = productByCode;
+
+  /** KRA-off previous-order edits: instant local save + background outbox sync (no F10). */
+  const instantAutoEditSync = useMemo(() => {
+    if (!standalone || !isCartEditSession) return false;
+    return !shouldSubmitKraOnCheckout(
+      capabilities?.module_settings,
+      capabilities,
+      cartSummary?.total ?? cartSummary?.amountDue,
+    );
+  }, [
+    standalone,
+    isCartEditSession,
+    capabilities,
+    cartSummary?.total,
+    cartSummary?.amountDue,
+  ]);
+  const kraEditCheckoutRequired = useMemo(() => {
+    if (!standalone || !isCartEditSession) return false;
+    return shouldSubmitKraOnCheckout(
+      capabilities?.module_settings,
+      capabilities,
+      cartSummary?.total ?? cartSummary?.amountDue,
+    );
+  }, [
+    standalone,
+    isCartEditSession,
+    capabilities,
+    cartSummary?.total,
+    cartSummary?.amountDue,
+  ]);
+  const previousOrderEditReadyToPrint = useMemo(() => {
+    if (!instantAutoEditSync || !isCartEditSession) return false;
+    if (offlineSyncing || editAutosaveInFlightRef.current) return false;
+    if (editedOrderHasLocalDraftChanges(cart)) return false;
+    if (pendingSync > 0) return false;
+    return (cart?.lines?.length ?? 0) > 0;
+  }, [
+    instantAutoEditSync,
+    isCartEditSession,
+    offlineSyncing,
+    pendingSync,
+    cart,
+  ]);
 
   // Classic External POS stays light — no dark theme toggle on this layout.
   useEffect(() => {
@@ -1970,13 +2073,16 @@ export function PosScreen({ standalone = false }) {
     return cartCommitChainRef.current;
   }
 
-  /** Previous-order edits: flip dirty before the queued commit so F10 works immediately. */
+  /** Previous-order edits: flip dirty before the queued commit so autosave/F10 work immediately. */
   function markPreviousOrderDraftDirtyNow() {
     const current = cartRef.current;
     if (!current?.held_order_num || current._editDraftDirty) return;
     const next = withEditDraftDirty(current);
     cartRef.current = next;
     setCart(next);
+    if (current.superseded_sale_id) {
+      scheduleEditedOrderAutosave();
+    }
   }
 
   function persistPreviousOrderLocalDraft(nextCart) {
@@ -1984,6 +2090,55 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     void savePreviousOrderEditDraft(nextCart).catch(() => {});
+    if (editedOrderHasLocalDraftChanges(nextCart)) {
+      scheduleEditedOrderAutosave();
+    }
+  }
+
+  /**
+   * After a previous-order edit syncs (checkout consumed the edit cart), restore that
+   * sale back into the workspace so the cashier can keep editing with a live cart id.
+   */
+  async function refreshPreviousOrderEditCartAfterSync(sale) {
+    if (!sale?.id || !standalone) return;
+    const active = cartRef.current;
+    if (!active?.held_order_num || !active?.superseded_sale_id) return;
+    if (Number(active.held_order_num) !== Number(sale.order_num)) return;
+    try {
+      const restored = await apiRequest(`/sales/orders/${sale.id}/restore-to-cart`, {
+        method: "POST",
+        body: { replace: true },
+        loading: false,
+        reportIssues: false,
+      });
+      const current = cartRef.current;
+      if (!current?.held_order_num || Number(current.held_order_num) !== Number(sale.order_num)) {
+        return;
+      }
+      const keepDirty = editedOrderHasLocalDraftChanges(current);
+      const next = {
+        ...(presentRestoredEditCart(restored, sale) ?? restored),
+        // Keep live line edits that may have landed during sync.
+        lines: current.lines ?? restored?.lines,
+        customer_num: current.customer_num ?? restored?.customer_num,
+        customer_name_override:
+          current.customer_name_override ?? restored?.customer_name_override,
+        order_discount: current.order_discount ?? restored?.order_discount,
+        server_sale_id: sale.id,
+        superseded_sale_id: sale.id,
+        ...(keepDirty ? { _editDraftDirty: true } : {}),
+      };
+      const normalized = keepDirty ? next : stripPreviousOrderDraftMarkers(next);
+      cartRef.current = normalized;
+      setCart(normalized);
+      setEditSourceSale(sale);
+      void savePreviousOrderEditDraft(normalized).catch(() => {});
+      if (keepDirty) {
+        scheduleEditedOrderAutosave();
+      }
+    } catch {
+      /* keep editing on local cart; next upsert restores via superseded_sale_id */
+    }
   }
 
   async function waitForCartLineSavesToFinish() {
@@ -3396,6 +3551,21 @@ export function PosScreen({ standalone = false }) {
     }
     setBusy(true);
     try {
+      if (
+        cart.held_order_num &&
+        cart.superseded_sale_id &&
+        !cart.offline &&
+        !cart.offline_client_sale_uuid &&
+        !cart.discount_resubmit
+      ) {
+        const nextCart = withEditDraftDirty({ ...cart, order_discount: next });
+        cartRef.current = nextCart;
+        setCart(nextCart);
+        persistPreviousOrderLocalDraft(nextCart);
+        setOrderDiscountDraft(next > 0 ? String(next) : "");
+        return;
+      }
+
       if (discountApprovalActive && !canAutoApproveDiscount && next > 0) {
         const res = await apiRequest(`/sales/carts/${cart.id}/discount-requests`, {
           method: "POST",
@@ -4072,6 +4242,8 @@ export function PosScreen({ standalone = false }) {
     if (isKraDeviceConfigured(capabilities?.module_settings, capabilities)) {
       message +=
         " If the original sale was sent to KRA, a credit note was issued when you opened the order; the revised receipt is fiscalized again when you Complete (F10).";
+    } else if (instantAutoEditSync) {
+      message += " Changes save automatically — use Alt+P to reprint.";
     } else {
       message += " Complete (F10) to save the revised order.";
     }
@@ -4134,7 +4306,7 @@ export function PosScreen({ standalone = false }) {
             ? targets[0]?.product_name || targets[0]?.product_code || "Item"
             : `${targets.length} items`;
         setStatusMessage(
-          `${label} removed from revised order #${cart.held_order_num}. Complete (F10) to save and print.`,
+          `${label} removed from revised order #${cart.held_order_num}. Saved locally — syncing…`,
         );
       }
       return;
@@ -4181,7 +4353,9 @@ export function PosScreen({ standalone = false }) {
       !(await confirm({
         title: "Clear cart",
         message: cart.held_order_num
-          ? "Clear all items from this revised order? Stock was restored when you opened this receipt. Complete (F10) to save the empty or revised order."
+          ? instantAutoEditSync
+            ? "Clear all items from this revised order? Stock was restored when you opened this receipt. The empty order saves automatically when you add items again."
+            : "Clear all items from this revised order? Stock was restored when you opened this receipt. Complete (F10) to save the empty or revised order."
           : "Clear all items from the cart?",
         confirmLabel: "Clear",
         destructive: true,
@@ -4210,7 +4384,9 @@ export function PosScreen({ standalone = false }) {
         setSelectedLineId(null);
         setStatusMessage(
           cart.held_order_num
-            ? "Lines cleared — complete the order to save, or start a new order to abandon."
+            ? instantAutoEditSync
+              ? "Lines cleared — add items again or start a new order to abandon."
+              : "Lines cleared — complete the order to save, or start a new order to abandon."
             : "Cart cleared.",
         );
         window.requestAnimationFrame(() => {
@@ -4633,20 +4809,27 @@ export function PosScreen({ standalone = false }) {
       standalone &&
       activeCart.held_order_num &&
       offlineMode &&
-      !activeCart.offline_client_sale_uuid
+      !activeCart.offline_client_sale_uuid &&
+      !activeCart.superseded_sale_id &&
+      !isServerPosCartId(activeCart.id)
     ) {
       setPaymentError(
-        "Reconnect to finish editing this previous order. Offline checkout cannot reuse a server order number.",
+        "Reconnect to load this previous order for editing, then you can finish offline.",
       );
       return null;
     }
 
+    const isQueuedOfflineEdit = Boolean(activeCart.offline_client_sale_uuid);
+    const isPreviousOrderCashEdit = Boolean(
+      activeCart.held_order_num && activeCart.superseded_sale_id,
+    );
+
     // Offline External POS: cash-only, real reserved order numbers, print, queue sync.
-    // Also used when revising a pending offline sale (same order # / client uuid).
+    // Also used when revising a pending offline sale or a previous-order edit (same order #).
     if (
       standalone &&
       (offlineMode || activeCart.offline) &&
-      (!activeCart.held_order_num || activeCart.offline_client_sale_uuid)
+      (!activeCart.held_order_num || isQueuedOfflineEdit || isPreviousOrderCashEdit)
     ) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
@@ -4666,7 +4849,7 @@ export function PosScreen({ standalone = false }) {
       setReceiptPrintStatus(null);
       try {
         const local = {
-          id: "active",
+          id: isServerPosCartId(activeCart.id) ? activeCart.id : "active",
           lines: (activeCart.lines ?? []).map((l) => ({
             ...l,
             client_line_id: l.client_line_id ?? l.id,
@@ -4680,6 +4863,8 @@ export function PosScreen({ standalone = false }) {
           held_order_num: activeCart.held_order_num ?? null,
           offline_client_sale_uuid: activeCart.offline_client_sale_uuid ?? null,
           offline_edit_snapshot: activeCart.offline_edit_snapshot ?? null,
+          superseded_sale_id: activeCart.superseded_sale_id ?? null,
+          order_discount: Number(activeCart.order_discount ?? 0) || 0,
         };
         const { sale: offlineSale } = await completeOfflineCashSale({
           cart: local,
@@ -4699,19 +4884,111 @@ export function PosScreen({ standalone = false }) {
         clearLineEntry();
         setStatusMessage(
           activeCart.held_order_num
-            ? `Offline sale #${sale.order_num} updated — will sync when internet returns.`
-            : `Offline sale #${sale.order_num} saved — will sync when internet returns.`,
+            ? `Sale #${sale.order_num} updated — syncing in background.`
+            : `Sale #${sale.order_num} saved — syncing in background.`,
         );
         if (!options.skipPrint) {
           schedulePosReceiptPrint(sale);
         }
         void refreshOfflineCounts();
+        void flushOutboxNow();
         return sale;
       } catch (e) {
         setPaymentError(e?.message ?? "Offline checkout failed.");
         return null;
       } finally {
         setBusy(false);
+      }
+    }
+
+    // Online External POS cash (KRA fiscalization OFF): sell → print → save local →
+    // immediate background sync. When KRA is on, skip this — the eTIMS QR only exists
+    // after the fiscal device responds, so checkout stays server-first (wait → print with QR).
+    // Includes previous-order cash edits (same order #; sync updates the server record).
+    // Falls back to server checkout when no reserved order numbers are left (new sales only).
+    const kraFiscalizeOnCheckout = shouldSubmitKraOnCheckout(
+      capabilities?.module_settings,
+      capabilities,
+      summary?.total ?? summary?.amountDue,
+    );
+    if (
+      standalone &&
+      !offlineMode &&
+      !activeCart.offline &&
+      !activeCart.offline_client_sale_uuid &&
+      !kraFiscalizeOnCheckout &&
+      isLocalFirstCashCheckout(body) &&
+      (!activeCart.held_order_num || isPreviousOrderCashEdit)
+    ) {
+      const reservedLeft = isPreviousOrderCashEdit
+        ? 1
+        : await peekPosOfflineOrderNumberCount();
+      if (reservedLeft > 0) {
+        const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
+        const cashTendered = Number(body?.__cash_tendered ?? 0);
+        setBusy(true);
+        setPaymentError(null);
+        setReceiptPrintStatus(null);
+        try {
+          const local = {
+            id: isPreviousOrderCashEdit && isServerPosCartId(activeCart.id)
+              ? activeCart.id
+              : "active",
+            lines: (activeCart.lines ?? []).map((l) => ({
+              ...l,
+              client_line_id: l.client_line_id ?? l.id,
+            })),
+            branch_id: activeCart.branch_id ?? user?.branch_id,
+            till_id: activeCart.till_id ?? tillId,
+            float_session_id: floatSessionId ?? activeCart.float_session_id,
+            customer_num: body?.customer_num ?? activeCart.customer_num,
+            customer_name_override:
+              body?.customer_name_override ?? activeCart.customer_name_override,
+            held_order_num: activeCart.held_order_num ?? null,
+            superseded_sale_id: activeCart.superseded_sale_id ?? null,
+            order_discount: Number(activeCart.order_discount ?? 0) || 0,
+          };
+          const { sale: localSale } = await completeOfflineCashSale({
+            cart: local,
+            user,
+            organization,
+            cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
+            floatSessionId,
+          });
+          const sale =
+            cashTendered > 0 ? { ...localSale, _cash_tendered: cashTendered } : localSale;
+          // New sales: release online cart line reservations. Previous-order edits keep
+          // the edit cart so sync can PUT lines + checkout under the same order #.
+          if (!isPreviousOrderCashEdit && isServerPosCartId(activeCart.id)) {
+            void apiRequest(`/sales/carts/${activeCart.id}/lines`, {
+              method: "DELETE",
+              loading: false,
+              reportIssues: false,
+            }).catch(() => {});
+          }
+          markSaleForReprint(sale);
+          setCart(null);
+          setSelectedLineId(null);
+          clearPosUiDraft();
+          clearLineEntry();
+          void clearPreviousOrderEditDraft().catch(() => {});
+          setStatusMessage(
+            isPreviousOrderCashEdit
+              ? `Sale #${sale.order_num} updated — syncing…`
+              : `Sale #${sale.order_num} completed — syncing…`,
+          );
+          if (!options.skipPrint) {
+            schedulePosReceiptPrint(sale);
+          }
+          void refreshOfflineCounts();
+          void flushOutboxNow();
+          return sale;
+        } catch (e) {
+          // Fall through to normal online checkout if local-first fails.
+          console.warn("Local-first cash checkout failed; using online checkout", e);
+        } finally {
+          setBusy(false);
+        }
       }
     }
 
@@ -4826,9 +5103,99 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
-  /** Line edits while restoring a previous order stay local until Complete. */
+  /**
+   * KRA-off previous-order edits: debounce outbox upsert + immediate flush.
+   * KRA-on stays local-only until F10 (fiscal QR requires device response).
+   */
   function scheduleEditedOrderAutosave() {
-    // Intentionally no-op — do not checkout until the cashier completes again.
+    if (!standalone) return;
+    if (skipEditAutosaveRef.current) return;
+    const activeCart = cartRef.current;
+    if (!activeCart?.held_order_num || !activeCart?.superseded_sale_id) return;
+    if (activeCart.offline || activeCart.offline_client_sale_uuid) return;
+
+    const summary = summarizeLocalPosCart(activeCart);
+    if (
+      shouldSubmitKraOnCheckout(
+        capabilities?.module_settings,
+        capabilities,
+        summary?.total ?? summary?.amountDue,
+      )
+    ) {
+      return;
+    }
+    if (!editedOrderHasLocalDraftChanges(activeCart)) return;
+    if (!(activeCart.lines ?? []).some((l) => Number(l.quantity ?? 0) > 0 && l.product_code)) {
+      return;
+    }
+
+    if (editAutosaveTimerRef.current) {
+      window.clearTimeout(editAutosaveTimerRef.current);
+    }
+    editAutosaveTimerRef.current = window.setTimeout(() => {
+      editAutosaveTimerRef.current = null;
+      void (async () => {
+        if (skipEditAutosaveRef.current) return;
+        if (editAutosaveInFlightRef.current) {
+          scheduleEditedOrderAutosave();
+          return;
+        }
+        const cartNow = cartRef.current;
+        if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return;
+        if (!editedOrderHasLocalDraftChanges(cartNow)) return;
+        const lines = (cartNow.lines ?? []).filter(
+          (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
+        );
+        if (!lines.length) return;
+
+        editAutosaveInFlightRef.current = true;
+        try {
+          const local = {
+            ...cartNow,
+            id: isServerPosCartId(cartNow.id) ? cartNow.id : cartNow.id,
+            lines: lines.map((l) => ({
+              ...l,
+              client_line_id: l.client_line_id ?? l.id,
+            })),
+            branch_id: cartNow.branch_id ?? user?.branch_id,
+            till_id: cartNow.till_id ?? tillId,
+            float_session_id: floatSessionId ?? cartNow.float_session_id,
+            order_discount: Number(cartNow.order_discount ?? 0) || 0,
+          };
+          await upsertPreviousOrderEditOutbox({
+            cart: local,
+            user,
+            organization,
+            floatSessionId,
+            cashAmount: summarizeLocalPosCart(local).amountDue,
+          });
+          setStatusMessage(
+            `Order #${cartNow.held_order_num} saved — syncing… (Alt+P to reprint)`,
+          );
+          void refreshOfflineCounts();
+          const results = await flushOutboxNow();
+          for (const row of results ?? []) {
+            if (
+              row?.ok &&
+              row.sync_kind === "previous_order_edit" &&
+              Number(row.order_num) === Number(cartNow.held_order_num) &&
+              row.sale?.id
+            ) {
+              await refreshPreviousOrderEditCartAfterSync(row.sale);
+            }
+          }
+        } catch (e) {
+          console.warn("Previous-order edit autosave failed", e);
+          setStatusMessage(
+            e?.message
+              ? `Could not queue order sync: ${e.message}`
+              : "Could not queue order sync.",
+          );
+        } finally {
+          editAutosaveInFlightRef.current = false;
+        }
+      })();
+    }, 400);
   }
 
   /**
@@ -5219,16 +5586,21 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handlePrintReceipt() {
+    const editSnapshot =
+      isCartEditSession && cartRef.current
+        ? buildPreviousOrderEditPrintSale(cartRef.current, { user, organization })
+        : null;
     let sale = resolvePosReprintSale({
       isCartEditSession,
       editSourceSale,
       completedSale,
       sessionPosOrders,
       lastReceiptFallback: readPosLastReceipt(user?.id, user?.branch_id),
+      editCartSnapshot: editSnapshot,
     });
-    if (!sale?.id) {
+    if (!sale?.id && !sale?.order_num) {
       const message = isCartEditSession
-        ? "No receipt available for this order yet."
+        ? "Add items to this order before printing."
         : "No completed order to print. Complete payment first (F10).";
       notifyError(message);
       if (!standalone) setStatusMessage(message);
@@ -5236,7 +5608,11 @@ export function PosScreen({ standalone = false }) {
     }
     if (receiptPrintStatus === "pending") return;
 
-    if (!saleHasPrintableItems(sale) && !isOfflinePendingSaleId(sale.id)) {
+    if (
+      !saleHasPrintableItems(sale) &&
+      !isOfflinePendingSaleId(sale.id) &&
+      !String(sale.id ?? "").startsWith("edit:")
+    ) {
       try {
         const detail = await apiRequest(`/sales/${sale.id}`, {
           loading: false,
@@ -5547,11 +5923,18 @@ export function PosScreen({ standalone = false }) {
       }
       const label = restoredCart?.held_order_num ?? saleId;
       setPaymentOpen(false);
-        setStatusMessage(
-          keepEditing
-            ? `Order #${label} updated — Alt+P reprint; F10 to complete (even if unchanged).`
-            : `Order #${label} loaded — Alt+P reprint; F10 to complete (even if unchanged).`,
-        );
+      const restoredSummary = summarizeLocalPosCart(restoredCart);
+      const kraFiscalize = shouldSubmitKraOnCheckout(
+        capabilities?.module_settings,
+        capabilities,
+        restoredSummary?.total ?? restoredSummary?.amountDue,
+      );
+      const editHint = previousOrderEditWorkspaceHint({ kraFiscalize });
+      setStatusMessage(
+        keepEditing
+          ? `Order #${label} updated — ${editHint}`
+          : `Order #${label} loaded — ${editHint}`,
+      );
     } catch (e) {
       const message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (
@@ -5854,6 +6237,47 @@ export function PosScreen({ standalone = false }) {
 
     const activeCart = cartRef.current ?? cart;
 
+    if (activeCart?.held_order_num && activeCart?.superseded_sale_id) {
+      const summary = summarizeLocalPosCart(activeCart);
+      const kraOn = shouldSubmitKraOnCheckout(
+        capabilities?.module_settings,
+        capabilities,
+        summary?.total ?? summary?.amountDue,
+      );
+
+      // KRA-off: edits save + sync automatically — F10 is not required.
+      if (!kraOn) {
+        scheduleEditedOrderAutosave();
+        flashPosShortcutMessage(
+          "Edits save automatically — use Alt+P to reprint the revised receipt.",
+          { error: false },
+        );
+        return;
+      }
+
+      if (!activeCart?.lines?.length) {
+        flashPosShortcutMessage("Add items before completing payment (F10).");
+        return;
+      }
+
+      if (cartStockBlocked) {
+        flashPosShortcutMessage("Fix stock issues before completing payment.");
+        return;
+      }
+
+      // KRA-on: still need F10 so the revised receipt is fiscalized with QR.
+      if (!editedOrderHasLocalDraftChanges(activeCart)) {
+        flashPosShortcutMessage("No updates done — completing this order with the same items.", {
+          error: false,
+        });
+      }
+
+      setPaymentError(null);
+      closeProductSearchDropdown();
+      setPaymentOpen(true);
+      return;
+    }
+
     if (activeCart?.held_order_num) {
       if (!activeCart?.lines?.length) {
         flashPosShortcutMessage("Add items before completing payment (F10).");
@@ -5865,15 +6289,12 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // Opening a previous order already tombstones the original sale — F10 must still
-      // complete even when no lines changed (rebooks the same items).
       if (!editedOrderHasLocalDraftChanges(activeCart)) {
         flashPosShortcutMessage("No updates done — completing this order with the same items.", {
           error: false,
         });
       }
 
-      // Keep edits local — flush to server only when payment confirms (handleCheckout).
       setPaymentError(null);
       closeProductSearchDropdown();
       setPaymentOpen(true);
@@ -6297,7 +6718,9 @@ export function PosScreen({ standalone = false }) {
                       : reprintSale?.order_num
                         ? `Reprint receipt #${reprintSale.order_num}`
                         : isCartEditSession
-                          ? "Reprint this order"
+                          ? instantAutoEditSync
+                            ? "Reprint revised receipt (Alt+P)"
+                            : "Reprint this order"
                           : "Complete an order first"
                   }
                   onClick={() => void handlePrintReceipt()}
@@ -6565,9 +6988,9 @@ export function PosScreen({ standalone = false }) {
                         : "Connection dropped — selling from local cache (cash only)."
                     } Order # left: ${orderNumbersLeft}. Pending sync: ${pendingSync}.`
                   : offlineSyncing
-                    ? "Syncing offline sales…"
+                    ? `Syncing ${pendingSync || ""} sale(s) in the background…`
                     : lastSyncMessage ||
-                      `${pendingSync} offline sale(s) waiting to sync. Prices refreshing…`}
+                      `${pendingSync} sale(s) waiting to sync.`}
               </p>
             ) : null}
             {!standalone && statusMessage ? (
@@ -6970,6 +7393,17 @@ export function PosScreen({ standalone = false }) {
               </>
             ) : null}
           </div>
+          ) : null}
+          {instantAutoEditSync && isCartEditSession && !cartResubmitMessage ? (
+            <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
+              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-950">
+                <p className="text-xs leading-relaxed">
+                  Revising order #{cart.held_order_num}. Edits save automatically — use Alt+P or
+                  Reprint to print the revised receipt.
+                  {offlineSyncing || pendingSync > 0 ? " Syncing in background…" : null}
+                </p>
+              </div>
+            </div>
           ) : null}
           {isEditableResubmit || cartResubmitMessage ? (
             <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
@@ -7564,25 +7998,36 @@ export function PosScreen({ standalone = false }) {
                 onClick={() => openSaveOrderDialog("hold")}
               />
               {posSalesConfig.showCheckoutOnCreate || modernOrderEditLocked ? (
-                <PosActionButton
-                  label="Complete"
-                  title={
-                    modernOrderEditLocked
-                      ? "Complete payment and save this order (F10) — works even if lines are unchanged"
-                      : checkoutBlocked
-                        ? "Wait for the line to finish saving"
-                        : "Complete payment (F10)"
-                  }
-                  icon="🛒"
-                  iconClass="pos-cart-action-icon--complete"
-                  disabled={
-                    busy
-                    || !cart?.lines?.length
-                    || cartStockBlocked
-                    || (!modernOrderEditLocked && (lineBusy || checkoutBlocked))
-                  }
-                  onClick={() => openCompletePayment()}
-                />
+                instantAutoEditSync && modernOrderEditLocked ? (
+                  <PosActionButton
+                    label="Reprint"
+                    title="Reprint revised receipt (Alt+P)"
+                    icon="🖨"
+                    iconClass="pos-cart-action-icon--complete"
+                    disabled={busy || !cart?.lines?.length || receiptPrintStatus === "pending"}
+                    onClick={() => void handlePrintReceipt()}
+                  />
+                ) : (
+                  <PosActionButton
+                    label="Complete"
+                    title={
+                      modernOrderEditLocked
+                        ? "Complete payment and save this order (F10) — works even if lines are unchanged"
+                        : checkoutBlocked
+                          ? "Wait for the line to finish saving"
+                          : "Complete payment (F10)"
+                    }
+                    icon="🛒"
+                    iconClass="pos-cart-action-icon--complete"
+                    disabled={
+                      busy
+                      || !cart?.lines?.length
+                      || cartStockBlocked
+                      || (!modernOrderEditLocked && (lineBusy || checkoutBlocked))
+                    }
+                    onClick={() => openCompletePayment()}
+                  />
+                )
               ) : (
                 <PosActionButton
                   label="Save"

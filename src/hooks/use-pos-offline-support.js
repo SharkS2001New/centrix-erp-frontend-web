@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { notifyError } from "@/lib/notify";
 import {
   ensurePosOfflineOrderNumbers,
   getPosOfflinePendingCount,
@@ -11,12 +12,14 @@ import {
   warmPosOfflineCatalog,
 } from "@/lib/pos-offline";
 
+const RETRY_BACKOFF_MS = 5_000;
+
 /**
  * External POS short-outage bridge (not full offline / no service worker).
  *
  * While healthy: warm IndexedDB catalog + reserved order #s in the background.
- * When the link drops or is very slow: sell from IndexedDB (cash), queue sync.
- * Aimed at brief outages (~30 minutes); when the API is healthy again, flush outbox.
+ * Sell path: save local outbox → print → immediately flush when API is healthy.
+ * Aimed at brief outages (~30 minutes); reconnect still flushes any leftovers.
  */
 export function usePosOfflineSupport({ enabled = false } = {}) {
   const { status, browserOnline, apiOnline } = useNetworkStatus({
@@ -33,7 +36,12 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncMessage, setLastSyncMessage] = useState(null);
   const wasFullyOnlineRef = useRef(fullyOnline);
-  const syncingRef = useRef(false);
+  const fullyOnlineRef = useRef(fullyOnline);
+  const flushChainRef = useRef(Promise.resolve());
+  const flushGenerationRef = useRef(0);
+  const lastNotifiedSyncErrorRef = useRef(null);
+
+  fullyOnlineRef.current = fullyOnline;
 
   const refreshCounts = useCallback(async () => {
     if (!enabled) return;
@@ -50,6 +58,13 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     }
   }, [enabled]);
 
+  const notifySyncProblem = useCallback((message) => {
+    const key = String(message ?? "");
+    if (lastNotifiedSyncErrorRef.current === key) return;
+    lastNotifiedSyncErrorRef.current = key;
+    notifyError(`POS sync problem — reported to platform issues. ${key}`);
+  }, []);
+
   const prepare = useCallback(async () => {
     if (!enabled || !fullyOnline) return null;
     try {
@@ -64,37 +79,87 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     }
   }, [enabled, fullyOnline]);
 
-  const flushOutbox = useCallback(async () => {
-    if (!enabled || !fullyOnline || syncingRef.current) return [];
-    syncingRef.current = true;
-    setSyncing(true);
-    try {
-      const results = await syncPosOfflineOutbox();
-      const failed = results.filter((r) => !r.ok);
-      const ok = results.filter((r) => r.ok);
-      const reprints = ok.filter((r) => r.needs_reprint);
-      if (ok.length) {
-        const base = failed.length
-          ? `Synced ${ok.length} offline sale(s); ${failed.length} failed.`
-          : `Synced ${ok.length} offline sale(s).`;
-        const reprintNote = reprints.length
-          ? ` ${reprints.length} receipt(s) need reprint (order # changed: ${reprints
-              .map((r) => `#${r.printed_order_num}→#${r.order_num}`)
-              .join(", ")}).`
-          : "";
-        setLastSyncMessage(`${base}${reprintNote}`);
-        await warmPosOfflineCatalog({ force: true });
-        await ensurePosOfflineOrderNumbers({ force: false });
-      } else if (failed.length) {
-        setLastSyncMessage(`Could not sync ${failed.length} offline sale(s).`);
+  /**
+   * Serialize outbox flushes so concurrent sells cannot double-post.
+   * Safe to call fire-and-forget after every local save.
+   */
+  const flushOutboxNow = useCallback(() => {
+    if (!enabled) return Promise.resolve([]);
+
+    const generation = ++flushGenerationRef.current;
+    const run = async () => {
+      if (!fullyOnlineRef.current) return [];
+      setSyncing(true);
+      try {
+        const results = await syncPosOfflineOutbox();
+        if (generation !== flushGenerationRef.current && results.length === 0) {
+          return results;
+        }
+        const failed = results.filter((r) => !r.ok);
+        const ok = results.filter((r) => r.ok);
+        const reprints = ok.filter((r) => r.needs_reprint);
+        if (ok.length) {
+          lastNotifiedSyncErrorRef.current = null;
+          const base = failed.length
+            ? `Synced ${ok.length} sale(s); ${failed.length} failed.`
+            : `Synced ${ok.length} sale(s).`;
+          const reprintNote = reprints.length
+            ? ` ${reprints.length} receipt(s) need reprint (order # changed: ${reprints
+                .map((r) => `#${r.printed_order_num}→#${r.order_num}`)
+                .join(", ")}).`
+            : "";
+          setLastSyncMessage(`${base}${reprintNote}`);
+          await warmPosOfflineCatalog({ force: true });
+          await ensurePosOfflineOrderNumbers({ force: false });
+        } else if (failed.length) {
+          setLastSyncMessage(`Could not sync ${failed.length} sale(s). Will retry.`);
+        }
+        if (failed.length) {
+          const detail = failed
+            .slice(0, 3)
+            .map((r) => `#${r.order_num}: ${r.error}`)
+            .join("; ");
+          const more = failed.length > 3 ? ` (+${failed.length - 3} more)` : "";
+          notifySyncProblem(`${detail}${more}`);
+        }
+        await refreshCounts();
+        return results;
+      } catch (err) {
+        console.warn("POS outbox flush failed", err);
+        const message = err?.message ?? "Could not sync offline sales.";
+        setLastSyncMessage(message);
+        notifySyncProblem(message);
+        try {
+          const { submitSystemIssueReport } = await import("@/lib/system-issue-reports");
+          void submitSystemIssueReport({
+            kind: "error",
+            message: `POS outbox flush failed: ${message}`,
+            context: { source: "pos_outbox_sync", phase: "flush" },
+          });
+        } catch {
+          /* ignore */
+        }
+        await refreshCounts();
+        return [];
+      } finally {
+        // Only clear syncing when this is the last queued flush.
+        const stillQueued = generation !== flushGenerationRef.current;
+        if (!stillQueued) {
+          setSyncing(false);
+        }
       }
-      await refreshCounts();
-      return results;
-    } finally {
-      syncingRef.current = false;
-      setSyncing(false);
-    }
-  }, [enabled, fullyOnline, refreshCounts]);
+    };
+
+    const next = flushChainRef.current.then(run, run);
+    flushChainRef.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }, [enabled, refreshCounts, notifySyncProblem]);
+
+  /** @deprecated prefer flushOutboxNow — kept for reconnect callers */
+  const flushOutbox = flushOutboxNow;
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -108,11 +173,20 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     wasFullyOnlineRef.current = fullyOnline;
     if (!wasFullyOnline && fullyOnline) {
       void (async () => {
-        await flushOutbox();
+        await flushOutboxNow();
         await prepare();
       })();
     }
-  }, [enabled, fullyOnline, flushOutbox, prepare]);
+  }, [enabled, fullyOnline, flushOutboxNow, prepare]);
+
+  // Retry leftover pending/error rows while healthy (short backoff).
+  useEffect(() => {
+    if (!enabled || !fullyOnline || pendingSync <= 0 || syncing) return undefined;
+    const timer = window.setTimeout(() => {
+      void flushOutboxNow();
+    }, RETRY_BACKOFF_MS);
+    return () => window.clearTimeout(timer);
+  }, [enabled, fullyOnline, pendingSync, syncing, flushOutboxNow]);
 
   const searchOffline = useCallback(async (query, limit = 40) => {
     return searchPosOfflineCatalog(query, { limit });
@@ -131,6 +205,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     lastSyncMessage,
     prepare,
     flushOutbox,
+    flushOutboxNow,
     refreshCounts,
     searchOffline,
   };

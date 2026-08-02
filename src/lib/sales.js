@@ -180,6 +180,28 @@ export function formatOrderNumber(saleOrNum) {
   return `S${String(saleOrNum).padStart(4, "0")}`;
 }
 
+/** Daily per-cashier POS thermal ticket # (independent of S00xx). */
+export function formatPosOrderNumber(saleOrNum) {
+  if (saleOrNum == null || saleOrNum === "") return "—";
+  if (typeof saleOrNum === "object") {
+    const num = saleOrNum.pos_order_num;
+    if (num == null || num === "") return "—";
+    return String(num);
+  }
+  return String(saleOrNum);
+}
+
+/**
+ * Thermal Cash Sales #: prefer daily POS ticket; fall back to global order #.
+ */
+export function formatCashSalesNumber(sale) {
+  if (sale == null) return "—";
+  if (sale.pos_order_num != null && sale.pos_order_num !== "") {
+    return formatPosOrderNumber(sale);
+  }
+  return formatOrderNumber(sale);
+}
+
 /**
  * Client-side preflight for merging mobile orders (same customer + route).
  * Server still enforces editable status and permissions.
@@ -255,7 +277,7 @@ export function normalizeSalesListSearchQuery(query) {
   return q;
 }
 
-/** Order number and receipt number are the same formatted value (S + padded order_num). */
+/** Global order / invoice number (S + padded order_num). */
 export function formatReceiptNumber(sale) {
   return formatOrderNumber(sale);
 }
