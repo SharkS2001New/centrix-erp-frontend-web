@@ -169,7 +169,6 @@ import {
   loadPreviousOrderEditDraft,
   parseOfflineSaleUuid,
   peekPosOfflineOrderNumberCount,
-  cartHasBlockingOutboxSync,
   saveLocalPosCart,
   savePreviousOrderEditDraft,
   summarizeLocalPosCart,
@@ -484,7 +483,7 @@ function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline
     f10: "F10 is not required — edits save automatically. Use Alt+P or Reprint when finished.",
     synced: `Order ${label} saved on server. Print the revised receipt (Alt+P or Reprint).`,
     leaveConfirm:
-      "Finish editing? Print the revised receipt (Alt+P) if you have not yet, then start a new order.",
+      "Start a new order? Edits already saved keep syncing in the background — you do not need to wait.",
   };
 }
 
@@ -5752,23 +5751,10 @@ export function PosScreen({ standalone = false }) {
     const activeCart = cartRef.current ?? cart;
     const editingPrevious = Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id);
     const isOfflineCart = Boolean(activeCart?.offline || activeCart?.offline_client_sale_uuid);
-
-    // Do not abandon a sale that still needs server sync (books vs receipt diverge).
-    if (standalone && (editingPrevious || isOfflineCart || pendingSync > 0)) {
-      try {
-        const blocking = await cartHasBlockingOutboxSync(activeCart);
-        if (blocking || (pendingSync > 0 && (editingPrevious || isOfflineCart))) {
-          skipEditAutosaveRef.current = false;
-          setStatusMessage(
-            "Wait for pending sync to finish before starting a new order (or sync will keep the sale on the server).",
-          );
-          void flushOutboxNow();
-          return;
-        }
-      } catch {
-        /* if IndexedDB is unavailable, fall through to normal confirm */
-      }
-    }
+    // Queued offline NEW sale mid-edit (not a previous-order edit session).
+    const editingQueuedOfflineSale = Boolean(
+      isOfflineCart && activeCart?.offline_client_sale_uuid && !activeCart?.superseded_sale_id,
+    );
 
     if (hasLines || editingPrevious || isOfflineCart) {
       const editSummary = summarizeLocalPosCart(activeCart);
@@ -5789,7 +5775,7 @@ export function PosScreen({ standalone = false }) {
         title: "New order",
         message: editingPrevious
           ? leaveMsgs?.leaveConfirm ??
-            "Clear this order from the workspace and start a new order? Unsaved changes will be discarded."
+            "Clear this order from the workspace and start a new order? Queued saves keep syncing in the background."
           : "Clear this workspace and start a new order?",
         confirmLabel: "Start New Order",
         cancelLabel: "Cancel",
@@ -5815,20 +5801,36 @@ export function PosScreen({ standalone = false }) {
     setEditBrowseIndex(0);
     clearLineEntry();
     setStatusMessage(null);
+    // Drop the live edit session immediately so UI is free while cleanup runs.
+    cartRef.current = null;
+    setCart(null);
     try {
       setBusy(true);
-      // Always abandon/clear — including offline previous orders. Do not try to save first.
-      if (isOfflineCart) {
-        if (activeCart.held_order_num || activeCart.offline_client_sale_uuid) {
-          await abandonOfflineSaleEdit(activeCart);
-        } else {
-          await clearLocalPosCart();
+      if (editingQueuedOfflineSale) {
+        // Mid-edit of a queued offline sale — put the outbox row back on the sync queue.
+        await abandonOfflineSaleEdit(activeCart);
+      } else if (isOfflineCart) {
+        await clearLocalPosCart();
+      } else if (
+        isServerPosCartId(activeCart?.id) &&
+        (hasLines || activeCart.held_order_num)
+      ) {
+        // Live TemporaryCart only. Detached `edit:N` ids / already-synced carts must not DELETE.
+        // Bulk DELETE reinstates a previous-order edit tombstone when the cart still exists.
+        try {
+          await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
+            method: "DELETE",
+            loading: false,
+            reportIssues: false,
+          });
+        } catch (e) {
+          if (!isMissingTemporaryCartError(e)) throw e;
+          // Cart already checked out by background sync — continue to a fresh workspace.
         }
-      } else if (activeCart?.id && (hasLines || activeCart.held_order_num)) {
-        // Bulk DELETE reinstates a previous-order edit tombstone on the server.
-        await apiRequest(`/sales/carts/${activeCart.id}/lines`, { method: "DELETE" });
       }
       void clearPreviousOrderEditDraft().catch(() => {});
+      // Keep flushing previous-order / offline outbox in the background — do not wait.
+      if (standalone) void flushOutboxNow();
       const next = await loadCashierCart();
       cartRef.current = next;
       orderNoUserEditedRef.current = false;
@@ -5843,8 +5845,18 @@ export function PosScreen({ standalone = false }) {
       if (enablePosOrderEdit && standalone) {
         void loadCompletedPosOrders();
       }
-      setStatusMessage("New order — scan or search a product.");
-      if (standalone) notifySuccess("Workspace cleared — ready for a new order.");
+      setStatusMessage(
+        editingPrevious && pendingSync > 0
+          ? "New order — previous edits keep syncing in the background."
+          : "New order — scan or search a product.",
+      );
+      if (standalone) {
+        notifySuccess(
+          editingPrevious && pendingSync > 0
+            ? "Workspace cleared — ready for a new order (sync continues in background)."
+            : "Workspace cleared — ready for a new order.",
+        );
+      }
       focusProductSearch();
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "Failed to start new order";
