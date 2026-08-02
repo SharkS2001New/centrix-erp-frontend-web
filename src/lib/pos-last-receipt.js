@@ -32,6 +32,9 @@ export function rememberPosLastReceipt(userId, branchId, sale) {
       JSON.stringify({
         id: sale.id,
         order_num: sale.order_num ?? null,
+        pos_order_num: sale.pos_order_num ?? null,
+        pos_order_date: sale.pos_order_date ?? null,
+        channel: sale.channel ?? sale.order_source ?? null,
         kra_response: compactKraResponse(sale),
       }),
     );
@@ -50,6 +53,10 @@ export function readPosLastReceipt(userId, branchId) {
     return {
       id: parsed.id,
       order_num: parsed.order_num ?? null,
+      pos_order_num: parsed.pos_order_num ?? null,
+      pos_order_date: parsed.pos_order_date ?? null,
+      channel: parsed.channel ?? null,
+      order_source: parsed.channel ?? null,
       kra_response: parsed.kra_response ?? null,
     };
   } catch {

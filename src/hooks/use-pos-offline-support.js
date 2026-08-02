@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNetworkStatus } from "@/hooks/use-network-status";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   ensurePosOfflineOrderNumbers,
   getPosOfflinePendingCount,
@@ -13,6 +13,16 @@ import {
 } from "@/lib/pos-offline";
 
 const RETRY_BACKOFF_MS = 5_000;
+
+const EMPTY_SYNC_PROGRESS = {
+  phase: "idle",
+  current: 0,
+  total: 0,
+  done: 0,
+  failed: 0,
+  order_num: null,
+  message: null,
+};
 
 /**
  * External POS short-outage bridge (not full offline / no service worker).
@@ -38,12 +48,14 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const [catalogReady, setCatalogReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncMessage, setLastSyncMessage] = useState(null);
+  const [syncProgress, setSyncProgress] = useState(EMPTY_SYNC_PROGRESS);
   const wasFullyOnlineRef = useRef(fullyOnline);
   const wasCanFlushRef = useRef(canFlushOutbox);
   const canFlushRef = useRef(canFlushOutbox);
   const flushChainRef = useRef(Promise.resolve());
   const flushGenerationRef = useRef(0);
   const lastNotifiedSyncErrorRef = useRef(null);
+  const manualFlushRef = useRef(false);
 
   useEffect(() => {
     canFlushRef.current = canFlushOutbox;
@@ -89,16 +101,58 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
    * Serialize outbox flushes so concurrent sells cannot double-post.
    * Safe to call fire-and-forget after every local save.
    * Runs whenever the API is reachable (including slow).
+   *
+   * @param {{ manual?: boolean }} [options]
    */
-  const flushOutboxNow = useCallback(() => {
+  const flushOutboxNow = useCallback((options = {}) => {
     if (!enabled) return Promise.resolve([]);
+
+    const manual = Boolean(options.manual);
+    if (manual) manualFlushRef.current = true;
 
     const generation = ++flushGenerationRef.current;
     const run = async () => {
-      if (!canFlushRef.current) return [];
+      if (!canFlushRef.current) {
+        if (manualFlushRef.current) {
+          manualFlushRef.current = false;
+          setLastSyncMessage("Cannot sync while offline. Reconnect, then try again.");
+          setSyncProgress({
+            ...EMPTY_SYNC_PROGRESS,
+            phase: "blocked",
+            message: "Cannot sync while offline. Reconnect, then try again.",
+          });
+        }
+        return [];
+      }
       setSyncing(true);
+      const showProgress = manualFlushRef.current;
       try {
-        const results = await syncPosOfflineOutbox();
+        const results = await syncPosOfflineOutbox({
+          onProgress: (progress) => {
+            setSyncProgress({
+              phase: progress.phase ?? "syncing",
+              current: Number(progress.current ?? 0),
+              total: Number(progress.total ?? 0),
+              done: Number(progress.done ?? 0),
+              failed: Number(progress.failed ?? 0),
+              order_num: progress.order_num ?? null,
+              message: progress.message ?? null,
+            });
+            if (progress.message) {
+              setLastSyncMessage(progress.message);
+            }
+            // Keep the pending badge roughly accurate while a long flush runs.
+            if (progress.phase === "start" || progress.phase === "item_done") {
+              const remaining = Math.max(
+                0,
+                Number(progress.total ?? 0) -
+                  Number(progress.done ?? 0) -
+                  Number(progress.failed ?? 0),
+              );
+              setPendingSync(remaining);
+            }
+          },
+        });
         if (generation !== flushGenerationRef.current && results.length === 0) {
           return results;
         }
@@ -116,12 +170,23 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
                 .join(", ")}).`
             : "";
           setLastSyncMessage(`${base}${reprintNote}`);
+          if (showProgress && !failed.length) {
+            notifySuccess(base);
+          }
           if (fullyOnline) {
             await warmPosOfflineCatalog({ force: true });
             await ensurePosOfflineOrderNumbers({ force: false });
           }
         } else if (failed.length) {
           setLastSyncMessage(`Could not sync ${failed.length} sale(s). Will retry.`);
+        } else if (showProgress) {
+          setLastSyncMessage("No offline orders waiting to sync.");
+          setSyncProgress({
+            ...EMPTY_SYNC_PROGRESS,
+            phase: "complete",
+            message: "No offline orders waiting to sync.",
+          });
+          notifySuccess("No offline orders waiting to sync.");
         }
         if (failed.length) {
           const detail = failed
@@ -137,6 +202,11 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
         console.warn("POS outbox flush failed", err);
         const message = err?.message ?? "Could not sync offline sales.";
         setLastSyncMessage(message);
+        setSyncProgress({
+          ...EMPTY_SYNC_PROGRESS,
+          phase: "error",
+          message,
+        });
         notifySyncProblem(message);
         try {
           const { submitSystemIssueReport } = await import("@/lib/system-issue-reports");
@@ -151,6 +221,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
         await refreshCounts();
         return [];
       } finally {
+        manualFlushRef.current = false;
         // Only clear syncing when this is the last queued flush.
         const stillQueued = generation !== flushGenerationRef.current;
         if (!stillQueued) {
@@ -166,6 +237,30 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     );
     return next;
   }, [enabled, fullyOnline, refreshCounts, notifySyncProblem]);
+
+  /** Manual Sync button — same flush path, with progress + toast feedback. */
+  const syncOfflineOrders = useCallback(async () => {
+    if (!enabled) return [];
+    await refreshCounts();
+    if (!canFlushRef.current) {
+      const message = "Cannot sync while offline. Reconnect, then try again.";
+      setLastSyncMessage(message);
+      setSyncProgress({
+        ...EMPTY_SYNC_PROGRESS,
+        phase: "blocked",
+        message,
+      });
+      notifyError(message);
+      return [];
+    }
+    setSyncProgress({
+      ...EMPTY_SYNC_PROGRESS,
+      phase: "start",
+      message: "Checking local offline orders…",
+    });
+    setLastSyncMessage("Checking local offline orders…");
+    return flushOutboxNow({ manual: true });
+  }, [enabled, flushOutboxNow, refreshCounts]);
 
   /** @deprecated prefer flushOutboxNow — kept for reconnect callers */
   const flushOutbox = flushOutboxNow;
@@ -223,9 +318,11 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     catalogReady,
     syncing,
     lastSyncMessage,
+    syncProgress,
     prepare,
     flushOutbox,
     flushOutboxNow,
+    syncOfflineOrders,
     refreshCounts,
     searchOffline,
   };

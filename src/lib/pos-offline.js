@@ -495,6 +495,13 @@ export async function completeOfflineCashSale({
     orderNum = Number(slot.order_num);
     posOrderNum = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
     posOrderDate = normalizePosOrderDate(slot.pos_order_date);
+    if (posOrderNum == null && cart.next_pos_order_num != null) {
+      posOrderNum = Number(cart.next_pos_order_num);
+      posOrderDate =
+        normalizePosOrderDate(cart.next_pos_order_date) ??
+        posOrderDate ??
+        normalizePosOrderDate(new Date().toISOString());
+    }
     clientSaleUuid = newClientSaleUuid();
     syncKind = "sale";
   }
@@ -714,10 +721,22 @@ export async function upsertPreviousOrderEditOutbox({
  * Build a printable sale snapshot from the current previous-order edit cart
  * (no outbox write). Used by Alt+P while revising.
  */
-export function buildPreviousOrderEditPrintSale(cart, { user = null, organization = null } = {}) {
+export function buildPreviousOrderEditPrintSale(
+  cart,
+  { user = null, organization = null, sourceSale = null } = {},
+) {
   if (!cart?.held_order_num) return null;
   const summary = summarizeLocalPosCart(cart);
   const orderNum = Number(cart.held_order_num);
+  const posOrderNum =
+    cart.pos_order_num != null
+      ? Number(cart.pos_order_num)
+      : sourceSale?.pos_order_num != null
+        ? Number(sourceSale.pos_order_num)
+        : null;
+  const posOrderDate =
+    cart.pos_order_date ??
+    (sourceSale?.pos_order_date ? String(sourceSale.pos_order_date).slice(0, 10) : null);
   const payNow = summary.amountDue;
   const items = (cart.lines ?? [])
     .filter((line) => Number(line.quantity ?? 0) > 0 && line.product_code)
@@ -751,8 +770,8 @@ export function buildPreviousOrderEditPrintSale(cart, { user = null, organizatio
   return {
     id: cart.server_sale_id ?? `edit:${orderNum}`,
     order_num: orderNum,
-    ...(cart.pos_order_num != null ? { pos_order_num: Number(cart.pos_order_num) } : {}),
-    ...(cart.pos_order_date ? { pos_order_date: cart.pos_order_date } : {}),
+    ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
+    ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
     organization_id: organization?.id ?? user?.organization_id ?? null,
     branch_id: cart.branch_id ?? user?.branch_id ?? null,
     channel: "pos",
@@ -1258,14 +1277,40 @@ export async function syncPosOfflineOutbox({ onProgress } = {}) {
   return withPosOfflineExclusiveLock(async () => {
     await idbReclaimStuckSyncingOutbox({ olderThanMs: 60_000 });
     const pending = await idbListPendingOutbox();
+    const total = pending.length;
     const results = [];
-    for (const row of pending) {
+    let done = 0;
+    let failed = 0;
+
+    onProgress?.({
+      phase: "start",
+      current: 0,
+      total,
+      done: 0,
+      failed: 0,
+      order_num: null,
+      message: total === 0 ? "No offline orders waiting to sync." : `Syncing ${total} order(s)…`,
+    });
+
+    for (let index = 0; index < pending.length; index += 1) {
+      const row = pending[index];
       const printedOrderNum = Number(row.order_num);
       const claimed = await idbMarkOutboxSyncing(row.client_sale_uuid);
       if (!claimed) continue;
 
+      const current = index + 1;
+      onProgress?.({
+        phase: "syncing",
+        current,
+        total,
+        done,
+        failed,
+        order_num: printedOrderNum,
+        sync_kind: row.sync_kind ?? "sale",
+        message: `Syncing ${current} of ${total} — order #${printedOrderNum}…`,
+      });
+
       try {
-        onProgress?.({ phase: "syncing", order_num: printedOrderNum });
         let sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
         let usedOrderNum = printedOrderNum;
         let needsReprint = false;
@@ -1292,6 +1337,7 @@ export async function syncPosOfflineOutbox({ onProgress } = {}) {
           order_num_changed: needsReprint,
           original_order_num: printedOrderNum,
         });
+        done += 1;
         results.push({
           ok: true,
           order_num: Number(sale?.order_num ?? usedOrderNum),
@@ -1301,10 +1347,21 @@ export async function syncPosOfflineOutbox({ onProgress } = {}) {
           sync_kind: row.sync_kind ?? "sale",
           sale,
         });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: true,
+          order_num: printedOrderNum,
+          message: `Synced ${done} of ${total}…`,
+        });
       } catch (err) {
         const message = err?.message ?? "Sync failed";
         await idbMarkOutboxError(row.client_sale_uuid, message);
         reportPosOutboxSyncFailure(row, err, printedOrderNum);
+        failed += 1;
         results.push({
           ok: false,
           order_num: printedOrderNum,
@@ -1312,8 +1369,34 @@ export async function syncPosOfflineOutbox({ onProgress } = {}) {
           sync_kind: row.sync_kind ?? "sale",
           error: message,
         });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: false,
+          order_num: printedOrderNum,
+          error: message,
+          message: `Failed order #${printedOrderNum} (${failed} failed)…`,
+        });
       }
     }
+
+    onProgress?.({
+      phase: "complete",
+      current: total,
+      total,
+      done,
+      failed,
+      order_num: null,
+      message:
+        total === 0
+          ? "No offline orders waiting to sync."
+          : failed
+            ? `Synced ${done} of ${total}; ${failed} failed.`
+            : `Synced ${done} of ${total} order(s).`,
+    });
     return results;
   });
 }

@@ -191,14 +191,19 @@ export function formatPosOrderNumber(saleOrNum) {
   return String(saleOrNum);
 }
 
+export function isPosChannelSale(sale) {
+  const ch = String(sale?.channel ?? sale?.order_source ?? "").toLowerCase();
+  return ch === "pos";
+}
+
 /**
- * Thermal Cash Sales #: prefer daily POS ticket; fall back to global order #.
+ * Thermal Cash Sales #: POS ticket number only for POS sales; org order # for other channels.
  */
 export function formatCashSalesNumber(sale) {
   if (sale == null) return "—";
-  if (sale.pos_order_num != null && sale.pos_order_num !== "") {
-    return formatPosOrderNumber(sale);
-  }
+  const pos = formatPosOrderNumber(sale);
+  if (pos !== "—") return pos;
+  if (isPosChannelSale(sale)) return "—";
   return formatOrderNumber(sale);
 }
 

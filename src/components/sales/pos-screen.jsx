@@ -132,6 +132,7 @@ import { ClassicPosAutoHeldDialog } from "./classic-pos-auto-held-dialog";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
+import { PosOfflineSyncControls } from "./pos-offline-sync-controls";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
 import { PosActionButton } from "./pos-action-button";
@@ -554,13 +555,16 @@ export function PosScreen({ standalone = false }) {
   const {
     offlineMode,
     networkStatus,
+    canFlushOutbox,
     pendingSync,
     orderNumbersLeft,
     syncing: offlineSyncing,
     lastSyncMessage,
+    syncProgress,
     searchOffline,
     refreshCounts: refreshOfflineCounts,
     flushOutboxNow,
+    syncOfflineOrders,
   } = usePosOfflineSupport({ enabled: standalone });
 
   /** External POS: transient snackbar only — no header notification bell. */
@@ -1289,8 +1293,8 @@ export function PosScreen({ standalone = false }) {
   );
   const editCartPrintSnapshot = useMemo(() => {
     if (!isCartEditSession || !cart) return null;
-    return buildPreviousOrderEditPrintSale(cart, { user, organization });
-  }, [isCartEditSession, cart, user, organization]);
+    return buildPreviousOrderEditPrintSale(cart, { user, organization, sourceSale: editSourceSale });
+  }, [isCartEditSession, cart, user, organization, editSourceSale]);
   const reprintSale = useMemo(
     () =>
       resolvePosReprintSale({
@@ -7081,6 +7085,43 @@ export function PosScreen({ standalone = false }) {
                       : reprintReceiptLabel}
                   </span>
                 </button>
+                <button
+                  type="button"
+                  disabled={busy || offlineSyncing || !canFlushOutbox}
+                  title={
+                    !canFlushOutbox
+                      ? "Reconnect to sync offline orders"
+                      : offlineSyncing
+                        ? syncProgress?.message || "Syncing offline orders…"
+                        : pendingSync > 0
+                          ? `Sync ${pendingSync} pending offline order(s)`
+                          : "Sync local offline orders to the server"
+                  }
+                  onClick={() => void syncOfflineOrders()}
+                  className={posHeaderBtnClassName}
+                  aria-busy={offlineSyncing}
+                >
+                  <span
+                    className="pos-header-btn-label"
+                    data-short={
+                      offlineSyncing
+                        ? syncProgress?.total > 0
+                          ? `${syncProgress.done + syncProgress.failed}/${syncProgress.total}`
+                          : "Syncing…"
+                        : pendingSync > 0
+                          ? `Sync (${pendingSync})`
+                          : "Sync"
+                    }
+                  >
+                    {offlineSyncing
+                      ? syncProgress?.total > 0
+                        ? `Syncing ${syncProgress.done + syncProgress.failed}/${syncProgress.total}…`
+                        : "Syncing offline…"
+                      : pendingSync > 0
+                        ? `Sync offline (${pendingSync})`
+                        : "Sync offline orders"}
+                  </span>
+                </button>
                 {showStandaloneTillActions && requireTillFloat ? (
                   <>
                     <button
@@ -7312,24 +7353,38 @@ export function PosScreen({ standalone = false }) {
               </p>
             ) : null}
             {standalone && (offlineMode || pendingSync > 0 || offlineSyncing) ? (
-              <p
-                className={`mt-2 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
+              <div
+                className={`mt-2 rounded-md border px-2.5 py-2 text-xs font-medium ${
                   offlineMode
                     ? "border-amber-200 bg-amber-50 text-amber-950"
                     : "border-sky-200 bg-sky-50 text-sky-950"
                 }`}
               >
-                {offlineMode
-                  ? `${
-                      networkStatus === "slow"
-                        ? "Slow connection — selling from local cache (cash only)."
-                        : "Connection dropped — selling from local cache (cash only)."
-                    } Order # left: ${orderNumbersLeft}. Pending sync: ${pendingSync}.`
-                  : offlineSyncing
-                    ? `Syncing ${pendingSync || ""} sale(s) in the background…`
-                    : lastSyncMessage ||
-                      `${pendingSync} sale(s) waiting to sync.`}
-              </p>
+                {offlineMode ? (
+                  <p className="mb-1.5">
+                    {networkStatus === "slow"
+                      ? "Slow connection — selling from local cache (cash only)."
+                      : "Connection dropped — selling from local cache (cash only)."}{" "}
+                    Order # left: {orderNumbersLeft}. Pending sync: {pendingSync}.
+                  </p>
+                ) : null}
+                <PosOfflineSyncControls
+                  pendingSync={pendingSync}
+                  syncing={offlineSyncing}
+                  canFlush={canFlushOutbox}
+                  syncProgress={syncProgress}
+                  lastSyncMessage={
+                    offlineMode
+                      ? null
+                      : syncProgress?.message ||
+                        lastSyncMessage ||
+                        (pendingSync > 0
+                          ? `${pendingSync} sale(s) waiting to sync.`
+                          : null)
+                  }
+                  onSync={syncOfflineOrders}
+                />
+              </div>
             ) : null}
             {!standalone && statusMessage ? (
               <p className="theme-subtext mt-2 truncate text-xs">{statusMessage}</p>
@@ -7764,7 +7819,9 @@ export function PosScreen({ standalone = false }) {
                       <strong>F10 is not required</strong>. When finished, print with Alt+P or
                       Reprint.
                       {offlineSyncing || editAutosaveBusy || pendingSync > 0
-                        ? " Syncing in background…"
+                        ? syncProgress?.message
+                          ? ` ${syncProgress.message}`
+                          : " Syncing in background…"
                         : null}
                     </>
                   )}
@@ -8544,16 +8601,40 @@ export function PosScreen({ standalone = false }) {
 
       {standalone ? (
         classicLayout ? (
-          <ClassicPosStatusFooter
-            user={user}
-            totals={cartSummary?.total ?? 0}
-            vat={cartSummary?.vat ?? 0}
-            heldCount={heldOrdersCount}
-            version="1.0.0"
-            currencySettings={classicCurrencySettings}
-            statusMessage={cartBridgeStatus || statusMessage}
-            connectionStatus={networkStatus}
-          />
+          <>
+            {pendingSync > 0 || offlineSyncing ? (
+              <div className="classic-pos-offline-sync-strip shrink-0 border-t border-[var(--theme-border)] bg-sky-50 px-3 py-1.5 text-sky-950">
+                <PosOfflineSyncControls
+                  pendingSync={pendingSync}
+                  syncing={offlineSyncing}
+                  canFlush={canFlushOutbox}
+                  syncProgress={syncProgress}
+                  lastSyncMessage={
+                    syncProgress?.message ||
+                    lastSyncMessage ||
+                    (pendingSync > 0
+                      ? `${pendingSync} offline order(s) waiting to sync`
+                      : null)
+                  }
+                  onSync={syncOfflineOrders}
+                />
+              </div>
+            ) : null}
+            <ClassicPosStatusFooter
+              user={user}
+              totals={cartSummary?.total ?? 0}
+              vat={cartSummary?.vat ?? 0}
+              heldCount={heldOrdersCount}
+              version="1.0.0"
+              currencySettings={classicCurrencySettings}
+              statusMessage={
+                offlineSyncing && syncProgress?.message
+                  ? syncProgress.message
+                  : cartBridgeStatus || statusMessage
+              }
+              connectionStatus={networkStatus}
+            />
+          </>
         ) : (
           <PosStatusFooter
             user={user}

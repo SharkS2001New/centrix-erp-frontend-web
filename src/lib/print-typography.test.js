@@ -177,15 +177,35 @@ describe("org print typography settings", () => {
     expect(html).toContain('col class="col-amount"');
     expect(html).toContain(">AMOUNT</th>");
     expect(html).toContain('<div class="meta-full"><span class="meta-label">Till No:</span>');
-    expect(html).toContain('<div class="meta-full"><span class="meta-label">Cash Sales #:</span>');
-    expect(html).toContain("Cash Sales #:");
+    expect(html).toContain('<div class="meta-full"><span class="meta-label">Order #:</span>');
     expect(html).toContain("S1001");
+    expect(html).not.toContain("Cash Sales #:");
     expect(html).toContain(`width: ${THERMAL_CONTENT_WIDTH_MM}mm`);
     expect(html).toContain("text-align: right");
     expect(html).not.toContain("max-width: 0");
     expect(html).toContain("font-variant-numeric: tabular-nums");
     expect(html).toContain('<td class="amount-label">Total</td>');
     expect(html).toContain('<td class="amount-label">Cash</td>');
+  });
+
+  it("prints POS thermal receipts with Cash Sales # only (no S00xx Order # line)", () => {
+    const html = buildSaleReceiptHtml(
+      {
+        ...sampleSale,
+        order_num: 33,
+        pos_order_num: 4,
+        channel: "pos",
+        order_source: "pos",
+      },
+      {
+        seller: { name: "Test Org" },
+        branding: { showHeader: false, display: "name", organizationName: "Test Org" },
+      },
+    );
+
+    expect(html).toContain('<div class="meta-full"><span class="meta-label">Cash Sales #:</span> 4</div>');
+    expect(html).not.toContain("Order #:");
+    expect(html).not.toContain("S0033");
   });
 
   it("prints KRA eTIMS QR below Designed & Developed on thermal receipts", () => {
