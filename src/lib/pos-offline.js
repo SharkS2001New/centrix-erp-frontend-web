@@ -27,6 +27,7 @@ import {
   idbSetMeta,
   idbTakeNextOrderSlot,
   newClientSaleUuid,
+  normalizePosOrderDate,
   resolveOutboxClientUuidForCart,
 } from "@/lib/pos-offline-db";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
@@ -277,6 +278,8 @@ export function isServerPosCartId(id) {
   return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
 }
 
+export { normalizePosOrderDate } from "@/lib/pos-offline-db";
+
 /** True when an API error means the TemporaryCart was already checked out / deleted. */
 export function isMissingTemporaryCartError(err) {
   const msg = String(err?.message ?? err ?? "").toLowerCase();
@@ -491,7 +494,7 @@ export async function completeOfflineCashSale({
     }
     orderNum = Number(slot.order_num);
     posOrderNum = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
-    posOrderDate = slot.pos_order_date ?? null;
+    posOrderDate = normalizePosOrderDate(slot.pos_order_date);
     clientSaleUuid = newClientSaleUuid();
     syncKind = "sale";
   }
@@ -504,11 +507,13 @@ export async function completeOfflineCashSale({
   }
   if (existingOutbox?.sale_payload?.pos_order_num != null) {
     posOrderNum = Number(existingOutbox.sale_payload.pos_order_num);
-    posOrderDate = existingOutbox.sale_payload.pos_order_date ?? posOrderDate;
+    posOrderDate =
+      normalizePosOrderDate(existingOutbox.sale_payload.pos_order_date) ?? posOrderDate;
   } else if (cart.pos_order_num != null && Number(cart.pos_order_num) > 0) {
     posOrderNum = Number(cart.pos_order_num);
-    posOrderDate = cart.pos_order_date ?? posOrderDate;
+    posOrderDate = normalizePosOrderDate(cart.pos_order_date) ?? posOrderDate;
   }
+  posOrderDate = normalizePosOrderDate(posOrderDate);
   const createdAtIso =
     existingOutbox?.sale_payload?.created_at ??
     existingOutbox?.sale_payload?.completed_at ??
@@ -830,17 +835,34 @@ async function resolvePreviousOrderEditCartId(row) {
 }
 
 async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
-  return {
+  const posDate =
+    normalizePosOrderDate(extras.pos_order_date) ??
+    normalizePosOrderDate(row.checkout_body?.pos_order_date) ??
+    normalizePosOrderDate(row.sale_payload?.pos_order_date);
+  const posNumRaw =
+    extras.pos_order_num ??
+    row.checkout_body?.pos_order_num ??
+    row.sale_payload?.pos_order_num;
+  const posNum = posNumRaw != null ? Number(posNumRaw) : null;
+
+  const body = {
     ...row.checkout_body,
     order_num: orderNum,
     offline_order: true,
     client_sale_uuid: row.client_sale_uuid,
-    ...(row.sync_kind === "previous_order_edit" && row.content_revision != null
-      ? { content_revision: Number(row.content_revision) }
-      : {}),
-    ...(extras.pos_order_num != null ? { pos_order_num: Number(extras.pos_order_num) } : {}),
-    ...(extras.pos_order_date ? { pos_order_date: extras.pos_order_date } : {}),
   };
+  if (row.sync_kind === "previous_order_edit" && row.content_revision != null) {
+    body.content_revision = Number(row.content_revision);
+  }
+  if (posNum != null && posNum > 0) {
+    body.pos_order_num = posNum;
+  }
+  if (posDate) {
+    body.pos_order_date = posDate;
+  } else {
+    delete body.pos_order_date;
+  }
+  return body;
 }
 
 async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {

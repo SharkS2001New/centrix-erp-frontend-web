@@ -320,7 +320,9 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
       ? { pos_order_num: Number(sourceSale.pos_order_num) }
       : {}),
     ...(sourceSale?.pos_order_date
-      ? { pos_order_date: sourceSale.pos_order_date }
+      ? {
+          pos_order_date: String(sourceSale.pos_order_date).slice(0, 10),
+        }
       : {}),
   };
 

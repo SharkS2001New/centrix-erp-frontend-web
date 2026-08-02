@@ -161,15 +161,16 @@ export async function idbAppendOrderSlots(slotsInput) {
     const orderNum = Number(slot.order_num);
     if (!orderNum) continue;
     const posNum = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
+    const posDate = normalizePosOrderDate(slot.pos_order_date);
     const slotId =
-      posNum != null && slot.pos_order_date
-        ? `slot-${orderNum}-${posNum}-${slot.pos_order_date}`
+      posNum != null && posDate
+        ? `slot-${orderNum}-${posNum}-${posDate}`
         : `legacy-${orderNum}`;
     store.put({
       slot_id: slotId,
       order_num: orderNum,
       pos_order_num: posNum,
-      pos_order_date: slot.pos_order_date ?? null,
+      pos_order_date: posDate,
       reserved_at: Date.now(),
     });
   }
@@ -218,6 +219,29 @@ export async function idbTakeNextOrderNumber() {
 
 export async function idbCountOrderNumbers() {
   return withStore("order_slots", "readonly", (store) => store.count());
+}
+
+/** Normalize API/ISO dates to Y-m-d for offline ticket slots + checkout. */
+export function normalizePosOrderDate(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const ymd = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (ymd) return ymd[1];
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getUTCFullYear();
+    const m = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return null;
 }
 
 export async function idbPutOutboxSale(sale) {
