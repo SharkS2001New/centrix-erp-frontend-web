@@ -7087,7 +7087,7 @@ export function PosScreen({ standalone = false }) {
                 </button>
                 <button
                   type="button"
-                  disabled={busy || offlineSyncing || !canFlushOutbox}
+                  disabled={busy || offlineSyncing || !canFlushOutbox || pendingSync <= 0}
                   title={
                     !canFlushOutbox
                       ? "Reconnect to sync offline orders"
@@ -7095,7 +7095,7 @@ export function PosScreen({ standalone = false }) {
                         ? syncProgress?.message || "Syncing offline orders…"
                         : pendingSync > 0
                           ? `Sync ${pendingSync} pending offline order(s)`
-                          : "Sync local offline orders to the server"
+                          : "No offline orders waiting to sync"
                   }
                   onClick={() => void syncOfflineOrders()}
                   className={posHeaderBtnClassName}

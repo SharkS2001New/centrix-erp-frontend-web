@@ -33,14 +33,15 @@ export function PosOfflineSyncControls({
           ? `${pendingSync} offline order(s) waiting to sync`
           : "Sync local offline orders to the server"));
 
-  const disabled = syncing || !canFlush;
+  const hasPending = pendingSync > 0;
+  const disabled = syncing || !canFlush || !hasPending;
   const title = !canFlush
     ? "Reconnect to sync offline orders"
     : syncing
       ? "Sync in progress…"
-      : pendingSync > 0
+      : hasPending
         ? `Sync ${pendingSync} pending offline order(s)`
-        : "Check and sync offline orders";
+        : "No offline orders waiting to sync";
 
   return (
     <div
@@ -69,7 +70,7 @@ export function PosOfflineSyncControls({
               ? total > 0
                 ? `Syncing ${done + failed}/${total}`
                 : "Syncing…"
-              : pendingSync > 0
+              : hasPending
                 ? `Sync offline (${pendingSync})`
                 : "Sync offline orders"}
           </span>
