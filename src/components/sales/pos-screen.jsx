@@ -143,6 +143,12 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
+import {
+  classicPosThemeCssVars,
+  CLASSIC_POS_THEME_DEFAULT,
+  isDarkClassicPosTheme,
+  resolveClassicPosThemeTemplate,
+} from "@/lib/classic-pos-theme-templates";
 import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
 import {
@@ -502,6 +508,14 @@ export function PosScreen({ standalone = false }) {
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission, logout } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
+  const classicThemeTemplate = useMemo(
+    () => (classicLayout ? resolveClassicPosThemeTemplate(capabilities) : CLASSIC_POS_THEME_DEFAULT),
+    [classicLayout, capabilities],
+  );
+  const classicThemeVars = useMemo(
+    () => (classicLayout ? classicPosThemeCssVars(classicThemeTemplate) : null),
+    [classicLayout, classicThemeTemplate],
+  );
   const {
     offlineMode,
     networkStatus,
@@ -1630,15 +1644,16 @@ export function PosScreen({ standalone = false }) {
     cart,
   ]);
 
-  // Classic External POS stays light — no dark theme toggle on this layout.
+  // Classic External POS: scoped theme templates (not global light/dark toggle).
   useEffect(() => {
     if (!classicLayout) return undefined;
+    if (isDarkClassicPosTheme(classicThemeTemplate)) return undefined;
     const previous = getTheme();
     applyTheme("light");
     return () => {
       applyTheme(previous);
     };
-  }, [classicLayout]);
+  }, [classicLayout, classicThemeTemplate]);
 
   useEffect(() => {
     if (cart?.discount_approval_pending && cart?.discount_approval_request?.discount_amount != null) {
@@ -6674,6 +6689,8 @@ export function PosScreen({ standalone = false }) {
         standalone ? " h-full pos-workspace-standalone" : " h-full pos-workspace-backoffice p-4 md:p-6 lg:p-8"
       }${classicLayout ? " pos-workspace-classic" : ""}`}
       data-pos-layout={classicLayout ? "classic" : "modern"}
+      data-classic-pos-theme={classicLayout ? classicThemeTemplate : undefined}
+      style={classicThemeVars ?? undefined}
     >
       {standalone ? (
         <>

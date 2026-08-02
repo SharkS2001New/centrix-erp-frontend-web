@@ -49,6 +49,11 @@ import {
   normalizeHospitalityPaymentWorkflow,
 } from "@/lib/hospitality-payment-workflow";
 import {
+  CLASSIC_POS_THEME_DEFAULT,
+  CLASSIC_POS_THEME_TEMPLATES,
+  normalizeClassicPosThemeTemplate,
+} from "@/lib/classic-pos-theme-templates";
+import {
   HOTEL_POS_THEME_DEFAULT,
   HOTEL_POS_THEME_TEMPLATES,
   normalizeHotelPosThemeTemplate,
@@ -336,6 +341,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     },
     require_pos_till_float: false,
     external_pos_layout: "modern",
+    classic_pos_theme_template: CLASSIC_POS_THEME_DEFAULT,
     hotel_pos_grid_columns: 4,
     hotel_pos_collect_payment: true,
     hotel_pos_catalog_limit: 30,
@@ -393,6 +399,9 @@ export function salesPlatformFromApi(apiPayload) {
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     external_pos_layout:
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
+    classic_pos_theme_template: normalizeClassicPosThemeTemplate(
+      apiPayload.classic_pos_theme_template,
+    ),
     hotel_pos_grid_columns:
       Number(apiPayload.hotel_pos_grid_columns) === 5 ? 5 : 4,
     hotel_pos_collect_payment: apiPayload.hotel_pos_collect_payment !== false,
@@ -1319,6 +1328,54 @@ export function OrganizationModuleToggles({
                       Only affects the external POS workspace (/pos). Backoffice Create order keeps the modern layout.
                     </p>
                   </OrgRegisterField>
+                  {salesPlatform?.external_pos_layout === "classic" ? (
+                    <OrgRegisterField label="Classic POS theme template" className="mt-4">
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {CLASSIC_POS_THEME_TEMPLATES.map((theme) => {
+                          const selected =
+                            normalizeClassicPosThemeTemplate(
+                              salesPlatform?.classic_pos_theme_template,
+                            ) === theme.id;
+                          return (
+                            <button
+                              key={theme.id}
+                              type="button"
+                              onClick={() =>
+                                onSalesChange({
+                                  ...(salesPlatform ?? {}),
+                                  classic_pos_theme_template: theme.id,
+                                })
+                              }
+                              className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                                selected
+                                  ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-2 ring-[#185FA5]/40"
+                                  : "border-slate-200 bg-white hover:border-slate-300"
+                              }`}
+                            >
+                              <span className="mb-2 flex gap-1">
+                                {(theme.preview ?? []).map((color) => (
+                                  <span
+                                    key={color}
+                                    className="h-4 w-4 rounded-full border border-black/10"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                ))}
+                              </span>
+                              <span className="block text-sm font-semibold text-slate-900">
+                                {theme.label}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                                {theme.description}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="theme-subtext mt-2 text-xs">
+                        Applies only to Classic External POS (/pos). Modern layout keeps the standard Centrix theme.
+                      </p>
+                    </OrgRegisterField>
+                  ) : null}
                 </div>
               ) : null}
               {workspace.id === "hotel_bar_pos" && enabled && typeof onSalesChange === "function" ? (

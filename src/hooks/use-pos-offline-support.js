@@ -41,7 +41,9 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const flushGenerationRef = useRef(0);
   const lastNotifiedSyncErrorRef = useRef(null);
 
-  fullyOnlineRef.current = fullyOnline;
+  useEffect(() => {
+    fullyOnlineRef.current = fullyOnline;
+  }, [fullyOnline]);
 
   const refreshCounts = useCallback(async () => {
     if (!enabled) return;
