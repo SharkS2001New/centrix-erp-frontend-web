@@ -204,8 +204,14 @@ const PREVIOUS_ORDER_EDIT_DRAFT_ID = "previous_order_edit";
  * Edits stay fast; F10/checkout flushes to the server cart in one shot.
  */
 export async function savePreviousOrderEditDraft(cart) {
-  if (!cart?.held_order_num || !isServerPosCartId(cart?.id)) return null;
+  if (!cart?.held_order_num || !cart?.superseded_sale_id) return null;
   if (cart.offline || cart.offline_client_sale_uuid) return null;
+
+  const serverCartId = isServerPosCartId(cart.id)
+    ? Number(cart.id)
+    : isServerPosCartId(cart.server_cart_id)
+      ? Number(cart.server_cart_id)
+      : null;
 
   const lines = (cart.lines ?? [])
     .map((line) => {
@@ -238,9 +244,11 @@ export async function savePreviousOrderEditDraft(cart) {
     id: PREVIOUS_ORDER_EDIT_DRAFT_ID,
     previous_order_edit: true,
     offline: false,
-    server_cart_id: cart.id,
+    server_cart_id: serverCartId,
     held_order_num: cart.held_order_num,
     superseded_sale_id: cart.superseded_sale_id ?? null,
+    pos_order_num: cart.pos_order_num ?? null,
+    pos_order_date: cart.pos_order_date ?? null,
     order_discount: Number(cart.order_discount ?? 0) || 0,
     update_no: cart.update_no ?? null,
     branch_id: cart.branch_id ?? null,
@@ -257,7 +265,7 @@ export async function savePreviousOrderEditDraft(cart) {
 
 export async function loadPreviousOrderEditDraft() {
   const draft = await idbGetLocalCart(PREVIOUS_ORDER_EDIT_DRAFT_ID);
-  if (!draft?.previous_order_edit || !draft?.server_cart_id) return null;
+  if (!draft?.previous_order_edit || !draft?.held_order_num) return null;
   return draft;
 }
 
@@ -267,6 +275,31 @@ export async function clearPreviousOrderEditDraft() {
 
 export function isServerPosCartId(id) {
   return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
+}
+
+/** True when an API error means the TemporaryCart was already checked out / deleted. */
+export function isMissingTemporaryCartError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  if (/temporarycart|cart not found|already been checked out/.test(msg)) return true;
+  if (err instanceof ApiError && (err.status === 404 || err.status === 410)) {
+    const blob = JSON.stringify(err.body ?? {}).toLowerCase();
+    return /temporarycart|cart not found|no query results/.test(msg) || /temporarycart|cart/.test(blob);
+  }
+  return false;
+}
+
+/**
+ * Detach the live edit session from a server TemporaryCart id so checkout can
+ * delete that cart without the UI keeping a dead id.
+ */
+export function detachPreviousOrderEditCartId(cart) {
+  if (!cart?.held_order_num) return cart;
+  if (!isServerPosCartId(cart.id)) return cart;
+  return {
+    ...cart,
+    id: `edit:${Number(cart.held_order_num)}`,
+    server_cart_id: null,
+  };
 }
 
 export async function clearLocalPosCart() {
@@ -580,13 +613,10 @@ export async function completeOfflineCashSale({
     content_revision: contentRevision,
     sync_kind: syncKind,
     server_cart_id: (() => {
-      // After a successful previous-order checkout the edit cart is gone — don't reuse a stale id.
-      if (
-        existingOutbox?.sync_kind === "previous_order_edit" &&
-        existingOutbox.server_cart_id == null &&
-        existingOutbox.server_sale_id
-      ) {
-        return null;
+      // Previous-order sync checkouts delete the TemporaryCart. Never reuse a stale
+      // outbox cart id — restore-to-cart when the live UI no longer has a server id.
+      if (syncKind === "previous_order_edit") {
+        return serverCartId;
       }
       return serverCartId ?? existingOutbox?.server_cart_id ?? null;
     })(),
@@ -786,7 +816,12 @@ async function resolvePreviousOrderEditCartId(row) {
     try {
       await apiRequest(`/sales/carts/${cartId}`, { loading: false, reportIssues: false });
       return cartId;
-    } catch {
+    } catch (err) {
+      if (!isMissingTemporaryCartError(err)) {
+        // Ownership/branch errors should surface; missing cart falls through to restore.
+        const status = err instanceof ApiError ? err.status : null;
+        if (status && status !== 404 && status !== 410) throw err;
+      }
       cartId = null;
     }
   }
@@ -815,25 +850,8 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
     throw new Error("Missing edit cart for previous order sync.");
   }
 
-  try {
-    await apiRequest(`/sales/carts/${cartId}/lines`, {
-      method: "PUT",
-      body: {
-        lines: mapOutboxLinesForPut(row),
-        order_discount: Number(row.order_discount ?? 0) || 0,
-      },
-      loading: false,
-      reportIssues: false,
-    });
-  } catch (putErr) {
-    // Stale cart id after a prior checkout — restore the sale and retry once.
-    const retryCartId = await resolvePreviousOrderEditCartId({
-      ...row,
-      server_cart_id: null,
-    });
-    if (!retryCartId) throw putErr;
-    cartId = retryCartId;
-    await apiRequest(`/sales/carts/${cartId}/lines`, {
+  async function putLines(targetCartId) {
+    await apiRequest(`/sales/carts/${targetCartId}/lines`, {
       method: "PUT",
       body: {
         lines: mapOutboxLinesForPut(row),
@@ -844,12 +862,45 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
     });
   }
 
-  return apiRequest(`/sales/carts/${cartId}/checkout`, {
-    method: "POST",
-    body: await checkoutBodyForOutboxRow(row, orderNum),
-    loading: false,
-    reportIssues: false,
-  });
+  try {
+    await putLines(cartId);
+  } catch (putErr) {
+    // Stale cart id after a prior checkout — restore the sale and retry once.
+    if (!isMissingTemporaryCartError(putErr) && !(putErr instanceof ApiError && putErr.status === 404)) {
+      throw putErr;
+    }
+    const retryCartId = await resolvePreviousOrderEditCartId({
+      ...row,
+      server_cart_id: null,
+    });
+    if (!retryCartId) throw putErr;
+    cartId = retryCartId;
+    await putLines(cartId);
+  }
+
+  try {
+    return await apiRequest(`/sales/carts/${cartId}/checkout`, {
+      method: "POST",
+      body: await checkoutBodyForOutboxRow(row, orderNum),
+      loading: false,
+      reportIssues: false,
+    });
+  } catch (checkoutErr) {
+    // Cart vanished between PUT and checkout (concurrent sync) — restore and retry once.
+    if (!isMissingTemporaryCartError(checkoutErr)) throw checkoutErr;
+    const retryCartId = await resolvePreviousOrderEditCartId({
+      ...row,
+      server_cart_id: null,
+    });
+    if (!retryCartId) throw checkoutErr;
+    await putLines(retryCartId);
+    return apiRequest(`/sales/carts/${retryCartId}/checkout`, {
+      method: "POST",
+      body: await checkoutBodyForOutboxRow(row, orderNum),
+      loading: false,
+      reportIssues: false,
+    });
+  }
 }
 
 async function checkoutOutboxRow(row, orderNum, extras = {}) {

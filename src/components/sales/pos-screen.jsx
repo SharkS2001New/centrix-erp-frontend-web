@@ -159,8 +159,10 @@ import {
   clearLocalPosCart,
   clearPreviousOrderEditDraft,
   completeOfflineCashSale,
+  detachPreviousOrderEditCartId,
   getPosOfflineProduct,
   isLocalFirstCashCheckout,
+  isMissingTemporaryCartError,
   isServerPosCartId,
   listOfflinePendingSalesForEdit,
   loadOrCreateLocalPosCart,
@@ -1988,10 +1990,31 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   const refreshCart = useCallback(async (cartId) => {
-    const updated = await apiRequest(`/sales/carts/${cartId}`, POS_CART_REQUEST);
-    setCart(updated);
-    return updated;
-  }, []);
+    try {
+      const updated = await apiRequest(`/sales/carts/${cartId}`, POS_CART_REQUEST);
+      setCart(updated);
+      return updated;
+    } catch (e) {
+      if (
+        isMissingTemporaryCartError(e) &&
+        cartRef.current?.held_order_num &&
+        cartRef.current?.superseded_sale_id
+      ) {
+        const saleId = cartRef.current.superseded_sale_id;
+        const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
+          method: "POST",
+          body: { replace: true },
+          ...POS_CART_REQUEST,
+        });
+        const presented =
+          presentRestoredEditCart(restored, editSourceSale ?? { id: saleId }) ?? restored;
+        cartRef.current = presented;
+        setCart(presented);
+        return presented;
+      }
+      throw e;
+    }
+  }, [editSourceSale]);
 
   /** After reconnect, push a local offline cart onto a fresh server cart so lines survive. */
   const materializeOfflineCartOnServer = useCallback(
@@ -2115,6 +2138,17 @@ export function PosScreen({ standalone = false }) {
       return loadCashierCart();
     }
     // Back online: never call the API with the local "active" cart id.
+    // Detached previous-order edits (`edit:123`) stay local until sync restores a TemporaryCart.
+    if (
+      standalone &&
+      current?.held_order_num &&
+      current?.superseded_sale_id &&
+      !isServerPosCartId(current.id) &&
+      !current.offline &&
+      !current.offline_client_sale_uuid
+    ) {
+      return current;
+    }
     if (standalone && (current?.offline || (current && !isServerPosCartId(current.id)))) {
       if (current?.lines?.length > 0 || current?.held_order_num) {
         try {
@@ -5300,6 +5334,17 @@ export function PosScreen({ standalone = false }) {
             floatSessionId,
             cashAmount: summarizeLocalPosCart(local).amountDue,
           });
+          // Sync checkouts (and deletes) the TemporaryCart — stop using its id in the UI
+          // so concurrent line/refresh calls cannot hit a deleted cart.
+          {
+            const live = cartRef.current;
+            if (live && isServerPosCartId(live.id)) {
+              const detached = detachPreviousOrderEditCartId(live);
+              cartRef.current = detached;
+              setCart(detached);
+              void savePreviousOrderEditDraft(detached).catch(() => {});
+            }
+          }
           setStatusMessage(
             `Order #${cartNow.held_order_num} saved — syncing… (Alt+P to reprint)`,
           );
