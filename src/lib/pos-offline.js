@@ -5,6 +5,7 @@ import {
 } from "@/lib/catalog-cache";
 import {
   idbAppendOrderNumbers,
+  idbAppendOrderSlots,
   idbClearLocalCart,
   idbCountOrderNumbers,
   idbCountPendingOutbox,
@@ -13,6 +14,8 @@ import {
   idbGetLocalCart,
   idbGetMeta,
   idbGetOutboxSale,
+  idbIsOutboxBlockingForCart,
+  idbListEditableOutbox,
   idbListPendingOutbox,
   idbMarkOutboxError,
   idbMarkOutboxSynced,
@@ -22,9 +25,11 @@ import {
   idbPutOutboxSale,
   idbReclaimStuckSyncingOutbox,
   idbSetMeta,
-  idbTakeNextOrderNumber,
+  idbTakeNextOrderSlot,
   newClientSaleUuid,
+  resolveOutboxClientUuidForCart,
 } from "@/lib/pos-offline-db";
+import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
 
@@ -112,30 +117,55 @@ export async function getPosOfflineCatalogMeta() {
 
 /** Reserve sequential order numbers while online (real numbers for offline receipts). */
 export async function ensurePosOfflineOrderNumbers({ force = false } = {}) {
-  const available = await idbCountOrderNumbers();
-  if (!force && available >= POS_OFFLINE_RESERVE_LOW) {
-    return { reserved: 0, available };
-  }
-  const need = Math.max(POS_OFFLINE_RESERVE_COUNT - available, POS_OFFLINE_RESERVE_COUNT);
-  const res = await apiRequest("/sales/order-numbers/reserve", {
-    method: "POST",
-    body: { count: Math.min(need, POS_OFFLINE_RESERVE_COUNT) },
-    loading: false,
-    reportIssues: false,
+  return withPosOfflineExclusiveLock(async () => {
+    const available = await idbCountOrderNumbers();
+    if (!force && available >= POS_OFFLINE_RESERVE_LOW) {
+      return { reserved: 0, available };
+    }
+    const need = Math.max(POS_OFFLINE_RESERVE_COUNT - available, POS_OFFLINE_RESERVE_COUNT);
+    const res = await apiRequest("/sales/order-numbers/reserve", {
+      method: "POST",
+      body: { count: Math.min(need, POS_OFFLINE_RESERVE_COUNT) },
+      loading: false,
+      reportIssues: false,
+    });
+    const numbers = Array.isArray(res?.numbers) ? res.numbers : [];
+    const slots = Array.isArray(res?.slots)
+      ? res.slots
+      : numbers.map((order_num) => ({
+          order_num: Number(order_num),
+          pos_order_num: null,
+          pos_order_date: null,
+        }));
+    if (slots.length) {
+      await idbAppendOrderSlots(slots);
+    } else if (numbers.length) {
+      await idbAppendOrderNumbers(numbers);
+    }
+    return { reserved: slots.length || numbers.length, available: await idbCountOrderNumbers() };
   });
-  const numbers = Array.isArray(res?.numbers) ? res.numbers : [];
-  if (numbers.length) {
-    await idbAppendOrderNumbers(numbers);
-  }
-  return { reserved: numbers.length, available: await idbCountOrderNumbers() };
 }
 
 export async function peekPosOfflineOrderNumberCount() {
   return idbCountOrderNumbers();
 }
 
+export async function takePosOfflineOrderSlot() {
+  return withPosOfflineExclusiveLock(() => idbTakeNextOrderSlot());
+}
+
+/** @deprecated use takePosOfflineOrderSlot */
 export async function takePosOfflineOrderNumber() {
-  return idbTakeNextOrderNumber();
+  const slot = await takePosOfflineOrderSlot();
+  return slot ? Number(slot.order_num) : null;
+}
+
+export async function cartHasBlockingOutboxSync(cart) {
+  return idbIsOutboxBlockingForCart(cart);
+}
+
+export function outboxClientUuidForCart(cart) {
+  return resolveOutboxClientUuidForCart(cart);
 }
 
 export function emptyLocalPosCart(seed = {}) {
@@ -405,6 +435,8 @@ export async function completeOfflineCashSale({
   let orderNum = reuseOrderNum;
   let clientSaleUuid = editingUuid;
   let syncKind = "sale";
+  let posOrderNum = null;
+  let posOrderDate = null;
 
   if (editingUuid && reuseOrderNum) {
     // Revising a queued offline sale — keep printed order # and outbox identity.
@@ -418,12 +450,15 @@ export async function completeOfflineCashSale({
   } else if (editingUuid || reuseOrderNum) {
     throw new Error("Offline edit is missing its original order number. Cancel and reopen the sale.");
   } else {
-    orderNum = await takePosOfflineOrderNumber();
-    if (!orderNum) {
+    const slot = await takePosOfflineOrderSlot();
+    if (!slot?.order_num) {
       throw new Error(
         "No reserved order numbers left for offline selling. Reconnect briefly to reserve more.",
       );
     }
+    orderNum = Number(slot.order_num);
+    posOrderNum = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
+    posOrderDate = slot.pos_order_date ?? null;
     clientSaleUuid = newClientSaleUuid();
     syncKind = "sale";
   }
@@ -433,6 +468,13 @@ export async function completeOfflineCashSale({
   const existingOutbox = clientSaleUuid ? await idbGetOutboxSale(clientSaleUuid) : null;
   if (existingOutbox?.sync_kind === "previous_order_edit") {
     syncKind = "previous_order_edit";
+  }
+  if (existingOutbox?.sale_payload?.pos_order_num != null) {
+    posOrderNum = Number(existingOutbox.sale_payload.pos_order_num);
+    posOrderDate = existingOutbox.sale_payload.pos_order_date ?? posOrderDate;
+  } else if (cart.pos_order_num != null && Number(cart.pos_order_num) > 0) {
+    posOrderNum = Number(cart.pos_order_num);
+    posOrderDate = cart.pos_order_date ?? posOrderDate;
   }
   const createdAtIso =
     existingOutbox?.sale_payload?.created_at ??
@@ -491,6 +533,8 @@ export async function completeOfflineCashSale({
     id: `offline:${clientSaleUuid}`,
     client_sale_uuid: clientSaleUuid,
     order_num: orderNum,
+    ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
+    ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
     organization_id: organization?.id ?? user?.organization_id ?? null,
     branch_id: cart.branch_id ?? user?.branch_id ?? null,
     till_id: cart.till_id ?? null,
@@ -560,12 +604,16 @@ export async function completeOfflineCashSale({
     sale_payload: sale,
     checkout_body: {
       order_num: orderNum,
+      ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
+      ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
       payment_method_code: "CASH",
       pay_now: payNow,
       is_credit_sale: false,
       submit_kra: false,
       offline_order: true,
       client_sale_uuid: clientSaleUuid,
+      // Revision only for previous-order edits — new sales keep a stable uuid key for retry dedupe.
+      ...(syncKind === "previous_order_edit" ? { content_revision: contentRevision } : {}),
       float_session_id: sale.float_session_id,
       customer_num: sale.customer_num,
       customer_name_override: sale.customer_name_override,
@@ -668,6 +716,8 @@ export function buildPreviousOrderEditPrintSale(cart, { user = null, organizatio
   return {
     id: cart.server_sale_id ?? `edit:${orderNum}`,
     order_num: orderNum,
+    ...(cart.pos_order_num != null ? { pos_order_num: Number(cart.pos_order_num) } : {}),
+    ...(cart.pos_order_date ? { pos_order_date: cart.pos_order_date } : {}),
     organization_id: organization?.id ?? user?.organization_id ?? null,
     branch_id: cart.branch_id ?? user?.branch_id ?? null,
     channel: "pos",
@@ -717,46 +767,92 @@ function mapOutboxLinesForPut(row) {
  * Sync a previous-order edit: PUT lines onto the edit cart (or restore-to-cart), then checkout
  * with the same order number so the server record is updated.
  */
-async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
+async function resolvePreviousOrderEditCartId(row) {
   let cartId = row.server_cart_id ? Number(row.server_cart_id) : null;
-  const supersededId = row.superseded_sale_id ? Number(row.superseded_sale_id) : null;
+  const supersededId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null;
 
-  if (!cartId && supersededId) {
+  async function restoreFromSupersededSale() {
+    if (!supersededId) return null;
     const restored = await apiRequest(`/sales/orders/${supersededId}/restore-to-cart`, {
       method: "POST",
       body: { replace: true },
       loading: false,
       reportIssues: false,
     });
-    cartId = restored?.id ? Number(restored.id) : null;
+    return restored?.id ? Number(restored.id) : null;
   }
+
+  if (cartId) {
+    try {
+      await apiRequest(`/sales/carts/${cartId}`, { loading: false, reportIssues: false });
+      return cartId;
+    } catch {
+      cartId = null;
+    }
+  }
+
+  return restoreFromSupersededSale();
+}
+
+async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
+  return {
+    ...row.checkout_body,
+    order_num: orderNum,
+    offline_order: true,
+    client_sale_uuid: row.client_sale_uuid,
+    ...(row.sync_kind === "previous_order_edit" && row.content_revision != null
+      ? { content_revision: Number(row.content_revision) }
+      : {}),
+    ...(extras.pos_order_num != null ? { pos_order_num: Number(extras.pos_order_num) } : {}),
+    ...(extras.pos_order_date ? { pos_order_date: extras.pos_order_date } : {}),
+  };
+}
+
+async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
+  let cartId = await resolvePreviousOrderEditCartId(row);
 
   if (!cartId) {
     throw new Error("Missing edit cart for previous order sync.");
   }
 
-  await apiRequest(`/sales/carts/${cartId}/lines`, {
-    method: "PUT",
-    body: {
-      lines: mapOutboxLinesForPut(row),
-      order_discount: Number(row.order_discount ?? 0) || 0,
-    },
-    loading: false,
-    reportIssues: false,
-  });
+  try {
+    await apiRequest(`/sales/carts/${cartId}/lines`, {
+      method: "PUT",
+      body: {
+        lines: mapOutboxLinesForPut(row),
+        order_discount: Number(row.order_discount ?? 0) || 0,
+      },
+      loading: false,
+      reportIssues: false,
+    });
+  } catch (putErr) {
+    // Stale cart id after a prior checkout — restore the sale and retry once.
+    const retryCartId = await resolvePreviousOrderEditCartId({
+      ...row,
+      server_cart_id: null,
+    });
+    if (!retryCartId) throw putErr;
+    cartId = retryCartId;
+    await apiRequest(`/sales/carts/${cartId}/lines`, {
+      method: "PUT",
+      body: {
+        lines: mapOutboxLinesForPut(row),
+        order_discount: Number(row.order_discount ?? 0) || 0,
+      },
+      loading: false,
+      reportIssues: false,
+    });
+  }
 
   return apiRequest(`/sales/carts/${cartId}/checkout`, {
     method: "POST",
-    body: {
-      ...row.checkout_body,
-      order_num: orderNum,
-    },
+    body: await checkoutBodyForOutboxRow(row, orderNum),
     loading: false,
     reportIssues: false,
   });
 }
 
-async function checkoutOutboxRow(row, orderNum) {
+async function checkoutOutboxRow(row, orderNum, extras = {}) {
   if (row.sync_kind === "previous_order_edit") {
     return checkoutPreviousOrderEditOutboxRow(row, orderNum);
   }
@@ -792,10 +888,7 @@ async function checkoutOutboxRow(row, orderNum) {
 
   return apiRequest(`/sales/carts/${cartId}/checkout`, {
     method: "POST",
-    body: {
-      ...row.checkout_body,
-      order_num: orderNum,
-    },
+    body: await checkoutBodyForOutboxRow(row, orderNum, extras),
     loading: false,
     reportIssues: false,
   });
@@ -809,7 +902,7 @@ export function parseOfflineSaleUuid(saleId) {
 
 /** Pending offline sales that can be reopened for edit (newest first). */
 export async function listOfflinePendingSalesForEdit() {
-  const pending = await idbListPendingOutbox();
+  const pending = await idbListEditableOutbox();
   return pending
     .map((row) => {
       const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
@@ -860,6 +953,10 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
     offline: true,
     channel: "pos",
     held_order_num: Number(row.order_num),
+    superseded_sale_id:
+      row.sync_kind === "previous_order_edit"
+        ? Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null
+        : null,
     offline_client_sale_uuid: row.client_sale_uuid,
     offline_edit_snapshot: row,
     branch_id: row.cart_seed?.branch_id ?? sale.branch_id ?? seed.branch_id ?? null,
@@ -914,19 +1011,65 @@ function isDuplicateOrderNumError(err) {
   return false;
 }
 
-async function allocateFreshOrderNumberForSync() {
-  // Prefer consuming a locally reserved number; otherwise reserve one now.
-  const local = await idbTakeNextOrderNumber();
-  if (local) return local;
+/** Prefer consuming a locally reserved slot; otherwise reserve one now. */
+async function allocateFreshOrderSlotForSync() {
+  const local = await idbTakeNextOrderSlot();
+  if (local?.order_num) return local;
   const res = await apiRequest("/sales/order-numbers/reserve", {
     method: "POST",
     body: { count: 1 },
     loading: false,
     reportIssues: false,
   });
+  const slots = Array.isArray(res?.slots) ? res.slots : null;
+  if (slots?.length) {
+    // Consume the first reserved slot immediately; leave extras if any.
+    const [first, ...rest] = slots;
+    if (rest.length) await idbAppendOrderSlots(rest);
+    return first;
+  }
   const n = Array.isArray(res?.numbers) ? res.numbers[0] : res?.start;
   if (!n) throw new Error("Could not allocate a replacement order number.");
-  return Number(n);
+  return { order_num: Number(n), pos_order_num: null, pos_order_date: null };
+}
+
+/** If this offline sale already synced (duplicate order #), recover the server row. */
+async function tryRecoverExistingOfflineSale(row, orderNum) {
+  const clientUuid = row.client_sale_uuid;
+  if (!clientUuid) return null;
+  const expectedSyncId =
+    row.sync_kind === "previous_order_edit" && row.content_revision != null
+      ? `${clientUuid}:${Number(row.content_revision)}`
+      : clientUuid;
+  try {
+    const res = await apiRequest("/sales", {
+      searchParams: {
+        q: String(orderNum),
+        per_page: 25,
+        channel: "pos",
+        order_source: "pos",
+      },
+      loading: false,
+      reportIssues: false,
+    });
+    const rows = Array.isArray(res?.data) ? res.data : [];
+    const match = rows.find((sale) => {
+      if (Number(sale.order_num) !== Number(orderNum)) return false;
+      const meta = sale.fulfillment_meta ?? {};
+      if (meta.pos_sync_id && String(meta.pos_sync_id) === String(expectedSyncId)) {
+        return true;
+      }
+      const uuid =
+        meta.client_sale_uuid ??
+        meta.offline_client_sale_uuid ??
+        sale.client_sale_uuid;
+      if (uuid && String(uuid) === String(clientUuid)) return true;
+      return false;
+    });
+    return match?.id ? match : null;
+  } catch {
+    return null;
+  }
 }
 
 function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
@@ -957,67 +1100,77 @@ function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
  * Previous-order edits always keep the same order # and update the server record.
  */
 export async function syncPosOfflineOutbox({ onProgress } = {}) {
-  await idbReclaimStuckSyncingOutbox({ olderThanMs: 60_000 });
-  const pending = await idbListPendingOutbox();
-  const results = [];
-  for (const row of pending) {
-    const printedOrderNum = Number(row.order_num);
-    const claimed = await idbMarkOutboxSyncing(row.client_sale_uuid);
-    if (!claimed) continue;
+  return withPosOfflineExclusiveLock(async () => {
+    await idbReclaimStuckSyncingOutbox({ olderThanMs: 60_000 });
+    const pending = await idbListPendingOutbox();
+    const results = [];
+    for (const row of pending) {
+      const printedOrderNum = Number(row.order_num);
+      const claimed = await idbMarkOutboxSyncing(row.client_sale_uuid);
+      if (!claimed) continue;
 
-    try {
-      onProgress?.({ phase: "syncing", order_num: printedOrderNum });
-      let sale;
-      let usedOrderNum = printedOrderNum;
-      let needsReprint = false;
       try {
-        sale = await checkoutOutboxRow(row, printedOrderNum);
-      } catch (firstErr) {
-        // Never reallocate for previous-order edits — sync must update that order #.
-        if (
-          row.sync_kind === "previous_order_edit" ||
-          !isDuplicateOrderNumError(firstErr)
-        ) {
-          throw firstErr;
+        onProgress?.({ phase: "syncing", order_num: printedOrderNum });
+        let sale;
+        let usedOrderNum = printedOrderNum;
+        let needsReprint = false;
+        try {
+          sale = await checkoutOutboxRow(row, printedOrderNum);
+        } catch (firstErr) {
+          if (isDuplicateOrderNumError(firstErr)) {
+            const existing = await tryRecoverExistingOfflineSale(row, printedOrderNum);
+            if (existing) {
+              sale = existing;
+            } else if (row.sync_kind === "previous_order_edit") {
+              throw firstErr;
+            } else {
+              const slot = await allocateFreshOrderSlotForSync();
+              usedOrderNum = Number(slot.order_num);
+              onProgress?.({
+                phase: "reallocate",
+                order_num: usedOrderNum,
+                original_order_num: printedOrderNum,
+              });
+              sale = await checkoutOutboxRow(row, usedOrderNum, {
+                pos_order_num: slot.pos_order_num,
+                pos_order_date: slot.pos_order_date,
+              });
+              needsReprint = usedOrderNum !== printedOrderNum;
+            }
+          } else {
+            throw firstErr;
+          }
         }
-        usedOrderNum = await allocateFreshOrderNumberForSync();
-        onProgress?.({
-          phase: "reallocate",
-          order_num: usedOrderNum,
+
+        await idbMarkOutboxSynced(row.client_sale_uuid, sale, {
+          needs_reprint: needsReprint,
+          order_num_changed: needsReprint,
           original_order_num: printedOrderNum,
         });
-        sale = await checkoutOutboxRow(row, usedOrderNum);
-        needsReprint = usedOrderNum !== printedOrderNum;
+        results.push({
+          ok: true,
+          order_num: Number(sale?.order_num ?? usedOrderNum),
+          printed_order_num: printedOrderNum,
+          needs_reprint: needsReprint,
+          client_sale_uuid: row.client_sale_uuid,
+          sync_kind: row.sync_kind ?? "sale",
+          sale,
+        });
+      } catch (err) {
+        const message = err?.message ?? "Sync failed";
+        await idbMarkOutboxError(row.client_sale_uuid, message);
+        reportPosOutboxSyncFailure(row, err, printedOrderNum);
+        results.push({
+          ok: false,
+          order_num: printedOrderNum,
+          client_sale_uuid: row.client_sale_uuid,
+          sync_kind: row.sync_kind ?? "sale",
+          error: message,
+        });
       }
-
-      await idbMarkOutboxSynced(row.client_sale_uuid, sale, {
-        needs_reprint: needsReprint,
-        order_num_changed: needsReprint,
-        original_order_num: printedOrderNum,
-      });
-      results.push({
-        ok: true,
-        order_num: Number(sale?.order_num ?? usedOrderNum),
-        printed_order_num: printedOrderNum,
-        needs_reprint: needsReprint,
-        client_sale_uuid: row.client_sale_uuid,
-        sync_kind: row.sync_kind ?? "sale",
-        sale,
-      });
-    } catch (err) {
-      const message = err?.message ?? "Sync failed";
-      await idbMarkOutboxError(row.client_sale_uuid, message);
-      reportPosOutboxSyncFailure(row, err, printedOrderNum);
-      results.push({
-        ok: false,
-        order_num: printedOrderNum,
-        client_sale_uuid: row.client_sale_uuid,
-        sync_kind: row.sync_kind ?? "sale",
-        error: message,
-      });
     }
-  }
-  return results;
+    return results;
+  });
 }
 
 /** True when checkout should use sell→print→local→background sync (cash only).

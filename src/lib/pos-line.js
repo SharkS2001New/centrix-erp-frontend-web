@@ -566,3 +566,64 @@ export function posEntryQtyFromBaseQty(baseQty, product, retailPackage, isRetail
 export function posCartLineTypeLabel(line) {
   return Number(line?.on_wholesale_retail) === 1 ? "Retail" : "Wholesale";
 }
+
+/**
+ * Refresh open cart line prices from the current product catalog.
+ * Returns updated cart + count of lines whose unit price changed.
+ */
+export function applyCatalogPricesToCart(
+  cart,
+  { productByCode = {}, retailByCode = {}, sellWholesale = false } = {},
+) {
+  if (!cart?.lines?.length) {
+    return { cart, updatedCount: 0, changes: [] };
+  }
+
+  const changes = [];
+  const lines = (cart.lines ?? []).map((line) => {
+    if (!line?.product_code) return line;
+    const product = productByCode[line.product_code];
+    if (!product) return line;
+
+    const retailPackage = retailByCode?.[line.product_code] ?? null;
+    const computed = computePosLine({
+      product,
+      entryQty: posEntryQtyFromCartLine(line, product, retailPackage),
+      sellWholesale,
+      retailPackage,
+      discount: Number(line.discount_given ?? 0),
+    });
+    const nextUnit = computed.unitPricePerBase;
+    const nextDisplay = computed.displayUnitPrice;
+    const prevUnit = Number(line.unit_price ?? 0);
+    const prevDisplay = Number(line.display_unit_price ?? prevUnit);
+
+    if (
+      Math.abs(nextUnit - prevUnit) < 0.009 &&
+      Math.abs(nextDisplay - prevDisplay) < 0.009
+    ) {
+      return line;
+    }
+
+    changes.push({
+      product_code: line.product_code,
+      product_name: line.product_name ?? product.product_name ?? line.product_code,
+      from: prevDisplay,
+      to: nextDisplay,
+    });
+
+    return {
+      ...line,
+      unit_price: nextUnit,
+      display_unit_price: nextDisplay,
+      amount: computed.lineAmount,
+      product_vat: line.product_vat != null ? line.product_vat : undefined,
+    };
+  });
+
+  return {
+    cart: { ...cart, lines },
+    updatedCount: changes.length,
+    changes,
+  };
+}

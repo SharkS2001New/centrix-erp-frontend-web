@@ -338,8 +338,57 @@ export function getClassicPosThemeTemplate(id) {
   return THEME_BY_ID[normalizeClassicPosThemeTemplate(id)] ?? THEME_BY_ID[CLASSIC_POS_THEME_DEFAULT];
 }
 
+function parseHexColor(hex) {
+  const raw = String(hex ?? "").trim().replace(/^#/, "");
+  if (!raw) return null;
+  const expanded =
+    raw.length === 3
+      ? raw
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : raw.length === 6
+        ? raw
+        : null;
+  if (!expanded || !/^[0-9a-f]{6}$/i.test(expanded)) return null;
+  const value = Number.parseInt(expanded, 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+function relativeLuminance([r, g, b]) {
+  const channel = (c) => {
+    const n = c / 255;
+    return n <= 0.03928 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/** Readable header copy (company name, wordmark) for each template header bar. */
+export function classicHeaderForegroundVars(vars) {
+  const header = vars["--classic-header"];
+  const rgb = parseHexColor(header);
+  if (!rgb) {
+    return {
+      "--classic-header-fg": vars["--classic-text"] ?? "#1a1a1a",
+      "--classic-header-muted": vars["--classic-muted"] ?? "#5c5340",
+    };
+  }
+  const lightHeader = relativeLuminance(rgb) > 0.35;
+  if (lightHeader) {
+    return {
+      "--classic-header-fg": vars["--classic-text"] ?? "#1a1a1a",
+      "--classic-header-muted": vars["--classic-muted"] ?? "#5c5340",
+    };
+  }
+  return {
+    "--classic-header-fg": "#f8fafc",
+    "--classic-header-muted": "#cbd5e1",
+  };
+}
+
 export function classicPosThemeCssVars(id) {
-  return { ...(getClassicPosThemeTemplate(id).vars ?? CLASSIC_POS_LEGACY_VARS) };
+  const vars = { ...(getClassicPosThemeTemplate(id).vars ?? CLASSIC_POS_LEGACY_VARS) };
+  return { ...vars, ...classicHeaderForegroundVars(vars) };
 }
 
 export function resolveClassicPosThemeTemplate(moduleSettingsOrCapabilities = null) {

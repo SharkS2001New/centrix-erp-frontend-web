@@ -28,6 +28,7 @@ import {
 } from "@/lib/sale-line-items";
 import { uomWholesaleConversionExample } from "@/lib/uom-packaging";
 import {
+  applyCatalogPricesToCart,
   cartLineDisplayUnitPrice,
   computePosLine,
   defaultPosEntryQty,
@@ -140,7 +141,6 @@ import { dedupeErrorMessage, buildExpensesHref } from "@/lib/expenses-link";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
-import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
@@ -167,11 +167,13 @@ import {
   loadPreviousOrderEditDraft,
   parseOfflineSaleUuid,
   peekPosOfflineOrderNumberCount,
+  cartHasBlockingOutboxSync,
   saveLocalPosCart,
   savePreviousOrderEditDraft,
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
   upsertPreviousOrderEditOutbox,
+  warmPosOfflineCatalog,
 } from "@/lib/pos-offline";
 import {
   CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
@@ -300,13 +302,33 @@ function stripPreviousOrderDraftMarkers(cart) {
 /** Ensure restored edit carts carry displayable lines (API cart or sale snapshot). */
 function presentRestoredEditCart(restoredCart, sourceSale) {
   const cart = normalizeCartResponse(restoredCart) ?? restoredCart ?? {};
-  if ((cart.lines?.length ?? 0) > 0) {
-    const { _editDraftDirty: _omit, ...rest } = cart;
+  const supersededSaleId =
+    cart.superseded_sale_id ??
+    sourceSale?.id ??
+    sourceSale?.superseded_sale_id ??
+    null;
+  const base =
+    supersededSaleId != null
+      ? { ...cart, superseded_sale_id: Number(supersededSaleId) }
+      : cart;
+
+  const withPosTicket = {
+    ...base,
+    ...(sourceSale?.pos_order_num != null
+      ? { pos_order_num: Number(sourceSale.pos_order_num) }
+      : {}),
+    ...(sourceSale?.pos_order_date
+      ? { pos_order_date: sourceSale.pos_order_date }
+      : {}),
+  };
+
+  if ((withPosTicket.lines?.length ?? 0) > 0) {
+    const { _editDraftDirty: _omit, ...rest } = withPosTicket;
     return rest;
   }
 
   const items = Array.isArray(sourceSale?.items) ? sourceSale.items : [];
-  if (!items.length || !cart.held_order_num) return cart;
+  if (!items.length || !withPosTicket.held_order_num) return withPosTicket;
 
   const lines = items.map((item, index) => ({
     id: item.id ?? item.line_id ?? `restore-${index}`,
@@ -324,7 +346,7 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
     product_vat: item.product_vat != null ? Number(item.product_vat) : undefined,
   }));
 
-  return { ...cart, lines };
+  return { ...withPosTicket, lines };
 }
 
 function sameLineId(a, b) {
@@ -348,6 +370,7 @@ function presentLocalOfflineCart(local) {
     offline: true,
     channel: "pos",
     held_order_num: local.held_order_num ?? null,
+    superseded_sale_id: local.superseded_sale_id ?? null,
     offline_client_sale_uuid: local.offline_client_sale_uuid ?? null,
     offline_edit_snapshot: local.offline_edit_snapshot ?? null,
     lines: (local.lines ?? []).map((line) => {
@@ -527,6 +550,14 @@ export function PosScreen({ standalone = false }) {
     refreshCounts: refreshOfflineCounts,
     flushOutboxNow,
   } = usePosOfflineSupport({ enabled: standalone });
+
+  /** External POS: transient snackbar only — no header notification bell. */
+  function posSnackbar(message, { error = false } = {}) {
+    if (!standalone || !message) return;
+    if (error) notifyError(message);
+    else notifySuccess(message);
+  }
+
   const classicCurrencySettings = useMemo(
     () => mergeGeneralSettings(capabilities?.module_settings),
     [capabilities?.module_settings],
@@ -1117,6 +1148,8 @@ export function PosScreen({ standalone = false }) {
   const lineBusyRef = useRef(false);
   const productByCodeRef = useRef({});
   const retailByCodeRef = useRef({});
+  const applyLiveCartCatalogPricesRef = useRef(null);
+  const sellWholesaleRef = useRef(false);
   function getRetailPackage(code) {
     if (!code) return null;
     const cached = retailByCodeRef.current[code];
@@ -1515,6 +1548,42 @@ export function PosScreen({ standalone = false }) {
     loadCompletedPosOrders,
   ]);
 
+  // When the offline catalog refreshes, apply new prices to open cart lines.
+  useEffect(() => {
+    if (!standalone || offlineMode) return undefined;
+    let cancelled = false;
+
+    async function syncCatalogPricesToCart() {
+      const activeCart = cartRef.current;
+      if (!activeCart?.lines?.length) return;
+      try {
+        const warm = await warmPosOfflineCatalog({ force: false });
+        if (cancelled || warm.skipped) return;
+        const codes = [
+          ...new Set((activeCart.lines ?? []).map((l) => l.product_code).filter(Boolean)),
+        ];
+        const productMeta = {};
+        for (const code of codes) {
+          const row = await getPosOfflineProduct(code);
+          if (row?.product_code) productMeta[code] = row;
+        }
+        if (cancelled || !Object.keys(productMeta).length) return;
+        applyLiveCartCatalogPricesRef.current?.(productMeta);
+      } catch {
+        /* ignore background price refresh */
+      }
+    }
+
+    void syncCatalogPricesToCart();
+    const timer = window.setInterval(() => {
+      void syncCatalogPricesToCart();
+    }, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [standalone, offlineMode, lastSyncMessage]);
+
   useEffect(() => {
     if (!classicLayout) return;
     const live = new Set((cart?.lines ?? []).map((line) => String(line.id)));
@@ -1599,6 +1668,7 @@ export function PosScreen({ standalone = false }) {
   cartRef.current = cart;
   cartSummaryRef.current = cartSummary;
   productByCodeRef.current = productByCode;
+  sellWholesaleRef.current = sellWholesale;
 
   /** KRA-off previous-order edits: instant local save + background outbox sync (no F10). */
   const instantAutoEditSync = useMemo(() => {
@@ -2139,6 +2209,10 @@ export function PosScreen({ standalone = false }) {
         order_discount: current.order_discount ?? restored?.order_discount,
         server_sale_id: sale.id,
         superseded_sale_id: sale.id,
+        ...(sale.pos_order_num != null
+          ? { pos_order_num: Number(sale.pos_order_num) }
+          : {}),
+        ...(sale.pos_order_date ? { pos_order_date: sale.pos_order_date } : {}),
         ...(keepDirty ? { _editDraftDirty: true } : {}),
       };
       const normalized = keepDirty ? next : stripPreviousOrderDraftMarkers(next);
@@ -4318,9 +4392,11 @@ export function PosScreen({ standalone = false }) {
           targets.length === 1
             ? targets[0]?.product_name || targets[0]?.product_code || "Item"
             : `${targets.length} items`;
-        setStatusMessage(
-          `${label} removed from revised order #${cart.held_order_num}. Saved locally — syncing…`,
-        );
+        if (!standalone) {
+          setStatusMessage(
+            `${label} removed from revised order #${cart.held_order_num}. Saved locally — syncing…`,
+          );
+        }
       }
       return;
     }
@@ -4683,7 +4759,7 @@ export function PosScreen({ standalone = false }) {
     const codes = [...new Set((lines ?? []).map((l) => l.product_code).filter(Boolean))];
     if (!codes.length) {
       setProductByCode({});
-      return;
+      return {};
     }
     const rows = await mapWithConcurrency(
       codes,
@@ -4700,7 +4776,39 @@ export function PosScreen({ standalone = false }) {
       }
     }
     setProductByCode((prev) => ({ ...prev, ...next }));
+    return next;
   }
+
+  function applyLiveCartCatalogPrices(productMeta, { announce = true } = {}) {
+    const activeCart = cartRef.current;
+    if (!activeCart?.lines?.length || !productMeta || !Object.keys(productMeta).length) {
+      return 0;
+    }
+    const mergedProducts = { ...productByCodeRef.current, ...productMeta };
+    const { cart: pricedCart, updatedCount, changes } = applyCatalogPricesToCart(activeCart, {
+      productByCode: mergedProducts,
+      retailByCode: retailByCodeRef.current,
+      sellWholesale: sellWholesaleRef.current,
+    });
+    if (updatedCount <= 0) return 0;
+    cartRef.current = pricedCart;
+    setCart(pricedCart);
+    if (activeCart?.held_order_num) {
+      markPreviousOrderDraftDirtyNow();
+    }
+    const sample = changes
+      .slice(0, 2)
+      .map((c) => `${c.product_name}: ${formatSaleKes(c.from)} → ${formatSaleKes(c.to)}`)
+      .join("; ");
+    const suffix = changes.length > 2 ? ` (+${changes.length - 2} more)` : "";
+    const message = `Prices updated — ${updatedCount} cart item${updatedCount === 1 ? "" : "s"}${sample ? `: ${sample}${suffix}` : ""}.`;
+    if (announce) {
+      setStatusMessage(message);
+      if (standalone) notifySuccess(message);
+    }
+    return updatedCount;
+  }
+  applyLiveCartCatalogPricesRef.current = applyLiveCartCatalogPrices;
 
   async function handleRefresh() {
     setBusy(true);
@@ -4717,15 +4825,24 @@ export function PosScreen({ standalone = false }) {
 
       if (codes.length) {
         const { uomMap, vatMap } = await loadPosReferenceData();
-        await reloadCartProductMeta(
+        const productMeta = await reloadCartProductMeta(
           codes.map((product_code) => ({ product_code })),
           uomMap,
           vatMap,
         );
         await ensureRetailPackages(codes);
+        const updatedCount = applyLiveCartCatalogPrices(productMeta, { announce: false });
+        setStatusMessage(
+          updatedCount > 0
+            ? `Refreshed — ${updatedCount} cart price${updatedCount === 1 ? "" : "s"} updated.`
+            : "Refreshed — search cleared and prices updated.",
+        );
+        if (updatedCount > 0 && standalone) {
+          notifySuccess(`${updatedCount} cart price${updatedCount === 1 ? "" : "s"} updated.`);
+        }
+      } else {
+        setStatusMessage("Refreshed — search cleared and prices updated.");
       }
-
-      setStatusMessage("Refreshed — search cleared and prices updated.");
       window.requestAnimationFrame(() => {
         searchInputRef.current?.focus({ preventScroll: true });
       });
@@ -5211,8 +5328,7 @@ export function PosScreen({ standalone = false }) {
               kraFiscalize: false,
             }).synced;
             if (syncedMsg) {
-              setStatusMessage(syncedMsg);
-              if (standalone) notifySuccess(syncedMsg);
+              posSnackbar(syncedMsg);
             }
           }
         } catch (e) {
@@ -5541,6 +5657,23 @@ export function PosScreen({ standalone = false }) {
     const activeCart = cartRef.current ?? cart;
     const editingPrevious = Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id);
     const isOfflineCart = Boolean(activeCart?.offline || activeCart?.offline_client_sale_uuid);
+
+    // Do not abandon a sale that still needs server sync (books vs receipt diverge).
+    if (standalone && (editingPrevious || isOfflineCart || pendingSync > 0)) {
+      try {
+        const blocking = await cartHasBlockingOutboxSync(activeCart);
+        if (blocking || (pendingSync > 0 && (editingPrevious || isOfflineCart))) {
+          skipEditAutosaveRef.current = false;
+          setStatusMessage(
+            "Wait for pending sync to finish before starting a new order (or sync will keep the sale on the server).",
+          );
+          void flushOutboxNow();
+          return;
+        }
+      } catch {
+        /* if IndexedDB is unavailable, fall through to normal confirm */
+      }
+    }
 
     if (hasLines || editingPrevious || isOfflineCart) {
       const editSummary = summarizeLocalPosCart(activeCart);
@@ -6836,7 +6969,6 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                <NotificationBell />
                 <WorkspaceSwitcher />
                 {classicLayout ? null : (
                   <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />

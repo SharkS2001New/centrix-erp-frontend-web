@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = "centrix-pos-offline-v1";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
@@ -18,8 +18,9 @@ function openDb() {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onerror = () => reject(req.error ?? new Error("Failed to open offline DB."));
       req.onsuccess = () => resolve(req.result);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (event) => {
         const db = req.result;
+        const oldVersion = event.oldVersion;
         if (!db.objectStoreNames.contains("meta")) {
           db.createObjectStore("meta", { keyPath: "key" });
         }
@@ -30,12 +31,36 @@ function openDb() {
         if (!db.objectStoreNames.contains("order_numbers")) {
           db.createObjectStore("order_numbers", { keyPath: "order_num" });
         }
+        if (!db.objectStoreNames.contains("order_slots")) {
+          const slots = db.createObjectStore("order_slots", { keyPath: "slot_id" });
+          slots.createIndex("by_order_num", "order_num", { unique: false });
+        }
         if (!db.objectStoreNames.contains("outbox")) {
           const outbox = db.createObjectStore("outbox", { keyPath: "client_sale_uuid" });
           outbox.createIndex("by_status", "sync_status", { unique: false });
         }
         if (!db.objectStoreNames.contains("local_cart")) {
           db.createObjectStore("local_cart", { keyPath: "id" });
+        }
+
+        if (oldVersion > 0 && oldVersion < 2 && db.objectStoreNames.contains("order_numbers")) {
+          const tx = event.target.transaction;
+          const legacy = tx.objectStore("order_numbers");
+          const slots = tx.objectStore("order_slots");
+          const reqAll = legacy.getAll();
+          reqAll.onsuccess = () => {
+            for (const row of reqAll.result ?? []) {
+              const orderNum = Number(row.order_num);
+              if (!orderNum) continue;
+              slots.put({
+                slot_id: `legacy-${orderNum}`,
+                order_num: orderNum,
+                pos_order_num: null,
+                pos_order_date: null,
+                reserved_at: row.reserved_at ?? Date.now(),
+              });
+            }
+          };
         }
       };
     });
@@ -107,11 +132,46 @@ export async function idbGetCatalogProduct(code) {
 
 export async function idbReplaceOrderNumbers(numbers) {
   const db = await openDb();
-  const tx = db.transaction("order_numbers", "readwrite");
-  const store = tx.objectStore("order_numbers");
-  store.clear();
+  const tx = db.transaction(["order_slots", "order_numbers"], "readwrite");
+  tx.objectStore("order_numbers").clear();
+  tx.objectStore("order_slots").clear();
+  const slots = tx.objectStore("order_slots");
   for (const order_num of numbers) {
-    store.put({ order_num: Number(order_num), reserved_at: Date.now() });
+    const n = Number(order_num);
+    slots.put({
+      slot_id: `legacy-${n}`,
+      order_num: n,
+      pos_order_num: null,
+      pos_order_date: null,
+      reserved_at: Date.now(),
+    });
+  }
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/** @param {Array<{ order_num: number, pos_order_num?: number|null, pos_order_date?: string|null }>} slotsInput */
+export async function idbAppendOrderSlots(slotsInput) {
+  const db = await openDb();
+  const tx = db.transaction("order_slots", "readwrite");
+  const store = tx.objectStore("order_slots");
+  for (const slot of slotsInput) {
+    const orderNum = Number(slot.order_num);
+    if (!orderNum) continue;
+    const posNum = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
+    const slotId =
+      posNum != null && slot.pos_order_date
+        ? `slot-${orderNum}-${posNum}-${slot.pos_order_date}`
+        : `legacy-${orderNum}`;
+    store.put({
+      slot_id: slotId,
+      order_num: orderNum,
+      pos_order_num: posNum,
+      pos_order_date: slot.pos_order_date ?? null,
+      reserved_at: Date.now(),
+    });
   }
   await new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
@@ -120,34 +180,44 @@ export async function idbReplaceOrderNumbers(numbers) {
 }
 
 export async function idbAppendOrderNumbers(numbers) {
-  const db = await openDb();
-  const tx = db.transaction("order_numbers", "readwrite");
-  const store = tx.objectStore("order_numbers");
-  for (const order_num of numbers) {
-    store.put({ order_num: Number(order_num), reserved_at: Date.now() });
-  }
-  await new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await idbAppendOrderSlots(
+    (numbers ?? []).map((order_num) => ({
+      order_num: Number(order_num),
+      pos_order_num: null,
+      pos_order_date: null,
+    })),
+  );
+}
+
+export async function idbListOrderSlots() {
+  const rows = (await withStore("order_slots", "readonly", (store) => store.getAll())) ?? [];
+  return rows.sort(
+    (a, b) => Number(a.order_num ?? 0) - Number(b.order_num ?? 0),
+  );
 }
 
 export async function idbListOrderNumbers() {
-  const rows = (await withStore("order_numbers", "readonly", (store) => store.getAll())) ?? [];
-  return rows.map((r) => Number(r.order_num)).sort((a, b) => a - b);
+  const slots = await idbListOrderSlots();
+  return slots.map((r) => Number(r.order_num));
 }
 
-/** Take the lowest reserved order number (FIFO). */
-export async function idbTakeNextOrderNumber() {
-  const numbers = await idbListOrderNumbers();
-  if (!numbers.length) return null;
-  const next = numbers[0];
-  await withStore("order_numbers", "readwrite", (store) => store.delete(next));
+/** Take the lowest reserved org order # + paired POS thermal ticket (FIFO). */
+export async function idbTakeNextOrderSlot() {
+  const slots = await idbListOrderSlots();
+  if (!slots.length) return null;
+  const next = slots[0];
+  await withStore("order_slots", "readwrite", (store) => store.delete(next.slot_id));
   return next;
 }
 
+/** @deprecated use idbTakeNextOrderSlot */
+export async function idbTakeNextOrderNumber() {
+  const slot = await idbTakeNextOrderSlot();
+  return slot ? Number(slot.order_num) : null;
+}
+
 export async function idbCountOrderNumbers() {
-  return withStore("order_numbers", "readonly", (store) => store.count());
+  return withStore("order_slots", "readonly", (store) => store.count());
 }
 
 export async function idbPutOutboxSale(sale) {
@@ -163,6 +233,43 @@ export async function idbListPendingOutbox() {
   return rows
     .filter((r) => r.sync_status === "pending" || r.sync_status === "error")
     .sort((a, b) => Number(a.created_at_ms ?? 0) - Number(b.created_at_ms ?? 0));
+}
+
+/** Pending + mid-edit rows for POS ← browse (excludes syncing/synced). */
+export async function idbListEditableOutbox() {
+  const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
+  return rows
+    .filter(
+      (r) =>
+        r.sync_status === "pending" ||
+        r.sync_status === "error" ||
+        r.sync_status === "editing",
+    )
+    .sort((a, b) => Number(b.created_at_ms ?? 0) - Number(a.created_at_ms ?? 0));
+}
+
+export function resolveOutboxClientUuidForCart(cart) {
+  if (cart?.offline_client_sale_uuid) {
+    return String(cart.offline_client_sale_uuid).trim() || null;
+  }
+  if (cart?.held_order_num != null && Number(cart.held_order_num) > 0) {
+    if (cart?.superseded_sale_id || cart?.offline) {
+      return `prev-edit-${Number(cart.held_order_num)}`;
+    }
+  }
+  return null;
+}
+
+export async function idbGetOutboxForCart(cart) {
+  const uuid = resolveOutboxClientUuidForCart(cart);
+  if (!uuid) return null;
+  return idbGetOutboxSale(uuid);
+}
+
+export async function idbIsOutboxBlockingForCart(cart) {
+  const row = await idbGetOutboxForCart(cart);
+  if (!row) return false;
+  return row.sync_status === "pending" || row.sync_status === "syncing" || row.sync_status === "error";
 }
 
 /** Rows left mid-sync after a crash/reload — reclaim for retry. */

@@ -2512,6 +2512,8 @@ html[data-theme="dark"] .pos-workspace-classic {
   --classic-muted: #c4b5a4;
   --classic-accent: #ff5c5c;
   --classic-header: #4a4030;
+  --classic-header-fg: #f2ebe0;
+  --classic-header-muted: #c4b5a4;
   --classic-footer: #252018;
   --classic-totals-bar: #2a241c;
   --classic-status-bar: #322b22;
@@ -2533,7 +2535,16 @@ html[data-theme="dark"] .pos-workspace-classic {
 .pos-workspace-classic .pos-header-bar {
   background: var(--classic-header) !important;
   border-color: var(--classic-border) !important;
-  color: var(--classic-text) !important;
+  color: var(--classic-header-fg, var(--classic-text)) !important;
+}
+
+.pos-workspace-classic .pos-header .pos-header-brand-strong {
+  color: var(--classic-header-fg, var(--classic-text));
+}
+
+.pos-workspace-classic .pos-header .pos-header-brand-light,
+.pos-workspace-classic .pos-header .pos-header-brand-subtitle {
+  color: var(--classic-header-muted, var(--classic-muted));
 }
 
 .pos-workspace-classic .pos-cart-panel {

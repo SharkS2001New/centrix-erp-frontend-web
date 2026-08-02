@@ -58,7 +58,10 @@ export function CentrixLogoHeader({
           <span className="pos-header-brand-light truncate text-lg font-light tracking-tight"> ERP</span>
         </span>
         {subtitle ? (
-          <span className="truncate text-[10px] font-medium leading-tight opacity-75" title={subtitle}>
+          <span
+            className="pos-header-brand-subtitle truncate text-[10px] font-medium leading-tight"
+            title={subtitle}
+          >
             {subtitle}
           </span>
         ) : null}

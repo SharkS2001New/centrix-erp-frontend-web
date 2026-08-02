@@ -18,7 +18,8 @@ const RETRY_BACKOFF_MS = 5_000;
  * External POS short-outage bridge (not full offline / no service worker).
  *
  * While healthy: warm IndexedDB catalog + reserved order #s in the background.
- * Sell path: save local outbox → print → immediately flush when API is healthy.
+ * Sell path: save local outbox → print → immediately flush when API is reachable
+ * (including "slow" — sync still runs so the queue does not grow forever).
  * Aimed at brief outages (~30 minutes); reconnect still flushes any leftovers.
  */
 export function usePosOfflineSupport({ enabled = false } = {}) {
@@ -26,8 +27,10 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     enabled,
     reportOutages: false,
   });
-  /** Only fully healthy API — used for catalog warm / outbox sync. */
+  /** Fully healthy API — used for catalog warm / order-number reserve. */
   const fullyOnline = status === "online";
+  /** API reachable enough to attempt outbox flush (online or slow). */
+  const canFlushOutbox = enabled && browserOnline && apiOnline;
   /** Sell locally when offline or too slow to complete API sales reliably. */
   const offlineMode = enabled && status !== "online";
   const [pendingSync, setPendingSync] = useState(0);
@@ -36,14 +39,15 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncMessage, setLastSyncMessage] = useState(null);
   const wasFullyOnlineRef = useRef(fullyOnline);
-  const fullyOnlineRef = useRef(fullyOnline);
+  const wasCanFlushRef = useRef(canFlushOutbox);
+  const canFlushRef = useRef(canFlushOutbox);
   const flushChainRef = useRef(Promise.resolve());
   const flushGenerationRef = useRef(0);
   const lastNotifiedSyncErrorRef = useRef(null);
 
   useEffect(() => {
-    fullyOnlineRef.current = fullyOnline;
-  }, [fullyOnline]);
+    canFlushRef.current = canFlushOutbox;
+  }, [canFlushOutbox]);
 
   const refreshCounts = useCallback(async () => {
     if (!enabled) return;
@@ -84,13 +88,14 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   /**
    * Serialize outbox flushes so concurrent sells cannot double-post.
    * Safe to call fire-and-forget after every local save.
+   * Runs whenever the API is reachable (including slow).
    */
   const flushOutboxNow = useCallback(() => {
     if (!enabled) return Promise.resolve([]);
 
     const generation = ++flushGenerationRef.current;
     const run = async () => {
-      if (!fullyOnlineRef.current) return [];
+      if (!canFlushRef.current) return [];
       setSyncing(true);
       try {
         const results = await syncPosOfflineOutbox();
@@ -111,8 +116,10 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
                 .join(", ")}).`
             : "";
           setLastSyncMessage(`${base}${reprintNote}`);
-          await warmPosOfflineCatalog({ force: true });
-          await ensurePosOfflineOrderNumbers({ force: false });
+          if (fullyOnline) {
+            await warmPosOfflineCatalog({ force: true });
+            await ensurePosOfflineOrderNumbers({ force: false });
+          }
         } else if (failed.length) {
           setLastSyncMessage(`Could not sync ${failed.length} sale(s). Will retry.`);
         }
@@ -158,7 +165,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       () => undefined,
     );
     return next;
-  }, [enabled, refreshCounts, notifySyncProblem]);
+  }, [enabled, fullyOnline, refreshCounts, notifySyncProblem]);
 
   /** @deprecated prefer flushOutboxNow — kept for reconnect callers */
   const flushOutbox = flushOutboxNow;
@@ -181,14 +188,24 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     }
   }, [enabled, fullyOnline, flushOutboxNow, prepare]);
 
-  // Retry leftover pending/error rows while healthy (short backoff).
+  // Flush when API becomes reachable again (including recovery from offline→slow).
   useEffect(() => {
-    if (!enabled || !fullyOnline || pendingSync <= 0 || syncing) return undefined;
+    if (!enabled) return undefined;
+    const wasCanFlush = wasCanFlushRef.current;
+    wasCanFlushRef.current = canFlushOutbox;
+    if (!wasCanFlush && canFlushOutbox) {
+      void flushOutboxNow();
+    }
+  }, [enabled, canFlushOutbox, flushOutboxNow]);
+
+  // Retry leftover pending/error rows while API is reachable (short backoff).
+  useEffect(() => {
+    if (!enabled || !canFlushOutbox || pendingSync <= 0 || syncing) return undefined;
     const timer = window.setTimeout(() => {
       void flushOutboxNow();
     }, RETRY_BACKOFF_MS);
     return () => window.clearTimeout(timer);
-  }, [enabled, fullyOnline, pendingSync, syncing, flushOutboxNow]);
+  }, [enabled, canFlushOutbox, pendingSync, syncing, flushOutboxNow]);
 
   const searchOffline = useCallback(async (query, limit = 40) => {
     return searchPosOfflineCatalog(query, { limit });
@@ -200,6 +217,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     online: fullyOnline,
     browserOnline,
     apiOnline,
+    canFlushOutbox,
     pendingSync,
     orderNumbersLeft,
     catalogReady,
