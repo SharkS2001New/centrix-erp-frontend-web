@@ -1104,7 +1104,14 @@ function outboxRowPosTicket(row) {
   };
 }
 
-function outboxRowMatchesServerSale(row, sale, orderNum) {
+/**
+ * Detect whether an outbox row already landed as this server sale (retry / timeout recovery).
+ *
+ * Must NOT treat the live sale being edited as “already synced” just because it shares
+ * order_num / pos_order_num — that was skipping previous-order checkouts entirely.
+ * Daily POS tickets also repeat across days, so ticket-only matches are unsafe.
+ */
+export function outboxRowMatchesServerSale(row, sale, orderNum) {
   if (!sale?.id) return false;
 
   const clientUuid = row.client_sale_uuid;
@@ -1114,10 +1121,19 @@ function outboxRowMatchesServerSale(row, sale, orderNum) {
       : clientUuid;
   const meta = sale.fulfillment_meta ?? {};
 
+  // Exact idempotency stamp from a prior successful checkout of this outbox payload.
   if (expectedSyncId && meta.pos_sync_id && String(meta.pos_sync_id) === String(expectedSyncId)) {
     return true;
   }
 
+  // Previous-order edits supersede the live sale with the same ticket / org #.
+  // Only the revision-specific pos_sync_id above counts as already synced.
+  if (row.sync_kind === "previous_order_edit") {
+    return false;
+  }
+
+  // New offline sales: recover when the sale carries our client uuid (even if list
+  // search omitted pos_sync_id).
   const saleUuid =
     meta.client_sale_uuid ??
     meta.offline_client_sale_uuid ??
@@ -1126,41 +1142,51 @@ function outboxRowMatchesServerSale(row, sale, orderNum) {
     return true;
   }
 
+  // Last-resort recovery for new sales after a lost checkout response: reserved org #
+  // plus same-day POS ticket plus matching total. Require both dates when a POS ticket
+  // is present so yesterday's Cash Sales #1 cannot swallow today's reserved #1.
+  if (Number(sale.order_num) !== Number(orderNum)) {
+    return false;
+  }
+
   const { posNum, posDate } = outboxRowPosTicket(row);
   const salePosNum =
     sale.pos_order_num != null ? Number(sale.pos_order_num) : null;
   const salePosDate = normalizePosOrderDate(sale.pos_order_date);
-  if (
-    posNum != null &&
-    salePosNum != null &&
-    posNum === salePosNum &&
-    (!posDate || !salePosDate || posDate === salePosDate)
-  ) {
-    return true;
+
+  if (posNum != null) {
+    if (salePosNum == null || posNum !== salePosNum) return false;
+    if (!posDate || !salePosDate || posDate !== salePosDate) return false;
   }
 
-  if (Number(sale.order_num) === Number(orderNum)) {
-    const rowTotal = row.sale_payload?.order_total ?? row.checkout_body?.pay_now;
-    if (rowTotal != null) {
-      const delta = Math.abs(Number(sale.order_total ?? 0) - Number(rowTotal));
-      if (delta < 0.02) return true;
-    }
-    if (row.sync_kind === "previous_order_edit") return true;
-  }
-
-  return false;
+  const rowTotal = row.sale_payload?.order_total ?? row.checkout_body?.pay_now;
+  if (rowTotal == null) return false;
+  const delta = Math.abs(Number(sale.order_total ?? 0) - Number(rowTotal));
+  return delta < 0.02;
 }
 
 /** If this offline sale already synced, recover the server row (avoid duplicate checkout). */
 async function findExistingSyncedSaleForOutboxRow(row, orderNum) {
   const queries = new Set();
   if (orderNum) queries.add(String(orderNum));
-  const { posNum } = outboxRowPosTicket(row);
+  const { posNum, posDate } = outboxRowPosTicket(row);
   if (posNum != null) queries.add(String(posNum));
-  if (row.client_sale_uuid) queries.add(String(row.client_sale_uuid));
+  // UUID search only helps new sales (prev-edit uuids are not unique across revisions).
+  if (row.sync_kind !== "previous_order_edit" && row.client_sale_uuid) {
+    queries.add(String(row.client_sale_uuid));
+  }
 
   const candidates = [];
   const seenIds = new Set();
+
+  async function collectFromRes(res) {
+    for (const sale of Array.isArray(res?.data) ? res.data : []) {
+      if (!sale?.id || seenIds.has(sale.id)) continue;
+      seenIds.add(sale.id);
+      candidates.push(sale);
+    }
+  }
+
   for (const q of queries) {
     try {
       const res = await apiRequest("/sales", {
@@ -1173,13 +1199,29 @@ async function findExistingSyncedSaleForOutboxRow(row, orderNum) {
         loading: false,
         reportIssues: false,
       });
-      for (const sale of Array.isArray(res?.data) ? res.data : []) {
-        if (!sale?.id || seenIds.has(sale.id)) continue;
-        seenIds.add(sale.id);
-        candidates.push(sale);
-      }
+      await collectFromRes(res);
     } catch {
       /* try next query */
+    }
+  }
+
+  // Prefer an exact POS ticket filter when we have one — `q` alone matches loosely.
+  if (posNum != null) {
+    try {
+      const res = await apiRequest("/sales", {
+        searchParams: {
+          filter_pos_order: String(posNum),
+          per_page: 50,
+          channel: "pos",
+          order_source: "pos",
+          ...(posDate ? { from_date: posDate, to_date: posDate, date_field: "placed" } : {}),
+        },
+        loading: false,
+        reportIssues: false,
+      });
+      await collectFromRes(res);
+    } catch {
+      /* ignore */
     }
   }
 
