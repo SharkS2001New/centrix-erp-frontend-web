@@ -52,7 +52,7 @@ import {
   productHasConfiguredDiscount,
 } from "@/lib/product-discount";
 import { lineProductVat } from "@/lib/sales-vat";
-import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
+import { formatPosBrowseLabel, formatSaleKes, resolvePosBrowseNumber } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
@@ -399,30 +399,39 @@ function isOfflinePendingSaleId(saleId) {
   return String(saleId ?? "").startsWith("offline:");
 }
 
-/** Newest order # first — used for classic ← / → sequential browse. */
-function sortPosOrdersByNumberDesc(orders) {
-  return [...(orders ?? [])].sort(
-    (a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0),
-  );
+/** Newest POS ticket # first — used for classic ← / → sequential browse. */
+function posBrowseSortKey(row) {
+  return Number(resolvePosBrowseNumber(row) ?? 0);
 }
 
-/** Immediate older completed order (next lower order #). */
-function findOlderPosOrder(orders, currentOrderNum) {
-  const current = Number(currentOrderNum);
+function sortPosOrdersByNumberDesc(orders) {
+  return [...(orders ?? [])].sort((a, b) => posBrowseSortKey(b) - posBrowseSortKey(a));
+}
+
+/** Immediate older completed order (next lower POS ticket #). */
+function findOlderPosOrder(orders, currentBrowseNum) {
+  const current = Number(currentBrowseNum);
   if (!Number.isFinite(current)) return null;
   return (
-    sortPosOrdersByNumberDesc(orders).find((row) => Number(row.order_num) < current) ?? null
+    sortPosOrdersByNumberDesc(orders).find((row) => posBrowseSortKey(row) < current) ?? null
   );
 }
 
-/** Immediate newer completed order (next higher order #). */
-function findNewerPosOrder(orders, currentOrderNum) {
-  const current = Number(currentOrderNum);
+/** Immediate newer completed order (next higher POS ticket #). */
+function findNewerPosOrder(orders, currentBrowseNum) {
+  const current = Number(currentBrowseNum);
   if (!Number.isFinite(current)) return null;
   const ascending = [...(orders ?? [])].sort(
-    (a, b) => Number(a.order_num ?? 0) - Number(b.order_num ?? 0),
+    (a, b) => posBrowseSortKey(a) - posBrowseSortKey(b),
   );
-  return ascending.find((row) => Number(row.order_num) > current) ?? null;
+  return ascending.find((row) => posBrowseSortKey(row) > current) ?? null;
+}
+
+function sessionOrderMatchesBrowseNum(row, trimmed) {
+  const browse = resolvePosBrowseNumber(row);
+  if (browse != null && String(browse) === String(trimmed)) return true;
+  if (row?.order_num != null && String(row.order_num) === String(trimmed)) return true;
+  return false;
 }
 
 function offlinePrintOptions(sale, base = {}) {
@@ -1226,10 +1235,22 @@ export function PosScreen({ standalone = false }) {
   const cartHasReservedItems = cartLineCount > 0;
 
   const activeOrderNum = useMemo(() => {
-    if (cart?.held_order_num) return cart.held_order_num;
-    if (cart?.next_order_num) return cart.next_order_num;
-    return null;
-  }, [cart?.held_order_num, cart?.next_order_num]);
+    if (cart?.held_order_num || cart?.superseded_sale_id) {
+      return resolvePosBrowseNumber(cart);
+    }
+    return (
+      resolvePosBrowseNumber({
+        next_pos_order_num: cart?.next_pos_order_num,
+        next_order_num: cart?.next_order_num,
+      }) ?? null
+    );
+  }, [
+    cart?.held_order_num,
+    cart?.superseded_sale_id,
+    cart?.pos_order_num,
+    cart?.next_pos_order_num,
+    cart?.next_order_num,
+  ]);
 
   const showStandaloneTillActions = standalone;
   const canUseSessionReports = Boolean(activeSession?.id);
@@ -1242,17 +1263,17 @@ export function PosScreen({ standalone = false }) {
   const hasSessionOrders = sessionPosOrders.length > 0;
 
   const prefilledEditCustomerName = useMemo(() => {
-    const orderNum = cart?.held_order_num;
+    const orderNum = resolvePosBrowseNumber(cart) ?? cart?.held_order_num;
     if (!orderNum) return "";
     return getPosOrderCustomerName(orderNum);
-  }, [cart?.held_order_num]);
+  }, [cart?.held_order_num, cart?.pos_order_num]);
 
   const prefilledEditCustomerNum = useMemo(() => {
-    const orderNum = cart?.held_order_num;
+    const orderNum = resolvePosBrowseNumber(cart) ?? cart?.held_order_num;
     if (!orderNum) return "";
     const { customerNum } = getPosOrderCustomer(orderNum);
     return customerNum != null ? String(customerNum) : "";
-  }, [cart?.held_order_num]);
+  }, [cart?.held_order_num, cart?.pos_order_num]);
 
   /** True only while revising a previous booked/completed receipt (not a restored held park). */
   const isCartEditSession = Boolean(cart?.held_order_num && cart?.superseded_sale_id);
@@ -1290,21 +1311,26 @@ export function PosScreen({ standalone = false }) {
       editCartPrintSnapshot,
     ],
   );
-  const reprintReceiptLabel = reprintSale?.order_num
-    ? `Reprint receipt #${reprintSale.order_num}`
-    : "Reprint receipt";
+  const reprintReceiptLabel = (() => {
+    const label = formatPosBrowseLabel(reprintSale);
+    return label !== "—" ? `Reprint receipt #${label}` : "Reprint receipt";
+  })();
 
-  /** New-order mode: keep the # box on the next order number until the user edits or opens a receipt. */
+  /** New-order mode: keep the # box on the next POS ticket until the user edits or opens a receipt. */
   useEffect(() => {
     if (!classicLayout && !(standalone && enablePosOrderEdit)) return;
     if (orderNoUserEditedRef.current) return;
     if (isCartEditSession) {
-      const held = cart?.held_order_num;
-      if (held != null) setEditOrderNo(String(held));
+      const browse = resolvePosBrowseNumber(cart);
+      if (browse != null) setEditOrderNo(String(browse));
       return;
     }
-    if (cart?.next_order_num != null) {
-      setEditOrderNo(String(cart.next_order_num));
+    const nextBrowse = resolvePosBrowseNumber({
+      next_pos_order_num: cart?.next_pos_order_num,
+      next_order_num: cart?.next_order_num,
+    });
+    if (nextBrowse != null) {
+      setEditOrderNo(String(nextBrowse));
     }
   }, [
     classicLayout,
@@ -1312,6 +1338,8 @@ export function PosScreen({ standalone = false }) {
     enablePosOrderEdit,
     isCartEditSession,
     cart?.held_order_num,
+    cart?.pos_order_num,
+    cart?.next_pos_order_num,
     cart?.next_order_num,
   ]);
 
@@ -1339,21 +1367,22 @@ export function PosScreen({ standalone = false }) {
     if (!isEditableResubmit || !discountFeaturesEnabled) return null;
     if (advisedDiscountReady) {
       return isCartEditSession
-        ? `Revising order #${cart.held_order_num}. Approver-advised discounts are applied — complete checkout to book.`
+        ? `Revising Cash Sales #${formatPosBrowseLabel(cart)}. Approver-advised discounts are applied — complete checkout to book.`
         : "Approver-advised discounts are applied. Complete checkout to book this order.";
     }
     if (advisedDiscountLines.length > 0) {
       return isCartEditSession
-        ? `Revising order #${cart.held_order_num}. Apply advised discounts on each line, then complete checkout to resubmit.`
+        ? `Revising Cash Sales #${formatPosBrowseLabel(cart)}. Apply advised discounts on each line, then complete checkout to resubmit.`
         : "Manager advised discounts per item. Apply them, then complete checkout to resubmit.";
     }
     return isCartEditSession
-      ? `Revising order #${cart.held_order_num}. Update line discounts, then complete checkout to resubmit for approval.`
+      ? `Revising Cash Sales #${formatPosBrowseLabel(cart)}. Update line discounts, then complete checkout to resubmit for approval.`
       : "Update line discounts, then complete checkout to resubmit for approval.";
   }, [
     advisedDiscountLines.length,
     advisedDiscountReady,
     cart?.held_order_num,
+    cart?.pos_order_num,
     discountFeaturesEnabled,
     isCartEditSession,
     isEditableResubmit,
@@ -1369,21 +1398,28 @@ export function PosScreen({ standalone = false }) {
     ) {
       return;
     }
-    const entry = { id: sale.id, order_num: sale.order_num };
+    const browseNum = resolvePosBrowseNumber(sale);
+    const entry = {
+      id: sale.id,
+      order_num: sale.order_num,
+      pos_order_num: sale.pos_order_num ?? null,
+      pos_order_date: sale.pos_order_date ?? null,
+      status: sale.status,
+    };
     setSessionPosOrders((prev) => {
-      // Same order # after edit replaces the previous sale id so ← opens the live receipt.
+      // Same POS ticket after edit replaces the previous sale id so ← opens the live receipt.
       const next = sortPosOrdersByNumberDesc([
         entry,
         ...prev.filter(
           (row) =>
             String(row.id) !== String(entry.id) &&
-            String(row.order_num) !== String(entry.order_num),
+            !sessionOrderMatchesBrowseNum(row, browseNum),
         ),
       ]);
       return next.slice(0, 15);
     });
     setEditBrowseIndex(0);
-    setEditOrderNo(String(sale.order_num ?? ""));
+    if (browseNum != null) setEditOrderNo(String(browseNum));
   }
 
   /** Keep Reprint enabled across clear-workspace / remount. */
@@ -1424,8 +1460,7 @@ export function PosScreen({ standalone = false }) {
             channel: "pos",
             order_source: "pos",
             with_items: 0,
-            sort: "order_num",
-            sort_dir: "desc",
+            sort: "-created_at",
           from_date: today,
           to_date: today,
             date_field: "placed",
@@ -1472,7 +1507,13 @@ export function PosScreen({ standalone = false }) {
           if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
           return true;
         })
-        .map((row) => ({ id: row.id, order_num: row.order_num, status: row.status }))
+        .map((row) => ({
+          id: row.id,
+          order_num: row.order_num,
+          pos_order_num: row.pos_order_num ?? null,
+          pos_order_date: row.pos_order_date ?? null,
+          status: row.status,
+        }))
         .slice(0, 15);
 
       let offlineOrders = [];
@@ -1482,15 +1523,21 @@ export function PosScreen({ standalone = false }) {
         offlineOrders = [];
       }
 
-      const offlineNums = new Set(offlineOrders.map((row) => String(row.order_num)));
+      const offlineBrowseKeys = new Set(
+        offlineOrders.map((row) => String(resolvePosBrowseNumber(row) ?? row.order_num)),
+      );
       const orders = sortPosOrdersByNumberDesc([
         ...offlineOrders.map((row) => ({
           id: row.id,
           order_num: row.order_num,
+          pos_order_num: row.pos_order_num ?? null,
+          pos_order_date: row.pos_order_date ?? null,
           status: row.status,
           offline_pending_sync: true,
         })),
-        ...serverOrders.filter((row) => !offlineNums.has(String(row.order_num))),
+        ...serverOrders.filter(
+          (row) => !offlineBrowseKeys.has(String(resolvePosBrowseNumber(row) ?? row.order_num)),
+        ),
       ]).slice(0, 15);
 
       setSessionPosOrders(orders);
@@ -1508,7 +1555,8 @@ export function PosScreen({ standalone = false }) {
       }
       setEditOrderNo((current) => {
         if (String(current ?? "").trim()) return current;
-        return orders.length ? String(orders[0].order_num) : current;
+        const browse = resolvePosBrowseNumber(orders[0]);
+        return browse != null ? String(browse) : current;
       });
       return orders;
     } catch (e) {
@@ -4430,7 +4478,7 @@ export function PosScreen({ standalone = false }) {
             : `${targets.length} items`;
         if (!standalone) {
           setStatusMessage(
-            `${label} removed from revised order #${cart.held_order_num}. Saved locally — syncing…`,
+            `${label} removed from revised Cash Sales #${formatPosBrowseLabel(cart)}. Saved locally — syncing…`,
           );
         }
       }
@@ -5348,7 +5396,7 @@ export function PosScreen({ standalone = false }) {
             }
           }
           setStatusMessage(
-            `Order #${cartNow.held_order_num} saved — syncing… (Alt+P to reprint)`,
+            `Cash Sales #${formatPosBrowseLabel(cartNow)} saved — syncing… (Alt+P to reprint)`,
           );
           void refreshOfflineCounts();
           const results = await flushOutboxNow();
@@ -5515,7 +5563,7 @@ export function PosScreen({ standalone = false }) {
       if (!standalone) {
         setStatusMessage(
           completedSale?.order_num
-            ? `Ready for next order — previous order #${completedSale.order_num}.`
+            ? `Ready for next order — previous Cash Sales #${formatPosBrowseLabel(completedSale)}.`
             : "Ready for next order.",
         );
       } else {
@@ -5784,7 +5832,9 @@ export function PosScreen({ standalone = false }) {
       const next = await loadCashierCart();
       cartRef.current = next;
       orderNoUserEditedRef.current = false;
-      if (next?.next_order_num != null) {
+      if (next?.next_pos_order_num != null) {
+        setEditOrderNo(String(next.next_pos_order_num));
+      } else if (next?.next_order_num != null) {
         setEditOrderNo(String(next.next_order_num));
       } else {
         setEditOrderNo("");
@@ -5924,7 +5974,9 @@ export function PosScreen({ standalone = false }) {
     clearClassicLineSelection();
     clearLineEntry();
     orderNoUserEditedRef.current = false;
-    if (cartData?.next_order_num != null) {
+    if (cartData?.next_pos_order_num != null) {
+      setEditOrderNo(String(cartData.next_pos_order_num));
+    } else if (cartData?.next_order_num != null) {
       setEditOrderNo(String(cartData.next_order_num));
     }
     const customerMemory = extractSaleCustomerMemory(sourceSale);
@@ -6030,13 +6082,24 @@ export function PosScreen({ standalone = false }) {
         setPaymentOpen(false);
         setEditSourceSale(saleSnapshot?.id ? saleSnapshot : sale);
         orderNoUserEditedRef.current = false;
-        const orderNum = restoredCart?.held_order_num;
-        if (orderNum != null) {
-          setEditOrderNo(String(orderNum));
+        const browseNum = resolvePosBrowseNumber({
+          ...restoredCart,
+          pos_order_num: restoredCart.pos_order_num ?? sale?.pos_order_num ?? saleSnapshot?.pos_order_num,
+        });
+        const orderNum = restoredCart?.held_order_num ?? sale?.order_num ?? saleSnapshot?.order_num;
+        if (browseNum != null) {
+          setEditOrderNo(String(browseNum));
           setSessionPosOrders((prev) => {
             const entry = {
               id: saleId,
               order_num: orderNum,
+              pos_order_num:
+                restoredCart.pos_order_num ?? sale?.pos_order_num ?? saleSnapshot?.pos_order_num ?? null,
+              pos_order_date:
+                restoredCart.pos_order_date ??
+                sale?.pos_order_date ??
+                saleSnapshot?.pos_order_date ??
+                null,
               status: sale?.status ?? saleSnapshot?.status,
               offline_pending_sync: true,
             };
@@ -6045,30 +6108,31 @@ export function PosScreen({ standalone = false }) {
               ...prev.filter(
                 (row) =>
                   String(row.id) !== String(saleId) &&
-                  String(row.order_num) !== String(orderNum),
+                  !sessionOrderMatchesBrowseNum(row, browseNum),
               ),
             ]);
             setEditBrowseIndex(
               Math.max(
                 0,
-                next.findIndex((row) => String(row.order_num) === String(orderNum)),
+                next.findIndex((row) => sessionOrderMatchesBrowseNum(row, browseNum)),
               ),
             );
             return next;
           });
-          const customerMemory = extractSaleCustomerMemory(saleSnapshot ?? sale);
-          if (customerMemory.name || customerMemory.customerNum != null) {
-            rememberPosOrderCustomer(orderNum, customerMemory);
-          }
         }
+        const customerMemory = extractSaleCustomerMemory(saleSnapshot ?? sale);
+        if (customerMemory.name || customerMemory.customerNum != null) {
+          rememberPosOrderCustomer(browseNum ?? orderNum, customerMemory);
+        }
+        const displayNum = browseNum ?? orderNum;
         setStatusMessage(
           keepEditing
-            ? `Editing offline order #${orderNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`
-            : `Loaded offline order #${orderNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`,
+            ? `Editing offline order #${displayNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`
+            : `Loaded offline order #${displayNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`,
         );
-        if (standalone && orderNum != null) {
+        if (standalone && displayNum != null) {
           notifySuccess(
-            previousOrderEditModeMessages(orderNum, { offline: true }).loaded,
+            previousOrderEditModeMessages(displayNum, { offline: true }).loaded,
           );
         }
         void refreshOfflineCounts();
@@ -6133,24 +6197,28 @@ export function PosScreen({ standalone = false }) {
       setPaymentOpen(false);
       setEditSourceSale(sourceSale);
       orderNoUserEditedRef.current = false;
+      const browseNum = resolvePosBrowseNumber(restoredCart);
       const orderNum = restoredCart?.held_order_num ?? restoredCart?.next_order_num;
-      if (orderNum != null) {
-        setEditOrderNo(String(orderNum));
+      if (browseNum != null || orderNum != null) {
+        if (browseNum != null) setEditOrderNo(String(browseNum));
         // Sale is tombstoned while editing — drop it from ← list until checkout recreates it.
         setSessionPosOrders((prev) => {
           const next = prev.filter((row) => String(row.id) !== String(saleId));
-          // Keep browse index aligned with the loaded order # (or clamp).
-          const idx = next.findIndex((row) => String(row.order_num) === String(orderNum));
+          // Keep browse index aligned with the loaded POS ticket # (or clamp).
+          const idx =
+            browseNum != null
+              ? next.findIndex((row) => sessionOrderMatchesBrowseNum(row, browseNum))
+              : next.findIndex((row) => String(row.order_num) === String(orderNum));
           setEditBrowseIndex(idx >= 0 ? idx : 0);
           return next;
         });
 
         const customerMemory = extractSaleCustomerMemory(sourceSale);
         if (customerMemory.name || customerMemory.customerNum != null) {
-          rememberPosOrderCustomer(orderNum, customerMemory);
+          rememberPosOrderCustomer(browseNum ?? orderNum, customerMemory);
         }
       }
-      const label = restoredCart?.held_order_num ?? saleId;
+      const label = browseNum ?? restoredCart?.held_order_num ?? saleId;
       setPaymentOpen(false);
       const restoredSummary = summarizeLocalPosCart(restoredCart);
       const kraFiscalize = shouldSubmitKraOnCheckout(
@@ -6209,7 +6277,11 @@ export function PosScreen({ standalone = false }) {
     try {
       try {
         const offlineOrders = await listOfflinePendingSalesForEdit();
-        const offlineMatch = offlineOrders.find((row) => String(row.order_num) === trimmed);
+        const offlineMatch = offlineOrders.find(
+          (row) =>
+            sessionOrderMatchesBrowseNum(row, trimmed) ||
+            String(row.order_num) === trimmed,
+        );
         if (offlineMatch?.id) {
           await restoreOrderForEdit(offlineMatch.id, { saleSnapshot: offlineMatch });
           return;
@@ -6228,6 +6300,7 @@ export function PosScreen({ standalone = false }) {
             channel: "pos",
             order_source: "pos",
             with_items: 0,
+            filter_pos_order: trimmed,
           },
         }),
       });
@@ -6235,10 +6308,17 @@ export function PosScreen({ standalone = false }) {
       const match =
         rows.find(
           (row) =>
+            String(row.pos_order_num) === trimmed &&
+            Number(row.order_num) < 9_000_000 &&
+            !row?.fulfillment_meta?.superseded_by_edit,
+        ) ??
+        rows.find(
+          (row) =>
             String(row.order_num) === trimmed &&
             Number(row.order_num) < 9_000_000 &&
             !row?.fulfillment_meta?.superseded_by_edit,
-        ) ?? rows.find((row) => String(row.order_num) === trimmed);
+        ) ??
+        rows.find((row) => sessionOrderMatchesBrowseNum(row, trimmed));
       if (!match?.id) {
         const message = `No POS order found with number ${trimmed}.`;
         setOrderEditError(message);
@@ -6265,17 +6345,22 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(message);
       return;
     }
-    // On a new order the box shows the next # — Enter/click opens the current (latest) receipt.
+    // On a new order the box shows the next POS ticket # — Enter/click opens the current (latest) receipt.
     if (
       !isCartEditSession &&
-      cart?.next_order_num != null &&
-      String(cart.next_order_num) === trimmed
+      (() => {
+        const nextBrowse = resolvePosBrowseNumber({
+          next_pos_order_num: cart?.next_pos_order_num,
+          next_order_num: cart?.next_order_num,
+        });
+        return nextBrowse != null && String(nextBrowse) === trimmed;
+      })()
     ) {
       await classicOpenCurrentOrder();
       return;
     }
-    const fromSession = sessionPosOrders.find((row) => String(row.order_num) === trimmed);
-    // Always resolve the live sale by order # (session ids can be stale after edits).
+    const fromSession = sessionPosOrders.find((row) => sessionOrderMatchesBrowseNum(row, trimmed));
+    // Always resolve the live sale by POS ticket # (session ids can be stale after edits).
     // Offline pending rows are restored from IndexedDB via restoreOrderForEdit.
     if (fromSession?.id != null && isOfflinePendingSaleId(fromSession.id)) {
       orderNoUserEditedRef.current = false;
@@ -6309,7 +6394,7 @@ export function PosScreen({ standalone = false }) {
     const row = orders[0];
     orderNoUserEditedRef.current = false;
     setEditBrowseIndex(0);
-    setEditOrderNo(String(row.order_num));
+    setEditOrderNoFromSaleOrCart(row);
     setOrderEditError(null);
     await restoreOrderForEdit(row.id, { saleSnapshot: row });
     } finally {
@@ -6324,7 +6409,7 @@ export function PosScreen({ standalone = false }) {
     if (!row?.id) return;
     orderNoUserEditedRef.current = false;
     setEditBrowseIndex(nextIndex);
-    setEditOrderNo(String(row.order_num));
+    setEditOrderNoFromSaleOrCart(row);
     setOrderEditError(null);
     await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
   }
@@ -6336,7 +6421,7 @@ export function PosScreen({ standalone = false }) {
     if (!row?.id) return;
     orderNoUserEditedRef.current = false;
     setEditBrowseIndex(nextIndex);
-    setEditOrderNo(String(row.order_num));
+    setEditOrderNoFromSaleOrCart(row);
     setOrderEditError(null);
     await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
   }
@@ -6344,6 +6429,11 @@ export function PosScreen({ standalone = false }) {
   /** Classic caption arrows: load previous completed receipt / return toward new order. */
   const classicCanGoPrevious = Boolean(enablePosOrderEdit);
   const classicCanGoNext = enablePosOrderEdit && isCartEditSession;
+
+  function setEditOrderNoFromSaleOrCart(saleOrCart) {
+    const browse = resolvePosBrowseNumber(saleOrCart);
+    if (browse != null) setEditOrderNo(String(browse));
+  }
 
   async function classicGoPreviousOrder() {
     if (!enablePosOrderEdit || orderEditBusy) return;
@@ -6361,11 +6451,11 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Loading completed POS orders…");
       orders = await loadCompletedPosOrders();
     }
-      const heldNum = cartRef.current?.held_order_num ?? cart?.held_order_num;
-      // Walk older than the order currently being edited (list is newest-first).
+      const browseNum = resolvePosBrowseNumber(cartRef.current ?? cart);
+      // Walk older than the order currently being edited (list is newest-first by POS ticket).
       let startIndex = 0;
-      if (heldNum != null) {
-        const heldIdx = orders.findIndex((row) => String(row.order_num) === String(heldNum));
+      if (browseNum != null) {
+        const heldIdx = orders.findIndex((row) => sessionOrderMatchesBrowseNum(row, browseNum));
         startIndex = heldIdx >= 0 ? heldIdx + 1 : editBrowseIndex + 1;
       } else {
         startIndex = editBrowseIndex + 1;
@@ -6382,7 +6472,7 @@ export function PosScreen({ standalone = false }) {
     orderNoUserEditedRef.current = false;
       setSessionPosOrders(orders);
       setEditBrowseIndex(startIndex);
-    setEditOrderNo(String(row.order_num));
+    setEditOrderNoFromSaleOrCart(row);
       await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
     } finally {
       endPreviousOrderLoading();
@@ -6400,7 +6490,7 @@ export function PosScreen({ standalone = false }) {
         const row = orders[nextIndex];
       if (!row) return;
       setEditBrowseIndex(nextIndex);
-      setEditOrderNo(String(row.order_num));
+      setEditOrderNoFromSaleOrCart(row);
         await restoreOrderForEdit(row.id, { replace: true, saleSnapshot: row });
       return;
     }
@@ -6413,18 +6503,21 @@ export function PosScreen({ standalone = false }) {
 
   const classicOrderCaption = useMemo(() => {
     if (isCartEditSession) {
-      const orderLabel = formatOrderNumber(cart.held_order_num);
+      const orderLabel = formatPosBrowseLabel(cart);
       const customer = prefilledEditCustomerName.trim();
       return customer
         ? `Previous Order, ${orderLabel} - ${customer}`
         : `Previous Order, ${orderLabel}`;
     }
-    const rawNum = activeOrderNum ?? (editOrderNo.trim() ? editOrderNo.trim() : null);
-    const orderLabel = rawNum != null ? formatOrderNumber(rawNum) : "—";
+    const rawNum =
+      activeOrderNum ??
+      (editOrderNo.trim() ? editOrderNo.trim() : null);
+    const orderLabel = rawNum != null ? String(rawNum) : "—";
     return `New Order - ${orderLabel}`;
   }, [
     isCartEditSession,
     cart?.held_order_num,
+    cart?.pos_order_num,
     prefilledEditCustomerName,
     activeOrderNum,
     editOrderNo,
@@ -7193,7 +7286,7 @@ export function PosScreen({ standalone = false }) {
               </p>
               {activeOrderNum ? (
                 <span className="shrink-0 rounded-md border border-[var(--theme-border)] bg-[var(--theme-page-bg)] px-2.5 py-0.5 font-mono text-xs font-semibold text-[var(--theme-text)]">
-                  Order #{formatOrderNumber(activeOrderNum)}
+                  Cash Sales #{activeOrderNum}
                 </span>
               ) : null}
             </div>
@@ -7631,7 +7724,7 @@ export function PosScreen({ standalone = false }) {
             <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
                 <p className="text-xs leading-relaxed">
-                  Revising order #{cart.held_order_num}. Edit lines locally, then press{" "}
+                  Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edit lines locally, then press{" "}
                   <strong>F10</strong> to complete payment and fiscalize the revised receipt (KRA
                   QR). Alt+P reprints the draft before you complete.
                 </p>
@@ -7650,12 +7743,12 @@ export function PosScreen({ standalone = false }) {
                 <p className="text-xs leading-relaxed">
                   {previousOrderEditReadyToPrint ? (
                     <>
-                      Order #{cart.held_order_num} saved on server.{" "}
+                      Cash Sales #{formatPosBrowseLabel(cart)} saved on server.{" "}
                       <strong>Print the revised receipt</strong> — Alt+P or Reprint.
                     </>
                   ) : (
                     <>
-                      Revising order #{cart.held_order_num}. Edits save instantly —{" "}
+                      Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edits save instantly —{" "}
                       <strong>F10 is not required</strong>. When finished, print with Alt+P or
                       Reprint.
                       {offlineSyncing || editAutosaveBusy || pendingSync > 0

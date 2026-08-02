@@ -13,7 +13,7 @@ export function orderTableColumnCount({
   showPaymentBreakdownColumns = false,
   showSelectionColumn = false,
 }) {
-  let count = showSourceColumn ? 11 : 10;
+  let count = showSourceColumn ? 10 : 9;
   if (showBranchColumn) count += 1;
   if (showRouteColumn) count += 1;
   if (showDeliveryDateColumn) count += 1;

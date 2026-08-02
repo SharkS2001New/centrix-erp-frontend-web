@@ -263,11 +263,11 @@ export function ClassicPosCartTable({
               placeholder="Order #"
               inputMode="numeric"
               autoComplete="off"
-              aria-label="Order number"
+              aria-label="POS Cash Sales number"
               title={
                 orderNavLocked
                   ? orderNavHint || "Order editing is disabled"
-                  : "Shows next order #. Type an order number and press Enter, or use ← for the latest completed order."
+                  : "Shows next Cash Sales #. Type a POS ticket number and press Enter, or use ← for the latest completed order."
               }
               onFocus={(e) => e.target.select()}
               onChange={(e) => onOrderNoChange?.(e.target.value)}

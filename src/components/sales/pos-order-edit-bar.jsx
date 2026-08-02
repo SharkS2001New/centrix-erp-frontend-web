@@ -43,11 +43,11 @@ export function PosOrderEditBar({
             inputMode="numeric"
             pattern="[0-9]*"
             className="pos-order-edit-input min-w-[5.5rem] flex-1 py-1.5 text-sm"
-            placeholder="Order #"
+            placeholder="Cash Sales #"
             value={orderNo}
             disabled={busy}
             onChange={(e) => onOrderNoChange?.(e.target.value.replace(/\D/g, ""))}
-            aria-label="Order number to edit"
+            aria-label="POS Cash Sales number to edit"
           />
           <button
             type="submit"

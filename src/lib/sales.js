@@ -203,6 +203,54 @@ export function formatCashSalesNumber(sale) {
 }
 
 /**
+ * Number shown in classic POS ← / → box and previous-order captions.
+ * Prefers daily POS ticket; falls back to org order_num digits.
+ */
+export function resolvePosBrowseNumber(saleOrCart) {
+  if (saleOrCart == null || saleOrCart === "") return null;
+  if (typeof saleOrCart !== "object") {
+    const n = Number(saleOrCart);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  if (saleOrCart.pos_order_num != null && saleOrCart.pos_order_num !== "") {
+    const n = Number(saleOrCart.pos_order_num);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  if (saleOrCart.held_order_num != null && saleOrCart.held_order_num !== "") {
+    // Edit sessions may only have org order_num on held_order_num until sale is loaded.
+    const n = Number(saleOrCart.held_order_num);
+    if (Number.isFinite(n) && n > 0 && n < 9_000_000) return n;
+  }
+  if (saleOrCart.next_pos_order_num != null && saleOrCart.next_pos_order_num !== "") {
+    const n = Number(saleOrCart.next_pos_order_num);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  if (saleOrCart.order_num != null && saleOrCart.order_num !== "") {
+    const n = Number(saleOrCart.order_num);
+    if (Number.isFinite(n) && n > 0 && n < 9_000_000) return n;
+  }
+  if (saleOrCart.next_order_num != null && saleOrCart.next_order_num !== "") {
+    const n = Number(saleOrCart.next_order_num);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+/** Display label for POS browse / captions (plain digits for POS ticket). */
+export function formatPosBrowseLabel(saleOrCart) {
+  const n = resolvePosBrowseNumber(saleOrCart);
+  return n != null ? String(n) : "—";
+}
+
+/** Orders list: global order # with daily POS ticket when present — e.g. S0033 → 4 */
+export function formatOrderPosLabel(sale) {
+  const order = formatOrderNumber(sale);
+  const pos = formatPosOrderNumber(sale);
+  if (pos === "—") return order;
+  return `${order} → ${pos}`;
+}
+
+/**
  * Client-side preflight for merging mobile orders (same customer + route).
  * Server still enforces editable status and permissions.
  * @returns {{ ok: true, target: object, sources: object[] } | { ok: false, message: string }}

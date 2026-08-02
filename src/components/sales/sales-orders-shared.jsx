@@ -42,7 +42,7 @@ import {
   PAYMENT_STATUS_LABELS,
   formatReceiptNumber,
   formatOrderNumber,
-  formatPosOrderNumber,
+  formatOrderPosLabel,
   formatSaleKes,
   formatSalePlacedDateTime,
   orderSourceLabel,
@@ -883,7 +883,6 @@ export function OrderListTableHead({
         ) : null}
         <th className="w-12 px-4 py-2.5" aria-label="Expand" />
         <th className="px-4 py-2.5">{header("Order", "order_num")}</th>
-        <th className="px-4 py-2.5">POS #</th>
         <th className="px-4 py-2.5">{header("Customer", "customer_name")}</th>
         {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
         {showRouteColumn ? <th className="px-4 py-2.5">Route</th> : null}
@@ -908,8 +907,7 @@ export function OrderListTableHead({
         <tr className="border-b border-[var(--theme-border)] bg-[color-mix(in_srgb,var(--theme-surface-muted)_70%,transparent)]">
           {selection ? <th className="w-10 px-2 py-1.5" /> : null}
           <th className="w-12 px-2 py-1.5" />
-          <th className="px-2 py-1.5 font-normal">{filterCell("order", "Order #")}</th>
-          <th className="px-2 py-1.5 font-normal">{filterCell("pos_order", "POS #")}</th>
+          <th className="px-2 py-1.5 font-normal">{filterCell("order", "Order / POS #")}</th>
           <th className="px-2 py-1.5 font-normal">{filterCell("customer", "Customer")}</th>
           {showBranchColumn ? <th className="px-2 py-1.5" /> : null}
           {showRouteColumn ? <th className="px-2 py-1.5" /> : null}
@@ -1121,11 +1119,8 @@ export function OrderListTableRow({
         </td>
         <td className="px-4 py-3">
           <Link href={href} className="font-medium text-[var(--theme-primary)] hover:underline">
-            {formatOrderNumber(sale)}
+            {formatOrderPosLabel(sale)}
           </Link>
-        </td>
-        <td className="px-4 py-3 tabular-nums text-slate-700">
-          {formatPosOrderNumber(sale)}
         </td>
         <td className="px-4 py-3 text-slate-700">{saleCustomerLabel(sale)}</td>
         {showBranchColumn ? (

@@ -247,7 +247,6 @@ export default function SalesOrdersListScreen({
   const [rejectContext, setRejectContext] = useState(null);
   const [columnFilters, setColumnFilters] = useState({
     order: "",
-    pos_order: "",
     customer: "",
     amount: "",
     status: "",
@@ -518,13 +517,20 @@ export default function SalesOrdersListScreen({
       }
 
       const orderCol = String(debouncedColumnFilters.order ?? "").trim();
-      const posOrderCol = String(debouncedColumnFilters.pos_order ?? "").trim();
       const customerCol = String(debouncedColumnFilters.customer ?? "").trim();
       const amountCol = String(debouncedColumnFilters.amount ?? "").trim();
       const methodCol = String(debouncedColumnFilters.method ?? "").trim();
       const placedByCol = String(debouncedColumnFilters.placed_by ?? "").trim();
-      if (orderCol) extra.filter_order = orderCol;
-      if (posOrderCol) extra.filter_pos_order = posOrderCol;
+      if (orderCol) {
+        const digits = orderCol.replace(/^S/i, "").replace(/\D/g, "");
+        if (/^S/i.test(orderCol) || (digits && Number(digits) >= 100)) {
+          extra.filter_order = digits || orderCol;
+        } else if (digits) {
+          extra.filter_pos_order = digits;
+        } else {
+          extra.filter_order = orderCol;
+        }
+      }
       if (customerCol) extra.filter_customer = customerCol;
       if (amountCol) extra.filter_amount = amountCol;
       if (methodCol) extra.filter_method = methodCol;

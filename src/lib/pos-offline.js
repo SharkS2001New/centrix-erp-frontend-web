@@ -850,6 +850,10 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     order_num: orderNum,
     offline_order: true,
     client_sale_uuid: row.client_sale_uuid,
+    pos_sync_id:
+      row.sync_kind === "previous_order_edit" && row.content_revision != null
+        ? `${row.client_sale_uuid}:${Number(row.content_revision)}`
+        : row.client_sale_uuid,
   };
   if (row.sync_kind === "previous_order_edit" && row.content_revision != null) {
     body.content_revision = Number(row.content_revision);
@@ -1084,65 +1088,102 @@ function isDuplicateOrderNumError(err) {
   return false;
 }
 
-/** Prefer consuming a locally reserved slot; otherwise reserve one now. */
-async function allocateFreshOrderSlotForSync() {
-  const local = await idbTakeNextOrderSlot();
-  if (local?.order_num) return local;
-  const res = await apiRequest("/sales/order-numbers/reserve", {
-    method: "POST",
-    body: { count: 1 },
-    loading: false,
-    reportIssues: false,
-  });
-  const slots = Array.isArray(res?.slots) ? res.slots : null;
-  if (slots?.length) {
-    // Consume the first reserved slot immediately; leave extras if any.
-    const [first, ...rest] = slots;
-    if (rest.length) await idbAppendOrderSlots(rest);
-    return first;
-  }
-  const n = Array.isArray(res?.numbers) ? res.numbers[0] : res?.start;
-  if (!n) throw new Error("Could not allocate a replacement order number.");
-  return { order_num: Number(n), pos_order_num: null, pos_order_date: null };
+
+function outboxRowPosTicket(row) {
+  const posNumRaw =
+    row.checkout_body?.pos_order_num ??
+    row.sale_payload?.pos_order_num ??
+    null;
+  const posNum = posNumRaw != null ? Number(posNumRaw) : null;
+  const posDate = normalizePosOrderDate(
+    row.checkout_body?.pos_order_date ?? row.sale_payload?.pos_order_date,
+  );
+  return {
+    posNum: Number.isFinite(posNum) && posNum > 0 ? posNum : null,
+    posDate,
+  };
 }
 
-/** If this offline sale already synced (duplicate order #), recover the server row. */
-async function tryRecoverExistingOfflineSale(row, orderNum) {
+function outboxRowMatchesServerSale(row, sale, orderNum) {
+  if (!sale?.id) return false;
+
   const clientUuid = row.client_sale_uuid;
-  if (!clientUuid) return null;
   const expectedSyncId =
     row.sync_kind === "previous_order_edit" && row.content_revision != null
       ? `${clientUuid}:${Number(row.content_revision)}`
       : clientUuid;
-  try {
-    const res = await apiRequest("/sales", {
-      searchParams: {
-        q: String(orderNum),
-        per_page: 25,
-        channel: "pos",
-        order_source: "pos",
-      },
-      loading: false,
-      reportIssues: false,
-    });
-    const rows = Array.isArray(res?.data) ? res.data : [];
-    const match = rows.find((sale) => {
-      if (Number(sale.order_num) !== Number(orderNum)) return false;
-      const meta = sale.fulfillment_meta ?? {};
-      if (meta.pos_sync_id && String(meta.pos_sync_id) === String(expectedSyncId)) {
-        return true;
-      }
-      const uuid =
-        meta.client_sale_uuid ??
-        meta.offline_client_sale_uuid ??
-        sale.client_sale_uuid;
-      if (uuid && String(uuid) === String(clientUuid)) return true;
-      return false;
-    });
-    return match?.id ? match : null;
-  } catch {
-    return null;
+  const meta = sale.fulfillment_meta ?? {};
+
+  if (expectedSyncId && meta.pos_sync_id && String(meta.pos_sync_id) === String(expectedSyncId)) {
+    return true;
   }
+
+  const saleUuid =
+    meta.client_sale_uuid ??
+    meta.offline_client_sale_uuid ??
+    sale.client_sale_uuid;
+  if (clientUuid && saleUuid && String(saleUuid) === String(clientUuid)) {
+    return true;
+  }
+
+  const { posNum, posDate } = outboxRowPosTicket(row);
+  const salePosNum =
+    sale.pos_order_num != null ? Number(sale.pos_order_num) : null;
+  const salePosDate = normalizePosOrderDate(sale.pos_order_date);
+  if (
+    posNum != null &&
+    salePosNum != null &&
+    posNum === salePosNum &&
+    (!posDate || !salePosDate || posDate === salePosDate)
+  ) {
+    return true;
+  }
+
+  if (Number(sale.order_num) === Number(orderNum)) {
+    const rowTotal = row.sale_payload?.order_total ?? row.checkout_body?.pay_now;
+    if (rowTotal != null) {
+      const delta = Math.abs(Number(sale.order_total ?? 0) - Number(rowTotal));
+      if (delta < 0.02) return true;
+    }
+    if (row.sync_kind === "previous_order_edit") return true;
+  }
+
+  return false;
+}
+
+/** If this offline sale already synced, recover the server row (avoid duplicate checkout). */
+async function findExistingSyncedSaleForOutboxRow(row, orderNum) {
+  const queries = new Set();
+  if (orderNum) queries.add(String(orderNum));
+  const { posNum } = outboxRowPosTicket(row);
+  if (posNum != null) queries.add(String(posNum));
+  if (row.client_sale_uuid) queries.add(String(row.client_sale_uuid));
+
+  const candidates = [];
+  const seenIds = new Set();
+  for (const q of queries) {
+    try {
+      const res = await apiRequest("/sales", {
+        searchParams: {
+          q,
+          per_page: 50,
+          channel: "pos",
+          order_source: "pos",
+        },
+        loading: false,
+        reportIssues: false,
+      });
+      for (const sale of Array.isArray(res?.data) ? res.data : []) {
+        if (!sale?.id || seenIds.has(sale.id)) continue;
+        seenIds.add(sale.id);
+        candidates.push(sale);
+      }
+    } catch {
+      /* try next query */
+    }
+  }
+
+  return candidates.find((sale) => outboxRowMatchesServerSale(row, sale, orderNum)) ?? null;
 }
 
 function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
@@ -1168,9 +1209,8 @@ function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
 /**
  * Replay pending offline cash sales to the server (oldest first).
  * Marks each row `syncing` while in flight so concurrent flushes cannot double-post.
- * On duplicate order_num (new sales only), allocates a new free number, syncs under it, and
- * flags the sale for receipt reprint with the corrected number.
- * Previous-order edits always keep the same order # and update the server record.
+ * Never creates a second server sale for the same POS ticket / client uuid — recovers
+ * the existing row when checkout would duplicate.
  */
 export async function syncPosOfflineOutbox({ onProgress } = {}) {
   return withPosOfflineExclusiveLock(async () => {
@@ -1184,34 +1224,24 @@ export async function syncPosOfflineOutbox({ onProgress } = {}) {
 
       try {
         onProgress?.({ phase: "syncing", order_num: printedOrderNum });
-        let sale;
+        let sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
         let usedOrderNum = printedOrderNum;
         let needsReprint = false;
-        try {
-          sale = await checkoutOutboxRow(row, printedOrderNum);
-        } catch (firstErr) {
-          if (isDuplicateOrderNumError(firstErr)) {
-            const existing = await tryRecoverExistingOfflineSale(row, printedOrderNum);
-            if (existing) {
-              sale = existing;
-            } else if (row.sync_kind === "previous_order_edit") {
-              throw firstErr;
+
+        if (!sale) {
+          try {
+            sale = await checkoutOutboxRow(row, printedOrderNum);
+          } catch (firstErr) {
+            if (isDuplicateOrderNumError(firstErr)) {
+              sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+              if (!sale) {
+                throw new Error(
+                  `Order #${printedOrderNum} already exists on the server — sync skipped to avoid a duplicate sale.`,
+                );
+              }
             } else {
-              const slot = await allocateFreshOrderSlotForSync();
-              usedOrderNum = Number(slot.order_num);
-              onProgress?.({
-                phase: "reallocate",
-                order_num: usedOrderNum,
-                original_order_num: printedOrderNum,
-              });
-              sale = await checkoutOutboxRow(row, usedOrderNum, {
-                pos_order_num: slot.pos_order_num,
-                pos_order_date: slot.pos_order_date,
-              });
-              needsReprint = usedOrderNum !== printedOrderNum;
+              throw firstErr;
             }
-          } else {
-            throw firstErr;
           }
         }
 
