@@ -4,7 +4,7 @@
  * immediately on capture with { passive: false }.
  */
 
-export const POS_FN_KEYS = new Set(["F2", "F8", "F9", "F10", "F12"]);
+export const POS_FN_KEYS = new Set(["F2", "F8", "F10", "F12"]);
 
 /** Dispatched when F10 is pressed while the payment dialog is already open. */
 export const CENTRIX_POS_COMPLETE_PAYMENT_EVENT = "centrix:pos-complete-payment";

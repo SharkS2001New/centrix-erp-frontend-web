@@ -304,6 +304,24 @@ function stripPreviousOrderDraftMarkers(cart) {
   };
 }
 
+/** Drop previous-order edit markers so F8 can stay on a blank new-order cart. */
+function stripPreviousOrderEditSession(cart) {
+  if (!cart) return cart;
+  const {
+    held_order_num: _held,
+    superseded_sale_id: _superseded,
+    server_sale_id: _serverSale,
+    server_cart_id: _serverCart,
+    _editDraftDirty: _dirty,
+    ...rest
+  } = cart;
+  return rest;
+}
+
+function isFreshWorkspacePlaceholder(cart) {
+  return String(cart?.id ?? "") === "pending-fresh";
+}
+
 /** Ensure restored edit carts carry displayable lines (API cart or sale snapshot). */
 function presentRestoredEditCart(restoredCart, sourceSale) {
   const cart = normalizeCartResponse(restoredCart) ?? restoredCart ?? {};
@@ -2363,11 +2381,19 @@ export function PosScreen({ standalone = false }) {
    * After a previous-order edit syncs (checkout consumed the edit cart), restore that
    * sale back into the workspace so the cashier can keep editing with a live cart id.
    */
-  async function refreshPreviousOrderEditCartAfterSync(sale) {
+  async function refreshPreviousOrderEditCartAfterSync(sale, { workspaceGeneration } = {}) {
     if (!sale?.id || !standalone) return;
+    if (skipEditAutosaveRef.current) return;
     const active = cartRef.current;
     if (!active?.held_order_num || !active?.superseded_sale_id) return;
+    if (isFreshWorkspacePlaceholder(active)) return;
     if (Number(active.held_order_num) !== Number(sale.order_num)) return;
+    if (
+      workspaceGeneration != null &&
+      freshWorkspaceGenerationRef.current !== workspaceGeneration
+    ) {
+      return;
+    }
     try {
       const restored = await apiRequest(`/sales/orders/${sale.id}/restore-to-cart`, {
         method: "POST",
@@ -2375,8 +2401,19 @@ export function PosScreen({ standalone = false }) {
         loading: false,
         reportIssues: false,
       });
+      if (skipEditAutosaveRef.current) return;
+      if (
+        workspaceGeneration != null &&
+        freshWorkspaceGenerationRef.current !== workspaceGeneration
+      ) {
+        return;
+      }
       const current = cartRef.current;
-      if (!current?.held_order_num || Number(current.held_order_num) !== Number(sale.order_num)) {
+      if (
+        !current?.held_order_num ||
+        isFreshWorkspacePlaceholder(current) ||
+        Number(current.held_order_num) !== Number(sale.order_num)
+      ) {
         return;
       }
       const keepDirty = editedOrderHasLocalDraftChanges(current);
@@ -5563,6 +5600,7 @@ export function PosScreen({ standalone = false }) {
     editAutosaveTimerRef.current = window.setTimeout(() => {
       editAutosaveTimerRef.current = null;
       void (async () => {
+        const workspaceGeneration = freshWorkspaceGenerationRef.current;
         if (skipEditAutosaveRef.current) return;
         if (editAutosaveInFlightRef.current) {
       scheduleEditedOrderAutosave();
@@ -5570,6 +5608,7 @@ export function PosScreen({ standalone = false }) {
         }
         const cartNow = cartRef.current;
         if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return;
+        if (isFreshWorkspacePlaceholder(cartNow)) return;
         if (!editedOrderHasLocalDraftChanges(cartNow)) return;
         const lines = (cartNow.lines ?? []).filter(
           (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
@@ -5628,6 +5667,8 @@ export function PosScreen({ standalone = false }) {
           const results = await flushOutboxNow();
           let syncedOrderNum = null;
           for (const row of results ?? []) {
+            if (skipEditAutosaveRef.current) break;
+            if (freshWorkspaceGenerationRef.current !== workspaceGeneration) break;
             if (
               row?.ok &&
               row.sync_kind === "previous_order_edit" &&
@@ -5635,10 +5676,17 @@ export function PosScreen({ standalone = false }) {
               row.sale?.id
             ) {
               syncedOrderNum = cartNow.held_order_num;
-              await refreshPreviousOrderEditCartAfterSync(row.sale);
+              await refreshPreviousOrderEditCartAfterSync(row.sale, { workspaceGeneration });
             }
           }
           const afterCart = cartRef.current;
+          if (
+            skipEditAutosaveRef.current ||
+            freshWorkspaceGenerationRef.current !== workspaceGeneration ||
+            isFreshWorkspacePlaceholder(afterCart)
+          ) {
+            return;
+          }
           if (
             syncedOrderNum != null &&
             afterCart?.held_order_num != null &&
@@ -5963,7 +6011,8 @@ export function PosScreen({ standalone = false }) {
 
   /** F8 / empty-space double-click: clear workspace and focus scan for a new order. */
   async function startFreshWorkspace() {
-    if (busy || lineBusy) return;
+    if (lineBusy) return;
+    if (busy && !editAutosaveInFlightRef.current) return;
     if (editAutosaveTimerRef.current) {
       window.clearTimeout(editAutosaveTimerRef.current);
       editAutosaveTimerRef.current = null;
@@ -6092,17 +6141,22 @@ export function PosScreen({ standalone = false }) {
         const next = await loadCashierCart({ skipEditDraftRestore: true });
         if (generation !== freshWorkspaceGenerationRef.current) return next;
         const live = cartRef.current;
-        // Bail if cashier already opened another edit session or started lines on another cart.
-        if (live?.held_order_num || live?.superseded_sale_id) return live;
+        // Cashier scanned into a different server cart while bootstrap ran — keep their work.
         if (
           live &&
           isServerPosCartId(live.id) &&
           live.id !== next?.id &&
-          (live.lines?.length ?? 0) > 0
+          (live.lines?.length ?? 0) > 0 &&
+          !live?.held_order_num &&
+          !live?.superseded_sale_id
         ) {
           return live;
         }
-        const merged = mergeFreshWorkspaceCart(next, peekNextPos);
+        // Stale background sync may have re-attached a previous-order edit — force a blank cart.
+        const merged = mergeFreshWorkspaceCart(
+          stripPreviousOrderEditSession(next),
+          peekNextPos,
+        );
         cartRef.current = merged;
         setCart(merged);
         orderNoUserEditedRef.current = false;
@@ -6998,7 +7052,6 @@ export function PosScreen({ standalone = false }) {
     const handledOnKeyDownAt = {
       F2: 0,
       F8: 0,
-      F9: 0,
       F10: 0,
       F12: 0,
       AltH: 0,
@@ -7026,10 +7079,6 @@ export function PosScreen({ standalone = false }) {
           await actions.startFreshWorkspace();
           actions.focusProductSearch();
         })();
-        return;
-      }
-      if (key === "F9") {
-        setPriceCheckerOpen(true);
         return;
       }
       if (key === "F10") {
@@ -7297,17 +7346,6 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
                 <button
                   type="button"
-                  disabled={busy}
-                  title="Price checker"
-                  onClick={() => setPriceCheckerOpen(true)}
-                  className={posHeaderBtnClassName}
-                >
-                  <span className="pos-header-btn-label" data-short="Price">
-                  Price checker
-                  </span>
-                </button>
-                <button
-                  type="button"
                   disabled={busy || !reprintSale?.id || receiptPrintStatus === "pending"}
                   title={
                     receiptPrintStatus === "pending"
@@ -7337,43 +7375,6 @@ export function PosScreen({ standalone = false }) {
                     {receiptPrintStatus === "pending"
                       ? "Printing receipt…"
                       : reprintReceiptLabel}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || offlineSyncing || !canFlushOutbox || pendingSync <= 0}
-                  title={
-                    !canFlushOutbox
-                      ? "Reconnect to sync offline orders"
-                      : offlineSyncing
-                        ? syncProgress?.message || "Syncing offline orders…"
-                        : pendingSync > 0
-                          ? `Sync ${pendingSync} pending offline order(s)`
-                          : "No offline orders waiting to sync"
-                  }
-                  onClick={() => void syncOfflineOrders()}
-                  className={posHeaderBtnClassName}
-                  aria-busy={offlineSyncing}
-                >
-                  <span
-                    className="pos-header-btn-label"
-                    data-short={
-                      offlineSyncing
-                        ? syncProgress?.total > 0
-                          ? `${syncProgress.done + syncProgress.failed}/${syncProgress.total}`
-                          : "Syncing…"
-                        : pendingSync > 0
-                          ? `Sync (${pendingSync})`
-                          : "Sync"
-                    }
-                  >
-                    {offlineSyncing
-                      ? syncProgress?.total > 0
-                        ? `Syncing ${syncProgress.done + syncProgress.failed}/${syncProgress.total}…`
-                        : "Syncing offline…"
-                      : pendingSync > 0
-                        ? `Sync offline (${pendingSync})`
-                        : "Sync offline orders"}
                   </span>
                 </button>
                 {showStandaloneTillActions && requireTillFloat ? (
@@ -7414,6 +7415,43 @@ export function PosScreen({ standalone = false }) {
                     </button>
                   </>
                 ) : null}
+                <button
+                  type="button"
+                  disabled={busy || offlineSyncing || !canFlushOutbox || pendingSync <= 0}
+                  title={
+                    !canFlushOutbox
+                      ? "Reconnect to sync offline orders"
+                      : offlineSyncing
+                        ? syncProgress?.message || "Syncing offline orders…"
+                        : pendingSync > 0
+                          ? `Sync ${pendingSync} pending offline order(s)`
+                          : "No offline orders waiting to sync"
+                  }
+                  onClick={() => void syncOfflineOrders()}
+                  className={posHeaderBtnClassName}
+                  aria-busy={offlineSyncing}
+                >
+                  <span
+                    className="pos-header-btn-label"
+                    data-short={
+                      offlineSyncing
+                        ? syncProgress?.total > 0
+                          ? `${syncProgress.done + syncProgress.failed}/${syncProgress.total}`
+                          : "Syncing…"
+                        : pendingSync > 0
+                          ? `Sync (${pendingSync})`
+                          : "Sync"
+                    }
+                  >
+                    {offlineSyncing
+                      ? syncProgress?.total > 0
+                        ? `Syncing ${syncProgress.done + syncProgress.failed}/${syncProgress.total}…`
+                        : "Syncing offline…"
+                      : pendingSync > 0
+                        ? `Sync offline (${pendingSync})`
+                        : "Sync offline orders"}
+                  </span>
+                </button>
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceSwitcher />
