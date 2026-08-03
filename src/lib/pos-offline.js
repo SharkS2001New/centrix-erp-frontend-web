@@ -332,6 +332,22 @@ export function detachPreviousOrderEditCartId(cart) {
   };
 }
 
+/** Resolve a live TemporaryCart id for PUT/checkout during previous-order edit sync. */
+export async function resolvePreviousOrderEditServerCartId(cart) {
+  if (isServerPosCartId(cart?.id)) {
+    return Number(cart.id);
+  }
+  const supersededId = Number(cart?.superseded_sale_id ?? 0);
+  if (!supersededId) return null;
+  const restored = await apiRequest(`/sales/orders/${supersededId}/restore-to-cart`, {
+    method: "POST",
+    body: { replace: true },
+    loading: false,
+    reportIssues: false,
+  });
+  return restored?.id && isServerPosCartId(restored.id) ? Number(restored.id) : null;
+}
+
 export async function clearLocalPosCart() {
   await idbClearLocalCart("active");
 }
@@ -570,7 +586,18 @@ export async function completeOfflineCashSale({
   skipClearDraft = false,
 }) {
   const summary = summarizeLocalPosCart(cart);
-  if (!summary.lineCount) {
+  const reuseOrderNumEarly =
+    cart.held_order_num != null && Number(cart.held_order_num) > 0
+      ? Number(cart.held_order_num)
+      : null;
+  const supersededSaleIdEarly =
+    cart.superseded_sale_id != null && Number(cart.superseded_sale_id) > 0
+      ? Number(cart.superseded_sale_id)
+      : null;
+  const isPreviousOrderEditEarly = Boolean(
+    reuseOrderNumEarly && supersededSaleIdEarly,
+  );
+  if (!summary.lineCount && !isPreviousOrderEditEarly) {
     throw new Error("Cart is empty.");
   }
 

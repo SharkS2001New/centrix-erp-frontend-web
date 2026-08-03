@@ -590,8 +590,8 @@ export function OrganizationPlatformSalesSettings({
             onChange={(v) => patch({ append_same_day_customer_orders: v })}
           />
           <Toggle
-            label="Allow editing backoffice orders"
-            description="When on, staff can correct line quantities on backoffice sales orders from the orders list (including older orders). Unit prices stay fixed; totals and stock adjust on save."
+            label="Allow editing orders from Sales"
+            description="When on, staff can Edit order from the Sales orders list for any source (Point of sale, Mobile, or Backoffice). Change customer, add/remove lines, adjust quantities and discounts; totals and stock update on save."
             checked={salesPlatform?.enable_backoffice_order_edit !== false}
             onChange={(v) => patch({ enable_backoffice_order_edit: v })}
           />

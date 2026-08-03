@@ -166,6 +166,7 @@ import {
   clearPreviousOrderEditDraft,
   completeOfflineCashSale,
   detachPreviousOrderEditCartId,
+  resolvePreviousOrderEditServerCartId,
   isLocalFirstCashCheckout,
   isMissingTemporaryCartError,
   isServerPosCartId,
@@ -2674,7 +2675,7 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
-  function persistPreviousOrderLocalDraft(nextCart) {
+  function persistPreviousOrderLocalDraft(nextCart, { immediate = false } = {}) {
     if (
       !isPreviousOrderEditSession(nextCart) ||
       nextCart.offline ||
@@ -2684,7 +2685,7 @@ export function PosScreen({ standalone = false }) {
     }
     void savePreviousOrderEditDraft(nextCart).catch(() => {});
     if (editedOrderHasLocalDraftChanges(nextCart)) {
-      scheduleEditedOrderAutosave();
+      scheduleEditedOrderAutosave({ immediate });
     }
   }
 
@@ -4751,6 +4752,9 @@ export function PosScreen({ standalone = false }) {
           }
           cartRef.current = nextCart;
           setCart(nextCart);
+          if (isPreviousOrderEditSession(activeCart) && !activeCart.offline) {
+            persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+          }
           if (sameLineId(editingLineId, line.id)) clearLineEntry();
           if (sameLineId(selectedLineId, line.id)) setSelectedLineId(null);
           return;
@@ -5034,7 +5038,7 @@ export function PosScreen({ standalone = false }) {
       cartRef.current = nextCart;
       setCart(nextCart);
       if (isPreviousOrderEditSession(cart) && !cart.offline) {
-        persistPreviousOrderLocalDraft(nextCart);
+        persistPreviousOrderLocalDraft(nextCart, { immediate: true });
       }
       if (clearsEditing) clearLineEntry();
       clearClassicLineSelection();
@@ -5043,7 +5047,11 @@ export function PosScreen({ standalone = false }) {
           targets.length === 1
             ? targets[0]?.product_name || targets[0]?.product_code || "Item"
             : `${targets.length} items`;
-        if (!standalone) {
+        if (standalone && instantAutoEditSync) {
+          setStatusMessage(
+            `${label} removed from Cash Sales #${formatPosBrowseLabel(cart)} — syncing…`,
+          );
+        } else if (!standalone) {
           setStatusMessage(
             `${label} removed from revised Cash Sales #${formatPosBrowseLabel(cart)}. Saved locally — syncing…`,
           );
@@ -5118,14 +5126,14 @@ export function PosScreen({ standalone = false }) {
         cartRef.current = nextCart;
         setCart(nextCart);
         if (isPreviousOrderEditSession(cart) && !cart.offline) {
-          persistPreviousOrderLocalDraft(nextCart);
+          persistPreviousOrderLocalDraft(nextCart, { immediate: true });
         }
         clearLineEntry();
         setSelectedLineId(null);
         setStatusMessage(
           isPreviousOrderEditSession(cart)
             ? instantAutoEditSync
-              ? "Lines cleared — add items again or start a new order to abandon."
+              ? "Lines cleared — syncing empty revision…"
               : "Lines cleared — complete the order to save, or start a new order to abandon."
             : "Cart cleared.",
         );
@@ -6197,9 +6205,12 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     if (!editedOrderHasLocalDraftChanges(activeCart)) return;
-    if (!(activeCart.lines ?? []).some((l) => Number(l.quantity ?? 0) > 0 && l.product_code)) {
-      return;
-    }
+    const hasPositiveLines = (activeCart.lines ?? []).some(
+      (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
+    );
+    const allowEmptyRevision =
+      Boolean(activeCart._editDraftDirty) && (activeCart.lines?.length ?? 0) === 0;
+    if (!hasPositiveLines && !allowEmptyRevision) return;
 
     if (editAutosaveTimerRef.current) {
       window.clearTimeout(editAutosaveTimerRef.current);
@@ -6223,7 +6234,10 @@ export function PosScreen({ standalone = false }) {
         const lines = (cartNow.lines ?? []).filter(
           (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
         );
-        if (!lines.length) return;
+        const allowEmptyRevision =
+          Boolean(cartNow._editDraftDirty) &&
+          (cartNow.lines?.length ?? 0) === 0;
+        if (!lines.length && !allowEmptyRevision) return;
 
         editAutosaveInFlightRef.current = true;
         setEditAutosaveBusy(true);
@@ -6357,18 +6371,23 @@ export function PosScreen({ standalone = false }) {
    */
   async function flushEditedOrderDraftToServer() {
     const activeCart = cartRef.current;
-    if (!activeCart?.id || !activeCart?.held_order_num) return null;
+    if (!activeCart?.held_order_num || !isPreviousOrderEditSession(activeCart)) return null;
     const draftLines = (activeCart.lines ?? []).filter(
       (line) => Number(line.quantity ?? 0) > 0 && line.product_code,
     );
-    if (!draftLines.length) {
+    if (!draftLines.length && !(activeCart.lines ?? []).some((line) => line.product_code)) {
       flashPosShortcutMessage("Add items before completing this order.");
       return null;
     }
 
     setLineBusy(true);
     try {
-      const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
+      const targetCartId = await resolvePreviousOrderEditServerCartId(activeCart);
+      if (!targetCartId) {
+        flashPosShortcutMessage("Could not open the server cart for this edit. Try again.");
+        return null;
+      }
+      const updated = await apiRequest(`/sales/carts/${targetCartId}/lines`, {
         method: "PUT",
         body: {
           lines: draftLines.map((line) => {
@@ -6394,7 +6413,10 @@ export function PosScreen({ standalone = false }) {
         ...POS_CART_REQUEST,
       });
       const nextCart = stripPreviousOrderDraftMarkers({
-        ...applyCartMutationResponse(activeCart, updated),
+        ...applyCartMutationResponse(
+          { ...activeCart, id: targetCartId },
+          updated,
+        ),
         held_order_num: activeCart.held_order_num,
         superseded_sale_id: activeCart.superseded_sale_id,
       });
