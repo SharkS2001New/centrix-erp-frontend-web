@@ -75,11 +75,14 @@ export function disposePrintWindow(win) {
   }
 }
 
-function attachPrintCloseHandlers(win) {
+function attachPrintCloseHandlers(win, onClosed) {
   if (!win) return;
 
   const close = () => {
-    window.setTimeout(() => disposePrintWindow(win), 300);
+    window.setTimeout(() => {
+      disposePrintWindow(win);
+      onClosed?.();
+    }, 300);
   };
 
   try {
@@ -103,47 +106,95 @@ function loadHtmlIntoPrintTarget(win, htmlContent, onReady) {
     // Write into the iframe document directly so it stays same-origin with the app.
     // Blob URLs are opaque and block onafterprint / afterprint handlers from the parent.
     writeHtmlToDocument(win.document, htmlContent);
-    window.requestAnimationFrame(() => {
-      onReady();
-    });
+    // Defer past React commit / microtask boundaries (avoids Chrome "callback no longer runnable").
+    window.setTimeout(onReady, 0);
     return;
   }
 
   writeHtmlToDocument(win.document, htmlContent);
 
   if (win.document.readyState === "complete") {
-    onReady();
+    window.setTimeout(onReady, 0);
   } else {
-    win.onload = onReady;
+    win.onload = () => window.setTimeout(onReady, 0);
   }
 }
 
+/**
+ * Open the browser print dialog for a prepared window/iframe.
+ * Resolves when printing finishes (afterprint) or the attempt fails.
+ */
+function scheduleBrowserPrint(win) {
+  return new Promise((resolve) => {
+    if (!win || win.closed) {
+      resolve(false);
+      return;
+    }
+
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      resolve(Boolean(ok));
+    };
+
+    attachPrintCloseHandlers(win, () => finish(true));
+    // Headless / cancelled dialogs may never fire afterprint.
+    window.setTimeout(() => finish(true), 120_000);
+
+    window.setTimeout(() => {
+      if (win.closed) {
+        finish(false);
+        return;
+      }
+      try {
+        if (!isIframePrintWindow(win)) {
+          win.focus();
+        }
+        win.print();
+      } catch (err) {
+        console.warn("Print failed", err);
+        disposePrintWindow(win);
+        finish(false);
+      }
+    }, 0);
+  });
+}
+
+/**
+ * @returns {Promise<boolean>}
+ */
 export function fillPrintWindow(win, htmlContent, { autoPrint = true, skipBaseline = false } = {}) {
-  if (!win || win.closed) return false;
+  if (!win || win.closed) return Promise.resolve(false);
 
   const preparedHtml = skipBaseline
     ? String(htmlContent ?? "")
     : injectPrintDocumentBaseline(htmlContent);
   const htmlWithoutScript = String(preparedHtml).replace(/<script[\s\S]*?<\/script>/gi, "");
 
-  let printed = false;
-  const triggerPrint = () => {
-    if (!autoPrint || printed || win.closed) return;
-    printed = true;
-    attachPrintCloseHandlers(win);
-    if (!isIframePrintWindow(win)) {
-      win.focus();
-    }
-    win.print();
-  };
+  return new Promise((resolve) => {
+    let started = false;
+    const triggerPrint = () => {
+      if (started) return;
+      started = true;
+      if (!autoPrint) {
+        resolve(true);
+        return;
+      }
+      if (win.closed) {
+        resolve(false);
+        return;
+      }
+      void scheduleBrowserPrint(win).then(resolve);
+    };
 
-  loadHtmlIntoPrintTarget(win, htmlWithoutScript, triggerPrint);
-  return true;
+    loadHtmlIntoPrintTarget(win, htmlWithoutScript, triggerPrint);
+  });
 }
 
 export function showPrintPreparing(win, message = "Preparing document…") {
-  if (!win || win.closed) return;
-  fillPrintWindow(
+  if (!win || win.closed) return Promise.resolve(false);
+  return fillPrintWindow(
     win,
     `<!DOCTYPE html><html><head><title>Print</title></head><body style="font-family:system-ui,sans-serif;padding:24px;color:#334155;">${message}</body></html>`,
     { autoPrint: false },
@@ -154,6 +205,6 @@ export function showPrintPreparing(win, message = "Preparing document…") {
 export function openPrintWindow(htmlContent, windowFeatures = printWindowFeatures("receipt"), options = {}) {
   const win = openBlankPrintWindow(windowFeatures);
   if (!win) return null;
-  fillPrintWindow(win, htmlContent, options);
+  void fillPrintWindow(win, htmlContent, options);
   return win;
 }

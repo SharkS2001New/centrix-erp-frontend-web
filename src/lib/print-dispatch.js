@@ -1,5 +1,4 @@
 import {
-  openPrintWindow,
   fillPrintWindow,
   openBlankPrintWindow,
   printWindowFeatures,
@@ -92,7 +91,7 @@ export async function dispatchPrintJob({
   const preparedHtml = preparePrintHtml(html, jobType);
 
   if (printWindow) {
-    fillPrintWindow(printWindow, preparedHtml, { skipBaseline: true });
+    await fillPrintWindow(printWindow, preparedHtml, { skipBaseline: true });
     return { mode: "browser", ok: true };
   }
 
@@ -125,7 +124,10 @@ export async function dispatchPrintJob({
   }
 
   for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
-    openPrintWindow(preparedHtml, windowFeatures, { skipBaseline: true });
+    const win = openBlankPrintWindow(windowFeatures);
+    if (win) {
+      await fillPrintWindow(win, preparedHtml, { skipBaseline: true });
+    }
   }
 
   return { mode: "browser", ok: true };
