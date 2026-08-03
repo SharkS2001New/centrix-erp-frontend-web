@@ -1,12 +1,14 @@
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   productMatchesCatalogQuery,
+  isSellableCatalogProduct,
   stripProductStockFields,
 } from "@/lib/catalog-cache";
 import {
   idbAppendOrderNumbers,
   idbAppendOrderSlots,
   idbClearLocalCart,
+  idbClearStore,
   idbCountOrderNumbers,
   idbCountPendingOutbox,
   idbDeleteOutboxSale,
@@ -29,8 +31,10 @@ import {
   idbSetMeta,
   idbTakeNextOrderSlot,
   newClientSaleUuid,
+  clampPosOrderBusinessDate,
   normalizePosOrderDate,
   resolveOutboxClientUuidForCart,
+  todayPosOrderDate,
 } from "@/lib/pos-offline-db";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
@@ -87,12 +91,14 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
     const rows = Array.isArray(res?.data) ? res.data : [];
     for (const row of rows) {
       const product = stripProductStockFields(row);
-      if (product?.product_code) products.push(product);
+      if (isSellableCatalogProduct(product)) products.push(product);
     }
     lastPage = Number(res?.last_page ?? res?.meta?.last_page ?? page);
     page += 1;
   } while (page <= lastPage && page <= 50);
 
+  // Full replace so soft/permanent deletes drop out of local search immediately.
+  await idbClearStore("catalog");
   await idbPutCatalogProducts(products);
   await idbSetMeta("catalog_warmed_at", Date.now());
   await idbSetMeta("catalog_count", products.length);
@@ -295,7 +301,11 @@ export function isServerPosCartId(id) {
   return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
 }
 
-export { normalizePosOrderDate } from "@/lib/pos-offline-db";
+export {
+  clampPosOrderBusinessDate,
+  normalizePosOrderDate,
+  todayPosOrderDate,
+} from "@/lib/pos-offline-db";
 
 /** True when an API error means the TemporaryCart was already checked out / deleted. */
 export function isMissingTemporaryCartError(err) {
@@ -456,7 +466,7 @@ export function posTicketFieldsFromCart(cart) {
   const posOrderDate =
     normalizePosOrderDate(cart.pos_order_date) ??
     normalizePosOrderDate(cart.next_pos_order_date) ??
-    (posOrderNum != null ? normalizePosOrderDate(new Date().toISOString()) : null);
+    (posOrderNum != null ? todayPosOrderDate() : null);
   return { pos_order_num: posOrderNum, pos_order_date: posOrderDate };
 }
 
@@ -466,7 +476,7 @@ export function posTicketFieldsFromCart(cart) {
  */
 export function resolvePosTicketForCheckout(cart, options = {}) {
   const { editOrderNo = "", sourceSale = null, pendingSlot = null } = options;
-  const today = normalizePosOrderDate(new Date().toISOString());
+  const today = todayPosOrderDate();
 
   const isPreviousEdit = Boolean(cart?.held_order_num && cart?.superseded_sale_id);
   if (isPreviousEdit) {
@@ -509,7 +519,7 @@ export async function peekNextPosOfflineOrderSlot() {
 }
 
 async function allocateLocalPosTicketNumber() {
-  const today = normalizePosOrderDate(new Date().toISOString());
+  const today = todayPosOrderDate();
   const key = `pos_ticket_seq_${today}`;
   const current = Number((await idbGetMeta(key)) ?? 0);
   const next = current + 1;
@@ -613,20 +623,19 @@ export async function completeOfflineCashSale({
     }
     orderNum = Number(slot.order_num);
     posOrderNum = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
-    posOrderDate = normalizePosOrderDate(slot.pos_order_date);
+    posOrderDate = clampPosOrderBusinessDate(slot.pos_order_date);
     if (posOrderNum == null && cart.next_pos_order_num != null) {
       posOrderNum = Number(cart.next_pos_order_num);
       posOrderDate =
-        normalizePosOrderDate(cart.next_pos_order_date) ??
+        clampPosOrderBusinessDate(cart.next_pos_order_date) ??
         posOrderDate ??
-        normalizePosOrderDate(new Date().toISOString());
+        todayPosOrderDate();
     }
     clientSaleUuid = newClientSaleUuid();
     syncKind = "sale";
   }
 
   const payNow = Math.max(Number(cashAmount ?? summary.amountDue), summary.amountDue);
-  const nowIso = new Date().toISOString();
   const existingOutbox = clientSaleUuid ? await idbGetOutboxSale(clientSaleUuid) : null;
   if (existingOutbox?.sync_kind === "previous_order_edit") {
     syncKind = "previous_order_edit";
@@ -651,11 +660,9 @@ export async function completeOfflineCashSale({
     posOrderNum = localTicket.pos_order_num;
     posOrderDate = localTicket.pos_order_date ?? posOrderDate;
   }
-  posOrderDate = normalizePosOrderDate(posOrderDate);
-  const createdAtIso =
-    existingOutbox?.sale_payload?.created_at ??
-    existingOutbox?.sale_payload?.completed_at ??
-    nowIso;
+  posOrderDate = clampPosOrderBusinessDate(posOrderDate);
+  const soldAtMs = existingOutbox?.created_at_ms ?? Date.now();
+  const soldAtIso = new Date(soldAtMs).toISOString();
 
   // Prefer the cart/body customer; fall back to a prior outbox revision so edits
   // do not wipe the buyer and sync as Walk-in (TemporaryCart has no customer columns).
@@ -742,8 +749,9 @@ export async function completeOfflineCashSale({
     total_vat: summary.vat,
     amount_paid: payNow,
     cash: payNow,
-    completed_at: nowIso,
-    created_at: createdAtIso,
+    completed_at: soldAtIso,
+    created_at: soldAtIso,
+    created_at_ms: soldAtMs,
     customer_num: customerNum,
     customer_name_override: customerNameOverride,
     offline_pending_sync: true,
@@ -799,6 +807,7 @@ export async function completeOfflineCashSale({
       is_credit_sale: false,
       submit_kra: false,
       offline_order: true,
+      client_completed_at: soldAtIso,
       client_sale_uuid: clientSaleUuid,
       // Revision only for previous-order edits — new sales keep a stable uuid key for retry dedupe.
       ...(syncKind === "previous_order_edit" ? { content_revision: contentRevision } : {}),
@@ -1043,9 +1052,20 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     body.pos_order_num = posNum;
   }
   if (posDate) {
-    body.pos_order_date = posDate;
+    body.pos_order_date = clampPosOrderBusinessDate(posDate);
   } else {
     delete body.pos_order_date;
+  }
+  const clientCompleted =
+    extras.client_completed_at ??
+    row.checkout_body?.client_completed_at ??
+    row.sale_payload?.completed_at ??
+    row.sale_payload?.created_at ??
+    (row.created_at_ms ? new Date(row.created_at_ms).toISOString() : null);
+  if (clientCompleted) {
+    body.client_completed_at = clientCompleted;
+  } else {
+    delete body.client_completed_at;
   }
   if (customerNum != null) {
     body.customer_num = customerNum;

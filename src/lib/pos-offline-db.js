@@ -3,6 +3,8 @@
  * Not a full offline app — no service worker; bridge while the till stays open.
  */
 
+import { APP_TIMEZONE, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
+
 const DB_NAME = "centrix-pos-offline-v1";
 const DB_VERSION = 2;
 
@@ -221,27 +223,29 @@ export async function idbCountOrderNumbers() {
   return withStore("order_slots", "readonly", (store) => store.count());
 }
 
-/** Normalize API/ISO dates to Y-m-d for offline ticket slots + checkout. */
+/** Today's POS business date (Africa/Nairobi) — never browser/UTC midnight. */
+export function todayPosOrderDate() {
+  return todayCalendarDate(APP_TIMEZONE);
+}
+
+/**
+ * Normalize API/ISO dates to Y-m-d for offline ticket slots + checkout.
+ * Always uses the application timezone (East Africa), not UTC prefix from ISO strings.
+ */
 export function normalizePosOrderDate(value) {
   if (value == null || value === "") return null;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
   const raw = String(value).trim();
   if (!raw) return null;
-  const ymd = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (ymd) return ymd[1];
-  const parsed = new Date(raw);
-  if (!Number.isNaN(parsed.getTime())) {
-    const y = parsed.getUTCFullYear();
-    const m = String(parsed.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(parsed.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return calendarDateInTimezone(value, APP_TIMEZONE);
+}
+
+/** Prevent UTC/browser slip assigning a future POS business date to today's sale. */
+export function clampPosOrderBusinessDate(value) {
+  const today = todayPosOrderDate();
+  const normalized = normalizePosOrderDate(value);
+  if (!normalized) return today;
+  return normalized > today ? today : normalized;
 }
 
 export async function idbPutOutboxSale(sale) {

@@ -38,6 +38,14 @@ export function stripProductStockFields(product) {
   return next;
 }
 
+/** Active catalogue row — excludes soft-deleted and explicitly inactive products. */
+export function isSellableCatalogProduct(product) {
+  if (!product?.product_code) return false;
+  if (product.deleted_at != null && product.deleted_at !== "") return false;
+  if (product.is_active === false) return false;
+  return true;
+}
+
 function resolveOrgId(organizationId) {
   return organizationId ?? getStoredOrganization()?.id ?? null;
 }
@@ -59,6 +67,7 @@ function catalogSearchScore(product, query) {
 }
 
 export function productMatchesCatalogQuery(product, query) {
+  if (!isSellableCatalogProduct(product)) return false;
   return catalogSearchScore(product, query) > 0;
 }
 
@@ -82,9 +91,9 @@ function filterProductCatalogRows(rows, options = {}) {
   let list = rows ?? [];
 
   if (status === "active") {
-    list = list.filter((product) => product.is_active !== false);
+    list = list.filter(isSellableCatalogProduct);
   } else if (status === "inactive") {
-    list = list.filter((product) => product.is_active === false);
+    list = list.filter((product) => !isSellableCatalogProduct(product));
   }
 
   if (productCode != null) {

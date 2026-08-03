@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { formatThermalReceiptDateTime, normalizeDateInput } from "@/lib/datetime";
+import { formatThermalReceiptDateTime, normalizeDateInput, resolveSaleReceiptTimestamp } from "@/lib/datetime";
+
+describe("resolveSaleReceiptTimestamp", () => {
+  it("prefers created_at_ms for offline sales", () => {
+    expect(
+      resolveSaleReceiptTimestamp({
+        created_at_ms: Date.parse("2026-08-03T10:00:00.000Z"),
+        completed_at: "2026-08-04T10:00:00.000Z",
+      }),
+    ).toBe(Date.parse("2026-08-03T10:00:00.000Z"));
+  });
+});
 
 describe("formatThermalReceiptDateTime", () => {
   it("formats UTC timestamps in Africa/Nairobi", () => {

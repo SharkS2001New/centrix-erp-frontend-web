@@ -109,6 +109,13 @@ export function formatAppDateTimeWithSettings(value, settings) {
   return timePart ? `${datePart} ${timePart}` : datePart;
 }
 
+/** Prefer offline sale wall-clock (ms) over API timestamps for thermal receipts. */
+export function resolveSaleReceiptTimestamp(sale) {
+  const ms = Number(sale?.created_at_ms ?? sale?.offline_sold_at_ms ?? 0);
+  if (Number.isFinite(ms) && ms > 0) return ms;
+  return sale?.completed_at ?? sale?.created_at ?? null;
+}
+
 /** Thermal receipt footer date line — always East Africa Time. */
 export function formatThermalReceiptDateTime(value) {
   if (!value) return "—";

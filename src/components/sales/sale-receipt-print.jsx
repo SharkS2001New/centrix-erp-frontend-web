@@ -31,7 +31,7 @@ import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
 } from "@/lib/print-typography";
-import { formatThermalReceiptDateTime } from "@/lib/datetime";
+import { formatThermalReceiptDateTime, resolveSaleReceiptTimestamp } from "@/lib/datetime";
 import {
   THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
@@ -168,7 +168,7 @@ export function buildSaleReceiptHtml(
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
   const customerPhone =
     sale.customer_phone ?? sale.customer_mobile ?? customer?.phone_number ?? customer?.additional_phone ?? "";
-  const rawDate = sale.completed_at ?? sale.created_at;
+  const rawDate = resolveSaleReceiptTimestamp(sale);
   const dateTime = formatThermalReceiptDateTime(rawDate);
 
   const orgName = seller?.name ?? organizationName;

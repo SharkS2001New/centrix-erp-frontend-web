@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
 import {
@@ -47,11 +47,18 @@ export function PosPendingSyncOverlay({
   const [mounted, setMounted] = useState(false);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [listError, setListError] = useState(null);
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
   const [uomById, setUomById] = useState(() => new Map());
+  const onCountChangeRef = useRef(onCountChange);
+  const loadedOnceRef = useRef(false);
+
+  useEffect(() => {
+    onCountChangeRef.current = onCountChange;
+  }, [onCountChange]);
 
   useEffect(() => {
     setMounted(true);
@@ -70,28 +77,38 @@ export function PosPendingSyncOverlay({
     }
   }, [user?.organization_id]);
 
-  const loadPendingSales = useCallback(async () => {
+  const loadPendingSales = useCallback(async ({ refresh = false } = {}) => {
     setListError(null);
-    setLoading(true);
+    if (refresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const list = await listPendingOutboxSalesForManage();
       setRows(list);
-      onCountChange?.(list.length);
+      onCountChangeRef.current?.(list.length);
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load pending offline orders");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [onCountChange]);
+  }, []);
 
   useEffect(() => {
     if (!open) {
+      loadedOnceRef.current = false;
       setSearch("");
       setListError(null);
       setActionError(null);
       setBusyKey(null);
+      setLoading(false);
+      setRefreshing(false);
       return;
     }
+    if (loadedOnceRef.current) return;
+    loadedOnceRef.current = true;
     void loadUoms();
     void loadPendingSales();
   }, [open, loadPendingSales, loadUoms]);
@@ -125,9 +142,11 @@ export function PosPendingSyncOverlay({
     setActionError(null);
     try {
       await discardOutboxSale(uuid);
-      setRows((prev) => prev.filter((row) => orderKey(row) !== key));
-      const nextCount = Math.max(0, rows.length - 1);
-      onCountChange?.(nextCount);
+      setRows((prev) => {
+        const next = prev.filter((row) => orderKey(row) !== key);
+        onCountChangeRef.current?.(next.length);
+        return next;
+      });
       onDiscarded?.(order);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to remove offline order");
@@ -182,6 +201,15 @@ export function PosPendingSyncOverlay({
                 Local sales waiting to upload. Remove a stuck order to free the till for a new sale.
               </p>
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              disabled={Boolean(busyKey) || loading || refreshing}
+              onClick={() => void loadPendingSales({ refresh: true })}
+              className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </button>
             <button
               type="button"
               disabled={Boolean(busyKey)}
@@ -190,6 +218,7 @@ export function PosPendingSyncOverlay({
             >
               Close
             </button>
+            </div>
           </div>
         </header>
 
@@ -204,7 +233,7 @@ export function PosPendingSyncOverlay({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/50">
-          {loading ? (
+          {loading && rows.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-slate-500">Loading pending orders…</p>
           ) : listError ? (
             <p className="m-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
