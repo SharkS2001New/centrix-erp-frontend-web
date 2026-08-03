@@ -8,6 +8,7 @@ import {
   saleLineEnteredDiscountPerUnit,
   saleLineListRowAmount,
   saleLinePreviewRowAmount,
+  saleLinePackQtyForDiscount,
   saleLineUom,
 } from "@/lib/sale-line-items";
 
@@ -47,15 +48,19 @@ describe("sale line discount display qty", () => {
     ).toBe(50);
   });
 
-  it("prefers API display_unit_price when present", () => {
+  it("reverses unit price from line amount ÷ qty as a whole number", () => {
     const pricedLine = {
       ...line,
-      display_unit_price: 2300,
-      amount: 2272,
-      discount_given: 14,
+      display_unit_price: 137,
+      selling_price: 137,
+      quantity: 25,
+      amount: 3465,
+      discount_given: 0,
+      on_wholesale_retail: 1,
       product: { unit_id: 1, unit: uomById.get(1) },
     };
-    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(2300);
+    // 3465 ÷ 25 → 138.6 → 139 (not the stale catalog/display 137)
+    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(139);
   });
 
   it("falls back to gross from priced amount so markups are preserved", () => {
@@ -71,7 +76,10 @@ describe("sale line discount display qty", () => {
         unit: uomById.get(1),
       },
     };
-    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(2286);
+    // (2272 + 14) ÷ 1 pack (bag entry) — pack qty from UOM entry is 1 bag for 25kg wholesale
+    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(
+      Math.round((2272 + 14) / saleLinePackQtyForDiscount(pricedLine, uomById, {})),
+    );
   });
 
   it("returns stored line amount from the database", () => {

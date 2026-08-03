@@ -11,6 +11,7 @@ import {
   saleLineEntryQtyForEdit,
   saleLineEntryQtyToBase,
   saleLinePreviewRowAmount,
+  saleLinePackQtyForDiscount,
 } from "@/lib/sale-line-items";
 import {
   computePosLine,
@@ -194,6 +195,39 @@ function priceDraftLine(
   const asRetail = isRetailLine(line) && productHasRetailTiers(retailPackage);
   const sellWholesale = !asRetail;
   const entryQty = String(line.draftQty ?? defaultPosEntryQty(product, sellWholesale, retailPackage));
+
+  // Existing saved lines: keep sold economics. Unit price = line total ÷ qty (whole KES).
+  // Repricing from today's catalog would show the wrong PRICE vs AMOUNT on Edit Order.
+  if (line.id != null) {
+    const amount = saleLinePreviewRowAmount(line, line.draftQty, uomById, {
+      retailByCode: retailMap,
+      draftDiscount: line.draftDiscount,
+      discountEditEnabled,
+    });
+    const packQty = saleLinePackQtyForDiscount(line, uomById, retailMap, line.draftQty);
+    let discountTotal = 0;
+    if (discountEditEnabled) {
+      discountTotal = lineDiscountTotal(Number(line.draftDiscount ?? 0), packQty);
+    } else {
+      const oldBase = Number(line.quantity ?? 0);
+      const newBase = saleLineEntryQtyToBase(line, line.draftQty, uomById, retailMap);
+      if (oldBase > 0 && newBase > 0) {
+        discountTotal = Math.round((Number(line.discount_given ?? 0) * newBase) / oldBase * 100) / 100;
+      } else {
+        discountTotal = Math.max(0, Number(line.discount_given ?? 0));
+      }
+    }
+    const gross = amount + discountTotal;
+    const unitPrice = packQty > 0 ? Math.round(gross / packQty) : 0;
+    return {
+      amount,
+      unitPrice,
+      displayUnitPrice: unitPrice,
+      baseQty: saleLineEntryQtyToBase(line, line.draftQty, uomById, retailMap),
+      packQty,
+      discountTotal,
+    };
+  }
 
   const base = computePosLine({
     product,

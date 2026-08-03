@@ -459,7 +459,7 @@ function posProductDisplayName(record) {
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
 const POS_CHECKOUT_TIMEOUT_MS = 90_000;
 /** Wait after the last previous-order edit before uploading (batch qty/line changes). */
-const PREVIOUS_ORDER_EDIT_SYNC_DEBOUNCE_MS = 60_000;
+const PREVIOUS_ORDER_EDIT_SYNC_DEBOUNCE_MS = 8_000;
 
 function presentLocalOfflineCart(local) {
   if (!local) return null;
@@ -622,7 +622,7 @@ function previousOrderEditWorkspaceHint({ kraFiscalize = false, offline = false 
   if (kraFiscalize) {
     return "Edit lines locally; F10 completes payment and fiscalizes the revised receipt (KRA QR). Alt+P reprints before complete.";
   }
-  return "Edits apply instantly — online sync runs 1 minute after you stop changing lines. Alt+P reprint when finished.";
+  return "Edits apply instantly — online sync runs a few seconds after you stop changing lines. Alt+P reprint when finished.";
 }
 
 /** Standalone toast / banner copy for previous-order edit modes. */
@@ -647,8 +647,8 @@ function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline
     };
   }
   return {
-    loaded: `Order ${label} loaded. Each change applies instantly — sync runs 1 minute after you stop editing. Print with Alt+P when finished.`,
-    f10: "F10 syncs now if you are finished. Otherwise edits keep applying and sync runs 1 minute after you stop.",
+    loaded: `Order ${label} loaded. Each change applies instantly — sync runs a few seconds after you stop editing. Print with Alt+P when finished.`,
+    f10: "F10 syncs now if you are finished. Otherwise edits keep applying and sync runs shortly after you stop.",
     synced: `Order ${label} saved on server. Print the revised receipt (Alt+P or Reprint).`,
     leaveConfirm:
       "Start a new order? Edits already saved keep syncing in the background — you do not need to wait.",
@@ -2690,8 +2690,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * After a previous-order edit syncs (checkout consumed the edit cart), restore that
-   * sale back into the workspace so the cashier can keep editing with a live cart id.
+   * After a previous-order edit syncs, keep editing on the local cart and point
+   * superseded_sale_id at the new live sale. Do NOT call restore-to-cart here —
+   * that re-cancels the order and makes it vanish from Sales & Orders / X/Z maths
+   * for the whole remaining edit session.
    */
   async function refreshPreviousOrderEditCartAfterSync(sale, { workspaceGeneration } = {}) {
     if (!sale?.id || !standalone) return;
@@ -2706,66 +2708,33 @@ export function PosScreen({ standalone = false }) {
     ) {
       return;
     }
-    try {
-      const restored = await apiRequest(`/sales/orders/${sale.id}/restore-to-cart`, {
-        method: "POST",
-        body: { replace: true },
-        loading: false,
-        reportIssues: false,
-      });
-      if (skipEditAutosaveRef.current) return;
-      if (
-        workspaceGeneration != null &&
-        freshWorkspaceGenerationRef.current !== workspaceGeneration
-      ) {
-        return;
-      }
-      const current = cartRef.current;
-      if (
-        !current?.held_order_num ||
-        isFreshWorkspacePlaceholder(current) ||
-        Number(current.held_order_num) !== Number(sale.order_num)
-      ) {
-        return;
-      }
-      const keepDirty = editedOrderHasLocalDraftChanges(current);
-      const next = {
-        ...(presentRestoredEditCart(restored, sale) ?? restored),
-        // Keep live line edits that may have landed during sync.
-        lines: current.lines ?? restored?.lines,
-        customer_num:
-          current.customer_num ??
-          sale.customer_num ??
-          sale.customer?.customer_num ??
-          restored?.customer_num ??
-          null,
-        customer_name_override:
-          String(
-            current.customer_name_override ??
-              sale.customer_name_override ??
-              sale.customer?.customer_name ??
-              restored?.customer_name_override ??
-              "",
-          ).trim() || null,
-        order_discount: current.order_discount ?? restored?.order_discount,
-        server_sale_id: sale.id,
-        superseded_sale_id: sale.id,
-        ...(sale.pos_order_num != null
-          ? { pos_order_num: Number(sale.pos_order_num) }
-          : {}),
-        ...(sale.pos_order_date ? { pos_order_date: sale.pos_order_date } : {}),
-        ...(keepDirty ? { _editDraftDirty: true } : {}),
-      };
-      const normalized = keepDirty ? next : stripPreviousOrderDraftMarkers(next);
-      cartRef.current = normalized;
-      setCart(normalized);
-      setEditSourceSale(sale);
-      void savePreviousOrderEditDraft(normalized).catch(() => {});
-      if (keepDirty) {
-        scheduleEditedOrderAutosave();
-      }
-    } catch {
-      /* keep editing on local cart; next upsert restores via superseded_sale_id */
+
+    const keepDirty = editedOrderHasLocalDraftChanges(active);
+    const base = isServerPosCartId(active.id)
+      ? detachPreviousOrderEditCartId(active)
+      : active;
+    const next = {
+      ...base,
+      // Detached edit cart — next sync restores from this live sale id once.
+      server_sale_id: sale.id,
+      superseded_sale_id: sale.id,
+      held_order_num: Number(sale.order_num),
+      ...(sale.pos_order_num != null
+        ? { pos_order_num: Number(sale.pos_order_num) }
+        : {}),
+      ...(sale.pos_order_date ? { pos_order_date: sale.pos_order_date } : {}),
+      ...(keepDirty ? { _editDraftDirty: true } : {}),
+    };
+    const normalized = keepDirty ? next : stripPreviousOrderDraftMarkers(next);
+    cartRef.current = normalized;
+    setCart(normalized);
+    setEditSourceSale(sale);
+    void savePreviousOrderEditDraft(normalized).catch(() => {});
+    if (enablePosOrderEdit) {
+      void loadCompletedPosOrders();
+    }
+    if (keepDirty) {
+      scheduleEditedOrderAutosave();
     }
   }
 
@@ -6183,7 +6152,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * KRA-off previous-order edits: debounce outbox upsert + flush (1 min after last change).
+   * KRA-off previous-order edits: debounce outbox upsert + flush (~8s after last change).
    * KRA-on stays local-only until F10 (fiscal QR requires device response).
    * Edits stay local while sync runs — only workspace switch is blocked during flush.
    */
@@ -7294,7 +7263,7 @@ export function PosScreen({ standalone = false }) {
       const orderNum = restoredCart?.held_order_num ?? restoredCart?.next_order_num;
       if (browseNum != null || orderNum != null) {
         if (browseNum != null) setEditOrderNo(String(browseNum));
-        // Sale is tombstoned while editing — drop it from ← list until checkout recreates it.
+        // Drop from local ← browse while editing this ticket (Sales & Orders still shows it).
         setSessionPosOrders((prev) => {
           const next = prev.filter((row) => String(row.id) !== String(saleId));
           // Keep browse index aligned with the loaded POS ticket # (or clamp).

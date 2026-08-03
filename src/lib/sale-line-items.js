@@ -213,24 +213,26 @@ export function legacySaleLinePrintQtyPackage(line) {
 }
 
 /** Display sale line quantity with packaging labels when UOM data is available. */
-/** Gross unit price per sold pack/display unit — prefers cart-calculated display price. */
+/** Gross unit price per sold pack/display unit — reverse from line total ÷ qty (whole KES).
+ * Mobile route markup (and retail tier add-ons) sit on the line amount, not the catalog
+ * unit — so PRICE must be amount÷qty, never the bare wholesale/kg from the product card.
+ */
 export function saleLineSoldUnitPrice(line, uomById, retailByCode = {}) {
-  if (line?.display_unit_price != null && line.display_unit_price !== "") {
-    const fromApi = Number(line.display_unit_price);
-    if (Number.isFinite(fromApi) && fromApi >= 0) return fromApi;
-  }
-
-  // Fallback for legacy lines: recover sold-unit gross from the priced line so
-  // retail/wholesale/route markups baked into amount are preserved.
-  const amount = Number(line?.amount ?? 0);
+  const amount = Number(line?.amount ?? line?.display_amount ?? 0);
   const discount = Math.max(0, Number(line?.discount_given ?? 0));
   const packQty = saleLinePackQtyForDiscount(line, uomById, retailByCode);
   if (packQty > 0 && (amount > 0 || discount > 0)) {
-    return Math.round(((amount + discount) / packQty) * 100) / 100;
+    // e.g. retail 25 kg line 3,465 (includes route markup) → 139 / kg
+    return Math.round((amount + discount) / packQty);
+  }
+
+  if (line?.display_unit_price != null && line.display_unit_price !== "") {
+    const fromApi = Number(line.display_unit_price);
+    if (Number.isFinite(fromApi) && fromApi >= 0) return Math.round(fromApi);
   }
 
   const stored = Number(line?.selling_price ?? line?.unit_price ?? 0);
-  return Number.isFinite(stored) && stored > 0 ? stored : 0;
+  return Number.isFinite(stored) && stored > 0 ? Math.round(stored) : 0;
 }
 
 /** @deprecated Use {@link saleLineSoldUnitPrice} for order line tables. */
@@ -310,7 +312,7 @@ export function resolveSaleLinePrintColumns(
     const amountAfterDisc = Number(line?.amount ?? 0);
     const amountBeforeDisc = amountAfterDisc + discount;
     const qty = baseQty > 0 ? baseQty : 0;
-    const unitPrice = qty > 0 ? Math.round((amountBeforeDisc / qty) * 100) / 100 : 0;
+    const unitPrice = qty > 0 ? Math.round(amountBeforeDisc / qty) : 0;
 
     return {
       qty,
@@ -345,7 +347,7 @@ export function resolveSaleLinePrintColumns(
         : 0;
 
   const unitPrice =
-    qty > 0 ? Math.round((amountBeforeDisc / qty) * 100) / 100 : 0;
+    qty > 0 ? Math.round(amountBeforeDisc / qty) : 0;
 
   if (isRetail) {
     const basePrice =
