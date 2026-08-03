@@ -18,7 +18,6 @@ import {
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
-import { CENTRIX_POS_COMPLETE_PAYMENT_EVENT } from "@/lib/pos-keyboard-shortcuts";
 
 function normalizeKenyanPhoneInput(value) {
   return String(value ?? "").replace(/\D/g, "");
@@ -245,7 +244,6 @@ export function PosPaymentPanel({
   const bankAmountRef = useRef(null);
   const creditTriggerRef = useRef(null);
   const enterActionRef = useRef(() => {});
-  const completeFromKeyboardRef = useRef(() => {});
   const prevOpenRef = useRef(false);
   const stkPollRef = useRef(null);
   const lastStkAmountRef = useRef(null);
@@ -793,23 +791,8 @@ export function PosPaymentPanel({
     return false;
   }
 
-  function requestCompleteFromKeyboard() {
-    if (saving || step === "saving") return;
-
-    if (step === "complete") {
-      void handleOrderCompleteOk();
-      return;
-    }
-    if (step === "confirm") {
-      handleConfirmYes();
-      return;
-    }
-    if (step === "customerName") {
-      handleCustomerNameContinue();
-      return;
-    }
-    if (step !== "payment") return;
-
+  function requestPaymentStepComplete() {
+    if (step !== "payment" || saving) return;
     if (!canComplete) {
       setLocalError(
         validatePayment() || "Please check the amount — payment is less than the bill total.",
@@ -818,14 +801,13 @@ export function PosPaymentPanel({
     }
     handleRequestComplete();
   }
-  completeFromKeyboardRef.current = requestCompleteFromKeyboard;
 
   function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false } = {}) {
     if (step !== "payment" || saving) return;
 
     if (e.key === "PageDown") {
       e.preventDefault();
-      requestCompleteFromKeyboard();
+      requestPaymentStepComplete();
       return;
     }
 
@@ -843,13 +825,12 @@ export function PosPaymentPanel({
         return;
       }
 
-      if (current > 0 && canComplete) {
-        requestCompleteFromKeyboard();
-      } else if (current > 0) {
+      if (current > 0 && !canComplete) {
         setLocalError(
           validatePayment() || "Please check the amount — payment is less than the bill total.",
         );
       }
+      // Amount entered — use Page Down to open confirm; Enter only prefills balance.
     }
   }
 
@@ -858,7 +839,7 @@ export function PosPaymentPanel({
 
     if (e.key === "PageDown") {
       e.preventDefault();
-      requestCompleteFromKeyboard();
+      requestPaymentStepComplete();
       return;
     }
 
@@ -1231,14 +1212,6 @@ export function PosPaymentPanel({
     }
   }
 
-  function isTypingContext() {
-    const el = document.activeElement;
-    if (!el) return false;
-    const tag = el.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-    return el.getAttribute("role") === "combobox" && el.getAttribute("aria-expanded") === "true";
-  }
-
   const creditValidationError = hasCreditCustomer
     ? validateCustomerCreditSale({
         customer: creditCustomer,
@@ -1316,21 +1289,9 @@ export function PosPaymentPanel({
         handleConfirmYes();
         return;
       }
-      if (step === "payment" && canComplete && !isTypingContext()) {
-        e.preventDefault();
-        handleRequestComplete();
-      }
+      // Payment step: Enter only prefills amounts in field handlers — Page Down completes.
     };
   });
-
-  useEffect(() => {
-    if (!open) return;
-    function onF10Complete() {
-      completeFromKeyboardRef.current();
-    }
-    window.addEventListener(CENTRIX_POS_COMPLETE_PAYMENT_EVENT, onF10Complete);
-    return () => window.removeEventListener(CENTRIX_POS_COMPLETE_PAYMENT_EVENT, onF10Complete);
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -1338,7 +1299,7 @@ export function PosPaymentPanel({
       if (step === "payment" && !saving) {
         if (e.key === "PageDown") {
           e.preventDefault();
-          requestCompleteFromKeyboard();
+          requestPaymentStepComplete();
           return;
         }
         if (handlePaymentNavigationKey(e)) return;
@@ -1431,7 +1392,7 @@ export function PosPaymentPanel({
             Change: {formatSaleKes(confirmSummary.changeDue)}
           </p>
         ) : null}
-        <p className="theme-text-muted mt-3 text-xs">Press Enter or F10 to complete payment.</p>
+        <p className="theme-text-muted mt-3 text-xs">Press Enter to continue.</p>
         {(error || localError) ? (
           <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
         ) : null}
@@ -2197,7 +2158,7 @@ export function PosPaymentPanel({
               onTriggerKeyDown={(e) => {
                 if (e.key === "PageDown") {
                   e.preventDefault();
-                  requestCompleteFromKeyboard();
+                  requestPaymentStepComplete();
                   return;
                 }
                 if (handlePaymentNavigationKey(e)) return;
@@ -2233,7 +2194,7 @@ export function PosPaymentPanel({
       <p className="theme-text-muted mt-3 text-[11px] leading-relaxed">
         {[
           "Page Down — complete payment",
-          "Enter — fill balance or complete",
+          "Enter — fill remaining balance",
           "C — cash",
           cfg.enableMpesaAmount ? "M — M-Pesa" : null,
           cfg.useBankSelect && cfg.showBankAmount ? "B — bank" : null,

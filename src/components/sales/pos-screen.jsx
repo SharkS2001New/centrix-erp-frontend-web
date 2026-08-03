@@ -188,7 +188,6 @@ import {
 } from "@/lib/pos-offline";
 import { isSellableCatalogProduct } from "@/lib/catalog-cache";
 import {
-  CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
   clearPosAltLatch,
   isPosAltKeyEvent,
@@ -718,37 +717,53 @@ export function PosScreen({ standalone = false }) {
     syncOfflineOrders,
   } = usePosOfflineSupport({ enabled: standalone });
 
-  /** Push queued outbox sales to the server — awaited after every local/outbox checkout. */
-  async function pushOutboxAfterSale(orderNum, { syncingLabel = "syncing" } = {}) {
+  /** Push queued outbox sales to the server (await when caller must block). */
+  async function pushOutboxAfterSale(orderNum, { syncingLabel = "syncing", background = false } = {}) {
     if (!standalone) return true;
-    setStatusMessage(
-      orderNum != null
-        ? `Sale #${orderNum} saved — pushing to server…`
-        : "Pushing sale to server…",
-    );
-    const { ok, results, pending } = await flushOutboxAfterSale();
-    await refreshOfflineCounts();
-    if (ok) {
-      if (orderNum != null) {
-        setStatusMessage(`Sale #${orderNum} completed and synced.`);
+
+    const run = async () => {
+      if (!background) {
+        setStatusMessage(
+          orderNum != null
+            ? `Sale #${orderNum} saved — pushing to server…`
+            : "Pushing sale to server…",
+        );
       }
+      const { ok, results, pending } = await flushOutboxAfterSale();
+      await refreshOfflineCounts();
+      if (ok) {
+        if (orderNum != null && !background) {
+          setStatusMessage(`Sale #${orderNum} completed and synced.`);
+        }
+        return true;
+      }
+      const failed = (results ?? []).filter((row) => !row.ok);
+      const detail =
+        failed[0]?.error ??
+        (pending > 0 ? `${pending} sale(s) still waiting to sync` : "Could not reach the server");
+      notifyError(
+        orderNum != null
+          ? `Sale #${orderNum} saved locally — sync failed: ${detail}`
+          : `Sale saved locally — sync failed: ${detail}`,
+      );
+      setStatusMessage(
+        orderNum != null
+          ? `Sale #${orderNum} saved locally — ${syncingLabel}. Use Sync or Pending sync.`
+          : `Sale saved locally — ${syncingLabel}. Use Sync or Pending sync.`,
+      );
+      return false;
+    };
+
+    if (background) {
+      void run();
       return true;
     }
-    const failed = (results ?? []).filter((row) => !row.ok);
-    const detail =
-      failed[0]?.error ??
-      (pending > 0 ? `${pending} sale(s) still waiting to sync` : "Could not reach the server");
-    notifyError(
-      orderNum != null
-        ? `Sale #${orderNum} saved locally — sync failed: ${detail}`
-        : `Sale saved locally — sync failed: ${detail}`,
-    );
-    setStatusMessage(
-      orderNum != null
-        ? `Sale #${orderNum} saved locally — ${syncingLabel}. Use Sync or Pending sync.`
-        : `Sale saved locally — ${syncingLabel}. Use Sync or Pending sync.`,
-    );
-    return false;
+    return run();
+  }
+
+  /** Fire-and-forget outbox sync after checkout — receipt prints without waiting. */
+  function queueOutboxAfterSale(orderNum) {
+    void pushOutboxAfterSale(orderNum, { background: true });
   }
 
   const handlePendingSyncCountChange = useCallback(() => {
@@ -2600,23 +2615,15 @@ export function PosScreen({ standalone = false }) {
     ) {
       return recoverMissingServerCart();
     }
-    if (
-      current?.id &&
-      isServerPosCartId(current.id) &&
-      current.channel === channel &&
-      Array.isArray(current.lines) &&
-      (current.lines?.length ?? 0) === 0
-    ) {
-      return current;
-    }
+    // Trust the live TemporaryCart for line adds. A GET refresh here races
+    // optimistic UI and briefly drops/replaces lines (cart flicker).
     if (current?.id && isServerPosCartId(current.id) && current.channel === channel) {
-      return refreshCart(current.id);
+      return current;
     }
     return loadCashierCart();
   }, [
     channel,
     loadCashierCart,
-    refreshCart,
     recoverMissingServerCart,
     standalone,
     offlineMode,
@@ -5532,7 +5539,7 @@ export function PosScreen({ standalone = false }) {
       preparingNextOrderRef.current = true;
       if (!keepPaymentOpen) {
         setPaymentOpen(false);
-        setReceiptPrintStatus(null);
+        // Don't clear receiptPrintStatus here — print may still be in flight.
       }
       setPaymentError(null);
       setEditSourceSale(null);
@@ -5560,15 +5567,24 @@ export function PosScreen({ standalone = false }) {
           if (generation !== freshWorkspaceGenerationRef.current) return next;
 
           const live = cartRef.current;
+          // Cashier already scanned into the next cart while bootstrap ran — keep their work.
+          // Include same-id races: empty/stale GET must not wipe optimistic lines.
           if (
             live &&
             isServerPosCartId(live.id) &&
-            live.id !== next?.id &&
             (live.lines?.length ?? 0) > 0 &&
             !live?.held_order_num &&
             !live?.superseded_sale_id
           ) {
-            return live;
+            const nextLen = next?.lines?.length ?? 0;
+            const liveLen = live.lines?.length ?? 0;
+            if (
+              live.id !== next?.id ||
+              liveLen > nextLen ||
+              cartHasOptimisticLines(live)
+            ) {
+              return live;
+            }
           }
 
           const merged = mergeFreshWorkspaceCart(
@@ -5614,8 +5630,14 @@ export function PosScreen({ standalone = false }) {
             }
           }
           throw e;
+        } finally {
+          if (freshCartBootstrapRef.current === task) {
+            freshCartBootstrapRef.current = null;
+          }
         }
       })();
+      // Share with ensureCart so the first scan awaits this POST, not a second cart create.
+      freshCartBootstrapRef.current = task;
       prepareNextOrderInFlightRef.current = task;
       try {
         return await task;
@@ -5701,20 +5723,7 @@ export function PosScreen({ standalone = false }) {
     const shouldPrint =
       !options.skipPrint && sale?.id && posSalesConfig.showCheckoutOnCreate;
 
-    const advanceToNextOrder = ({ focusScan = false, keepPaymentOpen = false } = {}) => {
-      if (!shouldAutoNext) return;
-      queuePrepareNextPosOrderAfterSale({
-        focusScan,
-        keepPaymentOpen,
-        pendingSale: sale,
-      });
-    };
-
-    if (shouldAutoNext) {
-      // Clear the workspace immediately — receipt prints in the background.
-      advanceToNextOrder({ focusScan: !shouldPrint });
-    }
-
+    // Print first — never block the receipt on outbox sync or next-order bootstrap.
     if (shouldPrint) {
       schedulePosReceiptPrint(sale, {
         onSettled: () => {
@@ -5722,13 +5731,19 @@ export function PosScreen({ standalone = false }) {
           void handleContinueNextOrder();
         },
       });
-      setPaymentOpen(false);
-      setReceiptPrintStatus(null);
-      return;
     }
 
     if (shouldAutoNext) {
-      setPaymentOpen(false);
+      // Focus immediately — do not wait for receipt print to settle.
+      queuePrepareNextPosOrderAfterSale({
+        focusScan: true,
+        keepPaymentOpen: false,
+        pendingSale: sale,
+      });
+    }
+
+    setPaymentOpen(false);
+    if (!shouldPrint) {
       setReceiptPrintStatus(null);
     }
   }
@@ -5858,9 +5873,10 @@ export function PosScreen({ standalone = false }) {
         setSelectedLineId(null);
         clearPosUiDraft();
         clearLineEntry();
+        setStatusMessage(`Sale #${sale.order_num} saved — printing receipt…`);
         markServerCartConsumed(activeCart.id);
         afterSaleCheckoutComplete(sale, options);
-        await pushOutboxAfterSale(sale.order_num);
+        queueOutboxAfterSale(sale.order_num);
         return sale;
       } catch (e) {
         setPaymentError(e?.message ?? "Offline checkout failed.");
@@ -5956,7 +5972,7 @@ export function PosScreen({ standalone = false }) {
           clearLineEntry();
           void clearPreviousOrderEditDraft().catch(() => {});
           afterSaleCheckoutComplete(sale, options);
-          await pushOutboxAfterSale(sale.order_num);
+          queueOutboxAfterSale(sale.order_num);
           return sale;
         } catch (e) {
           // Fall through to normal online checkout if local-first fails.
@@ -6404,12 +6420,22 @@ export function PosScreen({ standalone = false }) {
     setPaymentError(null);
     setReceiptPrintStatus(null);
     if (standalone) {
-      if (
-        isFreshWorkspacePlaceholder(cartRef.current) ||
-        preparingNextOrderRef.current
-      ) {
+      const live = cartRef.current;
+      // Next-order workspace already started (or cashier already typed/scanned).
+      // Only restore focus — never force a second prepare that wipes the cart.
+      const nextOrderAlreadyReady =
+        isFreshWorkspacePlaceholder(live) ||
+        preparingNextOrderRef.current ||
+        Boolean(freshCartBootstrapRef.current) ||
+        (isServerPosCartId(live?.id) &&
+          !isServerCartConsumed(live?.id) &&
+          !live?.held_order_num &&
+          !live?.superseded_sale_id);
+      if (nextOrderAlreadyReady) {
         if (prepareNextOrderInFlightRef.current) {
           await prepareNextOrderInFlightRef.current.catch(() => {});
+        } else if (freshCartBootstrapRef.current) {
+          await freshCartBootstrapRef.current.catch(() => {});
         }
         if (classicLayout) {
           focusClassicProductSearch();
@@ -6730,15 +6756,23 @@ export function PosScreen({ standalone = false }) {
         if (generation !== freshWorkspaceGenerationRef.current) return next;
         const live = cartRef.current;
         // Cashier scanned into a different server cart while bootstrap ran — keep their work.
+        // Also keep same-id carts when live already has lines the empty GET would wipe.
         if (
           live &&
           isServerPosCartId(live.id) &&
-          live.id !== next?.id &&
           (live.lines?.length ?? 0) > 0 &&
           !live?.held_order_num &&
           !live?.superseded_sale_id
         ) {
-          return live;
+          const nextLen = next?.lines?.length ?? 0;
+          const liveLen = live.lines?.length ?? 0;
+          if (
+            live.id !== next?.id ||
+            liveLen > nextLen ||
+            cartHasOptimisticLines(live)
+          ) {
+            return live;
+          }
         }
         // Stale background sync may have re-attached a previous-order edit — force a blank cart.
         const merged = mergeFreshWorkspaceCart(
@@ -7861,7 +7895,7 @@ export function PosScreen({ standalone = false }) {
         }
 
         if (state.paymentOpen && key === "F10") {
-          window.dispatchEvent(new CustomEvent(CENTRIX_POS_COMPLETE_PAYMENT_EVENT));
+          // F10 opens payment from the cart — once open, use Page Down inside the dialog.
           return;
         }
 
