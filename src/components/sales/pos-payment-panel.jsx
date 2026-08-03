@@ -70,7 +70,14 @@ const POS_DIALOG_PRIMARY_BTN =
 const POS_DIALOG_SECONDARY_BTN =
   "theme-secondary-btn flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50";
 
-function buildConfirmPaymentMessage({ billTotal, payNow, balanceDue, isCredit }) {
+function buildConfirmPaymentMessage({ billTotal, payNow, balanceDue, isCredit, isReturnAdjustment }) {
+  if (isReturnAdjustment) {
+    return (
+      <>
+        Record refund of <strong>{formatSaleKes(Math.abs(billTotal))}</strong> on this order edit?
+      </>
+    );
+  }
   if (billTotal <= 0.01) {
     return "Complete this order?";
   }
@@ -184,6 +191,8 @@ export function PosPaymentPanel({
   onReprintReceipt,
   embedded = false,
   cashOnlyOffline = false,
+  /** KRA-on previous-order edit: collect only the top-up / return delta. */
+  previousOrderEditAdjustment = null,
 }) {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState("payment");
@@ -242,7 +251,13 @@ export function PosPaymentPanel({
   const lastStkAmountRef = useRef(null);
 
   const cfg = paymentConfig ?? {};
-  const stkPushAvailable = Boolean(enableStkPush && cartId && !cashOnlyOffline);
+  const adjustmentMode = Boolean(previousOrderEditAdjustment);
+  const signedEditDelta = adjustmentMode
+    ? Number(previousOrderEditAdjustment.signedDelta ?? 0)
+    : 0;
+  const isReturnAdjustment = adjustmentMode && signedEditDelta < -0.01;
+  const isTopupAdjustment = adjustmentMode && signedEditDelta > 0.01;
+  const stkPushAvailable = Boolean(enableStkPush && cartId && !cashOnlyOffline && !adjustmentMode);
   const mpesaFieldsLocked = Boolean(lockMpesaFields || stkAppliedLock);
 
   useEffect(() => setMounted(true), []);
@@ -252,7 +267,9 @@ export function PosPaymentPanel({
     prevOpenRef.current = Boolean(open);
     if (!open || !justOpened) return;
 
-    const total = Number(billTotal) || 0;
+    const total = adjustmentMode
+      ? Math.abs(signedEditDelta)
+      : Number(billTotal) || 0;
     setStep("payment");
     setCompletedOrder(null);
     setConfirmSummary(null);
@@ -262,7 +279,9 @@ export function PosPaymentPanel({
     setCreditSearchOptions([]);
     setSessionBillTotal(total);
     setPaymentDate(todayDateString());
-    setCashAmount("0");
+    setCashAmount(
+      adjustmentMode && total > 0 ? String(Math.ceil(total)) : "0",
+    );
     const mpesaPrefill = Math.max(0, Number(prefillMpesaAmount) || 0);
     setMpesaAmount(mpesaPrefill > 0 ? String(mpesaPrefill) : "0");
     setMpesaCode(String(prefillMpesaCode ?? "").trim());
@@ -298,6 +317,8 @@ export function PosPaymentPanel({
     prefillMpesaCode,
     prefillMpesaPhone,
     prefillWalkInCustomerName,
+    previousOrderEditAdjustment,
+    signedEditDelta,
   ]);
 
   useEffect(() => {
@@ -404,7 +425,9 @@ export function PosPaymentPanel({
     mpesaFieldsLocked,
   ]);
 
-  const checkoutTotal = sessionBillTotal || Number(billTotal) || 0;
+  const checkoutTotal = adjustmentMode
+    ? Math.abs(signedEditDelta)
+    : sessionBillTotal || Number(billTotal) || 0;
 
   const balanceDue = Math.max(0, checkoutTotal - amountPaid);
   const changeDue = Math.max(0, amountPaid - checkoutTotal);
@@ -516,8 +539,8 @@ export function PosPaymentPanel({
   }
 
   function buildCheckoutBody() {
-    const payNow = Math.min(amountPaid, checkoutTotal);
-    const creditSale = hasCreditCustomer;
+    const payNow = adjustmentMode ? 0 : Math.min(amountPaid, checkoutTotal);
+    const creditSale = hasCreditCustomer && !adjustmentMode;
     const paymentMethodCode = creditSale && payNow <= 0 ? "CREDIT" : primaryMethodCode();
     const status = resolveCheckoutStatus({
       channel,
@@ -546,7 +569,7 @@ export function PosPaymentPanel({
         chequeNo,
         bankRef,
       }),
-      payNow + cartMpesa,
+      adjustmentMode ? amountPaid : payNow + cartMpesa,
     );
 
     const body = {
@@ -556,6 +579,7 @@ export function PosPaymentPanel({
       payment_date: resolvedPaymentDate(),
       status,
       is_credit_sale: creditSale,
+      ...(adjustmentMode ? { __previous_order_edit_adjustment: true } : {}),
       ...(paymentSplits.length > 0 ? { payment_splits: paymentSplits } : {}),
       // Frontend-only: full amount tendered by the customer (may exceed order total for cash).
       // Stripped before the API call; used to print the correct change on the receipt.
@@ -582,6 +606,21 @@ export function PosPaymentPanel({
   function validatePayment() {
     const fieldErr = validatePaymentFieldDetails();
     if (fieldErr) return fieldErr;
+
+    if (adjustmentMode) {
+      if (checkoutTotal <= 0.01) {
+        return null;
+      }
+      if (amountPaid + 0.01 < checkoutTotal) {
+        return isReturnAdjustment
+          ? "Enter how the refund was paid — amounts must match the return total."
+          : "Enter how the top-up was paid — amounts must match the extra due.";
+      }
+      if (cfg.rejectOverpayment && amountPaid - checkoutTotal > 0.01) {
+        return `Payment of ${formatSaleKes(amountPaid)} exceeds the ${isReturnAdjustment ? "return" : "top-up"} amount of ${formatSaleKes(checkoutTotal)}.`;
+      }
+      return null;
+    }
 
     if (showCreditPaymentField && hasCreditCustomer && !creditCustomer) {
       return "Select a valid credit customer.";
@@ -618,17 +657,18 @@ export function PosPaymentPanel({
       setLocalError(err);
       return;
     }
-    const total = Number(billTotal) || 0;
+    const total = adjustmentMode ? checkoutTotal : Number(billTotal) || 0;
     setSessionBillTotal(total);
     const paid = amountPaid;
-    const payNow = Math.min(paid, total);
+    const payNow = adjustmentMode ? 0 : Math.min(paid, total);
     setConfirmSummary({
       billTotal: total,
       amountPaid: paid,
       payNow,
       balanceDue: Math.max(0, total - paid),
-      changeDue: Math.max(0, paid - total),
+      changeDue: adjustmentMode ? 0 : Math.max(0, paid - total),
       isCredit: hasCreditCustomer,
+      isReturnAdjustment,
     });
     setStep("confirm");
   }
@@ -1191,12 +1231,14 @@ export function PosPaymentPanel({
     : null;
 
   const canComplete =
-    (hasCreditCustomer && !creditValidationError) ||
-    amountPaid + 0.01 >= checkoutTotal ||
-    (cfg.allowPartialPayment && amountPaid > 0);
+    adjustmentMode
+      ? checkoutTotal <= 0.01 || amountPaid + 0.01 >= checkoutTotal
+      : (hasCreditCustomer && !creditValidationError) ||
+        amountPaid + 0.01 >= checkoutTotal ||
+        (cfg.allowPartialPayment && amountPaid > 0);
 
   /** Credit customer field is shown whenever credit payment is enabled in admin settings. */
-  const showCreditPaymentField = cfg.enableCreditPayment;
+  const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode;
 
   useEffect(() => {
     if (!open || step !== "payment") return;
@@ -1829,7 +1871,7 @@ export function PosPaymentPanel({
 
   return (
     <PosDialogShell
-      title="CHECKOUT"
+      title={adjustmentMode ? "PREVIOUS ORDER ADJUSTMENT" : "CHECKOUT"}
       saving={isCheckoutProcessing(saving, step)}
       onClose={handleShellClose}
       overlay={dialogOverlay}
@@ -1863,10 +1905,41 @@ export function PosPaymentPanel({
         </div>
       }
     >
+      {adjustmentMode ? (
+        <div className="theme-panel mb-4 rounded-lg border px-3 py-2 text-xs">
+          {previousOrderEditAdjustment.orderNum != null ? (
+            <p className="theme-subtext mb-1">
+              Cash Sales #{previousOrderEditAdjustment.orderNum}
+            </p>
+          ) : null}
+          <p>
+            Was <strong>{formatSaleKes(previousOrderEditAdjustment.originalTotal ?? 0)}</strong>
+            {" → "}
+            <strong>{formatSaleKes(previousOrderEditAdjustment.newTotal ?? 0)}</strong>
+          </p>
+          <p className="mt-1 font-medium text-[var(--theme-text)]">
+            {isReturnAdjustment
+              ? `Refund ${formatSaleKes(checkoutTotal)} to the customer.`
+              : isTopupAdjustment
+                ? `Collect ${formatSaleKes(checkoutTotal)} extra on this order.`
+                : "Confirm this order update."}
+          </p>
+        </div>
+      ) : null}
       <dl className="mb-4 space-y-1 text-xs">
         <div className="flex justify-between">
-          <dt>Bill Total</dt>
-          <dd className="font-bold">{formatSaleKes(checkoutTotal)}</dd>
+          <dt>
+            {adjustmentMode
+              ? isReturnAdjustment
+                ? "Return amount"
+                : isTopupAdjustment
+                  ? "Top-up amount"
+                  : "Adjustment"
+              : "Bill Total"}
+          </dt>
+          <dd className="font-bold">
+            {isReturnAdjustment ? `−${formatSaleKes(checkoutTotal)}` : formatSaleKes(checkoutTotal)}
+          </dd>
         </div>
         {mpesaFieldsLocked && parseDecimalInput(mpesaAmount) > 0 ? (
           <div className="flex justify-between text-emerald-800">
@@ -1882,10 +1955,12 @@ export function PosPaymentPanel({
           <dt>Balance Due</dt>
           <dd className="font-bold">{formatSaleKes(balanceDue)}</dd>
         </div>
+        {!adjustmentMode ? (
         <div className="flex justify-between">
           <dt>Change Due</dt>
           <dd className="font-bold">{formatSaleKes(changeDue)}</dd>
         </div>
+        ) : null}
       </dl>
 
       <fieldset className="theme-fieldset mt-3 rounded-lg border p-3">

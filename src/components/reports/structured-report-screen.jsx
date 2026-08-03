@@ -174,7 +174,6 @@ function StandardReportScreen({ definition }) {
           toDate: currentApplied.toDate,
           branchId: currentApplied.branchId,
           extraValues: currentApplied.queryFilters,
-          toggleValues: currentApplied.extraFilters,
         }),
       };
       if (definition.dateColumn && !searchParams.date_column && reportShowsDateRange(definition.key)) {
@@ -250,12 +249,8 @@ function StandardReportScreen({ definition }) {
   }, [rows, reportSummary, definition.kpis]);
 
   const columns = useMemo(() => {
-    let cols = definition.columns ?? [];
-    if (definition.key === "sales-by-user" && applied.extraFilters?.overall_summary !== false) {
-      cols = cols.filter((col) => col.key !== "sale_date");
-    }
-    return filterStructuredReportColumns(cols, { multiBranch });
-  }, [definition.columns, definition.key, applied.extraFilters, multiBranch]);
+    return filterStructuredReportColumns(definition.columns ?? [], { multiBranch });
+  }, [definition.columns, multiBranch]);
 
   const footerTotals = useMemo(() => {
     if (!definition.footerTotals || !columns.length) return {};
@@ -308,17 +303,7 @@ function StandardReportScreen({ definition }) {
   }
 
   function handleExtraFilterChange(id, value) {
-    setExtraFilters((current) => {
-      if (definition.key === "sales-by-user") {
-        if (id === "overall_summary") {
-          return { ...current, overall_summary: value, breakdown_by_date: !value };
-        }
-        if (id === "breakdown_by_date") {
-          return { ...current, breakdown_by_date: value, overall_summary: !value };
-        }
-      }
-      return { ...current, [id]: value };
-    });
+    setExtraFilters((current) => ({ ...current, [id]: value }));
   }
 
   function branchLabel(branchIdValue) {
@@ -333,7 +318,6 @@ function StandardReportScreen({ definition }) {
         toDate: applied.toDate,
         branchId: applied.branchId,
         extraValues: applied.queryFilters,
-        toggleValues: applied.extraFilters,
       }),
     [applied, definition.key],
   );

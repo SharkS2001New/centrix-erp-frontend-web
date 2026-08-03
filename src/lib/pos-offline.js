@@ -257,6 +257,9 @@ export async function savePreviousOrderEditDraft(cart) {
     till_id: cart.till_id ?? null,
     customer_num: cart.customer_num ?? null,
     customer_name_override: cart.customer_name_override ?? null,
+    ...(Array.isArray(cart.payment_adjustments) && cart.payment_adjustments.length
+      ? { payment_adjustments: cart.payment_adjustments }
+      : {}),
     lines,
     _editDraftDirty: Boolean(cart._editDraftDirty),
     updated_at_ms: Date.now(),
@@ -783,6 +786,9 @@ export async function completeOfflineCashSale({
       customer_name_override: customerNameOverride,
       total_vat: sale.total_vat,
       sales_workspace: "pos",
+      ...(Array.isArray(cart.payment_adjustments) && cart.payment_adjustments.length
+        ? { payment_adjustments: cart.payment_adjustments }
+        : {}),
     },
     cart_seed: {
       branch_id: sale.branch_id,

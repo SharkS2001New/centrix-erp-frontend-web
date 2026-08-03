@@ -122,6 +122,7 @@ import {
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
 import { PosPaymentPanel } from "./pos-payment-panel";
+import { PosEditPaymentAdjustmentDialog } from "./pos-edit-payment-adjustment-dialog";
 import { PosProductSearch } from "./pos-product-search";
 import { ClassicPosStatusFooter } from "./classic-pos-status-footer";
 import { ClassicPosCartTable } from "./classic-pos-cart-table";
@@ -229,6 +230,12 @@ import {
   peekAutoHeldOrder,
   rememberAutoHeldOrder,
 } from "@/lib/pos-auto-held";
+import {
+  buildPaymentAdjustmentsFromCheckoutBody,
+  computePreviousOrderEditPaymentDelta,
+  computePreviousOrderEditSignedDelta,
+  previousOrderAdjustmentsMatchDelta,
+} from "@/lib/pos-edit-payment-adjustment";
 
 const cartToolbarBtnClassName =
   "theme-secondary-btn inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold uppercase tracking-wide shadow-sm disabled:opacity-50";
@@ -1270,7 +1277,8 @@ export function PosScreen({ standalone = false }) {
   const [swapDraft, setSwapDraft] = useState(null);
   const swapDraftRef = useRef(null);
   const swapLineQtyRef = useRef(null);
-  const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
+  const [editAdjustmentDialog, setEditAdjustmentDialog] = useState(null);
+  const resolveEditAdjustmentRef = useRef(null);
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
   const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
   const pendingLeaveHrefRef = useRef(null);
@@ -1551,6 +1559,29 @@ export function PosScreen({ standalone = false }) {
     completedSaleRef.current = sale;
     setCompletedSale(sale);
     rememberCompletedPosOrder(sale);
+  }
+
+  function promptPreviousOrderPaymentAdjustment(delta, orderNum) {
+    return new Promise((resolve, reject) => {
+      resolveEditAdjustmentRef.current = { resolve, reject };
+      setEditAdjustmentDialog({ delta, orderNum });
+    });
+  }
+
+  async function ensurePreviousOrderPaymentAdjustment(cartNow) {
+    if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return cartNow;
+    const delta = computePreviousOrderEditPaymentDelta(editSourceSale, cartNow);
+    if (!delta.type || !(Number(delta.amount) > 0)) return cartNow;
+    if (previousOrderAdjustmentsMatchDelta(cartNow.payment_adjustments, delta)) return cartNow;
+    const adjustments = await promptPreviousOrderPaymentAdjustment(
+      delta,
+      cartNow.held_order_num ?? resolvePosBrowseNumber(cartNow),
+    );
+    const next = { ...cartNow, payment_adjustments: adjustments };
+    cartRef.current = next;
+    setCart(next);
+    void savePreviousOrderEditDraft(next).catch(() => {});
+    return next;
   }
 
   const loadCompletedPosOrders = useCallback(async () => {
@@ -1846,6 +1877,37 @@ export function PosScreen({ standalone = false }) {
   productByCodeRef.current = productByCode;
   sellWholesaleRef.current = sellWholesale;
 
+  const kraFiscalizeOnPosCheckout = useMemo(
+    () =>
+      shouldSubmitKraOnCheckout(
+        capabilities?.module_settings,
+        capabilities,
+        cartSummary?.total ?? cartSummary?.amountDue,
+      ),
+    [capabilities, cartSummary?.total, cartSummary?.amountDue],
+  );
+
+  /** KRA-on previous-order edit: F10 payment panel collects only the top-up / return delta. */
+  const kraEditPaymentContext = useMemo(() => {
+    if (!isCartEditSession || !kraFiscalizeOnPosCheckout) return null;
+    const delta = computePreviousOrderEditSignedDelta(editSourceSale, cart);
+    return {
+      signedDelta: Number(delta.signedDelta ?? 0),
+      originalTotal: delta.originalTotal,
+      newTotal: delta.newTotal,
+      orderNum: cart?.held_order_num ?? resolvePosBrowseNumber(cart),
+      type: delta.type,
+      amount: delta.amount,
+    };
+  }, [isCartEditSession, kraFiscalizeOnPosCheckout, editSourceSale, cart]);
+
+  const paymentPanelBillTotal = useMemo(() => {
+    if (kraEditPaymentContext) {
+      return Number(kraEditPaymentContext.signedDelta ?? 0);
+    }
+    return cartSummary.amountDue;
+  }, [kraEditPaymentContext, cartSummary.amountDue]);
+
   /** KRA-off previous-order edits: instant local save + background outbox sync (no F10). */
   const instantAutoEditSync = useMemo(() => {
     if (!standalone || !isCartEditSession) return false;
@@ -2126,6 +2188,9 @@ export function PosScreen({ standalone = false }) {
             held_order_num: draft.held_order_num,
             superseded_sale_id: draft.superseded_sale_id ?? full.superseded_sale_id,
             order_discount: draft.order_discount ?? full.order_discount,
+            ...(Array.isArray(draft.payment_adjustments) && draft.payment_adjustments.length
+              ? { payment_adjustments: draft.payment_adjustments }
+              : {}),
             lines: draft.lines,
             ...(draft._editDraftDirty ? { _editDraftDirty: true } : {}),
           };
@@ -5394,6 +5459,22 @@ export function PosScreen({ standalone = false }) {
     const isPreviousOrderCashEdit = Boolean(
       activeCart.held_order_num && activeCart.superseded_sale_id,
     );
+
+    if (isPreviousOrderCashEdit) {
+      if (!kraFiscalizeOnPosCheckout) {
+        try {
+          await ensurePreviousOrderPaymentAdjustment(activeCart);
+        } catch (e) {
+          setPaymentError(
+            e instanceof Error
+              ? e.message
+              : "Enter how the refund or top-up was paid before completing this edit.",
+          );
+          return null;
+        }
+      }
+    }
+
     const pendingPosSlot =
       standalone && !isPreviousOrderCashEdit
         ? await peekNextPosOfflineOrderSlot().catch(() => null)
@@ -5427,23 +5508,27 @@ export function PosScreen({ standalone = false }) {
     setPaymentError(null);
     setReceiptPrintStatus(null);
     try {
+        const checkoutCart = cartRef.current ?? activeCart;
         const local = {
           id: isServerPosCartId(activeCart.id) ? activeCart.id : "active",
-          lines: (activeCart.lines ?? []).map((l) => ({
+          lines: (checkoutCart.lines ?? []).map((l) => ({
             ...l,
             client_line_id: l.client_line_id ?? l.id,
           })),
-          branch_id: activeCart.branch_id ?? user?.branch_id,
-          till_id: activeCart.till_id ?? tillId,
-          float_session_id: floatSessionId ?? activeCart.float_session_id,
-          customer_num: body?.customer_num ?? activeCart.customer_num,
+          branch_id: checkoutCart.branch_id ?? user?.branch_id,
+          till_id: checkoutCart.till_id ?? tillId,
+          float_session_id: floatSessionId ?? checkoutCart.float_session_id,
+          customer_num: body?.customer_num ?? checkoutCart.customer_num,
           customer_name_override:
-            body?.customer_name_override ?? activeCart.customer_name_override,
-          held_order_num: activeCart.held_order_num ?? null,
-          offline_client_sale_uuid: activeCart.offline_client_sale_uuid ?? null,
-          offline_edit_snapshot: activeCart.offline_edit_snapshot ?? null,
-          superseded_sale_id: activeCart.superseded_sale_id ?? null,
-          order_discount: Number(activeCart.order_discount ?? 0) || 0,
+            body?.customer_name_override ?? checkoutCart.customer_name_override,
+          held_order_num: checkoutCart.held_order_num ?? null,
+          offline_client_sale_uuid: checkoutCart.offline_client_sale_uuid ?? null,
+          offline_edit_snapshot: checkoutCart.offline_edit_snapshot ?? null,
+          superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
+          order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
+          ...(Array.isArray(checkoutCart.payment_adjustments) && checkoutCart.payment_adjustments.length
+            ? { payment_adjustments: checkoutCart.payment_adjustments }
+            : {}),
           ...checkoutCartFields,
         };
         const { sale: offlineSale } = await completeOfflineCashSale({
@@ -5512,23 +5597,27 @@ export function PosScreen({ standalone = false }) {
         setPaymentError(null);
         setReceiptPrintStatus(null);
         try {
+          const checkoutCart = cartRef.current ?? activeCart;
           const local = {
-            id: isPreviousOrderCashEdit && isServerPosCartId(activeCart.id)
-              ? activeCart.id
+            id: isPreviousOrderCashEdit && isServerPosCartId(checkoutCart.id)
+              ? checkoutCart.id
               : "active",
-            lines: (activeCart.lines ?? []).map((l) => ({
+            lines: (checkoutCart.lines ?? []).map((l) => ({
               ...l,
               client_line_id: l.client_line_id ?? l.id,
             })),
-            branch_id: activeCart.branch_id ?? user?.branch_id,
-            till_id: activeCart.till_id ?? tillId,
-            float_session_id: floatSessionId ?? activeCart.float_session_id,
-            customer_num: body?.customer_num ?? activeCart.customer_num,
+            branch_id: checkoutCart.branch_id ?? user?.branch_id,
+            till_id: checkoutCart.till_id ?? tillId,
+            float_session_id: floatSessionId ?? checkoutCart.float_session_id,
+            customer_num: body?.customer_num ?? checkoutCart.customer_num,
             customer_name_override:
-              body?.customer_name_override ?? activeCart.customer_name_override,
-            held_order_num: activeCart.held_order_num ?? null,
-            superseded_sale_id: activeCart.superseded_sale_id ?? null,
-            order_discount: Number(activeCart.order_discount ?? 0) || 0,
+              body?.customer_name_override ?? checkoutCart.customer_name_override,
+            held_order_num: checkoutCart.held_order_num ?? null,
+            superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
+            order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
+            ...(Array.isArray(checkoutCart.payment_adjustments) && checkoutCart.payment_adjustments.length
+              ? { payment_adjustments: checkoutCart.payment_adjustments }
+              : {}),
             ...checkoutCartFields,
           };
           const { sale: localSale } = await completeOfflineCashSale({
@@ -5617,11 +5706,11 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
-      const { __force_submit_kra: _ignoredForceKra, __cash_tendered: cashTendered, ...checkoutInput } = body ?? {};
+      const { __force_submit_kra: _ignoredForceKra, __cash_tendered: cashTendered, __previous_order_edit_adjustment: _editAdjFlag, ...checkoutInput } = body ?? {};
       // Do not send submit_kra:false — stale POS capabilities were skipping server-side
       // "Use KRA device for sales". Omit the field and let the API apply org finance policy;
       // only send true so the KRA wait UI still matches an expected fiscalized checkout.
-      const checkoutBody = await attachDiscountApprovalReasonToCheckoutBody({
+      let checkoutBody = await attachDiscountApprovalReasonToCheckoutBody({
         ...checkoutInput,
         sales_workspace: salesWorkspace,
         ...(submitKra ? { submit_kra: true } : {}),
@@ -5634,6 +5723,26 @@ export function PosScreen({ standalone = false }) {
           ? { pos_order_date: checkoutCartFields.pos_order_date }
           : {}),
       });
+      if (
+        isPreviousOrderCashEdit &&
+        kraFiscalizeOnPosCheckout &&
+        body?.__previous_order_edit_adjustment
+      ) {
+        const delta = computePreviousOrderEditPaymentDelta(editSourceSale, liveCart);
+        checkoutBody = {
+          ...checkoutBody,
+          pay_now: 0,
+          payment_adjustments: buildPaymentAdjustmentsFromCheckoutBody(checkoutBody, delta),
+        };
+      } else if (
+        Array.isArray(liveCart?.payment_adjustments) &&
+        liveCart.payment_adjustments.length
+      ) {
+        checkoutBody = {
+          ...checkoutBody,
+          payment_adjustments: liveCart.payment_adjustments,
+        };
+      }
       if (!checkoutBody) {
         setPaymentError("Enter a discount reason to save this order for manager approval.");
         return null;
@@ -5749,25 +5858,36 @@ export function PosScreen({ standalone = false }) {
         editAutosaveInFlightRef.current = true;
         setEditAutosaveBusy(true);
         try {
+          let cartForSync = cartNow;
+          try {
+            cartForSync = await ensurePreviousOrderPaymentAdjustment(cartNow);
+          } catch (e) {
+            setStatusMessage(
+              e instanceof Error ? e.message : "Payment adjustment is required to save this edit.",
+            );
+            return;
+          }
           const local = {
-            ...cartNow,
-            id: isServerPosCartId(cartNow.id) ? cartNow.id : cartNow.id,
-            lines: lines.map((l) => ({
+            ...cartForSync,
+            id: isServerPosCartId(cartForSync.id) ? cartForSync.id : cartForSync.id,
+            lines: (cartForSync.lines ?? []).filter(
+              (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
+            ).map((l) => ({
               ...l,
               client_line_id: l.client_line_id ?? l.id,
             })),
-            branch_id: cartNow.branch_id ?? user?.branch_id,
-            till_id: cartNow.till_id ?? tillId,
-            float_session_id: floatSessionId ?? cartNow.float_session_id,
-            order_discount: Number(cartNow.order_discount ?? 0) || 0,
+            branch_id: cartForSync.branch_id ?? user?.branch_id,
+            till_id: cartForSync.till_id ?? tillId,
+            float_session_id: floatSessionId ?? cartForSync.float_session_id,
+            order_discount: Number(cartForSync.order_discount ?? 0) || 0,
             customer_num:
-              cartNow.customer_num ??
+              cartForSync.customer_num ??
               editSourceSale?.customer_num ??
               editSourceSale?.customer?.customer_num ??
               null,
             customer_name_override:
               String(
-                cartNow.customer_name_override ??
+                cartForSync.customer_name_override ??
                   editSourceSale?.customer_name_override ??
                   editSourceSale?.customer?.customer_name ??
                   "",
@@ -7079,7 +7199,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // KRA-on: F10 completes and fiscalizes the revised receipt.
+      // KRA-on: F10 opens payment for the edit delta only (top-up or return).
       flashPosShortcutMessage(
         previousOrderEditModeMessages(activeCart.held_order_num, { kraFiscalize: true }).f10,
         { error: false },
@@ -8943,13 +9063,30 @@ export function PosScreen({ standalone = false }) {
         </div>
       </div>
 
+      <PosEditPaymentAdjustmentDialog
+        open={Boolean(editAdjustmentDialog)}
+        delta={editAdjustmentDialog?.delta ?? null}
+        orderNum={editAdjustmentDialog?.orderNum ?? null}
+        onConfirm={(adjustments) => {
+          resolveEditAdjustmentRef.current?.resolve(adjustments);
+          resolveEditAdjustmentRef.current = null;
+          setEditAdjustmentDialog(null);
+        }}
+        onCancel={() => {
+          resolveEditAdjustmentRef.current?.reject(new Error("cancelled"));
+          resolveEditAdjustmentRef.current = null;
+          setEditAdjustmentDialog(null);
+        }}
+      />
+
       <PosPaymentPanel
         open={paymentOpen}
         onClose={() => {
           setPaymentOpen(false);
           setReceiptPrintStatus(null);
         }}
-        billTotal={cartSummary.amountDue}
+        billTotal={paymentPanelBillTotal}
+        previousOrderEditAdjustment={kraEditPaymentContext}
         channel={channel}
         workflow={channelWorkflow}
         paymentConfig={checkoutPaymentConfig}

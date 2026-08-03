@@ -6,9 +6,10 @@ import { apiRequest, ApiError } from "@/lib/api";
 import {
   CatalogPageShell,
   Field,
+  FILTER_CONTROL_CLASS,
+  FilterToolbar,
   PaginationBar,
   SearchInput,
-  inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
@@ -35,11 +36,19 @@ const EXPORT_COLUMNS = [
   { key: "order", label: "Order" },
   { key: "customer_name", label: "Customer name" },
   { key: "amount", label: "Amount", align: "right" },
+  { key: "return_amount", label: "Return amount", align: "right" },
+  { key: "topup_amount", label: "Top-up amount", align: "right" },
   { key: "paid_at", label: "Paid at" },
   { key: "cashier", label: "Cashier" },
   { key: "session", label: "Session" },
   { key: "payment_method", label: "Payment method" },
 ];
+
+function formatAdjustmentCell(value) {
+  const amount = Number(value ?? 0);
+  if (!(amount > 0)) return "—";
+  return formatAccountingAmount(amount);
+}
 
 function formatPaidAt(value) {
   if (!value) return "—";
@@ -98,6 +107,8 @@ function mapPaymentExportRow(row, methodName, methods = []) {
     order: row.order_num != null ? `Order #${row.order_num}` : "—",
     customer_name: row.customer_name || "Walk-in",
     amount: formatAccountingAmount(row.amount),
+    return_amount: formatAdjustmentCell(row.return_amount),
+    topup_amount: formatAdjustmentCell(row.topup_amount),
     paid_at: formatPaidAt(row.paid_at),
     cashier: row.cashier_name || "—",
     session: rowSessionText(row),
@@ -172,7 +183,6 @@ export function PaymentsBreakdownScreen() {
   const [branches, setBranches] = useState([]);
   const [cashiers, setCashiers] = useState([]);
   const [cashierId, setCashierId] = useState("");
-  const [sessionStatus, setSessionStatus] = useState("all");
   const [floatSessionId, setFloatSessionId] = useState("");
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 300);
@@ -224,7 +234,6 @@ export function PaymentsBreakdownScreen() {
           branch_id: branchId || undefined,
           cashier_id: cashierId || undefined,
           float_session_id: floatSessionId || undefined,
-          session_status: sessionStatus !== "all" ? sessionStatus : undefined,
           method_code: methodCode || undefined,
           q: debouncedQ.trim() || undefined,
           page,
@@ -249,7 +258,6 @@ export function PaymentsBreakdownScreen() {
     branchId,
     cashierId,
     floatSessionId,
-    sessionStatus,
     methodCode,
     debouncedQ,
     page,
@@ -261,7 +269,14 @@ export function PaymentsBreakdownScreen() {
   }, [load]);
 
   const methods = useMemo(
-    () => (data?.methods ?? []).filter((m) => Number(m.total_amount ?? 0) > 0 || Number(m.order_count ?? 0) > 0),
+    () =>
+      (data?.methods ?? []).filter(
+        (m) =>
+          Number(m.total_amount ?? 0) > 0 ||
+          Number(m.order_count ?? 0) > 0 ||
+          Number(m.return_amount ?? 0) > 0 ||
+          Number(m.topup_amount ?? 0) > 0,
+      ),
     [data?.methods],
   );
   const rows = data?.data ?? [];
@@ -269,15 +284,9 @@ export function PaymentsBreakdownScreen() {
   const sessions = data?.sessions ?? [];
 
   const sessionOptions = useMemo(() => {
-    let list = sessions;
-    if (cashierId) {
-      list = list.filter((s) => String(s.cashier_id) === cashierId);
-    }
-    if (sessionStatus !== "all") {
-      list = list.filter((s) => String(s.status).toLowerCase() === sessionStatus);
-    }
-    return list;
-  }, [sessions, cashierId, sessionStatus]);
+    if (!cashierId) return sessions;
+    return sessions.filter((s) => String(s.cashier_id) === cashierId);
+  }, [sessions, cashierId]);
 
   useEffect(() => {
     if (!floatSessionId) return;
@@ -305,6 +314,10 @@ export function PaymentsBreakdownScreen() {
   const emptyMethodLabel = summary.method_name || methodCode || "payment";
   const activeIsMpesa = String(methodCode ?? "").toUpperCase() === "MPESA";
   const methodName = summary.method_name || tenderDisplayName(methodCode, methods);
+  const activeMethodStats = useMemo(
+    () => methods.find((m) => m.method_code === methodCode) ?? {},
+    [methods, methodCode],
+  );
 
   const exportBaseParams = useMemo(
     () => ({
@@ -313,18 +326,9 @@ export function PaymentsBreakdownScreen() {
       branch_id: branchId || undefined,
       cashier_id: cashierId || undefined,
       float_session_id: floatSessionId || undefined,
-      session_status: sessionStatus !== "all" ? sessionStatus : undefined,
       q: debouncedQ.trim() || undefined,
     }),
-    [
-      fromDate,
-      toDate,
-      branchId,
-      cashierId,
-      floatSessionId,
-      sessionStatus,
-      debouncedQ,
-    ],
+    [fromDate, toDate, branchId, cashierId, floatSessionId, debouncedQ],
   );
 
   const branchName = useMemo(() => {
@@ -375,6 +379,8 @@ export function PaymentsBreakdownScreen() {
         order: `${label} total`,
         customer_name: "",
         amount: formatAccountingAmount(method.total_amount ?? 0),
+        return_amount: formatAdjustmentCell(method.return_amount),
+        topup_amount: formatAdjustmentCell(method.topup_amount),
         paid_at: "",
         cashier: "",
         session: "",
@@ -403,9 +409,6 @@ export function PaymentsBreakdownScreen() {
 
   const exportExtraLines = useMemo(() => {
     const lines = [`Cashier: ${cashierName}`];
-    if (sessionStatus !== "all") {
-      lines.push(`Session status: ${sessionStatus}`);
-    }
     if (floatSessionId) {
       const session = sessions.find((s) => String(s.id) === String(floatSessionId));
       lines.push(`Session: ${sessionLabel(session)}`);
@@ -415,20 +418,12 @@ export function PaymentsBreakdownScreen() {
     }
     lines.push(`Methods: ${methods.map((m) => m.method_name).filter(Boolean).join(", ") || methodName}`);
     return lines;
-  }, [
-    cashierName,
-    sessionStatus,
-    floatSessionId,
-    sessions,
-    debouncedQ,
-    methods,
-    methodName,
-  ]);
+  }, [cashierName, floatSessionId, sessions, debouncedQ, methods, methodName]);
 
   return (
     <CatalogPageShell
       title="Payments breakdown"
-      subtitle="Paid orders by tender — split payments show on each method with a mixed badge"
+      subtitle="Paid orders by tender — edit refunds and top-ups show per payment method"
       action={
         <ReportExportToolbar
           filename={`payments-breakdown-${fromDate || "from"}-${toDate || "to"}`}
@@ -448,7 +443,7 @@ export function PaymentsBreakdownScreen() {
         />
       }
     >
-      <div className="theme-panel mb-6 grid gap-4 rounded-xl border p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
+      <FilterToolbar className="theme-panel mb-6 rounded-xl border p-4 shadow-sm">
         <Field label="From">
           <input
             type="date"
@@ -457,7 +452,7 @@ export function PaymentsBreakdownScreen() {
               setFromDate(e.target.value);
               setPage(1);
             }}
-            className={inputClassName}
+            className={FILTER_CONTROL_CLASS}
           />
         </Field>
         <Field label="To">
@@ -468,7 +463,7 @@ export function PaymentsBreakdownScreen() {
               setToDate(e.target.value);
               setPage(1);
             }}
-            className={inputClassName}
+            className={FILTER_CONTROL_CLASS}
           />
         </Field>
         {showBranchFilter ? (
@@ -481,7 +476,7 @@ export function PaymentsBreakdownScreen() {
                 setFloatSessionId("");
                 setPage(1);
               }}
-              className={inputClassName}
+              className={FILTER_CONTROL_CLASS}
             >
               <option value="">All branches</option>
               {branches.map((branch) => (
@@ -500,7 +495,7 @@ export function PaymentsBreakdownScreen() {
               setFloatSessionId("");
               setPage(1);
             }}
-            className={inputClassName}
+            className={FILTER_CONTROL_CLASS}
           >
             <option value="">All cashiers</option>
             {cashierOptions.map((opt) => (
@@ -510,22 +505,6 @@ export function PaymentsBreakdownScreen() {
             ))}
           </select>
         </Field>
-        <Field label="Session status">
-          <select
-            value={sessionStatus}
-            onChange={(e) => {
-              setSessionStatus(e.target.value);
-              setFloatSessionId("");
-              setPage(1);
-            }}
-            className={inputClassName}
-          >
-            <option value="all">All sessions</option>
-            <option value="open">Open (active)</option>
-            <option value="closed">Closed</option>
-            <option value="suspended">Suspended</option>
-          </select>
-        </Field>
         <Field label="Till session">
           <select
             value={floatSessionId}
@@ -533,7 +512,7 @@ export function PaymentsBreakdownScreen() {
               setFloatSessionId(e.target.value);
               setPage(1);
             }}
-            className={inputClassName}
+            className={`${FILTER_CONTROL_CLASS} min-w-[14rem]`}
           >
             <option value="">All sessions in range</option>
             {sessionOptions.map((session) => (
@@ -551,24 +530,35 @@ export function PaymentsBreakdownScreen() {
               setPage(1);
             }}
             placeholder={activeIsMpesa ? "Order # or M-Pesa code…" : "Order # or reference…"}
+            className="w-56 shrink-0 sm:w-64"
           />
         </Field>
-        <div className="flex items-end">
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg bg-[var(--theme-primary)] px-4 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
+        >
+          Refresh
+        </button>
+      </FilterToolbar>
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Tab total</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
             {formatAccountingAmount(summary.total_amount ?? 0)}
+          </p>
+        </div>
+        <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
+          <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Return amount</p>
+          <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
+            {formatAdjustmentCell(activeMethodStats.return_amount)}
+          </p>
+        </div>
+        <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
+          <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Top-up amount</p>
+          <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
+            {formatAdjustmentCell(activeMethodStats.topup_amount)}
           </p>
         </div>
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
@@ -611,7 +601,9 @@ export function PaymentsBreakdownScreen() {
                 <tr>
                   <th className="px-4 py-3">Order</th>
                   <th className="px-4 py-3">Customer name</th>
-                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3 text-right">Return amount</th>
+                  <th className="px-4 py-3 text-right">Top-up amount</th>
                   <th className="px-4 py-3">Paid at</th>
                   <th className="px-4 py-3">Cashier</th>
                   <th className="px-4 py-3">Session</th>
@@ -644,8 +636,14 @@ export function PaymentsBreakdownScreen() {
                     <td className="px-4 py-3 text-[var(--theme-text)]">
                       {row.customer_name || "Walk-in"}
                       </td>
-                    <td className="px-4 py-3 font-medium text-[var(--theme-text)]">
+                    <td className="px-4 py-3 text-right font-medium text-[var(--theme-text)]">
                       {formatAccountingAmount(row.amount)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-[var(--theme-text-muted)]">
+                      {formatAdjustmentCell(row.return_amount)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-[var(--theme-text-muted)]">
+                      {formatAdjustmentCell(row.topup_amount)}
                     </td>
                     <td className="px-4 py-3 text-[var(--theme-text-muted)]">
                       {formatPaidAt(row.paid_at)}

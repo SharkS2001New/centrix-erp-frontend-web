@@ -92,13 +92,12 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-product": {
     title: "Sales by Product",
-    subtitle: "Revenue and VAT by product (aligned to order totals after discounts)",
+    subtitle: "Revenue and VAT by product for the selected period (aligned to order totals after discounts)",
     section: "Sales",
     apiPath: "/reports/sales-by-product",
     dateColumn: "sale_date",
     showDateRange: true,
     columns: [
-      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       {
@@ -126,13 +125,12 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-supplier": {
     title: "Sales by Supplier",
-    subtitle: "Revenue and VAT by product supplier across booked → completed orders",
+    subtitle: "Revenue and VAT by supplier and product for the selected period",
     section: "Sales",
     apiPath: "/reports/sales-by-supplier",
     dateColumn: "sale_date",
     showDateRange: true,
     columns: [
-      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "supplier_code", label: "Supplier Code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
       { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
@@ -157,13 +155,12 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-channel": {
     title: "Sales by Channel",
-    subtitle: "Gross sales, VAT, and collections by channel across booked → completed orders",
+    subtitle: "Gross sales, VAT, and collections by channel for the selected period",
     section: "Sales",
     apiPath: "/reports/sales-by-channel",
     dateColumn: "sale_date",
     showDateRange: true,
     columns: [
-      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "payment_status", label: "Payment", accessor: (r) => r.payment_status },
@@ -179,18 +176,12 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-user": {
     title: "Sales by User",
-    subtitle:
-      "Sales totals by user for the selected period (booked → completed, incl. unpaid / partial). Toggle breakdown by date when needed.",
+    subtitle: "Sales totals by user for the selected period (booked → completed, incl. unpaid / partial)",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
     showDateRange: true,
-    extraFilters: [
-      { id: "overall_summary", label: "Overall summary", type: "checkbox", default: true },
-      { id: "breakdown_by_date", label: "Breakdown by date", type: "checkbox", default: false },
-    ],
     columns: [
-      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "salesperson", label: "User", accessor: (r) => r.salesperson },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
@@ -279,13 +270,12 @@ export const REPORT_DEFINITIONS = {
 
   "category-sales": {
     title: "Sales by Category",
-    subtitle: "Category revenue with VAT across booked → completed orders",
+    subtitle: "Category revenue with VAT for the selected period",
     section: "Sales",
     apiPath: "/reports/category-sales",
     dateColumn: "sale_date",
     showDateRange: true,
     columns: [
-      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "category_name", label: "Category", accessor: (r) => r.category_name },
       { key: "subcategory_name", label: "Subcategory", accessor: (r) => r.subcategory_name },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
