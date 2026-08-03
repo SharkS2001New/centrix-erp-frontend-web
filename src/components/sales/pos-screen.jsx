@@ -1418,6 +1418,7 @@ export function PosScreen({ standalone = false }) {
   const editAutosaveInFlightRef = useRef(false);
   const editAutosaveRerunRef = useRef(null);
   const skipEditAutosaveRef = useRef(false);
+  const openCompletePaymentInFlightRef = useRef(false);
   const [editAutosaveBusy, setEditAutosaveBusy] = useState(false);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
@@ -5702,8 +5703,8 @@ export function PosScreen({ standalone = false }) {
     };
 
     if (shouldAutoNext) {
-      // Clear the workspace immediately — do not wait for receipt print to finish.
-      advanceToNextOrder({ keepPaymentOpen: shouldPrint, focusScan: !shouldPrint });
+      // Clear the workspace immediately — receipt prints in the background.
+      advanceToNextOrder({ focusScan: !shouldPrint });
     }
 
     if (shouldPrint) {
@@ -5713,10 +5714,8 @@ export function PosScreen({ standalone = false }) {
           void handleContinueNextOrder();
         },
       });
-      if (!shouldAutoNext) {
-        setPaymentOpen(false);
-        setReceiptPrintStatus(null);
-      }
+      setPaymentOpen(false);
+      setReceiptPrintStatus(null);
       return;
     }
 
@@ -6589,6 +6588,12 @@ export function PosScreen({ standalone = false }) {
 
   /** F8 / empty-space double-click: clear workspace and focus scan for a new order. */
   async function startFreshWorkspace() {
+    if (paymentOpen) {
+      const message = "Close the payment dialog first (complete or cancel), then start a new order.";
+      setStatusMessage(message);
+      if (standalone) notifyError(message);
+      return;
+    }
     if (lineBusy) return;
     if (busy && !editAutosaveInFlightRef.current) return;
     if (editAutosaveTimerRef.current) {
@@ -7510,6 +7515,14 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function openCompletePayment() {
+    if (openCompletePaymentInFlightRef.current) return;
+    if (busy && !paymentOpen) {
+      flashPosShortcutMessage("Checkout is still in progress — please wait.");
+      return;
+    }
+
+    openCompletePaymentInFlightRef.current = true;
+    try {
     // Finish queued add/qty/edit commits before dirty check (classic/previous-order
     // edits enqueue without lineBusy, so F10 right after a scan must wait here).
     await runBlockingTask(waitForCartLineSavesToFinish, {
@@ -7519,21 +7532,52 @@ export function PosScreen({ standalone = false }) {
 
     const activeCart = cartRef.current ?? cart;
 
-    if (activeCart?.held_order_num && activeCart?.superseded_sale_id) {
+    const isPreviousOrderEdit = Boolean(
+      activeCart?.held_order_num && activeCart?.superseded_sale_id,
+    );
+    if (
+      !isPreviousOrderEdit &&
+      (lineBusyRef.current || cartHasOptimisticLines(activeCart))
+    ) {
+      flashPosShortcutMessage("Still saving cart lines — try again in a moment.");
+      return;
+    }
+
+    if (isPreviousOrderEdit) {
       const summary = summarizeLocalPosCart(activeCart);
       const kraOn = shouldSubmitKraOnCheckout(
         capabilities?.module_settings,
         capabilities,
         summary?.total ?? summary?.amountDue,
       );
+      const isOfflineEdit = Boolean(
+        offlineMode || activeCart.offline || activeCart.offline_client_sale_uuid,
+      );
 
-      // KRA-off: edits save + sync automatically — F10 is not required.
-      if (!kraOn) {
+      // KRA-off online: instant outbox sync — not a payment dialog.
+      if (!kraOn && !isOfflineEdit) {
+        if (!editedOrderHasLocalDraftChanges(activeCart)) {
+          if (pendingSync > 0 || editAutosaveBusy || offlineSyncing) {
+            void flushOutboxAfterSale();
+            flashPosShortcutMessage("Syncing saved changes to the server…", { error: false });
+          } else {
+            const syncedMsg = previousOrderEditModeMessages(activeCart.held_order_num, {
+              kraFiscalize: false,
+            }).synced;
+            flashPosShortcutMessage(
+              syncedMsg ?? "Order already saved on server — print with Alt+P.",
+              { error: false },
+            );
+          }
+          return;
+        }
         scheduleEditedOrderAutosave({ immediate: true });
-        const f10Hint = previousOrderEditModeMessages(activeCart.held_order_num, {
-          kraFiscalize: false,
-        }).f10;
-        flashPosShortcutMessage(f10Hint, { error: false });
+        flashPosShortcutMessage(
+          previousOrderEditModeMessages(activeCart.held_order_num, {
+            kraFiscalize: false,
+          }).f10,
+          { error: false },
+        );
         return;
       }
 
@@ -7547,9 +7591,10 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // KRA-on: F10 opens payment for the edit delta only (top-up or return).
       flashPosShortcutMessage(
-        previousOrderEditModeMessages(activeCart.held_order_num, { kraFiscalize: true }).f10,
+        isOfflineEdit
+          ? previousOrderEditModeMessages(activeCart.held_order_num, { offline: true }).f10
+          : previousOrderEditModeMessages(activeCart.held_order_num, { kraFiscalize: true }).f10,
         { error: false },
       );
 
@@ -7593,6 +7638,9 @@ export function PosScreen({ standalone = false }) {
     setPaymentError(null);
     closeProductSearchDropdown();
     setPaymentOpen(true);
+    } finally {
+      openCompletePaymentInFlightRef.current = false;
+    }
   }
 
   /** Latest POS shortcut state/actions — single capture listener, no stale closures. */
@@ -7674,6 +7722,24 @@ export function PosScreen({ standalone = false }) {
       );
     }
 
+    /** Alt+H/F/P are cashier chords — do not block on payment or sync banners. */
+    function blocksAltPosShortcuts(state) {
+      return (
+        state.saveOrderOpen
+        || state.heldOrdersOpen
+        || state.leaveGuardOpen
+        || state.priceCheckerOpen
+        || state.floatModalOpen
+        || state.floatDetailsOpen
+        || state.xReportOpen
+        || state.closeSessionOpen
+        || state.zReportOpen
+        || state.autoHeldPrompt
+        || state.discountReasonDialogOpen
+        || isConfirmDialogOpen()
+      );
+    }
+
     function isTypingTarget(el) {
       if (!el || !(el instanceof HTMLElement)) return false;
       const tag = el.tagName;
@@ -7715,7 +7781,13 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       if (key === "F10") {
-        actions.openCompletePayment();
+        if (isConfirmDialogOpen()) {
+          actions.flashPosShortcutMessage?.(
+            "Answer the open dialog first, then press F10.",
+          );
+          return;
+        }
+        void actions.openCompletePayment();
         return;
       }
       if (key === "F12") {
@@ -7802,19 +7874,19 @@ export function PosScreen({ standalone = false }) {
           handledOnKeyDownAt[altStampKey] = Date.now();
         }
 
-        if (isModalOpen(state)) {
+        if (blocksAltPosShortcuts(state)) {
           actions.flashPosShortcutMessage?.(
             "Close the open dialog first, then try the shortcut again.",
           );
-        return;
-      }
+          return;
+        }
 
         actions.closeProductSearchDropdown?.();
         if (altLetter === "h") {
           // Same path as the Hold button — no extra confirm gate.
           actions.openSaveOrderDialog("hold");
-        return;
-      }
+          return;
+        }
         if (altLetter === "f") {
           if (state.activeSession) setFloatDetailsOpen(true);
           else {
@@ -7827,8 +7899,8 @@ export function PosScreen({ standalone = false }) {
         if (altLetter === "p") {
           void actions.handlePrintReceipt();
         }
-          return;
-        }
+        return;
+      }
 
       if (e.key === "Escape") {
         claimPosFunctionKeyEvent(e);
@@ -7992,6 +8064,30 @@ export function PosScreen({ standalone = false }) {
                       </span>
                     </button>
                   </>
+                ) : null}
+                {classicLayout ? (
+                  <button
+                    type="button"
+                    disabled={
+                      busy
+                      || !cart?.lines?.length
+                      || cartStockBlocked
+                      || (!isCartEditSession && (lineBusy || checkoutBlocked))
+                    }
+                    title={
+                      cartStockBlocked
+                        ? "Fix stock issues before completing payment"
+                        : checkoutBlocked || lineBusy
+                          ? "Wait for the line to finish saving"
+                          : "Complete payment (F10)"
+                    }
+                    onClick={() => void openCompletePayment()}
+                    className={posHeaderBtnClassName}
+                  >
+                    <span className="pos-header-btn-label" data-short="Complete">
+                      Complete (F10)
+                    </span>
+                  </button>
                 ) : null}
                 <button
                   type="button"
@@ -9431,7 +9527,7 @@ export function PosScreen({ standalone = false }) {
                       || cartStockBlocked
                       || (!modernOrderEditLocked && (lineBusy || checkoutBlocked))
                     }
-                  onClick={() => openCompletePayment()}
+                  onClick={() => void openCompletePayment()}
                 />
                 )
               ) : (

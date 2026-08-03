@@ -794,6 +794,22 @@ export function PosPaymentPanel({
   }
 
   function requestCompleteFromKeyboard() {
+    if (saving || step === "saving") return;
+
+    if (step === "complete") {
+      void handleOrderCompleteOk();
+      return;
+    }
+    if (step === "confirm") {
+      handleConfirmYes();
+      return;
+    }
+    if (step === "customerName") {
+      handleCustomerNameContinue();
+      return;
+    }
+    if (step !== "payment") return;
+
     if (!canComplete) {
       setLocalError(
         validatePayment() || "Please check the amount — payment is less than the bill total.",
@@ -1415,7 +1431,7 @@ export function PosPaymentPanel({
             Change: {formatSaleKes(confirmSummary.changeDue)}
           </p>
         ) : null}
-        <p className="theme-text-muted mt-3 text-xs">Press Enter to complete payment.</p>
+        <p className="theme-text-muted mt-3 text-xs">Press Enter or F10 to complete payment.</p>
         {(error || localError) ? (
           <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
         ) : null}
