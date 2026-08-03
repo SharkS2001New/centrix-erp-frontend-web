@@ -19,6 +19,7 @@ import {
   workspaceIcon,
 } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
+import { notifyError } from "@/lib/notify";
 
 function ChevronDownIcon({ className }) {
   return (
@@ -28,7 +29,10 @@ function ChevronDownIcon({ className }) {
   );
 }
 
-export function WorkspaceSwitcher() {
+export function WorkspaceSwitcher({
+  switchBlocked = false,
+  switchBlockedMessage = "Sync in progress. Wait for sync to finish before switching workspace.",
+} = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, organization, capabilities, isSuperAdmin, switchWorkspace } = useAuth();
@@ -78,6 +82,11 @@ export function WorkspaceSwitcher() {
   }
 
   async function selectWorkspace(id) {
+    if (switchBlocked) {
+      setOpen(false);
+      notifyError(switchBlockedMessage);
+      return;
+    }
     if (switching || id === currentWorkspace?.id) {
       setOpen(false);
       return;
@@ -130,11 +139,23 @@ export function WorkspaceSwitcher() {
       <div className="relative">
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            if (switchBlocked) {
+              notifyError(switchBlockedMessage);
+              return;
+            }
+            setOpen((v) => !v);
+          }}
+          disabled={switching}
           className="app-topbar-app-switcher"
           aria-expanded={open}
           aria-haspopup="dialog"
-          title={`Current application: ${currentLabel}. Click to switch.`}
+          aria-disabled={switchBlocked || switching}
+          title={
+            switchBlocked
+              ? switchBlockedMessage
+              : `Current application: ${currentLabel}. Click to switch.`
+          }
         >
           {currentWorkspace ? (
             <span className="app-topbar-app-switcher-icon" aria-hidden>
@@ -168,7 +189,14 @@ export function WorkspaceSwitcher() {
                 <Link
                   href="/choose-workspace"
                   className="shrink-0 text-xs font-medium text-[#405189] hover:underline dark:text-[#878a99]"
-                  onClick={() => setOpen(false)}
+                  onClick={(event) => {
+                    if (switchBlocked) {
+                      event.preventDefault();
+                      notifyError(switchBlockedMessage);
+                      return;
+                    }
+                    setOpen(false);
+                  }}
                 >
                   View all
                 </Link>
@@ -178,7 +206,7 @@ export function WorkspaceSwitcher() {
                 workspaces={workspaces}
                 currentId={currentWorkspace?.id ?? null}
                 onSelect={(id) => void selectWorkspace(id)}
-                disabled={switching}
+                disabled={switching || switchBlocked}
                 variant="dropdown"
               />
 
