@@ -134,6 +134,7 @@ import {
 import { ClassicPosAutoHeldDialog } from "./classic-pos-auto-held-dialog";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
+import { PosPendingSyncOverlay } from "./pos-pending-sync-overlay";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
 import { PosOfflineSyncControls } from "./pos-offline-sync-controls";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
@@ -157,6 +158,7 @@ import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
 import {
   abandonOfflineSaleEdit,
+  cartHasStaleFailedOutboxAttachment,
   adoptOnlineCartForOffline,
   beginOfflineSaleEdit,
   buildPreviousOrderEditPrintSale,
@@ -168,6 +170,7 @@ import {
   isMissingTemporaryCartError,
   isServerPosCartId,
   listOfflinePendingSalesForEdit,
+  listFailedOutboxSales,
   loadOrCreateLocalPosCart,
   loadPreviousOrderEditDraft,
   parseOfflineSaleUuid,
@@ -327,8 +330,27 @@ function stripPreviousOrderEditSession(cart) {
   return rest;
 }
 
+function stripOfflineSaleMarkers(cart) {
+  if (!cart) return cart;
+  const {
+    offline: _offline,
+    offline_client_sale_uuid: _uuid,
+    offline_edit_snapshot: _snapshot,
+    ...rest
+  } = cart;
+  return rest;
+}
+
 function isFreshWorkspacePlaceholder(cart) {
   return String(cart?.id ?? "") === "pending-fresh";
+}
+
+/** True when the cashier is actively editing a queued offline sale or previous-order session. */
+function isActiveOfflineEditSession(cart) {
+  if (!cart) return false;
+  if (cart.offline_client_sale_uuid) return true;
+  if (cart.held_order_num && cart.superseded_sale_id) return true;
+  return false;
 }
 
 /** Ensure restored edit carts carry displayable lines (API cart or sale snapshot). */
@@ -683,6 +705,7 @@ export function PosScreen({ standalone = false }) {
     syncing: offlineSyncing,
     lastSyncMessage,
     syncProgress,
+    failedSyncOrders,
     searchOffline,
     refreshCounts: refreshOfflineCounts,
     flushOutboxNow,
@@ -1257,6 +1280,8 @@ export function PosScreen({ standalone = false }) {
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
   const [heldOrdersOpen, setHeldOrdersOpen] = useState(false);
   const [heldOrdersCount, setHeldOrdersCount] = useState(0);
+  const [pendingSyncOpen, setPendingSyncOpen] = useState(false);
+  const pendingSyncAlertRef = useRef(false);
   const [autoHeldPrompt, setAutoHeldPrompt] = useState(null);
   const [autoHeldBusy, setAutoHeldBusy] = useState(false);
   const [orderDialogMode, setOrderDialogMode] = useState("save");
@@ -1710,6 +1735,10 @@ export function PosScreen({ standalone = false }) {
       }
       setEditOrderNo((current) => {
         if (String(current ?? "").trim()) return current;
+        const live = cartRef.current;
+        if (isFreshWorkspacePlaceholder(live) || (!live?.held_order_num && !live?.superseded_sale_id)) {
+          return current;
+        }
         const browse = resolvePosBrowseNumber(orders[0]);
         return browse != null ? String(browse) : current;
       });
@@ -1754,6 +1783,59 @@ export function PosScreen({ standalone = false }) {
     lastSyncMessage,
     loadCompletedPosOrders,
   ]);
+
+  useEffect(() => {
+    if (!standalone) return;
+    if (pendingSync <= 0) {
+      pendingSyncAlertRef.current = false;
+      return;
+    }
+    const hasFailure =
+      failedSyncOrders.length > 0 ||
+      (syncProgress?.phase === "complete" && Number(syncProgress?.failed ?? 0) > 0);
+    if (hasFailure && !pendingSyncAlertRef.current) {
+      pendingSyncAlertRef.current = true;
+      setPendingSyncOpen(true);
+    }
+  }, [
+    standalone,
+    pendingSync,
+    failedSyncOrders.length,
+    syncProgress?.phase,
+    syncProgress?.failed,
+  ]);
+
+  /** After a failed sync, drop stale offline/edit markers so a new ticket cannot reattach to the old order. */
+  useEffect(() => {
+    if (!standalone) return;
+    if (syncProgress?.phase !== "complete" || !(Number(syncProgress?.failed ?? 0) > 0)) return;
+
+    const current = cartRef.current;
+    if (isActiveOfflineEditSession(current) && (current?.lines?.length ?? 0) > 0) {
+      return;
+    }
+    if (current?.held_order_num && current?.superseded_sale_id && editedOrderHasLocalDraftChanges(current)) {
+      return;
+    }
+
+    void clearLocalPosCart().catch(() => {});
+
+    if (!current) return;
+    if (isFreshWorkspacePlaceholder(current)) return;
+
+    if (
+      current.held_order_num ||
+      current.offline_client_sale_uuid ||
+      current.offline ||
+      current.superseded_sale_id
+    ) {
+      const cleaned = stripOfflineSaleMarkers(
+        stripPreviousOrderEditSession(stripPreviousOrderDraftMarkers(current)),
+      );
+      cartRef.current = cleaned;
+      setCart(cleaned);
+    }
+  }, [standalone, syncProgress?.phase, syncProgress?.failed]);
 
   // When the offline catalog refreshes, apply new prices to open cart lines.
   useEffect(() => {
@@ -2364,6 +2446,16 @@ export function PosScreen({ standalone = false }) {
 
   const ensureCart = useCallback(async () => {
     const current = cartRef.current;
+    if (
+      standalone &&
+      current &&
+      (await cartHasStaleFailedOutboxAttachment(current))
+    ) {
+      const cleaned = stripOfflineSaleMarkers(stripPreviousOrderEditSession(current));
+      cartRef.current = cleaned;
+      setCart(cleaned);
+      return loadCashierCart({ skipEditDraftRestore: true });
+    }
     if (standalone && offlineMode) {
       if (current?.offline && Array.isArray(current.lines)) return current;
       if (current && (current.lines?.length > 0 || current.held_order_num)) {
@@ -3066,6 +3158,7 @@ export function PosScreen({ standalone = false }) {
 
     if (standalone && offlineMode) {
       const activeCart = await ensureCart();
+      const preserveOfflineIdentity = isActiveOfflineEditSession(activeCart);
       const localLine = {
         client_line_id:
           editingId != null
@@ -3096,9 +3189,13 @@ export function PosScreen({ standalone = false }) {
           branch_id: activeCart?.branch_id ?? user?.branch_id,
           till_id: activeCart?.till_id ?? tillId,
           float_session_id: activeCart?.float_session_id ?? floatSessionId,
-          held_order_num: activeCart?.held_order_num ?? null,
-          offline_client_sale_uuid: activeCart?.offline_client_sale_uuid ?? null,
-          offline_edit_snapshot: activeCart?.offline_edit_snapshot ?? null,
+          held_order_num: preserveOfflineIdentity ? activeCart?.held_order_num ?? null : null,
+          offline_client_sale_uuid: preserveOfflineIdentity
+            ? activeCart?.offline_client_sale_uuid ?? null
+            : null,
+          offline_edit_snapshot: preserveOfflineIdentity
+            ? activeCart?.offline_edit_snapshot ?? null
+            : null,
           customer_num: activeCart?.customer_num ?? null,
           customer_name_override: activeCart?.customer_name_override ?? null,
         },
@@ -5407,24 +5504,38 @@ export function PosScreen({ standalone = false }) {
   );
 
   function afterSaleCheckoutComplete(sale, options = {}) {
-    const waitForOrderCompleteOk =
-      standalone &&
-      !options.skipAutoNextOrder &&
-      posSalesConfig.showCheckoutOnCreate;
-    const advance = ({ focusScan = !waitForOrderCompleteOk } = {}) => {
-      if (!standalone || options.skipAutoNextOrder) return;
+    const shouldAutoNext = standalone && !options.skipAutoNextOrder;
+    const shouldPrint =
+      !options.skipPrint && sale?.id && posSalesConfig.showCheckoutOnCreate;
+
+    const advanceToNextOrder = ({ focusScan = false, keepPaymentOpen = false } = {}) => {
+      if (!shouldAutoNext) return;
       queuePrepareNextPosOrderAfterSale({
         focusScan,
-        keepPaymentOpen: waitForOrderCompleteOk,
+        keepPaymentOpen,
         pendingSale: sale,
       });
     };
-    if (!options.skipPrint && sale?.id && posSalesConfig.showCheckoutOnCreate) {
+
+    if (shouldAutoNext) {
+      // Clear the workspace immediately — do not wait for receipt print to finish.
+      advanceToNextOrder({ keepPaymentOpen: shouldPrint });
+    }
+
+    if (shouldPrint) {
       schedulePosReceiptPrint(sale, {
-        onSettled: () => advance({ focusScan: false }),
+        onSettled: () => {
+          if (!shouldAutoNext) return;
+          void handleContinueNextOrder();
+        },
       });
-    } else {
-      advance();
+      return;
+    }
+
+    if (shouldAutoNext) {
+      advanceToNextOrder({ focusScan: true });
+      setPaymentOpen(false);
+      setReceiptPrintStatus(null);
     }
   }
 
@@ -6401,6 +6512,7 @@ export function PosScreen({ standalone = false }) {
     const bootstrap = (async () => {
       try {
         await clearPreviousOrderEditDraft();
+        await clearLocalPosCart().catch(() => {});
         if (abandonCart) {
           await abandonOfflineSaleEdit(abandonCart);
         } else if (clearOfflineCart) {
@@ -6470,6 +6582,53 @@ export function PosScreen({ standalone = false }) {
 
   async function handleNewOrder() {
     await startFreshWorkspace();
+  }
+
+  async function handlePrintFailedOfflineReceipt(failedSale) {
+    let sale = failedSale;
+    if (!sale?.order_num && !sale?.items?.length) {
+      try {
+        const rows = await listFailedOutboxSales();
+        sale = rows[0] ?? null;
+      } catch {
+        sale = null;
+      }
+    }
+    if (!sale?.order_num && !(sale?.items?.length > 0)) {
+      notifyError("No failed offline receipt to print.");
+      return;
+    }
+    const orderLabel = formatPosBrowseLabel(sale);
+    const loadingToastId = toast.loading(
+      orderLabel !== "—" ? `Printing failed receipt ${orderLabel}…` : "Printing failed receipt…",
+    );
+    try {
+      const result = await printSaleOrder(
+        sale,
+        offlinePrintOptions(sale, {
+          capabilities,
+          organization,
+          organizationName: capabilities?.profile_label,
+          uomById,
+          productByCode,
+          user,
+          preparedBy: user?.full_name ?? user?.username ?? null,
+          documentType:
+            resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
+        }),
+      );
+      if (!result) {
+        toast.error("Print cancelled or no format was selected.", { id: loadingToastId });
+        return;
+      }
+      toast.success(
+        orderLabel !== "—" ? `Printed failed receipt ${orderLabel}.` : "Printed failed receipt.",
+        { id: loadingToastId },
+      );
+    } catch (e) {
+      console.error("Failed offline receipt print failed", e);
+      toast.error(e?.message ?? "Could not print failed receipt.", { id: loadingToastId });
+    }
   }
 
   async function handlePrintReceipt() {
@@ -7256,6 +7415,7 @@ export function PosScreen({ standalone = false }) {
     paymentOpen,
     saveOrderOpen,
     heldOrdersOpen,
+    pendingSyncOpen,
     leaveGuardOpen,
     priceCheckerOpen,
     floatModalOpen,
@@ -7311,6 +7471,7 @@ export function PosScreen({ standalone = false }) {
         state.paymentOpen
         || state.saveOrderOpen
         || state.heldOrdersOpen
+        || state.pendingSyncOpen
         || state.leaveGuardOpen
         || state.priceCheckerOpen
         || state.floatModalOpen
@@ -7595,6 +7756,28 @@ export function PosScreen({ standalone = false }) {
                     </span>
                   ) : null}
                 </button>
+                {standalone ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    title={
+                      pendingSync > 0
+                        ? `${pendingSync} offline order(s) waiting to sync`
+                        : "Pending offline sync"
+                    }
+                    onClick={() => setPendingSyncOpen(true)}
+                    className={posHeaderBtnClassName}
+                  >
+                    <span className="pos-header-btn-label" data-short="Pending">
+                      Pending sync
+                    </span>
+                    {pendingSync > 0 ? (
+                      <span className="pos-header-action-badge bg-amber-500">
+                        {pendingSync > 99 ? "99+" : pendingSync}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
                 {requireTillFloat && activeSession ? (
                   <>
                     <button
@@ -7697,6 +7880,24 @@ export function PosScreen({ standalone = false }) {
                       Suspend
                     </button>
                   </>
+                ) : null}
+                {failedSyncOrders.length > 0 ? (
+                  <button
+                    type="button"
+                    disabled={offlineSyncing}
+                    title={
+                      failedSyncOrders[0]?.order_num != null
+                        ? `Print receipt for failed offline order #${failedSyncOrders[0].order_num}`
+                        : "Print receipt for the failed offline order"
+                    }
+                    onClick={() => void handlePrintFailedOfflineReceipt(failedSyncOrders[0])}
+                    className={posHeaderBtnClassName}
+                  >
+                    Print failed
+                    {failedSyncOrders[0]?.order_num != null
+                      ? ` #${formatPosBrowseLabel(failedSyncOrders[0])}`
+                      : ""}
+                  </button>
                 ) : null}
                 <button
                   type="button"
@@ -7930,12 +8131,14 @@ export function PosScreen({ standalone = false }) {
                 {cartBridgeStatus}
               </p>
             ) : null}
-            {standalone && (offlineMode || pendingSync > 0 || offlineSyncing) ? (
+            {standalone && (offlineMode || pendingSync > 0 || offlineSyncing || failedSyncOrders.length > 0) ? (
               <div
                 className={`mt-2 rounded-md border px-2.5 py-2 text-xs font-medium ${
                   offlineMode
                     ? "border-amber-200 bg-amber-50 text-amber-950"
-                    : "border-sky-200 bg-sky-50 text-sky-950"
+                    : failedSyncOrders.length > 0
+                      ? "border-amber-200 bg-amber-50 text-amber-950"
+                      : "border-sky-200 bg-sky-50 text-sky-950"
                 }`}
               >
                 {offlineMode ? (
@@ -7945,12 +8148,20 @@ export function PosScreen({ standalone = false }) {
                       : "Connection dropped — selling from local cache (cash only)."}{" "}
                     Order # left: {orderNumbersLeft}. Pending sync: {pendingSync}.
                   </p>
+                ) : failedSyncOrders.length > 0 ? (
+                  <p className="mb-1.5">
+                    Sync failed for {failedSyncOrders.length} offline order
+                    {failedSyncOrders.length === 1 ? "" : "s"}. You can reprint the local receipt
+                    below while retrying sync.
+                  </p>
                 ) : null}
                 <PosOfflineSyncControls
                   pendingSync={pendingSync}
                   syncing={offlineSyncing}
                   canFlush={canFlushOutbox}
                   syncProgress={syncProgress}
+                  failedSyncOrders={failedSyncOrders}
+                  onPrintFailed={handlePrintFailedOfflineReceipt}
                   lastSyncMessage={
                     offlineMode
                       ? null
@@ -9149,6 +9360,23 @@ export function PosScreen({ standalone = false }) {
         embedded={!standalone}
       />
 
+      <PosPendingSyncOverlay
+        open={pendingSyncOpen}
+        onClose={() => setPendingSyncOpen(false)}
+        onCountChange={() => void refreshOfflineCounts()}
+        onDiscarded={() => {
+          void refreshOfflineCounts();
+          const current = cartRef.current;
+          if (
+            current?.offline_client_sale_uuid ||
+            (current?.offline && !(current?.lines?.length > 0))
+          ) {
+            void startFreshWorkspace();
+          }
+        }}
+        embedded={!standalone}
+      />
+
       {standalone ? (
         <PosLeaveGuardDialog
           open={leaveGuardOpen}
@@ -9200,13 +9428,15 @@ export function PosScreen({ standalone = false }) {
       {standalone ? (
         classicLayout ? (
           <>
-            {pendingSync > 0 || offlineSyncing ? (
+            {pendingSync > 0 || offlineSyncing || failedSyncOrders.length > 0 ? (
               <div className="classic-pos-offline-sync-strip shrink-0 border-t border-[var(--theme-border)] bg-sky-50 px-3 py-1.5 text-sky-950">
                 <PosOfflineSyncControls
                   pendingSync={pendingSync}
                   syncing={offlineSyncing}
                   canFlush={canFlushOutbox}
                   syncProgress={syncProgress}
+                  failedSyncOrders={failedSyncOrders}
+                  onPrintFailed={handlePrintFailedOfflineReceipt}
                   lastSyncMessage={
                     syncProgress?.message ||
                     lastSyncMessage ||

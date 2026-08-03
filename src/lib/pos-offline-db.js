@@ -248,6 +248,13 @@ export async function idbPutOutboxSale(sale) {
   await withStore("outbox", "readwrite", (store) => store.put(sale));
 }
 
+export async function idbDeleteOutboxSale(uuid) {
+  const key = String(uuid ?? "").trim();
+  if (!key) return false;
+  await withStore("outbox", "readwrite", (store) => store.delete(key));
+  return true;
+}
+
 export async function idbGetOutboxSale(uuid) {
   return withStore("outbox", "readonly", (store) => store.get(uuid));
 }

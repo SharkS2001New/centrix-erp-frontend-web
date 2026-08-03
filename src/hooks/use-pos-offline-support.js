@@ -49,6 +49,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncMessage, setLastSyncMessage] = useState(null);
   const [syncProgress, setSyncProgress] = useState(EMPTY_SYNC_PROGRESS);
+  const [failedSyncOrders, setFailedSyncOrders] = useState([]);
   const wasFullyOnlineRef = useRef(fullyOnline);
   const wasCanFlushRef = useRef(canFlushOutbox);
   const canFlushRef = useRef(canFlushOutbox);
@@ -65,12 +66,15 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     if (!enabled) return;
     try {
       const { peekPosOfflineOrderNumberCount } = await import("@/lib/pos-offline");
-      const [left, pending] = await Promise.all([
+      const { listFailedOutboxSales } = await import("@/lib/pos-offline");
+      const [left, pending, failedRows] = await Promise.all([
         peekPosOfflineOrderNumberCount(),
         getPosOfflinePendingCount(),
+        listFailedOutboxSales(),
       ]);
       setOrderNumbersLeft(left);
       setPendingSync(pending);
+      setFailedSyncOrders(failedRows);
     } catch {
       /* ignore */
     }
@@ -195,6 +199,21 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
             .join("; ");
           const more = failed.length > 3 ? ` (+${failed.length - 3} more)` : "";
           notifySyncProblem(`${detail}${more}`);
+          try {
+            const { listFailedOutboxSales } = await import("@/lib/pos-offline");
+            setFailedSyncOrders(await listFailedOutboxSales());
+          } catch {
+            setFailedSyncOrders(
+              failed.map((row) => ({
+                id: row.client_sale_uuid ? `offline:${row.client_sale_uuid}` : null,
+                order_num: row.order_num,
+                offline_pending_sync: true,
+                sync_error: row.error ?? null,
+              })),
+            );
+          }
+        } else if (ok.length) {
+          setFailedSyncOrders([]);
         }
         await refreshCounts();
         return results;
@@ -319,6 +338,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     syncing,
     lastSyncMessage,
     syncProgress,
+    failedSyncOrders,
     prepare,
     flushOutbox,
     flushOutboxNow,

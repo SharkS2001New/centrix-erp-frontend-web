@@ -11,6 +11,8 @@ export function PosOfflineSyncControls({
   syncProgress = null,
   lastSyncMessage = null,
   onSync,
+  failedSyncOrders = [],
+  onPrintFailed,
   compact = false,
   className = "",
 }) {
@@ -34,6 +36,14 @@ export function PosOfflineSyncControls({
           : "Sync local offline orders to the server"));
 
   const hasPending = pendingSync > 0;
+  const failedOrders = Array.isArray(failedSyncOrders) ? failedSyncOrders : [];
+  const latestFailed = failedOrders[0] ?? null;
+  const failedBrowseNum =
+    latestFailed?.pos_order_num ??
+    latestFailed?.order_num ??
+    null;
+  const showPrintFailed = failedOrders.length > 0 && !syncing && typeof onPrintFailed === "function";
+
   const disabled = syncing || !canFlush || !hasPending;
   const title = !canFlush
     ? "Reconnect to sync offline orders"
@@ -49,9 +59,30 @@ export function PosOfflineSyncControls({
       role="status"
       aria-live="polite"
     >
-      <div className={`flex items-center gap-2 ${compact ? "" : "justify-between"}`}>
+      <div className={`flex flex-wrap items-center gap-2 ${compact ? "" : "justify-between"}`}>
         {!compact ? (
           <p className="min-w-0 flex-1 text-xs font-medium leading-snug">{label}</p>
+        ) : null}
+        {showPrintFailed ? (
+          <button
+            type="button"
+            disabled={syncing}
+            title={
+              failedBrowseNum != null
+                ? `Print receipt for failed offline order #${failedBrowseNum}`
+                : "Print receipt for the failed offline order"
+            }
+            onClick={() => void onPrintFailed?.(latestFailed)}
+            className={
+              compact
+                ? "pos-header-action-btn inline-flex items-center gap-1 rounded-md border border-amber-400 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+                : "shrink-0 rounded-md border border-amber-400 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-950 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+            }
+          >
+            {failedBrowseNum != null
+              ? `Print failed #${failedBrowseNum}`
+              : "Print failed receipt"}
+          </button>
         ) : null}
         <button
           type="button"
@@ -76,7 +107,7 @@ export function PosOfflineSyncControls({
           </span>
         </button>
       </div>
-      {compact && (syncing || pendingSync > 0 || lastSyncMessage) ? (
+      {compact && (syncing || pendingSync > 0 || lastSyncMessage || showPrintFailed) ? (
         <p className="max-w-[14rem] truncate text-[10px] font-medium text-[var(--theme-text-muted)]">
           {label}
         </p>

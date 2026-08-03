@@ -9,6 +9,7 @@ import {
   idbClearLocalCart,
   idbCountOrderNumbers,
   idbCountPendingOutbox,
+  idbDeleteOutboxSale,
   idbGetAllCatalog,
   idbGetCatalogProduct,
   idbGetLocalCart,
@@ -187,7 +188,19 @@ export function emptyLocalPosCart(seed = {}) {
 
 export async function loadOrCreateLocalPosCart(seed = {}) {
   const existing = await idbGetLocalCart("active");
-  if (existing) return existing;
+  if (existing) {
+    const hasLines = (existing.lines?.length ?? 0) > 0;
+    const isQueuedEdit = Boolean(existing.offline_client_sale_uuid);
+    const isPreviousOrderEdit = Boolean(existing.superseded_sale_id && existing.held_order_num);
+    // Abandoned shells from a completed/failed sale must not hijack the next ticket.
+    if (!hasLines && !isQueuedEdit && !isPreviousOrderEdit && existing.held_order_num) {
+      await idbClearLocalCart("active");
+    } else if (hasLines || isQueuedEdit || isPreviousOrderEdit || existing.offline) {
+      return existing;
+    } else if (existing) {
+      return existing;
+    }
+  }
   const cart = emptyLocalPosCart(seed);
   await idbPutLocalCart(cart);
   return cart;
@@ -584,7 +597,15 @@ export async function completeOfflineCashSale({
   } else if (editingUuid || reuseOrderNum) {
     throw new Error("Offline edit is missing its original order number. Cancel and reopen the sale.");
   } else {
-    const slot = await takePosOfflineOrderSlot();
+    let slot = await takePosOfflineOrderSlot();
+    if (!slot?.order_num) {
+      try {
+        await ensurePosOfflineOrderNumbers({ force: true });
+      } catch {
+        /* still offline — fall through */
+      }
+      slot = await takePosOfflineOrderSlot();
+    }
     if (!slot?.order_num) {
       throw new Error(
         "No reserved order numbers left for offline selling. Reconnect briefly to reserve more.",
@@ -1236,6 +1257,93 @@ export async function abandonOfflineSaleEdit(cart) {
 
 export async function getPosOfflinePendingCount() {
   return idbCountPendingOutbox();
+}
+
+/** Failed outbox rows (sync_status error) — for reprint while retrying. */
+export async function listFailedOutboxSales() {
+  const rows = (await idbListPendingOutbox()).filter((row) => row.sync_status === "error");
+  return rows
+    .map((row) => mapOutboxRowForDisplay(row))
+    .sort((a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0));
+}
+
+function mapOutboxRowForDisplay(row) {
+  const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
+  const items = Array.isArray(row.lines) && row.lines.length ? row.lines : sale.items ?? [];
+  const orderTotal =
+    sale.order_total != null
+      ? Number(sale.order_total)
+      : items.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
+  return {
+    ...sale,
+    client_sale_uuid: row.client_sale_uuid,
+    id: `offline:${row.client_sale_uuid}`,
+    order_num: row.order_num,
+    pos_order_num: sale.pos_order_num ?? row.checkout_body?.pos_order_num ?? null,
+    pos_order_date: sale.pos_order_date ?? row.checkout_body?.pos_order_date ?? null,
+    customer_name: sale.customer_name ?? sale.customer_name_override ?? "Walk-in",
+    order_total: orderTotal,
+    offline_pending_sync: true,
+    sync_status: row.sync_status,
+    sync_error: row.sync_error ?? null,
+    sync_kind: row.sync_kind ?? "sale",
+    items,
+    created_at: row.created_at_ms ? new Date(row.created_at_ms).toISOString() : sale.created_at ?? null,
+  };
+}
+
+/** Pending + failed offline sales for the POS management overlay. */
+export async function listPendingOutboxSalesForManage() {
+  const rows = await idbListPendingOutbox();
+  return rows
+    .map((row) => mapOutboxRowForDisplay(row))
+    .sort((a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0));
+}
+
+/**
+ * Remove a queued offline sale from the local outbox (e.g. after a sync error).
+ * Does not undo a sale that already reached the server — use only for stuck local rows.
+ */
+export async function discardOutboxSale(clientSaleUuid) {
+  return withPosOfflineExclusiveLock(async () => {
+    const uuid = String(clientSaleUuid ?? "").trim();
+    if (!uuid) {
+      throw new Error("Missing offline sale id.");
+    }
+    const existing = await idbGetOutboxSale(uuid);
+    if (!existing) {
+      return false;
+    }
+    if (existing.sync_status === "syncing") {
+      throw new Error("Cannot remove this sale while sync is in progress. Wait a moment and try again.");
+    }
+    await idbDeleteOutboxSale(uuid);
+    const local = await idbGetLocalCart("active");
+    if (local?.offline_client_sale_uuid === uuid) {
+      await idbClearLocalCart("active");
+    }
+    try {
+      await ensurePosOfflineOrderNumbers({ force: false });
+    } catch {
+      /* ignore when offline */
+    }
+    return true;
+  });
+}
+
+/** True when the workspace cart still points at a failed/discarded outbox row. */
+export async function cartHasStaleFailedOutboxAttachment(cart) {
+  const uuid = cart?.offline_client_sale_uuid;
+  if (!uuid) return false;
+  const row = await idbGetOutboxSale(uuid);
+  if (!row) return true;
+  if (row.sync_status !== "error") return false;
+  return !(cart.lines?.length > 0);
+}
+
+export async function getPosOfflineFailedCount() {
+  const rows = await listFailedOutboxSales();
+  return rows.length;
 }
 
 function isDuplicateOrderNumError(err) {
