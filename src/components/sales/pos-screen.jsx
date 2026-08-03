@@ -2775,6 +2775,20 @@ export function PosScreen({ standalone = false }) {
     focusClassicProductSearch();
   }
 
+  /** After a line is added: return keyboard to Scan code for the next item. */
+  function focusScanAfterItemAdded() {
+    focusSearchAfterAdd.current = true;
+    closeProductSearchDropdown();
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (!focusSearchAfterAdd.current) return;
+        focusSearchAfterAdd.current = false;
+        searchInputRef.current?.focus({ preventScroll: true });
+        searchInputRef.current?.select?.();
+      });
+    });
+  }
+
   function clearClassicEntryFields() {
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
@@ -2786,12 +2800,7 @@ export function PosScreen({ standalone = false }) {
     setEditingLineRef(null);
     setSelectedLineId(null);
     closeProductSearchDropdown();
-    focusSearchAfterAdd.current = true;
-    window.requestAnimationFrame(() => {
-      if (!focusSearchAfterAdd.current) return;
-      focusSearchAfterAdd.current = false;
-      searchInputRef.current?.focus({ preventScroll: true });
-    });
+    focusScanAfterItemAdded();
   }
 
   useEffect(() => {
@@ -3607,6 +3616,9 @@ export function PosScreen({ standalone = false }) {
 
     if (clearEntry && !unlockUiEarly) {
       clearClassicEntryFields();
+    } else if (clearEntry && unlockUiEarly) {
+      // Entry was cleared early — reinforce Scan focus after optimistic cart paint.
+      focusScanAfterItemAdded();
     }
 
     return true;
@@ -3670,13 +3682,14 @@ export function PosScreen({ standalone = false }) {
 
     setLineBusy(true);
     try {
-      await commitCartLine({
+      const ok = await commitCartLine({
         product,
         computed,
         incrementBaseQty: computed.baseQty,
         mergeTarget,
         successMessage: null,
       });
+      if (ok) focusScanAfterItemAdded();
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
     } finally {
@@ -4504,6 +4517,7 @@ export function PosScreen({ standalone = false }) {
         unlockUiEarly: classicLayout,
       });
       if (!ok) return;
+      if (!classicLayout) focusScanAfterItemAdded();
     } catch (e) {
       setStatusMessage(
         e instanceof ApiError
@@ -7730,6 +7744,11 @@ export function PosScreen({ standalone = false }) {
     focusProductSearch,
     focusScanCode,
     closeProductSearchDropdown,
+    closePayment: () => {
+      setPaymentOpen(false);
+      setReceiptPrintStatus(null);
+      setPaymentError(null);
+    },
     handleNewOrder,
     startFreshWorkspace,
     handleRefresh,
@@ -7954,11 +7973,29 @@ export function PosScreen({ standalone = false }) {
       if (e.key === "Escape") {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
+        const wasPaymentOpen = Boolean(state.paymentOpen);
         const modalOpen = isModalOpen(state);
         if (state.replacingLineId && !modalOpen) {
           actions.cancelReplaceCartLine();
         }
-        if (modalOpen) {
+        // Capture steals Esc from dialogs — close payment ourselves so Esc works.
+        if (wasPaymentOpen) {
+          actions.closePayment?.();
+        }
+        if (state.standalone) {
+          // External POS: always return keyboard to Scan code.
+          if (modalOpen && !wasPaymentOpen) {
+            focusScanAfterEsc(actions);
+          } else if (wasPaymentOpen) {
+            focusScanAfterEsc(actions);
+          } else {
+            actions.focusProductSearch();
+          }
+          return;
+        }
+        if (modalOpen && !wasPaymentOpen) {
+          focusScanAfterEsc(actions);
+        } else if (wasPaymentOpen) {
           focusScanAfterEsc(actions);
         } else {
           // Open workspace: reset entry row and focus Scan code.
@@ -8113,30 +8150,6 @@ export function PosScreen({ standalone = false }) {
                       </span>
                     </button>
                   </>
-                ) : null}
-                {classicLayout ? (
-                  <button
-                    type="button"
-                    disabled={
-                      busy
-                      || !cart?.lines?.length
-                      || cartStockBlocked
-                      || (!isCartEditSession && (lineBusy || checkoutBlocked))
-                    }
-                    title={
-                      cartStockBlocked
-                        ? "Fix stock issues before completing payment"
-                        : checkoutBlocked || lineBusy
-                          ? "Wait for the line to finish saving"
-                          : "Complete payment (F10)"
-                    }
-                    onClick={() => void openCompletePayment()}
-                    className={posHeaderBtnClassName}
-                  >
-                    <span className="pos-header-btn-label" data-short="Complete">
-                      Complete (F10)
-                    </span>
-                  </button>
                 ) : null}
                 <button
                   type="button"
