@@ -634,12 +634,24 @@ export function posCartLineTypeLabel(line) {
 /**
  * Refresh open cart line prices from the current product catalog.
  * Returns updated cart + count of lines whose unit price changed.
+ *
+ * Previous-order / same-day append sessions must keep sold prices — pass
+ * `lockExistingPrices: true` (or omit product updates for those carts).
  */
 export function applyCatalogPricesToCart(
   cart,
-  { productByCode = {}, retailByCode = {}, sellWholesale = false, cashRound = false } = {},
+  { productByCode = {}, retailByCode = {}, sellWholesale = false, cashRound = false, lockExistingPrices = false } = {},
 ) {
   if (!cart?.lines?.length) {
+    return { cart, updatedCount: 0, changes: [] };
+  }
+
+  // Editing / appending to an existing order: never reprice from today's catalog.
+  if (
+    lockExistingPrices
+    || cart?.held_order_num
+    || cart?.superseded_sale_id
+  ) {
     return { cart, updatedCount: 0, changes: [] };
   }
 

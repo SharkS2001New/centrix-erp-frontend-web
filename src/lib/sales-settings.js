@@ -76,6 +76,7 @@ const SALES_DEFAULTS = {
   require_backoffice_till_float: false,
   blind_till_close: false,
   enable_pos_order_edit: false,
+  append_same_day_customer_orders: false,
   enable_backoffice_order_edit: true,
   order_document_type: "receipt",
   invoice_valid_days: 7,
@@ -1370,6 +1371,8 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     /** @deprecated Use requirePosTillFloat or requireBackofficeTillFloat for the active workspace. */
     requireTillFloat: Boolean(sales.require_pos_till_float),
     enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings, options.capabilities ?? null),
+    /** When on, new mobile sales for a registered customer append to their open mobile order from today. */
+    appendSameDayCustomerOrders: Boolean(sales.append_same_day_customer_orders),
     /** External POS (/pos) only — use with `standalone`. Classic + modern share this flag. */
     enablePosCashRounding: resolveEnablePosCashRounding(moduleSettings),
     blindTillClose: Boolean(sales.blind_till_close),

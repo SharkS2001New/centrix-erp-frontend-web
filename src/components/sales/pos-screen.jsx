@@ -3245,7 +3245,10 @@ export function PosScreen({ standalone = false }) {
         retailPackage,
         cartLineRetailStockFlag(mergeTarget),
       );
-      finalComputed = applyComputedPrice(product, mergedEntryQty, discount, override);
+      // Keep the price already on the cart line (important for order edits / same-day append).
+      const lockedUnit =
+        Number(mergeTarget.unit_price) > 0 ? Number(mergeTarget.unit_price) : override;
+      finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
     }
 
     const stockAsRetail =
@@ -4720,11 +4723,12 @@ export function PosScreen({ standalone = false }) {
         retailPackage,
       );
       const perUnitDiscount = lineDiscountPerUnit(line.discount_given, packQty);
+      const lockedUnit = Number(line.unit_price) > 0 ? Number(line.unit_price) : null;
       const computed = applyComputedPrice(
         product,
         entryQty,
         perUnitDiscount,
-        null,
+        lockedUnit,
         isRetailLine,
         !isRetailLine,
       );
@@ -4801,11 +4805,12 @@ export function PosScreen({ standalone = false }) {
         : lineIsRetail;
 
       // Use the number in the qty field as-is in the F12 session mode (do not × conversion).
+      const lockedUnit = Number(line.unit_price) > 0 ? Number(line.unit_price) : null;
       const computedPreview = applyComputedPrice(
         product,
         entryQty,
         0,
-        null,
+        lockedUnit,
         sessionIsRetail,
         !sessionIsRetail,
       );
@@ -4823,7 +4828,7 @@ export function PosScreen({ standalone = false }) {
         product,
         entryQty,
         perUnitDiscount,
-        null,
+        lockedUnit,
         sessionIsRetail,
         !sessionIsRetail,
       );
@@ -5340,7 +5345,9 @@ export function PosScreen({ standalone = false }) {
       const retailUnit =
         Number(line.display_unit_price) > 0
           ? Number(line.display_unit_price)
-          : applyComputedPrice(
+          : Number(line.unit_price) > 0
+            ? Number(line.unit_price)
+            : applyComputedPrice(
               product,
               entryQty,
               String(perUnitDiscount),
@@ -5406,6 +5413,10 @@ export function PosScreen({ standalone = false }) {
     if (!activeCart?.lines?.length || !productMeta || !Object.keys(productMeta).length) {
       return 0;
     }
+    // Keep sold prices when revising / appending to an existing order.
+    if (activeCart.held_order_num || activeCart.superseded_sale_id) {
+      return 0;
+    }
     const mergedProducts = { ...productByCodeRef.current, ...productMeta };
     const { cart: pricedCart, updatedCount, changes } = applyCatalogPricesToCart(activeCart, {
       productByCode: mergedProducts,
@@ -5416,9 +5427,6 @@ export function PosScreen({ standalone = false }) {
     if (updatedCount <= 0) return 0;
     cartRef.current = pricedCart;
     setCart(pricedCart);
-    if (activeCart?.held_order_num) {
-      markPreviousOrderDraftDirtyNow();
-    }
     const sample = changes
       .slice(0, 2)
       .map((c) => `${c.product_name}: ${formatSaleKes(c.from)} → ${formatSaleKes(c.to)}`)
@@ -6057,6 +6065,13 @@ export function PosScreen({ standalone = false }) {
       // Annotate with the tendered amount so the immediate receipt can show correct change.
       if (cashTendered != null && cashTendered > 0) {
         sale = { ...sale, _cash_tendered: Number(cashTendered) };
+      }
+      if (sale?.fulfillment_meta?.same_day_customer_append) {
+        const label = formatPosBrowseLabel(sale);
+        setStatusMessage(`Items added to customer order #${label}.`);
+        if (standalone) {
+          notifySuccess(`Items added to existing order #${label} for this customer.`);
+        }
       }
       // Kick print before cart-clear state churn so HTML build starts immediately.
       markServerCartConsumed(liveCart?.id);

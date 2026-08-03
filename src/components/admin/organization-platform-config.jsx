@@ -351,6 +351,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_pos_cash_rounding: false,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
+    append_same_day_customer_orders: false,
     enable_backoffice_order_edit: true,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
@@ -425,6 +426,7 @@ export function salesPlatformFromApi(apiPayload) {
       : apiPayload.external_pos_layout === "classic",
     receipt_show_all_payment_methods: apiPayload.receipt_show_all_payment_methods !== false,
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
+    append_same_day_customer_orders: Boolean(apiPayload.append_same_day_customer_orders ?? false),
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
     reserve_stock_on_cart: apiPayload.reserve_stock_on_cart !== false,
@@ -580,6 +582,12 @@ export function OrganizationPlatformSalesSettings({
             description="When on, cashiers on external POS can reload a completed order by number to correct mistakes. Stock is restored, a KRA credit note is issued when the original sale was fiscalized, and checkout creates a new sale."
             checked={Boolean(salesPlatform?.enable_pos_order_edit)}
             onChange={(v) => patch({ enable_pos_order_edit: v })}
+          />
+          <Toggle
+            label="Append same-day mobile sales to the customer’s open order"
+            description="When on, mobile field sales for a registered customer append to that customer’s open mobile order from today at the same branch (same order #) instead of creating a new ticket. External POS and backoffice Create order are not affected."
+            checked={Boolean(salesPlatform?.append_same_day_customer_orders)}
+            onChange={(v) => patch({ append_same_day_customer_orders: v })}
           />
           <Toggle
             label="Allow editing backoffice orders"

@@ -200,6 +200,31 @@ describe("applyCatalogPricesToCart per-line mode", () => {
     expect(priced.lines[0].display_unit_price).toBe(125);
     expect(priced.lines[1].display_unit_price).toBe(6280);
   });
+
+  it("does not reprice lines when revising an existing order", () => {
+    const cart = {
+      held_order_num: 42,
+      superseded_sale_id: 99,
+      lines: [
+        {
+          product_code: "SUGAR",
+          quantity: 50,
+          on_wholesale_retail: 0,
+          unit_price: 6300,
+          display_unit_price: 6300,
+          amount: 6300,
+        },
+      ],
+    };
+    const { cart: priced, updatedCount } = applyCatalogPricesToCart(cart, {
+      productByCode: { SUGAR: sugarProduct },
+      retailByCode: { SUGAR: sugarRetailPackage },
+      sellWholesale: true,
+    });
+    expect(updatedCount).toBe(0);
+    expect(priced.lines[0].unit_price).toBe(6300);
+    expect(priced.lines[0].display_unit_price).toBe(6300);
+  });
 });
 
 describe("cartLineDisplayUnitPrice wholesale", () => {
