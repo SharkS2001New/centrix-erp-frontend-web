@@ -1281,6 +1281,7 @@ export function PosScreen({ standalone = false }) {
   const [heldOrdersOpen, setHeldOrdersOpen] = useState(false);
   const [heldOrdersCount, setHeldOrdersCount] = useState(0);
   const [pendingSyncOpen, setPendingSyncOpen] = useState(false);
+  const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
   const pendingSyncAlertRef = useRef(false);
   const [autoHeldPrompt, setAutoHeldPrompt] = useState(null);
   const [autoHeldBusy, setAutoHeldBusy] = useState(false);

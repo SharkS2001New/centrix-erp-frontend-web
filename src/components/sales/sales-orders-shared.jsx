@@ -587,23 +587,14 @@ function ContextMenuIcon({ name }) {
 
 export function OrderContextMenu({ open, x, y, items, onClose }) {
   const [mounted, setMounted] = useState(false);
-  const [pendingKey, setPendingKey] = useState(null);
-  const actionBusy = Boolean(pendingKey);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!open) {
-      setPendingKey(null);
-    }
-  }, [open]);
-
-  useEffect(() => {
     if (!open) return undefined;
     function handleDismiss(event) {
-      if (actionBusy) return;
       if (event.type === "keydown" && event.key !== "Escape") return;
       onClose();
     }
@@ -618,7 +609,7 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
       window.removeEventListener("scroll", handleDismiss, true);
       window.removeEventListener("keydown", handleDismiss);
     };
-  }, [open, onClose, actionBusy]);
+  }, [open, onClose]);
 
   if (!open || !mounted || !items?.length) return null;
 
@@ -632,14 +623,10 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
         type="button"
         className="fixed inset-0 z-[9998] cursor-default bg-slate-900/30"
         aria-label="Close menu"
-        disabled={actionBusy}
-        onClick={() => {
-          if (!actionBusy) onClose();
-        }}
+        onClick={() => onClose()}
       />
       <div
         role="menu"
-        aria-busy={actionBusy}
         className="fixed z-[9999] min-w-[14rem] overflow-hidden theme-panel rounded-xl border py-1.5 text-slate-900 shadow-2xl ring-1 ring-black/5"
         style={{ top, left }}
         onClick={(event) => event.stopPropagation()}
@@ -649,50 +636,26 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
           if (item.type === "separator") {
             return <div key={`sep-${index}`} className="my-1 border-t border-slate-200" role="separator" />;
           }
-          const itemBusy = pendingKey === item.key;
-          const label = itemBusy
-            ? item.processingLabel || "Processing…"
-            : item.label;
           return (
             <button
               key={item.key}
               type="button"
               role="menuitem"
-              disabled={item.disabled || actionBusy}
-              aria-busy={itemBusy}
+              disabled={item.disabled}
               onClick={() => {
-                if (item.disabled || actionBusy) return;
-                setPendingKey(item.key);
-                void (async () => {
-                  // Yield so the spinner/label paints before sync or fast async work.
-                  await new Promise((resolve) => {
-                    requestAnimationFrame(() => requestAnimationFrame(resolve));
-                  });
-                  try {
-                    await Promise.resolve(item.onClick?.());
-                  } finally {
-                    setPendingKey(null);
-                    onClose?.();
-                  }
-                })();
+                if (item.disabled) return;
+                // Close before async work so confirm dialogs and other modals are not blocked.
+                onClose?.();
+                void Promise.resolve(item.onClick?.());
               }}
               className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
-                item.destructive && !itemBusy
+                item.destructive
                   ? "text-red-700 hover:bg-red-50"
-                  : itemBusy
-                    ? "bg-slate-50 text-slate-800"
-                    : "text-slate-900 hover:bg-slate-100"
+                  : "text-slate-900 hover:bg-slate-100"
               }`}
             >
-              {itemBusy ? (
-                <span
-                  className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
-                  aria-hidden
-                />
-              ) : item.icon ? (
-                <ContextMenuIcon name={item.icon} />
-              ) : null}
-              <span>{label}</span>
+              {item.icon ? <ContextMenuIcon name={item.icon} /> : null}
+              <span>{item.label}</span>
             </button>
           );
         })}
