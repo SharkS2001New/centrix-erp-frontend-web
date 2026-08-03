@@ -24,7 +24,7 @@ import {
 import { AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
-import { buildReportQueryParams, reportHidesBranchFilter, reportShowsDateRange } from "@/lib/reports/report-filter-config";
+import { buildReportQueryParams, reportHidesBranchFilter, reportShowsDateRange, defaultReportExtraFilterValues } from "@/lib/reports/report-filter-config";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
@@ -91,8 +91,15 @@ function StandardReportScreen({ definition }) {
     cacheMatchesDefinition ? cachedBundle.branchId ?? "" : "",
   );
   const [branches, setBranches] = useState([]);
+  const defaultExtraFilters = useMemo(
+    () => defaultReportExtraFilterValues(definition.key, definition.extraFilters),
+    [definition.extraFilters, definition.key],
+  );
+
   const [extraFilters, setExtraFilters] = useState(() =>
-    cacheMatchesDefinition ? cachedBundle.extraFilters ?? {} : {},
+    cacheMatchesDefinition
+      ? { ...defaultExtraFilters, ...(cachedBundle.extraFilters ?? {}) }
+      : defaultExtraFilters,
   );
   const [queryFilters, setQueryFilters] = useState(() =>
     cacheMatchesDefinition ? cachedBundle.queryFilters ?? {} : {},
@@ -105,7 +112,7 @@ function StandardReportScreen({ definition }) {
           fromDate: defaultRange.from,
           toDate: defaultRange.to,
           branchId: cacheMatchesDefinition ? cachedBundle.branchId ?? "" : "",
-          extraFilters: {},
+          extraFilters: defaultExtraFilters,
           queryFilters: {},
         },
   );
@@ -167,6 +174,7 @@ function StandardReportScreen({ definition }) {
           toDate: currentApplied.toDate,
           branchId: currentApplied.branchId,
           extraValues: currentApplied.queryFilters,
+          toggleValues: currentApplied.extraFilters,
         }),
       };
       if (definition.dateColumn && !searchParams.date_column && reportShowsDateRange(definition.key)) {
@@ -241,10 +249,13 @@ function StandardReportScreen({ definition }) {
     });
   }, [rows, reportSummary, definition.kpis]);
 
-  const columns = useMemo(
-    () => filterStructuredReportColumns(definition.columns ?? [], { multiBranch }),
-    [definition.columns, multiBranch],
-  );
+  const columns = useMemo(() => {
+    let cols = definition.columns ?? [];
+    if (definition.key === "sales-by-user" && applied.extraFilters?.overall_summary !== false) {
+      cols = cols.filter((col) => col.key !== "sale_date");
+    }
+    return filterStructuredReportColumns(cols, { multiBranch });
+  }, [definition.columns, definition.key, applied.extraFilters, multiBranch]);
 
   const footerTotals = useMemo(() => {
     if (!definition.footerTotals || !columns.length) return {};
@@ -280,19 +291,34 @@ function StandardReportScreen({ definition }) {
   function resetFilters() {
     const range = defaultReportDateRange(definition.defaultDateRangeDays ?? 29);
     const nextBranchId = defaultReportBranchId(user, isOrgWide);
+    const nextExtraFilters = defaultReportExtraFilterValues(definition.key, definition.extraFilters);
     setFromDate(range.from);
     setToDate(range.to);
     setBranchId(nextBranchId);
-    setExtraFilters({});
+    setExtraFilters(nextExtraFilters);
     setQueryFilters({});
     setApplied({
       fromDate: range.from,
       toDate: range.to,
       branchId: nextBranchId,
-      extraFilters: {},
+      extraFilters: nextExtraFilters,
       queryFilters: {},
     });
     setPage(1);
+  }
+
+  function handleExtraFilterChange(id, value) {
+    setExtraFilters((current) => {
+      if (definition.key === "sales-by-user") {
+        if (id === "overall_summary") {
+          return { ...current, overall_summary: value, breakdown_by_date: !value };
+        }
+        if (id === "breakdown_by_date") {
+          return { ...current, breakdown_by_date: value, overall_summary: !value };
+        }
+      }
+      return { ...current, [id]: value };
+    });
   }
 
   function branchLabel(branchIdValue) {
@@ -307,6 +333,7 @@ function StandardReportScreen({ definition }) {
         toDate: applied.toDate,
         branchId: applied.branchId,
         extraValues: applied.queryFilters,
+        toggleValues: applied.extraFilters,
       }),
     [applied, definition.key],
   );
@@ -381,7 +408,7 @@ function StandardReportScreen({ definition }) {
         onFromDateChange={setFromDate}
         onToDateChange={setToDate}
         onBranchChange={setBranchId}
-        onExtraChange={(id, value) => setExtraFilters((f) => ({ ...f, [id]: value }))}
+        onExtraChange={handleExtraFilterChange}
         onFilter={applyFilters}
         onRefresh={refreshReport}
         onReset={resetFilters}

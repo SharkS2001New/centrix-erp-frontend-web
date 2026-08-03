@@ -78,8 +78,8 @@ describe("sell_on_retail gate", () => {
       sellWholesale: true,
       retailPackage: sugarRetailPackage,
     });
-    expect(retailLine.displayUnitPrice).toBe(6250);
-    expect(wholesaleLine.displayUnitPrice).toBe(6250);
+    expect(retailLine.displayUnitPrice).toBe(6280);
+    expect(wholesaleLine.displayUnitPrice).toBe(6280);
     expect(retailLine.isRetail).toBe(false);
   });
 
@@ -144,8 +144,8 @@ describe("computePosLine retail amount vs unit", () => {
 });
 
 describe("posListUnitPrice search display", () => {
-  it("shows per-kg retail price for qty 1 in retail session", () => {
-    expect(posListUnitPrice(sugarProduct, false, sugarRetailPackage)).toBe(125);
+  it("includes retail markup for qty 1 in retail session", () => {
+    expect(posListUnitPrice(sugarProduct, false, sugarRetailPackage)).toBe(130);
   });
 
   it("shows per-bag wholesale price for qty 1 pack", () => {
@@ -180,7 +180,7 @@ describe("applyCatalogPricesToCart per-line mode", () => {
     });
     expect(updatedCount).toBe(2);
     expect(priced.lines[0].display_unit_price).toBe(125);
-    expect(priced.lines[1].display_unit_price).toBe(6250);
+    expect(priced.lines[1].display_unit_price).toBe(6280);
   });
 });
 

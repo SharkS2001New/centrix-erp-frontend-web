@@ -499,28 +499,17 @@ export function posListUnitPrice(
   return lineAmountBeforeDiscount;
 }
 
-/** Unit price + label for product search (avoids mixing /kg and /bag without context). */
+/** @deprecated Use posListUnitPrice — kept for callers that expect { price, unitLabel }. */
 export function posListUnitPriceDisplay(
   product,
   sellWholesale,
   retailPackage,
   routeMarkupPerUnit = 0,
 ) {
-  if (!product?.uom) {
-    return {
-      price: posListUnitPrice(product, sellWholesale, retailPackage, routeMarkupPerUnit),
-      unitLabel: "",
-    };
-  }
-  const uom = product.uom;
-  const wholesaleMode = effectivePosSellWholesale(sellWholesale, product);
-  const price = posListUnitPrice(product, sellWholesale, retailPackage, routeMarkupPerUnit);
-  const unitLabel = wholesaleMode
-    ? uomConversionFactor(uom) > 1
-      ? ` / ${fullPackageLabel(uom)}`
-      : ""
-    : ` / ${smallPackagingLabel(uom)}`;
-  return { price, unitLabel };
+  return {
+    price: posListUnitPrice(product, sellWholesale, retailPackage, routeMarkupPerUnit),
+    unitLabel: "",
+  };
 }
 
 /** Per-unit discount from stored line total (`discount_given` ÷ pack/display qty). */

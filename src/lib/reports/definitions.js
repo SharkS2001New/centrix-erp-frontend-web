@@ -179,11 +179,16 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-user": {
     title: "Sales by User",
-    subtitle: "Orders by user on the day they were placed (booked → completed, incl. unpaid / partial), with VAT breakdown",
+    subtitle:
+      "Sales totals by user for the selected period (booked → completed, incl. unpaid / partial). Toggle breakdown by date when needed.",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
     showDateRange: true,
+    extraFilters: [
+      { id: "overall_summary", label: "Overall summary", type: "checkbox", default: true },
+      { id: "breakdown_by_date", label: "Breakdown by date", type: "checkbox", default: false },
+    ],
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "salesperson", label: "User", accessor: (r) => r.salesperson },

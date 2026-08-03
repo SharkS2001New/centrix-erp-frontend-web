@@ -4,7 +4,7 @@ import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, use
 import { createPortal } from "react-dom";
 import { isPosClassicAltShortcut, isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
-import { posListUnitPriceDisplay } from "@/lib/pos-line";
+import { posListUnitPrice } from "@/lib/pos-line";
 import {
   productCartStockDisplayMode,
   productStockAtLocation,
@@ -307,7 +307,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                 ) : (
                   results.map((product, index) => {
                     const keyboardActive = highlight === index;
-                    const { price, unitLabel } = posListUnitPriceDisplay(
+                    const price = posListUnitPrice(
                       product,
                       sellWholesale,
                       retailByCode[product.product_code],
@@ -334,9 +334,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         <td>{product.product_name}</td>
                         <td className="text-right tabular-nums">
                           {Number(price).toLocaleString()}
-                          {unitLabel ? (
-                            <span className="classic-pos-find-unit">{unitLabel}</span>
-                          ) : null}
                         </td>
                         <td className={`text-right tabular-nums ${negative ? "classic-pos-neg" : ""}`}>
                           {formatStockQty(qty, product)}
@@ -425,7 +422,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                 results.map((product, index) => {
                   const keyboardActive = highlight === index;
                   const selected = selectedCode === product.product_code;
-                  const { price, unitLabel } = posListUnitPriceDisplay(
+                  const price = posListUnitPrice(
                     product,
                     sellWholesale,
                     retailByCode[product.product_code],
@@ -458,9 +455,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">
                         {Number(price).toLocaleString()}
-                        {unitLabel ? (
-                          <span className="ml-0.5 text-[10px] font-normal text-slate-500">{unitLabel}</span>
-                        ) : null}
                       </td>
                       {showShopStock ? (
                         <td className="px-2 py-1.5 text-right text-slate-600">

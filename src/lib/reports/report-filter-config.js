@@ -290,8 +290,49 @@ export function reportShowsTableFooter(reportKey) {
   return !REPORTS_WITHOUT_TABLE_FOOTER.has(reportKey);
 }
 
+/** Checkbox toggles sent as 1/0 query params (e.g. sales-by-user overall summary). */
+export const REPORT_EXTRA_TOGGLES = {
+  "sales-by-user": [
+    { id: "overall_summary", param: "overall_summary", default: true },
+  ],
+};
+
+/** @param {string} reportKey */
+export function defaultReportExtraToggleValues(reportKey) {
+  const toggles = REPORT_EXTRA_TOGGLES[reportKey] ?? [];
+  /** @type {Record<string, boolean>} */
+  const values = {};
+  for (const toggle of toggles) {
+    values[toggle.id] = toggle.default !== false;
+  }
+  return values;
+}
+
+/**
+ * Default checkbox values from report definition + toggle config.
+ * @param {string} reportKey
+ * @param {Array<{ id: string, type?: string, default?: boolean }>} [extraFilterDefs]
+ */
+export function defaultReportExtraFilterValues(reportKey, extraFilterDefs = []) {
+  const values = defaultReportExtraToggleValues(reportKey);
+  for (const filter of extraFilterDefs) {
+    if (filter.type === "checkbox") {
+      values[filter.id] = filter.default !== false;
+    }
+  }
+  if (reportKey === "sales-by-user") {
+    const overall = values.overall_summary !== false;
+    values.overall_summary = overall;
+    values.breakdown_by_date = !overall;
+  }
+  return values;
+}
+
 /** @param {string} reportKey @param {Record<string, string>} values */
-export function buildReportQueryParams(reportKey, { fromDate, toDate, branchId, extraValues = {} }) {
+export function buildReportQueryParams(
+  reportKey,
+  { fromDate, toDate, branchId, extraValues = {}, toggleValues = {} },
+) {
   /** @type {Record<string, string | number>} */
   const searchParams = {};
 
@@ -313,6 +354,13 @@ export function buildReportQueryParams(reportKey, { fromDate, toDate, branchId, 
     if (value !== undefined && value !== null && String(value).trim() !== "") {
       searchParams[param] = value;
     }
+  }
+
+  for (const toggle of REPORT_EXTRA_TOGGLES[reportKey] ?? []) {
+    const param = toggle.param ?? toggle.id;
+    const raw = toggleValues[toggle.id];
+    const active = raw !== undefined ? Boolean(raw) : toggle.default !== false;
+    searchParams[param] = active ? "1" : "0";
   }
 
   return searchParams;
