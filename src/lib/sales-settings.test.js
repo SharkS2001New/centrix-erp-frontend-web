@@ -16,6 +16,7 @@ import {
   resolveEnablePosCashRounding,
   resolveShowPosCheckoutOnCreate,
   resolvePrintInvoiceStatuses,
+  saleAppliesRouteMarkupPricing,
   shouldShowDistributionLoadingLists,
   shouldShowLoadingListNav,
   shouldShowMobileLoadingSheets,
@@ -225,6 +226,47 @@ describe("sales-settings POS cash rounding", () => {
         sales: { external_pos_layout: "classic", enable_pos_cash_rounding: false },
       }),
     ).toBe(false);
+  });
+});
+
+describe("saleAppliesRouteMarkupPricing", () => {
+  const moduleSettings = {
+    sales: {
+      add_route_markup_prices: true,
+      pos_order_type_mode: "normal",
+      backoffice_order_type_mode: "normal",
+    },
+  };
+
+  it("applies route markup for mobile orders even when POS mode is normal", () => {
+    expect(
+      saleAppliesRouteMarkupPricing(
+        { channel: "mobile", route_id: 12 },
+        moduleSettings,
+        { standalone: true },
+      ),
+    ).toBe(true);
+  });
+
+  it("requires prior markup for POS normal mode when not mobile", () => {
+    expect(
+      saleAppliesRouteMarkupPricing(
+        { channel: "pos", route_id: 12 },
+        moduleSettings,
+        { standalone: true },
+      ),
+    ).toBe(false);
+    expect(
+      saleAppliesRouteMarkupPricing(
+        {
+          channel: "pos",
+          route_id: 12,
+          fulfillment_meta: { route_markup: { applied: true } },
+        },
+        moduleSettings,
+        { standalone: true },
+      ),
+    ).toBe(true);
   });
 });
 

@@ -19,6 +19,7 @@ import {
   posCartLineTypeLabel,
   productHasRetailTiers,
 } from "@/lib/pos-line";
+import { posCashOrderTotal } from "@/lib/pos-cash-round";
 import { getPosSalesConfig, saleAppliesRouteMarkupPricing, showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
 import { isBackofficeSale } from "@/lib/sales";
 import { useAuth } from "@/contexts/auth-context";
@@ -166,7 +167,7 @@ function priceDraftLine(
   uomById,
   retailMap,
   routeMarkupPerUnit,
-  { discountEditEnabled = false } = {},
+  { discountEditEnabled = false, cashRound = false } = {},
 ) {
   const product = productWithUom(
     line.product ?? {
@@ -202,6 +203,7 @@ function priceDraftLine(
     discount: 0,
     routeMarkupPerUnit,
     retailLine: asRetail,
+    cashRound,
   });
 
   let discountTotal = 0;
@@ -224,6 +226,7 @@ function priceDraftLine(
           discount: discountTotal,
           routeMarkupPerUnit,
           retailLine: asRetail,
+          cashRound,
         })
       : base;
 
@@ -237,7 +240,12 @@ function priceDraftLine(
   };
 }
 
-function buildNewDraftLine(product, uomById, retailMap, { asRetail = false, routeMarkupPerUnit = 0 } = {}) {
+function buildNewDraftLine(
+  product,
+  uomById,
+  retailMap,
+  { asRetail = false, routeMarkupPerUnit = 0, cashRound = false } = {},
+) {
   const productResolved = productWithUom(product, uomById);
   const retailPackage = retailMap[product.product_code] ?? null;
   const useRetail = Boolean(asRetail && productHasRetailTiers(retailPackage));
@@ -251,6 +259,7 @@ function buildNewDraftLine(product, uomById, retailMap, { asRetail = false, rout
     discount: 0,
     routeMarkupPerUnit,
     retailLine: useRetail,
+    cashRound,
   });
   const baseQty =
     Number.isFinite(computed.baseQty) && computed.baseQty > 0 ? computed.baseQty : 1;
@@ -311,6 +320,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     () => getPosSalesConfig(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
+  const enablePosCashRounding = Boolean(posSalesConfig.enablePosCashRounding);
   const retailPricingEnabled = Boolean(posSalesConfig.enableRetailPricing);
 
   const searchCustomersForSelect = useCallback(async (query) => {
@@ -451,13 +461,18 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   }, [lines, removedIds, baselineDraft, baselineRemovedIds, customerDirty]);
 
   const totals = useMemo(() => {
-    return lines.reduce((sum, line) => {
+    const lineAmounts = lines.map((line) => {
       const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
         discountEditEnabled,
+        cashRound: enablePosCashRounding,
       });
-      return sum + Number(priced.amount ?? 0);
-    }, 0);
-  }, [lines, retailByCode, uomById, discountEditEnabled, routeMarkupPerUnit]);
+      return Number(priced.amount ?? 0);
+    });
+    if (enablePosCashRounding) {
+      return posCashOrderTotal(lineAmounts);
+    }
+    return lineAmounts.reduce((sum, amount) => sum + amount, 0);
+  }, [lines, retailByCode, uomById, discountEditEnabled, routeMarkupPerUnit, enablePosCashRounding]);
 
   const baselineByKey = useMemo(() => {
     const map = new Map();
@@ -498,6 +513,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         const rebuilt = buildNewDraftLine(line.product, uomById, retailByCode, {
           asRetail,
           routeMarkupPerUnit,
+          cashRound: enablePosCashRounding,
         });
         return {
           ...rebuilt,
@@ -548,7 +564,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           lineKey(line) === lineKey(existing) ? { ...line, draftQty: String(nextQty) } : line,
         );
       }
-      return [...prev, buildNewDraftLine(product, uomById, packages, { asRetail, routeMarkupPerUnit })];
+      return [...prev, buildNewDraftLine(product, uomById, packages, { asRetail, routeMarkupPerUnit, cashRound: enablePosCashRounding })];
     });
     setAddProductCode("");
   }
@@ -866,9 +882,10 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                 {lines.map((line) => {
                   const key = lineKey(line);
                   const changeKind = lineChangeKind(line, baselineByKey);
-                  const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
-                    discountEditEnabled,
-                  });
+      const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
+        discountEditEnabled,
+        cashRound: enablePosCashRounding,
+      });
                   const amount = priced.amount;
                   const unitPrice = priced.unitPrice;
                   const allowsRetail = productAllowsRetail(line.product_code, retailByCode);

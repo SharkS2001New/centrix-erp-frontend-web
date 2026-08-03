@@ -1031,6 +1031,12 @@ export function saleAppliesRouteMarkupPricing(sale, moduleSettings, { standalone
   const routeId = sale?.route_id ?? sale?.route?.id ?? null;
   if (routeId == null || routeId === "") return false;
 
+  // Mobile checkout always reprices with route markup when the route has markup configured.
+  const channel = String(sale?.channel ?? sale?.order_source ?? "").toLowerCase();
+  if (channel === "mobile") {
+    return true;
+  }
+
   const alreadyApplied = Boolean(sale?.fulfillment_meta?.route_markup?.applied);
   const mode = resolveRouteOrderTypeMode(sales, { standalone });
 
