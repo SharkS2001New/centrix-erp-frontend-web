@@ -213,6 +213,35 @@ export async function idbTakeNextOrderSlot() {
   return next;
 }
 
+/**
+ * Drop reserved slots whose Cash Sales # is <= the ticket just issued for that day.
+ * Keeps the on-device pool aligned after online checkout claims a reserved number.
+ */
+export async function idbPurgeOrderSlotsUpToPosTicket(posOrderNum, posOrderDate = null) {
+  const ticket = Number(posOrderNum);
+  if (!Number.isFinite(ticket) || ticket <= 0) return 0;
+  const day = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
+  const slots = await idbListOrderSlots();
+  const toRemove = slots.filter((slot) => {
+    const n = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
+    if (n == null || !Number.isFinite(n) || n > ticket) return false;
+    const slotDay = normalizePosOrderDate(slot.pos_order_date) ?? day;
+    return slotDay === day;
+  });
+  if (!toRemove.length) return 0;
+  const db = await openDb();
+  const tx = db.transaction("order_slots", "readwrite");
+  const store = tx.objectStore("order_slots");
+  for (const slot of toRemove) {
+    store.delete(slot.slot_id);
+  }
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return toRemove.length;
+}
+
 /** @deprecated use idbTakeNextOrderSlot */
 export async function idbTakeNextOrderNumber() {
   const slot = await idbTakeNextOrderSlot();

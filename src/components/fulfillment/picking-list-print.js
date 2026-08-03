@@ -37,10 +37,10 @@ function formatKes(amount) {
   return n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** Leading package count from labels like "26 Jer" / "4 Bag, 10 kg". */
+/** Leading package count from labels like "W 26 Jer" / "W 4 Bag, R 10 kg". */
 export function primaryPackageCountFromLine(line) {
   const label = String(line?.quantity_label ?? line?.wholesale_qty_label ?? "").trim();
-  const match = label.match(/^([\d,]+(?:\.\d+)?)/);
+  const match = label.match(/(?:^|,\s*)(?:W\s+|R\s+)?([\d,]+(?:\.\d+)?)/i);
   if (match) {
     const n = Number(String(match[1]).replace(/,/g, ""));
     if (Number.isFinite(n)) return n;
@@ -211,7 +211,7 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .col-qty { width: 24%; }
     .col-price { width: 26%; }
     .col-total { width: 17%; text-align: right; }
-    .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; }
+    .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: ${px(220)}; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
@@ -440,23 +440,23 @@ export function samplePickingListPreviewData({ salesLayout = false } = {}) {
         lines: [
           {
             product_name: "KAMANDE",
-            quantity_label: "10 Bag, 30 kg",
-            retail_breakdown: "5 kg ×4, 3 kg ×2, 4 kg ×2",
-            price_label: "Ksh 2,250 / Bag · Ksh 48 / kg",
+            quantity_label: "W 10 Bag, R 30 kg",
+            retail_breakdown: "Jane Wanjiku 12 kg, Peter Otieno 10 kg, Mary Akinyi 8 kg",
+            price_label: "W Ksh 2,250 / Bag · R Ksh 48 / kg",
             line_total: 45000,
           },
           {
             product_name: "SUGAR 50 KG",
-            quantity_label: "4 Bag",
+            quantity_label: "W 4 Bag",
             retail_breakdown: "",
-            price_label: "Ksh 6,000 / Bag",
+            price_label: "W Ksh 6,000 / Bag",
             line_total: 24000,
           },
           {
             product_name: "RICE BIRIYANI",
-            quantity_label: "25 kg",
-            retail_breakdown: "10 kg, 5 kg ×3",
-            price_label: "Ksh 90 / kg",
+            quantity_label: "R 25 kg",
+            retail_breakdown: "John Kamau 10 kg, Grace Njeri 5 kg, Samuel Ochieng 5 kg, Ann Mwangi 5 kg",
+            price_label: "R Ksh 90 / kg",
             line_total: 18500,
           },
         ],

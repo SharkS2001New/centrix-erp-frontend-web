@@ -30,7 +30,9 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).not.toContain(">Shortage<");
     expect(html).not.toContain("Total shortage");
     expect(html).toContain("KAMANDE");
-    expect(html).toContain("(5 kg ×4, 3 kg ×2, 4 kg ×2)");
+    expect(html).toContain("W 10 Bag, R 30 kg");
+    expect(html).toContain("(Jane Wanjiku 12 kg, Peter Otieno 10 kg, Mary Akinyi 8 kg)");
+    expect(html).toContain("W Ksh 2,250 / Bag · R Ksh 48 / kg");
     expect(html).toContain('<div class="main">KAMANDE</div>\n        </td>');
   });
 

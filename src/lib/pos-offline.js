@@ -27,6 +27,7 @@ import {
   idbPutCatalogProducts,
   idbPutLocalCart,
   idbPutOutboxSale,
+  idbPurgeOrderSlotsUpToPosTicket,
   idbReclaimStuckSyncingOutbox,
   idbSetMeta,
   idbTakeNextOrderSlot,
@@ -161,6 +162,19 @@ export async function peekPosOfflineOrderNumberCount() {
 
 export async function takePosOfflineOrderSlot() {
   return withPosOfflineExclusiveLock(() => idbTakeNextOrderSlot());
+}
+
+/** After a Cash Sales # is issued, drop matching reserved tickets so the pool stays sequential from 1. */
+export async function purgeReservedPosTicketsUpTo(posOrderNum, posOrderDate = null) {
+  return withPosOfflineExclusiveLock(() =>
+    idbPurgeOrderSlotsUpToPosTicket(posOrderNum, posOrderDate),
+  );
+}
+
+/** Put a consumed reserved slot back when checkout fails before the sale is stored. */
+export async function returnPosOfflineOrderSlot(slot) {
+  if (!slot?.order_num) return;
+  await withPosOfflineExclusiveLock(() => idbAppendOrderSlots([slot]));
 }
 
 /** @deprecated use takePosOfflineOrderSlot */
@@ -691,6 +705,29 @@ export async function completeOfflineCashSale({
   const soldAtMs = existingOutbox?.created_at_ms ?? Date.now();
   const soldAtIso = new Date(soldAtMs).toISOString();
 
+  // Previous-order edits must keep the original tender method on the local sale /
+  // checkout body. Hardcoding CASH caused synced sales to show Cash after edit.
+  const paymentMethodCode = (() => {
+    if (!isPreviousOrderEdit) return "CASH";
+    const candidates = [
+      cart.payment_method_code,
+      existingOutbox?.sale_payload?.payment_method_code,
+      existingOutbox?.checkout_body?.payment_method_code,
+      cart.offline_edit_snapshot?.payment_method_code,
+    ];
+    for (const raw of candidates) {
+      const code = String(raw ?? "").trim().toUpperCase();
+      if (code) return code;
+    }
+    return "CASH";
+  })();
+  const paymentMethodLabel =
+    paymentMethodCode === "CASH"
+      ? "Cash"
+      : paymentMethodCode === "MPESA"
+        ? "M-Pesa"
+        : paymentMethodCode;
+
   // Prefer the cart/body customer; fall back to a prior outbox revision so edits
   // do not wipe the buyer and sync as Walk-in (TemporaryCart has no customer columns).
   const customerNumRaw =
@@ -770,12 +807,12 @@ export async function completeOfflineCashSale({
     order_source: "pos",
     status: "completed",
     payment_status: "paid",
-    payment_method_code: "CASH",
+    payment_method_code: paymentMethodCode,
     is_credit_sale: false,
     order_total: summary.total,
     total_vat: summary.vat,
     amount_paid: payNow,
-    cash: payNow,
+    cash: paymentMethodCode === "CASH" ? payNow : 0,
     completed_at: soldAtIso,
     created_at: soldAtIso,
     created_at_ms: soldAtMs,
@@ -787,9 +824,9 @@ export async function completeOfflineCashSale({
     payments: [
       {
         id: 1,
-        payment_method_code: "CASH",
+        payment_method_code: paymentMethodCode,
         amount: payNow,
-        payment_method: { code: "CASH", name: "Cash" },
+        payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
       },
     ],
   };
@@ -829,7 +866,7 @@ export async function completeOfflineCashSale({
       order_num: orderNum,
       ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
       ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
-      payment_method_code: "CASH",
+      payment_method_code: paymentMethodCode,
       pay_now: payNow,
       is_credit_sale: false,
       submit_kra: false,
@@ -876,7 +913,21 @@ export async function completeOfflineCashSale({
   if (!skipClearDraft && !keepCart) {
     await clearPreviousOrderEditDraft().catch(() => {});
   }
+  await purgeReservedTicketsForSale(sale);
   return { sale, outbox };
+}
+
+/**
+ * After a local/offline sale is queued, drop reserved tickets up to the printed Cash Sales #
+ * so the on-device pool continues from the next number.
+ */
+async function purgeReservedTicketsForSale(sale) {
+  if (sale?.pos_order_num == null) return;
+  try {
+    await purgeReservedPosTicketsUpTo(sale.pos_order_num, sale.pos_order_date);
+  } catch {
+    /* non-fatal — pool refill corrects gaps */
+  }
 }
 
 /**
@@ -954,6 +1005,17 @@ export function buildPreviousOrderEditPrintSale(
       };
     });
   if (!items.length) return null;
+  const paymentMethodCode = String(
+    cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
+  )
+    .trim()
+    .toUpperCase() || "CASH";
+  const paymentMethodLabel =
+    paymentMethodCode === "CASH"
+      ? "Cash"
+      : paymentMethodCode === "MPESA"
+        ? "M-Pesa"
+        : paymentMethodCode;
   return {
     id: cart.server_sale_id ?? `edit:${orderNum}`,
     order_num: orderNum,
@@ -965,11 +1027,11 @@ export function buildPreviousOrderEditPrintSale(
     order_source: "pos",
     status: "completed",
     payment_status: "paid",
-    payment_method_code: "CASH",
+    payment_method_code: paymentMethodCode,
     order_total: summary.total,
     total_vat: summary.vat,
     amount_paid: payNow,
-    cash: payNow,
+    cash: paymentMethodCode === "CASH" ? payNow : 0,
     customer_num: cart.customer_num ?? null,
     customer_name_override: cart.customer_name_override ?? null,
     superseded_sale_id: cart.superseded_sale_id ?? null,
@@ -977,9 +1039,9 @@ export function buildPreviousOrderEditPrintSale(
     payments: [
       {
         id: 1,
-        payment_method_code: "CASH",
+        payment_method_code: paymentMethodCode,
         amount: payNow,
-        payment_method: { code: "CASH", name: "Cash" },
+        payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
       },
     ],
   };

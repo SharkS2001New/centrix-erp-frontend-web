@@ -178,6 +178,9 @@ import {
   peekPosOfflineOrderNumberCount,
   posTicketFieldsFromCart,
   peekNextPosOfflineOrderSlot,
+  takePosOfflineOrderSlot,
+  purgeReservedPosTicketsUpTo,
+  returnPosOfflineOrderSlot,
   resolvePosTicketForCheckout,
   saveLocalPosCart,
   savePreviousOrderEditDraft,
@@ -198,7 +201,7 @@ import {
   resolvePosAltShortcutLetter,
   resolvePosShortcutKey,
 } from "@/lib/pos-keyboard-shortcuts";
-import { newClientSaleUuid } from "@/lib/pos-offline-db";
+import { newClientSaleUuid, todayPosOrderDate } from "@/lib/pos-offline-db";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { applyTheme, getTheme } from "@/lib/theme";
 import {
@@ -417,6 +420,10 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
     String(sourceCustomerName).trim()
       ? { customer_name_override: String(sourceCustomerName).trim() }
       : {}),
+    // Keep original tender method across edit sync (outbox used to hardcode CASH).
+    ...(!base.payment_method_code && sourceSale?.payment_method_code
+      ? { payment_method_code: String(sourceSale.payment_method_code).toUpperCase() }
+      : {}),
   };
 
   if ((withPosTicket.lines?.length ?? 0) > 0) {
@@ -531,16 +538,17 @@ function sessionOrderMatchesBrowseNum(row, trimmed) {
 
 function mergeFreshWorkspaceCart(next, preservedPosNum) {
   if (!next) return next;
-  const serverNext = resolvePosNextBrowseNumber(next);
+  // Prefer the on-device reserved Cash Sales # (starts at 1 after reserve).
+  // Server peek is watermark+1 and must not jump the UI past unused reserved tickets.
   const preserved =
     preservedPosNum != null && Number(preservedPosNum) > 0 ? Number(preservedPosNum) : null;
-  const posNum =
-    preserved != null && serverNext != null
-      ? Math.max(preserved, serverNext)
-      : (serverNext ?? preserved);
-  if (posNum == null) return next;
-  if (Number(next.next_pos_order_num) === posNum) return next;
-  return { ...next, next_pos_order_num: posNum };
+  if (preserved == null) return next;
+  if (Number(next.next_pos_order_num) === preserved) return next;
+  return {
+    ...next,
+    next_pos_order_num: preserved,
+    next_pos_order_date: next.next_pos_order_date ?? todayPosOrderDate(),
+  };
 }
 
 function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = null) {
@@ -555,8 +563,19 @@ function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = nu
   const activePos = resolvePosBrowseNumber(activeCart);
   if (activePos != null && activePos > maxPos) maxPos = activePos;
   const sessionNext = maxPos > 0 ? maxPos + 1 : null;
-  if (serverNext != null && sessionNext != null) return Math.max(serverNext, sessionNext);
-  return serverNext ?? sessionNext;
+  // Session sequence from completed tickets on this till — do not jump to server
+  // watermark+1 (reserved block) which would show Cash Sales #21 with unused #1–#20.
+  if (sessionNext != null) return sessionNext;
+  return serverNext;
+}
+
+/** Prefer reserved offline slot (starts at 1) over server watermark peek. */
+async function resolveNextPosTicketForWorkspace(activeCart, sessionOrders, pendingSale = null) {
+  const slot = await peekNextPosOfflineOrderSlot().catch(() => null);
+  if (slot?.pos_order_num != null && Number(slot.pos_order_num) > 0) {
+    return Number(slot.pos_order_num);
+  }
+  return resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale);
 }
 
 function offlinePrintOptions(sale, base = {}) {
@@ -5569,7 +5588,7 @@ export function PosScreen({ standalone = false }) {
       void clearPreviousOrderEditDraft().catch(() => {});
 
       const saleForPeek = pendingSale ?? completedSaleRef.current;
-      const peekNextPos = resolveFreshWorkspacePosNum(
+      const peekNextPos = await resolveNextPosTicketForWorkspace(
         cartRef.current,
         sessionPosOrders,
         saleForPeek,
@@ -5825,6 +5844,8 @@ export function PosScreen({ standalone = false }) {
       editOrderNo,
       pendingSlot: pendingPosSlot,
     });
+    /** Consumed on online server checkout so Cash Sales # matches the reserved slot (starts at 1). */
+    let consumedPosSlot = null;
 
     // Offline External POS: cash-only, real reserved order numbers, print, queue sync.
     // Also used when revising a pending offline sale or a previous-order edit (same order #).
@@ -5868,6 +5889,10 @@ export function PosScreen({ standalone = false }) {
           offline_edit_snapshot: checkoutCart.offline_edit_snapshot ?? null,
           superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
           order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
+          payment_method_code:
+            checkoutCart.payment_method_code ??
+            editSourceSale?.payment_method_code ??
+            null,
           ...(Array.isArray(checkoutCart.payment_adjustments) && checkoutCart.payment_adjustments.length
             ? { payment_adjustments: checkoutCart.payment_adjustments }
             : {}),
@@ -5955,6 +5980,10 @@ export function PosScreen({ standalone = false }) {
             held_order_num: checkoutCart.held_order_num ?? null,
             superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
             order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
+            payment_method_code:
+              checkoutCart.payment_method_code ??
+              editSourceSale?.payment_method_code ??
+              null,
             ...(Array.isArray(checkoutCart.payment_adjustments) && checkoutCart.payment_adjustments.length
               ? { payment_adjustments: checkoutCart.payment_adjustments }
               : {}),
@@ -6023,6 +6052,19 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
+      // Consume the reserved Cash Sales # so online checkout claims the same ticket
+      // that the receipt will print (starts at 1; stays correct on later syncs).
+      let onlineCheckoutFields = checkoutCartFields;
+      if (standalone && !isPreviousOrderCashEdit) {
+        consumedPosSlot = await takePosOfflineOrderSlot().catch(() => null);
+        if (consumedPosSlot?.pos_order_num != null) {
+          onlineCheckoutFields = posCheckoutCartFields(activeCart, editSourceSale, {
+            editOrderNo,
+            pendingSlot: consumedPosSlot,
+          });
+        }
+      }
+
       const liveCart = cartRef.current ?? activeCart;
       const submitKra =
         options.forceSubmitKra != null
@@ -6053,11 +6095,11 @@ export function PosScreen({ standalone = false }) {
         ...(submitKra ? { submit_kra: true } : {}),
         ...(liveCart?.held_order_num ? { order_num: liveCart.held_order_num } : {}),
         ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
-        ...(checkoutCartFields.pos_order_num != null
-          ? { pos_order_num: checkoutCartFields.pos_order_num }
+        ...(onlineCheckoutFields.pos_order_num != null
+          ? { pos_order_num: onlineCheckoutFields.pos_order_num }
           : {}),
-        ...(checkoutCartFields.pos_order_date
-          ? { pos_order_date: checkoutCartFields.pos_order_date }
+        ...(onlineCheckoutFields.pos_order_date
+          ? { pos_order_date: onlineCheckoutFields.pos_order_date }
           : {}),
       });
       if (
@@ -6081,6 +6123,10 @@ export function PosScreen({ standalone = false }) {
         };
       }
       if (!checkoutBody) {
+        if (consumedPosSlot) {
+          void returnPosOfflineOrderSlot(consumedPosSlot).catch(() => {});
+          consumedPosSlot = null;
+        }
         setPaymentError("Enter a discount reason to save this order for manager approval.");
         return null;
       }
@@ -6099,7 +6145,11 @@ export function PosScreen({ standalone = false }) {
           : "Please wait.",
         settleMs: 0,
       });
-      sale = mergeSaleWithCheckoutPosTicket(sale, liveCart, checkoutCartFields);
+      sale = mergeSaleWithCheckoutPosTicket(sale, liveCart, onlineCheckoutFields);
+      if (sale?.pos_order_num != null) {
+        void purgeReservedPosTicketsUpTo(sale.pos_order_num, sale.pos_order_date).catch(() => {});
+        consumedPosSlot = null;
+      }
       // Annotate with the tendered amount so the immediate receipt can show correct change.
       if (cashTendered != null && cashTendered > 0) {
         sale = { ...sale, _cash_tendered: Number(cashTendered) };
@@ -6128,6 +6178,10 @@ export function PosScreen({ standalone = false }) {
       }
       return sale;
     } catch (e) {
+      if (consumedPosSlot) {
+        void returnPosOfflineOrderSlot(consumedPosSlot).catch(() => {});
+        consumedPosSlot = null;
+      }
       const message =
         e instanceof ApiError
           ? e.message
@@ -6245,6 +6299,10 @@ export function PosScreen({ standalone = false }) {
                   editSourceSale?.customer?.customer_name ??
                   "",
               ).trim() || null,
+            payment_method_code:
+              cartForSync.payment_method_code ??
+              editSourceSale?.payment_method_code ??
+              null,
           };
           await upsertPreviousOrderEditOutbox({
             cart: local,
@@ -6736,7 +6794,7 @@ export function PosScreen({ standalone = false }) {
         : null;
     const abandonCart = editingQueuedOfflineSale ? activeCart : null;
     const clearOfflineCart = Boolean(isOfflineCart && !editingQueuedOfflineSale);
-    const peekNextPos = resolveFreshWorkspacePosNum(activeCart, sessionPosOrders);
+    const peekNextPos = await resolveNextPosTicketForWorkspace(activeCart, sessionPosOrders);
     const generation = ++freshWorkspaceGenerationRef.current;
 
     setPaymentOpen(false);
