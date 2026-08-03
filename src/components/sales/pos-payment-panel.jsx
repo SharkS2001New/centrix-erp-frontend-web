@@ -1167,8 +1167,12 @@ export function PosPaymentPanel({
     void submitCheckout();
   }
 
-  function handleOrderCompleteOk() {
-    onContinueNextOrder?.();
+  async function handleOrderCompleteOk() {
+    try {
+      await onContinueNextOrder?.();
+    } finally {
+      onClose?.();
+    }
   }
 
   function isTypingContext() {
@@ -1241,7 +1245,7 @@ export function PosPaymentPanel({
       if (e.key !== "Enter" || saving || step === "saving") return;
       if (step === "complete") {
         e.preventDefault();
-        handleOrderCompleteOk();
+        void handleOrderCompleteOk();
         return;
       }
       if (step === "customerName") {
@@ -1640,7 +1644,7 @@ export function PosPaymentPanel({
             <button
               ref={completeOkRef}
               type="button"
-              onClick={handleOrderCompleteOk}
+              onClick={() => void handleOrderCompleteOk()}
               className={`${POS_DIALOG_PRIMARY_BTN}${receiptPrintStatus === "failed" ? "" : " w-full"}`}
             >
               OK

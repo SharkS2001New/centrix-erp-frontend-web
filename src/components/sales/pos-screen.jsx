@@ -43,6 +43,8 @@ import {
   resolvePosQuantity,
   posStockDeductionHint,
   posUnitPriceFieldLabel,
+  posLineWholesaleRetailFlag,
+  productSellsRetail,
   usesPosRetailPricing,
 } from "@/lib/pos-line";
 import { formatMixedStockDisplay, formatSaleLineQtyDisplay } from "@/lib/stock-uom";
@@ -2946,10 +2948,13 @@ export function PosScreen({ standalone = false }) {
         : posLineRetailStockFlag(posSalesConfig, sellWholesale, computed.isRetail, product);
     const onWholesaleRetailFlag =
       lineRetailStockFlagOverride != null
-        ? Boolean(lineRetailStockFlagOverride)
-        : posSalesConfig.perLineStockRouting
-          ? sellWholesale === false
-          : Boolean(computed.isRetail);
+        ? Boolean(lineRetailStockFlagOverride) && productSellsRetail(product)
+        : posLineWholesaleRetailFlag(
+            product,
+            sellWholesale,
+            computed.isRetail,
+            posSalesConfig,
+          );
 
     const stockBaseQty =
       mergeTarget && !editingId
@@ -3269,6 +3274,8 @@ export function PosScreen({ standalone = false }) {
           computed,
           posSalesConfig,
           sellWholesale,
+          null,
+          product,
         );
         try {
           await commitCartLine({
@@ -3292,6 +3299,8 @@ export function PosScreen({ standalone = false }) {
       computed,
       posSalesConfig,
       sellWholesale,
+      null,
+      product,
     );
 
     setLineBusy(true);
@@ -3775,6 +3784,8 @@ export function PosScreen({ standalone = false }) {
           computed,
           posSalesConfig,
           sellWholesale,
+          null,
+          product,
         );
     const stockBaseQty =
       mergeTarget && !editingLineId
@@ -4107,6 +4118,8 @@ export function PosScreen({ standalone = false }) {
           computed,
           posSalesConfig,
           sellWholesale,
+          null,
+          selectedProduct,
         );
 
     const wasEditing = editingLineId;
@@ -5106,6 +5119,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   const preparingNextOrderRef = useRef(false);
+  const prepareNextOrderInFlightRef = useRef(null);
   /** Guards overlapping F8 clears so a stale background cart load cannot overwrite a newer session. */
   const freshWorkspaceGenerationRef = useRef(0);
   /** Shared TemporaryCart create after optimistic F8 clear (first scan reuses this). */
@@ -5113,8 +5127,14 @@ export function PosScreen({ standalone = false }) {
 
   /** Clear workspace and load the next reserved POS ticket # (post-checkout / F8). */
   const prepareNextPosOrderAfterSale = useCallback(
-    async ({ focusScan = true } = {}) => {
-      if (!standalone || preparingNextOrderRef.current) return;
+    async ({ focusScan = true, force = false } = {}) => {
+      if (!standalone) return;
+      if (preparingNextOrderRef.current) {
+        if (!force) return;
+        if (prepareNextOrderInFlightRef.current) {
+          await prepareNextOrderInFlightRef.current.catch(() => {});
+        }
+      }
       preparingNextOrderRef.current = true;
       setPaymentOpen(false);
       setPaymentError(null);
@@ -5124,7 +5144,7 @@ export function PosScreen({ standalone = false }) {
       setEditBrowseIndex(0);
       setSelectedLineId(null);
       clearLineEntry();
-      try {
+      const task = (async () => {
         const next = await loadCashierCart({ skipEditDraftRestore: true });
         cartRef.current = mergeFreshWorkspaceCart(next, resolveFreshWorkspacePosNum(cartRef.current, sessionPosOrders));
         const merged = cartRef.current;
@@ -5150,11 +5170,19 @@ export function PosScreen({ standalone = false }) {
             window.requestAnimationFrame(() => searchInputRef.current?.focus());
           }
         }
+        return merged;
+      })();
+      prepareNextOrderInFlightRef.current = task;
+      try {
+        return await task;
       } catch (e) {
         const message = e instanceof ApiError ? e.message : "Failed to start next order";
         setStatusMessage(message);
         notifyError(message);
       } finally {
+        if (prepareNextOrderInFlightRef.current === task) {
+          prepareNextOrderInFlightRef.current = null;
+        }
         preparingNextOrderRef.current = false;
       }
     },
@@ -5225,8 +5253,12 @@ export function PosScreen({ standalone = false }) {
   );
 
   function afterSaleCheckoutComplete(sale, options = {}) {
+    const waitForOrderCompleteOk =
+      standalone &&
+      !options.skipAutoNextOrder &&
+      posSalesConfig.showCheckoutOnCreate;
     const advance = () => {
-      if (!standalone || options.skipAutoNextOrder) return;
+      if (!standalone || options.skipAutoNextOrder || waitForOrderCompleteOk) return;
       queuePrepareNextPosOrderAfterSale();
     };
     if (!options.skipPrint && sale?.id && posSalesConfig.showCheckoutOnCreate) {
@@ -5825,13 +5857,13 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleContinueNextOrder() {
-    if (standalone) {
-      await prepareNextPosOrderAfterSale();
-      return;
-    }
     setPaymentOpen(false);
     setPaymentError(null);
     setReceiptPrintStatus(null);
+    if (standalone) {
+      await prepareNextPosOrderAfterSale({ force: true });
+      return;
+    }
     clearLineEntry();
     setBusy(true);
     try {
@@ -7818,6 +7850,7 @@ export function PosScreen({ standalone = false }) {
                   selectedCode={selectedProductCode}
                   sellWholesale={sellWholesale}
                   retailByCode={retailByCode}
+                  routeMarkupPerUnit={routeMarkupPerUnit}
                   onSelect={pickProduct}
                   onBarcodeEnter={handleBarcodeEnter}
                   barcodeEnabled={enableBarcodeScanner}
@@ -8324,6 +8357,7 @@ export function PosScreen({ standalone = false }) {
                     selectedCode={selectedProductCode}
                     sellWholesale={sellWholesale}
                     retailByCode={retailByCode}
+                    routeMarkupPerUnit={routeMarkupPerUnit}
                     sellFromShop={sellFromShop}
                     onSelect={pickProduct}
                     onBarcodeEnter={handleBarcodeEnter}
@@ -8883,6 +8917,7 @@ export function PosScreen({ standalone = false }) {
         onClose={() => setPriceCheckerOpen(false)}
         sellWholesale={sellWholesale}
         retailByCode={retailByCode}
+        routeMarkupPerUnit={routeMarkupPerUnit}
         uomById={uomById}
         vatById={vatById}
         branchId={user?.branch_id}

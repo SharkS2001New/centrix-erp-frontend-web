@@ -30,6 +30,28 @@ export function isPosRetailSession(sellWholesale) {
   return !sellWholesale;
 }
 
+export function productSellsRetail(product) {
+  const value = product?.sell_on_retail;
+  return value === true || value === 1 || value === "1";
+}
+
+/** Wholesale-only products always price as wholesale even when F12 retail is on. */
+export function effectivePosSellWholesale(sellWholesale, product) {
+  if (!productSellsRetail(product)) return true;
+  return Boolean(sellWholesale);
+}
+
+/**
+ * Cart/API `on_wholesale_retail` flag — mirrors backend HandlesPricing::isRetailLine gate.
+ */
+export function posLineWholesaleRetailFlag(product, sellWholesale, computedIsRetail, posSalesConfig) {
+  if (!productSellsRetail(product)) return false;
+  if (posSalesConfig?.perLineStockRouting) {
+    return sellWholesale === false;
+  }
+  return Boolean(computedIsRetail);
+}
+
 /** Product has retail package tiers configured. */
 export function productHasRetailTiers(retailPackage) {
   return tiersForRetailPackage(retailPackage).length > 0;
@@ -37,7 +59,11 @@ export function productHasRetailTiers(retailPackage) {
 
 /** Retail tier pricing applies for this product in the current POS session. */
 export function usesPosRetailPricing(sellWholesale, product, retailPackage) {
-  return isPosRetailSession(sellWholesale) && productHasRetailTiers(retailPackage);
+  return (
+    isPosRetailSession(sellWholesale)
+    && productSellsRetail(product)
+    && productHasRetailTiers(retailPackage)
+  );
 }
 
 /** Default POS quantity: 1 wholesale pack or 1 small unit in retail session. */
@@ -362,7 +388,8 @@ export function computePosLine({
 }) {
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
-  const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellWholesale);
+  const wholesaleMode = effectivePosSellWholesale(sellWholesale, product);
+  const resolved = resolvePosQuantity(entryQty, product, retailPackage, wholesaleMode);
   const { baseQty, packQty, pricingRetail, retailSession } = resolved;
   const catalogUnitPrice = Number(product?.unit_price ?? 0);
   const tiers = tiersForRetailPackage(retailPackage, uom);
@@ -395,6 +422,8 @@ export function computePosLine({
     }
   } else if (resolved.tier) {
     lineAmount = linePriceForTier(catalogUnitPrice, resolved.tier, baseQty, uom);
+  } else if (retailSession && baseQty > 0) {
+    lineAmount = wholesalePricePerSmallUnit(catalogUnitPrice, uom) * baseQty + wholesaleMarkup;
   } else {
     lineAmount = packQty * catalogUnitPrice + wholesaleMarkup;
   }
@@ -446,19 +475,52 @@ export function computePosLine({
   };
 }
 
-/** Unit price shown in product search for the current POS pricing mode. */
-export function posListUnitPrice(product, sellWholesale, retailPackage) {
+/** Aggregate list price for product search (qty 1): wholesale + package + retail markups + route. */
+export function posListUnitPrice(
+  product,
+  sellWholesale,
+  retailPackage,
+  routeMarkupPerUnit = 0,
+) {
+  const wholesaleMode = effectivePosSellWholesale(sellWholesale, product);
   if (!product?.uom) {
-    return Number(product?.unit_price ?? 0);
+    const base = Number(product?.unit_price ?? 0);
+    const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
+    return Math.round((base + routeMarkup) * 100) / 100;
   }
-  const { displayUnitPrice } = computePosLine({
+  const { lineAmountBeforeDiscount } = computePosLine({
     product,
-    entryQty: "1",
-    sellWholesale,
+    entryQty: defaultPosEntryQty(product, wholesaleMode, retailPackage),
+    sellWholesale: wholesaleMode,
     retailPackage,
     discount: 0,
+    routeMarkupPerUnit,
   });
-  return displayUnitPrice;
+  return lineAmountBeforeDiscount;
+}
+
+/** Unit price + label for product search (avoids mixing /kg and /bag without context). */
+export function posListUnitPriceDisplay(
+  product,
+  sellWholesale,
+  retailPackage,
+  routeMarkupPerUnit = 0,
+) {
+  if (!product?.uom) {
+    return {
+      price: posListUnitPrice(product, sellWholesale, retailPackage, routeMarkupPerUnit),
+      unitLabel: "",
+    };
+  }
+  const uom = product.uom;
+  const wholesaleMode = effectivePosSellWholesale(sellWholesale, product);
+  const price = posListUnitPrice(product, sellWholesale, retailPackage, routeMarkupPerUnit);
+  const unitLabel = wholesaleMode
+    ? uomConversionFactor(uom) > 1
+      ? ` / ${fullPackageLabel(uom)}`
+      : ""
+    : ` / ${smallPackagingLabel(uom)}`;
+  return { price, unitLabel };
 }
 
 /** Per-unit discount from stored line total (`discount_given` ÷ pack/display qty). */
@@ -524,10 +586,10 @@ export function posEntryQtyFromCartLine(line, product, retailPackage) {
   const baseQty = Number(line?.quantity ?? 0);
   const isRetailLine = Number(line?.on_wholesale_retail) === 1;
 
-  if (isRetailLine && productHasRetailTiers(retailPackage)) {
+  if (isRetailLine) {
     return String(baseQty);
   }
-  if (factor > 1 && !isRetailLine) {
+  if (factor > 1) {
     return String(baseToDisplayQty(baseQty, factor));
   }
   return String(baseQty);
@@ -586,10 +648,12 @@ export function applyCatalogPricesToCart(
     if (!product) return line;
 
     const retailPackage = retailByCode?.[line.product_code] ?? null;
+    const isRetailLine = Number(line?.on_wholesale_retail) === 1 && productSellsRetail(product);
+    const lineSellWholesale = !isRetailLine;
     const computed = computePosLine({
       product,
       entryQty: posEntryQtyFromCartLine(line, product, retailPackage),
-      sellWholesale,
+      sellWholesale: lineSellWholesale,
       retailPackage,
       discount: Number(line.discount_given ?? 0),
     });

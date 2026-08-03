@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyCatalogPricesToCart,
   cartLineDisplayUnitPrice,
   computePosLine,
+  posEntryQtyFromCartLine,
   posEntryToBaseQty,
+  posLineWholesaleRetailFlag,
+  posListUnitPrice,
   resolvePosQuantity,
 } from "@/lib/pos-line";
 
@@ -17,6 +21,7 @@ const sugarUom = {
 const sugarProduct = {
   product_code: "SUGAR",
   unit_price: 6250,
+  sell_on_retail: true,
   uom: sugarUom,
 };
 
@@ -52,9 +57,39 @@ describe("F12 qty Enter keeps typed quantity", () => {
   });
 
   it("switching modes does not rescale the number the cashier typed", () => {
-    // Same field value "5" after F12: retail → 5 kg, wholesale → 5 bags.
     expect(posEntryToBaseQty("5", sugarProduct, false, sugarRetailPackage)).toBe(5);
     expect(posEntryToBaseQty("5", sugarProduct, true, sugarRetailPackage)).toBe(250);
+  });
+});
+
+describe("sell_on_retail gate", () => {
+  const wholesaleOnly = { ...sugarProduct, sell_on_retail: false };
+
+  it("forces wholesale pricing in retail session when product is wholesale-only", () => {
+    const retailLine = computePosLine({
+      product: wholesaleOnly,
+      entryQty: "1",
+      sellWholesale: false,
+      retailPackage: sugarRetailPackage,
+    });
+    const wholesaleLine = computePosLine({
+      product: wholesaleOnly,
+      entryQty: "1",
+      sellWholesale: true,
+      retailPackage: sugarRetailPackage,
+    });
+    expect(retailLine.displayUnitPrice).toBe(6250);
+    expect(wholesaleLine.displayUnitPrice).toBe(6250);
+    expect(retailLine.isRetail).toBe(false);
+  });
+
+  it("does not set on_wholesale_retail when product is wholesale-only", () => {
+    expect(
+      posLineWholesaleRetailFlag(wholesaleOnly, false, true, { perLineStockRouting: false }),
+    ).toBe(false);
+    expect(
+      posLineWholesaleRetailFlag(wholesaleOnly, false, true, { perLineStockRouting: true }),
+    ).toBe(false);
   });
 });
 
@@ -105,6 +140,47 @@ describe("computePosLine retail amount vs unit", () => {
     });
     expect(line.lineAmount).toBe(3155);
     expect(line.displayUnitPrice).toBe(125);
+  });
+});
+
+describe("posListUnitPrice search display", () => {
+  it("shows per-kg retail price for qty 1 in retail session", () => {
+    expect(posListUnitPrice(sugarProduct, false, sugarRetailPackage)).toBe(125);
+  });
+
+  it("shows per-bag wholesale price for qty 1 pack", () => {
+    expect(posListUnitPrice(sugarProduct, true, null)).toBe(6250);
+  });
+});
+
+describe("posEntryQtyFromCartLine retail lines", () => {
+  it("keeps base qty for retail-flagged lines without tiers", () => {
+    expect(
+      posEntryQtyFromCartLine(
+        { quantity: 25, on_wholesale_retail: 1 },
+        sugarProduct,
+        null,
+      ),
+    ).toBe("25");
+  });
+});
+
+describe("applyCatalogPricesToCart per-line mode", () => {
+  it("reprices retail and wholesale lines independently", () => {
+    const cart = {
+      lines: [
+        { product_code: "SUGAR", quantity: 25, on_wholesale_retail: 1, unit_price: 100, amount: 100 },
+        { product_code: "SUGAR", quantity: 50, on_wholesale_retail: 0, unit_price: 100, amount: 100 },
+      ],
+    };
+    const { cart: priced, updatedCount } = applyCatalogPricesToCart(cart, {
+      productByCode: { SUGAR: sugarProduct },
+      retailByCode: { SUGAR: sugarRetailPackage },
+      sellWholesale: true,
+    });
+    expect(updatedCount).toBe(2);
+    expect(priced.lines[0].display_unit_price).toBe(125);
+    expect(priced.lines[1].display_unit_price).toBe(6250);
   });
 });
 

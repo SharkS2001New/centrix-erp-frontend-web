@@ -1,3 +1,5 @@
+import { posLineWholesaleRetailFlag } from "@/lib/pos-line";
+
 export function findMergeableCartLine(
   cartLines,
   productCode,
@@ -5,12 +7,16 @@ export function findMergeableCartLine(
   posSalesConfig,
   sellWholesale,
   excludeLineId = null,
+  product = null,
 ) {
   if (!cartLines?.length || !productCode || !computed) return null;
   const excludedId = excludeLineId != null ? String(excludeLineId) : null;
-  const nextOnWholesaleRetail = posSalesConfig?.perLineStockRouting
-    ? sellWholesale === false
-    : Boolean(computed.isRetail);
+  const nextOnWholesaleRetail = posLineWholesaleRetailFlag(
+    product,
+    sellWholesale,
+    computed.isRetail,
+    posSalesConfig,
+  );
   // Merge by SKU + retail/wholesale flag only. Packaging label mismatches
   // (e.g. "PCS" vs "Piece") used to spawn duplicate rows and a second "entry" feel.
   return (

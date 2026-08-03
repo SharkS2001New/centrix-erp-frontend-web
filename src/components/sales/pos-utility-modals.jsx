@@ -90,6 +90,7 @@ export function PosPriceCheckerModal({
   onClose,
   sellWholesale,
   retailByCode,
+  routeMarkupPerUnit = 0,
   uomById,
   vatById,
   branchId,
@@ -214,7 +215,12 @@ export function PosPriceCheckerModal({
 
   const product = selected;
   const price = product
-    ? posListUnitPrice(product, sellWholesale, retailByCode?.[product.product_code])
+    ? posListUnitPrice(
+        product,
+        sellWholesale,
+        retailByCode?.[product.product_code],
+        routeMarkupPerUnit,
+      )
     : null;
 
   return (
@@ -280,7 +286,12 @@ export function PosPriceCheckerModal({
                 </span>
                 <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--theme-accent-text)] dark:text-blue-200">
                   {formatSaleKes(
-                    posListUnitPrice(item, sellWholesale, retailByCode?.[item.product_code]),
+                    posListUnitPrice(
+                      item,
+                      sellWholesale,
+                      retailByCode?.[item.product_code],
+                      routeMarkupPerUnit,
+                    ),
                   )}
                 </span>
               </button>

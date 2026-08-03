@@ -9,16 +9,9 @@ import {
   fullPackageLabel,
   smallPackagingLabel,
 } from "./uom-packaging";
-import { posEntryQtyFromBaseQty, usesPosRetailPricing } from "./pos-line";
+import { posEntryQtyFromBaseQty, productSellsRetail, usesPosRetailPricing } from "./pos-line";
 
-export function posLineIsRetail(product, onWholesaleRetail) {
-  return Boolean(product?.sell_on_retail) && Boolean(onWholesaleRetail);
-}
-
-export function productSellsRetail(product) {
-  const value = product?.sell_on_retail;
-  return value === true || value === 1 || value === "1";
-}
+export { productSellsRetail };
 
 /** Match SaleStockLocationResolver::stockRouteAsRetail — shop only when product sells retail AND line is retail-routed. */
 export function saleLineStockAsRetail(product, onWholesaleRetailFlag) {
@@ -30,10 +23,10 @@ export function saleLineStockAsRetail(product, onWholesaleRetailFlag) {
  * Per-line routing: retail session + product sells retail → shop; otherwise store.
  */
 export function posLineRetailStockFlag(posSalesConfig, sellWholesale, computedIsRetail, product) {
-  if (posSalesConfig.perLineStockRouting) {
-    return saleLineStockAsRetail(product, sellWholesale === false);
-  }
-  return Boolean(computedIsRetail);
+  const retailIntent = posSalesConfig.perLineStockRouting
+    ? sellWholesale === false
+    : Boolean(computedIsRetail);
+  return saleLineStockAsRetail(product, retailIntent);
 }
 
 export function cartLineRetailStockFlag(line) {
