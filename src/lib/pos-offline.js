@@ -840,7 +840,9 @@ export async function completeOfflineCashSale({
     })),
   };
 
-  await idbPutOutboxSale(outbox);
+  await withPosOfflineExclusiveLock(async () => {
+    await idbPutOutboxSale(outbox);
+  });
   if (!keepCart) {
     await clearLocalPosCart();
   }
@@ -957,22 +959,24 @@ export function buildPreviousOrderEditPrintSale(
 }
 
 function mapOutboxLinesForPut(row) {
-  return (row.lines ?? []).map((line) => {
-    const qty = Math.max(0.0001, Number(line.quantity) || 0);
-    const unitPrice = Number(line.unit_price ?? 0);
-    return {
-      product_code: line.product_code,
-      quantity: qty,
-      unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
-      display_unit_price:
-        line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
-      uom: line.uom ?? undefined,
-      on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
-      discount_given: Number(line.discount_given ?? 0) || 0,
-      product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
-      amount: line.amount != null ? Number(line.amount) : undefined,
-    };
-  });
+  return (row.lines ?? []).map((line) => buildOutboxLineBody(line));
+}
+
+function buildOutboxLineBody(line) {
+  const qty = Math.max(0.0001, Number(line.quantity) || 0);
+  const unitPrice = Number(line.unit_price ?? 0);
+  return {
+    product_code: line.product_code,
+    quantity: qty,
+    unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
+    display_unit_price:
+      line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+    uom: line.uom ?? undefined,
+    on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
+    discount_given: Number(line.discount_given ?? 0) || 0,
+    product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+    amount: line.amount != null ? Number(line.amount) : undefined,
+  };
 }
 
 /**
@@ -1040,10 +1044,6 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     order_num: orderNum,
     offline_order: true,
     client_sale_uuid: row.client_sale_uuid,
-    pos_sync_id:
-      row.sync_kind === "previous_order_edit" && row.content_revision != null
-        ? `${row.client_sale_uuid}:${Number(row.content_revision)}`
-        : row.client_sale_uuid,
   };
   if (row.sync_kind === "previous_order_edit" && row.content_revision != null) {
     body.content_revision = Number(row.content_revision);
@@ -1157,14 +1157,17 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
   for (const line of row.lines ?? []) {
     await apiRequest(`/sales/carts/${cartId}/lines`, {
       method: "POST",
-      body: {
-        product_code: line.product_code,
-        quantity: line.quantity,
-        unit_price: line.unit_price,
-        uom: line.uom,
-        on_wholesale_retail: line.on_wholesale_retail,
-        discount_given: line.discount_given ?? 0,
-      },
+      body: buildOutboxLineBody(line),
+      loading: false,
+      reportIssues: false,
+    });
+  }
+
+  const orderDiscount = Number(row.order_discount ?? 0);
+  if (orderDiscount > 0) {
+    await apiRequest(`/sales/carts/${cartId}`, {
+      method: "PATCH",
+      body: { order_discount: orderDiscount },
       loading: false,
       reportIssues: false,
     });

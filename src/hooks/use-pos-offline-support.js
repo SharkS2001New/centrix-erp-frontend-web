@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { pingApiHealth } from "@/lib/network-status";
 import {
   ensurePosOfflineOrderNumbers,
   getPosOfflinePendingCount,
@@ -13,6 +14,8 @@ import {
 } from "@/lib/pos-offline";
 
 const RETRY_BACKOFF_MS = 5_000;
+const POST_SALE_FLUSH_ATTEMPTS = 8;
+const POST_SALE_FLUSH_DELAY_MS = 750;
 
 const EMPTY_SYNC_PROGRESS = {
   phase: "idle",
@@ -33,7 +36,7 @@ const EMPTY_SYNC_PROGRESS = {
  * Aimed at brief outages (~30 minutes); reconnect still flushes any leftovers.
  */
 export function usePosOfflineSupport({ enabled = false } = {}) {
-  const { status, browserOnline, apiOnline } = useNetworkStatus({
+  const { status, browserOnline, apiOnline, refresh: refreshNetwork } = useNetworkStatus({
     enabled,
     reportOutages: false,
   });
@@ -57,10 +60,24 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const flushGenerationRef = useRef(0);
   const lastNotifiedSyncErrorRef = useRef(null);
   const manualFlushRef = useRef(false);
+  const pendingFlushRef = useRef(false);
 
   useEffect(() => {
     canFlushRef.current = canFlushOutbox;
   }, [canFlushOutbox]);
+
+  /** Synchronous flush gate — avoids stale canFlushRef after refreshNetwork(). */
+  const probeCanFlushOutbox = useCallback(async () => {
+    const browserOk = typeof navigator === "undefined" ? true : navigator.onLine;
+    if (!browserOk) {
+      canFlushRef.current = false;
+      return false;
+    }
+    const result = await pingApiHealth();
+    const canFlush = enabled && browserOk && result.ok;
+    canFlushRef.current = canFlush;
+    return canFlush;
+  }, [enabled]);
 
   const refreshCounts = useCallback(async () => {
     if (!enabled) return;
@@ -117,6 +134,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     const generation = ++flushGenerationRef.current;
     const run = async () => {
       if (!canFlushRef.current) {
+        pendingFlushRef.current = true;
         if (manualFlushRef.current) {
           manualFlushRef.current = false;
           setLastSyncMessage("Cannot sync while offline. Reconnect, then try again.");
@@ -128,6 +146,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
         }
         return [];
       }
+      pendingFlushRef.current = false;
       setSyncing(true);
       const showProgress = manualFlushRef.current;
       try {
@@ -182,6 +201,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
             await ensurePosOfflineOrderNumbers({ force: false });
           }
         } else if (failed.length) {
+          pendingFlushRef.current = true;
           setLastSyncMessage(`Could not sync ${failed.length} sale(s). Will retry.`);
         } else if (showProgress) {
           setLastSyncMessage("No offline orders waiting to sync.");
@@ -257,11 +277,74 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     return next;
   }, [enabled, fullyOnline, refreshCounts, notifySyncProblem]);
 
+  /**
+   * After a local/outbox sale: probe API, flush the queue, retry until live or attempts exhausted.
+   * Callers should await this so every completed sale reaches the server when online.
+   */
+  const flushOutboxAfterSale = useCallback(async () => {
+    if (!enabled) return { ok: true, results: [] };
+
+    await refreshCounts();
+
+    let lastResults = [];
+
+    for (let attempt = 0; attempt < POST_SALE_FLUSH_ATTEMPTS; attempt += 1) {
+      await refreshNetwork();
+      const canFlush = await probeCanFlushOutbox();
+
+      if (!canFlush) {
+        pendingFlushRef.current = true;
+        if (attempt < POST_SALE_FLUSH_ATTEMPTS - 1) {
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, POST_SALE_FLUSH_DELAY_MS * (attempt + 1));
+          });
+          continue;
+        }
+        break;
+      }
+
+      lastResults = await flushOutboxNow();
+      await refreshCounts();
+
+      const pending = await getPosOfflinePendingCount();
+      const failed = lastResults.filter((row) => !row.ok);
+
+      if (pending === 0 && failed.length === 0) {
+        pendingFlushRef.current = false;
+        return { ok: true, results: lastResults, pending: 0 };
+      }
+
+      if (failed.length > 0 || pending > 0) {
+        pendingFlushRef.current = true;
+      }
+
+      if (attempt < POST_SALE_FLUSH_ATTEMPTS - 1) {
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, POST_SALE_FLUSH_DELAY_MS * (attempt + 1));
+        });
+      }
+    }
+
+    const pending = await getPosOfflinePendingCount();
+    const failed = lastResults.filter((row) => !row.ok);
+    const ok = pending === 0 && failed.length === 0;
+    if (!ok) {
+      pendingFlushRef.current = true;
+    }
+    return {
+      ok,
+      results: lastResults,
+      pending,
+      failed,
+    };
+  }, [enabled, flushOutboxNow, probeCanFlushOutbox, refreshCounts, refreshNetwork]);
+
   /** Manual Sync button — same flush path, with progress + toast feedback. */
   const syncOfflineOrders = useCallback(async () => {
     if (!enabled) return [];
     await refreshCounts();
-    if (!canFlushRef.current) {
+    const canFlush = await probeCanFlushOutbox();
+    if (!canFlush) {
       const message = "Cannot sync while offline. Reconnect, then try again.";
       setLastSyncMessage(message);
       setSyncProgress({
@@ -279,7 +362,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     });
     setLastSyncMessage("Checking local offline orders…");
     return flushOutboxNow({ manual: true });
-  }, [enabled, flushOutboxNow, refreshCounts]);
+  }, [enabled, flushOutboxNow, probeCanFlushOutbox, refreshCounts]);
 
   /** @deprecated prefer flushOutboxNow — kept for reconnect callers */
   const flushOutbox = flushOutboxNow;
@@ -312,12 +395,19 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     }
   }, [enabled, canFlushOutbox, flushOutboxNow]);
 
-  // Retry leftover pending/error rows while API is reachable (short backoff).
+  // Retry / deferred flush while API is reachable (immediate when post-sale deferred).
   useEffect(() => {
-    if (!enabled || !canFlushOutbox || pendingSync <= 0 || syncing) return undefined;
+    if (!enabled || !canFlushOutbox || syncing) return undefined;
+    if (pendingSync <= 0 && !pendingFlushRef.current) return undefined;
+
+    const deferred = pendingFlushRef.current;
+    const delay = deferred ? 0 : RETRY_BACKOFF_MS;
     const timer = window.setTimeout(() => {
+      if (deferred) {
+        pendingFlushRef.current = false;
+      }
       void flushOutboxNow();
-    }, RETRY_BACKOFF_MS);
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [enabled, canFlushOutbox, pendingSync, syncing, flushOutboxNow]);
 
@@ -342,8 +432,10 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     prepare,
     flushOutbox,
     flushOutboxNow,
+    flushOutboxAfterSale,
     syncOfflineOrders,
     refreshCounts,
+    refreshNetwork,
     searchOffline,
   };
 }
