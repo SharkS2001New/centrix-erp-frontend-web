@@ -141,6 +141,24 @@ describe("computePosLine retail amount vs unit", () => {
     expect(line.lineAmount).toBe(3155);
     expect(line.displayUnitPrice).toBe(125);
   });
+
+  it("rounds unit price and amount together when cash rounding is on", () => {
+    const product = {
+      product_code: "ITEM89",
+      unit_price: 89,
+      sell_on_retail: true,
+      uom: { conversion_factor: 1, measure_name: "pcs", package_name: "pcs", uom_type: "pcs" },
+    };
+    const line = computePosLine({
+      product,
+      entryQty: "1",
+      sellWholesale: false,
+      retailPackage: null,
+      cashRound: true,
+    });
+    expect(line.displayUnitPrice).toBe(90);
+    expect(line.lineAmount).toBe(90);
+  });
 });
 
 describe("posListUnitPrice search display", () => {
@@ -230,5 +248,22 @@ describe("cartLineDisplayUnitPrice wholesale", () => {
         false,
       ),
     ).toBe(6250);
+  });
+
+  it("rounds stored display unit price when cash rounding is on", () => {
+    expect(
+      cartLineDisplayUnitPrice(
+        {
+          display_unit_price: 89,
+          unit_price: 89,
+          quantity: 1,
+          amount: 90,
+          on_wholesale_retail: 1,
+        },
+        { conversion_factor: 1 },
+        true,
+        { cashRound: true },
+      ),
+    ).toBe(90);
   });
 });

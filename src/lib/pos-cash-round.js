@@ -35,6 +35,14 @@ export function finalizePosLineAmount(value, { cashRound = false } = {}) {
   return Math.round(n * 100) / 100;
 }
 
+/** Cashier-facing unit price — same Light Stores rules as line amount when enabled. */
+export function finalizePosDisplayUnitPrice(value, { cashRound = false } = {}) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (cashRound) return roundLightStoresAmount(n);
+  return Math.round(n * 100) / 100;
+}
+
 /** Per-line cash round (first pass). */
 export function posCashLineAmount(value) {
   return roundLightStoresAmount(value);

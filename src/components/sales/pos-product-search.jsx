@@ -78,6 +78,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const [highlight, setHighlight] = useState(-1);
   const [menuBox, setMenuBox] = useState(null);
   const classic = variant === "classic";
+  const enablePosCashRounding = Boolean(posSalesConfig?.enablePosCashRounding);
 
   useImperativeHandle(ref, () => ({
     closeDropdown() {
@@ -312,6 +313,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       sellWholesale,
                       retailByCode[product.product_code],
                       routeMarkupPerUnit,
+                      enablePosCashRounding,
                     );
                     const qty = availableQty(product, sellFromShop, posSalesConfig, sellWholesale);
                     const negative = Number(qty) < 0;
@@ -427,6 +429,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     sellWholesale,
                     retailByCode[product.product_code],
                     routeMarkupPerUnit,
+                    enablePosCashRounding,
                   );
                   return (
                     <tr

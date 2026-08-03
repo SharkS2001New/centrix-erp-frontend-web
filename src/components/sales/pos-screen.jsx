@@ -5180,7 +5180,9 @@ export function PosScreen({ standalone = false }) {
         unit_price: String(
           isRetailLine
             ? retailUnit
-            : cartLineDisplayUnitPrice(line, product.uom, isRetailLine),
+            : cartLineDisplayUnitPrice(line, product.uom, isRetailLine, {
+                cashRound: enablePosCashRounding,
+              }),
         ),
       });
       setStatusMessage(`Editing line #${line.line_no ?? line.id} (${posCartLineTypeLabel(line)}).`);
@@ -5232,6 +5234,7 @@ export function PosScreen({ standalone = false }) {
       productByCode: mergedProducts,
       retailByCode: retailByCodeRef.current,
       sellWholesale: sellWholesaleRef.current,
+      cashRound: enablePosCashRounding,
     });
     if (updatedCount <= 0) return 0;
     cartRef.current = pricedCart;
@@ -8768,7 +8771,9 @@ export function PosScreen({ standalone = false }) {
                   const uom = productMeta?.uom;
                   const isRetailLine = Number(line.on_wholesale_retail) === 1;
                   return Number(
-                    cartLineDisplayUnitPrice(line, uom, isRetailLine),
+                    cartLineDisplayUnitPrice(line, uom, isRetailLine, {
+                      cashRound: enablePosCashRounding,
+                    }),
                   ).toLocaleString();
                 }}
                 lineDiscount={(line) => {
@@ -8995,7 +9000,9 @@ export function PosScreen({ standalone = false }) {
                         </td>
                         <td className="px-3 py-2 text-right">
                           {Number(
-                            cartLineDisplayUnitPrice(line, uom, isRetailLine),
+                            cartLineDisplayUnitPrice(line, uom, isRetailLine, {
+                              cashRound: enablePosCashRounding,
+                            }),
                           ).toLocaleString()}
                         </td>
                         {showLineDiscountField ? (

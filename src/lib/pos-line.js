@@ -23,7 +23,10 @@ import {
   uomIsFullPackageOnly,
   uomSmallUnitIsWholeNumber,
 } from "@/lib/uom-packaging";
-import { finalizePosLineAmount } from "@/lib/pos-cash-round";
+import {
+  finalizePosDisplayUnitPrice,
+  finalizePosLineAmount,
+} from "@/lib/pos-cash-round";
 
 /** POS session is selling at retail when the cashier toggles it on. */
 export function isPosRetailSession(sellWholesale) {
@@ -443,7 +446,7 @@ export function computePosLine({
 
   // Retail Price field: wholesale per kg only. Markup lives on amount.
   // Wholesale: pack unit from priced amount (includes flat line markup).
-  const displayUnitPrice =
+  let displayUnitPrice =
     retailSession && pricingRetail
       ? override != null
         ? Math.round(override * 100) / 100
@@ -455,6 +458,7 @@ export function computePosLine({
           packQty,
           measureLevel: resolved.measureLevel,
         });
+  displayUnitPrice = finalizePosDisplayUnitPrice(displayUnitPrice, { cashRound });
   const roundedLineAmount = finalizePosLineAmount(lineAmount, { cashRound });
   // Per-base average for API trust path (amount ÷ qty); includes markup share.
   const unitPricePerBase = baseQty > 0 ? roundedLineAmount / baseQty : 0;
@@ -464,7 +468,7 @@ export function computePosLine({
     lineAmountBeforeDiscount: Math.round(lineAmountBeforeDiscount * 100) / 100,
     discountApplied: Math.round(discountNum * 100) / 100,
     lineAmount: roundedLineAmount,
-    displayUnitPrice: Math.round(displayUnitPrice * 100) / 100,
+    displayUnitPrice,
     unitPricePerBase: Math.round(unitPricePerBase * 10000) / 10000,
     qtyLabel: retailSession
       ? `${formatDisplayQty(baseQty)} ${smallPackagingLabel(uom)}`
@@ -481,12 +485,13 @@ export function posListUnitPrice(
   sellWholesale,
   retailPackage,
   routeMarkupPerUnit = 0,
+  cashRound = false,
 ) {
   const wholesaleMode = effectivePosSellWholesale(sellWholesale, product);
   if (!product?.uom) {
     const base = Number(product?.unit_price ?? 0);
     const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
-    return Math.round((base + routeMarkup) * 100) / 100;
+    return finalizePosDisplayUnitPrice(base + routeMarkup, { cashRound });
   }
   const { lineAmountBeforeDiscount } = computePosLine({
     product,
@@ -495,8 +500,11 @@ export function posListUnitPrice(
     retailPackage,
     discount: 0,
     routeMarkupPerUnit,
+    cashRound,
   });
-  return lineAmountBeforeDiscount;
+  return cashRound
+    ? finalizePosLineAmount(lineAmountBeforeDiscount, { cashRound: true })
+    : lineAmountBeforeDiscount;
 }
 
 /** @deprecated Use posListUnitPrice — kept for callers that expect { price, unitLabel }. */
@@ -535,10 +543,15 @@ export function lineDiscountTotal(perUnitDiscount, packQty) {
  * wholesale `unit_price` as amount ÷ pack qty (per bag), so multiplying by factor
  * inflated the UI (e.g. 6,250 × 50 = 312,500) while amount/receipts stayed correct.
  */
-export function cartLineDisplayUnitPrice(line, uom, isRetailLine = false) {
+export function cartLineDisplayUnitPrice(
+  line,
+  uom,
+  isRetailLine = false,
+  { cashRound = false } = {},
+) {
   const storedDisplay = Number(line?.display_unit_price);
   if (Number.isFinite(storedDisplay) && storedDisplay > 0) {
-    return storedDisplay;
+    return finalizePosDisplayUnitPrice(storedDisplay, { cashRound });
   }
 
   const amount = Number(line?.amount ?? 0);
@@ -551,7 +564,7 @@ export function cartLineDisplayUnitPrice(line, uom, isRetailLine = false) {
       : baseQty;
 
   if (soldQty > 0 && (amount > 0 || discount > 0)) {
-    return Math.round(((amount + discount) / soldQty) * 100) / 100;
+    return finalizePosDisplayUnitPrice((amount + discount) / soldQty, { cashRound });
   }
 
   // Offline/optimistic lines may still hold per-base unit_price before display is set.
@@ -561,11 +574,11 @@ export function cartLineDisplayUnitPrice(line, uom, isRetailLine = false) {
     const asBaseTimesQty = Math.round(stored * baseQty * 100) / 100;
     // Per-base local lines: unit × baseQty ≈ amount; scale to pack for the grid.
     if (amount > 0 && Math.abs(asBaseTimesQty - amount) <= Math.max(0.02, amount * 0.001)) {
-      return asPack;
+      return finalizePosDisplayUnitPrice(asPack, { cashRound });
     }
   }
 
-  return Number.isFinite(stored) ? stored : 0;
+  return finalizePosDisplayUnitPrice(Number.isFinite(stored) ? stored : 0, { cashRound });
 }
 
 /** Rebuild POS entry quantity from a saved cart line (base qty in DB). */
@@ -624,7 +637,7 @@ export function posCartLineTypeLabel(line) {
  */
 export function applyCatalogPricesToCart(
   cart,
-  { productByCode = {}, retailByCode = {}, sellWholesale = false } = {},
+  { productByCode = {}, retailByCode = {}, sellWholesale = false, cashRound = false } = {},
 ) {
   if (!cart?.lines?.length) {
     return { cart, updatedCount: 0, changes: [] };
@@ -645,6 +658,7 @@ export function applyCatalogPricesToCart(
       sellWholesale: lineSellWholesale,
       retailPackage,
       discount: Number(line.discount_given ?? 0),
+      cashRound,
     });
     const nextUnit = computed.unitPricePerBase;
     const nextDisplay = computed.displayUnitPrice;

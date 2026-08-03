@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  finalizePosDisplayUnitPrice,
   finalizePosLineAmount,
   posCashOrderTotal,
   posDisplayCartLineAmount,
@@ -52,5 +53,12 @@ describe("finalizePosLineAmount", () => {
 
   it("uses Light Stores rounding when cash rounding is on", () => {
     expect(finalizePosLineAmount(105.4, { cashRound: true })).toBe(106);
+  });
+});
+
+describe("finalizePosDisplayUnitPrice", () => {
+  it("rounds unit price to next 5/10 when cash rounding is on", () => {
+    expect(finalizePosDisplayUnitPrice(89, { cashRound: true })).toBe(90);
+    expect(finalizePosDisplayUnitPrice(89, { cashRound: false })).toBe(89);
   });
 });
