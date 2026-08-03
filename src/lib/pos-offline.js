@@ -16,6 +16,7 @@ import {
   idbGetOutboxSale,
   idbIsOutboxBlockingForCart,
   idbListEditableOutbox,
+  idbListOrderSlots,
   idbListPendingOutbox,
   idbMarkOutboxError,
   idbMarkOutboxSynced,
@@ -443,6 +444,63 @@ export function posTicketFieldsFromCart(cart) {
   return { pos_order_num: posOrderNum, pos_order_date: posOrderDate };
 }
 
+/**
+ * POS ticket # to print for this checkout — uses cart/API fields, the on-screen # box,
+ * and the next reserved offline slot (without consuming it).
+ */
+export function resolvePosTicketForCheckout(cart, options = {}) {
+  const { editOrderNo = "", sourceSale = null, pendingSlot = null } = options;
+  const today = normalizePosOrderDate(new Date().toISOString());
+
+  const isPreviousEdit = Boolean(cart?.held_order_num && cart?.superseded_sale_id);
+  if (isPreviousEdit) {
+    const ticket = posTicketFieldsFromCart({
+      ...cart,
+      pos_order_num: cart?.pos_order_num ?? sourceSale?.pos_order_num ?? null,
+      pos_order_date: cart?.pos_order_date ?? sourceSale?.pos_order_date ?? null,
+    });
+    if (ticket.pos_order_num != null) return ticket;
+  }
+
+  const fromCart = posTicketFieldsFromCart(cart);
+  if (fromCart.pos_order_num != null) return fromCart;
+
+  if (pendingSlot?.pos_order_num != null && Number(pendingSlot.pos_order_num) > 0) {
+    return {
+      pos_order_num: Number(pendingSlot.pos_order_num),
+      pos_order_date:
+        normalizePosOrderDate(pendingSlot.pos_order_date) ??
+        fromCart.pos_order_date ??
+        today,
+    };
+  }
+
+  const trimmed = String(editOrderNo ?? "").trim();
+  if (trimmed) {
+    const n = Number(trimmed);
+    if (Number.isFinite(n) && n > 0) {
+      return { pos_order_num: n, pos_order_date: fromCart.pos_order_date ?? today };
+    }
+  }
+
+  return { pos_order_num: null, pos_order_date: null };
+}
+
+/** Next reserved org/POS slot pair (FIFO) without consuming it. */
+export async function peekNextPosOfflineOrderSlot() {
+  const slots = await idbListOrderSlots();
+  return slots[0] ?? null;
+}
+
+async function allocateLocalPosTicketNumber() {
+  const today = normalizePosOrderDate(new Date().toISOString());
+  const key = `pos_ticket_seq_${today}`;
+  const current = Number((await idbGetMeta(key)) ?? 0);
+  const next = current + 1;
+  await idbSetMeta(key, next);
+  return { pos_order_num: next, pos_order_date: today };
+}
+
 /** Merge POS ticket # onto a sale for thermal print (preserves checkout snapshot). */
 export function withPosReceiptTicket(sale, cartOrSource = null) {
   if (!sale) return sale;
@@ -563,6 +621,11 @@ export async function completeOfflineCashSale({
       posOrderNum = fromCart.pos_order_num;
       posOrderDate = fromCart.pos_order_date ?? posOrderDate;
     }
+  }
+  if (posOrderNum == null && !isPreviousOrderEdit && !editingUuid) {
+    const localTicket = await allocateLocalPosTicketNumber();
+    posOrderNum = localTicket.pos_order_num;
+    posOrderDate = localTicket.pos_order_date ?? posOrderDate;
   }
   posOrderDate = normalizePosOrderDate(posOrderDate);
   const createdAtIso =

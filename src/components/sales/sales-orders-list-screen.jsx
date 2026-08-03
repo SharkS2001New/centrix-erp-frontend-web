@@ -745,7 +745,6 @@ export default function SalesOrdersListScreen({
     if (!sale?.id) return;
     const workflow = getOrderWorkflow(capabilities, sale);
     if (!isOrderEditActionVisible(sale, workflow, capabilities)) return;
-    setContextMenu(null);
 
     if (shouldOpenBackofficeOrderEdit(sale, workflow, capabilities)) {
       setEditSale(sale);
@@ -1014,28 +1013,24 @@ export default function SalesOrdersListScreen({
     onError: (message) => setActionMessage(message),
   });
 
-  function handleAdvance(sale, targetStatus) {
+  async function handleAdvance(sale, targetStatus) {
     if (transitionBusyId === sale.id || fulfillment.busy) return;
     if (targetStatus === "cancelled") {
-      void transitionOrder(sale, targetStatus);
-      return;
+      return transitionOrder(sale, targetStatus);
     }
     const fromStatus = String(sale?.status ?? "").toLowerCase();
     if (fromStatus === "expired" || fromStatus === "cancelled") {
-      void transitionOrder(sale, targetStatus);
-      return;
+      return transitionOrder(sale, targetStatus);
     }
     if (isPaymentGatedWorkflowTransition(sale, targetStatus)) {
-      setContextMenu(null);
       setPaySale(sale);
       return;
     }
-    fulfillment.requestTransition(sale, targetStatus);
+    return fulfillment.requestTransition(sale, targetStatus);
   }
 
   function openCollectPayment(sale) {
     if (!sale?.id || !canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)) return;
-    setContextMenu(null);
     setPaySale(sale);
   }
 
@@ -1311,15 +1306,15 @@ export default function SalesOrdersListScreen({
       balanceDue: saleBalanceDue(sale),
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),
-      onEdit: () => void openEditOrder(sale),
+      onEdit: () => openEditOrder(sale),
       onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
         ? () => openCollectPayment(sale)
         : null,
-      onPrintThermal: () => void printOrder(sale, "receipt"),
-      onPrintA4: () => void printOrder(sale, "invoice"),
-      onPrintProforma: () => void printOrder(sale, "proforma"),
-      onAdvance: routeOrdersOnly ? null : (status) => void handleAdvance(sale, status),
-      onCancel: routeOrdersOnly ? null : () => void handleAdvance(sale, "cancelled"),
+      onPrintThermal: () => printOrder(sale, "receipt"),
+      onPrintA4: () => printOrder(sale, "invoice"),
+      onPrintProforma: () => printOrder(sale, "proforma"),
+      onAdvance: routeOrdersOnly ? null : (status) => handleAdvance(sale, status),
+      onCancel: routeOrdersOnly ? null : () => handleAdvance(sale, "cancelled"),
     });
   }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, queueSlug]);
 

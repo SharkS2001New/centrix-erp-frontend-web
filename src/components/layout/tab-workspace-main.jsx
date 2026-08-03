@@ -13,7 +13,7 @@ import {
   pathnameFromTabHref,
   resolveScreen,
 } from "@/lib/screen-registry";
-import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
+import { isTabWorkspaceRoute, normalizeTabHref, pathOnlyFromHref } from "@/lib/tab-workspace";
 
 /**
  * Desktop Tab Manager host.
@@ -50,7 +50,14 @@ export function TabWorkspaceMain({ children }) {
   const { enabled, tabs, activeHref: workspaceActiveHref } = useTabWorkspace();
 
   const routeHref = normalizeTabHref(pathname);
-  const activeHref = normalizeTabHref(workspaceActiveHref || routeHref);
+  const storedActiveHref = workspaceActiveHref ? normalizeTabHref(workspaceActiveHref) : null;
+  // Prefer the live route when the stored active tab belongs to another path (e.g. after
+  // switching back to Backoffice while Create order was still the last active tab).
+  const activeHref =
+    storedActiveHref &&
+    pathOnlyFromHref(storedActiveHref) === pathOnlyFromHref(routeHref)
+      ? storedActiveHref
+      : routeHref;
   const activePath = pathnameFromTabHref(activeHref);
   const activeIsRegistered = isRegisteredHref(activeHref);
 

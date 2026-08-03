@@ -8,6 +8,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { persistWorkspaceRouteBeforeSwitch, recallWorkspaceLandingPath } from "@/lib/workspace-navigation";
+import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 import { resolveAvailableWorkspaces } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 import { SignOutButton } from "@/components/layout/sign-out-button";
@@ -42,6 +43,9 @@ function ChooseWorkspaceContent() {
           capabilities,
           ctx,
         );
+        if (isTabWorkspaceEnabled(capabilities)) {
+          seedWorkspaceTabLanding(organization?.id, workspaces[0].id, resumePath);
+        }
         await switchWorkspace(workspaces[0].id);
         if (!cancelled) router.replace(resumePath);
       } catch (err) {
@@ -63,6 +67,9 @@ function ChooseWorkspaceContent() {
     setSwitchError(null);
     try {
       const resumePath = recallWorkspaceLandingPath(user?.id, organization?.id, id, capabilities, ctx);
+      if (isTabWorkspaceEnabled(capabilities)) {
+        seedWorkspaceTabLanding(organization?.id, id, resumePath);
+      }
       await switchWorkspace(id);
       router.replace(resumePath);
     } catch (err) {

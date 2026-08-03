@@ -209,7 +209,9 @@ export function formatCashSalesNumber(sale) {
 
 /**
  * Number shown in classic POS ← / → box and previous-order captions.
- * Prefers daily POS ticket; falls back to org order_num digits.
+ * Prefers daily POS ticket; falls back to org order_num digits for edit sessions only.
+ * Never uses next_order_num here — callers that need “next ticket” must use
+ * {@link resolvePosNextBrowseNumber} so External POS does not flash the org S00xx digit.
  */
 export function resolvePosBrowseNumber(saleOrCart) {
   if (saleOrCart == null || saleOrCart === "") return null;
@@ -234,8 +236,20 @@ export function resolvePosBrowseNumber(saleOrCart) {
     const n = Number(saleOrCart.order_num);
     if (Number.isFinite(n) && n > 0 && n < 9_000_000) return n;
   }
-  if (saleOrCart.next_order_num != null && saleOrCart.next_order_num !== "") {
-    const n = Number(saleOrCart.next_order_num);
+  return null;
+}
+
+/**
+ * Next Cash Sales # for a new External POS order (daily ticket only — never org order_num).
+ */
+export function resolvePosNextBrowseNumber(saleOrCart) {
+  if (saleOrCart == null || saleOrCart === "") return null;
+  if (typeof saleOrCart !== "object") {
+    const n = Number(saleOrCart);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  if (saleOrCart.next_pos_order_num != null && saleOrCart.next_pos_order_num !== "") {
+    const n = Number(saleOrCart.next_pos_order_num);
     if (Number.isFinite(n) && n > 0) return n;
   }
   return null;

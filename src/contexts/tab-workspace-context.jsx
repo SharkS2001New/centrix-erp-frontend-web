@@ -124,7 +124,7 @@ export function TabWorkspaceProvider({ children }) {
       return;
     }
     setTabStore(readTabWorkspaceStore(organization?.id));
-  }, [enabled, organization?.id]);
+  }, [enabled, organization?.id, workspaceId]);
 
   useEffect(() => {
     if (!enabled) return;

@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { workspaceLandingPath } from "@/lib/workspace-navigation";
+import { recallWorkspaceLandingPath } from "@/lib/workspace-navigation";
+import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
@@ -53,7 +54,7 @@ export function WorkspaceGuard({ children }) {
     }
 
     if (!pathBelongsToWorkspace(pathname, workspaceId)) {
-      const landingPath = workspaceLandingPath(
+      const landingPath = recallWorkspaceLandingPath(
         user?.id,
         organization?.id,
         workspaceId,
@@ -61,6 +62,9 @@ export function WorkspaceGuard({ children }) {
         ctx,
       );
       if (pathname !== landingPath) {
+        if (isTabWorkspaceEnabled(capabilities)) {
+          seedWorkspaceTabLanding(organization?.id, workspaceId, landingPath);
+        }
         router.replace(landingPath);
       }
     }

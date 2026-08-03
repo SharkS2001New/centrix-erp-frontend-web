@@ -10,6 +10,7 @@ import {
   persistWorkspaceRouteBeforeSwitch,
   recallWorkspaceLandingPath,
 } from "@/lib/workspace-navigation";
+import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
   pathBelongsToWorkspace,
@@ -107,6 +108,9 @@ export function WorkspaceSwitcher() {
         capabilities,
         ctx,
       );
+      if (isTabWorkspaceEnabled(capabilities)) {
+        seedWorkspaceTabLanding(organization?.id, id, resumePath);
+      }
       await switchWorkspace(id);
       router.replace(resumePath);
       router.refresh();

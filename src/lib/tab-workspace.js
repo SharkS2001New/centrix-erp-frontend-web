@@ -221,6 +221,58 @@ export function recallWorkspaceTabLandingPath(organizationId, workspaceId) {
   return sorted[0]?.href ?? null;
 }
 
+/**
+ * Seed the target workspace tab row when switching applications so the landing
+ * route is active (backoffice opens on Business summary, not a stale Create order tab).
+ * @returns {TabWorkspaceStore}
+ */
+export function seedWorkspaceTabLanding(organizationId, workspaceId, landingHref, options = {}) {
+  if (typeof window === "undefined") return {};
+  if (!organizationId || !workspaceId || !landingHref) {
+    return readTabWorkspaceStore(organizationId);
+  }
+
+  const normalized = normalizeTabHref(landingHref);
+  if (!isTabWorkspaceRoute(normalized) || !pathBelongsToWorkspace(normalized, workspaceId)) {
+    return readTabWorkspaceStore(organizationId);
+  }
+
+  const store = readTabWorkspaceStore(organizationId);
+  const current = getWorkspaceTabState(store, workspaceId);
+  const pathKey = pathOnlyFromHref(normalized);
+  const now = Date.now();
+  const resolvedTitle =
+    options.title ??
+    (pathKey === "/dashboard" ? "Business summary" : titleFromPathname(normalized));
+
+  const existing = current.tabs.find((tab) => pathOnlyFromHref(tab.href) === pathKey);
+  const landingTab = {
+    ...(existing ?? {}),
+    href: normalized,
+    title: resolvedTitle,
+    dirty: false,
+    lastActiveAt: now,
+  };
+
+  const nextTabs =
+    workspaceId === "backoffice"
+      ? [landingTab]
+      : [
+          landingTab,
+          ...current.tabs.filter((tab) => pathOnlyFromHref(tab.href) !== pathKey),
+        ];
+
+  const nextStore = {
+    ...store,
+    [workspaceId]: {
+      tabs: nextTabs.slice(0, TAB_WORKSPACE_MAX_TABS),
+      activeHref: normalized,
+    },
+  };
+  writeTabWorkspaceStore(organizationId, nextStore);
+  return nextStore;
+}
+
 export function clearAllTabWorkspaceMemory() {
   if (typeof window === "undefined") return;
   try {

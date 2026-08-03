@@ -4,6 +4,8 @@ import {
   isOrderEditActionVisible,
   isOrderEditVisible,
   resolvePaymentMethodByCode,
+  resolvePosBrowseNumber,
+  resolvePosNextBrowseNumber,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
@@ -428,5 +430,26 @@ describe("formatCashSalesNumber", () => {
 
   it("does not fall back to S00xx for POS channel", () => {
     expect(formatCashSalesNumber({ channel: "pos", order_num: 33 })).toBe("—");
+  });
+});
+
+describe("resolvePosNextBrowseNumber", () => {
+  it("returns only the daily POS next ticket", () => {
+    expect(
+      resolvePosNextBrowseNumber({ next_pos_order_num: 8, next_order_num: 36 }),
+    ).toBe(8);
+  });
+
+  it("does not fall back to org next_order_num", () => {
+    expect(resolvePosNextBrowseNumber({ next_order_num: 36 })).toBeNull();
+  });
+});
+
+describe("resolvePosBrowseNumber", () => {
+  it("does not use next_order_num for new-order peeks", () => {
+    expect(resolvePosBrowseNumber({ next_order_num: 36 })).toBeNull();
+    expect(
+      resolvePosBrowseNumber({ next_pos_order_num: 8, next_order_num: 36 }),
+    ).toBe(8);
   });
 });

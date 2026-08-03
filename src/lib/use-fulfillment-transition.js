@@ -156,8 +156,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
     async (sale, targetStatus) => {
       if (busy) return;
       if (targetStatus === "cancelled") {
-        void runTransition(sale, targetStatus);
-        return;
+        return runTransition(sale, targetStatus);
       }
 
       const current = String(sale?.status ?? "").toLowerCase();
@@ -183,7 +182,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
         setPodDialog({ sale, targetStatus });
         return;
       }
-      void runTransition(sale, targetStatus);
+      return runTransition(sale, targetStatus);
     },
     [busy, distributionSettings, ensureProductWeights, runTransition, onSuccess],
   );
