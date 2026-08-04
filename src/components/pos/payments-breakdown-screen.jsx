@@ -188,6 +188,8 @@ export function PaymentsBreakdownScreen() {
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 300);
   const [methodCode, setMethodCode] = useState("CASH");
+  /** Print/CSV: current tender tab only, or every visible tab. */
+  const [printScope, setPrintScope] = useState("active");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState(null);
@@ -345,14 +347,30 @@ export function PaymentsBreakdownScreen() {
   }, [cashierId, cashierOptions]);
 
   const getExportRows = useCallback(async () => {
-    const exportTabs = methods.length
-      ? methods
-      : [{
-          method_code: methodCode,
-          method_name: methodName,
-          total_amount: summary.total_amount,
-          order_count: summary.order_count,
-        }];
+    const exportTabs =
+      printScope === "active"
+        ? [
+            methods.find((m) => m.method_code === methodCode) ?? {
+              method_code: methodCode,
+              method_name: methodName,
+              total_amount: summary.total_amount,
+              order_count: summary.order_count,
+              return_amount: activeMethodStats.return_amount,
+              topup_amount: activeMethodStats.topup_amount,
+            },
+          ]
+        : methods.length
+          ? methods
+          : [
+              {
+                method_code: methodCode,
+                method_name: methodName,
+                total_amount: summary.total_amount,
+                order_count: summary.order_count,
+                return_amount: activeMethodStats.return_amount,
+                topup_amount: activeMethodStats.topup_amount,
+              },
+            ];
 
     const allRows = [];
     for (let i = 0; i < exportTabs.length; i += 1) {
@@ -391,22 +409,52 @@ export function PaymentsBreakdownScreen() {
 
     return allRows;
   }, [
+    printScope,
     methods,
     methodCode,
     methodName,
     summary.total_amount,
     summary.order_count,
+    activeMethodStats.return_amount,
+    activeMethodStats.topup_amount,
     exportBaseParams,
   ]);
 
-  const exportEstimatedRows = useMemo(
-    () =>
-      methods.reduce(
-        (sum, method) => sum + Number(method.order_count ?? 0),
-        0,
-      ) || Number(data?.total ?? summary.order_count ?? 0),
-    [methods, data?.total, summary.order_count],
-  );
+  const exportEstimatedRows = useMemo(() => {
+    if (printScope === "active") {
+      return (
+        Number(activeMethodStats.order_count ?? summary.order_count ?? data?.total ?? 0) || 0
+      );
+    }
+    return (
+      methods.reduce((sum, method) => sum + Number(method.order_count ?? 0), 0) ||
+      Number(data?.total ?? summary.order_count ?? 0)
+    );
+  }, [
+    printScope,
+    activeMethodStats.order_count,
+    summary.order_count,
+    data?.total,
+    methods,
+  ]);
+
+  const exportTitle = useMemo(() => {
+    if (printScope === "active") {
+      return `Payments breakdown — ${methodName}`;
+    }
+    return "Payments breakdown — all tabs";
+  }, [printScope, methodName]);
+
+  const exportFilename = useMemo(() => {
+    const range = `${fromDate || "from"}-${toDate || "to"}`;
+    if (printScope === "active") {
+      const slug = String(methodCode || "tab")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-");
+      return `payments-breakdown-${slug}-${range}`;
+    }
+    return `payments-breakdown-all-${range}`;
+  }, [printScope, methodCode, fromDate, toDate]);
 
   const exportExtraLines = useMemo(() => {
     const lines = [`Cashier: ${cashierName}`];
@@ -417,31 +465,60 @@ export function PaymentsBreakdownScreen() {
     if (debouncedQ.trim()) {
       lines.push(`Search: ${debouncedQ.trim()}`);
     }
-    lines.push(`Methods: ${methods.map((m) => m.method_name).filter(Boolean).join(", ") || methodName}`);
+    if (printScope === "active") {
+      lines.push(`Tab: ${methodName}`);
+    } else {
+      lines.push(
+        `Tabs: ${methods.map((m) => m.method_name).filter(Boolean).join(", ") || methodName}`,
+      );
+    }
     return lines;
-  }, [cashierName, floatSessionId, sessions, debouncedQ, methods, methodName]);
+  }, [
+    cashierName,
+    floatSessionId,
+    sessions,
+    debouncedQ,
+    printScope,
+    methodName,
+    methods,
+  ]);
 
   return (
     <CatalogPageShell
       title="Payments breakdown"
       subtitle="Paid orders by tender — edit refunds and top-ups show per payment method"
       action={
-        <ReportExportToolbar
-          filename={`payments-breakdown-${fromDate || "from"}-${toDate || "to"}`}
-          title="Payments breakdown"
-          subtitle={branchName}
-          columns={EXPORT_COLUMNS}
-          getRows={getExportRows}
-          footerRow={null}
-          estimatedRowCount={exportEstimatedRows}
-          meta={{
-            fromDate,
-            toDate,
-            branchName,
-            extraLines: exportExtraLines,
-          }}
-          disabled={loading || methods.length === 0}
-        />
+        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+          <label className="flex items-center gap-2 text-xs font-medium text-[var(--theme-text-muted)]">
+            <span className="whitespace-nowrap">Print</span>
+            <select
+              value={printScope}
+              onChange={(e) => setPrintScope(e.target.value === "all" ? "all" : "active")}
+              className={FILTER_CONTROL_CLASS}
+              disabled={loading || methods.length === 0}
+              aria-label="Print scope"
+            >
+              <option value="active">This tab ({methodName})</option>
+              <option value="all">All tabs</option>
+            </select>
+          </label>
+          <ReportExportToolbar
+            filename={exportFilename}
+            title={exportTitle}
+            subtitle={branchName}
+            columns={EXPORT_COLUMNS}
+            getRows={getExportRows}
+            footerRow={null}
+            estimatedRowCount={exportEstimatedRows}
+            meta={{
+              fromDate,
+              toDate,
+              branchName,
+              extraLines: exportExtraLines,
+            }}
+            disabled={loading || methods.length === 0}
+          />
+        </div>
       }
     >
       <FilterToolbar className="theme-panel mb-6 rounded-xl border p-4 shadow-sm">
