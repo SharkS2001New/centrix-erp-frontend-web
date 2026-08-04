@@ -823,13 +823,21 @@ const COLUMN_FILTER_INPUT_CLASS =
   "w-full min-w-0 rounded border border-[var(--theme-border)] bg-[var(--theme-surface)] px-2 py-1 text-xs text-[var(--theme-text)] placeholder:text-[var(--theme-text-subtle)] focus:border-[var(--theme-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--theme-primary)]";
 
 export function OrderListTableHead({
+  showOrderColumn = true,
+  showCustomerColumn = true,
   showBranchColumn,
   showRouteColumn = false,
   showDeliveryDateColumn = false,
   showConnectivityColumn = false,
+  showAmountColumn = true,
+  showAmountPaidColumn = false,
+  showBalanceColumn = false,
+  showVatColumn = true,
+  showStatusColumn = true,
+  showMethodColumn = true,
   showSourceColumn = true,
+  showPlacedByColumn = true,
   showDiscountColumn = false,
-  showPaymentBreakdownColumns = false,
   sort = null,
   sortDir = "desc",
   onSort,
@@ -901,55 +909,51 @@ export function OrderListTableHead({
           />
         ) : null}
         <th className="w-12 px-4 py-2.5" aria-label="Expand" />
-        <th className="px-4 py-2.5">{header("Order", "order_num")}</th>
-        <th className="px-4 py-2.5">{header("Customer", "customer_name")}</th>
+        {showOrderColumn ? <th className="px-4 py-2.5">{header("Order", "order_num")}</th> : null}
+        {showCustomerColumn ? <th className="px-4 py-2.5">{header("Customer", "customer_name")}</th> : null}
         {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
         {showRouteColumn ? <th className="px-4 py-2.5">Route</th> : null}
         {showDeliveryDateColumn ? <th className="px-4 py-2.5">Delivery date</th> : null}
         {showConnectivityColumn ? <th className="px-4 py-2.5">Connectivity</th> : null}
-        <th className="px-4 py-2.5 text-right">{header("Amount", "order_total", "right")}</th>
-        {showPaymentBreakdownColumns ? (
-          <>
-            <th className="px-4 py-2.5 text-right">Amount paid</th>
-            <th className="px-4 py-2.5 text-right">Balance</th>
-          </>
+        {showAmountColumn ? (
+          <th className="px-4 py-2.5 text-right">{header("Amount", "order_total", "right")}</th>
         ) : null}
+        {showAmountPaidColumn ? <th className="px-4 py-2.5 text-right">Amount paid</th> : null}
+        {showBalanceColumn ? <th className="px-4 py-2.5 text-right">Balance</th> : null}
         {showDiscountColumn ? <th className="px-4 py-2.5 text-right">Discount</th> : null}
-        <th className="px-4 py-2.5 text-right">VAT</th>
-        <th className="px-4 py-2.5">{header("Status", "status")}</th>
-        <th className="px-4 py-2.5">Method</th>
+        {showVatColumn ? <th className="px-4 py-2.5 text-right">VAT</th> : null}
+        {showStatusColumn ? <th className="px-4 py-2.5">{header("Status", "status")}</th> : null}
+        {showMethodColumn ? <th className="px-4 py-2.5">Method</th> : null}
         {showSourceColumn ? <th className="px-4 py-2.5">{header("Source", "channel")}</th> : null}
-        <th className="px-4 py-2.5">{header("Placed by", "created_at")}</th>
+        {showPlacedByColumn ? <th className="px-4 py-2.5">{header("Placed by", "created_at")}</th> : null}
         <th className="px-4 py-2.5 w-28 text-right">Actions</th>
       </tr>
       {filtersEnabled ? (
         <tr className="border-b border-[var(--theme-border)] bg-[color-mix(in_srgb,var(--theme-surface-muted)_70%,transparent)]">
           {selection ? <th className="w-10 px-2 py-1.5" /> : null}
           <th className="w-12 px-2 py-1.5" />
-          <th className="px-2 py-1.5 font-normal">{filterCell("order", "Order / POS #")}</th>
-          <th className="px-2 py-1.5 font-normal">{filterCell("customer", "Customer")}</th>
+          {showOrderColumn ? <th className="px-2 py-1.5 font-normal">{filterCell("order", "Order / POS #")}</th> : null}
+          {showCustomerColumn ? <th className="px-2 py-1.5 font-normal">{filterCell("customer", "Customer")}</th> : null}
           {showBranchColumn ? <th className="px-2 py-1.5" /> : null}
           {showRouteColumn ? <th className="px-2 py-1.5" /> : null}
           {showDeliveryDateColumn ? <th className="px-2 py-1.5" /> : null}
           {showConnectivityColumn ? <th className="px-2 py-1.5" /> : null}
-          <th className="px-2 py-1.5 font-normal">{filterCell("amount", "Amount")}</th>
-          {showPaymentBreakdownColumns ? (
-            <>
-              <th className="px-2 py-1.5" />
-              <th className="px-2 py-1.5" />
-            </>
-          ) : null}
+          {showAmountColumn ? <th className="px-2 py-1.5 font-normal">{filterCell("amount", "Amount")}</th> : null}
+          {showAmountPaidColumn ? <th className="px-2 py-1.5" /> : null}
+          {showBalanceColumn ? <th className="px-2 py-1.5" /> : null}
           {showDiscountColumn ? <th className="px-2 py-1.5" /> : null}
-          <th className="px-2 py-1.5" />
-          <th className="px-2 py-1.5 font-normal">
-            {filterCell(
-              "status",
-              "Status",
-              "text",
-              statusOptions.filter((o) => o.value && o.value !== "all"),
-            )}
-          </th>
-          <th className="px-2 py-1.5 font-normal">{filterCell("method", "Method")}</th>
+          {showVatColumn ? <th className="px-2 py-1.5" /> : null}
+          {showStatusColumn ? (
+            <th className="px-2 py-1.5 font-normal">
+              {filterCell(
+                "status",
+                "Status",
+                "text",
+                statusOptions.filter((o) => o.value && o.value !== "all"),
+              )}
+            </th>
+          ) : null}
+          {showMethodColumn ? <th className="px-2 py-1.5 font-normal">{filterCell("method", "Method")}</th> : null}
           {showSourceColumn ? (
             <th className="px-2 py-1.5 font-normal">
               {filterCell(
@@ -960,7 +964,7 @@ export function OrderListTableHead({
               )}
             </th>
           ) : null}
-          <th className="px-2 py-1.5 font-normal">{filterCell("placed_by", "Name")}</th>
+          {showPlacedByColumn ? <th className="px-2 py-1.5 font-normal">{filterCell("placed_by", "Name")}</th> : null}
           <th className="px-2 py-1.5" />
         </tr>
       ) : null}
@@ -983,18 +987,26 @@ export function OrderListTableRow({
   onCollectPayment = null,
   actionBusy = false,
   printAriaLabel = "Print",
+  showOrderColumn = true,
+  showCustomerColumn = true,
   showBranchColumn = false,
   branchName = "—",
   showRouteColumn = false,
   showDeliveryDateColumn = false,
   showConnectivityColumn = false,
+  showAmountColumn = true,
+  showAmountPaidColumn = false,
+  showBalanceColumn = false,
+  showVatColumn = true,
+  showStatusColumn = true,
+  showMethodColumn = true,
   showSourceColumn = true,
+  showPlacedByColumn = true,
   routeById,
   paymentRefsBySaleId,
   columnCount = 10,
   capabilities = null,
   showDiscountColumn = false,
-  showPaymentBreakdownColumns = false,
   showApprovalColumn = false,
   showRejectionStrip = false,
   canApproveDiscounts = false,
@@ -1136,12 +1148,16 @@ export function OrderListTableRow({
             label={`${expanded ? "Hide" : "Show"} items for ${formatReceiptNumber(sale)}`}
           />
         </td>
-        <td className="px-4 py-3">
-          <Link href={href} className="font-medium text-[var(--theme-primary)] hover:underline">
-            {formatOrderPosLabel(sale)}
-          </Link>
-        </td>
-        <td className="px-4 py-3 text-slate-700">{saleCustomerLabel(sale)}</td>
+        {showOrderColumn ? (
+          <td className="px-4 py-3">
+            <Link href={href} className="font-medium text-[var(--theme-primary)] hover:underline">
+              {formatOrderPosLabel(sale)}
+            </Link>
+          </td>
+        ) : null}
+        {showCustomerColumn ? (
+          <td className="px-4 py-3 text-slate-700">{saleCustomerLabel(sale)}</td>
+        ) : null}
         {showBranchColumn ? (
           <td className="px-4 py-3 text-slate-600">{branchName}</td>
         ) : null}
@@ -1154,22 +1170,24 @@ export function OrderListTableRow({
         {showConnectivityColumn ? (
           <td className="px-4 py-3">{saleConnectivityCell(sale)}</td>
         ) : null}
-        <td className="px-4 py-3 text-right font-medium text-slate-900">
-          {formatSaleKes(sale.order_total)}
-        </td>
-        {showPaymentBreakdownColumns ? (
-          <>
-            <td className="px-4 py-3 text-right tabular-nums text-slate-700">
-              {formatSaleKes(amountPaid)}
-            </td>
-            <td
-              className={`px-4 py-3 text-right tabular-nums font-medium ${
-                balanceDue > 0.01 ? "text-amber-800" : "text-slate-700"
-              }`}
-            >
-              {formatSaleKes(balanceDue)}
-            </td>
-          </>
+        {showAmountColumn ? (
+          <td className="px-4 py-3 text-right font-medium text-slate-900">
+            {formatSaleKes(sale.order_total)}
+          </td>
+        ) : null}
+        {showAmountPaidColumn ? (
+          <td className="px-4 py-3 text-right tabular-nums text-slate-700">
+            {formatSaleKes(amountPaid)}
+          </td>
+        ) : null}
+        {showBalanceColumn ? (
+          <td
+            className={`px-4 py-3 text-right tabular-nums font-medium ${
+              balanceDue > 0.01 ? "text-amber-800" : "text-slate-700"
+            }`}
+          >
+            {formatSaleKes(balanceDue)}
+          </td>
         ) : null}
         {showDiscountColumn ? (
           <td className="px-4 py-3 text-right text-slate-700">
@@ -1178,24 +1196,30 @@ export function OrderListTableRow({
               : "—"}
           </td>
         ) : null}
-        <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
-        <td className="px-4 py-3">
-          <SaleStatusBadge status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} />
-          {sale?.discount_rejected ? (
-            <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">Discount rejected</p>
-          ) : null}
-          {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
+        {showVatColumn ? (
+          <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
+        ) : null}
+        {showStatusColumn ? (
+          <td className="px-4 py-3">
+            <SaleStatusBadge status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} />
+            {sale?.discount_rejected ? (
+              <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">Discount rejected</p>
+            ) : null}
+            {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
+              <div className="mt-1.5">
+                <PaymentStatusBadge status={sale.payment_status} />
+              </div>
+            ) : null}
             <div className="mt-1.5">
-              <PaymentStatusBadge status={sale.payment_status} />
+              <OrderMiniPipeline status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} showLabel={false} />
             </div>
-          ) : null}
-          <div className="mt-1.5">
-            <OrderMiniPipeline status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} showLabel={false} />
-          </div>
-        </td>
-        <td className="px-4 py-3">
-          <OrderPaymentMethodCell sale={sale} paymentRefsBySaleId={paymentRefsBySaleId} />
-        </td>
+          </td>
+        ) : null}
+        {showMethodColumn ? (
+          <td className="px-4 py-3">
+            <OrderPaymentMethodCell sale={sale} paymentRefsBySaleId={paymentRefsBySaleId} />
+          </td>
+        ) : null}
         {showSourceColumn ? (
           <td className="px-4 py-3">
             <OrderSourceBadge
@@ -1205,9 +1229,11 @@ export function OrderListTableRow({
             />
           </td>
         ) : null}
-        <td className="px-4 py-3 text-slate-700">
-          <SaleCreatedByCell sale={sale} />
-        </td>
+        {showPlacedByColumn ? (
+          <td className="px-4 py-3 text-slate-700">
+            <SaleCreatedByCell sale={sale} />
+          </td>
+        ) : null}
         <td className="px-4 py-3">
           <OrderRowActions
             busy={actionBusy}

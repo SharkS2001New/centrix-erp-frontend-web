@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -67,10 +68,13 @@ import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import {
+  ORDER_LIST_COLUMN_OPTIONS,
   defaultOrderListPrintDocumentType,
+  getOrdersListVisibleColumns,
   getOrdersListDefaultDateRange,
   getOrdersListSort,
   isOrgMobileSalesEnabled,
+  normalizeOrdersListVisibleColumns,
   orderListDateRangeUsesArchive,
   ORDERS_HOT_WINDOW_DAYS,
   orderListPrintAriaLabel,
@@ -118,6 +122,7 @@ const ORDERS_TABLE_SORT_FIRST_DIR = {
 
 /** Fetch this many order details in parallel before printing the chunk. */
 const BATCH_PRINT_CHUNK_SIZE = 5;
+const ORDER_COLUMNS_STORAGE_PREFIX = "sales.orders.visibleColumns";
 
 function chunkItems(items, size) {
   const chunks = [];
@@ -152,6 +157,129 @@ function indexPaymentRefs(payments) {
     map.get(saleId).push(ref);
   }
   return map;
+}
+
+function buildOrdersColumnStorageKey(user, queueSlug = "all") {
+  return [
+    ORDER_COLUMNS_STORAGE_PREFIX,
+    user?.organization_id ?? "org",
+    user?.id ?? "user",
+    queueSlug || "all",
+  ].join(":");
+}
+
+function readStoredOrdersColumnIds(storageKey, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return normalizeOrdersListVisibleColumns(Array.isArray(parsed) ? parsed : fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function ColumnsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4" aria-hidden>
+      <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
+      <path d="M6 3v4M10 8v4M14 13v4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function OrdersColumnsMenu({
+  open,
+  onOpen,
+  onClose,
+  visibleColumnIds,
+  onToggleColumn,
+  onReset,
+  availableColumns,
+}) {
+  const [menuStyle, setMenuStyle] = useState(null);
+  const [buttonNode, setButtonNode] = useState(null);
+
+  useEffect(() => {
+    if (!open || !buttonNode) return;
+    const rect = buttonNode.getBoundingClientRect();
+    setMenuStyle({
+      position: "fixed",
+      top: rect.bottom + 8,
+      right: Math.max(8, window.innerWidth - rect.right),
+      zIndex: 80,
+    });
+  }, [open, buttonNode]);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={setButtonNode}
+        type="button"
+        onClick={open ? onClose : onOpen}
+        className={`${SECONDARY_BTN_CLASS} gap-2 px-3 py-2.5`}
+      >
+        <ColumnsIcon />
+        Columns
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-[70] cursor-default"
+                aria-label="Close columns"
+                onClick={onClose}
+              />
+              <div
+                style={menuStyle ?? undefined}
+                className="theme-panel fixed z-[80] w-64 rounded-xl border p-3 shadow-lg"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="theme-subtext text-xs font-semibold uppercase tracking-wide">
+                    Show columns
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <ul className="max-h-80 space-y-1 overflow-y-auto">
+                  {availableColumns.map((column) => {
+                    const checked = visibleColumnIds.includes(column.id);
+                    return (
+                      <li key={column.id}>
+                        <label
+                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                            column.required
+                              ? "theme-subtext cursor-not-allowed opacity-60"
+                              : "cursor-pointer text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-300"
+                            checked={checked}
+                            disabled={column.required}
+                            onChange={() => onToggleColumn(column.id)}
+                          />
+                          {column.label}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
 }
 
 export default function SalesOrdersListScreen({
@@ -233,6 +361,16 @@ export default function SalesOrdersListScreen({
   const [contextMenu, setContextMenu] = useState(null);
   const [batchBusy, setBatchBusy] = useState(null);
   const [explainOpen, setExplainOpen] = useState(false);
+  const defaultVisibleColumnIds = useMemo(
+    () => getOrdersListVisibleColumns(capabilities?.module_settings, queueConfig?.slug ?? "all"),
+    [capabilities?.module_settings, queueConfig?.slug],
+  );
+  const ordersColumnStorageKey = useMemo(
+    () => buildOrdersColumnStorageKey(user, queueSlug),
+    [user, queueSlug],
+  );
+  const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
+  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
   const {
     selectedIds,
     selectedCount,
@@ -255,6 +393,15 @@ export default function SalesOrdersListScreen({
     placed_by: "",
   });
   const debouncedColumnFilters = useDebouncedValue(columnFilters, 350);
+  useEffect(() => {
+    setVisibleColumnIds(readStoredOrdersColumnIds(ordersColumnStorageKey, defaultVisibleColumnIds));
+  }, [ordersColumnStorageKey, defaultVisibleColumnIds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ordersColumnStorageKey, JSON.stringify(visibleColumnIds));
+  }, [ordersColumnStorageKey, visibleColumnIds]);
+
   const {
     sort: tableSort,
     sortDir: tableSortDir,
@@ -418,32 +565,77 @@ export default function SalesOrdersListScreen({
       .catch(() => setPaymentRefsBySaleId(new Map()));
   }, [rows]);
 
-  const showBranchColumn = branches.length > 1;
-  const showRouteColumn = routeOrdersOnly || Boolean(queueConfig?.showRouteColumn);
-  const showDeliveryDateColumn = routeOrdersOnly || Boolean(queueConfig?.showDeliveryDateColumn);
-  const showConnectivityColumn = Boolean(queueConfig?.showConnectivityColumn);
-  const showSourceColumn = !routeOrdersOnly && sourceOptions.length > 2;
-  const showSourceFilter = !routeOrdersOnly && sourceOptions.length > 2;
-  const showDiscountColumn = shouldShowSalesDiscountColumn(capabilities?.module_settings);
-  const showPaymentBreakdownColumns =
+  const visibleColumnSet = useMemo(() => new Set(visibleColumnIds), [visibleColumnIds]);
+  const branchColumnAvailable = branches.length > 1;
+  const routeColumnAvailable = routeOrdersOnly || Boolean(queueConfig?.showRouteColumn);
+  const deliveryDateColumnAvailable = routeOrdersOnly || Boolean(queueConfig?.showDeliveryDateColumn);
+  const connectivityColumnAvailable = Boolean(queueConfig?.showConnectivityColumn);
+  const sourceColumnAvailable = !routeOrdersOnly && sourceOptions.length > 2;
+  const discountColumnAvailable = shouldShowSalesDiscountColumn(capabilities?.module_settings);
+  const paymentBreakdownColumnsAvailable =
     String(queueConfig?.fixedPaymentStatusFilter ?? "").toLowerCase() === "partial" ||
     String(queueSlug ?? "").toLowerCase() === "pending_payment";
+  const showBranchColumn = branchColumnAvailable && visibleColumnSet.has("branch");
+  const showRouteColumn = routeColumnAvailable && visibleColumnSet.has("route");
+  const showDeliveryDateColumn =
+    deliveryDateColumnAvailable && visibleColumnSet.has("delivery_date");
+  const showConnectivityColumn =
+    connectivityColumnAvailable && visibleColumnSet.has("connectivity");
+  const showSourceColumn = sourceColumnAvailable && visibleColumnSet.has("source");
+  const showDiscountColumn = discountColumnAvailable && visibleColumnSet.has("discount");
+  const showAmountPaidColumn =
+    paymentBreakdownColumnsAvailable && visibleColumnSet.has("amount_paid");
+  const showBalanceColumn =
+    paymentBreakdownColumnsAvailable && visibleColumnSet.has("balance");
+  const showPaymentBreakdownColumns = showAmountPaidColumn || showBalanceColumn;
   const showApprovalColumn =
     queueSlug === "pending-approval" || queueSlug === "pending_approval";
   const showRejectionStrip = queueSlug === "editable";
   const canApproveDiscounts = canApproveDiscountRequests({ hasPermission, capabilities });
+  const availableOrderColumns = useMemo(
+    () =>
+      ORDER_LIST_COLUMN_OPTIONS.filter((column) => {
+        if (column.id === "branch") return branchColumnAvailable;
+        if (column.id === "route") return routeColumnAvailable;
+        if (column.id === "delivery_date") return deliveryDateColumnAvailable;
+        if (column.id === "connectivity") return connectivityColumnAvailable;
+        if (column.id === "source") return sourceColumnAvailable;
+        if (column.id === "discount") return discountColumnAvailable;
+        if (column.id === "amount_paid" || column.id === "balance") {
+          return paymentBreakdownColumnsAvailable;
+        }
+        return true;
+      }),
+    [
+      branchColumnAvailable,
+      routeColumnAvailable,
+      deliveryDateColumnAvailable,
+      connectivityColumnAvailable,
+      sourceColumnAvailable,
+      discountColumnAvailable,
+      paymentBreakdownColumnsAvailable,
+    ],
+  );
   const branchById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch])),
     [branches],
   );
   const columnCount = orderTableColumnCount({
+    showOrderColumn: visibleColumnSet.has("order"),
+    showCustomerColumn: visibleColumnSet.has("customer"),
     showBranchColumn,
     showRouteColumn,
     showDeliveryDateColumn,
     showConnectivityColumn,
+    showAmountColumn: visibleColumnSet.has("amount"),
+    showAmountPaidColumn,
+    showBalanceColumn,
+    showVatColumn: visibleColumnSet.has("vat"),
+    showStatusColumn: visibleColumnSet.has("status"),
+    showMethodColumn: visibleColumnSet.has("method"),
     showSourceColumn,
+    showPlacedByColumn: visibleColumnSet.has("placed_by"),
     showDiscountColumn,
-    showPaymentBreakdownColumns,
     showSelectionColumn: true,
   });
 
@@ -1700,6 +1892,21 @@ export default function SalesOrdersListScreen({
                 >
                   {allPageExpanded ? "Collapse all" : "Expand all"}
                 </button>
+                <OrdersColumnsMenu
+                  open={columnsMenuOpen}
+                  onOpen={() => setColumnsMenuOpen(true)}
+                  onClose={() => setColumnsMenuOpen(false)}
+                  visibleColumnIds={visibleColumnIds}
+                  availableColumns={availableOrderColumns}
+                  onToggleColumn={(columnId) => {
+                    setVisibleColumnIds((prev) => {
+                      const has = prev.includes(columnId);
+                      const next = has ? prev.filter((id) => id !== columnId) : [...prev, columnId];
+                      return normalizeOrdersListVisibleColumns(next);
+                    });
+                  }}
+                  onReset={() => setVisibleColumnIds(defaultVisibleColumnIds)}
+                />
               </div>
               <div className="overflow-x-auto">
                 {tableSortActive ? (
@@ -1725,13 +1932,21 @@ export default function SalesOrdersListScreen({
                 >
                   <thead>
                     <OrderListTableHead
+                      showOrderColumn={visibleColumnSet.has("order")}
+                      showCustomerColumn={visibleColumnSet.has("customer")}
                       showBranchColumn={showBranchColumn}
                       showRouteColumn={showRouteColumn}
                       showDeliveryDateColumn={showDeliveryDateColumn}
                       showConnectivityColumn={showConnectivityColumn}
+                      showAmountColumn={visibleColumnSet.has("amount")}
+                      showAmountPaidColumn={showAmountPaidColumn}
+                      showBalanceColumn={showBalanceColumn}
+                      showVatColumn={visibleColumnSet.has("vat")}
+                      showStatusColumn={visibleColumnSet.has("status")}
+                      showMethodColumn={visibleColumnSet.has("method")}
                       showSourceColumn={showSourceColumn}
+                      showPlacedByColumn={visibleColumnSet.has("placed_by")}
                       showDiscountColumn={showDiscountColumn}
-                      showPaymentBreakdownColumns={showPaymentBreakdownColumns}
                       sort={tableSort}
                       sortDir={tableSortDir}
                       onSort={(columnId) => {
@@ -1812,17 +2027,25 @@ export default function SalesOrdersListScreen({
                             }
                             restoreLabel={restoreLabel}
                             actionBusy={transitionBusyId === sale.id || blockingBatchBusy}
+                            showOrderColumn={visibleColumnSet.has("order")}
+                            showCustomerColumn={visibleColumnSet.has("customer")}
                             showBranchColumn={showBranchColumn}
                             branchName={saleBranchLabel(sale, branchById)}
                             showRouteColumn={showRouteColumn}
                             showDeliveryDateColumn={showDeliveryDateColumn}
                             showConnectivityColumn={showConnectivityColumn}
+                            showAmountColumn={visibleColumnSet.has("amount")}
+                            showAmountPaidColumn={showAmountPaidColumn}
+                            showBalanceColumn={showBalanceColumn}
+                            showVatColumn={visibleColumnSet.has("vat")}
+                            showStatusColumn={visibleColumnSet.has("status")}
+                            showMethodColumn={visibleColumnSet.has("method")}
                             showSourceColumn={showSourceColumn}
+                            showPlacedByColumn={visibleColumnSet.has("placed_by")}
                             routeById={routeById}
                             paymentRefsBySaleId={paymentRefsBySaleId}
                             columnCount={columnCount}
                             showDiscountColumn={showDiscountColumn}
-                            showPaymentBreakdownColumns={showPaymentBreakdownColumns}
                             showApprovalColumn={showApprovalColumn}
                             showRejectionStrip={showRejectionStrip}
                             queueSlug={queueSlug}

@@ -128,6 +128,7 @@ const SALES_DEFAULTS = {
     "source",
     "placed_by",
   ],
+  orders_list_visible_columns_by_queue: {},
   edit_order_statuses: ["booked", "pending", "editable"],
   print_invoice_statuses: null,
   collect_payment_statuses: ["unpaid", "pending_payment"],
@@ -160,7 +161,26 @@ export const ORDER_LIST_COLUMN_OPTIONS = [
   { id: "placed_by", label: "Placed by", required: true },
 ];
 
+export const ORDER_LIST_COLUMN_QUEUE_OPTIONS = [
+  { id: "all", label: "Default / View all" },
+  { id: "booked", label: "Booked" },
+  { id: "pending", label: "Pending" },
+  { id: "unpaid", label: "Unpaid" },
+  { id: "pending_payment", label: "Partially paid" },
+  { id: "paid", label: "Paid" },
+  { id: "processed", label: "Processed" },
+  { id: "delivered", label: "Delivered" },
+  { id: "completed", label: "Completed" },
+  { id: "mobile", label: "Mobile" },
+  { id: "whatsapp", label: "WhatsApp" },
+  { id: "pending_approval", label: "Pending approval" },
+  { id: "editable", label: "Editable" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "expired", label: "Expired" },
+];
+
 const ORDER_LIST_COLUMN_ID_SET = new Set(ORDER_LIST_COLUMN_OPTIONS.map((option) => option.id));
+const ORDER_LIST_QUEUE_ID_SET = new Set(ORDER_LIST_COLUMN_QUEUE_OPTIONS.map((option) => option.id));
 const ORDER_LIST_REQUIRED_COLUMN_IDS = ORDER_LIST_COLUMN_OPTIONS
   .filter((option) => option.required)
   .map((option) => option.id);
@@ -206,9 +226,24 @@ export function normalizeOrdersListVisibleColumns(value) {
   return allowed;
 }
 
-export function getOrdersListVisibleColumns(moduleSettings) {
+export function normalizeOrdersListVisibleColumnsByQueue(value) {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const out = {};
+  for (const [queueId, columns] of Object.entries(raw)) {
+    if (!ORDER_LIST_QUEUE_ID_SET.has(queueId)) continue;
+    out[queueId] = normalizeOrdersListVisibleColumns(columns);
+  }
+  return out;
+}
+
+export function getOrdersListVisibleColumns(moduleSettings, queueSlug = "all") {
   const sales = mergeSalesSettings(moduleSettings);
-  return normalizeOrdersListVisibleColumns(sales.orders_list_visible_columns);
+  const defaults = normalizeOrdersListVisibleColumns(sales.orders_list_visible_columns);
+  const byQueue = normalizeOrdersListVisibleColumnsByQueue(
+    sales.orders_list_visible_columns_by_queue,
+  );
+  const key = String(queueSlug ?? "all").trim() || "all";
+  return byQueue[key]?.length ? byQueue[key] : defaults;
 }
 
 /** Inclusive calendar days for mobile picking / loading sheet lists (1 = today only). */

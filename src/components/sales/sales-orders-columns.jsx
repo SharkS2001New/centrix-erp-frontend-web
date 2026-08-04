@@ -4,23 +4,41 @@ import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { formatSaleKes, formatSalePlacedDateTime, salePlacedAt } from "@/lib/sales";
 
 export function orderTableColumnCount({
+  showOrderColumn = true,
+  showCustomerColumn = true,
   showBranchColumn = false,
   showRouteColumn = false,
   showDeliveryDateColumn = false,
   showConnectivityColumn = false,
+  showAmountColumn = true,
+  showAmountPaidColumn = false,
+  showBalanceColumn = false,
+  showVatColumn = true,
+  showStatusColumn = true,
+  showMethodColumn = true,
   showSourceColumn = true,
+  showPlacedByColumn = true,
   showDiscountColumn = false,
-  showPaymentBreakdownColumns = false,
   showSelectionColumn = false,
 }) {
-  let count = showSourceColumn ? 10 : 9;
+  let count = 1; // expand
+  if (showOrderColumn) count += 1;
+  if (showCustomerColumn) count += 1;
   if (showBranchColumn) count += 1;
   if (showRouteColumn) count += 1;
   if (showDeliveryDateColumn) count += 1;
   if (showConnectivityColumn) count += 1;
+  if (showAmountColumn) count += 1;
+  if (showAmountPaidColumn) count += 1;
+  if (showBalanceColumn) count += 1;
   if (showDiscountColumn) count += 1;
-  if (showPaymentBreakdownColumns) count += 2;
+  if (showVatColumn) count += 1;
+  if (showStatusColumn) count += 1;
+  if (showMethodColumn) count += 1;
+  if (showSourceColumn) count += 1;
+  if (showPlacedByColumn) count += 1;
   if (showSelectionColumn) count += 1;
+  count += 1; // actions
   return count;
 }
 

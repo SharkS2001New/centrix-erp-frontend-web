@@ -361,6 +361,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     orders_list_search_days: "30",
     orders_list_sort: "-created_at",
     orders_list_visible_columns: getOrdersListVisibleColumns(null),
+    orders_list_visible_columns_by_queue: {},
     order_expiry_enabled: true,
     order_expiry_days: "5",
     order_expiry_before_status: "processed",
@@ -449,6 +450,7 @@ export function salesPlatformFromApi(apiPayload) {
         orders_list_visible_columns: apiPayload.orders_list_visible_columns,
       },
     }),
+    orders_list_visible_columns_by_queue: apiPayload.orders_list_visible_columns_by_queue ?? {},
     order_expiry_enabled: apiPayload.order_expiry_enabled !== false,
     order_expiry_days: String(
       Math.min(90, Math.max(1, Number(apiPayload.order_expiry_days) || 5)),
