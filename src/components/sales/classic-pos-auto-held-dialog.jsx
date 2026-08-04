@@ -10,6 +10,7 @@ import { formatOrderNumber } from "@/lib/sales";
 export function ClassicPosAutoHeldDialog({
   open,
   orderNum,
+  holdLabel = null,
   busy = false,
   onRestore,
   onDelete,
@@ -29,8 +30,9 @@ export function ClassicPosAutoHeldDialog({
 
   if (!open || !mounted || typeof document === "undefined") return null;
 
-  const label =
-    orderNum != null && orderNum !== ""
+  const label = holdLabel
+    ? holdLabel
+    : orderNum != null && orderNum !== ""
       ? `order ${formatOrderNumber(orderNum)}`
       : "a held order";
 
@@ -47,7 +49,7 @@ export function ClassicPosAutoHeldDialog({
         </h2>
         <p className="theme-text-muted mt-2 text-sm leading-relaxed">
           You left POS with items in the cart. That sale was automatically held as {label}.
-          Restore it to continue, or delete it and release the reserved stock.
+          Restore it to continue, or delete it.
         </p>
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button

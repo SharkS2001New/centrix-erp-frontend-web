@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { apiRequest } from "@/lib/api";
-import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS, workspaceCardClassName } from "@/components/catalog/catalog-shared";
+import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
 import {
   saleLineSoldUnitPrice,
   saleLineListRowAmount,
@@ -11,21 +11,54 @@ import {
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
 import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
-import { OrderExpandIcon } from "@/components/sales/sales-orders-shared";
+import { OrderExpandButton } from "@/components/sales/sales-orders-shared";
 import { saleCustomerLabel } from "@/lib/sales";
 import { useConfirm } from "@/lib/use-confirm";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  deleteLocalHeldOrder,
+  getLocalHeldOrder,
+  isLocalHeldId,
+  listLocalHeldOrders,
+  restoreLocalHeldOrder,
+} from "@/lib/pos-local-held";
 
 function orderKey(order) {
   return String(order?.id ?? "");
 }
 
-function heldOrderTitle(order) {
-  return `${formatReceiptNumber(order)} - ${saleCustomerLabel(order)}`;
+function heldOrderLabel(order) {
+  if (order?.local_held || isLocalHeldId(order?.id)) {
+    return order.hold_label || "HOLD";
+  }
+  return formatReceiptNumber(order);
 }
 
-export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange, embedded = false }) {
+function heldCustomerName(order) {
+  return (
+    saleCustomerLabel(order) ||
+    order?.customer_name ||
+    order?.customer_name_override ||
+    order?.customer?.customer_name ||
+    "Walk-in"
+  );
+}
+
+function heldOrderTitle(order) {
+  return `${heldOrderLabel(order)} - ${heldCustomerName(order)}`;
+}
+
+export function PosHeldOrdersOverlay({
+  open,
+  onClose,
+  onRestored,
+  onRestoreFailed,
+  onCountChange,
+  embedded = false,
+  workspaceHasLines = false,
+  cartSeed = null,
+}) {
   const confirm = useConfirm();
   const { user } = useAuth();
   const [mounted, setMounted] = useState(false);
@@ -38,6 +71,8 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [busyOrderId, setBusyOrderId] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [uomById, setUomById] = useState(() => new Map());
 
   useEffect(() => {
@@ -61,18 +96,30 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
     setListError(null);
     setLoading(true);
     try {
-      const res = await apiRequest("/sales", {
-        searchParams: {
-          per_page: 50,
-          with_items: 0,
-          "filter[status]": "held",
-        },
-      });
-      const list = res.data ?? [];
-      const count = Number(res.total ?? list.length);
+      const localRows = await listLocalHeldOrders();
+      let serverRows = [];
+      try {
+        const res = await apiRequest("/sales", {
+          searchParams: {
+            per_page: 50,
+            with_items: 0,
+            "filter[status]": "held",
+          },
+          loading: false,
+          reportIssues: false,
+        });
+        serverRows = (res.data ?? []).map((row) => ({ ...row, local_held: false }));
+      } catch {
+        // Offline / API down — local parks still show.
+        serverRows = [];
+      }
+      const list = [...localRows, ...serverRows];
+      const count = list.length;
       setRows(list);
       setTotalCount(count);
       setDetailsById({});
+      setSelectedOrderId(null);
+      setExpandedIds(new Set());
       onCountChange?.(count);
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load held orders");
@@ -89,6 +136,8 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
       setActionError(null);
       setDetailLoadingId(null);
       setBusyOrderId(null);
+      setSelectedOrderId(null);
+      setExpandedIds(new Set());
       return;
     }
     loadHeldOrders();
@@ -98,23 +147,41 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((s) => {
+      const title = heldOrderTitle(s).toLowerCase();
       const receipt = formatReceiptNumber(s).toLowerCase();
       const customer = saleCustomerLabel(s).toLowerCase();
-      const orderNum = String(s.order_num ?? "");
-      return receipt.includes(q) || customer.includes(q) || orderNum.includes(q);
+      const orderNum = String(s.order_num ?? s.hold_label ?? "");
+      return (
+        title.includes(q) ||
+        receipt.includes(q) ||
+        customer.includes(q) ||
+        orderNum.toLowerCase().includes(q)
+      );
     });
   }, [rows, search]);
 
-  async function loadOrderDetail(orderId) {
-    const key = String(orderId);
-    if (detailsById[key]?.items !== undefined) return detailsById[key];
+  const selectedOrder = useMemo(
+    () => filtered.find((row) => orderKey(row) === String(selectedOrderId ?? "")) ?? null,
+    [filtered, selectedOrderId],
+  );
+
+  async function loadOrderDetail(order) {
+    const key = orderKey(order);
+    if (detailsById[key]?.items !== undefined || detailsById[key]?.lines !== undefined) {
+      return detailsById[key];
+    }
     setDetailLoadingId(key);
     setActionError(null);
     try {
       if (uomById.size === 0) {
         void loadUoms();
       }
-      const sale = await apiRequest(`/sales/${orderId}`);
+      if (order?.local_held || isLocalHeldId(order?.id)) {
+        const park = (await getLocalHeldOrder(order.id)) ?? order;
+        setDetailsById((prev) => ({ ...prev, [key]: park }));
+        return park;
+      }
+      const sale = await apiRequest(`/sales/${order.id}`);
       setDetailsById((prev) => ({ ...prev, [key]: sale }));
       return sale;
     } catch (e) {
@@ -125,38 +192,63 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
     }
   }
 
-  function handleDetailsToggle(order, event) {
-    if (event.currentTarget.open) {
-      void loadOrderDetail(order.id);
-    }
+  function selectOrder(order) {
+    setSelectedOrderId(order?.id ?? null);
+    setActionError(null);
   }
 
-  async function handleRestore(order, replace = false) {
+  function toggleExpand(order, event) {
+    event?.stopPropagation?.();
+    const key = orderKey(order);
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+        void loadOrderDetail(order);
+      }
+      return next;
+    });
+    // Expanding also selects so Restore/Delete target this row.
+    selectOrder(order);
+  }
+
+  async function handleRestore(order) {
     if (!order?.id) return;
+
+    // Close this overlay before any confirm so shortcut guards do not stick on
+    // "open dialog" after restore (held overlay + confirm stacking).
+    onClose?.();
+
+    if (workspaceHasLines) {
+      const ok = await confirm({
+        title: "Restore held order",
+        message: "Your workspace has an open order. Replace it with this held order?",
+        confirmLabel: "Replace",
+        cancelLabel: "Cancel",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+
     setBusyOrderId(order.id);
     setActionError(null);
     try {
+      if (order?.local_held || isLocalHeldId(order.id)) {
+        const { cart, park } = await restoreLocalHeldOrder(order.id, cartSeed ?? {});
+        onRestored?.(cart, park, { local: true });
+        return;
+      }
+
       const cart = await apiRequest(`/sales/orders/${order.id}/restore-to-cart`, {
         method: "POST",
-        body: { replace },
+        body: { replace: true },
       });
-      onRestored?.(cart, order);
-      onClose?.();
+      onRestored?.(cart, order, { local: false });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to restore order";
-      if (!replace && message.toLowerCase().includes("already has items")) {
-        const ok = await confirm({
-          title: "Replace cart",
-          message: "Your cart already has items. Replace them with this held order?",
-          confirmLabel: "Replace",
-        });
-        if (ok) {
-          setBusyOrderId(null);
-          return handleRestore(order, true);
-        }
-      } else {
-        setActionError(message);
-      }
+      onRestoreFailed?.(message);
     } finally {
       setBusyOrderId(null);
     }
@@ -176,7 +268,11 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
     setBusyOrderId(order.id);
     setActionError(null);
     try {
-      await apiRequest(`/sales/orders/${order.id}/cancel-held`, { method: "POST" });
+      if (order?.local_held || isLocalHeldId(order.id)) {
+        await deleteLocalHeldOrder(order.id);
+      } else {
+        await apiRequest(`/sales/orders/${order.id}/cancel-held`, { method: "POST" });
+      }
       const key = orderKey(order);
       setRows((prev) => prev.filter((row) => orderKey(row) !== key));
       setDetailsById((prev) => {
@@ -184,6 +280,14 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
         delete next[key];
         return next;
       });
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      if (String(selectedOrderId) === key) {
+        setSelectedOrderId(null);
+      }
       const nextCount = Math.max(0, totalCount - 1);
       setTotalCount(nextCount);
       onCountChange?.(nextCount);
@@ -205,6 +309,8 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
 
   if (!open || !mounted) return null;
 
+  const actionsDisabled = Boolean(busyOrderId) || !selectedOrder;
+
   return renderPosModalPortal(
     <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
       {!embedded ? (
@@ -224,8 +330,8 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
         className={`${posModalPanelClass(embedded, "flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl")}`}
       >
         <header className="shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-white">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 id="held-orders-title" className="text-base font-semibold tracking-tight">
                   Held orders
@@ -237,17 +343,37 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
                 ) : null}
               </div>
               <p className="mt-0.5 text-xs text-blue-100">
-                Review parked sales and restore them to the till when ready.
+                Select an order, then Restore or Delete. Expand only shows line items.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={Boolean(busyOrderId)}
-              onClick={onClose}
-              className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-50"
-            >
-              Close
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={actionsDisabled}
+                onClick={() => void handleRestore(selectedOrder)}
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--theme-primary)] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busyOrderId && selectedOrder && busyOrderId === selectedOrder.id
+                  ? "…"
+                  : "Restore"}
+              </button>
+              <button
+                type="button"
+                disabled={actionsDisabled}
+                onClick={() => void handleDelete(selectedOrder)}
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(busyOrderId)}
+                onClick={onClose}
+                className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </header>
 
@@ -256,9 +382,16 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search order #, customer…"
+            placeholder="Search HOLD-#, customer…"
             className={INPUT_CLASS}
           />
+          {selectedOrder ? (
+            <p className="mt-1.5 truncate text-xs text-slate-600">
+              Selected: <span className="font-semibold text-slate-800">{heldOrderTitle(selectedOrder)}</span>
+            </p>
+          ) : filtered.length > 0 ? (
+            <p className="mt-1.5 text-xs text-slate-500">Click a row to select it.</p>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/50">
@@ -277,110 +410,125 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
             </div>
           ) : (
             <ul className="space-y-2 p-3">
-            {filtered.map((order) => {
-              const key = orderKey(order);
-              const detail = detailsById[key] ?? order;
-              const items = detail?.items ?? [];
-              const isBusy = busyOrderId === order.id;
-              const isLoadingItems = detailLoadingId === key;
+              {filtered.map((order) => {
+                const key = orderKey(order);
+                const detail = detailsById[key] ?? order;
+                const items = detail?.items ?? detail?.lines ?? [];
+                const isSelected = String(selectedOrderId) === key;
+                const isExpanded = expandedIds.has(key);
+                const isLoadingItems = detailLoadingId === key;
+                const isLocal = Boolean(order?.local_held || isLocalHeldId(order?.id));
 
-              return (
-                <li
-                  key={key}
-                  className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm"
-                >
-                  <details
-                    className="group w-full"
-                    onToggle={(e) => handleDetailsToggle(order, e)}
+                return (
+                  <li
+                    key={key}
+                    className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${
+                      isSelected
+                        ? "ring-2 ring-[var(--theme-primary)] ring-offset-1"
+                        : ""
+                    }`}
                   >
-                    <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 marker:content-none [&::-webkit-details-marker]:hidden">
-                      <OrderExpandIcon />
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isSelected}
+                      onClick={() => selectOrder(order)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          selectOrder(order);
+                        }
+                      }}
+                      className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left ${
+                        isSelected ? "bg-[var(--theme-primary-subtle)]" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <OrderExpandButton
+                        expanded={isExpanded}
+                        onClick={(e) => toggleExpand(order, e)}
+                        label={isExpanded ? "Hide line items" : "Show line items"}
+                      />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold text-slate-900">
-                          {heldOrderTitle(order)}
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold text-slate-900">
+                            {heldOrderLabel(order)}
+                          </span>
+                          {isLocal ? (
+                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-800">
+                              Local
+                            </span>
+                          ) : (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-800">
+                              Server
+                            </span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 block text-sm font-medium text-slate-800">
+                          {heldCustomerName(order)}
                         </span>
                         <span className="block text-xs text-slate-500">
                           {formatShortDate(order.created_at)}
                         </span>
                       </span>
-                      <span className="shrink-0 text-sm font-semibold text-[var(--theme-accent-text)]">
-                        {formatSaleKes(order.order_total)}
+                      <span className="shrink-0 text-right">
+                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                          Amount
+                        </span>
+                        <span className="block text-sm font-semibold tabular-nums text-[var(--theme-accent-text)]">
+                          {formatSaleKes(order.order_total)}
+                        </span>
                       </span>
-                    </summary>
+                    </div>
 
-                    <div className="w-full border-t border-slate-200 bg-slate-50/50">
-                      {isLoadingItems ? (
-                        <p className="px-4 py-3 text-xs text-slate-500">Loading items…</p>
-                      ) : items.length === 0 ? (
-                        <p className="px-4 py-3 text-xs text-slate-500">No line items on this order.</p>
-                      ) : (
-                        <table className="w-full border-collapse text-sm">
-                          <thead>
-                            <tr className={`${TABLE_HEAD_ROW_CLASS} text-[10px] font-semibold`}>
-                              <th className="px-4 py-2">Product</th>
-                              <th className="px-4 py-2 text-center">Qty</th>
-                              <th className="px-4 py-2 text-right">Price</th>
-                              <th className="px-4 py-2 text-right">Amount</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {items.map((line) => (
-                              <tr
-                                key={line.id ?? `${line.product_code}-${line.line_no}`}
-                                className="border-b border-slate-100 last:border-b-0"
-                              >
-                                <td className="px-4 py-2.5 text-slate-800">
-                                  {saleLineProductLabel(line)}
-                                  {line.on_wholesale_retail ? (
-                                    <span className="ml-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-violet-800">
-                                      Retail
-                                    </span>
-                                  ) : null}
-                                </td>
-                                <td className="px-4 py-2.5 text-center text-slate-700">
-                                  {saleLineQtyLabel(line, uomById)}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {formatSaleKes(saleLineSoldUnitPrice(line, uomById))}
-                                </td>
-                                <td className="px-4 py-2.5 text-right font-medium text-slate-900">
-                                  {formatSaleKes(saleLineListRowAmount(line, uomById))}
-                                </td>
+                    {isExpanded ? (
+                      <div className="w-full border-t border-slate-200 bg-slate-50/50">
+                        {isLoadingItems ? (
+                          <p className="px-4 py-3 text-xs text-slate-500">Loading items…</p>
+                        ) : items.length === 0 ? (
+                          <p className="px-4 py-3 text-xs text-slate-500">No line items on this order.</p>
+                        ) : (
+                          <table className="w-full border-collapse text-sm">
+                            <thead>
+                              <tr className={`${TABLE_HEAD_ROW_CLASS} text-[10px] font-semibold`}>
+                                <th className="px-4 py-2">Product</th>
+                                <th className="px-4 py-2 text-center">Qty</th>
+                                <th className="px-4 py-2 text-right">Price</th>
+                                <th className="px-4 py-2 text-right">Amount</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-
-                    <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-3 py-2">
-                      <button
-                        type="button"
-                        disabled={Boolean(busyOrderId)}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          void handleRestore(order, false);
-                        }}
-                        className="rounded-md bg-[var(--theme-primary)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
-                      >
-                        {isBusy ? "…" : "Restore"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={Boolean(busyOrderId)}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          void handleDelete(order);
-                        }}
-                        className="rounded-md border border-red-200 bg-red-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100 disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </details>
-                </li>
-              );
-            })}
+                            </thead>
+                            <tbody>
+                              {items.map((line) => (
+                                <tr
+                                  key={line.id ?? line.client_line_id ?? `${line.product_code}-${line.line_no}`}
+                                  className="border-b border-slate-100 last:border-b-0"
+                                >
+                                  <td className="px-4 py-2.5 text-slate-800">
+                                    {saleLineProductLabel(line)}
+                                    {line.on_wholesale_retail ? (
+                                      <span className="ml-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-violet-800">
+                                        Retail
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-center text-slate-700">
+                                    {saleLineQtyLabel(line, uomById)}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right text-slate-700">
+                                    {formatSaleKes(saleLineSoldUnitPrice(line, uomById))}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-medium text-slate-900">
+                                    {formatSaleKes(saleLineListRowAmount(line, uomById))}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

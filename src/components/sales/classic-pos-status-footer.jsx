@@ -22,36 +22,30 @@ function formatClock(date) {
 }
 
 /**
- * Pin Total/VAT so they start under the cart VAT column.
+ * Pin Total so it lines up with the cart Amount column.
  */
-function useAlignTotalsToVatColumn(barRef, totalsRef, syncKey) {
+function useAlignTotalsToAmountColumn(barRef, totalsRef, syncKey) {
   useLayoutEffect(() => {
     const bar = barRef.current;
     const totals = totalsRef.current;
     if (!bar || !totals) return undefined;
 
     function sync() {
-      const vatCell =
-        document.querySelector(".classic-pos-cart-table thead th.classic-pos-col-vat") ||
-        document.querySelector(".classic-pos-cart-table td.classic-pos-col-vat");
       const amountCell =
         document.querySelector(".classic-pos-cart-table thead th.classic-pos-col-amt") ||
         document.querySelector(".classic-pos-cart-table td.classic-pos-col-amt");
       const wallGap = 0.75 * 16;
 
-      if (!vatCell) {
+      if (!amountCell) {
         totals.style.marginRight = `${wallGap}px`;
         totals.style.width = "";
         return;
       }
 
       const barRect = bar.getBoundingClientRect();
-      const vatRect = vatCell.getBoundingClientRect();
-      const amtRect = amountCell?.getBoundingClientRect();
-      // Span from VAT column start through Amount column end, with a small gap from the wall.
-      const rightEdge = amtRect ? amtRect.right : vatRect.right;
-      const marginRight = Math.max(wallGap, barRect.right - rightEdge);
-      const width = Math.max(rightEdge - vatRect.left, 7 * 16);
+      const amtRect = amountCell.getBoundingClientRect();
+      const marginRight = Math.max(wallGap, barRect.right - amtRect.right);
+      const width = Math.max(amtRect.width + 4 * 16, 7 * 16);
       totals.style.marginRight = `${marginRight}px`;
       totals.style.width = `${width}px`;
     }
@@ -72,7 +66,6 @@ function useAlignTotalsToVatColumn(barRef, totalsRef, syncKey) {
 export function ClassicPosStatusFooter({
   user,
   totals = 0,
-  vat = 0,
   heldCount = 0,
   version = "1.0.0",
   currencySettings = GENERAL_DEFAULTS,
@@ -82,7 +75,7 @@ export function ClassicPosStatusFooter({
   const [now, setNow] = useState(() => new Date());
   const barRef = useRef(null);
   const totalsRef = useRef(null);
-  useAlignTotalsToVatColumn(barRef, totalsRef, `${totals}|${vat}|${statusMessage ?? ""}`);
+  useAlignTotalsToAmountColumn(barRef, totalsRef, `${totals}|${statusMessage ?? ""}`);
 
 
   useEffect(() => {
@@ -111,9 +104,6 @@ export function ClassicPosStatusFooter({
         <div className="classic-pos-footer-totals" ref={totalsRef}>
           <div className="classic-pos-footer-total">
             Total: <strong>{formatOrgCurrency(totals, currencySettings)}</strong>
-          </div>
-          <div className="classic-pos-footer-vat">
-            VAT: <strong>{formatOrgCurrency(vat, currencySettings)}</strong>
           </div>
         </div>
       </div>

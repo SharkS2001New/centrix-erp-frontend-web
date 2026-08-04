@@ -6,7 +6,7 @@
 import { APP_TIMEZONE, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
 const DB_NAME = "centrix-pos-offline-v1";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
@@ -43,6 +43,11 @@ function openDb() {
         }
         if (!db.objectStoreNames.contains("local_cart")) {
           db.createObjectStore("local_cart", { keyPath: "id" });
+        }
+        // Local held parks — no server sale / order_num consumption.
+        if (!db.objectStoreNames.contains("held_parks")) {
+          const held = db.createObjectStore("held_parks", { keyPath: "id" });
+          held.createIndex("by_created", "created_at_ms", { unique: false });
         }
 
         if (oldVersion > 0 && oldVersion < 2 && db.objectStoreNames.contains("order_numbers")) {
@@ -459,6 +464,32 @@ export async function idbPutLocalCart(cart) {
 
 export async function idbClearLocalCart(cartId = "active") {
   await withStore("local_cart", "readwrite", (store) => store.delete(cartId));
+}
+
+export async function idbPutHeldPark(park) {
+  if (!park?.id) throw new Error("Held park id is required.");
+  await withStore("held_parks", "readwrite", (store) => store.put(park));
+  return park;
+}
+
+export async function idbGetHeldPark(id) {
+  return withStore("held_parks", "readonly", (store) => store.get(String(id)));
+}
+
+export async function idbDeleteHeldPark(id) {
+  const key = String(id ?? "").trim();
+  if (!key) return false;
+  await withStore("held_parks", "readwrite", (store) => store.delete(key));
+  return true;
+}
+
+export async function idbListHeldParks() {
+  const rows = (await withStore("held_parks", "readonly", (store) => store.getAll())) ?? [];
+  return rows.sort((a, b) => Number(b.created_at_ms ?? 0) - Number(a.created_at_ms ?? 0));
+}
+
+export async function idbCountHeldParks() {
+  return withStore("held_parks", "readonly", (store) => store.count());
 }
 
 export function newClientSaleUuid() {

@@ -167,7 +167,6 @@ export function ClassicPosCartTable({
   linePackage,
   lineUnitPrice,
   lineDiscount,
-  lineVat,
   lineAmount,
   lineQtyAdjust,
   lineEntryQty,
@@ -182,7 +181,6 @@ export function ClassicPosCartTable({
   entryQty,
   entryQtyUnit = "",
   entryUnitPrice,
-  entryVat,
   entryAmount,
   entryReady,
   onEntryQtyChange,
@@ -314,7 +312,6 @@ export function ClassicPosCartTable({
           <col className="classic-pos-col-qty" />
           <col className="classic-pos-col-price" />
           {showLineDiscount ? <col className="classic-pos-col-disc" /> : null}
-          <col className="classic-pos-col-vat" />
           <col className="classic-pos-col-amt" />
           {selectionEnabled ? <col className="classic-pos-col-select" /> : null}
         </colgroup>
@@ -329,7 +326,6 @@ export function ClassicPosCartTable({
             {showLineDiscount ? (
               <th className="classic-pos-col-disc">Discount</th>
             ) : null}
-            <th className="classic-pos-col-vat">VAT</th>
             <th className="classic-pos-col-amt">Amount</th>
             {selectionEnabled ? (
               <ClassicSelectAllHeader
@@ -443,13 +439,6 @@ export function ClassicPosCartTable({
                 {showLineDiscount ? (
                   <td className="classic-pos-col-disc tabular-nums">{lineDiscount?.(line)}</td>
                 ) : null}
-                <td className="classic-pos-col-vat tabular-nums">
-                  {swapPreviewActive
-                    ? Number(swapLinePreview.vat).toLocaleString(undefined, {
-                        maximumFractionDigits: 2,
-                      })
-                    : lineVat?.(line)}
-                </td>
                 <td className="classic-pos-col-amt tabular-nums font-semibold">
                   {swapPreviewActive
                     ? Number(swapLinePreview.amount).toLocaleString()
@@ -518,9 +507,6 @@ export function ClassicPosCartTable({
               {entryReady ? formatMoney?.(entryUnitPrice) : ""}
             </td>
             {showLineDiscount ? <td className="classic-pos-col-disc" /> : null}
-            <td className="classic-pos-col-vat tabular-nums classic-pos-cart-entry-muted">
-              {entryReady ? formatMoney?.(entryVat) : ""}
-            </td>
             <td className="classic-pos-col-amt tabular-nums font-semibold classic-pos-cart-entry-muted">
               {entryReady ? formatMoney?.(entryAmount) : ""}
             </td>

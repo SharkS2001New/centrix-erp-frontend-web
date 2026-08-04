@@ -347,6 +347,34 @@ export function uomWholesaleConversionExample(uom) {
   return `1 ${full} = ${factorText} ${small}`;
 }
 
+/**
+ * Compact POS package label, e.g. "Bags(50)" instead of "1 bag = 50 kg".
+ */
+export function uomCompactPackageLabel(uom) {
+  if (!uom) return "—";
+  const factor = Number(uom?.conversion_factor ?? 1);
+  const full = String(fullPackageLabel(uom) ?? "").trim();
+  if (!full) return "—";
+
+  const titled = full.charAt(0).toUpperCase() + full.slice(1);
+  const lower = full.toLowerCase();
+  const skipPlural =
+    lower.endsWith("s") ||
+    lower.endsWith("x") ||
+    ["kg", "g", "ml", "l", "m", "cm", "pcs", "dozen"].includes(lower);
+  const name = skipPlural ? titled : `${titled}s`;
+
+  if (uomIsFullPackageOnly(uom) || !(factor > 1)) {
+    return name;
+  }
+
+  const factorText = uomSmallUnitIsWholeNumber(uom)
+    ? String(Math.round(factor))
+    : String(factor);
+
+  return `${name}(${factorText})`;
+}
+
 /** e.g. "1 bale = 12 pcs · 1 outer = 10 pcs" */
 export function uomConversionSummary(uom) {
   if (uomIsFullPackageOnly(uom)) {

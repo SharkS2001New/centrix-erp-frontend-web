@@ -26,7 +26,7 @@ import {
   cartLinePackQtyForDiscount,
   snapshotUomForPrint,
 } from "@/lib/sale-line-items";
-import { uomWholesaleConversionExample } from "@/lib/uom-packaging";
+import { uomCompactPackageLabel } from "@/lib/uom-packaging";
 import {
   applyCatalogPricesToCart,
   cartLineDisplayUnitPrice,
@@ -178,9 +178,8 @@ import {
   peekPosOfflineOrderNumberCount,
   posTicketFieldsFromCart,
   peekNextPosOfflineOrderSlot,
-  takePosOfflineOrderSlot,
   purgeReservedPosTicketsUpTo,
-  returnPosOfflineOrderSlot,
+  seedLocalPosTicketSeqFromSale,
   resolvePosTicketForCheckout,
   saveLocalPosCart,
   savePreviousOrderEditDraft,
@@ -237,6 +236,14 @@ import {
   peekAutoHeldOrder,
   rememberAutoHeldOrder,
 } from "@/lib/pos-auto-held";
+import {
+  countLocalHeldOrders,
+  deleteLocalHeldOrder,
+  getLocalHeldOrder,
+  isLocalHeldId,
+  parkCartLocally,
+  restoreLocalHeldOrder,
+} from "@/lib/pos-local-held";
 import {
   buildPaymentAdjustmentsFromCheckoutBody,
   computePreviousOrderEditPaymentDelta,
@@ -2192,12 +2199,19 @@ export function PosScreen({ standalone = false }) {
 
   const loadHeldOrdersCount = useCallback(async () => {
     try {
-      const res = await apiRequest("/sales", {
-        searchParams: { per_page: 1, "filter[status]": "held" },
-        loading: false,
-        reportIssues: false,
-      });
-      setHeldOrdersCount(Number(res.total ?? (res.data ?? []).length ?? 0));
+      const localCount = await countLocalHeldOrders();
+      let serverCount = 0;
+      try {
+        const res = await apiRequest("/sales", {
+          searchParams: { per_page: 1, "filter[status]": "held" },
+          loading: false,
+          reportIssues: false,
+        });
+        serverCount = Number(res.total ?? (res.data ?? []).length ?? 0);
+      } catch {
+        serverCount = 0;
+      }
+      setHeldOrdersCount(localCount + serverCount);
     } catch (e) {
       if (isAbortError(e)) return;
       setHeldOrdersCount(0);
@@ -2212,10 +2226,26 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     if (!classicLayout || !standalone) return undefined;
     const pending = peekAutoHeldOrder();
-    if (!pending?.saleId) return undefined;
+    if (!pending?.localHeldId && !pending?.saleId) return undefined;
     let cancelled = false;
     (async () => {
       try {
+        if (pending.localHeldId && isLocalHeldId(pending.localHeldId)) {
+          const park = await getLocalHeldOrder(pending.localHeldId);
+          if (cancelled) return;
+          if (!park) {
+            clearAutoHeldOrder();
+            return;
+          }
+          setAutoHeldPrompt({
+            localHeldId: park.id,
+            holdLabel: park.hold_label ?? pending.holdLabel,
+            saleId: null,
+            orderNum: null,
+          });
+          return;
+        }
+
         const sale = await apiRequest(`/sales/${pending.saleId}`);
         if (cancelled) return;
         if (String(sale?.status ?? "").toLowerCase() !== "held") {
@@ -2225,6 +2255,8 @@ export function PosScreen({ standalone = false }) {
         setAutoHeldPrompt({
           saleId: pending.saleId,
           orderNum: sale.order_num ?? pending.orderNum,
+          localHeldId: null,
+          holdLabel: null,
         });
       } catch {
         if (!cancelled) clearAutoHeldOrder();
@@ -3868,7 +3900,9 @@ export function PosScreen({ standalone = false }) {
     setLineForm({
       product_code: product.product_code,
       description: product.product_name ?? "",
-      package: computed.packagingLabel,
+      package: product.uom
+        ? uomCompactPackageLabel(product.uom)
+        : computed.packagingLabel,
       quantity,
       discount: String(computed.discountAmount ?? 0),
       unit_price: String(computed.displayUnitPrice),
@@ -4007,6 +4041,9 @@ export function PosScreen({ standalone = false }) {
       lineForm.discount,
     );
     setLineForm((prev) => {
+      const nextPackage = selectedProduct.uom
+        ? uomCompactPackageLabel(selectedProduct.uom)
+        : computed.packagingLabel;
       const nextPrice = String(computed.displayUnitPrice);
       const nextDiscount =
         allowDiscounts && computed.autoProductDiscount
@@ -4016,14 +4053,14 @@ export function PosScreen({ standalone = false }) {
             : "0";
       if (
         prev.unit_price === nextPrice &&
-        prev.package === computed.packagingLabel &&
+        prev.package === nextPackage &&
         prev.discount === nextDiscount
       ) {
         return prev;
       }
       return {
         ...prev,
-        package: computed.packagingLabel,
+        package: nextPackage,
         unit_price: nextPrice,
         discount: nextDiscount,
       };
@@ -4148,7 +4185,9 @@ export function PosScreen({ standalone = false }) {
         swapDraft.product.product_name ??
         swapDraft.product.description ??
         swapDraft.product.product_code,
-      package: computed.packagingLabel,
+      package: swapDraft.product.uom
+        ? uomCompactPackageLabel(swapDraft.product.uom)
+        : computed.packagingLabel,
       unitPrice: computed.displayUnitPrice,
       vat: lineProductVat(swapDraft.product, computed.lineAmount),
       amount,
@@ -5189,48 +5228,89 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  /**
+   * After a local hold: clear modal flags, release server cart lines if any,
+   * and leave an empty workspace ready for the next sale.
+   */
+  async function clearWorkspaceAfterLocalHold(activeCart) {
+    setSaveOrderOpen(false);
+    setSaveOrderError(null);
+    setPaymentOpen(false);
+    setPaymentError(null);
+    setHeldOrdersOpen(false);
+    setLeaveGuardOpen(false);
+    setAutoHeldPrompt(null);
+    clearPosUiDraft();
+    clearLineEntry();
+    setSelectedLineId(null);
+    clearClassicLineSelection();
+    void clearPreviousOrderEditDraft().catch(() => {});
+
+    const serverId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
+    if (serverId) {
+      try {
+        await apiRequest(`/sales/carts/${serverId}/lines`, {
+          method: "DELETE",
+          loading: false,
+          reportIssues: false,
+        });
+      } catch {
+        /* offline or already cleared — local park still saved */
+      }
+    }
+
+    await clearLocalPosCart().catch(() => {});
+    cartRef.current = null;
+    setCart(null);
+
+    try {
+      await loadCashierCart();
+    } catch {
+      const empty = await loadOrCreateLocalPosCart({
+        branch_id: activeCart?.branch_id ?? user?.branch_id ?? null,
+        till_id: activeCart?.till_id ?? null,
+        float_session_id: activeCart?.float_session_id ?? floatSessionId ?? null,
+      });
+      const presented = presentLocalOfflineCart(empty);
+      cartRef.current = presented;
+      setCart(presented);
+    }
+
+    if (classicLayout) {
+      focusClassicProductSearch();
+    } else {
+      window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }
+
   /** Classic: hold open sale automatically when leaving POS (Light Stores AutomaticHold). */
   async function holdCartAndLeave() {
     const href = pendingLeaveHrefRef.current;
-    if (!cart?.id || !cart?.lines?.length) {
+    const activeCart = cartRef.current ?? cart;
+    if (!activeCart?.lines?.length) {
       completeLeaveNavigation(href);
       return;
     }
     setLeaveGuardBusy(true);
     setStatusMessage(null);
     try {
-      const body = {
-        status: "held",
-        pay_now: 0,
-        is_credit_sale: false,
-        deduct_stock: true,
-        save_only: true,
-        submit_kra: false,
-        customer_name_override:
-          prefilledEditCustomerName.trim() || "Walk-in (auto-held)",
-        sales_workspace: salesWorkspace,
-        ...(cart?.held_order_num ? { order_num: cart.held_order_num } : {}),
-        ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
-      };
-      const checkoutBody = await attachDiscountApprovalReasonToCheckoutBody(body);
-      if (!checkoutBody) {
-        setStatusMessage("Enter a discount reason before leaving, or clear the sale.");
-        setLeaveGuardOpen(false);
-        return;
-      }
-      const sale = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
-        method: "POST",
-        body: checkoutBody,
+      const park = await parkCartLocally(activeCart, {
+        walkIn: true,
+        walkInName: prefilledEditCustomerName.trim() || "Walk-in (auto-held)",
+        cashierId: user?.id ?? null,
+        branchId: activeCart.branch_id ?? user?.branch_id ?? null,
+        tillId: activeCart.till_id ?? null,
+        floatSessionId: activeCart.float_session_id ?? floatSessionId ?? null,
       });
-      rememberAutoHeldOrder({ saleId: sale.id, orderNum: sale.order_num });
-      clearPosUiDraft();
-      clearLineEntry();
-      setSelectedLineId(null);
-      setCart(null);
+      rememberAutoHeldOrder({
+        localHeldId: park.id,
+        holdLabel: park.hold_label,
+      });
+      await clearWorkspaceAfterLocalHold(activeCart);
       void loadHeldOrdersCount();
       completeLeaveNavigation(href);
     } catch (e) {
-      setStatusMessage(e instanceof ApiError ? e.message : "Failed to hold sale before leaving");
+      setStatusMessage(e instanceof ApiError ? e.message : e?.message || "Failed to hold sale before leaving");
       setLeaveGuardOpen(false);
     } finally {
       setLeaveGuardBusy(false);
@@ -5238,12 +5318,28 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleAutoHeldRestore() {
-    if (!autoHeldPrompt?.saleId) return;
+    if (!autoHeldPrompt?.localHeldId && !autoHeldPrompt?.saleId) return;
     setAutoHeldBusy(true);
     try {
+      if (autoHeldPrompt.localHeldId && isLocalHeldId(autoHeldPrompt.localHeldId)) {
+        const { cart: localCart, park } = await restoreLocalHeldOrder(autoHeldPrompt.localHeldId, {
+          branch_id: user?.branch_id ?? null,
+          till_id: cart?.till_id ?? null,
+          float_session_id: floatSessionId ?? null,
+        });
+        const saved = await saveLocalPosCart(localCart);
+        applyRestoredHeldCart(presentLocalOfflineCart(saved), park);
+        clearAutoHeldOrder();
+        setAutoHeldPrompt(null);
+        setHeldOrdersOpen(false);
+        void loadHeldOrdersCount();
+        notifySuccess("Held sale restored — complete when ready.");
+        return;
+      }
       await restoreHeldSaleToNewCart(autoHeldPrompt.saleId, { replace: true });
       clearAutoHeldOrder();
       setAutoHeldPrompt(null);
+      setHeldOrdersOpen(false);
       notifySuccess("Held sale restored — complete when ready.");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not restore held sale");
@@ -5253,12 +5349,16 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleAutoHeldDelete() {
-    if (!autoHeldPrompt?.saleId) return;
+    if (!autoHeldPrompt?.localHeldId && !autoHeldPrompt?.saleId) return;
     setAutoHeldBusy(true);
     try {
-      await apiRequest(`/sales/orders/${autoHeldPrompt.saleId}/cancel-held`, {
-        method: "POST",
-      });
+      if (autoHeldPrompt.localHeldId && isLocalHeldId(autoHeldPrompt.localHeldId)) {
+        await deleteLocalHeldOrder(autoHeldPrompt.localHeldId);
+      } else {
+        await apiRequest(`/sales/orders/${autoHeldPrompt.saleId}/cancel-held`, {
+          method: "POST",
+        });
+      }
       clearAutoHeldOrder();
       setAutoHeldPrompt(null);
       await loadHeldOrdersCount();
@@ -5840,12 +5940,14 @@ export function PosScreen({ standalone = false }) {
       standalone && !isPreviousOrderCashEdit
         ? await peekNextPosOfflineOrderSlot().catch(() => null)
         : null;
+    // Org S# may come from the reserved pool for offline; Cash Sales # is never
+    // taken from that pool (assigned per cashier 1,2,3… at sale time).
     const checkoutCartFields = posCheckoutCartFields(activeCart, editSourceSale, {
       editOrderNo,
-      pendingSlot: pendingPosSlot,
+      pendingSlot: pendingPosSlot
+        ? { ...pendingPosSlot, pos_order_num: null }
+        : null,
     });
-    /** Consumed on online server checkout so Cash Sales # matches the reserved slot (starts at 1). */
-    let consumedPosSlot = null;
 
     // Offline External POS: cash-only, real reserved order numbers, print, queue sync.
     // Also used when revising a pending offline sale or a previous-order edit (same order #).
@@ -6052,18 +6154,15 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
-      // Consume the reserved Cash Sales # so online checkout claims the same ticket
-      // that the receipt will print (starts at 1; stays correct on later syncs).
-      let onlineCheckoutFields = checkoutCartFields;
-      if (standalone && !isPreviousOrderCashEdit) {
-        consumedPosSlot = await takePosOfflineOrderSlot().catch(() => null);
-        if (consumedPosSlot?.pos_order_num != null) {
-          onlineCheckoutFields = posCheckoutCartFields(activeCart, editSourceSale, {
-            editOrderNo,
-            pendingSlot: consumedPosSlot,
-          });
-        }
-      }
+      // Cash Sales #: do not send stale reserved-block tickets. Server allocates
+      // saleMax+1 for this cashier/day (1,2,3…). Previous-order edits keep theirs.
+      const onlinePosFields = isPreviousOrderCashEdit
+        ? checkoutCartFields
+        : {
+            ...checkoutCartFields,
+            pos_order_num: null,
+            pos_order_date: checkoutCartFields.pos_order_date ?? todayPosOrderDate(),
+          };
 
       const liveCart = cartRef.current ?? activeCart;
       const submitKra =
@@ -6095,11 +6194,11 @@ export function PosScreen({ standalone = false }) {
         ...(submitKra ? { submit_kra: true } : {}),
         ...(liveCart?.held_order_num ? { order_num: liveCart.held_order_num } : {}),
         ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
-        ...(onlineCheckoutFields.pos_order_num != null
-          ? { pos_order_num: onlineCheckoutFields.pos_order_num }
+        ...(onlinePosFields.pos_order_num != null
+          ? { pos_order_num: onlinePosFields.pos_order_num }
           : {}),
-        ...(onlineCheckoutFields.pos_order_date
-          ? { pos_order_date: onlineCheckoutFields.pos_order_date }
+        ...(onlinePosFields.pos_order_date && onlinePosFields.pos_order_num != null
+          ? { pos_order_date: onlinePosFields.pos_order_date }
           : {}),
       });
       if (
@@ -6123,10 +6222,6 @@ export function PosScreen({ standalone = false }) {
         };
       }
       if (!checkoutBody) {
-        if (consumedPosSlot) {
-          void returnPosOfflineOrderSlot(consumedPosSlot).catch(() => {});
-          consumedPosSlot = null;
-        }
         setPaymentError("Enter a discount reason to save this order for manager approval.");
         return null;
       }
@@ -6145,10 +6240,11 @@ export function PosScreen({ standalone = false }) {
           : "Please wait.",
         settleMs: 0,
       });
-      sale = mergeSaleWithCheckoutPosTicket(sale, liveCart, onlineCheckoutFields);
+      sale = mergeSaleWithCheckoutPosTicket(sale, liveCart, onlinePosFields);
       if (sale?.pos_order_num != null) {
         void purgeReservedPosTicketsUpTo(sale.pos_order_num, sale.pos_order_date).catch(() => {});
-        consumedPosSlot = null;
+        // Keep local Cash Sales counter aligned with server after online sale.
+        void seedLocalPosTicketSeqFromSale(sale).catch(() => {});
       }
       // Annotate with the tendered amount so the immediate receipt can show correct change.
       if (cashTendered != null && cashTendered > 0) {
@@ -6178,10 +6274,6 @@ export function PosScreen({ standalone = false }) {
       }
       return sale;
     } catch (e) {
-      if (consumedPosSlot) {
-        void returnPosOfflineOrderSlot(consumedPosSlot).catch(() => {});
-        consumedPosSlot = null;
-      }
       const message =
         e instanceof ApiError
           ? e.message
@@ -6571,10 +6663,16 @@ export function PosScreen({ standalone = false }) {
 
   async function handleSaveOrder({ walkIn, walkInName, customer, hold = false } = {}) {
     const activeCartEarly = cartRef.current ?? cart;
-    if (!activeCartEarly?.id) {
+    if (!(activeCartEarly?.lines?.length > 0)) {
       const message = hold
         ? "Add items before holding this order."
         : "Add items before saving this order.";
+      setSaveOrderError(message);
+      flashPosShortcutMessage(message);
+      return;
+    }
+    if (!hold && !activeCartEarly?.id) {
+      const message = "Add items before saving this order.";
       setSaveOrderError(message);
       flashPosShortcutMessage(message);
       return;
@@ -6592,8 +6690,7 @@ export function PosScreen({ standalone = false }) {
     setStatusMessage(null);
     try {
       const activeCart = cartRef.current ?? cart;
-      if (!activeCart?.id) return;
-      if (!(activeCart.lines?.length > 0)) {
+      if (!(activeCart?.lines?.length > 0)) {
         const message = hold
           ? "Add items before holding this order."
           : "Add items before saving this order.";
@@ -6602,14 +6699,40 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
+      // Hold stays on this till (IndexedDB) — offline-safe, no sale order_num.
+      if (hold) {
+        const park = await parkCartLocally(activeCart, {
+          walkIn: Boolean(walkIn) || !customer,
+          walkInName: walkInName?.trim() || "Walk-in",
+          customer: walkIn ? null : customer,
+          cashierId: user?.id ?? null,
+          branchId: activeCart.branch_id ?? user?.branch_id ?? null,
+          tillId: activeCart.till_id ?? null,
+          floatSessionId: activeCart.float_session_id ?? floatSessionId ?? null,
+        });
+        await clearWorkspaceAfterLocalHold(activeCart);
+        const who = walkIn
+          ? walkInName?.trim() || "Walk-in"
+          : customer?.customer_name;
+        const whoSuffix = who ? ` for ${who}` : "";
+        const successText = `Order held${whoSuffix} — ${park.hold_label}. Ready for next sale.`;
+        if (standalone) {
+          notifySuccess(successText);
+        } else {
+          setStatusMessage(successText);
+        }
+        void loadHeldOrdersCount();
+        return;
+      }
+
+      if (!activeCart?.id) return;
+
       const body = {
-        status: hold ? "held" : resolveSaveOrderStatus({ channel, workflow: channelWorkflow }),
+        status: resolveSaveOrderStatus({ channel, workflow: channelWorkflow }),
         pay_now: 0,
         is_credit_sale: false,
         deduct_stock: true,
         save_only: true,
-        // Held parks are unfinished — never wait on the fiscal device.
-        ...(hold ? { submit_kra: false } : {}),
       };
       if (walkIn) {
         body.customer_name_override = walkInName?.trim() || "Walk-in";
@@ -6654,20 +6777,17 @@ export function PosScreen({ standalone = false }) {
         ? walkInName?.trim() || "Walk-in"
         : customer?.customer_name;
       const whoSuffix = who ? ` for ${who}` : "";
-      const successText = hold
-        ? `Order held${whoSuffix} — #${sale.order_num}. Ready for next sale.`
-        : `Order saved${whoSuffix} — #${sale.order_num} (${sale.status}). Ready for next sale.`;
+      const successText = `Order saved${whoSuffix} — #${sale.order_num} (${sale.status}). Ready for next sale.`;
       if (standalone) {
         notifySuccess(successText);
       } else {
         setStatusMessage(successText);
       }
 
-      // Unblock the till immediately — refresh next cart / held count in the background.
+      // Unblock the till immediately — refresh next cart in the background.
       void (async () => {
         try {
           await loadCashierCart();
-          if (hold) await loadHeldOrdersCount();
         } catch {
           /* next scan / F8 still works; cart remounts on demand */
         }
@@ -9188,7 +9308,7 @@ export function PosScreen({ standalone = false }) {
                   const productMeta = productByCode[line.product_code];
                   const uom = productMeta?.uom;
                   return uom
-                    ? uomWholesaleConversionExample(uom)
+                    ? uomCompactPackageLabel(uom)
                     : (line.uom ?? productMeta?.packaging_label ?? "—");
                 }}
                 formatMoney={(value) =>
@@ -9218,11 +9338,6 @@ export function PosScreen({ standalone = false }) {
                       : lineDiscountPerUnit(line.discount_given, line.quantity)
                   ).toLocaleString();
                 }}
-                lineVat={(line) =>
-                  Number(line.product_vat ?? 0).toLocaleString(undefined, {
-                    maximumFractionDigits: 2,
-                  })
-                }
                 lineAmount={(line) =>
                   posDisplayCartLineAmount(
                     line.amount,
@@ -9280,11 +9395,6 @@ export function PosScreen({ standalone = false }) {
                     ? (enablePosCashRounding
                         ? roundLightStoresAmount(entryRowComputed.lineAmount)
                         : entryRowComputed.lineAmount)
-                    : 0
-                }
-                entryVat={
-                  selectedProduct && entryRowComputed
-                    ? lineProductVat(selectedProduct, entryRowComputed.lineAmount)
                     : 0
                 }
                 entryReady={Boolean(selectedProduct && lineForm.product_code && !replacingLineId)}
@@ -9388,7 +9498,7 @@ export function PosScreen({ standalone = false }) {
                         ) : null}
                         <td className="px-3 py-2 text-xs">
                           {uom
-                            ? uomWholesaleConversionExample(uom)
+                            ? uomCompactPackageLabel(uom)
                             : (line.uom ?? productMeta?.packaging_label ?? "—")}
                         </td>
                         <td className="px-3 py-2 text-center">
@@ -9587,10 +9697,6 @@ export function PosScreen({ standalone = false }) {
                     <span>−{formatSaleKes(cartSummary.mpesaPayment)}</span>
                   </div>
                 ) : null}
-                <div className="theme-text-muted flex justify-between">
-                  <span>VAT</span>
-                  <span>{formatSaleKes(cartSummary.vat)}</span>
-                </div>
                 <div className="flex justify-between border-t border-[var(--theme-border)] pt-3 text-base font-bold text-[var(--theme-accent-text)]">
                   <span>{cartSummary.amountDue < cartSummary.total ? "Amount due" : "Total"}</span>
                   <span>
@@ -9787,14 +9893,51 @@ export function PosScreen({ standalone = false }) {
         open={heldOrdersOpen}
         onClose={() => setHeldOrdersOpen(false)}
         onCountChange={setHeldOrdersCount}
-        onRestored={(restoredCart, sourceSale) => {
-          applyRestoredHeldCart(restoredCart, sourceSale);
+        workspaceHasLines={(cartRef.current?.lines?.length ?? cart?.lines?.length ?? 0) > 0}
+        cartSeed={{
+          branch_id: cart?.branch_id ?? user?.branch_id ?? null,
+          till_id: cart?.till_id ?? null,
+          float_session_id: cart?.float_session_id ?? floatSessionId ?? null,
+        }}
+        onRestored={async (restoredCart, sourceSale, meta = {}) => {
+          // Drop every blocking dialog flag so F10 / Alt+H work after restore.
+          setHeldOrdersOpen(false);
+          setSaveOrderOpen(false);
+          setPaymentOpen(false);
           setAutoHeldPrompt(null);
+          clearAutoHeldOrder();
+
+          const prior = cartRef.current ?? cart;
+          if (isServerPosCartId(prior?.id) && (prior?.lines?.length ?? 0) > 0) {
+            try {
+              await apiRequest(`/sales/carts/${prior.id}/lines`, {
+                method: "DELETE",
+                loading: false,
+                reportIssues: false,
+              });
+            } catch {
+              /* offline — local restore still proceeds */
+            }
+          }
+
+          if (meta?.local || restoredCart?.offline || isLocalHeldId(sourceSale?.id)) {
+            const saved = await saveLocalPosCart(restoredCart);
+            applyRestoredHeldCart(presentLocalOfflineCart(saved), sourceSale);
+          } else {
+            applyRestoredHeldCart(restoredCart, sourceSale);
+          }
           setStatusMessage("Held order restored — ready to complete as a new sale.");
           if (standalone) {
             notifySuccess("Held order restored — complete when ready.");
           }
           void loadHeldOrdersCount();
+          if (classicLayout) {
+            focusClassicProductSearch();
+          }
+        }}
+        onRestoreFailed={(message) => {
+          setHeldOrdersOpen(true);
+          notifyError(message || "Failed to restore held order");
         }}
         embedded={!standalone}
       />
@@ -9835,6 +9978,7 @@ export function PosScreen({ standalone = false }) {
       <ClassicPosAutoHeldDialog
         open={Boolean(classicLayout && autoHeldPrompt)}
         orderNum={autoHeldPrompt?.orderNum}
+        holdLabel={autoHeldPrompt?.holdLabel}
         busy={autoHeldBusy}
         onRestore={() => void handleAutoHeldRestore()}
         onDelete={() => void handleAutoHeldDelete()}
@@ -9890,7 +10034,6 @@ export function PosScreen({ standalone = false }) {
             <ClassicPosStatusFooter
               user={user}
               totals={cartSummary?.total ?? 0}
-              vat={cartSummary?.vat ?? 0}
               heldCount={heldOrdersCount}
               version="1.0.0"
               currencySettings={classicCurrencySettings}

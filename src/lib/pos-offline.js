@@ -125,7 +125,9 @@ export async function getPosOfflineCatalogMeta() {
   };
 }
 
-/** Reserve sequential order numbers while online (real numbers for offline receipts). */
+/** Reserve sequential org order numbers (S00xx) while online for offline selling.
+ * Cash Sales # is NOT reserved — each cashier stays on 1,2,3… from sales only.
+ */
 export async function ensurePosOfflineOrderNumbers({ force = false } = {}) {
   return withPosOfflineExclusiveLock(async () => {
     const available = await idbCountOrderNumbers();
@@ -141,16 +143,26 @@ export async function ensurePosOfflineOrderNumbers({ force = false } = {}) {
     });
     const numbers = Array.isArray(res?.numbers) ? res.numbers : [];
     const slots = Array.isArray(res?.slots)
-      ? res.slots
+      ? res.slots.map((slot) => ({
+          order_num: Number(slot.order_num),
+          // Never bind Cash Sales # at reserve time (causes 6→27 jumps).
+          pos_order_num: null,
+          pos_order_date: slot.pos_order_date ?? res?.pos_order_date ?? null,
+        }))
       : numbers.map((order_num) => ({
           order_num: Number(order_num),
           pos_order_num: null,
-          pos_order_date: null,
+          pos_order_date: res?.pos_order_date ?? null,
         }));
     if (slots.length) {
       await idbAppendOrderSlots(slots);
     } else if (numbers.length) {
       await idbAppendOrderNumbers(numbers);
+    }
+    // Seed local Cash Sales sequence from server sale max (next = saleMax+1).
+    const nextPos = Number(res?.next_pos_order_num ?? 0);
+    if (Number.isFinite(nextPos) && nextPos > 0) {
+      await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date);
     }
     return { reserved: slots.length || numbers.length, available: await idbCountOrderNumbers() };
   });
@@ -548,10 +560,55 @@ export async function peekNextPosOfflineOrderSlot() {
   return slots[0] ?? null;
 }
 
+/**
+ * Seed local Cash Sales counter so offline tickets continue from server sale max.
+ * @param {number} lastIssued - highest Cash Sales # already issued (0 → next is 1)
+ */
+export async function seedLocalPosTicketSeq(lastIssued, posOrderDate = null) {
+  const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
+  const key = `pos_ticket_seq_${today}`;
+  const current = Number((await idbGetMeta(key)) ?? 0);
+  const floor = Math.max(0, Number(lastIssued) || 0);
+  // Never lower a local counter that already issued higher pending tickets.
+  if (floor > current) {
+    await idbSetMeta(key, floor);
+  }
+}
+
+/** Align local Cash Sales counter after a server sale response. */
+export async function seedLocalPosTicketSeqFromSale(sale) {
+  const num = Number(sale?.pos_order_num ?? 0);
+  if (!Number.isFinite(num) || num <= 0) return;
+  await seedLocalPosTicketSeq(num, sale?.pos_order_date);
+}
+
+/**
+ * Next Cash Sales # for this cashier/day on-device: max(local seq, pending outbox) + 1.
+ * Independent of reserved S00xx org numbers.
+ */
 async function allocateLocalPosTicketNumber() {
   const today = todayPosOrderDate();
   const key = `pos_ticket_seq_${today}`;
-  const current = Number((await idbGetMeta(key)) ?? 0);
+  let current = Number((await idbGetMeta(key)) ?? 0);
+
+  // Pending outbox may already hold higher tickets sold offline but not synced.
+  try {
+    const pending = await idbListPendingOutbox();
+    for (const row of pending ?? []) {
+      const num = Number(
+        row?.sale_payload?.pos_order_num ?? row?.checkout_body?.pos_order_num ?? 0,
+      );
+      const date =
+        normalizePosOrderDate(row?.sale_payload?.pos_order_date) ??
+        normalizePosOrderDate(row?.checkout_body?.pos_order_date);
+      if (num > current && (!date || date === today)) {
+        current = num;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
   const next = current + 1;
   await idbSetMeta(key, next);
   return { pos_order_num: next, pos_order_date: today };
@@ -663,10 +720,11 @@ export async function completeOfflineCashSale({
       );
     }
     orderNum = Number(slot.order_num);
-    posOrderNum = slot.pos_order_num != null ? Number(slot.pos_order_num) : null;
-    posOrderDate = clampPosOrderBusinessDate(slot.pos_order_date);
+    // Cash Sales # is assigned locally in sequence — never from the org reserve slot.
+    posOrderNum = null;
+    posOrderDate = todayPosOrderDate();
     if (posOrderNum == null && cart.next_pos_order_num != null) {
-      posOrderNum = Number(cart.next_pos_order_num);
+      // UI preview only; still allocate below unless editing an existing ticket.
       posOrderDate =
         clampPosOrderBusinessDate(cart.next_pos_order_date) ??
         posOrderDate ??
