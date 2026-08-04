@@ -11,9 +11,6 @@ function ClassicLineQtyCell({
   qtyUnit = "",
   busy,
   lineBusy,
-  canDecrease,
-  canIncrease,
-  onAdjustQty,
   onSetQty,
   onDraftQtyChange = null,
   swapQtyCommit = false,
@@ -42,16 +39,6 @@ function ClassicLineQtyCell({
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <button
-        type="button"
-        className="classic-pos-qty-btn"
-        disabled={busy || lineBusy || !canDecrease}
-        onClick={() => onAdjustQty?.(line, -1)}
-        aria-label="Decrease quantity"
-        title="Decrease quantity"
-      >
-        −
-      </button>
       <input
         ref={inputRef}
         type="text"
@@ -81,20 +68,6 @@ function ClassicLineQtyCell({
           }
         }}
       />
-      <button
-        type="button"
-        className="classic-pos-qty-btn"
-        disabled={busy || lineBusy || !canIncrease}
-        onClick={() => onAdjustQty?.(line, 1)}
-        aria-label="Increase quantity"
-        title={
-          !canIncrease
-            ? "Cannot increase (stock or packaging limit)"
-            : "Increase quantity"
-        }
-      >
-        +
-      </button>
       {qtyUnit ? (
         <span className="classic-pos-qty-unit" title={qtyUnit}>
           {qtyUnit}
@@ -168,10 +141,8 @@ export function ClassicPosCartTable({
   lineUnitPrice,
   lineDiscount,
   lineAmount,
-  lineQtyAdjust,
   lineEntryQty,
   lineQtyUnit,
-  onAdjustQty,
   onSetQty,
   onSwapDraftQtyChange = null,
   scanSearch = null,
@@ -346,10 +317,6 @@ export function ClassicPosCartTable({
               swapDraftActive &&
               swapLinePreview &&
               String(swapLinePreview.lineId) === String(line.id);
-            const qtyAdjust = lineQtyAdjust?.(line) ?? {
-              canDecrease: false,
-              canIncrease: false,
-            };
             return (
               <tr
                 key={line.id}
@@ -422,9 +389,6 @@ export function ClassicPosCartTable({
                     qtyUnit={lineQtyUnit?.(line) ?? ""}
                     busy={busy}
                     lineBusy={lineBusy}
-                    canDecrease={qtyAdjust.canDecrease}
-                    canIncrease={qtyAdjust.canIncrease}
-                    onAdjustQty={onAdjustQty}
                     onSetQty={onSetQty}
                     onDraftQtyChange={swapPreviewActive ? onSwapDraftQtyChange : null}
                     swapQtyCommit={swapPreviewActive}

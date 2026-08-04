@@ -9486,13 +9486,6 @@ export function PosScreen({ standalone = false }) {
                     ) || "pcs"
                   );
                 }}
-                lineQtyAdjust={(line) => {
-                  const productMeta = productByCode[line.product_code];
-                  return productMeta
-                    ? cartLineQtyAdjustState(line, productMeta, 0)
-                    : { canDecrease: false, canIncrease: false };
-                }}
-                onAdjustQty={(line, delta) => void adjustCartLineQuantity(line, delta)}
                 onSetQty={(line, value) => void setCartLineEntryQuantity(line, value)}
                 onSwapDraftQtyChange={(line, value) => handleSwapDraftQtyChange(line, value)}
                 linePackage={(line) => {

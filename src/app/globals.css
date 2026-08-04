@@ -3385,14 +3385,15 @@ html[data-theme="dark"] .classic-pos-scan-dropdown {
 }
 
 .classic-pos-line-qty-input {
-  width: 2.75rem;
-  min-width: 2.75rem;
-  flex: 0 0 2.75rem;
+  width: 4.5rem;
+  min-width: 3.5rem;
+  max-width: 5.5rem;
+  flex: 1 1 auto;
   box-sizing: border-box;
   border: 1px solid var(--classic-border, #8a7a55);
   background: var(--classic-input-bg, #fff);
   color: var(--classic-text, #1a1a1a);
-  padding: 0.15rem 0.15rem;
+  padding: 0.15rem 0.25rem;
   font-size: 0.82rem;
   font-weight: 700;
   text-align: center;
