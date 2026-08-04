@@ -3,6 +3,7 @@ import {
   CENTRIX_POS_COMPLETE_PAYMENT_EVENT,
   claimPosFunctionKeyEvent,
   clearPosAltLatch,
+  isBrowserDevToolsShortcut,
   isPosAltLatched,
   isPosAltLetterShortcut,
   isPosClassicAltShortcut,
@@ -78,7 +79,39 @@ describe("claimPosFunctionKeyEvent", () => {
     expect(isPosFunctionShortcutKey("F10")).toBe(true);
     expect(isPosFunctionShortcutKey("Enter")).toBe(false);
   });
+});
 
+describe("isBrowserDevToolsShortcut", () => {
+  it("detects Inspect / Console / View source chords", () => {
+    expect(
+      isBrowserDevToolsShortcut(fakeEvent({ key: "i", code: "KeyI", ctrlKey: true, shiftKey: true })),
+    ).toBe(true);
+    expect(
+      isBrowserDevToolsShortcut(fakeEvent({ key: "j", code: "KeyJ", ctrlKey: true, shiftKey: true })),
+    ).toBe(true);
+    expect(
+      isBrowserDevToolsShortcut(fakeEvent({ key: "c", code: "KeyC", metaKey: true, shiftKey: true })),
+    ).toBe(true);
+    expect(
+      isBrowserDevToolsShortcut(fakeEvent({ key: "u", code: "KeyU", ctrlKey: true })),
+    ).toBe(true);
+    expect(
+      isBrowserDevToolsShortcut(fakeEvent({ key: "i", code: "KeyI", metaKey: true, altKey: true })),
+    ).toBe(true);
+  });
+
+  it("leaves POS-owned F12 / Ctrl+Shift+U alone", () => {
+    expect(isBrowserDevToolsShortcut(fakeEvent({ key: "F12", code: "F12", keyCode: 123 }))).toBe(false);
+    expect(
+      isBrowserDevToolsShortcut(fakeEvent({ key: "F12", code: "F12", keyCode: 123, ctrlKey: true })),
+    ).toBe(false);
+    expect(
+      isBrowserDevToolsShortcut(fakeEvent({ key: "u", code: "KeyU", ctrlKey: true, shiftKey: true })),
+    ).toBe(false);
+  });
+});
+
+describe("pos alt / function helpers", () => {
   it("detects function key events for input passthrough", () => {
     expect(isPosFunctionKeyEvent(fakeEvent({ key: "F8", code: "F8" }))).toBe(true);
     expect(isPosFunctionKeyEvent(fakeEvent({ key: "", code: "", keyCode: 123 }))).toBe(true);

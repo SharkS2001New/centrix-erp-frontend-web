@@ -131,6 +131,90 @@ export function claimPosFunctionKeyEvent(e) {
   }
 }
 
+/**
+ * Common Developer Tools / Inspect / View Source shortcuts cashiers hit by accident.
+ * Excludes POS-owned chords (bare F12, Ctrl/Cmd+F12, Ctrl/Cmd+Shift+U).
+ * Cannot block chrome:// menu → More tools → Developer tools (needs OS/kiosk policy).
+ */
+export function isBrowserDevToolsShortcut(e) {
+  if (!e) return false;
+  const key = String(e.key ?? "");
+  const code = String(e.code ?? "");
+  const keyCode = Number(e.keyCode || e.which || 0);
+  const lower = key.toLowerCase();
+  const ctrlOrMeta = Boolean(e.ctrlKey || e.metaKey);
+
+  // Ctrl/Cmd+Shift+I — Inspect / DevTools
+  if (ctrlOrMeta && e.shiftKey && (lower === "i" || code === "KeyI" || keyCode === 73)) {
+    return true;
+  }
+  // Ctrl/Cmd+Shift+J — Console
+  if (ctrlOrMeta && e.shiftKey && (lower === "j" || code === "KeyJ" || keyCode === 74)) {
+    return true;
+  }
+  // Ctrl/Cmd+Shift+C — Inspect element
+  if (ctrlOrMeta && e.shiftKey && (lower === "c" || code === "KeyC" || keyCode === 67)) {
+    return true;
+  }
+  // Ctrl/Cmd+U — View source (not Ctrl+Shift+U — that is POS retail/wholesale)
+  if (ctrlOrMeta && !e.shiftKey && !e.altKey && (lower === "u" || code === "KeyU" || keyCode === 85)) {
+    return true;
+  }
+  // Mac: Cmd+Option+I / J / C
+  if (e.metaKey && e.altKey && (lower === "i" || lower === "j" || lower === "c"
+    || code === "KeyI" || code === "KeyJ" || code === "KeyC")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Capture listeners that block DevTools shortcuts + the browser context menu
+ * for the standalone External POS PWA only. Returns cleanup.
+ *
+ * Right-click: preventDefault only (hides Inspect / browser menu). Does not
+ * stopPropagation, so in-app onContextMenu handlers still work. Opt out of the
+ * browser-menu block with [data-allow-context-menu] when a native menu is needed.
+ * Backoffice Create order and Sales/LPO lists never install this lockdown.
+ */
+export function installPosDevToolsLockdown() {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return () => {};
+  }
+
+  const opts = { capture: true, passive: false };
+
+  function onKeyDown(e) {
+    if (!isBrowserDevToolsShortcut(e)) return;
+    // preventDefault only — do not stopImmediatePropagation so POS F-key handlers still run.
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onContextMenu(e) {
+    const el = e.target;
+    if (el && typeof el.closest === "function" && el.closest("[data-allow-context-menu]")) {
+      return;
+    }
+    // Block browser Inspect / native menu only — leave React context menus alone.
+    e.preventDefault();
+  }
+
+  const targets = [document.documentElement, window, document];
+  for (const target of targets) {
+    target.addEventListener("keydown", onKeyDown, opts);
+  }
+  document.addEventListener("contextmenu", onContextMenu, opts);
+
+  return () => {
+    for (const target of targets) {
+      target.removeEventListener("keydown", onKeyDown, opts);
+    }
+    document.removeEventListener("contextmenu", onContextMenu, opts);
+  };
+}
+
 export function isPosFunctionShortcutKey(key) {
   return POS_FN_KEYS.has(key);
 }

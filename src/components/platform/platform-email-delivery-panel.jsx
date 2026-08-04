@@ -944,7 +944,8 @@ export function PlatformEmailDeliveryPanel() {
           <h2 className="text-sm font-semibold text-slate-900">Subscription renewal reminders</h2>
           <p className="mt-1 text-xs text-slate-500">
             Automatically email organization admins (and org email) before a plan expires, with a draft
-            renewal invoice PDF attached. Runs daily when enabled.
+            renewal invoice PDF attached. Platform admin mailbox / super-admin addresses are CC&apos;d on
+            every reminder. Runs daily when enabled.
           </p>
 
           {mailStats ? (

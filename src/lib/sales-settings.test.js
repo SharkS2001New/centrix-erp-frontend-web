@@ -113,6 +113,35 @@ describe("sales-settings discount approvals", () => {
     ).toBe(true);
   });
 
+  it("hides Edit order Disc/unit when line discounts and approval are both off", () => {
+    const moduleSettings = {
+      sales: {
+        allow_discounts: false,
+        // Defaults merge as true — must not force Disc/unit on.
+        allow_edit_line_discount: true,
+        allow_pos_edit_line_discount: true,
+        discount_approval_enabled_mobile: false,
+        discount_approval_enabled_backoffice: false,
+        enable_order_discount: false,
+      },
+    };
+    expect(
+      showBackofficeLineDiscountEdit(moduleSettings, {
+        hasPermission: () => true,
+        sale: { status: "booked", can_edit_lines: true },
+      }),
+    ).toBe(false);
+  });
+
+  it("shows Edit order Disc/unit when product line discounts are enabled", () => {
+    expect(
+      showBackofficeLineDiscountEdit(
+        { sales: { allow_discounts: true, allow_edit_line_discount: true } },
+        { hasPermission: () => true, sale: { status: "booked" } },
+      ),
+    ).toBe(true);
+  });
+
   it("respects per-channel enablement from module settings", () => {
     const moduleSettings = {
       sales: {

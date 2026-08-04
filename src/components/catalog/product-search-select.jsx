@@ -8,6 +8,9 @@ import {
 } from "@/lib/catalog-cache";
 import { inputClassName } from "@/components/catalog/catalog-shared";
 
+/** Stable default so excludeCodes=[] does not recreate filtered results every render. */
+const EMPTY_EXCLUDE_CODES = Object.freeze([]);
+
 /**
  * Searchable product picker — live API search (no client product catalog cache).
  * Arrow Up/Down moves highlight; Enter selects the highlighted result.
@@ -18,13 +21,14 @@ export function ProductSearchSelect({
   /** Called with full product row when user picks from search */
   onProductSelect,
   /** product_codes to hide from results (e.g. already have a setting) */
-  excludeCodes = [],
+  excludeCodes = EMPTY_EXCLUDE_CODES,
   /** When set, show this product even if excluded (edit mode) */
   lockedProduct = null,
   disabled = false,
   required = false,
   placeholder = "Search by product name or code…",
   inputClassName: inputClassNameProp,
+  className = "",
 }) {
   const { user } = useAuth();
   const listId = useId();
@@ -38,7 +42,7 @@ export function ProductSearchSelect({
   const [highlightIndex, setHighlightIndex] = useState(-1);
 
   const excludeSet = useMemo(
-    () => new Set((excludeCodes ?? []).map(String)),
+    () => new Set((excludeCodes ?? EMPTY_EXCLUDE_CODES).map(String)),
     [excludeCodes],
   );
 
@@ -151,13 +155,19 @@ export function ProductSearchSelect({
     });
   }, [results, excludeSet, value]);
 
+  // Reset highlight when the result set changes — not on every highlight move.
+  const resultsSignature = useMemo(
+    () => filtered.map((p) => String(p.product_code)).join("\0"),
+    [filtered],
+  );
+
   useEffect(() => {
     if (!open || searching || filtered.length === 0) {
       setHighlightIndex(-1);
       return;
     }
     setHighlightIndex(0);
-  }, [open, searching, filtered]);
+  }, [open, searching, resultsSignature, filtered.length]);
 
   useEffect(() => {
     if (highlightIndex < 0 || !listRef.current) return;
@@ -187,6 +197,7 @@ export function ProductSearchSelect({
     if (e.key === "Escape") {
       if (open) {
         e.preventDefault();
+        e.stopPropagation();
         setOpen(false);
         setHighlightIndex(-1);
       }
@@ -197,6 +208,7 @@ export function ProductSearchSelect({
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      e.stopPropagation();
       if (!open) {
         setOpen(true);
         return;
@@ -208,6 +220,7 @@ export function ProductSearchSelect({
 
     if (e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       if (!canNavigate) return;
       setHighlightIndex((prev) =>
         prev <= 0 ? filtered.length - 1 : prev - 1,
@@ -221,6 +234,7 @@ export function ProductSearchSelect({
       const product = filtered[index];
       if (!product) return;
       e.preventDefault();
+      e.stopPropagation();
       pick(product);
     }
   }
@@ -232,7 +246,7 @@ export function ProductSearchSelect({
       : undefined;
 
   return (
-    <div ref={rootRef} className="relative w-full">
+    <div ref={rootRef} className={`relative w-full ${className}`.trim()}>
       <div className="relative">
         <input
           type="text"
@@ -295,6 +309,10 @@ export function ProductSearchSelect({
                     role="option"
                     aria-selected={isHighlighted || isSelected}
                     onMouseEnter={() => setHighlightIndex(index)}
+                    onMouseDown={(e) => {
+                      // Keep focus on the input so arrow keys keep working after a hover/click attempt.
+                      e.preventDefault();
+                    }}
                     onClick={() => pick(p)}
                     className={`block w-full px-3 py-2 text-left text-sm ${
                       isHighlighted

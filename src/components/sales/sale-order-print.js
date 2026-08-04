@@ -460,30 +460,39 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
 
     // When KRA is off: never hit WAN for fiscal/QR. When on: allow sale/KRA fetch unless
     // checkout already passed kraReceipt and we are on the fast POS path.
+    // Callers can force-skip (e.g. previous-order draft reprint — KRA syncs in background).
     const saleIsOfflinePending =
       Boolean(saleForPrint?.offline_pending_sync) ||
-      String(saleForPrint?.id ?? "").startsWith("offline:");
+      String(saleForPrint?.id ?? "").startsWith("offline:") ||
+      Boolean(saleForPrint?._skip_kra_qr);
     const kraConfigured = isKraDeviceConfigured(moduleSettings, options.capabilities);
+    const requireQrWhenFiscalized =
+      options.requireQrWhenFiscalized != null
+        ? Boolean(options.requireQrWhenFiscalized)
+        : kraConfigured && !saleForPrint?._skip_kra_qr;
     const kraAllowNetwork =
-      kraConfigured &&
-      !saleIsOfflinePending &&
-      !(skipNetworkLookups && options.kraReceipt);
+      options.allowKraNetwork != null
+        ? Boolean(options.allowKraNetwork)
+        : kraConfigured &&
+          !saleIsOfflinePending &&
+          !(skipNetworkLookups && options.kraReceipt) &&
+          !saleForPrint?._skip_kra_qr;
 
     let kraData = null;
     let kraQrDataUrl = null;
     if (!isProforma) {
       try {
         ({ kraData, kraQrDataUrl } = await ensureKraQrForPrint(saleForPrint, {
-          kraReceipt: options.kraReceipt,
+          kraReceipt: saleForPrint?._skip_kra_qr ? null : options.kraReceipt,
           moduleSettings,
           capabilities: options.capabilities,
           allowNetwork: kraAllowNetwork,
           qrSize: documentType === "invoice" ? 140 : 100,
-          requireQrWhenFiscalized: kraConfigured,
+          requireQrWhenFiscalized,
         }));
       } catch (kraPrintError) {
         // Re-throw when KRA is required — do not silently print without the QR.
-        if (kraConfigured) {
+        if (requireQrWhenFiscalized) {
           disposePrintWindow(printWindow);
           return {
             ok: false,

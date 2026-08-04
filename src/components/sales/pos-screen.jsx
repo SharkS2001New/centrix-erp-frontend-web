@@ -55,6 +55,7 @@ import {
 } from "@/lib/product-discount";
 import { lineProductVat } from "@/lib/sales-vat";
 import { formatPosBrowseLabel, formatSaleKes, resolvePosBrowseNumber, resolvePosNextBrowseNumber } from "@/lib/sales";
+import { annotateSaleWithReceiptTenders } from "@/lib/checkout-payment-splits";
 import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
@@ -196,6 +197,7 @@ import { isSellableCatalogProduct } from "@/lib/catalog-cache";
 import {
   claimPosFunctionKeyEvent,
   clearPosAltLatch,
+  installPosDevToolsLockdown,
   isPosAltKeyEvent,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
@@ -253,7 +255,6 @@ import {
 import {
   buildPaymentAdjustmentsFromCheckoutBody,
   computePreviousOrderEditPaymentDelta,
-  computePreviousOrderEditSignedDelta,
   previousOrderAdjustmentsMatchDelta,
 } from "@/lib/pos-edit-payment-adjustment";
 
@@ -703,7 +704,7 @@ function previousOrderEditWorkspaceHint({ kraFiscalize = false, offline = false 
     return "Alt+P reprint; F10 to complete (even if unchanged).";
   }
   if (kraFiscalize) {
-    return "Edit lines locally; F10 completes payment and fiscalizes the revised receipt (KRA QR). Alt+P reprints before complete.";
+    return "Edits sync in the background (KRA credit note when online). Alt+P reprints without waiting for the fiscal QR.";
   }
   return "Edits apply instantly — online sync runs 30 seconds after you stop changing lines. Alt+P reprint when finished.";
 }
@@ -722,11 +723,11 @@ function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline
   }
   if (kraFiscalize) {
     return {
-      loaded: `Order ${label} loaded. Edit lines, then F10 to complete and fiscalize the revised receipt.`,
-      f10: "F10 completes payment and sends the revised receipt to KRA (QR on receipt).",
-      synced: null,
+      loaded: `Order ${label} loaded. Edit lines — sync and KRA run in the background. Alt+P reprints without the fiscal QR.`,
+      f10: "Use Alt+P (or Reprint) — payment breakdown then print. F10 is not required. KRA balances in the background when the order syncs online.",
+      synced: `Order ${label} saved. Print again with Alt+P if needed.`,
       leaveConfirm:
-        "Leave this edit? Line changes are not saved until you complete with F10. Print only after F10 fiscalizes.",
+        "Start a new order? Edits keep syncing in the background (including KRA). You do not need to wait.",
     };
   }
   return {
@@ -1818,7 +1819,7 @@ export function PosScreen({ standalone = false }) {
       delta,
       cartNow.held_order_num ?? resolvePosBrowseNumber(cartNow),
     );
-    const next = { ...cartNow, payment_adjustments: adjustments };
+    const next = withEditDraftDirty({ ...cartNow, payment_adjustments: adjustments });
     cartRef.current = next;
     setCart(next);
     void savePreviousOrderEditDraft(next).catch(() => {});
@@ -2190,43 +2191,14 @@ export function PosScreen({ standalone = false }) {
     [capabilities, cartSummary?.total, cartSummary?.amountDue],
   );
 
-  /** KRA-on previous-order edit: F10 payment panel collects only the top-up / return delta. */
-  const kraEditPaymentContext = useMemo(() => {
-    if (!isCartEditSession || !kraFiscalizeOnPosCheckout) return null;
-    const delta = computePreviousOrderEditSignedDelta(editSourceSale, cart);
-    return {
-      signedDelta: Number(delta.signedDelta ?? 0),
-      originalTotal: delta.originalTotal,
-      newTotal: delta.newTotal,
-      orderNum: cart?.held_order_num ?? resolvePosBrowseNumber(cart),
-      type: delta.type,
-      amount: delta.amount,
-    };
-  }, [isCartEditSession, kraFiscalizeOnPosCheckout, editSourceSale, cart]);
-
-  const paymentPanelBillTotal = useMemo(() => {
-    if (kraEditPaymentContext) {
-      return Number(kraEditPaymentContext.signedDelta ?? 0);
-    }
-    return cartSummary.amountDue;
-  }, [kraEditPaymentContext, cartSummary.amountDue]);
-
-  /** KRA-off previous-order edits: instant local save + background outbox sync (no F10). */
+  /** Previous-order edits finish with Alt+P (KRA and non-KRA). F10 is not required online. */
   const instantAutoEditSync = useMemo(() => {
     if (!standalone || !isCartEditSession) return false;
-    return !shouldSubmitKraOnCheckout(
-      capabilities?.module_settings,
-      capabilities,
-      cartSummary?.total ?? cartSummary?.amountDue,
-    );
-  }, [
-    standalone,
-    isCartEditSession,
-    capabilities,
-    cartSummary?.total,
-    cartSummary?.amountDue,
-  ]);
-  const kraEditCheckoutRequired = useMemo(() => {
+    return true;
+  }, [standalone, isCartEditSession]);
+
+  /** KRA-on previous-order edit: print without QR; fiscalize on background outbox sync. */
+  const kraEditBackgroundFiscalize = useMemo(() => {
     if (!standalone || !isCartEditSession) return false;
     return shouldSubmitKraOnCheckout(
       capabilities?.module_settings,
@@ -2240,6 +2212,8 @@ export function PosScreen({ standalone = false }) {
     cartSummary?.total,
     cartSummary?.amountDue,
   ]);
+
+  const paymentPanelBillTotal = useMemo(() => cartSummary.amountDue, [cartSummary.amountDue]);
   const previousOrderEditReadyToPrint = useMemo(() => {
     if (!instantAutoEditSync || !isCartEditSession) return false;
     if (offlineSyncing || editAutosaveBusy) return false;
@@ -5222,11 +5196,11 @@ export function PosScreen({ standalone = false }) {
       `Remove ${itemLabel} from the revised order? Stock for removed lines is already back in inventory — it was restored when you opened this receipt.`;
     if (isKraDeviceConfigured(capabilities?.module_settings, capabilities)) {
       message +=
-        " If the original sale was sent to KRA, a credit note was issued when you opened the order; the revised receipt is fiscalized again when you Complete (F10).";
+        " If the original sale was sent to KRA, a credit note was issued when you opened the order; revised KRA fiscalization runs in the background when the order syncs.";
     } else if (instantAutoEditSync) {
       message += " Changes save automatically — use Alt+P to reprint.";
     } else {
-      message += " Complete (F10) to save the revised order.";
+      message += " Use Alt+P to finish and print the revised order.";
     }
     return message;
   }
@@ -5342,7 +5316,7 @@ export function PosScreen({ standalone = false }) {
         message: cart.held_order_num
           ? instantAutoEditSync
             ? "Clear all items from this revised order? Stock was restored when you opened this receipt. The empty order saves automatically when you add items again."
-            : "Clear all items from this revised order? Stock was restored when you opened this receipt. Complete (F10) to save the empty or revised order."
+            : "Clear all items from this revised order? Stock was restored when you opened this receipt. Use Alt+P to finish the empty or revised order."
           : "Clear all items from the cart?",
         confirmLabel: "Clear",
         destructive: true,
@@ -6245,17 +6219,15 @@ export function PosScreen({ standalone = false }) {
     );
 
     if (isPreviousOrderCashEdit) {
-      if (!kraFiscalizeOnPosCheckout) {
-        try {
-          await ensurePreviousOrderPaymentAdjustment(activeCart);
-        } catch (e) {
-          setPaymentError(
-            e instanceof Error
-              ? e.message
-              : "Enter how the refund or top-up was paid before completing this edit.",
-          );
-          return null;
-        }
+      try {
+        await ensurePreviousOrderPaymentAdjustment(activeCart);
+      } catch (e) {
+        setPaymentError(
+          e instanceof Error
+            ? e.message
+            : "Enter how the refund or top-up was paid before completing this edit.",
+        );
+        return null;
       }
     }
 
@@ -6331,14 +6303,17 @@ export function PosScreen({ standalone = false }) {
           cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
           floatSessionId,
         });
-        const sale =
+        const sale = annotateSaleWithReceiptTenders(
           offlineCashTendered > 0
             ? mergeSaleWithCheckoutPosTicket(
-                { ...offlineSale, _cash_tendered: offlineCashTendered },
+                offlineSale,
                 activeCart,
                 checkoutCartFields,
               )
-            : mergeSaleWithCheckoutPosTicket(offlineSale, activeCart, checkoutCartFields);
+            : mergeSaleWithCheckoutPosTicket(offlineSale, activeCart, checkoutCartFields),
+          body?.__receipt_tenders,
+          offlineCashTendered,
+        );
         markSaleForReprint(sale);
         if (!(standalone && !options.skipAutoNextOrder)) {
           setCart(null);
@@ -6422,14 +6397,11 @@ export function PosScreen({ standalone = false }) {
             cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
             floatSessionId,
           });
-          const sale =
-            cashTendered > 0
-              ? mergeSaleWithCheckoutPosTicket(
-                  { ...localSale, _cash_tendered: cashTendered },
-                  activeCart,
-                  checkoutCartFields,
-                )
-              : mergeSaleWithCheckoutPosTicket(localSale, activeCart, checkoutCartFields);
+          const sale = annotateSaleWithReceiptTenders(
+            mergeSaleWithCheckoutPosTicket(localSale, activeCart, checkoutCartFields),
+            body?.__receipt_tenders,
+            cashTendered,
+          );
           // New sales: release online cart line reservations. Previous-order edits keep
           // the edit cart so sync can PUT lines + checkout under the same order #.
           if (!isPreviousOrderCashEdit && isServerPosCartId(activeCart.id)) {
@@ -6508,7 +6480,13 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
-      const { __force_submit_kra: _ignoredForceKra, __cash_tendered: cashTendered, __previous_order_edit_adjustment: _editAdjFlag, ...checkoutInput } = body ?? {};
+      const {
+        __force_submit_kra: _ignoredForceKra,
+        __cash_tendered: cashTendered,
+        __receipt_tenders: receiptTenders,
+        __previous_order_edit_adjustment: _editAdjFlag,
+        ...checkoutInput
+      } = body ?? {};
       // Do not send submit_kra:false — stale POS capabilities were skipping server-side
       // "Use KRA device for sales". Omit the field and let the API apply org finance policy;
       // only send true so the KRA wait UI still matches an expected fiscalized checkout.
@@ -6570,10 +6548,9 @@ export function PosScreen({ standalone = false }) {
         // Keep local Cash Sales counter aligned with server after online sale.
         void seedLocalPosTicketSeqFromSale(sale).catch(() => {});
       }
-      // Annotate with the tendered amount so the immediate receipt can show correct change.
-      if (cashTendered != null && cashTendered > 0) {
-        sale = { ...sale, _cash_tendered: Number(cashTendered) };
-      }
+      // Annotate with cashier-entered tenders + change so the receipt is correct
+      // even when aligned payment_splits stored net (post-change) cash on the sale.
+      sale = annotateSaleWithReceiptTenders(sale, receiptTenders, cashTendered);
       if (sale?.fulfillment_meta?.same_day_customer_append) {
         const label = formatPosBrowseLabel(sale);
         setStatusMessage(`Items added to customer order #${label}.`);
@@ -6622,8 +6599,8 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * KRA-off previous-order edits: debounce outbox upsert + flush (~30s after last change).
-   * KRA-on stays local-only until F10 (fiscal QR requires device response).
+   * Previous-order edits: debounce outbox upsert + flush (~30s after last change).
+   * With KRA on, fiscalization runs during background sync (print does not wait for QR).
    * Edits stay local while sync runs — only workspace switch is blocked during flush.
    */
   function scheduleEditedOrderAutosave({ immediate = false } = {}) {
@@ -6633,16 +6610,6 @@ export function PosScreen({ standalone = false }) {
     if (!activeCart?.held_order_num || !activeCart?.superseded_sale_id) return;
     if (activeCart.offline || activeCart.offline_client_sale_uuid) return;
 
-    const summary = summarizeLocalPosCart(activeCart);
-    if (
-      shouldSubmitKraOnCheckout(
-        capabilities?.module_settings,
-        capabilities,
-        summary?.total ?? summary?.amountDue,
-      )
-    ) {
-      return;
-    }
     if (!editedOrderHasLocalDraftChanges(activeCart)) return;
     const hasPositiveLines = (activeCart.lines ?? []).some(
       (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
@@ -6772,7 +6739,12 @@ export function PosScreen({ standalone = false }) {
             !editedOrderHasLocalDraftChanges(afterCart)
           ) {
             const syncedMsg = previousOrderEditModeMessages(syncedOrderNum, {
-              kraFiscalize: false,
+              kraFiscalize: shouldSubmitKraOnCheckout(
+                capabilities?.module_settings,
+                capabilities,
+                summarizeLocalPosCart(afterCart)?.total ??
+                  summarizeLocalPosCart(afterCart)?.amountDue,
+              ),
             }).synced;
             if (syncedMsg) {
               posSnackbar(syncedMsg);
@@ -7193,6 +7165,82 @@ export function PosScreen({ standalone = false }) {
         skipEditAutosaveRef.current = false;
         return;
       }
+
+      // Same finish step as Alt+P — capture top-up / return; KRA syncs in the background.
+      if (editingPrevious) {
+        try {
+          if (kraFiscalize || lineBusyRef.current) {
+            await runBlockingTask(waitForCartLineSavesToFinish, {
+              message: kraFiscalize ? "Preparing revised receipt…" : "Saving cart changes…",
+              detail: kraFiscalize
+                ? "Please wait before payment breakdown."
+                : "Please wait while the current line finishes saving.",
+            });
+          } else {
+            await waitForCartLineSavesToFinish();
+          }
+          await ensurePreviousOrderPaymentAdjustment(cartRef.current ?? activeCart);
+        } catch (e) {
+          skipEditAutosaveRef.current = false;
+          if (e instanceof Error && /cancel/i.test(e.message)) return;
+          const message =
+            e instanceof Error
+              ? e.message
+              : "Enter how the refund or top-up was paid before starting a new order.";
+          setStatusMessage(message);
+          if (standalone) notifyError(message);
+          return;
+        }
+
+        if (!isOfflineCart) {
+          // skipEditAutosaveRef is already true — queue outbox directly so F8 leave
+          // still syncs (and background-fiscalizes) without blocking on the KRA device.
+          const cartForQueue = cartRef.current ?? activeCart;
+          if (editedOrderHasLocalDraftChanges(cartForQueue)) {
+            try {
+              const local = {
+                ...cartForQueue,
+                lines: (cartForQueue.lines ?? [])
+                  .filter((l) => Number(l.quantity ?? 0) > 0 && l.product_code)
+                  .map((l) => ({
+                    ...l,
+                    client_line_id: l.client_line_id ?? l.id,
+                  })),
+                branch_id: cartForQueue.branch_id ?? user?.branch_id,
+                till_id: cartForQueue.till_id ?? tillId,
+                float_session_id: floatSessionId ?? cartForQueue.float_session_id,
+                order_discount: Number(cartForQueue.order_discount ?? 0) || 0,
+                customer_num:
+                  cartForQueue.customer_num ??
+                  editSourceSale?.customer_num ??
+                  editSourceSale?.customer?.customer_num ??
+                  null,
+                customer_name_override:
+                  String(
+                    cartForQueue.customer_name_override ??
+                      editSourceSale?.customer_name_override ??
+                      editSourceSale?.customer?.customer_name ??
+                      "",
+                  ).trim() || null,
+                payment_method_code:
+                  cartForQueue.payment_method_code ??
+                  editSourceSale?.payment_method_code ??
+                  null,
+              };
+              await upsertPreviousOrderEditOutbox({
+                cart: local,
+                user,
+                organization,
+                floatSessionId,
+                cashAmount: summarizeLocalPosCart(local).amountDue,
+              });
+              void refreshOfflineCounts();
+            } catch (e) {
+              console.warn("Could not queue previous-order edit before new order", e);
+            }
+          }
+        }
+      }
     }
 
     const skipDeleteForBackgroundSync = Boolean(editingPrevious && pendingSync > 0);
@@ -7469,9 +7517,51 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handlePrintReceipt() {
+    // Finishing a previous-order edit: prep → payment breakdown → print (no KRA wait).
+    // With KRA on, fiscalization / credit-note balancing runs on background outbox sync.
+    if (isCartEditSession && cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id) {
+      const editSummary = summarizeLocalPosCart(cartRef.current);
+      const kraFiscalize = shouldSubmitKraOnCheckout(
+        capabilities?.module_settings,
+        capabilities,
+        editSummary?.total ?? editSummary?.amountDue,
+      );
+
+      // Prep wait while queued line saves settle (KRA-on always shows overlay).
+      if (kraFiscalize || lineBusyRef.current) {
+        await runBlockingTask(waitForCartLineSavesToFinish, {
+          message: kraFiscalize ? "Preparing revised receipt…" : "Saving cart changes…",
+          detail: kraFiscalize
+            ? "Please wait before payment breakdown."
+            : "Please wait while the current line finishes saving.",
+        });
+      } else {
+        await waitForCartLineSavesToFinish();
+      }
+
+      try {
+        await ensurePreviousOrderPaymentAdjustment(cartRef.current);
+      } catch (e) {
+        if (e instanceof Error && /cancel/i.test(e.message)) return;
+        notifyError(
+          e instanceof Error
+            ? e.message
+            : "Enter how the refund or top-up was paid before reprinting.",
+        );
+        return;
+      }
+
+      // Queue sync (and background KRA) without blocking the draft reprint.
+      scheduleEditedOrderAutosave({ immediate: true });
+    }
+
     const editSnapshot =
       isCartEditSession && cartRef.current
-        ? buildPreviousOrderEditPrintSale(cartRef.current, { user, organization })
+        ? buildPreviousOrderEditPrintSale(cartRef.current, {
+            user,
+            organization,
+            sourceSale: editSourceSale,
+          })
         : null;
     let sale = resolvePosReprintSale({
       isCartEditSession,
@@ -7503,6 +7593,7 @@ export function PosScreen({ standalone = false }) {
     }
 
     try {
+      const skipKraQr = Boolean(sale?._skip_kra_qr);
       const result = await printSaleOrder(
         sale,
         fastPosPrintOptions(sale, {
@@ -7515,7 +7606,9 @@ export function PosScreen({ standalone = false }) {
         preparedBy: user?.full_name ?? user?.username ?? null,
           documentType:
             resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
-          kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
+          kraReceipt: skipKraQr ? null : (sale.kra_response ?? sale.kraResponse ?? null),
+          requireQrWhenFiscalized: skipKraQr ? false : undefined,
+          allowKraNetwork: skipKraQr ? false : undefined,
         }),
       );
       if (!result) {
@@ -7526,7 +7619,9 @@ export function PosScreen({ standalone = false }) {
       }
       setReceiptPrintStatus("printed");
       const message = orderLabel
-        ? `Receipt ${orderLabel} sent to printer.`
+        ? skipKraQr && kraEditBackgroundFiscalize
+          ? `Receipt ${orderLabel} sent to printer. KRA syncs in the background.`
+          : `Receipt ${orderLabel} sent to printer.`
         : "Receipt sent to printer.";
       toast.success(message, { id: loadingToastId });
       if (!standalone) setStatusMessage(message);
@@ -8142,17 +8237,7 @@ export function PosScreen({ standalone = false }) {
       );
       return false;
     }
-    setSellWholesale((prev) => {
-      const nextWholesale = !prev;
-      const label = nextWholesale ? "WHOLESALE" : "RETAIL";
-      setStatusMessage(
-        `${label} mode (F12) — only the line you confirm with qty Enter switches.`,
-      );
-      if (standalone) {
-        notifySuccess(`Switched to ${label} for next confirm / new lines.`);
-      }
-      return nextWholesale;
-    });
+    setSellWholesale((prev) => !prev);
     setUnitPriceTouched(false);
     return true;
   }
@@ -8261,6 +8346,16 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
+      // KRA-on online: finish with Alt+P (payment breakdown + print) — not F10.
+      // KRA credit notes / revised fiscalization run on background sync.
+      if (kraOn && !isOfflineEdit) {
+        flashPosShortcutMessage(
+          previousOrderEditModeMessages(activeCart.held_order_num, { kraFiscalize: true }).f10,
+          { error: false },
+        );
+        return;
+      }
+
       flashPosShortcutMessage(
         isOfflineEdit
           ? previousOrderEditModeMessages(activeCart.held_order_num, { offline: true }).f10
@@ -8333,6 +8428,7 @@ export function PosScreen({ standalone = false }) {
     autoHeldPrompt: Boolean(autoHeldPrompt),
     discountReasonDialogOpen,
     preparingNextOpen,
+    editAdjustmentDialogOpen: Boolean(editAdjustmentDialog),
     replacingLineId,
     selectedLineId,
     selectedLineCount,
@@ -8368,6 +8464,13 @@ export function PosScreen({ standalone = false }) {
     confirm,
   };
 
+  // External POS (/pos) only — not Backoffice Create order. Blocks DevTools chords +
+  // browser right-click Inspect; does not affect Sales orders / LPO context menus.
+  useEffect(() => {
+    if (!standalone) return undefined;
+    return installPosDevToolsLockdown();
+  }, [standalone]);
+
   useEffect(() => {
     function isConfirmDialogOpen() {
       // Only the app ConfirmDialog — not licence warnings / other alertdialogs.
@@ -8395,6 +8498,7 @@ export function PosScreen({ standalone = false }) {
         || state.autoHeldPrompt
         || state.discountReasonDialogOpen
         || state.preparingNextOpen
+        || state.editAdjustmentDialogOpen
         || isConfirmDialogOpen()
       );
     }
@@ -8413,6 +8517,7 @@ export function PosScreen({ standalone = false }) {
       if (state.autoHeldPrompt) return "auto-held order";
       if (state.discountReasonDialogOpen) return "discount reason";
       if (state.preparingNextOpen) return "preparing next order";
+      if (state.editAdjustmentDialogOpen) return "payment breakdown";
       if (isConfirmDialogOpen()) return "confirmation";
       return null;
     }
@@ -9542,31 +9647,37 @@ export function PosScreen({ standalone = false }) {
             ) : null}
           </div>
           ) : null}
-          {kraEditCheckoutRequired && isCartEditSession && !cartResubmitMessage ? (
-            <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
-              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
-                <p className="text-xs leading-relaxed">
-                  Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edit lines locally, then press{" "}
-                  <strong>F10</strong> to complete payment and fiscalize the revised receipt (KRA
-                  QR). Alt+P reprints the draft before you complete.
-                </p>
-              </div>
-            </div>
-          ) : null}
           {instantAutoEditSync && isCartEditSession && !cartResubmitMessage ? (
             <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
               <div
                 className={`mb-3 rounded-lg border px-3 py-2.5 text-sm ${
                   previousOrderEditReadyToPrint
                     ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                    : "border-sky-200 bg-sky-50 text-sky-950"
+                    : kraEditBackgroundFiscalize
+                      ? "border-amber-200 bg-amber-50 text-amber-950"
+                      : "border-sky-200 bg-sky-50 text-sky-950"
                 }`}
               >
                 <p className="text-xs leading-relaxed">
                   {previousOrderEditReadyToPrint ? (
                     <>
                       Cash Sales #{formatPosBrowseLabel(cart)} saved on server.{" "}
-                      <strong>Print the revised receipt</strong> — Alt+P or Reprint.
+                      <strong>Print the revised receipt</strong> — Alt+P or Reprint
+                      {kraEditBackgroundFiscalize
+                        ? " (without waiting for the fiscal QR)."
+                        : "."}
+                    </>
+                  ) : kraEditBackgroundFiscalize ? (
+                    <>
+                      Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edits sync in the
+                      background — KRA credit notes balance when the order syncs online.{" "}
+                      <strong>Alt+P</strong> (or Reprint): payment breakdown, then print without
+                      the fiscal QR. F10 is not required.
+                      {offlineSyncing || editAutosaveBusy || pendingSync > 0
+                        ? syncProgress?.message
+                          ? ` ${syncProgress.message}`
+                          : " Syncing in background…"
+                        : null}
                     </>
                   ) : (
                     <>
@@ -10245,7 +10356,7 @@ export function PosScreen({ standalone = false }) {
           setReceiptPrintStatus(null);
         }}
         billTotal={paymentPanelBillTotal}
-        previousOrderEditAdjustment={kraEditPaymentContext}
+        previousOrderEditAdjustment={null}
         channel={channel}
         workflow={channelWorkflow}
         paymentConfig={checkoutPaymentConfig}

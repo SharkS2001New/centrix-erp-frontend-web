@@ -4,7 +4,14 @@ function roundMoney(value) {
   return Math.round(Number(value) * 100) / 100;
 }
 
-/** Ensure split lines sum to the checkout target (pay_now + cart M-Pesa when applicable). */
+function methodCodeOf(part) {
+  return String(part?.method_code ?? part?.code ?? "").trim().toUpperCase();
+}
+
+/**
+ * Ensure split lines sum to the checkout target (pay_now + cart M-Pesa when applicable).
+ * Overpayment (change) is taken from CASH first — never proportionally scales M-Pesa/bank.
+ */
 export function alignPaymentSplitsToPayNow(splits, targetTotal) {
   const target = roundMoney(targetTotal);
   if (!Array.isArray(splits) || splits.length === 0 || target <= 0) {
@@ -36,24 +43,28 @@ export function alignPaymentSplitsToPayNow(splits, targetTotal) {
     return adjusted.filter((part) => part.amount > 0);
   }
 
-  if (currentTotal <= 0) {
-    return normalized;
+  // Customer tendered more than due — reduce CASH by the change first.
+  if (currentTotal > target) {
+    let excess = roundMoney(currentTotal - target);
+    const adjusted = normalized.map((part) => ({ ...part }));
+    const cashIdx = adjusted.findIndex((part) => methodCodeOf(part) === "CASH");
+    const reduceOrder =
+      cashIdx >= 0
+        ? [cashIdx, ...adjusted.map((_, i) => i).filter((i) => i !== cashIdx)]
+        : adjusted.map((_, i) => i).reverse();
+
+    for (const index of reduceOrder) {
+      if (excess <= 0.001) break;
+      const reduceBy = roundMoney(Math.min(adjusted[index].amount, excess));
+      adjusted[index].amount = roundMoney(adjusted[index].amount - reduceBy);
+      excess = roundMoney(excess - reduceBy);
+    }
+
+    return adjusted.filter((part) => part.amount > 0);
   }
 
-  let allocated = 0;
-  const scaled = normalized.map((part, index) => {
-    if (index === normalized.length - 1) {
-      return {
-        ...part,
-        amount: roundMoney(Math.max(0, target - allocated)),
-      };
-    }
-    const share = roundMoney((part.amount / currentTotal) * target);
-    allocated += share;
-    return { ...part, amount: share };
-  });
-
-  return scaled.filter((part) => part.amount > 0);
+  // Under-pay (partial): keep entered method amounts — do not invent a scale-up.
+  return normalized;
 }
 
 /** Build per-method tender lines for checkout / sale payment APIs. */
@@ -91,6 +102,65 @@ export function buildCheckoutPaymentSplits(cfg, amounts) {
       amount: part.amount,
       reference_number: paymentReferenceForSplit(part.code, amounts),
     }));
+}
+
+/** Snapshot of what the cashier typed — used for receipt print (includes change). */
+export function buildReceiptTenderSnapshot(amounts, { changeDue = 0, amountPaid = 0 } = {}) {
+  return {
+    cash: roundMoney(parseDecimalInput(amounts.cashAmount ?? 0)),
+    mpesa: roundMoney(parseDecimalInput(amounts.mpesaAmount ?? 0)),
+    equity: roundMoney(parseDecimalInput(amounts.equityAmount ?? 0)),
+    kcb: roundMoney(parseDecimalInput(amounts.kcbAmount ?? 0)),
+    cheque: roundMoney(parseDecimalInput(amounts.chequeAmount ?? 0)),
+    bank: roundMoney(parseDecimalInput(amounts.bankAmount ?? 0)),
+    bank_type: amounts.bankType || null,
+    amount_paid: roundMoney(amountPaid),
+    change: roundMoney(Math.max(0, changeDue)),
+  };
+}
+
+/**
+ * Overlay cashier-entered tenders onto the sale for immediate receipt print.
+ * Backend stores applied (post-change) cash; receipt should show what was typed + change.
+ */
+export function annotateSaleWithReceiptTenders(sale, receiptTenders, cashTendered) {
+  if (!sale) return sale;
+  const tenders = receiptTenders && typeof receiptTenders === "object" ? receiptTenders : null;
+  const tendered = Number(cashTendered ?? tenders?.amount_paid ?? 0);
+  const orderTotal = Number(sale.order_total ?? 0);
+  const changeGiven = Math.max(
+    0,
+    Number(tenders?.change ?? 0),
+    tendered > 0 ? tendered - orderTotal : 0,
+    Number(sale.order_change ?? 0),
+  );
+
+  const next = { ...sale };
+
+  if (tenders) {
+    if (tenders.cash > 0 || Number(sale.cash ?? 0) <= 0) {
+      next.cash = tenders.cash > 0 ? tenders.cash : Number(sale.cash ?? 0);
+    }
+    if (tenders.mpesa > 0 || Number(sale.mpesa_amount ?? 0) <= 0) {
+      next.mpesa_amount = tenders.mpesa > 0 ? tenders.mpesa : Number(sale.mpesa_amount ?? 0);
+    }
+    if (tenders.equity > 0 || Number(sale.equity_amount ?? 0) <= 0) {
+      next.equity_amount = tenders.equity > 0 ? tenders.equity : Number(sale.equity_amount ?? 0);
+    }
+    if (tenders.kcb > 0 || Number(sale.kcb_amount ?? 0) <= 0) {
+      next.kcb_amount = tenders.kcb > 0 ? tenders.kcb : Number(sale.kcb_amount ?? 0);
+    }
+  }
+
+  if (tendered > 0) {
+    next._cash_tendered = tendered;
+  }
+  if (changeGiven > 0.0001) {
+    next._change_given = changeGiven;
+    next.order_change = changeGiven;
+  }
+
+  return next;
 }
 
 function paymentReferenceForSplit(code, amounts) {

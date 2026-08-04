@@ -22,6 +22,14 @@ export const PROVISION_LICENSE_MODES = [
 
 export const PROVISION_TRIAL_PRESETS = [7, 14, 30];
 
+/** Plan / contract intervals that mean a one-year licence period. */
+export function isAnnualBillingInterval(interval) {
+  const key = String(interval ?? "")
+    .trim()
+    .toLowerCase();
+  return key === "annual" || key === "yearly" || key === "year";
+}
+
 export function emptyProvisionSubscriptionForm(overrides = {}) {
   const start = new Date().toISOString().slice(0, 10);
   return {
@@ -36,9 +44,18 @@ export function emptyProvisionSubscriptionForm(overrides = {}) {
   };
 }
 
+/**
+ * Next renewal / period end from start + plan interval.
+ * Yearly/annual → same calendar date next year; otherwise +30 days (monthly).
+ */
 export function periodEndForPlanInterval(start, interval) {
-  const days = interval === "annual" ? 365 : 30;
-  return addCalendarDays(start || undefined, days);
+  if (isAnnualBillingInterval(interval)) {
+    const base = start ? String(start).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const d = new Date(`${base}T12:00:00`);
+    d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  return addCalendarDays(start || undefined, 30);
 }
 
 /**

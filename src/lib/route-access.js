@@ -101,8 +101,11 @@ function canAccessSupplierSubroute(pathname, ctx) {
 /**
  * @param {string} pathname
  * @param {{ hasPermission: (code: string) => boolean, isModuleEnabled: (key: string) => boolean, user?: object, organization?: object, capabilities?: object, requireTillFloat?: boolean, isSuperAdmin?: () => boolean }} ctx
+ * @param {{ workspaceId?: string | null }} [options]
+ *        Optional target workspace for access checks during module switch
+ *        (before setStoredWorkspace updates). Defaults to the stored workspace.
  */
-export function canAccessRoute(pathname, ctx) {
+export function canAccessRoute(pathname, ctx, options = {}) {
   if (!pathname || pathname === "/login") return true;
 
   if (isPlatformShellUser(ctx)) {
@@ -126,7 +129,10 @@ export function canAccessRoute(pathname, ctx) {
     return false;
   }
 
-  const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(ctx.capabilities, ctx);
+  const workspaceId =
+    options.workspaceId !== undefined
+      ? options.workspaceId
+      : (getStoredWorkspace() ?? defaultWorkspaceId(ctx.capabilities, ctx));
   if (workspaceId && !pathBelongsToWorkspace(pathname, workspaceId)) {
     return false;
   }

@@ -958,13 +958,22 @@ export function showPosOrderDiscountInput(moduleSettings, options = {}) {
 /**
  * Backoffice order edit popup: allow discount edits for approval-workflow revisions
  * (including mobile-only approval → Editable orders), and for normal backoffice discount settings.
+ * Hide Disc/unit when neither product line discounts nor discount-for-approval is enabled
+ * (ignore allow_edit_line_discount defaults alone — same idea as shouldShowSalesDiscountColumn).
  */
 export function showBackofficeLineDiscountEdit(moduleSettings, { hasPermission = () => false, sale = null } = {}) {
-  if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   const sales = mergeSalesSettings(moduleSettings);
   const mobileApproval = isDiscountApprovalEnabledForChannel(moduleSettings, "mobile");
   const backofficeApproval = isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice");
   const canDirect = canGiveDiscountDirectly({ hasPermission });
+
+  const lineDiscountOrApproval = Boolean(
+    sales.allow_discounts ||
+      sales.discount_approval_enabled ||
+      mobileApproval ||
+      backofficeApproval,
+  );
+  if (!lineDiscountOrApproval) return false;
 
   const status = String(sale?.status ?? "").toLowerCase();
   const isWorkflowRevision =
@@ -980,11 +989,7 @@ export function showBackofficeLineDiscountEdit(moduleSettings, { hasPermission =
     return false;
   }
 
-  return Boolean(
-    sales.allow_discounts ||
-      sales.allow_edit_line_discount ||
-      backofficeApproval,
-  );
+  return Boolean(sales.allow_discounts || backofficeApproval);
 }
 
 /** POS / cart line discount field label when approval workflow is active for staff. */

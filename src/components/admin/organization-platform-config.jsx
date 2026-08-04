@@ -53,7 +53,6 @@ import {
   CLASSIC_POS_THEME_DEFAULT,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
-import { ExternalPosPlatformFields } from "@/components/admin/external-pos-platform-fields";
 import {
   HOTEL_POS_THEME_DEFAULT,
   HOTEL_POS_THEME_TEMPLATES,
@@ -630,28 +629,6 @@ export function OrganizationPlatformSalesSettings({
   );
 }
 
-export function OrganizationExternalPosSettings({
-  salesPlatform,
-  onChange,
-  enabledModules = {},
-}) {
-  const hasPosSales = Boolean(enabledModules["sales.pos"]);
-
-  return (
-    <PlatformFormSection
-      title="External POS"
-      description="Layout and cashier behaviour for /pos. Organization admins choose Classic color themes under Administration → Organization settings → External POS."
-    >
-      <ExternalPosPlatformFields
-        value={salesPlatform}
-        onChange={onChange}
-        posEnabled={hasPosSales}
-        showTheme={false}
-      />
-    </PlatformFormSection>
-  );
-}
-
 export function OrganizationOrdersListSettings({
   salesPlatform,
   onChange,
@@ -999,7 +976,6 @@ function ActionStageChecklist({ title, hint, options, selected, onToggle }) {
 const MANAGE_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
   { id: "sales", label: "Sales behaviour" },
-  { id: "external_pos", label: "External POS" },
   { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "status", label: "Organization status" },
@@ -1011,7 +987,6 @@ const MANAGE_ORG_TABS = [
 const REGISTER_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
   { id: "sales", label: "Sales behaviour" },
-  { id: "external_pos", label: "External POS" },
   { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "modules", label: "Applications" },
@@ -1079,7 +1054,6 @@ export function OrganizationConfigTabs({
     ? tabs.filter(
         (tab) =>
           tab.id !== "sales" &&
-          tab.id !== "external_pos" &&
           tab.id !== "orders_list" &&
           tab.id !== "workflow",
       )
@@ -1089,7 +1063,6 @@ export function OrganizationConfigTabs({
     if (
       isHospitality &&
       (activeTab === "sales" ||
-        activeTab === "external_pos" ||
         activeTab === "orders_list" ||
         activeTab === "workflow")
     ) {
@@ -1142,14 +1115,6 @@ export function OrganizationConfigTabs({
           onChange={onSalesChange}
           enabledModules={enabledModules}
           deploymentProfile={deploymentProfile}
-        />
-      ) : null}
-
-      {activeTab === "external_pos" ? (
-        <OrganizationExternalPosSettings
-          salesPlatform={salesPlatform}
-          onChange={onSalesChange}
-          enabledModules={enabledModules}
         />
       ) : null}
 
@@ -1340,9 +1305,8 @@ export function OrganizationModuleToggles({
                   <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                   {workspace.id === "pos" && enabled ? (
                     <span className="theme-subtext mt-1 block text-xs">
-                      Layout and cashier behaviour are on the <strong>External POS</strong> tab.
-                      Classic color themes are chosen by the organization under Organization settings →
-                      External POS.
+                      Layout, cashier behaviour, and Classic color themes are managed by the organization
+                      under Administration → Organization settings → External POS.
                     </span>
                   ) : null}
                   {isDistribution ? (

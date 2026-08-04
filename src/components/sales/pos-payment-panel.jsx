@@ -7,7 +7,7 @@ import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
-import { buildCheckoutPaymentSplits, alignPaymentSplitsToPayNow } from "@/lib/checkout-payment-splits";
+import { buildCheckoutPaymentSplits, alignPaymentSplitsToPayNow, buildReceiptTenderSnapshot } from "@/lib/checkout-payment-splits";
 import {
   customerCreditSummary,
   validateCustomerCreditSale,
@@ -553,22 +553,27 @@ export function PosPaymentPanel({
     const cartMpesa = mpesaFieldsLocked
       ? Math.max(0, parseDecimalInput(mpesaAmount) || Number(prefillMpesaAmount) || 0)
       : 0;
+    const tenderAmounts = {
+      cashAmount,
+      mpesaAmount: mpesaFieldsLocked ? String(cartMpesa) : mpesaAmount,
+      chequeAmount,
+      equityAmount,
+      kcbAmount,
+      otherBankAmount,
+      bankAmount,
+      bankType,
+      mpesaCode,
+      chequeNo,
+      bankRef,
+    };
     const paymentSplits = alignPaymentSplitsToPayNow(
-      buildCheckoutPaymentSplits(cfg, {
-        cashAmount,
-        mpesaAmount: mpesaFieldsLocked ? String(cartMpesa) : mpesaAmount,
-        chequeAmount,
-        equityAmount,
-        kcbAmount,
-        otherBankAmount,
-        bankAmount,
-        bankType,
-        mpesaCode,
-        chequeNo,
-        bankRef,
-      }),
+      buildCheckoutPaymentSplits(cfg, tenderAmounts),
       adjustmentMode ? amountPaid : payNow + cartMpesa,
     );
+    const receiptTenders = buildReceiptTenderSnapshot(tenderAmounts, {
+      changeDue: adjustmentMode ? 0 : Math.max(0, amountPaid - checkoutTotal),
+      amountPaid: adjustmentMode ? amountPaid : amountPaid,
+    });
 
     const body = {
       pay_now: payNow,
@@ -582,6 +587,8 @@ export function PosPaymentPanel({
       // Frontend-only: full amount tendered by the customer (may exceed order total for cash).
       // Stripped before the API call; used to print the correct change on the receipt.
       __cash_tendered: amountPaid,
+      __receipt_tenders: receiptTenders,
+      ...(receiptTenders.change > 0 ? { order_change: receiptTenders.change } : {}),
     };
 
     if (creditCustomer) {

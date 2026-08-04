@@ -767,7 +767,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       <div
         className={posModalPanelClass(
           false,
-          "theme-panel relative flex w-[min(96vw,840px)] flex-col overflow-hidden rounded-xl border shadow-2xl",
+          "theme-panel relative flex w-[min(96vw,920px)] flex-col overflow-hidden rounded-xl border shadow-2xl",
         )}
         role="dialog"
         aria-modal="true"

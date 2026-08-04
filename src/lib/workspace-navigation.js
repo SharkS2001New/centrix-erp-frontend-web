@@ -90,10 +90,11 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
     navContext,
     isNavItemVisible,
   );
+  const routeOpts = { workspaceId };
 
   for (const section of sections) {
     for (const item of section.items) {
-      if (canAccessRoute(item.href, ctx)) {
+      if (canAccessRoute(item.href, ctx, routeOpts)) {
         return item.href;
       }
     }
@@ -103,7 +104,8 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
 }
 
 function resolveBackofficeLandingPath(capabilities, ctx) {
-  if (ctx && canAccessRoute(BACKOFFICE_DEFAULT_LANDING_PATH, ctx)) {
+  const routeOpts = { workspaceId: "backoffice" };
+  if (ctx && canAccessRoute(BACKOFFICE_DEFAULT_LANDING_PATH, ctx, routeOpts)) {
     return BACKOFFICE_DEFAULT_LANDING_PATH;
   }
 
@@ -120,8 +122,9 @@ function resolveWorkspaceFallbackPath(workspaceId, capabilities, ctx) {
     return resolveBackofficeLandingPath(capabilities, ctx);
   }
 
+  const routeOpts = { workspaceId };
   const home = workspaceHomePath(workspaceId, capabilities);
-  if (ctx && canAccessRoute(home, ctx)) {
+  if (ctx && canAccessRoute(home, ctx, routeOpts)) {
     return home;
   }
 
@@ -150,7 +153,7 @@ export function recallWorkspaceLandingPath(
   if (isTabWorkspaceEnabled(capabilities)) {
     const tabPath = recallWorkspaceTabLandingPath(organizationId, workspaceId);
     if (tabPath && pathBelongsToWorkspace(tabPath, workspaceId)) {
-      if (!ctx || canAccessRoute(tabPath, ctx)) {
+      if (!ctx || canAccessRoute(tabPath, ctx, { workspaceId })) {
         return tabPath;
       }
     }
@@ -170,7 +173,7 @@ export function recallWorkspacePath(userId, organizationId, workspaceId, capabil
   if (!stored || !pathBelongsToWorkspace(stored, workspaceId)) {
     return fallback;
   }
-  if (ctx && !canAccessRoute(stored, ctx)) {
+  if (ctx && !canAccessRoute(stored, ctx, { workspaceId })) {
     return fallback;
   }
   return stored;

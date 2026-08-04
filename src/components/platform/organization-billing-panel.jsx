@@ -27,6 +27,7 @@ import {
   isLicenseExpiringSoon,
   resolveOrganizationLicense,
 } from "@/lib/organization-license";
+import { ChangeSubscriptionPlanModal } from "@/components/platform/change-subscription-plan-modal";
 
 function BillingSection({ title, description, children }) {
   return (
@@ -60,6 +61,7 @@ export function OrganizationBillingPanel({
   const [acting, setActing] = useState(false);
   const [viewerContract, setViewerContract] = useState(null);
   const [viewerInvoice, setViewerInvoice] = useState(null);
+  const [changePlanOpen, setChangePlanOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -170,6 +172,7 @@ export function OrganizationBillingPanel({
     subscription?.id &&
     subscription.status !== "cancelled" &&
     subscription.status !== "expired";
+  const canChangePlan = !isTenant && subscription?.id;
 
   return (
     <>
@@ -262,6 +265,15 @@ export function OrganizationBillingPanel({
             </div>
             {!isTenant ? (
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                {canChangePlan ? (
+                  <button
+                    type="button"
+                    className="font-medium text-[#185FA5] hover:underline"
+                    onClick={() => setChangePlanOpen(true)}
+                  >
+                    Change package
+                  </button>
+                ) : null}
                 <Link href="/platform/subscriptions" className="font-medium text-[#185FA5] hover:underline">
                   Manage subscriptions
                 </Link>
@@ -440,6 +452,13 @@ export function OrganizationBillingPanel({
         expanded
         allowEmail={!isTenant}
         onClose={() => setViewerInvoice(null)}
+      />
+      <ChangeSubscriptionPlanModal
+        open={changePlanOpen}
+        subscription={subscription}
+        organizationLabel={organization?.org_name}
+        onClose={() => setChangePlanOpen(false)}
+        onSaved={() => void load()}
       />
     </>
   );

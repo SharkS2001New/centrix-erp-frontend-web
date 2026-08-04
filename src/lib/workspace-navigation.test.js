@@ -1,10 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { P } from "@/lib/permission-codes";
 import {
   BACKOFFICE_DEFAULT_LANDING_PATH,
   recallWorkspaceLandingPath,
   workspaceLandingPath,
 } from "@/lib/workspace-navigation";
+
+vi.mock("@/lib/auth-storage", () => ({
+  getStoredWorkspace: vi.fn(() => null),
+}));
+
+import { getStoredWorkspace } from "@/lib/auth-storage";
 
 const capabilities = {
   platform_tab_workspace_enabled: true,
@@ -36,6 +42,10 @@ function ctx(permissions) {
 }
 
 describe("workspace-navigation backoffice landing", () => {
+  beforeEach(() => {
+    getStoredWorkspace.mockReturnValue(null);
+  });
+
   it("opens Business summary when overview permission is granted", () => {
     const access = ctx([P.dashboard.overview.view]);
 
@@ -63,6 +73,22 @@ describe("workspace-navigation backoffice landing", () => {
 
     expect(
       recallWorkspaceLandingPath(1, 1, "backoffice", capabilities, access),
+    ).toBe(BACKOFFICE_DEFAULT_LANDING_PATH);
+  });
+
+  it("opens Business summary when switching from External POS (stored workspace still pos)", () => {
+    getStoredWorkspace.mockReturnValue("pos");
+    const access = ctx([
+      P.dashboard.overview.view,
+      P.pos.checkout.create,
+      P.sales.orders.create,
+    ]);
+
+    expect(
+      recallWorkspaceLandingPath(1, 1, "backoffice", capabilities, access),
+    ).toBe(BACKOFFICE_DEFAULT_LANDING_PATH);
+    expect(
+      workspaceLandingPath(1, 1, "backoffice", capabilities, access),
     ).toBe(BACKOFFICE_DEFAULT_LANDING_PATH);
   });
 });

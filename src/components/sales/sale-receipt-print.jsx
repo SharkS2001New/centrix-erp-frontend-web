@@ -37,14 +37,47 @@ import {
   THERMAL_PAPER_WIDTH_MM,
 } from "@/lib/thermal-receipt-layout";
 
+function tendersFromSalePayments(sale) {
+  const payments = Array.isArray(sale?.payments) ? sale.payments : [];
+  const totals = { cash: 0, mpesa: 0, equity: 0, kcb: 0 };
+  for (const row of payments) {
+    const code = String(
+      row?.payment_method?.method_code ??
+        row?.paymentMethod?.method_code ??
+        row?.method_code ??
+        "",
+    )
+      .trim()
+      .toUpperCase();
+    const amount = Number(row?.amount ?? 0);
+    if (!(amount > 0) || !code) continue;
+    if (code.includes("CASH")) totals.cash += amount;
+    else if (code.includes("MPESA") || code.includes("AIRTEL")) totals.mpesa += amount;
+    else if (code.includes("EQUITY")) totals.equity += amount;
+    else if (code.includes("KCB")) totals.kcb += amount;
+  }
+  return totals;
+}
+
 function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {}) {
-  const rows = [];
-  const cashAmount = Number(sale.cash ?? 0);
-  const mpesaAmount = Number(sale.mpesa_amount ?? 0);
-  const equityAmount = Number(sale.equity_amount ?? 0);
-  const kcbAmount = Number(sale.kcb_amount ?? 0);
+  const fromPayments = tendersFromSalePayments(sale);
+  let cashAmount = Number(sale.cash ?? 0);
+  let mpesaAmount = Number(sale.mpesa_amount ?? 0);
+  let equityAmount = Number(sale.equity_amount ?? 0);
+  let kcbAmount = Number(sale.kcb_amount ?? 0);
+
+  // If tender columns are empty but sale_payments exist, rebuild from payments.
+  const columnTotal = cashAmount + mpesaAmount + equityAmount + kcbAmount;
+  if (columnTotal <= 0.009) {
+    cashAmount = fromPayments.cash;
+    mpesaAmount = fromPayments.mpesa;
+    equityAmount = fromPayments.equity;
+    kcbAmount = fromPayments.kcb;
+  }
+
   const voucherAmount = Number(sale.voucher_payment_amount ?? 0);
   const pointsAmount = Number(sale.points_payment_amount ?? 0);
+  const rows = [];
 
   if (showAllMethods) {
     // Always print Cash, M-Pesa, Equity, KCB rows so the cashier can see which methods
@@ -208,10 +241,17 @@ export function buildSaleReceiptHtml(
 
   const orderTotal = Number(sale.order_total ?? 0);
   const vatAmount = Number(sale.total_vat ?? 0);
-  const cashAmount = Number(sale.cash ?? 0);
-  const mpesaAmount = Number(sale.mpesa_amount ?? 0);
-  const equityAmount = Number(sale.equity_amount ?? 0);
-  const kcbAmount = Number(sale.kcb_amount ?? 0);
+  const fromPayments = tendersFromSalePayments(sale);
+  let cashAmount = Number(sale.cash ?? 0);
+  let mpesaAmount = Number(sale.mpesa_amount ?? 0);
+  let equityAmount = Number(sale.equity_amount ?? 0);
+  let kcbAmount = Number(sale.kcb_amount ?? 0);
+  if (cashAmount + mpesaAmount + equityAmount + kcbAmount <= 0.009) {
+    cashAmount = fromPayments.cash;
+    mpesaAmount = fromPayments.mpesa;
+    equityAmount = fromPayments.equity;
+    kcbAmount = fromPayments.kcb;
+  }
 
   const itemRows = buildSaleDocumentLineRows(items, {
     uomById,
@@ -235,9 +275,23 @@ export function buildSaleReceiptHtml(
   // _cash_tendered is a frontend-only annotation set at checkout time (the amount the customer
   // physically handed over, which may exceed the order total for cash payments). It is never
   // stored on the server. Fall back to totalPaid so reprints still show 0 change when unknown.
+  // Previous-order edit returns use payment_adjustments / _change_given ("Change Given").
   const cashTendered = Number(sale._cash_tendered ?? 0);
   const effectiveTendered = cashTendered > totalPaid ? cashTendered : totalPaid;
-  const changeAmount = Math.max(0, effectiveTendered - orderTotal);
+  const tenderChange = Math.max(0, effectiveTendered - orderTotal);
+  const adjustmentReturn = Array.isArray(sale.payment_adjustments)
+    ? sale.payment_adjustments.reduce(
+        (sum, row) =>
+          row?.adjustment_type === "return" ? sum + (Number(row.amount) || 0) : sum,
+        0,
+      )
+    : 0;
+  const changeGiven = Math.max(
+    Number(sale._change_given ?? 0),
+    Number(sale.order_change ?? 0),
+    adjustmentReturn,
+    tenderChange,
+  );
   const totalDiscount = discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
   const showDiscountTotal =
     (showDiscountColumn || orderDiscountEnabled) && totalDiscount > 0.0001;
@@ -275,7 +329,7 @@ export function buildSaleReceiptHtml(
   const usedPaymentRows = buildUsedPaymentRows(sale, orderTotal, { showAllMethods: showAllPaymentMethods });
   const paymentDetailsHtml = [
     ...usedPaymentRows.map((entry) => paymentDetailRow(entry.label, entry.value)),
-    ...(changeAmount > 0.0001 ? [paymentDetailRow("Change", changeAmount)] : []),
+    ...(changeGiven > 0.0001 ? [paymentDetailRow("Change Given", changeGiven)] : []),
   ].join("");
 
   const totalsHtml = [

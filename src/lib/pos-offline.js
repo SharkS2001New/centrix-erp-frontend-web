@@ -1063,6 +1063,55 @@ export function buildPreviousOrderEditPrintSale(
       };
     });
   if (!items.length) return null;
+
+  const adjustments = Array.isArray(cart.payment_adjustments)
+    ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
+    : [];
+  const returnGiven = Math.round(
+    adjustments
+      .filter((row) => row.adjustment_type === "return")
+      .reduce((sum, row) => sum + (Number(row.amount) || 0), 0) * 100,
+  ) / 100;
+  const topupAmount = Math.round(
+    adjustments
+      .filter((row) => row.adjustment_type === "topup")
+      .reduce((sum, row) => sum + (Number(row.amount) || 0), 0) * 100,
+  ) / 100;
+
+  const sourceCash = Number(sourceSale?.cash ?? 0);
+  const sourceMpesa = Number(sourceSale?.mpesa_amount ?? 0);
+  const sourceEquity = Number(sourceSale?.equity_amount ?? 0);
+  const sourceKcb = Number(sourceSale?.kcb_amount ?? 0);
+  const hasSourcePayments =
+    sourceCash > 0 || sourceMpesa > 0 || sourceEquity > 0 || sourceKcb > 0;
+
+  let cash = hasSourcePayments ? sourceCash : 0;
+  let mpesaAmount = hasSourcePayments ? sourceMpesa : 0;
+  let equityAmount = hasSourcePayments ? sourceEquity : 0;
+  let kcbAmount = hasSourcePayments ? sourceKcb : 0;
+
+  for (const row of adjustments) {
+    if (row.adjustment_type !== "topup") continue;
+    const code = String(row.method_code ?? "CASH").toUpperCase();
+    const amt = Number(row.amount) || 0;
+    if (code.includes("MPESA")) mpesaAmount += amt;
+    else if (code.includes("EQUITY")) equityAmount += amt;
+    else if (code.includes("KCB")) kcbAmount += amt;
+    else cash += amt;
+  }
+
+  if (!hasSourcePayments && topupAmount <= 0 && returnGiven <= 0) {
+    const paymentMethodCode = String(
+      cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
+    )
+      .trim()
+      .toUpperCase() || "CASH";
+    if (paymentMethodCode.includes("MPESA")) mpesaAmount = payNow;
+    else if (paymentMethodCode.includes("EQUITY")) equityAmount = payNow;
+    else if (paymentMethodCode.includes("KCB")) kcbAmount = payNow;
+    else cash = payNow;
+  }
+
   const paymentMethodCode = String(
     cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
   )
@@ -1074,11 +1123,28 @@ export function buildPreviousOrderEditPrintSale(
       : paymentMethodCode === "MPESA"
         ? "M-Pesa"
         : paymentMethodCode;
+
+  const receiptAt =
+    sourceSale?.completed_at ??
+    sourceSale?.created_at ??
+    sourceSale?.placed_at ??
+    cart.updated_at ??
+    new Date().toISOString();
+  const parsedReceiptAt = Date.parse(receiptAt);
+  const receiptAtMs = Number(
+    sourceSale?.created_at_ms ??
+      sourceSale?.offline_sold_at_ms ??
+      (Number.isFinite(parsedReceiptAt) ? parsedReceiptAt : Date.now()),
+  );
+
   return {
-    id: cart.server_sale_id ?? `edit:${orderNum}`,
+    id: cart.server_sale_id ?? sourceSale?.id ?? `edit:${orderNum}`,
     order_num: orderNum,
     ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
     ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
+    created_at: receiptAt,
+    completed_at: receiptAt,
+    created_at_ms: Number.isFinite(receiptAtMs) && receiptAtMs > 0 ? receiptAtMs : Date.now(),
     organization_id: organization?.id ?? user?.organization_id ?? null,
     branch_id: cart.branch_id ?? user?.branch_id ?? null,
     channel: "pos",
@@ -1088,20 +1154,31 @@ export function buildPreviousOrderEditPrintSale(
     payment_method_code: paymentMethodCode,
     order_total: summary.total,
     total_vat: summary.vat,
-    amount_paid: payNow,
-    cash: paymentMethodCode === "CASH" ? payNow : 0,
-    customer_num: cart.customer_num ?? null,
-    customer_name_override: cart.customer_name_override ?? null,
+    amount_paid: Math.max(0, payNow + returnGiven),
+    cash,
+    mpesa_amount: mpesaAmount,
+    equity_amount: equityAmount,
+    kcb_amount: kcbAmount,
+    customer_num: cart.customer_num ?? sourceSale?.customer_num ?? null,
+    customer_name_override:
+      cart.customer_name_override ?? sourceSale?.customer_name_override ?? null,
     superseded_sale_id: cart.superseded_sale_id ?? null,
+    payment_adjustments: adjustments,
+    ...(returnGiven > 0.0001 ? { _change_given: returnGiven } : {}),
+    // Draft reprint — never block on / wait for eTIMS QR; KRA balances on outbox sync.
+    _skip_kra_qr: true,
     items,
     payments: [
       {
         id: 1,
         payment_method_code: paymentMethodCode,
-        amount: payNow,
+        amount: Math.max(cash + mpesaAmount + equityAmount + kcbAmount, payNow),
         payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
       },
     ],
+    created_by_user: sourceSale?.created_by_user ?? sourceSale?.cashier ?? null,
+    cashier: sourceSale?.cashier ?? null,
+    cashier_name: sourceSale?.cashier_name ?? null,
   };
 }
 

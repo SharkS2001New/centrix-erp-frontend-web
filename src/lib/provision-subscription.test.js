@@ -43,4 +43,23 @@ describe("provision subscription", () => {
     expect(payload.plan_id).toBe(9);
     expect(payload.current_period_end).toBe("2026-07-31");
   });
+
+  it("auto-fills yearly/annual period end as next calendar year", () => {
+    const form = emptyProvisionSubscriptionForm({
+      license_mode: "plan",
+      status: "active",
+      plan_id: "2",
+      current_period_start: "2026-08-04",
+      current_period_end: "",
+    });
+    const annual = buildProvisionSubscriptionPayload(form, [
+      { id: 2, name: "Yearly Pro", interval: "annual" },
+    ]);
+    expect(annual.current_period_end).toBe("2027-08-04");
+
+    const yearly = buildProvisionSubscriptionPayload(form, [
+      { id: 2, name: "Yearly Pro", interval: "yearly" },
+    ]);
+    expect(yearly.current_period_end).toBe("2027-08-04");
+  });
 });

@@ -24,6 +24,7 @@ import {
   resolveAgreementPrices,
 } from "@/lib/platform-billing";
 import { industryForProfile } from "@/lib/erp-industries";
+import { periodEndForPlanInterval, isAnnualBillingInterval } from "@/lib/provision-subscription";
 import { buildPlatformContractHtml, printPlatformContract } from "@/lib/platform-contract-print";
 import { PlatformContractViewer } from "@/components/platform/platform-contract-viewer";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
@@ -108,30 +109,41 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
 
   function applyPlan(planId) {
     const plan = plans.find((row) => String(row.id) === String(planId));
-    setForm((prev) => ({
-      ...prev,
-      plan_id: planId,
-      license_basis: plan?.license_basis === "user" ? "user" : prev.license_basis || "org",
-      amount: plan?.renewal_price != null || plan?.price != null
-        ? String(plan.renewal_price ?? plan.price)
-        : prev.amount,
-      renewal_price:
-        plan?.renewal_price != null || plan?.price != null
+    setForm((prev) => {
+      const interval =
+        plan?.interval === "annual" || plan?.interval === "yearly"
+          ? "annual"
+          : prev.interval || "monthly";
+      const start = prev.start_date || new Date().toISOString().slice(0, 10);
+      const end = periodEndForPlanInterval(start, interval);
+      return {
+        ...prev,
+        plan_id: planId,
+        license_basis: plan?.license_basis === "user" ? "user" : prev.license_basis || "org",
+        amount: plan?.renewal_price != null || plan?.price != null
           ? String(plan.renewal_price ?? plan.price)
-          : prev.renewal_price,
-      first_payment_price:
-        plan?.first_payment_price != null || plan?.price != null
-          ? String(plan.first_payment_price ?? plan.price)
-          : prev.first_payment_price,
-      currency: plan?.currency ?? prev.currency,
-      interval: plan?.interval === "annual" || plan?.interval === "yearly" ? "annual" : prev.interval || "monthly",
-      module_keys: plan?.module_keys ? [...plan.module_keys] : prev.module_keys,
-      workspace_keys: plan?.workspace_keys ? [...plan.workspace_keys] : prev.workspace_keys,
-      seat_count: plan?.seat_limit != null ? String(plan.seat_limit) : prev.seat_count,
-      title:
-        prev.title ||
-        (plan ? `${plan.name} ${prev.kind === "quote" ? "quote" : "contract"}` : prev.title),
-    }));
+          : prev.amount,
+        renewal_price:
+          plan?.renewal_price != null || plan?.price != null
+            ? String(plan.renewal_price ?? plan.price)
+            : prev.renewal_price,
+        first_payment_price:
+          plan?.first_payment_price != null || plan?.price != null
+            ? String(plan.first_payment_price ?? plan.price)
+            : prev.first_payment_price,
+        currency: plan?.currency ?? prev.currency,
+        interval,
+        start_date: start,
+        end_date: end,
+        valid_until: end,
+        module_keys: plan?.module_keys ? [...plan.module_keys] : prev.module_keys,
+        workspace_keys: plan?.workspace_keys ? [...plan.workspace_keys] : prev.workspace_keys,
+        seat_count: plan?.seat_limit != null ? String(plan.seat_limit) : prev.seat_count,
+        title:
+          prev.title ||
+          (plan ? `${plan.name} ${prev.kind === "quote" ? "quote" : "contract"}` : prev.title),
+      };
+    });
   }
 
   function regenerateTerms() {
@@ -476,18 +488,52 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
                 <select
                   className={inputClass}
                   value={form.interval === "annual" || form.interval === "yearly" ? "annual" : "monthly"}
-                  onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}
+                  onChange={(e) => {
+                    const interval = e.target.value;
+                    setForm((f) => {
+                      const start = f.start_date || new Date().toISOString().slice(0, 10);
+                      const end = periodEndForPlanInterval(start, interval);
+                      return {
+                        ...f,
+                        interval,
+                        start_date: start,
+                        end_date: end,
+                        valid_until: end,
+                      };
+                    });
+                  }}
                 >
                   {PLAN_INTERVALS.map((row) => (
                     <option key={row.id} value={row.id}>{row.label}</option>
                   ))}
                 </select>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {isAnnualBillingInterval(form.interval)
+                    ? "Yearly: start and expiry (next renewal) fill automatically."
+                    : "Monthly: expiry is start + 30 days (editable)."}
+                </p>
               </Field>
               <Field label="Seats">
                 <input type="number" min="1" className={inputClass} value={form.seat_count} onChange={(e) => setForm((f) => ({ ...f, seat_count: e.target.value }))} />
               </Field>
               <Field label="Start date">
-                <input type="date" className={inputClass} value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={form.start_date}
+                  onChange={(e) => {
+                    const start = e.target.value;
+                    setForm((f) => {
+                      const end = periodEndForPlanInterval(start, f.interval);
+                      return {
+                        ...f,
+                        start_date: start,
+                        end_date: end,
+                        valid_until: end,
+                      };
+                    });
+                  }}
+                />
               </Field>
               <Field label="Valid until">
                 <input type="date" className={inputClass} value={form.valid_until} onChange={(e) => setForm((f) => ({ ...f, valid_until: e.target.value }))} />

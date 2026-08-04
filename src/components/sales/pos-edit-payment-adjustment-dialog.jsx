@@ -49,7 +49,7 @@ export function PosEditPaymentAdjustmentDialog({
   }
 
   const isReturn = delta.type === "return";
-  const title = isReturn ? "Refund on previous order edit" : "Top-up on previous order edit";
+  const title = "Payment Breakdown";
   const amountLabel = isReturn ? "Return amount" : "Top-up amount";
 
   function submit() {

@@ -76,4 +76,13 @@ describe("route-access", () => {
       }),
     ).toBe(false);
   });
+
+  it("evaluates workspace ownership against an explicit target workspace", () => {
+    expect(
+      canAccessRoute("/dashboard", baseCtx, { workspaceId: "backoffice" }),
+    ).toBe(true);
+    expect(
+      canAccessRoute("/dashboard", baseCtx, { workspaceId: "pos" }),
+    ).toBe(false);
+  });
 });

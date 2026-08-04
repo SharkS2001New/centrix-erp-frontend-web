@@ -29,6 +29,8 @@ import {
   isLicenseExpired,
   isLicenseExpiringSoon,
 } from "@/lib/organization-license";
+import { periodEndForPlanInterval, isAnnualBillingInterval } from "@/lib/provision-subscription";
+import { ChangeSubscriptionPlanModal } from "@/components/platform/change-subscription-plan-modal";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -37,12 +39,13 @@ const TRIAL_PRESETS = [7, 14, 30];
 const EXTEND_PRESETS = [7, 14, 30, 90];
 
 function emptyAssignForm() {
+  const start = new Date().toISOString().slice(0, 10);
   return {
     organization_id: "",
     plan_id: "",
     status: "active",
     seat_count: "1",
-    current_period_start: new Date().toISOString().slice(0, 10),
+    current_period_start: start,
     current_period_end: "",
     trial_days: "14",
     invoice_id: "",
@@ -70,6 +73,7 @@ export default function PlatformSubscriptionsPage() {
   const [extendTarget, setExtendTarget] = useState(null);
   const [attachTarget, setAttachTarget] = useState(null);
   const [attachInvoiceId, setAttachInvoiceId] = useState("");
+  const [changePlanTarget, setChangePlanTarget] = useState(null);
   const [extendDays, setExtendDays] = useState("30");
   const [extendUntil, setExtendUntil] = useState("");
   const [saving, setSaving] = useState(false);
@@ -139,6 +143,35 @@ export default function PlatformSubscriptionsPage() {
       trial_days: String(n),
       current_period_end: addCalendarDays(start || undefined, n),
     }));
+  }
+
+  /** Paid plan: fill start (today if empty) + expiry from plan interval (yearly → +1 year). */
+  function applyPaidPlanPeriod(planId, startDate = null) {
+    const plan = plans.find((row) => String(row.id) === String(planId));
+    setForm((f) => {
+      const start =
+        startDate ||
+        f.current_period_start ||
+        new Date().toISOString().slice(0, 10);
+      if (f.status === "trialing") {
+        return {
+          ...f,
+          plan_id: planId,
+          seat_count:
+            plan?.seat_limit != null ? String(plan.seat_limit) : f.seat_count,
+          current_period_start: start,
+          current_period_end: addCalendarDays(start, Number(f.trial_days) || 14),
+        };
+      }
+      return {
+        ...f,
+        plan_id: planId,
+        seat_count:
+          plan?.seat_limit != null ? String(plan.seat_limit) : f.seat_count,
+        current_period_start: start,
+        current_period_end: periodEndForPlanInterval(start, plan?.interval),
+      };
+    });
   }
 
   async function handleAssign(e) {
@@ -478,6 +511,13 @@ export default function PlatformSubscriptionsPage() {
                           >
                             Extend licence
                           </button>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-[#185FA5] hover:underline"
+                            onClick={() => setChangePlanTarget(sub)}
+                          >
+                            Change package
+                          </button>
                           {sub.status !== "trialing" ? (
                             <button
                               type="button"
@@ -607,7 +647,7 @@ export default function PlatformSubscriptionsPage() {
                 <select
                   className={inputClass}
                   value={form.plan_id}
-                  onChange={(e) => setForm((f) => ({ ...f, plan_id: e.target.value }))}
+                  onChange={(e) => applyPaidPlanPeriod(e.target.value)}
                 >
                   <option value="">— Select —</option>
                   {plans.map((plan) => (
@@ -619,6 +659,17 @@ export default function PlatformSubscriptionsPage() {
                     </option>
                   ))}
                 </select>
+                {form.plan_id && form.status !== "trialing" ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Expiry auto-fills from the plan interval (
+                    {isAnnualBillingInterval(
+                      plans.find((p) => String(p.id) === String(form.plan_id))?.interval,
+                    )
+                      ? "yearly → same date next year"
+                      : "monthly → +30 days"}
+                    ). You can still edit the dates.
+                  </p>
+                ) : null}
               </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
@@ -641,7 +692,17 @@ export default function PlatformSubscriptionsPage() {
                       if (status === "trialing") {
                         applyTrialDays(form.trial_days || 14);
                       } else {
-                        setForm((f) => ({ ...f, status }));
+                        const plan = plans.find((row) => String(row.id) === String(form.plan_id));
+                        const start =
+                          form.current_period_start || new Date().toISOString().slice(0, 10);
+                        setForm((f) => ({
+                          ...f,
+                          status,
+                          current_period_start: start,
+                          current_period_end: plan
+                            ? periodEndForPlanInterval(start, plan.interval)
+                            : f.current_period_end,
+                        }));
                       }
                     }}
                   >
@@ -692,13 +753,23 @@ export default function PlatformSubscriptionsPage() {
                     onChange={(e) => {
                       const start = e.target.value;
                       setForm((f) => {
-                        if (f.status !== "trialing") {
-                          return { ...f, current_period_start: start };
+                        if (f.status === "trialing") {
+                          return {
+                            ...f,
+                            current_period_start: start,
+                            current_period_end: addCalendarDays(
+                              start || undefined,
+                              Number(f.trial_days) || 14,
+                            ),
+                          };
                         }
+                        const plan = plans.find((row) => String(row.id) === String(f.plan_id));
                         return {
                           ...f,
                           current_period_start: start,
-                          current_period_end: addCalendarDays(start || undefined, Number(f.trial_days) || 14),
+                          current_period_end: plan
+                            ? periodEndForPlanInterval(start, plan.interval)
+                            : f.current_period_end,
                         };
                       });
                     }}
@@ -852,6 +923,17 @@ export default function PlatformSubscriptionsPage() {
           </form>
         </div>
       ) : null}
+
+      <ChangeSubscriptionPlanModal
+        open={Boolean(changePlanTarget)}
+        subscription={changePlanTarget}
+        organizationLabel={changePlanTarget?.organization?.org_name}
+        onClose={() => setChangePlanTarget(null)}
+        onSaved={() => {
+          setChangePlanTarget(null);
+          void load();
+        }}
+      />
     </CatalogPageShell>
   );
 }
