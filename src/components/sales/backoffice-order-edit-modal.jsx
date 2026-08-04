@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchRetailPackagesForProductCodes } from "@/lib/reference-data-cache";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
@@ -319,6 +319,9 @@ function buildNewDraftLine(
 export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved, capabilities = null }) {
   const { hasPermission } = useAuth();
   const [lines, setLines] = useState([]);
+  const [pendingFocusQtyKey, setPendingFocusQtyKey] = useState(null);
+  const qtyInputRefs = useRef(new Map());
+  const linesPanelRef = useRef(null);
   const [removedIds, setRemovedIds] = useState([]);
   const [baselineDraft, setBaselineDraft] = useState([]);
   const [baselineRemovedIds, setBaselineRemovedIds] = useState([]);

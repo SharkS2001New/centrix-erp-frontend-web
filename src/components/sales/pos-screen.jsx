@@ -1128,6 +1128,25 @@ export function PosScreen({ standalone = false }) {
     loadPosTillMeta();
   }, [standalone, requireTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
 
+  // Keep the flag in sync with what OpenSessionModal actually shows. Otherwise
+  // floatModalOpen can stay true after a session opens and Alt+H falsely says
+  // "Close the till float dialog first" when no dialog is on screen.
+  const floatDeclareDialogOpen = Boolean(
+    canManageTillSession &&
+      !activeSession &&
+      !suspendedSession &&
+      !sessionLoading &&
+      !zReportOpen &&
+      floatModalOpen &&
+      (requireTillFloat || standalone),
+  );
+
+  useEffect(() => {
+    if (!floatModalOpen) return;
+    if (floatDeclareDialogOpen) return;
+    setFloatModalOpen(false);
+  }, [floatModalOpen, floatDeclareDialogOpen]);
+
   useEffect(() => {
     // Warm local print agent so the first receipt can skip the health ping.
     if (!standalone) return;
@@ -8306,7 +8325,7 @@ export function PosScreen({ standalone = false }) {
     pendingSyncOpen,
     leaveGuardOpen,
     priceCheckerOpen,
-    floatModalOpen,
+    floatModalOpen: floatDeclareDialogOpen,
     floatDetailsOpen,
     xReportOpen,
     closeSessionOpen,
@@ -8940,15 +8959,7 @@ export function PosScreen({ standalone = false }) {
       )}
 
       <OpenSessionModal
-        open={
-          canManageTillSession &&
-          !activeSession &&
-          !suspendedSession &&
-          !sessionLoading &&
-          !zReportOpen &&
-          floatModalOpen &&
-          (requireTillFloat || standalone)
-        }
+        open={floatDeclareDialogOpen}
         onClose={() => {
           setSessionError(null);
           floatModalDismissedRef.current = true;

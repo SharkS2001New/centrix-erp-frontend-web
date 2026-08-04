@@ -10,6 +10,7 @@ import { inputClassName } from "@/components/catalog/catalog-shared";
 
 /**
  * Searchable product picker — live API search (no client product catalog cache).
+ * Arrow Up/Down moves highlight; Enter selects the highlighted result.
  */
 export function ProductSearchSelect({
   value,
@@ -28,11 +29,13 @@ export function ProductSearchSelect({
   const { user } = useAuth();
   const listId = useId();
   const rootRef = useRef(null);
+  const listRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
 
   const excludeSet = useMemo(
     () => new Set((excludeCodes ?? []).map(String)),
@@ -148,11 +151,26 @@ export function ProductSearchSelect({
     });
   }, [results, excludeSet, value]);
 
+  useEffect(() => {
+    if (!open || searching || filtered.length === 0) {
+      setHighlightIndex(-1);
+      return;
+    }
+    setHighlightIndex(0);
+  }, [open, searching, filtered]);
+
+  useEffect(() => {
+    if (highlightIndex < 0 || !listRef.current) return;
+    const option = listRef.current.querySelector(`[data-option-index="${highlightIndex}"]`);
+    option?.scrollIntoView?.({ block: "nearest" });
+  }, [highlightIndex]);
+
   function pick(product) {
     onChange(product.product_code);
     onProductSelect?.(product);
     setQuery(displayLabel(product));
     setOpen(false);
+    setHighlightIndex(-1);
   }
 
   function clearSelection() {
@@ -160,9 +178,58 @@ export function ProductSearchSelect({
     setQuery("");
     setResults([]);
     setOpen(false);
+    setHighlightIndex(-1);
+  }
+
+  function onInputKeyDown(e) {
+    if (disabled) return;
+
+    if (e.key === "Escape") {
+      if (open) {
+        e.preventDefault();
+        setOpen(false);
+        setHighlightIndex(-1);
+      }
+      return;
+    }
+
+    const canNavigate = open && !searching && filtered.length > 0;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      if (!canNavigate) return;
+      setHighlightIndex((prev) => (prev < 0 ? 0 : (prev + 1) % filtered.length));
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!canNavigate) return;
+      setHighlightIndex((prev) =>
+        prev <= 0 ? filtered.length - 1 : prev - 1,
+      );
+      return;
+    }
+
+    if (e.key === "Enter") {
+      if (!canNavigate) return;
+      const index = highlightIndex >= 0 ? highlightIndex : 0;
+      const product = filtered[index];
+      if (!product) return;
+      e.preventDefault();
+      pick(product);
+    }
   }
 
   const fieldClassName = inputClassNameProp ?? inputClassName();
+  const activeOptionId =
+    highlightIndex >= 0 && filtered[highlightIndex]
+      ? `${listId}-opt-${highlightIndex}`
+      : undefined;
 
   return (
     <div ref={rootRef} className="relative w-full">
@@ -173,6 +240,7 @@ export function ProductSearchSelect({
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
+          aria-activedescendant={activeOptionId}
           value={query}
           placeholder={placeholder}
           disabled={disabled}
@@ -185,6 +253,7 @@ export function ProductSearchSelect({
           onFocus={() => {
             if (!disabled) setOpen(true);
           }}
+          onKeyDown={onInputKeyDown}
           className={fieldClassName}
         />
         {value && !disabled ? (
@@ -200,6 +269,7 @@ export function ProductSearchSelect({
       </div>
       {open && !disabled ? (
         <ul
+          ref={listRef}
           id={listId}
           role="listbox"
           className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
@@ -213,24 +283,33 @@ export function ProductSearchSelect({
           ) : filtered.length === 0 ? (
             <li className="px-3 py-2 text-sm text-slate-500">No products found</li>
           ) : (
-            filtered.map((p) => (
-              <li key={p.product_code}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={String(p.product_code) === String(value)}
-                  onClick={() => pick(p)}
-                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 ${
-                    String(p.product_code) === String(value)
-                      ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
-                      : "text-slate-800"
-                  }`}
-                >
-                  <span className="font-medium">{p.product_name}</span>
-                  <span className="ml-1.5 font-mono text-xs text-slate-500">{p.product_code}</span>
-                </button>
-              </li>
-            ))
+            filtered.map((p, index) => {
+              const isHighlighted = index === highlightIndex;
+              const isSelected = String(p.product_code) === String(value);
+              return (
+                <li key={p.product_code}>
+                  <button
+                    type="button"
+                    id={`${listId}-opt-${index}`}
+                    data-option-index={index}
+                    role="option"
+                    aria-selected={isHighlighted || isSelected}
+                    onMouseEnter={() => setHighlightIndex(index)}
+                    onClick={() => pick(p)}
+                    className={`block w-full px-3 py-2 text-left text-sm ${
+                      isHighlighted
+                        ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
+                        : isSelected
+                          ? "bg-slate-50 font-medium text-[#185FA5]"
+                          : "text-slate-800 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="font-medium">{p.product_name}</span>
+                    <span className="ml-1.5 font-mono text-xs text-slate-500">{p.product_code}</span>
+                  </button>
+                </li>
+              );
+            })
           )}
         </ul>
       ) : null}
