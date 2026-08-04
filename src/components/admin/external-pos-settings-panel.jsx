@@ -10,6 +10,7 @@ import {
 } from "@/lib/sales-settings";
 import {
   CLASSIC_POS_THEME_DEFAULT,
+  normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 import {
@@ -48,6 +49,7 @@ function platformExternalPosFromApi(res) {
   return {
     external_pos_layout: sales.external_pos_layout === "classic" ? "classic" : "modern",
     classic_pos_theme_template: normalizeClassicPosThemeTemplate(sales.classic_pos_theme_template),
+    classic_pos_theme_colors: normalizeClassicPosThemeColors(sales.classic_pos_theme_colors),
     show_pos_checkout_on_create: sales.show_pos_checkout_on_create !== false,
     require_pos_till_float: Boolean(sales.require_pos_till_float),
     enable_pos_cash_rounding: Boolean(sales.enable_pos_cash_rounding),
@@ -130,6 +132,7 @@ export function ExternalPosSettingsPanel({
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
   const [platformForm, setPlatformForm] = useState(() => platformExternalPosFromApi({}));
   const [themeTemplate, setThemeTemplate] = useState(CLASSIC_POS_THEME_DEFAULT);
+  const [themeColors, setThemeColors] = useState({});
   const [loading, setLoading] = useState(true);
 
   const modules = capabilities?.modules ?? {};
@@ -154,6 +157,7 @@ export function ExternalPosSettingsPanel({
       );
       setPlatformForm(fromApi);
       setThemeTemplate(fromApi.classic_pos_theme_template);
+      setThemeColors(fromApi.classic_pos_theme_colors);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load External POS settings");
     } finally {
@@ -174,15 +178,22 @@ export function ExternalPosSettingsPanel({
       const themeId = normalizeClassicPosThemeTemplate(
         platformManaged ? platformForm.classic_pos_theme_template : themeTemplate,
       );
+      const colors = normalizeClassicPosThemeColors(
+        platformManaged ? platformForm.classic_pos_theme_colors : themeColors,
+      );
       const body = {
         ...salesOrganizationPayloadFromForm(salesForm, capabilities),
-        // Organization admins own Classic color themes.
+        // Organization admins own Classic color themes + custom color overrides.
         classic_pos_theme_template: themeId,
+        classic_pos_theme_colors: colors,
         ...(platformManaged
           ? {
               external_pos_layout: platformForm.external_pos_layout,
               classic_pos_theme_template: normalizeClassicPosThemeTemplate(
                 platformForm.classic_pos_theme_template,
+              ),
+              classic_pos_theme_colors: normalizeClassicPosThemeColors(
+                platformForm.classic_pos_theme_colors,
               ),
               show_pos_checkout_on_create: platformForm.show_pos_checkout_on_create !== false,
               require_pos_till_float: Boolean(platformForm.require_pos_till_float),
@@ -202,6 +213,7 @@ export function ExternalPosSettingsPanel({
       );
       setPlatformForm(fromApi);
       setThemeTemplate(fromApi.classic_pos_theme_template);
+      setThemeColors(fromApi.classic_pos_theme_colors);
       setMessage("External POS settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save External POS settings");
@@ -235,6 +247,9 @@ export function ExternalPosSettingsPanel({
                   if (next?.classic_pos_theme_template) {
                     setThemeTemplate(normalizeClassicPosThemeTemplate(next.classic_pos_theme_template));
                   }
+                  if (next?.classic_pos_theme_colors != null) {
+                    setThemeColors(normalizeClassicPosThemeColors(next.classic_pos_theme_colors));
+                  }
                 }}
                 posEnabled
                 showTheme
@@ -255,6 +270,8 @@ export function ExternalPosSettingsPanel({
                   <ClassicPosThemePicker
                     value={themeTemplate}
                     onChange={setThemeTemplate}
+                    colors={themeColors}
+                    onColorsChange={setThemeColors}
                   />
                 ) : null}
               </>

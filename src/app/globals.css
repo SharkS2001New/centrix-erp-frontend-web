@@ -1054,14 +1054,34 @@ html[data-theme="light"] .theme-input:focus {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.pos-search-select-option:hover {
+.pos-search-select-option:hover:not(.pos-search-select-option-active) {
   background-color: var(--theme-hover);
 }
 
+/* Keyboard / selected option — blend with workspace theme (header / primary). */
 .pos-search-select-option-active {
-  background-color: var(--theme-primary-subtle);
-  color: var(--theme-accent-text);
+  background-color: var(--theme-primary);
+  color: var(--theme-primary-fg, #ffffff);
   font-weight: 500;
+}
+
+.pos-search-select-option-active:hover {
+  background-color: var(--theme-primary-hover, var(--theme-primary));
+  color: var(--theme-primary-fg, #ffffff);
+}
+
+html[data-classic-pos-active] .pos-search-select-option-active {
+  background-color: var(--classic-select, var(--classic-header)) !important;
+  color: var(--classic-select-fg, var(--classic-header-fg, #ffffff)) !important;
+}
+
+html[data-classic-pos-active] .pos-search-select-option-active:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--classic-select, var(--classic-header)) 88%,
+    #000
+  ) !important;
+  color: var(--classic-select-fg, var(--classic-header-fg, #ffffff)) !important;
 }
 
 .theme-secondary-btn {
@@ -2595,9 +2615,9 @@ html[data-theme="dark"] .pos-workspace-classic {
 }
 
 .pos-workspace-classic .classic-pos-find-open-btn {
-  border: 1px solid var(--classic-border);
-  background: var(--classic-panel);
-  color: var(--classic-text);
+  border: 1px solid color-mix(in srgb, var(--classic-button, var(--classic-header)) 78%, #000);
+  background: var(--classic-button, var(--classic-header));
+  color: var(--theme-primary-fg, var(--classic-header-fg, #ffffff));
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -2607,11 +2627,65 @@ html[data-theme="dark"] .pos-workspace-classic {
 }
 
 .pos-workspace-classic .classic-pos-find-open-btn:hover:not(:disabled) {
-  filter: brightness(1.08);
+  filter: brightness(0.92);
 }
 
 .pos-workspace-classic .classic-pos-find-open-btn:disabled {
   opacity: 0.5;
+}
+
+/* Classic POS — header / cart / primary actions follow the active template */
+.pos-workspace-classic .pos-header-action-btn {
+  background: var(--classic-panel) !important;
+  border-color: color-mix(in srgb, var(--classic-header-fg, #fff) 28%, var(--classic-border)) !important;
+  color: var(--classic-text) !important;
+  box-shadow: none !important;
+}
+
+.pos-workspace-classic .pos-header-action-btn:hover:not(:disabled) {
+  background: var(--classic-table) !important;
+  border-color: var(--classic-header-fg, var(--classic-border)) !important;
+}
+
+.pos-workspace-classic .theme-primary-btn,
+.pos-workspace-classic .pos-add-line-btn {
+  background-color: var(--classic-button, var(--classic-header)) !important;
+  color: var(--theme-primary-fg, var(--classic-header-fg, #ffffff)) !important;
+  border-color: color-mix(in srgb, var(--classic-button, var(--classic-header)) 78%, #000) !important;
+  box-shadow: none !important;
+}
+
+.pos-workspace-classic .theme-primary-btn:hover:not(:disabled),
+.pos-workspace-classic .pos-add-line-btn:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--classic-button, var(--classic-header)) 88%, #000) !important;
+  color: var(--theme-primary-fg, var(--classic-header-fg, #ffffff)) !important;
+  border-color: color-mix(in srgb, var(--classic-button, var(--classic-header)) 70%, #000) !important;
+}
+
+.pos-workspace-classic .theme-secondary-btn:not(:disabled) {
+  background-color: var(--classic-panel) !important;
+  border-color: var(--classic-border) !important;
+  color: var(--classic-text) !important;
+}
+
+.pos-workspace-classic .theme-secondary-btn:hover:not(:disabled) {
+  background-color: var(--classic-row-selected) !important;
+  border-color: var(--classic-header) !important;
+}
+
+.pos-workspace-classic .pos-cart-action-btn:not(:disabled) {
+  background-color: var(--classic-panel) !important;
+  border-color: var(--classic-border) !important;
+  color: var(--classic-text) !important;
+}
+
+.pos-workspace-classic .pos-cart-action-btn:hover:not(:disabled) {
+  background-color: var(--classic-row-selected) !important;
+  border-color: var(--classic-header) !important;
+}
+
+.pos-workspace-classic .pos-cart-action-icon {
+  color: var(--classic-header) !important;
 }
 
 .classic-pos-find-overlay {
@@ -2667,21 +2741,29 @@ html[data-theme="dark"] .pos-workspace-classic {
 }
 
 .classic-pos-find-btn {
-  border: 1px solid var(--classic-border, #8a7a55);
-  background: var(--classic-input-bg, #fff);
+  border: 1px solid color-mix(in srgb, var(--classic-button, var(--classic-header)) 78%, #000);
+  background: var(--classic-button, var(--classic-header));
   padding: 0.45rem 0.85rem;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--classic-text, #1a1a1a);
+  color: var(--theme-primary-fg, var(--classic-header-fg, #ffffff));
 }
 
 .classic-pos-find-btn:hover {
-  background: var(--classic-row-selected, #f3ead6);
+  filter: brightness(0.92);
 }
 
 .classic-pos-find-btn--muted {
-  background: var(--classic-th-bg, #e4d7b8);
+  background: var(--classic-panel);
+  border-color: var(--classic-border);
+  color: var(--classic-text);
+  filter: none;
+}
+
+.classic-pos-find-btn--muted:hover {
+  background: var(--classic-row-selected, #f3ead6);
+  filter: none;
 }
 
 .classic-pos-find-table-wrap {
@@ -2740,9 +2822,14 @@ html[data-theme="dark"] .pos-workspace-classic {
   cursor: pointer;
 }
 
-.classic-pos-find-table tbody tr:hover,
-.classic-pos-find-row--active {
+.classic-pos-find-table tbody tr:hover:not(.classic-pos-find-row--active) {
   background: var(--classic-row-selected, #fff4c8);
+}
+
+.classic-pos-find-row--active,
+.classic-pos-find-row--active td {
+  background: var(--classic-select, var(--classic-header, #b8a574)) !important;
+  color: var(--classic-select-fg, var(--classic-header-fg, #ffffff)) !important;
 }
 
 .classic-pos-find-row--negative,
@@ -3233,6 +3320,32 @@ html[data-classic-pos-active] .theme-dialog-footer {
   background-color: var(--classic-footer);
 }
 
+/* Portaled dialogs / overlays while Classic POS theme is on document */
+html[data-classic-pos-active] .theme-primary-btn {
+  background-color: var(--classic-button, var(--classic-header)) !important;
+  color: var(--theme-primary-fg, var(--classic-header-fg, #ffffff)) !important;
+  border: 1px solid color-mix(in srgb, var(--classic-button, var(--classic-header)) 78%, #000) !important;
+}
+
+html[data-classic-pos-active] .theme-primary-btn:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--classic-button, var(--classic-header)) 88%, #000) !important;
+  color: var(--theme-primary-fg, var(--classic-header-fg, #ffffff)) !important;
+}
+
+html[data-classic-pos-active] .theme-secondary-btn:not(:disabled),
+html[data-classic-pos-active] .theme-btn-secondary:not(:disabled) {
+  background-color: var(--classic-panel);
+  border-color: var(--classic-border);
+  color: var(--classic-text);
+}
+
+html[data-classic-pos-active] .theme-secondary-btn:hover:not(:disabled),
+html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
+  background-color: var(--classic-row-selected);
+  border-color: var(--classic-header);
+  color: var(--classic-text);
+}
+
 .classic-pos-cart-table th {
   position: sticky;
   top: 0;
@@ -3345,7 +3458,9 @@ html[data-classic-pos-active] .theme-dialog-footer {
 }
 
 .classic-pos-qty-btn:hover:not(:disabled) {
-  background: var(--classic-th-bg, #ebe3d2);
+  background: var(--classic-row-selected, #ebe3d2);
+  border-color: var(--classic-header, #8a7a55);
+  color: var(--classic-header, var(--classic-text));
 }
 
 .classic-pos-qty-btn:disabled {
@@ -3440,9 +3555,13 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
   color: var(--classic-muted);
 }
 
-.classic-pos-scan-dropdown .classic-pos-find-row--active td,
-.classic-pos-scan-dropdown .classic-pos-find-table tbody tr:hover td {
+.classic-pos-scan-dropdown .classic-pos-find-table tbody tr:hover:not(.classic-pos-find-row--active) td {
   background: var(--classic-row-selected);
+}
+
+.classic-pos-scan-dropdown .classic-pos-find-row--active td {
+  background: var(--classic-select, var(--classic-header)) !important;
+  color: var(--classic-select-fg, var(--classic-header-fg, #ffffff)) !important;
 }
 
 /* ── Hotel & Bar POS theme templates (scoped under .hotel-pos-root) ── */

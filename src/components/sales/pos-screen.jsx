@@ -156,6 +156,7 @@ import {
   classicPosThemeCssVars,
   CLASSIC_POS_THEME_DEFAULT,
   isDarkClassicPosTheme,
+  resolveClassicPosThemeColors,
   resolveClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
@@ -803,9 +804,14 @@ export function PosScreen({ standalone = false }) {
     () => (classicLayout ? resolveClassicPosThemeTemplate(capabilities) : CLASSIC_POS_THEME_DEFAULT),
     [classicLayout, capabilities],
   );
+  const classicThemeColors = useMemo(
+    () => (classicLayout ? resolveClassicPosThemeColors(capabilities) : {}),
+    [classicLayout, capabilities],
+  );
   const classicThemeVars = useMemo(
-    () => (classicLayout ? classicPosThemeCssVars(classicThemeTemplate) : null),
-    [classicLayout, classicThemeTemplate],
+    () =>
+      classicLayout ? classicPosThemeCssVars(classicThemeTemplate, classicThemeColors) : null,
+    [classicLayout, classicThemeTemplate, classicThemeColors],
   );
   const {
     offlineMode,
@@ -2239,12 +2245,12 @@ export function PosScreen({ standalone = false }) {
     const previous = getTheme();
     const forceLight = !isDarkClassicPosTheme(classicThemeTemplate);
     if (forceLight) applyTheme("light");
-    applyClassicPosDocumentTheme(classicThemeTemplate);
+    applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
     return () => {
       clearClassicPosDocumentTheme();
       if (forceLight) applyTheme(previous);
     };
-  }, [classicLayout, classicThemeTemplate]);
+  }, [classicLayout, classicThemeTemplate, classicThemeColors]);
 
   useEffect(() => {
     if (cart?.discount_approval_pending && cart?.discount_approval_request?.discount_amount != null) {

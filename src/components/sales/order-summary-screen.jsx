@@ -27,6 +27,8 @@ import {
   orderPaymentStatusHint,
   saleBalanceDue,
   canRecordOrderPayment,
+  canConvertToPaid,
+  canConvertToUnpaid,
   isPrintInvoiceVisible,
   isPrintProformaVisible,
 } from "@/lib/order-workflow";
@@ -676,6 +678,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const paymentStatusKey = String(sale?.payment_status ?? "").toLowerCase();
   const showPaymentBreakdownCards = paymentStatusKey === "partial";
   const canRecordPayment = !readOnlyWorkflow && canRecordOrderPayment(sale, totalPaid, capabilities);
+  const canMarkPaid = !readOnlyWorkflow && canConvertToPaid(sale, capabilities);
+  const canMarkUnpaid = !readOnlyWorkflow && canConvertToUnpaid(sale, capabilities);
   const paymentStatusHint = orderPaymentStatusHint(sale, totalPaid, capabilities);
   const cancellationAllowed = useMemo(
     () => canCancelOrder(sale, saleWorkflow, capabilities),
@@ -831,6 +835,27 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       await loadSale();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not update order.");
+    } finally {
+      setTransitionBusy(false);
+    }
+  }
+
+  async function convertPaymentStatus(direction) {
+    if (!sale?.id || transitionBusy) return;
+    const allowed = direction === "unpaid" ? canMarkUnpaid : canMarkPaid;
+    if (!allowed) return;
+    const path =
+      direction === "unpaid"
+        ? `/sales/${sale.id}/convert-to-unpaid`
+        : `/sales/${sale.id}/convert-to-paid`;
+    setTransitionBusy(true);
+    try {
+      const updated = await apiRequest(path, { method: "POST" });
+      setSale((prev) => ({ ...prev, ...updated }));
+      notifySuccess(direction === "unpaid" ? "Order converted to unpaid." : "Order converted to paid.");
+      await loadSale();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not convert payment status.");
     } finally {
       setTransitionBusy(false);
     }
@@ -1022,6 +1047,26 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
                 >
                   Collect payment
+                </button>
+              ) : null}
+              {canMarkPaid ? (
+                <button
+                  type="button"
+                  onClick={() => void convertPaymentStatus("paid")}
+                  disabled={transitionBusy || fulfillment.busy}
+                  className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  Convert to paid
+                </button>
+              ) : null}
+              {canMarkUnpaid ? (
+                <button
+                  type="button"
+                  onClick={() => void convertPaymentStatus("unpaid")}
+                  disabled={transitionBusy || fulfillment.busy}
+                  className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  Convert to unpaid
                 </button>
               ) : null}
               {isOrderEditActionVisible(sale, saleWorkflow, capabilities) ? (

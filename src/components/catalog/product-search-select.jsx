@@ -286,16 +286,18 @@ export function ProductSearchSelect({
           ref={listRef}
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          className="pos-search-select-panel absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-lg border py-1 shadow-lg"
         >
           {searching ? (
-            <li className="px-3 py-2 text-sm text-slate-500">Searching…</li>
+            <li className="px-3 py-2 text-sm text-[var(--theme-text-muted)]">Searching…</li>
           ) : searchError ? (
             <li className="px-3 py-2 text-sm text-red-600">{searchError}</li>
           ) : query.trim().length < 1 ? (
-            <li className="px-3 py-2 text-sm text-slate-500">Type a product name or code</li>
+            <li className="px-3 py-2 text-sm text-[var(--theme-text-muted)]">
+              Type a product name or code
+            </li>
           ) : filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-500">No products found</li>
+            <li className="px-3 py-2 text-sm text-[var(--theme-text-muted)]">No products found</li>
           ) : (
             filtered.map((p, index) => {
               const isHighlighted = index === highlightIndex;
@@ -314,16 +316,12 @@ export function ProductSearchSelect({
                       e.preventDefault();
                     }}
                     onClick={() => pick(p)}
-                    className={`block w-full px-3 py-2 text-left text-sm ${
-                      isHighlighted
-                        ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
-                        : isSelected
-                          ? "bg-slate-50 font-medium text-[#185FA5]"
-                          : "text-slate-800 hover:bg-slate-50"
+                    className={`pos-search-select-option block w-full px-3 py-2 text-left text-sm ${
+                      isHighlighted || isSelected ? "pos-search-select-option-active" : ""
                     }`}
                   >
                     <span className="font-medium">{p.product_name}</span>
-                    <span className="ml-1.5 font-mono text-xs text-slate-500">{p.product_code}</span>
+                    <span className="ml-1.5 font-mono text-xs opacity-80">{p.product_code}</span>
                   </button>
                 </li>
               );

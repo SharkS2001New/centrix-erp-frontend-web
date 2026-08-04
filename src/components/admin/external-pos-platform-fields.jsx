@@ -1,7 +1,11 @@
 "use client";
 
 import {
+  CLASSIC_POS_COLOR_OVERRIDE_FIELDS,
   CLASSIC_POS_THEME_TEMPLATES,
+  classicPosThemeCssVars,
+  normalizeClassicPosHexColor,
+  normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 
@@ -39,48 +43,153 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 
+function ClassicPosColorField({ field, value, fallback, onChange }) {
+  const display = normalizeClassicPosHexColor(value) || normalizeClassicPosHexColor(fallback) || "#888888";
+  const custom = Boolean(normalizeClassicPosHexColor(value));
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-900">{field.label}</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{field.description}</p>
+        </div>
+        {custom ? (
+          <button
+            type="button"
+            onClick={() => onChange?.("")}
+            className="shrink-0 text-[11px] font-medium text-[#185FA5] hover:underline"
+          >
+            Reset
+          </button>
+        ) : null}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="color"
+          aria-label={`${field.label} color`}
+          value={display}
+          onChange={(e) => onChange?.(e.target.value)}
+          className="h-9 w-11 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+        />
+        <input
+          type="text"
+          value={custom ? String(value).toUpperCase() : ""}
+          placeholder={String(fallback || display).toUpperCase()}
+          spellCheck={false}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            if (!raw) {
+              onChange?.("");
+              return;
+            }
+            const hex = normalizeClassicPosHexColor(raw.startsWith("#") ? raw : `#${raw}`);
+            if (hex) onChange?.(hex);
+            else onChange?.(raw);
+          }}
+          onBlur={(e) => {
+            const hex = normalizeClassicPosHexColor(e.target.value);
+            onChange?.(hex || "");
+          }}
+          className={`${inputClass} font-mono uppercase`}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** Classic External POS color template picker — editable by organization admins. */
 export function ClassicPosThemePicker({
   value,
   onChange,
+  colors = {},
+  onColorsChange,
   description = "Workspace, Find dropdown, held orders, hold/save, payment, and other popups use this palette.",
 }) {
   const selectedId = normalizeClassicPosThemeTemplate(value);
+  const overrides = normalizeClassicPosThemeColors(colors);
+  const baseVars = classicPosThemeCssVars(selectedId);
+  const hasCustomColors = Object.keys(overrides).length > 0;
+
+  function patchColor(key, nextValue) {
+    const hex = normalizeClassicPosHexColor(nextValue);
+    const next = { ...overrides };
+    if (hex) next[key] = hex;
+    else delete next[key];
+    onColorsChange?.(normalizeClassicPosThemeColors(next));
+  }
+
   return (
-    <div>
-      <p className="mb-1 text-sm font-medium text-slate-700">Classic POS colors</p>
-      {description ? <p className="mb-3 text-xs text-slate-500">{description}</p> : null}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {CLASSIC_POS_THEME_TEMPLATES.map((theme) => {
-          const selected = selectedId === theme.id;
-          return (
-            <button
-              key={theme.id}
-              type="button"
-              onClick={() => onChange?.(theme.id)}
-              className={`rounded-xl border px-3 py-2.5 text-left transition ${
-                selected
-                  ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-2 ring-[#185FA5]/40"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-              }`}
-            >
-              <span className="mb-2 flex gap-1">
-                {(theme.preview ?? []).map((color) => (
-                  <span
-                    key={color}
-                    className="h-4 w-4 rounded-full border border-black/10"
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </span>
-              <span className="block text-sm font-semibold text-slate-900">{theme.label}</span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                {theme.description}
-              </span>
-            </button>
-          );
-        })}
+    <div className="space-y-5">
+      <div>
+        <p className="mb-1 text-sm font-medium text-slate-700">Classic POS colors</p>
+        {description ? <p className="mb-3 text-xs text-slate-500">{description}</p> : null}
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {CLASSIC_POS_THEME_TEMPLATES.map((theme) => {
+            const selected = selectedId === theme.id;
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => onChange?.(theme.id)}
+                className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                  selected
+                    ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-2 ring-[#185FA5]/40"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <span className="mb-2 flex gap-1">
+                  {(theme.preview ?? []).map((color) => (
+                    <span
+                      key={color}
+                      className="h-4 w-4 rounded-full border border-black/10"
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </span>
+                <span className="block text-sm font-semibold text-slate-900">{theme.label}</span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                  {theme.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {typeof onColorsChange === "function" ? (
+        <div>
+          <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-slate-700">Custom colors</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Optional overrides on top of the selected template. Leave blank to use the template
+                default.
+              </p>
+            </div>
+            {hasCustomColors ? (
+              <button
+                type="button"
+                onClick={() => onColorsChange?.({})}
+                className="text-xs font-medium text-[#185FA5] hover:underline"
+              >
+                Reset all custom colors
+              </button>
+            ) : null}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CLASSIC_POS_COLOR_OVERRIDE_FIELDS.map((field) => (
+              <ClassicPosColorField
+                key={field.key}
+                field={field}
+                value={overrides[field.key] ?? ""}
+                fallback={baseVars[field.cssVar] || baseVars["--classic-header"]}
+                onChange={(next) => patchColor(field.key, next)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -136,6 +245,8 @@ export function ExternalPosPlatformFields({
             <ClassicPosThemePicker
               value={value?.classic_pos_theme_template}
               onChange={(id) => patch({ classic_pos_theme_template: id })}
+              colors={value?.classic_pos_theme_colors}
+              onColorsChange={(next) => patch({ classic_pos_theme_colors: next })}
               description="Optional default palette. Organization admins can change this anytime under Organization settings → External POS."
             />
           ) : null}

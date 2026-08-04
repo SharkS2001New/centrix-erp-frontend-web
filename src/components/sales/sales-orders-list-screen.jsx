@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -23,6 +23,7 @@ import {
   resolveSalesOrderQueue,
   saleBalanceDue,
   canCollectPaymentOnQueue,
+  canConvertPaymentStatusOnQueue,
   canCancelOrder,
   canRestoreCancelledOrder,
   cancelledOrderRestoreTarget,
@@ -1306,6 +1307,26 @@ export default function SalesOrdersListScreen({
     setPaySale(sale);
   }
 
+  async function convertPaymentStatus(sale, direction) {
+    if (!sale?.id) return;
+    const allowed = canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities, direction);
+    if (!allowed) return;
+    const path =
+      direction === "unpaid"
+        ? `/sales/${sale.id}/convert-to-unpaid`
+        : `/sales/${sale.id}/convert-to-paid`;
+    setTransitionBusyId(sale.id);
+    try {
+      await apiRequest(path, { method: "POST" });
+      notifySuccess(direction === "unpaid" ? "Order converted to unpaid." : "Order converted to paid.");
+      await loadOrders();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Conversion failed");
+    } finally {
+      setTransitionBusyId(null);
+    }
+  }
+
   function applyDateFilter() {
     setAppliedFromDate(fromDate);
     setAppliedToDate(toDate);
@@ -1581,6 +1602,12 @@ export default function SalesOrdersListScreen({
       onEdit: () => openEditOrder(sale),
       onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
         ? () => openCollectPayment(sale)
+        : null,
+      onConvertToPaid: canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities, "paid")
+        ? () => void convertPaymentStatus(sale, "paid")
+        : null,
+      onConvertToUnpaid: canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities, "unpaid")
+        ? () => void convertPaymentStatus(sale, "unpaid")
         : null,
       onPrintThermal: () => printOrder(sale, "receipt"),
       onPrintA4: () => printOrder(sale, "invoice"),

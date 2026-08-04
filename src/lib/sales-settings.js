@@ -133,6 +133,8 @@ const SALES_DEFAULTS = {
   print_invoice_statuses: null,
   collect_payment_statuses: ["unpaid", "pending_payment"],
   cancel_order_statuses: defaultCancelOrderStatusesFromWorkflow(),
+  convert_to_paid_statuses: [],
+  convert_to_unpaid_statuses: [],
   customer_return_statuses: ["paid", "processed", "delivered", "completed"],
 };
 
@@ -1286,6 +1288,10 @@ export function mergeSalesSettings(moduleSettings) {
       ? cancelStatuses
       : defaultCancelOrderStatusesFromWorkflow(sales.order_workflow);
 
+  // Empty allowed — Convert to paid/unpaid is off until platform checks stages.
+  sales.convert_to_paid_statuses = normalizeOrderActionStatuses(sales.convert_to_paid_statuses);
+  sales.convert_to_unpaid_statuses = normalizeOrderActionStatuses(sales.convert_to_unpaid_statuses);
+
   const returnStatuses = normalizeOrderActionStatuses(sales.customer_return_statuses);
   sales.customer_return_statuses =
     returnStatuses.length > 0 ? returnStatuses : [...SALES_DEFAULTS.customer_return_statuses];
@@ -1310,10 +1316,15 @@ const KNOWN_ORDER_ACTION_STATUSES = new Set([
   "editable",
   /** Pseudo-stage: Mobile Orders page / mobile-channel sales (not a workflow status). */
   "mobile",
+  /** Pseudo-stage: WhatsApp-channel sales. */
+  "whatsapp",
 ]);
 
 /** Checkbox for Order actions by stage — enables actions on Mobile Orders. */
 export const ORDER_ACTION_MOBILE_OPTION = { value: "mobile", label: "Mobile" };
+
+/** Checkbox for Order actions by stage — enables actions on WhatsApp orders. */
+export const ORDER_ACTION_WHATSAPP_OPTION = { value: "whatsapp", label: "WhatsApp" };
 
 /** @returns {string[]} */
 export function normalizeOrderActionStatuses(value) {
@@ -1359,6 +1370,16 @@ export function resolveCancelOrderStatuses(salesSettings = null) {
   return list.length > 0
     ? list
     : defaultCancelOrderStatusesFromWorkflow(salesSettings?.order_workflow);
+}
+
+/** Empty = Convert to paid disabled. @returns {string[]} */
+export function resolveConvertToPaidStatuses(salesSettings = null) {
+  return normalizeOrderActionStatuses(salesSettings?.convert_to_paid_statuses);
+}
+
+/** Empty = Convert to unpaid disabled. @returns {string[]} */
+export function resolveConvertToUnpaidStatuses(salesSettings = null) {
+  return normalizeOrderActionStatuses(salesSettings?.convert_to_unpaid_statuses);
 }
 
 /** @returns {string[]} */

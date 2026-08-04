@@ -72,7 +72,7 @@ export function ClassicPosAutoHeldDialog({
             type="button"
             disabled={busy}
             onClick={onRestore}
-            className="rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
+            className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             {busy ? "Working…" : "Restore sale"}
           </button>

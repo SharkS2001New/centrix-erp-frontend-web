@@ -386,9 +386,62 @@ export function classicHeaderForegroundVars(vars) {
   };
 }
 
-export function classicPosThemeCssVars(id) {
-  const vars = { ...(getClassicPosThemeTemplate(id).vars ?? CLASSIC_POS_LEGACY_VARS) };
-  return { ...vars, ...classicHeaderForegroundVars(vars) };
+/** Org-admin customizable Classic POS color slots (on top of a base template). */
+export const CLASSIC_POS_COLOR_OVERRIDE_FIELDS = [
+  {
+    key: "workspace",
+    label: "Workspace",
+    description: "Main Classic POS background.",
+    cssVar: "--classic-bg",
+  },
+  {
+    key: "header",
+    label: "Header",
+    description: "Top bar and Find window chrome.",
+    cssVar: "--classic-header",
+  },
+  {
+    key: "footer",
+    label: "Footer",
+    description: "Bottom status / footer strip.",
+    cssVar: "--classic-footer",
+  },
+  {
+    key: "button",
+    label: "Buttons",
+    description: "Primary actions (Save, Add, Find). Defaults to header when empty.",
+    cssVar: "--classic-button",
+  },
+  {
+    key: "select",
+    label: "Select",
+    description: "Highlighted row in Find / search dropdowns when scrolling or selecting.",
+    cssVar: "--classic-select",
+  },
+];
+
+export function normalizeClassicPosHexColor(value) {
+  const rgb = parseHexColor(value);
+  if (!rgb) return null;
+  return `#${rgb.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** @returns {Record<string, string>} only valid override keys with #rrggbb values */
+export function normalizeClassicPosThemeColors(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const field of CLASSIC_POS_COLOR_OVERRIDE_FIELDS) {
+    const hex = normalizeClassicPosHexColor(raw[field.key]);
+    if (hex) out[field.key] = hex;
+  }
+  return out;
+}
+
+export function classicPosThemeColorsEqual(a, b) {
+  const left = normalizeClassicPosThemeColors(a);
+  const right = normalizeClassicPosThemeColors(b);
+  const keys = CLASSIC_POS_COLOR_OVERRIDE_FIELDS.map((f) => f.key);
+  return keys.every((key) => (left[key] ?? "") === (right[key] ?? ""));
 }
 
 function mixHexToward(hex, towardRgb, amount) {
@@ -405,13 +458,44 @@ function hexToRgba(hex, alpha) {
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
 }
 
+export function classicPosThemeCssVars(id, colorOverrides = null) {
+  const vars = { ...(getClassicPosThemeTemplate(id).vars ?? CLASSIC_POS_LEGACY_VARS) };
+  const overrides = normalizeClassicPosThemeColors(colorOverrides);
+
+  if (overrides.workspace) vars["--classic-bg"] = overrides.workspace;
+  if (overrides.header) vars["--classic-header"] = overrides.header;
+  if (overrides.footer) {
+    vars["--classic-footer"] = overrides.footer;
+    vars["--classic-status-bar"] = overrides.footer;
+  }
+  // Button defaults to header (after header override); explicit button wins.
+  vars["--classic-button"] = overrides.button || vars["--classic-header"];
+  // Select highlight defaults to header; explicit select wins (also soft row tint).
+  if (overrides.select) {
+    vars["--classic-select"] = overrides.select;
+    vars["--classic-row-selected"] = overrides.select;
+  } else {
+    vars["--classic-select"] = vars["--classic-header"];
+  }
+
+  const withHeaderFg = { ...vars, ...classicHeaderForegroundVars(vars) };
+  const selectRgb = parseHexColor(withHeaderFg["--classic-select"]);
+  if (selectRgb && relativeLuminance(selectRgb) > 0.35) {
+    withHeaderFg["--classic-select-fg"] = withHeaderFg["--classic-text"] ?? "#1a1a1a";
+  } else {
+    withHeaderFg["--classic-select-fg"] = "#f8fafc";
+  }
+  return withHeaderFg;
+}
+
 /**
  * Bridge Classic palette onto global `--theme-*` tokens so portaled POS dialogs
  * (held orders, payment, hold/save, pending sync, leave guard) match the template.
  */
-export function classicPosThemeBridgeVars(id) {
-  const classic = classicPosThemeCssVars(id);
+export function classicPosThemeBridgeVars(id, colorOverrides = null) {
+  const classic = classicPosThemeCssVars(id, colorOverrides);
   const header = classic["--classic-header"];
+  const button = classic["--classic-button"] || header;
   const headerFg = classic["--classic-header-fg"] ?? "#ffffff";
   const panel = classic["--classic-panel"];
   const table = classic["--classic-table"];
@@ -422,14 +506,19 @@ export function classicPosThemeBridgeVars(id) {
   const input = classic["--classic-input-bg"];
   const selected = classic["--classic-row-selected"];
   const caption = classic["--classic-caption"];
-  const primaryHover = mixHexToward(header, [0, 0, 0], 0.12);
+  const buttonRgb = parseHexColor(button);
+  const buttonFg =
+    buttonRgb && relativeLuminance(buttonRgb) > 0.35
+      ? classic["--classic-text"] ?? "#1a1a1a"
+      : "#f8fafc";
+  const primaryHover = mixHexToward(button, [0, 0, 0], 0.12);
 
   return {
     ...classic,
-    "--theme-primary": header,
+    "--theme-primary": button,
     "--theme-primary-hover": primaryHover,
-    "--theme-primary-fg": headerFg,
-    "--theme-primary-subtle": hexToRgba(header, 0.14),
+    "--theme-primary-fg": buttonFg,
+    "--theme-primary-subtle": hexToRgba(button, 0.14),
     "--theme-primary-muted": panel,
     "--theme-accent-text": caption ?? header,
     "--theme-page-bg": panel,
@@ -449,10 +538,10 @@ export function classicPosThemeBridgeVars(id) {
 const CLASSIC_POS_DOCUMENT_STYLE_KEYS = new Set();
 
 /** Apply Classic template vars on `html` so body-portaled popups inherit them. */
-export function applyClassicPosDocumentTheme(id) {
+export function applyClassicPosDocumentTheme(id, colorOverrides = null) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  const vars = classicPosThemeBridgeVars(id);
+  const vars = classicPosThemeBridgeVars(id, colorOverrides);
   for (const key of CLASSIC_POS_DOCUMENT_STYLE_KEYS) {
     if (!(key in vars)) root.style.removeProperty(key);
   }
@@ -485,6 +574,16 @@ export function resolveClassicPosThemeTemplate(moduleSettingsOrCapabilities = nu
     moduleSettingsOrCapabilities ??
     {};
   return normalizeClassicPosThemeTemplate(sales?.classic_pos_theme_template);
+}
+
+export function resolveClassicPosThemeColors(moduleSettingsOrCapabilities = null) {
+  const sales =
+    moduleSettingsOrCapabilities?.module_settings?.sales ??
+    moduleSettingsOrCapabilities?.sales ??
+    moduleSettingsOrCapabilities?.module_settings ??
+    moduleSettingsOrCapabilities ??
+    {};
+  return normalizeClassicPosThemeColors(sales?.classic_pos_theme_colors);
 }
 
 export function isDarkClassicPosTheme(id) {

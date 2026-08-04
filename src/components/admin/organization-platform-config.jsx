@@ -51,6 +51,7 @@ import {
 } from "@/lib/hospitality-payment-workflow";
 import {
   CLASSIC_POS_THEME_DEFAULT,
+  normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 import {
@@ -342,6 +343,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     require_pos_till_float: false,
     external_pos_layout: "modern",
     classic_pos_theme_template: CLASSIC_POS_THEME_DEFAULT,
+    classic_pos_theme_colors: {},
     hotel_pos_grid_columns: 4,
     hotel_pos_collect_payment: true,
     hotel_pos_catalog_limit: 30,
@@ -369,6 +371,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     print_invoice_statuses: [],
     collect_payment_statuses: ["unpaid", "pending_payment"],
     cancel_order_statuses: defaultCancelOrderStatusesFromWorkflow(DEFAULT_ORDER_WORKFLOW),
+    convert_to_paid_statuses: [],
+    convert_to_unpaid_statuses: [],
     customer_return_statuses: ["paid", "processed", "delivered", "completed"],
   };
 }
@@ -404,6 +408,9 @@ export function salesPlatformFromApi(apiPayload) {
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
     classic_pos_theme_template: normalizeClassicPosThemeTemplate(
       apiPayload.classic_pos_theme_template,
+    ),
+    classic_pos_theme_colors: normalizeClassicPosThemeColors(
+      apiPayload.classic_pos_theme_colors,
     ),
     hotel_pos_grid_columns:
       Number(apiPayload.hotel_pos_grid_columns) === 5 ? 5 : 4,
@@ -470,6 +477,8 @@ export function salesPlatformFromApi(apiPayload) {
       const list = normalizeOrderActionStatuses(apiPayload.cancel_order_statuses);
       return list.length > 0 ? list : defaultCancelOrderStatusesFromWorkflow(workflow);
     })(),
+    convert_to_paid_statuses: normalizeOrderActionStatuses(apiPayload.convert_to_paid_statuses),
+    convert_to_unpaid_statuses: normalizeOrderActionStatuses(apiPayload.convert_to_unpaid_statuses),
     customer_return_statuses: (() => {
       const list = normalizeOrderActionStatuses(apiPayload.customer_return_statuses);
       return list.length > 0 ? list : ["paid", "processed", "delivered", "completed"];
@@ -806,6 +815,7 @@ export function OrganizationOrderWorkflowSettings({
             salesPlatform={salesPlatform}
             onPatch={patch}
             mobileOrdersEnabled={mobileOrdersEnabled}
+            whatsappOrdersEnabled={Boolean(salesPlatform?.enable_whatsapp_orders)}
           />
           <OrderWorkflowSettingsEditor
             embedded
@@ -843,13 +853,19 @@ function toggleStatusInList(list, status, checked, { allowEmpty = false } = {}) 
   return next;
 }
 
-function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled = true }) {
+function OrderActionStagesFields({
+  salesPlatform,
+  onPatch,
+  mobileOrdersEnabled = true,
+  whatsappOrdersEnabled = false,
+}) {
   const actionStatusOptions = useMemo(
     () =>
       orderActionStageOptionsFromWorkflow(salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW, {
         mobileOrdersEnabled,
+        whatsappOrdersEnabled,
       }),
-    [mobileOrdersEnabled, salesPlatform?.order_workflow],
+    [mobileOrdersEnabled, whatsappOrdersEnabled, salesPlatform?.order_workflow],
   );
 
   const editStatuses = Array.isArray(salesPlatform?.edit_order_statuses)
@@ -864,6 +880,12 @@ function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled =
   const cancelStatuses = Array.isArray(salesPlatform?.cancel_order_statuses)
     ? salesPlatform.cancel_order_statuses
     : defaultCancelOrderStatusesFromWorkflow(salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW);
+  const convertToPaidStatuses = Array.isArray(salesPlatform?.convert_to_paid_statuses)
+    ? salesPlatform.convert_to_paid_statuses
+    : [];
+  const convertToUnpaidStatuses = Array.isArray(salesPlatform?.convert_to_unpaid_statuses)
+    ? salesPlatform.convert_to_unpaid_statuses
+    : [];
   const returnStatuses = Array.isArray(salesPlatform?.customer_return_statuses)
     ? salesPlatform.customer_return_statuses
     : ["paid", "processed", "delivered", "completed"];
@@ -872,12 +894,13 @@ function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled =
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order actions by stage</p>
       <p className="mt-1 text-xs text-slate-500">
-        Choose which workflow stages allow Edit, Print, Collect payment, Cancel, and Customer returns on
-        every web Sales order list. Only enabled stages from this organization&apos;s order pipeline are
-        listed. Check <span className="font-medium text-slate-600">Mobile</span> to enable those actions on
-        the Mobile Orders page (when mobile orders are on). Leave Print empty to allow all stages. Collect
-        still needs an outstanding balance. Cancel still respects the master cancellation toggle. Settings
-        load with org capabilities and refresh when you save.
+        Choose which workflow stages allow Edit, Print, Collect payment, Convert to paid / unpaid, Cancel, and
+        Customer returns on every web Sales order list. Only enabled stages from this organization&apos;s order
+        pipeline are listed. Check <span className="font-medium text-slate-600">Mobile</span> or{" "}
+        <span className="font-medium text-slate-600">WhatsApp</span> to enable those actions on those channels.
+        Leave Print empty to allow all stages. Collect still needs an outstanding balance. Convert to paid /
+        unpaid are off by default (no stages checked). Cancel still respects the master cancellation toggle.
+        Settings load with org capabilities and refresh when you save.
       </p>
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <ActionStageChecklist
@@ -915,6 +938,32 @@ function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled =
             onPatch({
               collect_payment_statuses: toggleStatusInList(collectStatuses, status, checked, {
                 allowEmpty: false,
+              }),
+            })
+          }
+        />
+        <ActionStageChecklist
+          title="Convert to paid"
+          hint="Off by default. Mark unpaid / partially paid as paid without Collect payment. Check Unpaid, Partially paid, Paid pages, Mobile, and/or WhatsApp as needed."
+          options={actionStatusOptions}
+          selected={convertToPaidStatuses}
+          onToggle={(status, checked) =>
+            onPatch({
+              convert_to_paid_statuses: toggleStatusInList(convertToPaidStatuses, status, checked, {
+                allowEmpty: true,
+              }),
+            })
+          }
+        />
+        <ActionStageChecklist
+          title="Convert to unpaid"
+          hint="Off by default. Reverse paid / partially paid back to unpaid. Same stage checklist as Convert to paid."
+          options={actionStatusOptions}
+          selected={convertToUnpaidStatuses}
+          onToggle={(status, checked) =>
+            onPatch({
+              convert_to_unpaid_statuses: toggleStatusInList(convertToUnpaidStatuses, status, checked, {
+                allowEmpty: true,
               }),
             })
           }

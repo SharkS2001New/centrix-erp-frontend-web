@@ -790,7 +790,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
             type="button"
             onClick={requestClose}
             disabled={saving}
-            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="theme-secondary-btn shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
           >
             Cancel
           </button>
@@ -1160,7 +1160,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                 type="button"
                 disabled={saving}
                 onClick={() => void handleSave()}
-                className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Save"}
               </button>

@@ -6,6 +6,8 @@ import {
 import {
   resolveCancelOrderStatuses,
   resolveCollectPaymentStatuses,
+  resolveConvertToPaidStatuses,
+  resolveConvertToUnpaidStatuses,
   resolveCustomerReturnStatuses,
   resolvePrintInvoiceStatuses,
   salesSettingsFromCapabilities,
@@ -421,7 +423,7 @@ export function workflowPipelineSteps(workflow) {
 const ORDER_ACTION_EXCLUDED_STATUSES = new Set(["cancelled", "expired", "draft"]);
 
 /** Checkbox options for platform Order actions by stage — follows this org's enabled workflow steps. */
-export function orderActionStageOptionsFromWorkflow(orderWorkflow, { mobileOrdersEnabled = true } = {}) {
+export function orderActionStageOptionsFromWorkflow(orderWorkflow, { mobileOrdersEnabled = true, whatsappOrdersEnabled = false } = {}) {
   const options = workflowPipelineSteps(orderWorkflow)
     .filter((step) => step.key && !ORDER_ACTION_EXCLUDED_STATUSES.has(step.key))
     .map((step) => ({
@@ -431,6 +433,9 @@ export function orderActionStageOptionsFromWorkflow(orderWorkflow, { mobileOrder
 
   if (mobileOrdersEnabled) {
     options.push({ value: "mobile", label: "Mobile" });
+  }
+  if (whatsappOrdersEnabled) {
+    options.push({ value: "whatsapp", label: "WhatsApp" });
   }
 
   return options;
@@ -1230,6 +1235,69 @@ export function canRecordOrderPayment(sale, totalPaid = null, capabilities = nul
 export function canCollectPaymentOnQueue(sale, queueSlug, totalPaid = null, capabilities = null) {
   if (!isPaymentCollectionQueueSlug(queueSlug)) return false;
   return canRecordOrderPayment(sale, totalPaid, capabilities);
+}
+
+function saleMatchesConvertStages(sale, allowed) {
+  if (!sale || !Array.isArray(allowed) || allowed.length === 0) return false;
+  const status = String(sale.status ?? "").toLowerCase();
+  const channel = String(sale.channel ?? "").toLowerCase();
+  const payment = String(sale.payment_status ?? "").toLowerCase();
+
+  if (allowed.includes(status)) return true;
+  if (channel === "mobile" && allowed.includes("mobile")) return true;
+  if (channel === "whatsapp" && allowed.includes("whatsapp")) return true;
+  if (status === "completed" && allowed.includes("paid")) return true;
+
+  const mapped =
+    payment === "unpaid"
+      ? "unpaid"
+      : payment === "partial" || payment === "pending_payment"
+        ? "pending_payment"
+        : payment === "paid"
+          ? "paid"
+          : null;
+
+  return mapped != null && allowed.includes(mapped);
+}
+
+/** Convert unpaid/partial → paid when org stages allow it. */
+export function canConvertToPaid(sale, capabilities = null) {
+  if (!sale) return false;
+  const status = String(sale.status ?? "").toLowerCase();
+  if (["cancelled", "expired", "held", "draft"].includes(status)) return false;
+
+  const payment = String(sale.payment_status ?? "unpaid").toLowerCase();
+  if (payment !== "unpaid" && payment !== "partial") return false;
+
+  if (typeof sale.can_convert_to_paid === "boolean") return sale.can_convert_to_paid;
+
+  const allowed = resolveConvertToPaidStatuses(salesSettingsFromCapabilities(capabilities));
+  return saleMatchesConvertStages(sale, allowed);
+}
+
+/** Convert paid/partial → unpaid when org stages allow it. */
+export function canConvertToUnpaid(sale, capabilities = null) {
+  if (!sale) return false;
+  const status = String(sale.status ?? "").toLowerCase();
+  if (["cancelled", "expired", "held", "draft"].includes(status)) return false;
+
+  const payment = String(sale.payment_status ?? "unpaid").toLowerCase();
+  if (payment !== "paid" && payment !== "partial") return false;
+
+  if (typeof sale.can_convert_to_unpaid === "boolean") return sale.can_convert_to_unpaid;
+
+  const allowed = resolveConvertToUnpaidStatuses(salesSettingsFromCapabilities(capabilities));
+  return saleMatchesConvertStages(sale, allowed);
+}
+
+/** Unpaid / Partially paid / Paid queue pages (and Mobile / WhatsApp lists). */
+export function canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities = null, direction = "paid") {
+  const slug = String(queueSlug ?? "").toLowerCase();
+  const allowedQueues = new Set(["unpaid", "pending_payment", "paid", "mobile", "whatsapp", "all"]);
+  if (!allowedQueues.has(slug)) return false;
+  return direction === "unpaid"
+    ? canConvertToUnpaid(sale, capabilities)
+    : canConvertToPaid(sale, capabilities);
 }
 
 /** Whether Print invoice / receipt is allowed for this order stage. */

@@ -392,6 +392,8 @@ export function buildOrderContextMenuItems({
   onAdvance,
   onCancel,
   onCollectPayment,
+  onConvertToPaid,
+  onConvertToUnpaid,
   includePrint = true,
   hasExternalPos = false,
   disableWorkflowActions = false,
@@ -432,6 +434,26 @@ export function buildOrderContextMenuItems({
       icon: "advance",
       disabled: busy,
       onClick: onCollectPayment,
+    });
+  }
+  if (!disableWorkflowActions && sale && onConvertToPaid) {
+    items.push({
+      key: "convert-to-paid",
+      label: "Convert to paid",
+      processingLabel: "Converting…",
+      icon: "advance",
+      disabled: busy,
+      onClick: onConvertToPaid,
+    });
+  }
+  if (!disableWorkflowActions && sale && onConvertToUnpaid) {
+    items.push({
+      key: "convert-to-unpaid",
+      label: "Convert to unpaid",
+      processingLabel: "Converting…",
+      icon: "advance",
+      disabled: busy,
+      onClick: onConvertToUnpaid,
     });
   }
   if (includePrint && isPrintInvoiceVisible(sale, capabilities)) {
