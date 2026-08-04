@@ -130,18 +130,17 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       const el = localInputRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      // Compact: hug the scan cell, stay out of the cart body.
-      const width = Math.max(rect.width, Math.min(380, window.innerWidth - 16));
-      const spaceBelow = window.innerHeight - rect.bottom - 12;
-      const spaceAbove = rect.top - 12;
-      const openUp = spaceBelow < 140 && spaceAbove > spaceBelow;
+      const width = Math.max(rect.width, Math.min(560, window.innerWidth - 24));
+      const spaceBelow = window.innerHeight - rect.bottom - 16;
+      const spaceAbove = rect.top - 16;
+      const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
       const maxHeight = Math.max(
-        120,
-        Math.min(220, openUp ? spaceAbove : spaceBelow),
+        160,
+        Math.min(360, openUp ? spaceAbove : spaceBelow),
       );
       setMenuBox({
-        top: openUp ? Math.max(4, rect.top - maxHeight) : rect.bottom + 2,
-        left: Math.min(Math.max(4, rect.left), window.innerWidth - width - 4),
+        top: openUp ? Math.max(8, rect.top - maxHeight) : rect.bottom + 4,
+        left: Math.min(Math.max(8, rect.left), window.innerWidth - width - 8),
         width,
         maxHeight,
       });
@@ -278,31 +277,32 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
               zIndex: 10000,
             }}
           >
-            <table className="classic-pos-find-table classic-pos-find-table--compact w-full">
+            <table className="classic-pos-find-table w-full">
               <thead>
                 <tr>
-                  <th className="classic-pos-find-col-code">Code</th>
-                  <th className="classic-pos-find-col-name">Name</th>
-                  <th className="classic-pos-find-col-price text-right">Price</th>
+                  <th>Product code</th>
+                  <th>Product name</th>
+                  <th className="text-right">Unit price</th>
+                  <th className="text-right">Available</th>
                 </tr>
               </thead>
               <tbody>
                 {searching ? (
                   <tr>
-                    <td colSpan={3} className="classic-pos-find-empty">
+                    <td colSpan={4} className="classic-pos-find-empty">
                       Searching…
                     </td>
                   </tr>
                 ) : !query.trim() ? (
                   <tr>
-                    <td colSpan={3} className="classic-pos-find-empty">
-                      Type code or name
+                    <td colSpan={4} className="classic-pos-find-empty">
+                      Type a code or name
                     </td>
                   </tr>
                 ) : results.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="classic-pos-find-empty">
-                      No products
+                    <td colSpan={4} className="classic-pos-find-empty">
+                      No products found
                     </td>
                   </tr>
                 ) : (
@@ -328,15 +328,17 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         aria-selected={keyboardActive}
                         onMouseEnter={() => setHighlight(index)}
                         onClick={() => pick(product)}
-                        title={`${product.product_name} · stock ${formatStockQty(qty, product)}`}
                         className={`${negative ? "classic-pos-find-row--negative" : ""} ${
                           keyboardActive ? "classic-pos-find-row--active" : ""
                         }`}
                       >
-                        <td className="classic-pos-find-col-code font-mono">{product.product_code}</td>
-                        <td className="classic-pos-find-col-name">{product.product_name}</td>
-                        <td className="classic-pos-find-col-price text-right tabular-nums">
+                        <td>{product.product_code}</td>
+                        <td>{product.product_name}</td>
+                        <td className="text-right tabular-nums">
                           {Number(price).toLocaleString()}
+                        </td>
+                        <td className={`text-right tabular-nums ${negative ? "classic-pos-neg" : ""}`}>
+                          {formatStockQty(qty, product)}
                         </td>
                       </tr>
                     );

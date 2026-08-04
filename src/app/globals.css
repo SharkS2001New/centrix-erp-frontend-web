@@ -3192,15 +3192,14 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
   --classic-th-bg: #f3f3f3;
   --classic-th-border: #b0b0b0;
   --classic-td-border: #d0d0d0;
-  --classic-dropdown-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  --classic-dropdown-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   --classic-row-selected: #fff4c8;
   box-sizing: border-box;
   overflow: auto;
   background: var(--classic-table);
-  border: 1px solid var(--classic-border);
+  border: 2px solid var(--classic-border);
   box-shadow: var(--classic-dropdown-shadow);
   color: var(--classic-text);
-  border-radius: 4px;
 }
 
 html[data-theme="dark"] .classic-pos-scan-dropdown {
@@ -3404,30 +3403,6 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 /* Find-table rows inside portaled dropdown */
 .classic-pos-scan-dropdown .classic-pos-find-table {
   color: var(--classic-text);
-}
-
-.classic-pos-scan-dropdown .classic-pos-find-table--compact th,
-.classic-pos-scan-dropdown .classic-pos-find-table--compact td {
-  padding: 0.28rem 0.4rem;
-  font-size: 0.78rem;
-  line-height: 1.2;
-}
-
-.classic-pos-scan-dropdown .classic-pos-find-col-code {
-  width: 28%;
-  white-space: nowrap;
-}
-
-.classic-pos-scan-dropdown .classic-pos-find-col-name {
-  width: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.classic-pos-scan-dropdown .classic-pos-find-col-price {
-  width: 22%;
-  white-space: nowrap;
 }
 
 .classic-pos-scan-dropdown .classic-pos-find-table th {
