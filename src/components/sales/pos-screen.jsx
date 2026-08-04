@@ -118,6 +118,7 @@ import {
   cartHasOptimisticLines,
   findMergeableCartLine,
   looksLikeProductCodeQuery,
+  mergePreservedOptimisticLines,
   normalizeCartResponse,
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
@@ -377,14 +378,27 @@ function usesPosLocalDraftLineEdits(cart) {
 
 /** Workspace still shows the sale that just completed (bootstrap did not clear held restore). */
 function isStalePostCheckoutWorkspace(cart, completedSale) {
-  if (!cart || !completedSale?.order_num) return false;
+  if (!cart || !completedSale) return false;
   if (isFreshWorkspacePlaceholder(cart)) return false;
   if (!(cart.lines?.length > 0)) return false;
-  const cartOrder =
-    cart.held_order_num != null
-      ? Number(cart.held_order_num)
-      : Number(resolvePosBrowseNumber(cart) ?? NaN);
-  return Number.isFinite(cartOrder) && cartOrder === Number(completedSale.order_num);
+  const completedNums = new Set(
+    [
+      completedSale.order_num,
+      completedSale.pos_order_num,
+      completedSale.held_order_num,
+    ]
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n) && n > 0),
+  );
+  if (completedNums.size === 0) return false;
+  const cartNums = [
+    cart.held_order_num,
+    cart.pos_order_num,
+    resolvePosBrowseNumber(cart),
+  ]
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return cartNums.some((n) => completedNums.has(n));
 }
 
 /** Ensure restored edit carts carry displayable lines (API cart or sale snapshot). */
@@ -2315,29 +2329,61 @@ export function PosScreen({ standalone = false }) {
     return { uomMap, vatMap };
   }, []);
 
+  const retailPackageInflightRef = useRef(new Map());
+
   const ensureRetailPackages = useCallback(async (productCodes) => {
-    const codes = [
+    const wanted = [
       ...new Set(
         (productCodes ?? [])
           .map((c) => String(c ?? "").trim())
           .filter((code) => code && retailByCodeRef.current[code] === undefined),
       ),
     ];
-    if (!codes.length) return;
-    // Sync ref first so add-to-cart right after await sees placeholders / results.
-    for (const code of codes) {
-      retailByCodeRef.current[code] = null;
+    if (!wanted.length) return;
+
+    const waitExisting = [];
+    const toFetch = [];
+    for (const code of wanted) {
+      const inflight = retailPackageInflightRef.current.get(code);
+      if (inflight) waitExisting.push(inflight);
+      else toFetch.push(code);
     }
-    setRetailByCode({ ...retailByCodeRef.current });
-    try {
-      const rows = await fetchRetailPackagesForProductCodes(codes);
-      for (const row of rows ?? []) {
-        if (row?.product_code) retailByCodeRef.current[row.product_code] = row;
+
+    let fetchPromise = Promise.resolve();
+    if (toFetch.length) {
+      // Track in-flight without nulling the cache — null made search/entry flash
+      // wholesale-only prices, then jump when markup arrived.
+      fetchPromise = (async () => {
+        try {
+          const rows = await fetchRetailPackagesForProductCodes(toFetch);
+          for (const code of toFetch) {
+            if (retailByCodeRef.current[code] === undefined) {
+              retailByCodeRef.current[code] = null;
+            }
+          }
+          for (const row of rows ?? []) {
+            if (row?.product_code) retailByCodeRef.current[row.product_code] = row;
+          }
+          setRetailByCode({ ...retailByCodeRef.current });
+        } catch {
+          for (const code of toFetch) {
+            if (retailByCodeRef.current[code] === undefined) {
+              retailByCodeRef.current[code] = null;
+            }
+          }
+          setRetailByCode({ ...retailByCodeRef.current });
+        } finally {
+          for (const code of toFetch) {
+            retailPackageInflightRef.current.delete(code);
+          }
+        }
+      })();
+      for (const code of toFetch) {
+        retailPackageInflightRef.current.set(code, fetchPromise);
       }
-      setRetailByCode({ ...retailByCodeRef.current });
-    } catch {
-      // Leave null placeholders — wholesale pricing still works without packages.
     }
+
+    await Promise.all([...waitExisting, fetchPromise]);
   }, []);
 
   useEffect(() => {
@@ -2667,10 +2713,29 @@ export function PosScreen({ standalone = false }) {
       return current;
     }
     if (standalone && (current?.offline || (current && !isServerPosCartId(current.id)))) {
-      // Optimistic F8 placeholder — reuse the in-flight bootstrap when present.
-      if (current?.id === "pending-fresh" && !(current.lines?.length > 0)) {
-        if (freshCartBootstrapRef.current) return freshCartBootstrapRef.current;
-        return loadCashierCart({ skipEditDraftRestore: true });
+      // Optimistic F8 / post-sale placeholder — always finish TemporaryCart bootstrap.
+      // Do not treat pending-fresh + optimistic lines as an offline cart to materialize
+      // (that wiped the row and re-priced markup in the background).
+      if (current?.id === "pending-fresh") {
+        const pendingOptimistic = (current.lines ?? []).filter((line) => line?._optimistic);
+        let bootstrapped = null;
+        if (freshCartBootstrapRef.current) {
+          bootstrapped = await freshCartBootstrapRef.current.catch(() => null);
+        }
+        if (!bootstrapped || !isServerPosCartId(bootstrapped.id)) {
+          bootstrapped = await loadCashierCart({ skipEditDraftRestore: true });
+        }
+        if (bootstrapped && pendingOptimistic.length) {
+          // Keep the instantly painted rows while TemporaryCart finishes creating.
+          const merged = {
+            ...bootstrapped,
+            lines: mergePreservedOptimisticLines(bootstrapped.lines, pendingOptimistic),
+          };
+          cartRef.current = merged;
+          setCart(merged);
+          return merged;
+        }
+        return bootstrapped;
       }
       if (current?.lines?.length > 0 || current?.held_order_num) {
         try {
@@ -3000,6 +3065,19 @@ export function PosScreen({ standalone = false }) {
             (await searchOffline(trimmed, 40)).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
           );
           if (seq !== searchSeq.current) return;
+          for (const p of list) {
+            const code = p?.product_code;
+            if (!code || retailByCodeRef.current[code] != null) continue;
+            if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
+          }
+          const missingOffline = list
+            .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
+            .map((p) => p.product_code);
+          if (missingOffline.length) {
+            await ensureRetailPackages(missingOffline.slice(0, 40));
+            if (seq !== searchSeq.current) return;
+          }
+          setRetailByCode({ ...retailByCodeRef.current });
           setSearchResults(list);
           setProductByCode((prev) => {
             const next = { ...prev };
@@ -3020,6 +3098,21 @@ export function PosScreen({ standalone = false }) {
               if (!list.length) {
                 /* stale offline rows only — wait for API */
               } else {
+                for (const p of list) {
+                  const code = p?.product_code;
+                  if (!code || retailByCodeRef.current[code] != null) continue;
+                  if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
+                }
+                const missingLocal = list
+                  .filter(
+                    (p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined,
+                  )
+                  .map((p) => p.product_code);
+                if (missingLocal.length) {
+                  await ensureRetailPackages(missingLocal.slice(0, 15));
+                  if (seq !== searchSeq.current) return;
+                }
+                setRetailByCode({ ...retailByCodeRef.current });
                 setSearchResults(list);
                 setSearching(false);
                 setProductByCode((prev) => {
@@ -3050,7 +3143,6 @@ export function PosScreen({ standalone = false }) {
         const list = sellableSearchResults(
           (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
         );
-        setSearchResults(list.slice(0, 40));
         setProductByCode((prev) => {
           const next = { ...prev };
           for (const p of list) next[p.product_code] = p;
@@ -3058,23 +3150,24 @@ export function PosScreen({ standalone = false }) {
         });
 
         // Lean list already embeds retail_package — seed cache to avoid a second round-trip.
-        let seeded = false;
         for (const p of list) {
           const code = p?.product_code;
           if (!code || retailByCodeRef.current[code] != null) continue;
           if (p.retail_package) {
             retailByCodeRef.current[code] = p.retail_package;
-            seeded = true;
           }
         }
-        if (seeded) setRetailByCode({ ...retailByCodeRef.current });
 
         const missingPkg = list
           .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
           .map((p) => p.product_code);
         if (missingPkg.length) {
-          void ensureRetailPackages(classicLayout ? missingPkg.slice(0, 5) : missingPkg.slice(0, 15));
+          await ensureRetailPackages(classicLayout ? missingPkg.slice(0, 15) : missingPkg.slice(0, 40));
+          if (seq !== searchSeq.current || abort.signal.aborted) return;
         }
+        setRetailByCode({ ...retailByCodeRef.current });
+        // Paint results only after markup packages are ready — no wholesale→markup flash.
+        setSearchResults(list.slice(0, 40));
       } catch (err) {
         if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
         // Network drop mid-search: fall back to offline catalog when available.
@@ -3417,12 +3510,8 @@ export function PosScreen({ standalone = false }) {
       return true;
     }
 
-    // Classic unlock: clear entry before any network so the next-row never shows this SKU.
-    if (unlockUiEarly && clearEntry) {
-      clearClassicEntryFields();
-    }
-
-    const activeCart = await ensureCart();
+    // Build the priced line body first, then paint the cart row immediately
+    // (before TemporaryCart / POST) so markup is already on the row — no blank gap.
     const lineBody = {
       product_code: product.product_code,
       quantity: finalComputed.baseQty,
@@ -3446,6 +3535,37 @@ export function PosScreen({ standalone = false }) {
       !finalComputed.autoProductDiscount &&
       discountAmount > 0;
 
+    const paintOptimisticOn = (baseCart) => {
+      if (!baseCart?.id || needsLineDiscountApproval) return null;
+      const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
+      const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
+        mergeTarget,
+        editingRef: targetLineRef,
+      });
+      cartRef.current = optimisticCart;
+      setCart(optimisticCart);
+      return { optimisticLine, optimisticCart };
+    };
+
+    let painted = paintOptimisticOn(liveCart);
+    if (painted && unlockUiEarly && clearEntry) {
+      clearClassicEntryFields();
+    }
+
+    const activeCart = await ensureCart();
+    // ensureCart may replace pending-fresh — re-paint so the row never blanks.
+    if (
+      activeCart?.id &&
+      (!painted ||
+        String(cartRef.current?.id) !== String(activeCart.id) ||
+        !(cartRef.current?.lines ?? []).some((line) => line?._optimistic))
+    ) {
+      painted = paintOptimisticOn(activeCart) ?? painted;
+    }
+    if (painted && unlockUiEarly && clearEntry) {
+      clearClassicEntryFields();
+    }
+
     if (needsLineDiscountApproval) {
       try {
         let lineRef = targetLineRef;
@@ -3468,7 +3588,9 @@ export function PosScreen({ standalone = false }) {
             body: deferredLineBody,
             ...POS_CART_REQUEST,
           });
-          cartState = applyCartMutationResponse(activeCart, added);
+          cartState = applyCartMutationResponse(cartRef.current ?? activeCart, added);
+          cartRef.current = cartState;
+          setCart(cartState);
           const newLine = [...(added.lines ?? [])]
             .reverse()
             .find((line) => line.product_code === product.product_code);
@@ -3482,7 +3604,11 @@ export function PosScreen({ standalone = false }) {
             },
             ...POS_CART_REQUEST,
           });
-          cartState = applyCartMutationResponse(activeCart, updated, { targetLineRef: lineRef });
+          cartState = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
+            targetLineRef: lineRef,
+          });
+          cartRef.current = cartState;
+          setCart(cartState);
         }
         if (!lineRef) {
           setStatusMessage("Could not resolve cart line for discount request.");
@@ -3523,11 +3649,14 @@ export function PosScreen({ standalone = false }) {
           }
         : null;
 
-    const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
-    const optimisticCart = applyOptimisticCartMutation(activeCart, optimisticLine, {
-      mergeTarget,
-      editingRef: targetLineRef,
-    });
+    const optimisticLine =
+      painted?.optimisticLine ?? buildOptimisticCartLine(product, lineBody, finalComputed);
+    const optimisticCart =
+      painted?.optimisticCart ??
+      applyOptimisticCartMutation(activeCart, optimisticLine, {
+        mergeTarget,
+        editingRef: targetLineRef,
+      });
 
     // Previous-order edit: keep line add/update local until Complete saves + prints.
     if (isPreviousOrderEditSession(activeCart)) {
@@ -3573,8 +3702,10 @@ export function PosScreen({ standalone = false }) {
       return true;
     }
 
-    cartRef.current = optimisticCart;
-    setCart(optimisticCart);
+    if (!painted) {
+      cartRef.current = optimisticCart;
+      setCart(optimisticCart);
+    }
 
     // Already cleared above when unlockUiEarly; keep a second clear for safety if flags change.
     if (unlockUiEarly && clearEntry) {
@@ -3591,7 +3722,9 @@ export function PosScreen({ standalone = false }) {
           },
           ...POS_CART_REQUEST,
         });
-        const nextCart = applyCartMutationResponse(activeCart, updated, { targetLineRef });
+        const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
+          targetLineRef,
+        });
         cartRef.current = nextCart;
         setCart(nextCart);
       } else {
@@ -3600,7 +3733,7 @@ export function PosScreen({ standalone = false }) {
           body: lineBody,
           ...POS_CART_REQUEST,
         });
-        const nextCart = applyCartMutationResponse(activeCart, updated);
+        const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated);
         cartRef.current = nextCart;
         setCart(nextCart);
       }
@@ -3625,7 +3758,9 @@ export function PosScreen({ standalone = false }) {
                 },
                 ...POS_CART_REQUEST,
               });
-              const nextCart = applyCartMutationResponse(fresh, updated, { targetLineRef });
+              const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
+                targetLineRef,
+              });
               cartRef.current = nextCart;
               setCart(nextCart);
             } else {
@@ -3634,7 +3769,7 @@ export function PosScreen({ standalone = false }) {
                 body: lineBody,
                 ...POS_CART_REQUEST,
               });
-              const nextCart = applyCartMutationResponse(fresh, updated);
+              const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated);
               cartRef.current = nextCart;
               setCart(nextCart);
             }
@@ -3692,8 +3827,8 @@ export function PosScreen({ standalone = false }) {
     if (computed.baseQty <= 0) return;
 
     if (classicLayout || usesPosLocalDraftLineEdits(cartRef.current)) {
-      // Clear scan + entry row immediately so the next-row never parks this product.
-      if (classicLayout) clearClassicEntryFields();
+      // Do not clear the entry row here — commitCartLine paints the cart line first,
+      // then clears (unlockUiEarly) so the item never disappears mid-add.
       if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(async () => {
         const mergeTarget = findMergeableCartLine(
@@ -4589,8 +4724,7 @@ export function PosScreen({ standalone = false }) {
 
     // Previous-order / classic: local queue — never freeze F10 behind lineBusy.
     if (classicLayout || usesPosLocalDraftLineEdits(cartRef.current)) {
-      // Clear + focus Scan immediately so the next item can be entered without waiting on the queue.
-      if (classicLayout && !wasEditing) clearClassicEntryFields();
+      // commitCartLine paints then clears entry (unlockUiEarly) — do not clear first.
       if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(run);
       return;
@@ -5331,8 +5465,32 @@ export function PosScreen({ standalone = false }) {
           till_id: cart?.till_id ?? null,
           float_session_id: floatSessionId ?? null,
         });
-        const saved = await saveLocalPosCart(localCart);
-        applyRestoredHeldCart(presentLocalOfflineCart(saved), park);
+        if (offlineMode) {
+          const saved = await saveLocalPosCart({ ...localCart, offline: true });
+          applyRestoredHeldCart(presentLocalOfflineCart(saved), park);
+        } else {
+          try {
+            const serverCart = await materializeOfflineCartOnServer({
+              ...localCart,
+              offline: false,
+            });
+            applyRestoredHeldCart(
+              {
+                ...serverCart,
+                customer_num: localCart.customer_num ?? null,
+                customer_name_override: localCart.customer_name_override ?? "Walk-in",
+                restored_from_hold_label: localCart.restored_from_hold_label ?? null,
+              },
+              park,
+            );
+          } catch {
+            const saved = await saveLocalPosCart({ ...localCart, offline: false });
+            applyRestoredHeldCart(
+              { ...presentLocalOfflineCart(saved), offline: false },
+              park,
+            );
+          }
+        }
         clearAutoHeldOrder();
         setAutoHeldPrompt(null);
         setHeldOrdersOpen(false);
@@ -5697,17 +5855,47 @@ export function PosScreen({ standalone = false }) {
       void clearPreviousOrderEditDraft().catch(() => {});
 
       const saleForPeek = pendingSale ?? completedSaleRef.current;
+      const checkoutCart = cartRef.current;
+      const checkoutCartId =
+        isServerPosCartId(checkoutCart?.id) && !isServerCartConsumed(checkoutCart.id)
+          ? Number(checkoutCart.id)
+          : null;
+
+      // Drop to an empty shell immediately — do not wait on peek / POST cart.
+      const quickPeek = resolveFreshWorkspacePosNum(
+        checkoutCart,
+        sessionPosOrders,
+        saleForPeek,
+      );
+      applyFreshWorkspacePlaceholder(checkoutCart, quickPeek);
+      setStatusMessage("New order — scan or search a product.");
+      report(28);
+
+      if (checkoutCartId) {
+        markServerCartConsumed(checkoutCartId);
+        void apiRequest(`/sales/carts/${checkoutCartId}/lines`, {
+          method: "DELETE",
+          loading: false,
+          reportIssues: false,
+        }).catch(() => {});
+      }
+      if (standalone && !offlineMode) {
+        void clearLocalPosCart().catch(() => {});
+      }
+
       const peekNextPos = await resolveNextPosTicketForWorkspace(
         cartRef.current,
         sessionPosOrders,
         saleForPeek,
       );
-      report(28);
-      const generation = ++freshWorkspaceGenerationRef.current;
-
-      applyFreshWorkspacePlaceholder(cartRef.current, peekNextPos);
-      setStatusMessage("New order — scan or search a product.");
+      if (
+        peekNextPos != null &&
+        Number(peekNextPos) !== Number(cartRef.current?.next_pos_order_num ?? quickPeek)
+      ) {
+        applyFreshWorkspacePlaceholder(cartRef.current, peekNextPos);
+      }
       report(45);
+      const generation = ++freshWorkspaceGenerationRef.current;
 
       const task = (async () => {
         try {
@@ -5718,10 +5906,14 @@ export function PosScreen({ standalone = false }) {
           if (generation !== freshWorkspaceGenerationRef.current) return next;
 
           const live = cartRef.current;
+          const liveIsStaleCheckout =
+            isStalePostCheckoutWorkspace(live, saleForPeek) ||
+            (isServerPosCartId(live?.id) && isServerCartConsumed(live.id));
           // Cashier already scanned into the next cart while bootstrap ran — keep their work.
-          // Include same-id races: empty/stale GET must not wipe optimistic lines.
+          // Never restore the consumed checkout cart or the sale that just completed.
           if (
             live &&
+            !liveIsStaleCheckout &&
             isServerPosCartId(live.id) &&
             (live.lines?.length ?? 0) > 0 &&
             !live?.held_order_num &&
@@ -5893,13 +6085,19 @@ export function PosScreen({ standalone = false }) {
   async function handleContinueNextOrder() {
     setReceiptPrintStatus(null);
     if (standalone) {
+      // Close ORDER COMPLETE first — prepare-next loading only appears after OK.
+      clearPosUiDraft();
+      setPaymentOpen(false);
+      setPaymentError(null);
       setPreparingNextProgress(0);
       setPreparingNextOpen(true);
+      // Let the complete dialog unmount before the progress overlay paints.
+      await new Promise((r) => window.requestAnimationFrame(() => r()));
       try {
         await prepareNextPosOrderAfterSale({
           force: true,
           focusScan: true,
-          keepPaymentOpen: true,
+          keepPaymentOpen: false,
           pendingSale: completedSaleRef.current,
           onProgress: setPreparingNextProgress,
         });
@@ -5911,8 +6109,6 @@ export function PosScreen({ standalone = false }) {
       } finally {
         setPreparingNextOpen(false);
         setPreparingNextProgress(0);
-        setPaymentOpen(false);
-        setPaymentError(null);
         if (classicLayout) {
           focusClassicProductSearch();
         } else {
@@ -6000,11 +6196,12 @@ export function PosScreen({ standalone = false }) {
         : null,
     });
 
-    // Offline External POS: cash-only, real reserved order numbers, print, queue sync.
-    // Also used when revising a pending offline sale or a previous-order edit (same order #).
+    // True offline (no network): cash-only, reserved numbers, queue sync.
+    // Do NOT use cart.offline alone — restored holds / local-first carts are not cash-locked.
+    // Revising a queued pending sync sale still uses this cash completion path.
     if (
       standalone &&
-      (offlineMode || activeCart.offline) &&
+      (offlineMode || Boolean(activeCart.offline_client_sale_uuid)) &&
       (!activeCart.held_order_num || isQueuedOfflineEdit || isPreviousOrderCashEdit)
     ) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
@@ -9859,7 +10056,7 @@ export function PosScreen({ standalone = false }) {
         receiptPrintStatus={receiptPrintStatus}
         onReprintReceipt={() => void handlePrintReceipt()}
         embedded={!standalone}
-        cashOnlyOffline={standalone && (offlineMode || Boolean(cart?.offline))}
+        cashOnlyOffline={standalone && offlineMode}
       />
 
       <PosSaveOrderDialog
@@ -9915,8 +10112,36 @@ export function PosScreen({ standalone = false }) {
           }
 
           if (meta?.local || restoredCart?.offline || isLocalHeldId(sourceSale?.id)) {
-            const saved = await saveLocalPosCart(restoredCart);
-            applyRestoredHeldCart(presentLocalOfflineCart(saved), sourceSale);
+            if (offlineMode) {
+              const saved = await saveLocalPosCart({ ...restoredCart, offline: true });
+              applyRestoredHeldCart(presentLocalOfflineCart(saved), sourceSale);
+            } else {
+              // Online: put held lines on a server cart so M-Pesa / all tenders work.
+              try {
+                const serverCart = await materializeOfflineCartOnServer({
+                  ...restoredCart,
+                  offline: false,
+                });
+                applyRestoredHeldCart(
+                  {
+                    ...serverCart,
+                    customer_num: restoredCart.customer_num ?? serverCart.customer_num ?? null,
+                    customer_name_override:
+                      restoredCart.customer_name_override ??
+                      serverCart.customer_name_override ??
+                      "Walk-in",
+                    restored_from_hold_label: restoredCart.restored_from_hold_label ?? null,
+                  },
+                  sourceSale,
+                );
+              } catch {
+                const saved = await saveLocalPosCart({ ...restoredCart, offline: false });
+                applyRestoredHeldCart(
+                  { ...presentLocalOfflineCart(saved), offline: false },
+                  sourceSale,
+                );
+              }
+            }
           } else {
             applyRestoredHeldCart(restoredCart, sourceSale);
           }

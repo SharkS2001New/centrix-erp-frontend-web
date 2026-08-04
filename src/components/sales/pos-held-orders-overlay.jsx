@@ -417,7 +417,6 @@ export function PosHeldOrdersOverlay({
                 const isSelected = String(selectedOrderId) === key;
                 const isExpanded = expandedIds.has(key);
                 const isLoadingItems = detailLoadingId === key;
-                const isLocal = Boolean(order?.local_held || isLocalHeldId(order?.id));
 
                 return (
                   <li
@@ -453,15 +452,6 @@ export function PosHeldOrdersOverlay({
                           <span className="text-sm font-semibold text-slate-900">
                             {heldOrderLabel(order)}
                           </span>
-                          {isLocal ? (
-                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-800">
-                              Local
-                            </span>
-                          ) : (
-                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-amber-800">
-                              Server
-                            </span>
-                          )}
                         </span>
                         <span className="mt-0.5 block text-sm font-medium text-slate-800">
                           {heldCustomerName(order)}

@@ -95,7 +95,7 @@ describe("pos-local-held", () => {
 
     const { cart, park: restoredPark } = await restoreLocalHeldOrder(park.id);
     expect(restoredPark.hold_label).toBe("HOLD-1");
-    expect(cart.offline).toBe(true);
+    expect(cart.offline).toBe(false);
     expect(cart.held_order_num).toBeNull();
     expect(cart.superseded_sale_id).toBeNull();
     expect(cart.lines).toHaveLength(1);

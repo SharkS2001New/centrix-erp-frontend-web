@@ -58,6 +58,26 @@ export function normalizeCartResponse(res) {
   return null;
 }
 
+/**
+ * Keep in-flight optimistic lines that the server cart does not yet include
+ * (parallel classic adds must not wipe a newer pending row).
+ */
+export function mergePreservedOptimisticLines(serverLines, prevLines) {
+  const lines = Array.isArray(serverLines) ? [...serverLines] : [];
+  for (const line of prevLines ?? []) {
+    if (!line?._optimistic) continue;
+    const already =
+      lines.some(
+        (row) =>
+          String(row.product_code) === String(line.product_code) &&
+          Number(row.on_wholesale_retail ?? 0) === Number(line.on_wholesale_retail ?? 0),
+      ) ||
+      lines.some((row) => String(cartLineRef(row)) === String(cartLineRef(line)));
+    if (!already) lines.push(line);
+  }
+  return lines;
+}
+
 /** Merge a single-line API payload into the current cart (legacy fallback). */
 export function applyCartMutationResponse(prevCart, res, { targetLineRef = null } = {}) {
   const normalized = normalizeCartResponse(res);
@@ -65,6 +85,7 @@ export function applyCartMutationResponse(prevCart, res, { targetLineRef = null 
     return {
       ...prevCart,
       ...normalized,
+      lines: mergePreservedOptimisticLines(normalized.lines, prevCart?.lines),
       // Line mutations used to omit next_order_num → caption became "New Order - —".
       next_order_num: normalized.next_order_num ?? prevCart?.next_order_num ?? null,
     };
@@ -79,9 +100,22 @@ export function applyCartMutationResponse(prevCart, res, { targetLineRef = null 
       : lines.findIndex((line) => String(cartLineRef(line)) === String(ref));
 
   if (idx >= 0) {
-    lines[idx] = { ...lines[idx], ...res };
+    const { _optimistic: _dropOptimistic, ...rest } = lines[idx];
+    lines[idx] = { ...rest, ...res };
   } else {
-    lines.push(res);
+    // Replace matching pending optimistic for this SKU instead of duplicating.
+    const pendingIdx = lines.findIndex(
+      (line) =>
+        line?._optimistic &&
+        String(line.product_code) === String(res.product_code) &&
+        Number(line.on_wholesale_retail ?? 0) === Number(res.on_wholesale_retail ?? 0),
+    );
+    if (pendingIdx >= 0) {
+      const { _optimistic: _dropOptimistic, ...rest } = lines[pendingIdx];
+      lines[pendingIdx] = { ...rest, ...res };
+    } else {
+      lines.push(res);
+    }
   }
 
   return {

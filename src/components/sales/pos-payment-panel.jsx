@@ -1959,7 +1959,7 @@ export function PosPaymentPanel({
           <PosField label="Cash amount (C)">
             {cashOnlyOffline ? (
               <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
-                Offline — cash only. Sale uses a reserved order number and syncs when internet returns.
+                Offline — cash only. Sale will sync when the connection returns.
               </p>
             ) : null}
             <input

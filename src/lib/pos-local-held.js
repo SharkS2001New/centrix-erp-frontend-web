@@ -62,7 +62,7 @@ export async function parkCartLocally(cart, options = {}) {
 
   const draftCart = {
     id: "active",
-    offline: true,
+    offline: false,
     channel: "pos",
     lines,
     branch_id: cart?.branch_id ?? options.branchId ?? null,
@@ -133,7 +133,8 @@ export async function deleteLocalHeldOrder(id) {
 }
 
 /**
- * Build a local offline cart from a held park (ready for presentLocalOfflineCart).
+ * Build a workspace cart from a held park.
+ * Not an "offline sale" — only the network offlineMode path locks payments to cash.
  */
 export function localCartFromHeldPark(park, seed = {}) {
   if (!park?.items?.length && !park?.lines?.length) {
@@ -146,7 +147,7 @@ export function localCartFromHeldPark(park, seed = {}) {
   const snap = park.cart_snapshot ?? {};
   return {
     id: "active",
-    offline: true,
+    offline: false,
     channel: "pos",
     lines,
     branch_id: snap.branch_id ?? seed.branch_id ?? null,

@@ -2710,6 +2710,25 @@ html[data-theme="dark"] .pos-workspace-classic {
   letter-spacing: 0.03em;
 }
 
+.classic-pos-find-table th.classic-pos-find-num,
+.classic-pos-find-table td.classic-pos-find-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.classic-pos-find-table th.classic-pos-find-price,
+.classic-pos-find-table td.classic-pos-find-price {
+  width: 6.5rem;
+  min-width: 6.5rem;
+}
+
+.classic-pos-find-table th.classic-pos-find-stock,
+.classic-pos-find-table td.classic-pos-find-stock {
+  width: 9.5rem;
+  min-width: 9.5rem;
+}
+
 .classic-pos-find-table td {
   border-bottom: 1px solid #d9ceb0;
   padding: 0.4rem 0.6rem;

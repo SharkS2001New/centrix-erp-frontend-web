@@ -282,8 +282,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                 <tr>
                   <th>Product code</th>
                   <th>Product name</th>
-                  <th className="text-right">Unit price</th>
-                  <th className="text-right">Available</th>
+                  <th className="classic-pos-find-num classic-pos-find-price">Unit price</th>
+                  <th className="classic-pos-find-num classic-pos-find-stock">Available</th>
                 </tr>
               </thead>
               <tbody>
@@ -334,10 +334,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       >
                         <td>{product.product_code}</td>
                         <td>{product.product_name}</td>
-                        <td className="text-right tabular-nums">
+                        <td className="classic-pos-find-num classic-pos-find-price">
                           {Number(price).toLocaleString()}
                         </td>
-                        <td className={`text-right tabular-nums ${negative ? "classic-pos-neg" : ""}`}>
+                        <td
+                          className={`classic-pos-find-num classic-pos-find-stock ${
+                            negative ? "classic-pos-neg" : ""
+                          }`}
+                        >
                           {formatStockQty(qty, product)}
                         </td>
                       </tr>
