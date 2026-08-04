@@ -130,6 +130,8 @@ export function PosHeldOrdersOverlay({
 
   useEffect(() => {
     if (!open) {
+      setRows([]);
+      setTotalCount(0);
       setDetailsById({});
       setSearch("");
       setListError(null);
@@ -142,6 +144,33 @@ export function PosHeldOrdersOverlay({
     }
     loadHeldOrders();
   }, [open, loadHeldOrders]);
+
+  function removeHeldOrderFromMemory(order) {
+    const key = orderKey(order);
+    if (!key) return;
+    setRows((prev) => {
+      if (!prev.some((row) => orderKey(row) === key)) return prev;
+      const next = prev.filter((row) => orderKey(row) !== key);
+      setTotalCount(next.length);
+      onCountChange?.(next.length);
+      return next;
+    });
+    setDetailsById((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setExpandedIds((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    if (String(selectedOrderId) === key) {
+      setSelectedOrderId(null);
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -217,11 +246,9 @@ export function PosHeldOrdersOverlay({
   async function handleRestore(order) {
     if (!order?.id) return;
 
-    // Close this overlay before any confirm so shortcut guards do not stick on
-    // "open dialog" after restore (held overlay + confirm stacking).
-    onClose?.();
-
     if (workspaceHasLines) {
+      // Close before confirm so shortcut guards do not stick on stacked dialogs.
+      onClose?.();
       const ok = await confirm({
         title: "Restore held order",
         message: "Your workspace has an open order. Replace it with this held order?",
@@ -237,6 +264,9 @@ export function PosHeldOrdersOverlay({
     try {
       if (order?.local_held || isLocalHeldId(order.id)) {
         const { cart, park } = await restoreLocalHeldOrder(order.id, cartSeed ?? {});
+        // Drop from in-memory held list before closing so the badge count stays accurate.
+        removeHeldOrderFromMemory(park ?? order);
+        onClose?.();
         onRestored?.(cart, park, { local: true });
         return;
       }
@@ -245,6 +275,8 @@ export function PosHeldOrdersOverlay({
         method: "POST",
         body: { replace: true },
       });
+      removeHeldOrderFromMemory(order);
+      onClose?.();
       onRestored?.(cart, order, { local: false });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to restore order";
@@ -273,24 +305,7 @@ export function PosHeldOrdersOverlay({
       } else {
         await apiRequest(`/sales/orders/${order.id}/cancel-held`, { method: "POST" });
       }
-      const key = orderKey(order);
-      setRows((prev) => prev.filter((row) => orderKey(row) !== key));
-      setDetailsById((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-      setExpandedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-      if (String(selectedOrderId) === key) {
-        setSelectedOrderId(null);
-      }
-      const nextCount = Math.max(0, totalCount - 1);
-      setTotalCount(nextCount);
-      onCountChange?.(nextCount);
+      removeHeldOrderFromMemory(order);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to delete held order");
     } finally {
@@ -329,7 +344,7 @@ export function PosHeldOrdersOverlay({
         aria-labelledby="held-orders-title"
         className={`${posModalPanelClass(embedded, "flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl")}`}
       >
-        <header className="shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-white">
+        <header className="classic-pos-themed-dialog-header shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-[var(--theme-primary-fg)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -342,7 +357,7 @@ export function PosHeldOrdersOverlay({
                   </span>
                 ) : null}
               </div>
-              <p className="mt-0.5 text-xs text-blue-100">
+              <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs text-white/75">
                 Select an order, then Restore or Delete. Expand only shows line items.
               </p>
             </div>
@@ -394,7 +409,7 @@ export function PosHeldOrdersOverlay({
           ) : null}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/50">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--theme-surface-subtle)]">
           {loading ? (
             <p className="px-4 py-10 text-center text-sm text-slate-500">Loading held orders…</p>
           ) : listError ? (

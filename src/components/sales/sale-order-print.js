@@ -27,7 +27,7 @@ import {
 } from "@/lib/receipt-payment-details";
 import { resolveProformaValidDays } from "@/lib/proforma-print-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
-import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
+import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
 import { fetchLegacyArchiveSaleForPrint } from "@/lib/legacy-archive-api";
 import {
   disposePrintWindow,
@@ -37,6 +37,7 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import { isPrintAgentEnabled } from "@/lib/print-agent";
+import { dispatchPrintJob } from "@/lib/print-dispatch";
 
 function ensureBatchPrintCache(cache = null) {
   if (cache && typeof cache === "object") {
@@ -295,7 +296,21 @@ export async function printLegacyArchiveSale(archiveSale, options = {}) {
  * Print an order using the format configured in sales settings (receipt, invoice, or chosen).
  */
 export async function printSaleOrder(sale, options = {}) {
-  if (!sale) return null;
+  const job = await prepareSaleOrderPrintJob(sale, options);
+  if (!job?.ok) {
+    if (job?.cancelled) return null;
+    throw new Error(job?.error || "Print failed.");
+  }
+  await dispatchPreparedSalePrintJob(job);
+  return job.documentType;
+}
+
+/**
+ * Build a ready-to-queue print job (HTML + metadata) without sending it to the printer.
+ * Batch printing prepares a whole chunk this way, then queues every job at once.
+ */
+export async function prepareSaleOrderPrintJob(sale, options = {}) {
+  if (!sale) return { ok: false, error: "Missing sale." };
 
   const fallbackModuleSettings =
     options.moduleSettings ?? options.capabilities?.module_settings ?? null;
@@ -307,7 +322,7 @@ export async function printSaleOrder(sale, options = {}) {
   );
   if (!documentType) {
     disposePrintWindow(options.printWindow);
-    return null;
+    return { ok: false, cancelled: true };
   }
 
   let printWindow = options.printWindow ?? null;
@@ -316,10 +331,10 @@ export async function printSaleOrder(sale, options = {}) {
   const offlineSale = isOfflineSalePrint(sale, options);
   const deferPrintWindow =
     !printWindow && isPrintAgentEnabled() && documentType === "receipt";
-  if (!printWindow && !deferPrintWindow) {
+  if (!printWindow && !deferPrintWindow && !options.deferBrowserWindow) {
     printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
     if (!printWindow) {
-      throw new Error(PRINT_BLOCKED_MESSAGE);
+      return { ok: false, error: PRINT_BLOCKED_MESSAGE };
     }
   } else if (printWindow) {
     showPrintPreparing(printWindow);
@@ -344,9 +359,11 @@ export async function printSaleOrder(sale, options = {}) {
       loadedSale?.can_print_invoice === false
     ) {
       disposePrintWindow(printWindow);
-      throw new Error(
-        "Cannot print invoice — stock is not available for one or more items on this order. Restock or enable Allow negative stock in inventory settings.",
-      );
+      return {
+        ok: false,
+        error:
+          "Cannot print invoice — stock is not available for one or more items on this order. Restock or enable Allow negative stock in inventory settings.",
+      };
     }
 
     const saleForPrint = enrichSaleLinesForQtyPrint(loadedSale, {
@@ -467,7 +484,11 @@ export async function printSaleOrder(sale, options = {}) {
       } catch (kraPrintError) {
         // Re-throw when KRA is required — do not silently print without the QR.
         if (kraConfigured) {
-          throw kraPrintError;
+          disposePrintWindow(printWindow);
+          return {
+            ok: false,
+            error: kraPrintError instanceof Error ? kraPrintError.message : "KRA QR required for print.",
+          };
         }
         kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);
         kraQrDataUrl = null;
@@ -525,8 +546,12 @@ export async function printSaleOrder(sale, options = {}) {
     };
 
     if (documentType === "invoice" || isProforma) {
-      for (let copy = 0; copy < copies; copy += 1) {
-        printSaleInvoice(saleForPrint, {
+      return {
+        ok: true,
+        documentType,
+        mode: isProforma ? "proforma" : "invoice",
+        saleForPrint,
+        printOptions: {
           ...printOptions,
           documentType: isProforma ? "proforma" : "invoice",
           invoiceValidDays: isProforma
@@ -534,22 +559,61 @@ export async function printSaleOrder(sale, options = {}) {
             : Number(sales.invoice_valid_days ?? 7),
           preparedBy: orderCreatorName,
           uomById: options.uomById ?? null,
-        });
-      }
-      return documentType;
+        },
+        copies,
+        printWindow,
+      };
     }
 
-    await printSaleReceipt(saleForPrint, {
+    const html = buildSaleReceiptHtml(saleForPrint, {
       ...printOptions,
       copies,
       preparedBy: orderCreatorName,
       organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
       uomById: options.uomById ?? null,
     });
+    if (!html) {
+      disposePrintWindow(printWindow);
+      return { ok: false, error: "Could not build receipt HTML." };
+    }
 
-    return documentType;
+    return {
+      ok: true,
+      documentType: "receipt",
+      mode: "receipt",
+      html,
+      copies,
+      documentId: saleForPrint?.id ?? saleForPrint?.sale_id ?? sale?.id ?? null,
+      printWindow,
+      jobType: "receipt",
+    };
   } catch (error) {
     disposePrintWindow(printWindow);
-    throw error;
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Print preparation failed.",
+    };
   }
+}
+
+/** Send a prepared job to the Centrix agent queue or browser print dialog. */
+export async function dispatchPreparedSalePrintJob(job) {
+  if (!job?.ok) return { mode: "browser", ok: false };
+
+  if (job.mode === "invoice" || job.mode === "proforma") {
+    const copies = Math.max(1, Number(job.copies ?? 1) || 1);
+    for (let copy = 0; copy < copies; copy += 1) {
+      printSaleInvoice(job.saleForPrint, job.printOptions);
+    }
+    return { mode: "browser", ok: true };
+  }
+
+  return dispatchPrintJob({
+    html: job.html,
+    copies: job.copies,
+    jobType: job.jobType ?? "receipt",
+    documentId: job.documentId,
+    printWindow: job.printWindow ?? null,
+    windowFeatures: "width=420,height=720",
+  });
 }

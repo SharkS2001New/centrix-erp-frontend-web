@@ -207,16 +207,20 @@ export function PosSaveOrderDialog({
         aria-modal="true"
         className={`${posModalPanelClass(embedded, "theme-modal flex w-full max-w-md flex-col overflow-hidden rounded-lg border shadow-2xl")}`}
       >
-        <div className={`px-4 py-3 text-white ${isHold ? "bg-amber-700" : "bg-[var(--theme-primary)]"}`}>
+        <div
+          className={`classic-pos-themed-dialog-header px-4 py-3 text-white ${
+            isHold ? "bg-amber-700" : "bg-[var(--theme-primary)]"
+          }`}
+        >
           <h2 className="text-center text-sm font-bold tracking-wide">
             {isHold ? "HOLD ORDER" : "SAVE ORDER"}
           </h2>
           {isHold ? (
-            <p className="mt-1 text-center text-[11px] text-amber-100">
+            <p className="mt-1 text-center text-[11px] text-amber-100 classic-pos-themed-dialog-sub">
               Stock is deducted when the order is held.
             </p>
           ) : saveStatusLabel ? (
-            <p className="mt-1 text-center text-[11px] text-blue-100">
+            <p className="mt-1 text-center text-[11px] text-blue-100 classic-pos-themed-dialog-sub">
               Workflow status: <strong>{saveStatusLabel}</strong>
               {" · "}
               Created via: <strong>Backoffice</strong>

@@ -103,7 +103,13 @@ export function isModuleEnabledForNav(moduleKey, isModuleEnabled) {
   if (!moduleKey) return true;
   if (isModuleEnabled(moduleKey)) return true;
 
-  if (moduleKey.endsWith(".dashboard") || moduleKey.endsWith(".reports")) {
+  // Parent domain on (e.g. sales) unlocks dashboard / reports / backend child nav
+  // when the granular child key is absent from capabilities.modules.
+  if (
+    moduleKey.endsWith(".dashboard") ||
+    moduleKey.endsWith(".reports") ||
+    moduleKey.endsWith(".backend")
+  ) {
     const parent = moduleKey.includes(".") ? moduleKey.split(".").slice(0, -1).join(".") : null;
     if (parent && isModuleEnabled(parent)) {
       return true;

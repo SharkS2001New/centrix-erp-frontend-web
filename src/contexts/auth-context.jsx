@@ -271,7 +271,9 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    refreshCapabilities({ force: Boolean(isPosSession && isReload) })
+    // Always force on browser reload so role/permission changes show in the sidebar
+    // after F5 (not only on external POS). Soft navigations still use the TTL cache.
+    refreshCapabilities({ force: isReload })
       .then((caps) => {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })

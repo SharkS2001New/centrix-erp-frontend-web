@@ -184,7 +184,7 @@ export function PosPendingSyncOverlay({
         aria-labelledby="pending-sync-title"
         className={`${posModalPanelClass(embedded, "flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl")}`}
       >
-        <header className="shrink-0 border-b border-amber-700 bg-amber-600 px-4 py-3 text-white">
+        <header className="classic-pos-themed-dialog-header shrink-0 border-b border-amber-700 bg-amber-600 px-4 py-3 text-white">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -197,7 +197,7 @@ export function PosPendingSyncOverlay({
                   </span>
                 ) : null}
               </div>
-              <p className="mt-0.5 text-xs text-amber-100">
+              <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs text-amber-100">
                 Local sales waiting to upload. Remove a stuck order to free the till for a new sale.
               </p>
             </div>

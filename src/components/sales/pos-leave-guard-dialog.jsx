@@ -41,12 +41,12 @@ export function PosLeaveGuardDialog({
         aria-labelledby="pos-leave-guard-title"
         className="w-full max-w-md theme-panel rounded-xl border p-5 shadow-xl"
       >
-        <h2 id="pos-leave-guard-title" className="text-base font-semibold text-slate-900">
+        <h2 id="pos-leave-guard-title" className="text-base font-semibold text-[var(--theme-text)]">
           Leave point of sale?
         </h2>
         {classicAutoHold ? (
           <>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">
               You have {itemLabel} in the current sale. Leaving will automatically hold the order
               (stock stays reserved) so you can restore or delete it on next login.
             </p>
@@ -79,11 +79,11 @@ export function PosLeaveGuardDialog({
           </>
         ) : (
           <>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">
               You have {itemLabel} in the current sale. Stock for these items is reserved and unavailable
               for other sales until you complete, save, or clear the cart.
             </p>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">
               Clear the sale and restore stock to inventory before leaving, or keep the reservation if
               you plan to return to this cart.
             </p>

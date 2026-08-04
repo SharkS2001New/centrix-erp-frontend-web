@@ -144,21 +144,21 @@ export const ORDERS_LIST_SORT_OPTIONS = [
 ];
 
 export const ORDER_LIST_COLUMN_OPTIONS = [
-  { id: "order", label: "Order", required: true },
-  { id: "customer", label: "Customer", required: true },
+  { id: "order", label: "Order" },
+  { id: "customer", label: "Customer" },
   { id: "branch", label: "Branch" },
   { id: "route", label: "Route" },
   { id: "delivery_date", label: "Delivery date" },
   { id: "connectivity", label: "Connectivity" },
-  { id: "amount", label: "Amount", required: true },
+  { id: "amount", label: "Amount" },
   { id: "amount_paid", label: "Amount paid" },
   { id: "balance", label: "Balance" },
   { id: "discount", label: "Discount" },
   { id: "vat", label: "VAT" },
-  { id: "status", label: "Status", required: true },
-  { id: "method", label: "Method", required: true },
+  { id: "status", label: "Status" },
+  { id: "method", label: "Method" },
   { id: "source", label: "Source" },
-  { id: "placed_by", label: "Placed by", required: true },
+  { id: "placed_by", label: "Placed by" },
 ];
 
 export const ORDER_LIST_COLUMN_QUEUE_OPTIONS = [
@@ -181,9 +181,6 @@ export const ORDER_LIST_COLUMN_QUEUE_OPTIONS = [
 
 const ORDER_LIST_COLUMN_ID_SET = new Set(ORDER_LIST_COLUMN_OPTIONS.map((option) => option.id));
 const ORDER_LIST_QUEUE_ID_SET = new Set(ORDER_LIST_COLUMN_QUEUE_OPTIONS.map((option) => option.id));
-const ORDER_LIST_REQUIRED_COLUMN_IDS = ORDER_LIST_COLUMN_OPTIONS
-  .filter((option) => option.required)
-  .map((option) => option.id);
 const DEFAULT_ORDER_LIST_VISIBLE_COLUMNS = [
   "order",
   "customer",
@@ -219,9 +216,6 @@ export function normalizeOrdersListVisibleColumns(value) {
     if (!ORDER_LIST_COLUMN_ID_SET.has(key) || seen.has(key)) continue;
     seen.add(key);
     allowed.push(key);
-  }
-  for (const required of ORDER_LIST_REQUIRED_COLUMN_IDS) {
-    if (!seen.has(required)) allowed.push(required);
   }
   return allowed;
 }

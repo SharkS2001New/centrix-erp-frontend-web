@@ -15,7 +15,6 @@ import { withNavItemIcon } from "@/lib/nav-item-icons";
 import { formatNavLabel } from "@/lib/nav-label-format";
 import {
   canViewOrderQueue,
-  orderQueuePermissionCode,
 } from "@/lib/order-queue-permissions";
 import { defaultWorkspaceId, filterNavSectionsForWorkspace } from "@/lib/workspaces";
 
@@ -24,7 +23,9 @@ function mapSalesOrderNavItem(item) {
     href: item.href,
     label: formatNavLabel(item.label),
     module: "sales.backend",
-    permission: orderQueuePermissionCode(item.slug),
+    // Queue ACL is canViewOrderQueue (umbrella-aware via hasPermission). Do not set
+    // `permission` here — hasNavPermission ignores sales.orders.view / sales.view and
+    // hides order links after granting "all backoffice" / umbrella roles.
     orderQueueSlug: item.slug,
     exact: item.slug === "all",
     ordersNav: false,
@@ -60,7 +61,6 @@ export function buildWorkspaceNavSections({
           href: "/sales/orders/queues/mobile",
           label: "Mobile Orders",
           module: "sales.backend",
-          permission: orderQueuePermissionCode("mobile"),
           orderQueueSlug: "mobile",
           ordersNav: false,
         }),

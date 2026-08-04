@@ -12,6 +12,7 @@ import { UserPermissionMatrix, toggleUserPermissionOverride } from "@/components
 import { RbacHelpButton } from "@/components/admin/rbac-help";
 import { RbacHelpDialog } from "@/components/admin/rbac-help";
 import { permissionIdSet } from "@/lib/permission-ids";
+import { filterPermissionMatrixForCapabilities } from "@/lib/permission-matrix-filters";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
@@ -239,8 +240,15 @@ export function AdminUsersScreen() {
       setBranches(filterByOrganization(branchRes.value.data, organizationId));
       setRoles(roleRes.value.data ?? []);
       setPermissions(matrixRes.value.permissions ?? []);
-      setPermissionApplications(matrixRes.value.applications ?? []);
-      setPermissionGroups(matrixRes.value.groups ?? []);
+      const filteredMatrix = filterPermissionMatrixForCapabilities(
+        {
+          applications: matrixRes.value.applications ?? [],
+          groups: matrixRes.value.groups ?? [],
+        },
+        effectiveCapabilities,
+      );
+      setPermissionApplications(filteredMatrix.applications);
+      setPermissionGroups(filteredMatrix.groups);
 
       if (mobileAppEnabled) {
         if (routeRes?.status === "fulfilled") {
@@ -279,7 +287,7 @@ export function AdminUsersScreen() {
     } finally {
       setLoading(false);
     }
-  }, [organizationId, adminPath, mobileAppEnabled, posEnabled, hospitalityPosEnabled]);
+  }, [organizationId, adminPath, mobileAppEnabled, posEnabled, hospitalityPosEnabled, effectiveCapabilities]);
 
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;

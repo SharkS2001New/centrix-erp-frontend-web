@@ -20,6 +20,7 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { ROLE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { normalizeRoleId, permissionIdSet } from "@/lib/permission-ids";
+import { filterPermissionMatrixForCapabilities } from "@/lib/permission-matrix-filters";
 import { useConfirm } from "@/lib/use-confirm";
 
 export function AdminRolesScreen() {
@@ -62,8 +63,15 @@ export function AdminRolesScreen() {
       setPermissionGroups([]);
       return;
     }
-    setPermissionApplications(res.applications ?? []);
-    setPermissionGroups(res.groups ?? []);
+    const filtered = filterPermissionMatrixForCapabilities(
+      {
+        applications: res.applications ?? [],
+        groups: res.groups ?? [],
+      },
+      capabilities,
+    );
+    setPermissionApplications(filtered.applications);
+    setPermissionGroups(filtered.groups);
     if (res.industry) {
       setIndustryLabel(
         res.industry === "hospitality"
@@ -73,7 +81,7 @@ export function AdminRolesScreen() {
             : res.industry,
       );
     }
-  }, [adminPath, capabilities?.industry, capabilities?.deployment_profile]);
+  }, [adminPath, capabilities]);
 
   const loadRolePermissions = useCallback(async (roleId) => {
     const id = normalizeRoleId(roleId);
@@ -157,7 +165,8 @@ export function AdminRolesScreen() {
       });
       setAssignedIds(permissionIdSet(res.permission_ids));
       notifySuccess("Permissions saved.");
-      await refreshCapabilities();
+      // Force so admins/staff picking up role changes don't sit on a 90s cached map.
+      await refreshCapabilities({ force: true });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to save permissions");
     } finally {

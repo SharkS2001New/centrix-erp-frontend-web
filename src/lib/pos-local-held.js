@@ -171,6 +171,16 @@ export async function restoreLocalHeldOrder(id, seed = {}) {
     throw new Error("Held order not found on this device.");
   }
   const cart = localCartFromHeldPark(park, seed);
+  // Restoring consumes the park — drop it from device memory immediately.
   await idbDeleteHeldPark(id);
   return { cart, park };
+}
+
+/**
+ * Ensure a held park is gone from local memory after restore (idempotent).
+ * Safe to call even when restoreLocalHeldOrder already deleted the row.
+ */
+export async function forgetLocalHeldOrder(id) {
+  if (!isLocalHeldId(id)) return false;
+  return deleteLocalHeldOrder(id);
 }

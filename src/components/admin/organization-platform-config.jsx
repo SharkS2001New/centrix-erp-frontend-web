@@ -1339,14 +1339,14 @@ export function OrganizationModuleToggles({
                       }
                     >
                       <option value="modern">Modern — current Centrix POS</option>
-                      <option value="classic">Classic — cart on top, Find window, beige workspace</option>
+                      <option value="classic">Classic — cart on top, Find window, themeable colors</option>
                     </select>
                     <p className="theme-subtext mt-1 text-xs">
                       Only affects the external POS workspace (/pos). Backoffice Create order keeps the modern layout.
                     </p>
                   </OrgRegisterField>
                   {salesPlatform?.external_pos_layout === "classic" ? (
-                    <OrgRegisterField label="Classic POS theme template" className="mt-4">
+                    <OrgRegisterField label="Classic POS colors" className="mt-4">
                       <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         {CLASSIC_POS_THEME_TEMPLATES.map((theme) => {
                           const selected =
@@ -1389,7 +1389,9 @@ export function OrganizationModuleToggles({
                         })}
                       </div>
                       <p className="theme-subtext mt-2 text-xs">
-                        Applies only to Classic External POS (/pos). Modern layout keeps the standard Centrix theme.
+                        Choose the color palette for Classic External POS (/pos). Workspace, Find
+                        dropdown, held orders, hold/save, payment, and other popups all use these
+                        colors. Modern layout keeps the standard Centrix theme.
                       </p>
                     </OrgRegisterField>
                   ) : null}

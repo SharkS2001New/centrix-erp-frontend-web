@@ -35,6 +35,7 @@ vi.mock("@/lib/pos-offline-db", () => {
 import * as offlineDb from "@/lib/pos-offline-db";
 import {
   formatLocalHoldLabel,
+  forgetLocalHeldOrder,
   isLocalHeldId,
   localCartFromHeldPark,
   parkCartLocally,
@@ -102,6 +103,17 @@ describe("pos-local-held", () => {
     expect(cart.lines[0].product_code).toBe("SUGAR");
 
     await expect(restoreLocalHeldOrder(park.id)).rejects.toThrow(/not found/i);
+  });
+
+  it("forgetLocalHeldOrder is idempotent after restore", async () => {
+    const park = await parkCartLocally(
+      {
+        lines: [{ product_code: "TEA", quantity: 1, unit_price: 20 }],
+      },
+      { walkIn: true },
+    );
+    await restoreLocalHeldOrder(park.id);
+    await expect(forgetLocalHeldOrder(park.id)).resolves.toBe(false);
   });
 
   it("builds a cart from park without previous-order edit markers", () => {

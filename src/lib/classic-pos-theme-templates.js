@@ -391,6 +391,92 @@ export function classicPosThemeCssVars(id) {
   return { ...vars, ...classicHeaderForegroundVars(vars) };
 }
 
+function mixHexToward(hex, towardRgb, amount) {
+  const rgb = parseHexColor(hex);
+  if (!rgb) return hex;
+  const t = Math.min(1, Math.max(0, amount));
+  const mixed = rgb.map((c, i) => Math.round(c + (towardRgb[i] - c) * t));
+  return `#${mixed.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function hexToRgba(hex, alpha) {
+  const rgb = parseHexColor(hex);
+  if (!rgb) return `rgba(0, 0, 0, ${alpha})`;
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+}
+
+/**
+ * Bridge Classic palette onto global `--theme-*` tokens so portaled POS dialogs
+ * (held orders, payment, hold/save, pending sync, leave guard) match the template.
+ */
+export function classicPosThemeBridgeVars(id) {
+  const classic = classicPosThemeCssVars(id);
+  const header = classic["--classic-header"];
+  const headerFg = classic["--classic-header-fg"] ?? "#ffffff";
+  const panel = classic["--classic-panel"];
+  const table = classic["--classic-table"];
+  const border = classic["--classic-border"];
+  const text = classic["--classic-text"];
+  const muted = classic["--classic-muted"];
+  const footer = classic["--classic-footer"];
+  const input = classic["--classic-input-bg"];
+  const selected = classic["--classic-row-selected"];
+  const caption = classic["--classic-caption"];
+  const primaryHover = mixHexToward(header, [0, 0, 0], 0.12);
+
+  return {
+    ...classic,
+    "--theme-primary": header,
+    "--theme-primary-hover": primaryHover,
+    "--theme-primary-fg": headerFg,
+    "--theme-primary-subtle": hexToRgba(header, 0.14),
+    "--theme-primary-muted": panel,
+    "--theme-accent-text": caption ?? header,
+    "--theme-page-bg": panel,
+    "--theme-surface": table,
+    "--theme-surface-muted": panel,
+    "--theme-surface-subtle": footer,
+    "--theme-border": border,
+    "--theme-border-strong": mixHexToward(border, [0, 0, 0], 0.2),
+    "--theme-text": text,
+    "--theme-text-muted": muted,
+    "--theme-text-subtle": muted,
+    "--theme-input-bg": input,
+    "--theme-hover": selected,
+  };
+}
+
+const CLASSIC_POS_DOCUMENT_STYLE_KEYS = new Set();
+
+/** Apply Classic template vars on `html` so body-portaled popups inherit them. */
+export function applyClassicPosDocumentTheme(id) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const vars = classicPosThemeBridgeVars(id);
+  for (const key of CLASSIC_POS_DOCUMENT_STYLE_KEYS) {
+    if (!(key in vars)) root.style.removeProperty(key);
+  }
+  CLASSIC_POS_DOCUMENT_STYLE_KEYS.clear();
+  for (const [key, value] of Object.entries(vars)) {
+    if (value == null || value === "") continue;
+    root.style.setProperty(key, String(value));
+    CLASSIC_POS_DOCUMENT_STYLE_KEYS.add(key);
+  }
+  root.dataset.classicPosActive = "true";
+  root.dataset.classicPosTheme = normalizeClassicPosThemeTemplate(id);
+}
+
+export function clearClassicPosDocumentTheme() {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  for (const key of CLASSIC_POS_DOCUMENT_STYLE_KEYS) {
+    root.style.removeProperty(key);
+  }
+  CLASSIC_POS_DOCUMENT_STYLE_KEYS.clear();
+  delete root.dataset.classicPosActive;
+  delete root.dataset.classicPosTheme;
+}
+
 export function resolveClassicPosThemeTemplate(moduleSettingsOrCapabilities = null) {
   const sales =
     moduleSettingsOrCapabilities?.module_settings?.sales ??

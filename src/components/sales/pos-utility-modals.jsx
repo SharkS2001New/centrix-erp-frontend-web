@@ -42,11 +42,11 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md", e
         data-pos-shortcut-ignore="true"
       >
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h2>
+          <h2 className="text-sm font-semibold text-[var(--theme-text)]">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="theme-secondary-btn rounded-lg border px-2 py-1 text-xs"
           >
             Close
           </button>

@@ -1134,21 +1134,6 @@ const NAV_SECTION_DEFINITIONS = [
       },
     ],
   },
-  {
-    id: "account",
-    label: "Account",
-    icon: "👤",
-    collapsible: true,
-    sharedAcrossWorkspaces: true,
-    items: [
-      {
-        href: "/notifications",
-        label: "Notifications",
-        module: null,
-        permission: P.admin.notifications.view,
-      },
-    ],
-  },
 ];
 
 export const navSections = withNavItemIcons(NAV_SECTION_DEFINITIONS);
@@ -1178,7 +1163,10 @@ export function isNavSectionVisible(section, navContext) {
 }
 
 export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavPermission, requireTillFloat, user, capabilities, isSuperAdmin, organization }) {
-  const checkPermission = hasNavPermission ?? hasPermission;
+  // Prefer the expanded role map so selecting "all" backoffice permissions (or manage
+  // packs) shows every granted sidebar link. hasNavPermission alone can stay false for
+  // sibling codes that capabilities.permissions already expands.
+  const checkPermission = hasPermission ?? hasNavPermission;
   if (item.superAdminOnly && !isSuperAdmin?.()) return false;
   if (
     shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin }) &&

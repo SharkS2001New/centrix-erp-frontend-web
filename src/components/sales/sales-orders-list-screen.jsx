@@ -57,12 +57,11 @@ import {
   OrderListTableRow,
   OrderSummaryStats,
   buildOrderContextMenuItems,
-  ORDER_MIN_TOTAL_OPTIONS,
   saleBranchLabel,
   normalizeOrdersListSummary,
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
-import { printSaleOrder, resolveOrderPrintType, warmSalePrintBatch } from "@/components/sales/sale-order-print";
+import { printSaleOrder, resolveOrderPrintType, warmSalePrintBatch, prepareSaleOrderPrintJob, dispatchPreparedSalePrintJob } from "@/components/sales/sale-order-print";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
@@ -253,19 +252,16 @@ function OrdersColumnsMenu({
                     const checked = visibleColumnIds.includes(column.id);
                     return (
                       <li key={column.id}>
-                        <label
-                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                            column.required
-                              ? "theme-subtext cursor-not-allowed opacity-60"
-                              : "cursor-pointer text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]"
-                          }`}
-                        >
+                        <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]">
                           <input
                             type="checkbox"
                             className="rounded border-slate-300"
                             checked={checked}
-                            disabled={column.required}
-                            onChange={() => onToggleColumn(column.id)}
+                            onChange={() => {
+                              // Keep at least one column visible.
+                              if (checked && visibleColumnIds.length <= 1) return;
+                              onToggleColumn(column.id);
+                            }}
                           />
                           {column.label}
                         </label>
@@ -339,7 +335,6 @@ export default function SalesOrdersListScreen({
   const [sourceFilter, setSourceFilter] = useState("all");
   const [routeFilter, setRouteFilter] = useState("all");
   const [cashierFilter, setCashierFilter] = useState("all");
-  const [minTotalFilter, setMinTotalFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [appliedFromDate, setAppliedFromDate] = useState("");
@@ -418,6 +413,10 @@ export default function SalesOrdersListScreen({
   const effectiveSourceFilter = queueConfig?.lockSourceFilter
     ? queueConfig.fixedSourceFilter
     : sourceFilter;
+  // Source is only useful on View All — queue pages (Mobile, Unpaid, Paid, …) already imply context.
+  const showSourceFilter =
+    !queueConfig?.lockSourceFilter &&
+    (!queueConfig?.slug || queueConfig.slug === "all");
   const showRouteFilter = routeOrdersOnly || queueConfig?.slug === "mobile";
 
   const routeFilterOptions = useMemo(() => {
@@ -695,7 +694,6 @@ export default function SalesOrdersListScreen({
       if (appliedToDate) extra.to_date = appliedToDate;
       // Match "Placed by" column — filter on when the order was created/booked.
       if (appliedFromDate || appliedToDate) extra.date_field = "placed";
-      if (minTotalFilter) extra.min_order_total = minTotalFilter;
       if (routeFilter && routeFilter !== "all") {
         extra.route_id = routeFilter;
       }
@@ -747,7 +745,6 @@ export default function SalesOrdersListScreen({
       effectiveStatusFilter,
       queueConfig,
       routeOrdersOnly,
-      minTotalFilter,
       routeFilter,
       cashierFilter,
       ordersListSort,
@@ -1042,19 +1039,32 @@ export default function SalesOrdersListScreen({
   }
 
   /**
-   * Pipeline: while printing chunk N, prefetch chunk N+1 so printing stays continuous.
-   * Runs without a blocking overlay so the user can keep using the screen.
+   * Pipeline: prepare chunk N fully (details + HTML), queue all of it to the printer at once,
+   * and while that batch is printing/queueing, prepare chunk N+1 so the next send feels instant.
    */
   async function printOrdersInChunks(printable, documentType, { loadingBusy, printingBusy } = {}) {
     if (!printable.length) return { printed: 0, failed: 0 };
 
-    if (shouldUsePrintAgentForDocument(documentType)) {
+    const useAgentQueue = shouldUsePrintAgentForDocument(documentType);
+    if (useAgentQueue) {
       void warmPrintAgentHealth();
     }
 
     const detailCache = new Map(
       Object.entries(detailsById).filter(([, sale]) => saleHasPrintableItems(sale)),
     );
+
+    const printOptsBase = {
+      organization,
+      organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+      moduleSettings: capabilities?.module_settings,
+      capabilities,
+      uomById,
+      user,
+      skipSettingsRefresh: true,
+      skipOrganizationRefresh: true,
+      ...(documentType ? { documentType } : {}),
+    };
 
     async function fetchChunkDetails(chunk) {
       return mapWithConcurrency(
@@ -1083,17 +1093,26 @@ export default function SalesOrdersListScreen({
 
     async function prepareChunkForPrint(chunk) {
       const details = await fetchChunkDetails(chunk);
-      const printCache = await warmSalePrintBatch(details.filter(Boolean), {
-        organization,
-        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
-        moduleSettings: capabilities?.module_settings,
-        capabilities,
-        uomById,
-        user,
-        skipSettingsRefresh: true,
-        skipOrganizationRefresh: true,
-      });
-      return { details, printCache };
+      const usable = details.filter((detail) => detail?.id && saleHasPrintableItems(detail));
+      const printCache = await warmSalePrintBatch(usable, printOptsBase);
+
+      // Build every receipt HTML for this chunk up front so queueing is just fire-and-forget.
+      const jobs = await mapWithConcurrency(
+        usable,
+        async (detail) => {
+          const job = await prepareSaleOrderPrintJob(detail, {
+            ...printOptsBase,
+            printCache,
+            skipSaleRefresh: true,
+            // Agent path: never open browser windows while preparing the batch.
+            deferBrowserWindow: useAgentQueue,
+          });
+          return { detail, job };
+        },
+        BATCH_PRINT_CHUNK_SIZE,
+      );
+
+      return { details, jobs, printCache };
     }
 
     const chunks = chunkItems(printable, BATCH_PRINT_CHUNK_SIZE);
@@ -1101,8 +1120,6 @@ export default function SalesOrdersListScreen({
     let failed = 0;
     let queued = 0;
 
-    // Kick off the first chunk immediately. Each loop warms the next chunk while the
-    // current one is being queued to the print agent/browser.
     let nextChunkPromise = chunks.length > 0 ? prepareChunkForPrint(chunks[0]) : null;
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
@@ -1114,53 +1131,83 @@ export default function SalesOrdersListScreen({
       if (loadingBusy) setBatchBusy(loadingBusy);
       setActionMessage(
         printable.length === 1
-          ? "Loading receipt…"
+          ? "Preparing receipt…"
           : hasNext
-            ? `Loading receipts ${from}–${to} of ${printable.length} (prefetching next)…`
-            : `Loading receipts ${from}–${to} of ${printable.length}…`,
+            ? `Preparing receipts ${from}–${to} of ${printable.length} (next batch will load while these print)…`
+            : `Preparing receipts ${from}–${to} of ${printable.length}…`,
       );
 
       const prepared = await nextChunkPromise;
-      const details = prepared?.details ?? [];
-      const printCache = prepared?.printCache ?? null;
+      const jobs = prepared?.jobs ?? [];
 
-      // While this batch is being queued/printed, prepare the next one fully.
+      // Start preparing the next chunk immediately — overlaps with queueing this batch.
       nextChunkPromise = hasNext ? prepareChunkForPrint(chunks[chunkIndex + 1]) : null;
 
       if (printingBusy) setBatchBusy(printingBusy);
-      setActionMessage(
-        printable.length === 1
-          ? "Printing receipt 1 of 1…"
-          : hasNext
-            ? `Printing receipts ${from}–${to} of ${printable.length} (preparing next batch)…`
-            : `Printing receipts ${from}–${to} of ${printable.length}…`,
-      );
 
-      for (let i = 0; i < chunk.length; i += 1) {
-        const detail = details[i] ?? chunk[i];
-        if (!detail?.id || !saleHasPrintableItems(detail)) {
+      const readyJobs = [];
+      for (const row of jobs) {
+        if (!row?.job?.ok) {
           failed += 1;
-          setActionMessage(`Skipped receipt ${queued + failed + 1} of ${printable.length}.`);
           continue;
         }
-        const current = queued + failed + 1;
-        setActionMessage(
-          hasNext || i + 1 < chunk.length
-            ? `Printing receipt ${current} of ${printable.length} (next batch preparing)…`
-            : `Printing receipt ${current} of ${printable.length}…`,
-        );
-        const ok = await printOrder(detail, documentType, { batch: true, printCache });
-        if (ok) printed += 1;
-        else failed += 1;
-        queued += 1;
-        setActionMessage(
-          queued < printable.length
-            ? `Queued ${queued} of ${printable.length} receipts to print…`
-            : `Queued all ${queued} receipts to print…`,
-        );
-        // Yield so React can paint and the UI stays responsive.
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        readyJobs.push(row);
       }
+
+      // Also count chunk rows that never made it into usable details.
+      failed += Math.max(0, chunk.length - jobs.length);
+
+      if (!readyJobs.length) {
+        setActionMessage(
+          `Skipped receipts ${from}–${to} of ${printable.length} (nothing printable).`,
+        );
+        continue;
+      }
+
+      setActionMessage(
+        printable.length === 1
+          ? "Sending receipt to printer…"
+          : hasNext
+            ? `Queueing receipts ${from}–${to} of ${printable.length} (preparing ${to + 1}–${Math.min(to + BATCH_PRINT_CHUNK_SIZE, printable.length)} next)…`
+            : `Queueing receipts ${from}–${to} of ${printable.length}…`,
+      );
+
+      if (useAgentQueue) {
+        // Fire the whole chunk into the print-agent queue together — feels instant.
+        const results = await Promise.allSettled(
+          readyJobs.map(({ job }) => dispatchPreparedSalePrintJob(job)),
+        );
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value?.ok !== false) {
+            printed += 1;
+            queued += 1;
+          } else {
+            failed += 1;
+          }
+        }
+      } else {
+        // Browser dialog cannot take a parallel burst — keep one-at-a-time.
+        for (const { job } of readyJobs) {
+          try {
+            const result = await dispatchPreparedSalePrintJob(job);
+            if (result?.ok !== false) {
+              printed += 1;
+              queued += 1;
+            } else {
+              failed += 1;
+            }
+          } catch {
+            failed += 1;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+
+      setActionMessage(
+        queued < printable.length
+          ? `Queued ${queued} of ${printable.length} receipts — printer running${hasNext ? ", next batch loading…" : "…"}`
+          : `Queued all ${queued} receipts to the printer.`,
+      );
     }
 
     return { printed, failed };
@@ -1546,7 +1593,7 @@ export default function SalesOrdersListScreen({
   useEffect(() => {
     setPage(1);
     clearSelection();
-  }, [debouncedSearch, statusFilter, sourceFilter, minTotalFilter, cashierFilter, appliedFromDate, appliedToDate, queueSlug, clearSelection]);
+  }, [debouncedSearch, statusFilter, sourceFilter, cashierFilter, appliedFromDate, appliedToDate, queueSlug, clearSelection]);
 
   useEffect(() => {
     clearSelection();
@@ -1666,7 +1713,7 @@ export default function SalesOrdersListScreen({
         )
       }
       toolbar={
-        <div className="mb-4 space-y-3">
+        <div className="mb-4">
           <FilterToolbar className="mb-0">
             <Field label="From">
               <input
@@ -1684,6 +1731,13 @@ export default function SalesOrdersListScreen({
                 onChange={(e) => setToDate(e.target.value || isoDate())}
               />
             </Field>
+            <button
+              type="button"
+              onClick={applyDateFilter}
+              className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+            >
+              Filter
+            </button>
             {showRouteFilter ? (
               <Field label="Route">
                 <FilterSelect
@@ -1711,9 +1765,8 @@ export default function SalesOrdersListScreen({
               <Field label="Source">
                 <select
                   value={effectiveSourceFilter ?? "all"}
-                  disabled={queueConfig?.lockSourceFilter}
                   onChange={(e) => setSourceFilter(e.target.value)}
-                  className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
+                  className={FILTER_CONTROL_CLASS}
                 >
                   {sourceOptions.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -1723,19 +1776,6 @@ export default function SalesOrdersListScreen({
                 </select>
               </Field>
             ) : null}
-            <Field label="Order total">
-              <select
-                value={minTotalFilter}
-                onChange={(e) => setMinTotalFilter(e.target.value)}
-                className={FILTER_CONTROL_CLASS}
-              >
-                {ORDER_MIN_TOTAL_OPTIONS.map((o) => (
-                  <option key={o.value || "all"} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
             <Field label="User">
               <FilterSelect
                 value={cashierFilter}
@@ -1743,24 +1783,7 @@ export default function SalesOrdersListScreen({
                 options={sellerFilterOptions}
               />
             </Field>
-            <button
-              type="button"
-              onClick={applyDateFilter}
-              className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
-            >
-              Filter
-            </button>
           </FilterToolbar>
-          <div className="grid grid-cols-12 gap-3">
-            <div className="col-span-12 md:col-span-8 lg:col-span-6">
-              <SearchInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search product, customer, amount, S0034, POS #…"
-                className="w-full min-w-0 shrink"
-              />
-            </div>
-          </div>
         </div>
       }
       banner={
@@ -1810,6 +1833,17 @@ export default function SalesOrdersListScreen({
         {!loading ? (
           <OrderSummaryStats summary={summary} hint={summaryHint} />
         ) : null}
+
+        <div className="grid grid-cols-12 gap-3">
+          <div className="col-span-12 md:col-span-8 lg:col-span-6">
+            <SearchInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search product, customer, amount, S0034, POS #…"
+              className="w-full min-w-0 shrink"
+            />
+          </div>
+        </div>
 
         <div className="theme-panel theme-table-shell relative overflow-hidden rounded-xl shadow-sm">
           {showTransitionOverlay ? (
@@ -1877,8 +1911,8 @@ export default function SalesOrdersListScreen({
               <div className="flex flex-wrap items-center justify-between gap-2 theme-table-head-row border-b px-4 py-2">
                 <p className="text-xs text-slate-500">
                   {pageSlice.length === 0
-                    ? "No orders on this page · Adjust filters above or in the header row"
-                    : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page · Select for print/cancel · Right-click for actions`}
+                    ? "No orders on this page"
+                    : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page`}
                 </p>
                 <button
                   type="button"
@@ -1902,6 +1936,7 @@ export default function SalesOrdersListScreen({
                     setVisibleColumnIds((prev) => {
                       const has = prev.includes(columnId);
                       const next = has ? prev.filter((id) => id !== columnId) : [...prev, columnId];
+                      if (next.length === 0) return prev;
                       return normalizeOrdersListVisibleColumns(next);
                     });
                   }}
@@ -1919,12 +1954,7 @@ export default function SalesOrdersListScreen({
                       }}
                     />
                   </div>
-                ) : (
-                  <p className="px-4 pt-2 text-[11px] text-slate-500">
-                    Sorted by newest orders first. Click a column header to change sort; use the row
-                    below to filter.
-                  </p>
-                )}
+                ) : null}
                 <table
                   className={`w-full border-collapse text-sm ${
                     showPaymentBreakdownColumns ? "min-w-[1240px]" : "min-w-[1040px]"
@@ -2212,7 +2242,6 @@ export default function SalesOrdersListScreen({
           cashier_id: cashierFilter !== "all" ? cashierFilter : undefined,
           from: appliedFromDate,
           to: appliedToDate,
-          min_total: minTotalFilter || undefined,
         }}
         rows={(rows ?? []).slice(0, 80).map((s) => ({
           id: s.id,

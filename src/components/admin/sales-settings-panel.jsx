@@ -5,6 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import {
   EMPTY_SALES_ORGANIZATION_FORM,
   applyDiscountApprovalFormUpdates,
+  isOrgMobileSalesEnabled,
   salesOrganizationFormFromApi,
   salesOrganizationPayloadFromForm,
   sanitizeSalesOrganizationFormForModules,
@@ -15,7 +16,9 @@ import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/setting
 import {
   isPlatformPosCheckoutOnCreateEnabled,
   isPlatformMpesaStkEnabled,
+  isPlatformWhatsappEnabled,
 } from "@/lib/platform-org-features";
+import { getSalesOrderQueueWorkflow } from "@/lib/order-workflow";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SalesOrderPlacedAlerts } from "@/components/admin/customer-notification-fields";
@@ -673,6 +676,9 @@ export function SalesSettingsPanel({
                     value={salesForm}
                     onChange={setSalesForm}
                     idPrefix="settings-orders-list"
+                    workflow={getSalesOrderQueueWorkflow(capabilities, "backend")}
+                    includeMobile={isOrgMobileSalesEnabled(capabilities)}
+                    includeWhatsapp={isPlatformWhatsappEnabled(capabilities)}
                   />
                 </div>
               </section>

@@ -150,6 +150,8 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
+  applyClassicPosDocumentTheme,
+  clearClassicPosDocumentTheme,
   classicPosThemeCssVars,
   CLASSIC_POS_THEME_DEFAULT,
   isDarkClassicPosTheme,
@@ -242,6 +244,7 @@ import {
 import {
   countLocalHeldOrders,
   deleteLocalHeldOrder,
+  forgetLocalHeldOrder,
   getLocalHeldOrder,
   isLocalHeldId,
   parkCartLocally,
@@ -2196,13 +2199,19 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   // Classic External POS: scoped theme templates (not global light/dark toggle).
+  // Bridge vars onto documentElement so body-portaled popups (held orders, payment, etc.) match.
   useEffect(() => {
-    if (!classicLayout) return undefined;
-    if (isDarkClassicPosTheme(classicThemeTemplate)) return undefined;
+    if (!classicLayout) {
+      clearClassicPosDocumentTheme();
+      return undefined;
+    }
     const previous = getTheme();
-    applyTheme("light");
+    const forceLight = !isDarkClassicPosTheme(classicThemeTemplate);
+    if (forceLight) applyTheme("light");
+    applyClassicPosDocumentTheme(classicThemeTemplate);
     return () => {
-      applyTheme(previous);
+      clearClassicPosDocumentTheme();
+      if (forceLight) applyTheme(previous);
     };
   }, [classicLayout, classicThemeTemplate]);
 
@@ -5488,6 +5497,7 @@ export function PosScreen({ standalone = false }) {
                 customer_num: localCart.customer_num ?? null,
                 customer_name_override: localCart.customer_name_override ?? "Walk-in",
                 restored_from_hold_label: localCart.restored_from_hold_label ?? null,
+                restored_from_local_held_id: localCart.restored_from_local_held_id ?? park.id,
               },
               park,
             );
@@ -5499,16 +5509,11 @@ export function PosScreen({ standalone = false }) {
             );
           }
         }
-        clearAutoHeldOrder();
-        setAutoHeldPrompt(null);
         setHeldOrdersOpen(false);
-        void loadHeldOrdersCount();
         notifySuccess("Held sale restored — complete when ready.");
         return;
       }
       await restoreHeldSaleToNewCart(autoHeldPrompt.saleId, { replace: true });
-      clearAutoHeldOrder();
-      setAutoHeldPrompt(null);
       setHeldOrdersOpen(false);
       notifySuccess("Held sale restored — complete when ready.");
     } catch (e) {
@@ -7462,6 +7467,25 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
+   * Drop a restored held park from device / prompt memory (idempotent).
+   */
+  async function forgetRestoredHeldFromMemory({ localHeldId = null } = {}) {
+    const localId =
+      localHeldId != null && isLocalHeldId(localHeldId) ? String(localHeldId) : null;
+    if (localId) {
+      try {
+        await forgetLocalHeldOrder(localId);
+      } catch {
+        /* already gone */
+      }
+    }
+    // Any held restore dismisses the classic auto-held prompt so shortcuts work again.
+    clearAutoHeldOrder();
+    setAutoHeldPrompt(null);
+    void loadHeldOrdersCount();
+  }
+
+  /**
    * Apply a restored held/draft sale as a normal new cart (not previous-order edit).
    */
   function applyRestoredHeldCart(restoredCart, sourceSale = null) {
@@ -7494,6 +7518,12 @@ export function PosScreen({ standalone = false }) {
     if (rememberKey != null && (customerMemory.name || customerMemory.customerNum != null)) {
       rememberPosOrderCustomer(rememberKey, customerMemory);
     }
+
+    // Restoring consumes the held park — ensure it is gone from local held memory.
+    const localHeldId =
+      cartData?.restored_from_local_held_id ??
+      (isLocalHeldId(sourceSale?.id) ? sourceSale.id : null);
+    void forgetRestoredHeldFromMemory({ localHeldId });
   }
 
   /** Resume a parked held sale into the till as a new in-progress order. */
@@ -7519,8 +7549,7 @@ export function PosScreen({ standalone = false }) {
       method: "POST",
       body: { replace },
     });
-    applyRestoredHeldCart(restoredRaw, saleSnapshot);
-    setAutoHeldPrompt(null);
+    applyRestoredHeldCart(restoredRaw, saleSnapshot ?? { id: saleId });
     return restoredRaw;
   }
 
@@ -8077,11 +8106,30 @@ export function PosScreen({ standalone = false }) {
       detail: "Please wait while the current line finishes saving.",
     });
 
-    const activeCart = cartRef.current ?? cart;
+    let activeCart = cartRef.current ?? cart;
 
     const isPreviousOrderEdit = Boolean(
       activeCart?.held_order_num && activeCart?.superseded_sale_id,
     );
+    if (
+      !isPreviousOrderEdit &&
+      !lineBusyRef.current &&
+      cartHasOptimisticLines(activeCart)
+    ) {
+      try {
+        // Classic optimistic adds/qty edits can leave a transient pending marker even after
+        // the commit chain settles. Refresh once so F10 can proceed on the real server cart
+        // instead of false-failing with "Still saving cart lines".
+        const refreshed = await loadCashierCart({ skipEditDraftRestore: true });
+        if (refreshed?.id) {
+          activeCart = refreshed;
+        } else {
+          activeCart = cartRef.current ?? activeCart;
+        }
+      } catch {
+        activeCart = cartRef.current ?? activeCart;
+      }
+    }
     if (
       !isPreviousOrderEdit &&
       (lineBusyRef.current || cartHasOptimisticLines(activeCart))
@@ -10197,8 +10245,6 @@ export function PosScreen({ standalone = false }) {
           setHeldOrdersOpen(false);
           setSaveOrderOpen(false);
           setPaymentOpen(false);
-          setAutoHeldPrompt(null);
-          clearAutoHeldOrder();
 
           const prior = cartRef.current ?? cart;
           if (isServerPosCartId(prior?.id) && (prior?.lines?.length ?? 0) > 0) {
@@ -10233,6 +10279,8 @@ export function PosScreen({ standalone = false }) {
                       serverCart.customer_name_override ??
                       "Walk-in",
                     restored_from_hold_label: restoredCart.restored_from_hold_label ?? null,
+                    restored_from_local_held_id:
+                      restoredCart.restored_from_local_held_id ?? sourceSale?.id ?? null,
                   },
                   sourceSale,
                 );
@@ -10251,7 +10299,6 @@ export function PosScreen({ standalone = false }) {
           if (standalone) {
             notifySuccess("Held order restored — complete when ready.");
           }
-          void loadHeldOrdersCount();
           if (classicLayout) {
             focusClassicProductSearch();
           }

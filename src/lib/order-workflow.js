@@ -856,6 +856,52 @@ export function salesOrderQueueNavItems(workflow, { includeMobile = false } = {}
   return items;
 }
 
+const ORDER_LIST_COLUMN_QUEUE_OVERRIDES = [
+  { id: "booked", label: "Booked" },
+  { id: "pending", label: "Pending" },
+  { id: "unpaid", label: "Unpaid" },
+  { id: "pending_payment", label: "Partially paid" },
+  { id: "paid", label: "Paid" },
+  { id: "processed", label: "Processed" },
+  { id: "delivered", label: "Delivered" },
+  { id: "completed", label: "Completed" },
+  { id: "mobile", label: "Mobile" },
+  { id: "whatsapp", label: "WhatsApp" },
+  { id: "pending_approval", label: "Pending approval" },
+  { id: "editable", label: "Editable" },
+  { id: "cancelled", label: "Cancelled" },
+  { id: "expired", label: "Expired" },
+];
+
+const ORDER_LIST_TERMINAL_QUEUE_IDS = new Set([
+  "cancelled",
+  "expired",
+  "pending_approval",
+  "editable",
+]);
+
+/**
+ * Queue column overrides for admin — only stages present in this org's workflow,
+ * plus Mobile / WhatsApp when enabled and terminal queues.
+ */
+export function orderListColumnQueueOptionsForWorkflow(
+  workflow,
+  { includeMobile = true, includeWhatsapp = false } = {},
+) {
+  const enabledSteps = new Set(
+    workflowPipelineSteps(workflow)
+      .map((step) => step.key)
+      .filter((key) => key && !QUEUE_EXCLUDED_STATUSES.has(key)),
+  );
+
+  return ORDER_LIST_COLUMN_QUEUE_OVERRIDES.filter((queue) => {
+    if (queue.id === "mobile") return Boolean(includeMobile);
+    if (queue.id === "whatsapp") return Boolean(includeWhatsapp);
+    if (ORDER_LIST_TERMINAL_QUEUE_IDS.has(queue.id)) return true;
+    return enabledSteps.has(queue.id);
+  });
+}
+
 /** Backoffice sales sidebar — terminal order queues (cancelled / expired / discount approval). */
 export function salesTerminalOrderQueueNavItems({
   showCancelled = false,

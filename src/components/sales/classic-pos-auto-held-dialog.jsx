@@ -44,7 +44,7 @@ export function ClassicPosAutoHeldDialog({
         aria-labelledby="classic-auto-held-title"
         className="w-full max-w-md theme-panel rounded-xl border p-5 shadow-xl"
       >
-        <h2 id="classic-auto-held-title" className="text-base font-semibold">
+        <h2 id="classic-auto-held-title" className="text-base font-semibold text-[var(--theme-text)]">
           Held sale from last session
         </h2>
         <p className="theme-text-muted mt-2 text-sm leading-relaxed">

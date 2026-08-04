@@ -35,7 +35,14 @@ export const SALES_ORDERS_VIEW_ALL_QUEUES = "sales.orders.view";
  */
 export function canViewOrderQueue(slug, hasPermission) {
   if (typeof hasPermission !== "function") return false;
-  if (hasPermission(SALES_ORDERS_VIEW_ALL_QUEUES)) return true;
+  // Umbrella grants used by "all orders" / backoffice packs — must match sidebar.
+  if (
+    hasPermission(SALES_ORDERS_VIEW_ALL_QUEUES) ||
+    hasPermission("sales.view") ||
+    hasPermission("sales.manage")
+  ) {
+    return true;
+  }
   return hasPermission(orderQueuePermissionCode(slug));
 }
 

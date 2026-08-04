@@ -57,7 +57,8 @@ export function resolveHasPermission({ user, organization, capabilities, code, i
   return capabilities?.permissions?.[code] ?? false;
 }
 
-/** Nav/sidebar checks — uses role-assigned map when available (no inflated sibling aliases). */
+/** Nav/sidebar checks — prefer explicit role assignment when true; otherwise use the
+ * expanded permissions map so "all backoffice" / manage packs still light up links. */
 export function resolveHasNavPermission({ user, organization, capabilities, code, isSuperAdmin }) {
   if (!code) return true;
 
@@ -90,7 +91,7 @@ export function resolveHasNavPermission({ user, organization, capabilities, code
   }
 
   const assigned = capabilities?.assigned_permissions?.[code];
-  if (typeof assigned === "boolean") return assigned;
+  if (assigned === true) return true;
 
   return resolveHasPermission({ user, organization, capabilities, code, isSuperAdmin });
 }
