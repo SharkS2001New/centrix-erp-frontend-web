@@ -51,9 +51,9 @@ import {
 } from "@/lib/hospitality-payment-workflow";
 import {
   CLASSIC_POS_THEME_DEFAULT,
-  CLASSIC_POS_THEME_TEMPLATES,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
+import { ExternalPosPlatformFields } from "@/components/admin/external-pos-platform-fields";
 import {
   HOTEL_POS_THEME_DEFAULT,
   HOTEL_POS_THEME_TEMPLATES,
@@ -485,17 +485,15 @@ export function OrganizationPlatformSalesSettings({
   deploymentProfile = "wholesale_retail",
 }) {
   const salesEnabled = Boolean(enabledModules.sales);
-  const hasPosSales = Boolean(enabledModules["sales.pos"]);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
   const description =
-    "Platform-only checkout mode, mobile application access, and payment integrations.";
+    "Platform-only checkout mode for backoffice, mobile application access, and payment integrations.";
 
   function patch(partial) {
     onChange?.({ ...salesPlatform, ...partial });
   }
 
   const showBackofficeCheckout = salesPlatform?.show_checkout_on_create_order !== false;
-  const showPosCheckout = salesPlatform?.show_pos_checkout_on_create !== false;
 
   return (
     <PlatformFormSection title="Sales behaviour" description={description}>
@@ -505,19 +503,6 @@ export function OrganizationPlatformSalesSettings({
         </p>
       ) : (
         <div className="space-y-3">
-          {hasPosSales ? (
-            <Toggle
-              label="External POS uses checkout"
-              description="When on, the external POS workspace (/pos) completes the sale with payment immediately. When off, cashiers use Save order instead. Checked by default whenever External POS is enabled."
-              checked={showPosCheckout}
-              onChange={(v) => patch({ show_pos_checkout_on_create: v })}
-            />
-          ) : (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Enable <strong>External POS</strong> under Applications to configure checkout vs save for{" "}
-              <code className="text-xs">/pos</code>.
-            </p>
-          )}
           <Toggle
             label="Backoffice Create order uses checkout"
             description={
@@ -567,30 +552,6 @@ export function OrganizationPlatformSalesSettings({
               />
             </div>
           ) : null}
-          <Toggle
-            label="Require operating till float at external POS"
-            description="When on, cashiers on the external POS workspace (/pos) must open a till session and declare operating float before sales. Backoffice create order uses a separate setting below. X/Z reports and end-of-day include float breakdown."
-            checked={Boolean(salesPlatform?.require_pos_till_float)}
-            onChange={(v) => patch({ require_pos_till_float: v })}
-          />
-          <Toggle
-            label="Cash rounding on POS and Create order"
-            description="When on, external POS (/pos) and Sales → Create order round line and order amounts with last-digit rules (e.g. 105.4 → 106; 0–1→0, 2–6→5, 7–9→10). Applies to Modern and Classic POS layouts."
-            checked={Boolean(salesPlatform?.enable_pos_cash_rounding)}
-            onChange={(v) => patch({ enable_pos_cash_rounding: v })}
-          />
-          <Toggle
-            label="Show all payment methods on thermal receipt"
-            description="When on, all payment method rows (Cash, M-Pesa, Equity, KCB) are printed on the thermal receipt even when their amount is zero. Useful for auditing at a glance which methods were not used."
-            checked={salesPlatform?.receipt_show_all_payment_methods !== false}
-            onChange={(v) => patch({ receipt_show_all_payment_methods: v })}
-          />
-          <Toggle
-            label="Allow editing completed POS orders"
-            description="When on, cashiers on external POS can reload a completed order by number to correct mistakes. Stock is restored, a KRA credit note is issued when the original sale was fiscalized, and checkout creates a new sale."
-            checked={Boolean(salesPlatform?.enable_pos_order_edit)}
-            onChange={(v) => patch({ enable_pos_order_edit: v })}
-          />
           <Toggle
             label="Append same-day mobile sales to the customer’s open order"
             description="When on, mobile field sales for a registered customer append to that customer’s open mobile order from today at the same branch (same order #) instead of creating a new ticket. External POS and backoffice Create order are not affected."
@@ -665,6 +626,28 @@ export function OrganizationPlatformSalesSettings({
           ) : null}
         </div>
       )}
+    </PlatformFormSection>
+  );
+}
+
+export function OrganizationExternalPosSettings({
+  salesPlatform,
+  onChange,
+  enabledModules = {},
+}) {
+  const hasPosSales = Boolean(enabledModules["sales.pos"]);
+
+  return (
+    <PlatformFormSection
+      title="External POS"
+      description="Layout and cashier behaviour for /pos. Organization admins choose Classic color themes under Administration → Organization settings → External POS."
+    >
+      <ExternalPosPlatformFields
+        value={salesPlatform}
+        onChange={onChange}
+        posEnabled={hasPosSales}
+        showTheme={false}
+      />
     </PlatformFormSection>
   );
 }
@@ -1016,6 +999,7 @@ function ActionStageChecklist({ title, hint, options, selected, onToggle }) {
 const MANAGE_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
   { id: "sales", label: "Sales behaviour" },
+  { id: "external_pos", label: "External POS" },
   { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "status", label: "Organization status" },
@@ -1027,6 +1011,7 @@ const MANAGE_ORG_TABS = [
 const REGISTER_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
   { id: "sales", label: "Sales behaviour" },
+  { id: "external_pos", label: "External POS" },
   { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "modules", label: "Applications" },
@@ -1037,7 +1022,7 @@ function OrganizationConfigTabBar({ tabs, activeTab, onTabChange }) {
   return (
     <div className="w-full overflow-x-auto">
       <div
-        className="flex w-full min-w-[48rem] flex-nowrap gap-1 rounded-lg bg-slate-100 p-0.5"
+        className="flex w-full min-w-[54rem] flex-nowrap gap-1 rounded-lg bg-slate-100 p-0.5"
         role="tablist"
         aria-label="Organization configuration"
       >
@@ -1092,14 +1077,21 @@ export function OrganizationConfigTabs({
   const resolvedOrgId = organizationId ?? organization?.id;
   const visibleTabs = isHospitality
     ? tabs.filter(
-        (tab) => tab.id !== "sales" && tab.id !== "orders_list" && tab.id !== "workflow",
+        (tab) =>
+          tab.id !== "sales" &&
+          tab.id !== "external_pos" &&
+          tab.id !== "orders_list" &&
+          tab.id !== "workflow",
       )
     : tabs;
 
   useEffect(() => {
     if (
       isHospitality &&
-      (activeTab === "sales" || activeTab === "orders_list" || activeTab === "workflow")
+      (activeTab === "sales" ||
+        activeTab === "external_pos" ||
+        activeTab === "orders_list" ||
+        activeTab === "workflow")
     ) {
       setActiveTab("profile");
     }
@@ -1150,6 +1142,14 @@ export function OrganizationConfigTabs({
           onChange={onSalesChange}
           enabledModules={enabledModules}
           deploymentProfile={deploymentProfile}
+        />
+      ) : null}
+
+      {activeTab === "external_pos" ? (
+        <OrganizationExternalPosSettings
+          salesPlatform={salesPlatform}
+          onChange={onSalesChange}
+          enabledModules={enabledModules}
         />
       ) : null}
 
@@ -1314,7 +1314,6 @@ export function OrganizationModuleToggles({
           const enabled = isProvisionableWorkspaceEnabled(workspace, enabledModules);
           const isDistribution = workspace.id === "distribution";
           const distributionBlocked = isDistribution && !mobileOrdersEnabled;
-          const showExternalPosLayout = workspace.id === "pos" && enabled && typeof onSalesChange === "function";
 
           return (
             <div
@@ -1339,6 +1338,13 @@ export function OrganizationModuleToggles({
                     <span className="theme-heading block text-sm font-semibold">{workspace.label}</span>
                   </span>
                   <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
+                  {workspace.id === "pos" && enabled ? (
+                    <span className="theme-subtext mt-1 block text-xs">
+                      Layout and cashier behaviour are on the <strong>External POS</strong> tab.
+                      Classic color themes are chosen by the organization under Organization settings →
+                      External POS.
+                    </span>
+                  ) : null}
                   {isDistribution ? (
                     <span className="theme-subtext mt-1 block text-xs">
                       {mobileOrdersEnabled
@@ -1354,78 +1360,6 @@ export function OrganizationModuleToggles({
                   ) : null}
                 </span>
               </label>
-              {showExternalPosLayout ? (
-                <div className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8">
-                  <OrgRegisterField label="External POS layout">
-                    <select
-                      className={inputClass}
-                      value={salesPlatform?.external_pos_layout === "classic" ? "classic" : "modern"}
-                      onChange={(e) =>
-                        onSalesChange({
-                          ...(salesPlatform ?? {}),
-                          external_pos_layout: e.target.value,
-                        })
-                      }
-                    >
-                      <option value="modern">Modern — current Centrix POS</option>
-                      <option value="classic">Classic — cart on top, Find window, themeable colors</option>
-                    </select>
-                    <p className="theme-subtext mt-1 text-xs">
-                      Only affects the external POS workspace (/pos). Backoffice Create order keeps the modern layout.
-                    </p>
-                  </OrgRegisterField>
-                  {salesPlatform?.external_pos_layout === "classic" ? (
-                    <OrgRegisterField label="Classic POS colors" className="mt-4">
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {CLASSIC_POS_THEME_TEMPLATES.map((theme) => {
-                          const selected =
-                            normalizeClassicPosThemeTemplate(
-                              salesPlatform?.classic_pos_theme_template,
-                            ) === theme.id;
-                          return (
-                            <button
-                              key={theme.id}
-                              type="button"
-                              onClick={() =>
-                                onSalesChange({
-                                  ...(salesPlatform ?? {}),
-                                  classic_pos_theme_template: theme.id,
-                                })
-                              }
-                              className={`rounded-xl border px-3 py-2.5 text-left transition ${
-                                selected
-                                  ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-2 ring-[#185FA5]/40"
-                                  : "border-slate-200 bg-white hover:border-slate-300"
-                              }`}
-                            >
-                              <span className="mb-2 flex gap-1">
-                                {(theme.preview ?? []).map((color) => (
-                                  <span
-                                    key={color}
-                                    className="h-4 w-4 rounded-full border border-black/10"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                ))}
-                              </span>
-                              <span className="block text-sm font-semibold text-slate-900">
-                                {theme.label}
-                              </span>
-                              <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                                {theme.description}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="theme-subtext mt-2 text-xs">
-                        Choose the color palette for Classic External POS (/pos). Workspace, Find
-                        dropdown, held orders, hold/save, payment, and other popups all use these
-                        colors. Modern layout keeps the standard Centrix theme.
-                      </p>
-                    </OrgRegisterField>
-                  ) : null}
-                </div>
-              ) : null}
               {workspace.id === "hotel_bar_pos" && enabled && typeof onSalesChange === "function" ? (
                 <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
                   <OrgRegisterField label="Hotel POS theme template">

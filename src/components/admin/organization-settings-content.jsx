@@ -15,6 +15,7 @@ import { PrintoutsSettingsPanel } from "@/components/admin/printouts-settings-pa
 import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
 import { SalesSettingsPanel } from "@/components/admin/sales-settings-panel";
+import { ExternalPosSettingsPanel } from "@/components/admin/external-pos-settings-panel";
 import { ManagerApprovalsSettingsPanel } from "@/components/admin/manager-approvals-settings-panel";
 import { PlatformAccountingSettingsPanel } from "@/components/admin/platform-accounting-settings-panel";
 import { RbacHelpDialog } from "@/components/admin/rbac-help";
@@ -29,6 +30,7 @@ const TABS = [
   { id: "general", label: "General" },
   { id: "printouts", label: "Printouts" },
   { id: "sales", label: "Sales" },
+  { id: "external-pos", label: "External POS" },
   { id: "mobile", label: "Mobile application" },
   { id: "distribution", label: "Distribution" },
   { id: "manager-approvals", label: "Manager approvals" },
@@ -127,6 +129,8 @@ export function OrganizationSettingsContent({
           {tab === "printouts" ? <PrintoutsSettingsPanel {...panelProps} /> : null}
 
           {tab === "sales" ? <SalesSettingsPanel {...panelProps} /> : null}
+
+          {tab === "external-pos" ? <ExternalPosSettingsPanel {...panelProps} /> : null}
 
           {tab === "mobile" ? <MobileApplicationSettingsPanel {...panelProps} /> : null}
           {tab === "distribution" ? <DistributionSettingsPanel {...panelProps} /> : null}

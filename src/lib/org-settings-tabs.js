@@ -26,6 +26,7 @@ export const ORG_SETTINGS_TAB_MODULES = {
     "distribution",
   ],
   sales: ["sales"],
+  "external-pos": ["sales.pos"],
   mobile: ["sales.mobile"],
   distribution: ["distribution"],
   "manager-approvals": ["sales", "inventory", "customers_suppliers", "hr_payroll", "accounting", "admin"],
@@ -72,6 +73,9 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
 
     case "sales":
       return moduleEnabled(capabilities, "sales");
+
+    case "external-pos":
+      return moduleEnabled(capabilities, "sales.pos");
 
     case "mobile":
       return moduleEnabled(capabilities, "sales.mobile") && isPlatformMobileOrdersEnabled(capabilities);

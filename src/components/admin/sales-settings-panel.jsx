@@ -14,7 +14,6 @@ import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-conf
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import {
-  isPlatformPosCheckoutOnCreateEnabled,
   isPlatformMpesaStkEnabled,
   isPlatformWhatsappEnabled,
 } from "@/lib/platform-org-features";
@@ -30,7 +29,7 @@ import {
 const SALES_SETTINGS_TABS = [
   { id: "checkout", label: "Prices & discounts" },
   { id: "payment", label: "Recording payments" },
-  { id: "pos", label: "Tills & checkout" },
+  { id: "pos", label: "Tills" },
   { id: "alerts", label: "Customer alerts" },
 ];
 
@@ -483,9 +482,7 @@ function PaymentFieldsTab({
 function TillsCheckoutSettingsTab({
   salesForm,
   setSalesForm,
-  hasCustomers,
   hasPosSales,
-  posCheckoutEnabled,
 }) {
   return (
     <div className="space-y-6">
@@ -498,70 +495,12 @@ function TillsCheckoutSettingsTab({
           onChange={(v) => setSalesForm((f) => ({ ...f, require_backoffice_till_float: v }))}
         />
         {hasPosSales ? (
-          <Toggle
-            label="Hide expected cash at till close"
-            description="When a till session is closed, staff enter the cash they counted without seeing the system's expected drawer balance or any over/short while counting. After close, variance appears on the Z report (and in session history)."
-            checked={salesForm.blind_till_close}
-            onChange={(v) => setSalesForm((f) => ({ ...f, blind_till_close: v }))}
-          />
-        ) : (
-          <p className="theme-subtext text-xs">
-            Hide expected cash at till close applies when closing external POS till sessions. Enable the POS
-            sales module to configure it.
+          <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            External POS till close, barcode scanner, customer prompts, and credit checkout are under{" "}
+            <strong>Organization settings → External POS</strong>.
           </p>
-        )}
+        ) : null}
       </div>
-
-      {hasPosSales ? (
-        <div className="space-y-3">
-          <h3 className="theme-heading text-sm font-medium">Checkout</h3>
-          {!posCheckoutEnabled ? (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Your platform administrator has configured external POS for <strong>save order</strong> (no
-              checkout on create). These checkout options apply only when checkout-on-create is enabled for
-              external POS.
-            </p>
-          ) : (
-            <>
-              <p className="theme-subtext text-xs">
-                Applies at external POS checkout (/pos) when checkout-on-create is enabled. Save-then-pay on
-                backoffice and distribution orders use the Recording payments tab instead.
-              </p>
-              <Toggle
-                label="Enable barcode scanner"
-                description="Scan SKU/barcode to add qty 1 directly to the cart on POS."
-                checked={salesForm.enable_barcode_scanner}
-                onChange={(v) => setSalesForm((f) => ({ ...f, enable_barcode_scanner: v }))}
-              />
-              <Toggle
-                label="Request customer name on checkout"
-                description="When enabled, POS prompts for a customer on save order, hold order, and checkout. Default is walk-in name; staff can switch to Existing customer to link a registered record (and KRA PIN) to the sale. When off, orders save immediately as Walk-in with no prompt."
-                checked={salesForm.enable_checkout_customer_name}
-                onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
-              />
-              {!hasCustomers ? (
-                <p className="theme-subtext text-xs">
-                  Enable the Customers module to show a credit customer search field at POS checkout.
-                </p>
-              ) : (
-                <Toggle
-                  label="Credit customer field at POS checkout"
-                  description="Shows a searchable credit customer field at checkout. Unpaid balance posts to the customer's account (inline credit sale). Use Recording payments → Allow collecting small payments so debtors can settle outstanding balances in installments on Collect payment."
-                  checked={salesForm.enable_credit_payment}
-                  onChange={(v) =>
-                    setSalesForm((f) => ({
-                      ...f,
-                      enable_credit_payment: v,
-                      // Credit debtors almost always need installment collect — keep it on when enabling.
-                      allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
-                    }))
-                  }
-                />
-              )}
-            </>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -585,7 +524,6 @@ export function SalesSettingsPanel({
   const modules = capabilities?.modules ?? {};
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
-  const posCheckoutEnabled = isPlatformPosCheckoutOnCreateEnabled(capabilities);
   const mpesaPlatformEnabled = isPlatformMpesaStkEnabled(capabilities);
 
   const visibleTabs = useMemo(
@@ -655,8 +593,8 @@ export function SalesSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Sales settings</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Day-to-day pricing, payment recording, and checkout/till preferences for backoffice create order and
-          external POS. Module access and order workflow are platform-controlled.
+          Day-to-day pricing, payment recording, and backoffice till preferences. External POS layout,
+          theme colors, and cashier terminal options are under the External POS tab.
         </p>
 
         {loading ? (
@@ -708,9 +646,7 @@ export function SalesSettingsPanel({
               <TillsCheckoutSettingsTab
                 salesForm={salesForm}
                 setSalesForm={setSalesForm}
-                hasCustomers={hasCustomers}
                 hasPosSales={hasPosSales}
-                posCheckoutEnabled={posCheckoutEnabled}
               />
             ) : null}
 

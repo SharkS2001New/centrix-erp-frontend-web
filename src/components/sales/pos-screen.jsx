@@ -586,8 +586,17 @@ function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = nu
     const n = Number(resolvePosBrowseNumber(row) ?? 0);
     if (n > maxPos) maxPos = n;
   }
-  const activePos = resolvePosBrowseNumber(activeCart);
-  if (activePos != null && activePos > maxPos) maxPos = activePos;
+  // Only count the active cart when it is an in-progress sale. A blank workspace
+  // already shows last+1 on next_pos_order_num — treating that as issued would
+  // make F8 jump an extra ticket (10 → 11 after F10 already prepared #10).
+  const inProgress =
+    (activeCart?.lines?.length ?? 0) > 0 ||
+    Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id) ||
+    Boolean(activeCart?.offline_client_sale_uuid);
+  if (inProgress) {
+    const activePos = resolvePosBrowseNumber(activeCart);
+    if (activePos != null && activePos > maxPos) maxPos = activePos;
+  }
   const sessionNext = maxPos > 0 ? maxPos + 1 : null;
   // Session sequence from completed tickets on this till — do not jump to server
   // watermark+1 (reserved block) which would show Cash Sales #21 with unused #1–#20.
@@ -597,11 +606,40 @@ function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = nu
 
 /** Prefer reserved offline slot (starts at 1) over server watermark peek. */
 async function resolveNextPosTicketForWorkspace(activeCart, sessionOrders, pendingSale = null) {
+  const sessionNext = resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale);
+  const emptyFresh =
+    !(activeCart?.lines?.length > 0) &&
+    !(activeCart?.held_order_num && activeCart?.superseded_sale_id) &&
+    !activeCart?.offline_client_sale_uuid;
+  const alreadyShowing = resolvePosNextBrowseNumber(activeCart);
+
+  // Already on the blank next ticket after F10 / prepare — keep it (do not +1 again).
+  if (
+    emptyFresh &&
+    alreadyShowing != null &&
+    sessionNext != null &&
+    Number(alreadyShowing) === Number(sessionNext)
+  ) {
+    return Number(alreadyShowing);
+  }
+
   const slot = await peekNextPosOfflineOrderSlot().catch(() => null);
   if (slot?.pos_order_num != null && Number(slot.pos_order_num) > 0) {
-    return Number(slot.pos_order_num);
+    const slotNum = Number(slot.pos_order_num);
+    // Prefer session last+1 when the blank cart already matches it and the slot
+    // would skip ahead (slot already consumed for this open ticket).
+    if (
+      emptyFresh &&
+      alreadyShowing != null &&
+      sessionNext != null &&
+      Number(alreadyShowing) === Number(sessionNext) &&
+      slotNum > Number(sessionNext)
+    ) {
+      return Number(alreadyShowing);
+    }
+    return slotNum;
   }
-  return resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale);
+  return sessionNext;
 }
 
 function offlinePrintOptions(sale, base = {}) {
@@ -7088,6 +7126,24 @@ export function PosScreen({ standalone = false }) {
     const editingQueuedOfflineSale = Boolean(
       isOfflineCart && activeCart?.offline_client_sale_uuid && !activeCart?.superseded_sale_id,
     );
+
+    // Already on a blank new order at last+1 (e.g. after F10) — F8 must not bump again.
+    if (!hasLines && !editingPrevious && !isOfflineCart) {
+      const expectedNext = resolveFreshWorkspacePosNum(activeCart, sessionPosOrders);
+      const showing =
+        resolvePosNextBrowseNumber(activeCart) ?? resolvePosBrowseNumber(activeCart);
+      if (
+        expectedNext != null &&
+        showing != null &&
+        Number(showing) === Number(expectedNext)
+      ) {
+        skipEditAutosaveRef.current = false;
+        clearLineEntry();
+        focusProductSearch();
+        setStatusMessage("New order — scan or search a product.");
+        return;
+      }
+    }
 
     if (hasLines || editingPrevious || isOfflineCart) {
       const editSummary = summarizeLocalPosCart(activeCart);
