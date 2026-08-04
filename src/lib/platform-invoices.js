@@ -320,6 +320,8 @@ export const DEFAULT_INVOICE_OPTIONS = {
   print_font_family: "template",
   print_font_scale: "standard",
   print_spacing: "comfortable",
+  // Module package prices are customer-facing all-in amounts (VAT included).
+  prices_include_vat: true,
 };
 
 /** Default Bill from — Alpac Software Solutions (platform operator). */
@@ -668,17 +670,34 @@ export function lineItemFromModuleSummary(summary, included = true) {
   };
 }
 
-export function calculateInvoiceTotals(lineItems, taxRate = 0) {
-  let subtotal = 0;
+export function calculateInvoiceTotals(lineItems, taxRate = 0, options = {}) {
+  const pricesIncludeVat = Boolean(
+    options?.prices_include_vat ?? options?.pricesIncludeVat ?? false,
+  );
+  let gross = 0;
   for (const item of lineItems ?? []) {
     if (item.included === false) continue;
     const qty = Number(item.quantity ?? 1);
     const unit = Number(item.unit_price ?? 0);
     const amount = item.amount != null ? Number(item.amount) : qty * unit;
-    subtotal += Number.isFinite(amount) ? amount : 0;
+    gross += Number.isFinite(amount) ? amount : 0;
   }
-  subtotal = Math.round(subtotal * 100) / 100;
-  const taxAmount = Math.round(subtotal * (Number(taxRate) / 100) * 100) / 100;
+  gross = Math.round(gross * 100) / 100;
+  const rate = Number(taxRate);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return { subtotal: gross, tax_amount: 0, total: gross };
+  }
+
+  if (pricesIncludeVat) {
+    // Line amounts are VAT-inclusive: Total due matches the sum of entered figures.
+    const total = gross;
+    const subtotal = Math.round((total / (1 + rate / 100)) * 100) / 100;
+    const taxAmount = Math.round((total - subtotal) * 100) / 100;
+    return { subtotal, tax_amount: taxAmount, total };
+  }
+
+  const subtotal = gross;
+  const taxAmount = Math.round(subtotal * (rate / 100) * 100) / 100;
   const total = Math.round((subtotal + taxAmount) * 100) / 100;
   return { subtotal, tax_amount: taxAmount, total };
 }
@@ -691,12 +710,13 @@ export function recalcLineItemAmount(item) {
 
 export function invoiceFormToPayload(form) {
   const lineItems = (form.line_items ?? []).map(recalcLineItemAmount);
-  const totals = calculateInvoiceTotals(lineItems, form.tax_rate);
+  const invoiceOptions = normalizeInvoiceOptions(form.invoice_options);
+  const totals = calculateInvoiceTotals(lineItems, form.tax_rate, invoiceOptions);
   const payload = {
     ...form,
     organization_id: form.organization_id ? Number(form.organization_id) : null,
     seller: normalizeSeller(form.seller),
-    invoice_options: normalizeInvoiceOptions(form.invoice_options),
+    invoice_options: invoiceOptions,
     line_items: lineItems,
     selected_modules: form.selected_modules ?? [],
     tax_rate: Number(form.tax_rate ?? 0),

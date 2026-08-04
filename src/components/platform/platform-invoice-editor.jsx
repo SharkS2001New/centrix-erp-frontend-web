@@ -114,8 +114,9 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   });
 
   const totals = useMemo(
-    () => calculateInvoiceTotals(form.line_items, form.tax_rate),
-    [form.line_items, form.tax_rate],
+    () =>
+      calculateInvoiceTotals(form.line_items, form.tax_rate, normalizeInvoiceOptions(form.invoice_options)),
+    [form.line_items, form.tax_rate, form.invoice_options],
   );
 
   const previewRecord = useMemo(() => ({ ...form, ...totals }), [form, totals]);
@@ -627,6 +628,21 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 />
               </Field>
             </div>
+            <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-slate-300"
+                checked={Boolean(invoiceOptions.prices_include_vat)}
+                onChange={(e) => updateInvoiceOptions({ prices_include_vat: e.target.checked })}
+              />
+              <span>
+                <span className="font-medium">Line amounts include VAT</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  On: Total due equals the sum of line amounts (VAT is extracted). Off: VAT is added on
+                  top of the line amounts.
+                </span>
+              </span>
+            </label>
             <p className="mt-2 text-xs text-slate-500">
               {PLATFORM_INVOICE_DESIGN_TEMPLATES.find((t) => t.id === form.template_id)?.description}
               {" · "}
@@ -1013,9 +1029,39 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               ) : null}
             </div>
             <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><span>{form.currency} {totals.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-              <div className="flex justify-between"><span>VAT</span><span>{form.currency} {totals.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-              <div className="mt-1 flex justify-between font-semibold text-slate-900"><span>Total</span><span>{form.currency} {totals.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+              <div className="flex justify-between">
+                <span>Subtotal (ex. VAT)</span>
+                <span>
+                  {form.currency}{" "}
+                  {totals.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>
+                  VAT ({form.tax_rate}%
+                  {invoiceOptions.prices_include_vat ? " included" : ""})
+                </span>
+                <span>
+                  {form.currency}{" "}
+                  {totals.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="mt-1 flex justify-between font-semibold text-slate-900">
+                <span>Total due</span>
+                <span>
+                  {form.currency}{" "}
+                  {totals.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              {invoiceOptions.prices_include_vat ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Total due matches the sum of your line amounts.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">
+                  Total due = subtotal + VAT (line amounts are exclusive of VAT).
+                </p>
+              )}
             </div>
           </section>
 

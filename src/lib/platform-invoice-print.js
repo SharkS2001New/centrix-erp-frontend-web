@@ -80,10 +80,13 @@ function partyBlock(title, party) {
   </div>`;
 }
 
-function totalsBlock(totals, currency, taxRate) {
+function totalsBlock(totals, currency, taxRate, { pricesIncludeVat = false } = {}) {
+  const vatLabel = pricesIncludeVat
+    ? `VAT (${taxRate}% included)`
+    : `VAT (${taxRate}%)`;
   return `<div class="totals">
-    <div class="total-row"><span>Subtotal</span><span>${escapeHtml(formatMoney(totals.subtotal, currency))}</span></div>
-    <div class="total-row"><span>VAT (${escapeHtml(String(taxRate))}%)</span><span>${escapeHtml(formatMoney(totals.tax_amount, currency))}</span></div>
+    <div class="total-row"><span>Subtotal (ex. VAT)</span><span>${escapeHtml(formatMoney(totals.subtotal, currency))}</span></div>
+    <div class="total-row"><span>${escapeHtml(vatLabel)}</span><span>${escapeHtml(formatMoney(totals.tax_amount, currency))}</span></div>
     <div class="total-row grand"><span>Total due</span><span>${escapeHtml(formatMoney(totals.total, currency))}</span></div>
   </div>`;
 }
@@ -284,8 +287,8 @@ export function buildPlatformInvoiceHtml(invoice) {
   const templateId = invoice.template_id ?? "modern";
   const currency = invoice.currency ?? "KES";
   const taxRate = Number(invoice.tax_rate ?? 0);
-  const totals = calculateInvoiceTotals(invoice.line_items, taxRate);
   const options = normalizeInvoiceOptions(invoice.invoice_options);
+  const totals = calculateInvoiceTotals(invoice.line_items, taxRate, options);
   const seller = normalizeSeller(invoice.seller);
   const billTo = {
     name: invoice.bill_to_name,
@@ -301,6 +304,9 @@ export function buildPlatformInvoiceHtml(invoice) {
   const qtyHeader = showQuantity
     ? `<th style="text-align:right">Qty</th>`
     : "";
+  const amountHeader = options.prices_include_vat
+    ? `<th style="text-align:right">Amount (inc. VAT)</th>`
+    : `<th style="text-align:right">Amount (ex. VAT)</th>`;
 
   const etimsBlock = options.show_etims_invoice_no && options.etims_invoice_no
     ? `<div class="etims"><strong>eTIMS KRA invoice no.</strong> ${escapeHtml(options.etims_invoice_no)}</div>`
@@ -354,14 +360,16 @@ export function buildPlatformInvoiceHtml(invoice) {
               <th>#</th>
               <th>Description</th>
               ${qtyHeader}
-              <th style="text-align:right">Amount</th>
+              ${amountHeader}
             </tr>
           </thead>
           <tbody>
-            ${lineRowsHtml(invoice.line_items, currency, { compact: templateId === "compact", showQuantity })}
+            ${lineRowsHtml(invoice.line_items, currency, { showQuantity })}
           </tbody>
         </table>
-        ${totalsBlock(totals, currency, taxRate)}
+        ${totalsBlock(totals, currency, taxRate, {
+          pricesIncludeVat: Boolean(options.prices_include_vat),
+        })}
         ${footerBlock}
       </div>
     </div>

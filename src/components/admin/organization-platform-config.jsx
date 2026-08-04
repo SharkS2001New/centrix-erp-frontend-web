@@ -498,7 +498,6 @@ export function OrganizationPlatformSalesSettings({
   const showPosCheckout = salesPlatform?.show_pos_checkout_on_create !== false;
 
   return (
-    <>
     <PlatformFormSection title="Sales behaviour" description={description}>
       {!salesEnabled ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -667,19 +666,34 @@ export function OrganizationPlatformSalesSettings({
         </div>
       )}
     </PlatformFormSection>
-    {salesEnabled ? (
-      <PlatformFormSection
-        title="Orders list"
-        description="Platform defaults for Sales → Orders date filter and search scope. Distribution orgs typically need a wider window than wholesale/retail — adjust per organization."
-      >
+  );
+}
+
+export function OrganizationOrdersListSettings({
+  salesPlatform,
+  onChange,
+  enabledModules = {},
+}) {
+  const salesEnabled = Boolean(enabledModules.sales);
+
+  return (
+    <PlatformFormSection
+      title="Orders list"
+      description="Platform defaults for Sales → Orders date filter, search scope, and visible columns. Distribution orgs typically need a wider window than wholesale/retail — adjust per organization."
+    >
+      {!salesEnabled ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Enable the <strong>Sales</strong> module to configure orders list defaults for this
+          organization.
+        </p>
+      ) : (
         <OrdersListDefaultsFields
           value={salesPlatform}
           onChange={onChange}
           idPrefix="platform-orders-list"
         />
-      </PlatformFormSection>
-    ) : null}
-  </>
+      )}
+    </PlatformFormSection>
   );
 }
 
@@ -1002,6 +1016,7 @@ function ActionStageChecklist({ title, hint, options, selected, onToggle }) {
 const MANAGE_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
   { id: "sales", label: "Sales behaviour" },
+  { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "status", label: "Organization status" },
   { id: "modules", label: "Applications" },
@@ -1012,6 +1027,7 @@ const MANAGE_ORG_TABS = [
 const REGISTER_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
   { id: "sales", label: "Sales behaviour" },
+  { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "modules", label: "Applications" },
   { id: "admin", label: "Initial administrator" },
@@ -1021,7 +1037,7 @@ function OrganizationConfigTabBar({ tabs, activeTab, onTabChange }) {
   return (
     <div className="w-full overflow-x-auto">
       <div
-        className="flex w-full min-w-[42rem] flex-nowrap gap-1 rounded-lg bg-slate-100 p-0.5"
+        className="flex w-full min-w-[48rem] flex-nowrap gap-1 rounded-lg bg-slate-100 p-0.5"
         role="tablist"
         aria-label="Organization configuration"
       >
@@ -1075,11 +1091,16 @@ export function OrganizationConfigTabs({
   const isHospitality = industry === "hospitality" || deploymentProfile === "hotel_bar";
   const resolvedOrgId = organizationId ?? organization?.id;
   const visibleTabs = isHospitality
-    ? tabs.filter((tab) => tab.id !== "sales" && tab.id !== "workflow")
+    ? tabs.filter(
+        (tab) => tab.id !== "sales" && tab.id !== "orders_list" && tab.id !== "workflow",
+      )
     : tabs;
 
   useEffect(() => {
-    if (isHospitality && (activeTab === "sales" || activeTab === "workflow")) {
+    if (
+      isHospitality &&
+      (activeTab === "sales" || activeTab === "orders_list" || activeTab === "workflow")
+    ) {
       setActiveTab("profile");
     }
   }, [isHospitality, activeTab]);
@@ -1129,6 +1150,14 @@ export function OrganizationConfigTabs({
           onChange={onSalesChange}
           enabledModules={enabledModules}
           deploymentProfile={deploymentProfile}
+        />
+      ) : null}
+
+      {activeTab === "orders_list" ? (
+        <OrganizationOrdersListSettings
+          salesPlatform={salesPlatform}
+          onChange={onSalesChange}
+          enabledModules={enabledModules}
         />
       ) : null}
 
