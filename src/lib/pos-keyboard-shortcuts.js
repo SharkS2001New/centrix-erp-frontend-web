@@ -13,8 +13,10 @@ export const CENTRIX_POS_COMPLETE_PAYMENT_EVENT = "centrix:pos-complete-payment"
  * How long after Alt/Option is released we still treat letter keys as Alt+letter.
  * Windows/Chromium often clear e.altKey on the letter event, or deliver letter
  * keydown a few ms after Alt keyup when the chord is released quickly.
+ * Keep this short — a long grace steals H/P from Hold dialog name fields and
+ * shows false "close the open dialog" errors after Alt+H.
  */
-const POS_ALT_RELEASE_GRACE_MS = 400;
+const POS_ALT_RELEASE_GRACE_MS = 100;
 
 const F_KEY_BY_CODE = {
   112: "F1",
@@ -137,6 +139,21 @@ export function isPosFunctionShortcutKey(key) {
 export function isPosAltModifierActive(e, { altHeld = false } = {}) {
   if (!e || e.metaKey) return false;
   if (e.altKey || altHeld || isPosAltLatched()) return true;
+  try {
+    if (typeof e.getModifierState === "function" && e.getModifierState("Alt")) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
+ * True only when Alt is actually held (or getModifierState), not the post-release grace latch.
+ * Use this to avoid treating typed H/P after Alt+H as another shortcut while a dialog is open.
+ */
+export function isPosRealAltActive(e, { altHeld = false } = {}) {
+  if (!e || e.metaKey) return false;
+  if (e.altKey || altHeld) return true;
   try {
     if (typeof e.getModifierState === "function" && e.getModifierState("Alt")) return true;
   } catch {

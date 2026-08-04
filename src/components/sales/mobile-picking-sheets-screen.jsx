@@ -13,7 +13,14 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
-import { printPickingList, isSalesPickingLayout, sortPickingLinesByPackageCount } from "@/components/fulfillment/picking-list-print";
+import {
+  formatPickingPriceLabel,
+  cleanPickingQuantityLabel,
+  cleanRetailBreakdown,
+  printPickingList,
+  isSalesPickingLayout,
+  sortPickingLinesByPackageCount,
+} from "@/components/fulfillment/picking-list-print";
 import { formatSaleKes } from "@/lib/sales";
 import { shouldShowMobilePickingLists } from "@/lib/sales-settings";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
@@ -285,8 +292,8 @@ export default function MobilePickingSheetsScreen() {
                   <thead>
                     <tr className="theme-table-head-row">
                       <th className="px-3 py-2 text-left">Product Name</th>
-                      <th className="px-3 py-2 text-left">Quantity (W, Retail)</th>
-                      <th className="px-3 py-2 text-left">Price (W, R)</th>
+                      <th className="px-3 py-2 text-left">Quantity</th>
+                      <th className="px-3 py-2 text-left">Price</th>
                       <th className="px-3 py-2 text-right">Line amount</th>
                     </tr>
                   </thead>
@@ -295,12 +302,18 @@ export default function MobilePickingSheetsScreen() {
                       <tr key={`${line.product_code}-${line.line_no}`} className="theme-table-body-row">
                         <td className="px-3 py-2 font-medium">{line.product_name}</td>
                         <td className="px-3 py-2">
-                          <div className="tabular-nums">{line.quantity_label}</div>
+                          <div className="tabular-nums">
+                            {cleanPickingQuantityLabel(line.quantity_label)}
+                          </div>
                           {line.retail_breakdown ? (
-                            <div className="theme-subtext text-xs">({line.retail_breakdown})</div>
+                            <div className="theme-subtext text-xs">
+                              ({cleanRetailBreakdown(line.retail_breakdown)})
+                            </div>
                           ) : null}
                         </td>
-                        <td className="px-3 py-2 text-xs">{line.price_label || "—"}</td>
+                        <td className="px-3 py-2 text-xs">
+                          {formatPickingPriceLabel(line) || "—"}
+                        </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {formatSaleKes(line.line_total)}
                         </td>

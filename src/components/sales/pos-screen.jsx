@@ -197,6 +197,7 @@ import {
   isPosAltKeyEvent,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
+  isPosRealAltActive,
   notePosAltKeyEvent,
   resolvePosAltShortcutLetter,
   resolvePosShortcutKey,
@@ -488,7 +489,7 @@ function posProductDisplayName(record) {
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
 const POS_CHECKOUT_TIMEOUT_MS = 90_000;
 /** Wait after the last previous-order edit before uploading (batch qty/line changes). */
-const PREVIOUS_ORDER_EDIT_SYNC_DEBOUNCE_MS = 8_000;
+const PREVIOUS_ORDER_EDIT_SYNC_DEBOUNCE_MS = 30_000;
 
 function presentLocalOfflineCart(local) {
   if (!local) return null;
@@ -663,7 +664,7 @@ function previousOrderEditWorkspaceHint({ kraFiscalize = false, offline = false 
   if (kraFiscalize) {
     return "Edit lines locally; F10 completes payment and fiscalizes the revised receipt (KRA QR). Alt+P reprints before complete.";
   }
-  return "Edits apply instantly — online sync runs a few seconds after you stop changing lines. Alt+P reprint when finished.";
+  return "Edits apply instantly — online sync runs 30 seconds after you stop changing lines. Alt+P reprint when finished.";
 }
 
 /** Standalone toast / banner copy for previous-order edit modes. */
@@ -688,8 +689,8 @@ function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline
     };
   }
   return {
-    loaded: `Order ${label} loaded. Each change applies instantly — sync runs a few seconds after you stop editing. Print with Alt+P when finished.`,
-    f10: "F10 syncs now if you are finished. Otherwise edits keep applying and sync runs shortly after you stop.",
+    loaded: `Order ${label} loaded. Each change applies instantly — sync runs 30 seconds after you stop editing. Print with Alt+P when finished.`,
+    f10: "F10 syncs now if you are finished. Otherwise edits keep applying and sync runs 30 seconds after you stop.",
     synced: `Order ${label} saved on server. Print the revised receipt (Alt+P or Reprint).`,
     leaveConfirm:
       "Start a new order? Edits already saved keep syncing in the background — you do not need to wait.",
@@ -5016,14 +5017,21 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const retailPackage = getRetailPackage(line.product_code);
       const lineIsRetail = cartLineRetailStockFlag(line);
       const sessionIsRetail = posSalesConfig.enableRetailPricing
-        ? isPosRetailSession(sellWholesale)
+        ? isPosRetailSession(sellWholesaleRef.current)
         : lineIsRetail;
+      const switchingMode = sessionIsRetail !== lineIsRetail;
+
+      if (switchingMode && sessionIsRetail) {
+        await ensureRetailPackageForProduct(product);
+      }
+      const retailPackage = getRetailPackage(line.product_code);
 
       // Use the number in the qty field as-is in the F12 session mode (do not × conversion).
-      const lockedUnit = Number(line.unit_price) > 0 ? Number(line.unit_price) : null;
+      // When F12 session differs from the line's mode, reprice from catalog — do not lock old unit.
+      const lockedUnit =
+        !switchingMode && Number(line.unit_price) > 0 ? Number(line.unit_price) : null;
       const computedPreview = applyComputedPrice(
         product,
         entryQty,
@@ -6082,38 +6090,44 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  async function runPrepareNextOrderOverlay(task) {
+    setPreparingNextProgress(0);
+    setPreparingNextOpen(true);
+    await new Promise((r) => window.requestAnimationFrame(() => r()));
+    try {
+      await task(setPreparingNextProgress);
+      setPreparingNextProgress(100);
+      await new Promise((r) => window.setTimeout(r, 120));
+    } finally {
+      setPreparingNextOpen(false);
+      setPreparingNextProgress(0);
+      if (classicLayout) {
+        focusClassicProductSearch();
+      } else {
+        window.requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
+      }
+    }
+  }
+
   async function handleContinueNextOrder() {
     setReceiptPrintStatus(null);
     if (standalone) {
-      // Close ORDER COMPLETE first — prepare-next loading only appears after OK.
       clearPosUiDraft();
       setPaymentOpen(false);
       setPaymentError(null);
-      setPreparingNextProgress(0);
-      setPreparingNextOpen(true);
-      // Let the complete dialog unmount before the progress overlay paints.
-      await new Promise((r) => window.requestAnimationFrame(() => r()));
       try {
-        await prepareNextPosOrderAfterSale({
-          force: true,
-          focusScan: true,
-          keepPaymentOpen: false,
-          pendingSale: completedSaleRef.current,
-          onProgress: setPreparingNextProgress,
+        await runPrepareNextOrderOverlay(async (report) => {
+          await prepareNextPosOrderAfterSale({
+            force: true,
+            focusScan: false,
+            keepPaymentOpen: false,
+            pendingSale: completedSaleRef.current,
+            onProgress: report,
+          });
         });
-        setPreparingNextProgress(100);
-        await new Promise((r) => window.setTimeout(r, 120));
       } catch (e) {
         const message = e instanceof ApiError ? e.message : "Failed to start next order";
         setStatusMessage(message);
-      } finally {
-        setPreparingNextOpen(false);
-        setPreparingNextProgress(0);
-        if (classicLayout) {
-          focusClassicProductSearch();
-        } else {
-          window.requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
-        }
       }
       return;
     }
@@ -6546,7 +6560,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * KRA-off previous-order edits: debounce outbox upsert + flush (~8s after last change).
+   * KRA-off previous-order edits: debounce outbox upsert + flush (~30s after last change).
    * KRA-on stays local-only until F10 (fiscal QR requires device response).
    * Edits stay local while sync runs — only workspace switch is blocked during flush.
    */
@@ -7014,6 +7028,9 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     setSaveOrderError(null);
+    // Drop Alt grace immediately — openSaveOrderDialog is reached via Alt+H and the
+    // next keystrokes are often the walk-in name (H/P must not re-fire shortcuts).
+    clearPosAltLatch();
     // Org setting off → hold/save immediately as Walk-in (no customer prompt).
     if (!posSalesConfig.enableCheckoutCustomerName) {
       void handleSaveOrder({
@@ -7024,6 +7041,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     setOrderDialogMode(mode);
+    // Sync ref before paint so a latched P/H before re-render cannot fire Alt+P/H.
+    posShortcutStateRef.current = {
+      ...posShortcutStateRef.current,
+      saveOrderOpen: true,
+    };
     setSaveOrderOpen(true);
   }
 
@@ -7102,12 +7124,164 @@ export function PosScreen({ standalone = false }) {
         : null;
     const abandonCart = editingQueuedOfflineSale ? activeCart : null;
     const clearOfflineCart = Boolean(isOfflineCart && !editingQueuedOfflineSale);
+
+    const completeFreshWorkspaceBootstrap = async ({
+      generation,
+      peekNextPos,
+      report = () => {},
+    }) => {
+      await clearPreviousOrderEditDraft();
+      report(42);
+      await clearLocalPosCart().catch(() => {});
+      if (abandonCart) {
+        await abandonOfflineSaleEdit(abandonCart);
+      } else if (clearOfflineCart) {
+        await clearLocalPosCart();
+      } else if (deleteCartId) {
+        markServerCartConsumed(deleteCartId);
+        try {
+          await apiRequest(`/sales/carts/${deleteCartId}/lines`, {
+            method: "DELETE",
+            loading: false,
+            reportIssues: false,
+          });
+        } catch (e) {
+          if (!isMissingTemporaryCartError(e)) throw e;
+        }
+      }
+      report(58);
+      if (standalone) void flushOutboxNow();
+
+      if (generation !== freshWorkspaceGenerationRef.current) return cartRef.current;
+
+      report(72);
+      const next = await loadCashierCart({ skipEditDraftRestore: true });
+      if (generation !== freshWorkspaceGenerationRef.current) return next;
+      const live = cartRef.current;
+      if (
+        live &&
+        isServerPosCartId(live.id) &&
+        (live.lines?.length ?? 0) > 0 &&
+        !live?.held_order_num &&
+        !live?.superseded_sale_id
+      ) {
+        const nextLen = next?.lines?.length ?? 0;
+        const liveLen = live.lines?.length ?? 0;
+        if (
+          live.id !== next?.id ||
+          liveLen > nextLen ||
+          cartHasOptimisticLines(live)
+        ) {
+          report(100);
+          return live;
+        }
+      }
+      const merged = mergeFreshWorkspaceCart(
+        stripPreviousOrderEditSession(next),
+        peekNextPos,
+      );
+      cartRef.current = merged;
+      setCart(merged);
+      orderNoUserEditedRef.current = false;
+      const displayPos =
+        resolvePosNextBrowseNumber(merged) ??
+        (peekNextPos != null ? peekNextPos : null);
+      setEditOrderNo(displayPos != null ? String(displayPos) : "");
+      if (enablePosOrderEdit && standalone) {
+        void loadCompletedPosOrders();
+      }
+      report(100);
+      return merged;
+    };
+
+    const runFreshWorkspaceBootstrap = async (report) => {
+      report(8);
+      const generation = ++freshWorkspaceGenerationRef.current;
+
+      setPaymentOpen(false);
+      setPaymentError(null);
+      // Keep completedSale / last receipt — clearing workspace must not disable Reprint.
+      setEditSourceSale(null);
+      setCartLineSaveFailed(false);
+      setReplacingLineId(null);
+      clearClassicLineSelection();
+      setEditingLineId(null);
+      setEditingLineRef(null);
+      orderNoUserEditedRef.current = false;
+      setOrderEditError(null);
+      setEditBrowseIndex(0);
+      clearLineEntry();
+      setStatusMessage(
+        editingPrevious && pendingSync > 0
+          ? "New order — previous edits keep syncing in the background."
+          : "New order — scan or search a product.",
+      );
+
+      report(18);
+      const peekNextPos = await resolveNextPosTicketForWorkspace(activeCart, sessionPosOrders);
+      applyFreshWorkspacePlaceholder(activeCart, peekNextPos);
+      report(32);
+
+      return completeFreshWorkspaceBootstrap({ generation, peekNextPos, report });
+    };
+
+    if (standalone) {
+      try {
+        await runPrepareNextOrderOverlay(async (report) => {
+          try {
+            await runFreshWorkspaceBootstrap(report);
+            notifySuccess(
+              editingPrevious && pendingSync > 0
+                ? "Workspace cleared — ready for a new order (sync continues in background)."
+                : "Workspace cleared — ready for a new order.",
+            );
+          } catch (e) {
+            if (freshWorkspaceGenerationRef.current) {
+              const message = e instanceof ApiError ? e.message : "Failed to start new order";
+              setStatusMessage(message);
+              notifyError(message);
+              const generation = freshWorkspaceGenerationRef.current;
+              if (isMissingTemporaryCartError(e)) {
+                try {
+                  const recovered = await recoverMissingServerCart();
+                  if (recovered) {
+                    const peekNextPos = await resolveNextPosTicketForWorkspace(
+                      cartRef.current,
+                      sessionPosOrders,
+                    );
+                    const merged = mergeFreshWorkspaceCart(
+                      stripPreviousOrderEditSession(recovered),
+                      peekNextPos,
+                    );
+                    cartRef.current = merged;
+                    setCart(merged);
+                    report(100);
+                    return merged;
+                  }
+                } catch {
+                  /* placeholder remains — next scan will ensureCart */
+                }
+              }
+            }
+            throw e;
+          } finally {
+            skipEditAutosaveRef.current = false;
+            if (freshCartBootstrapRef.current) {
+              freshCartBootstrapRef.current = null;
+            }
+          }
+        });
+      } catch {
+        /* surfaced via notifyError inside bootstrap */
+      }
+      return;
+    }
+
     const peekNextPos = await resolveNextPosTicketForWorkspace(activeCart, sessionPosOrders);
     const generation = ++freshWorkspaceGenerationRef.current;
 
     setPaymentOpen(false);
     setPaymentError(null);
-    // Keep completedSale / last receipt — clearing workspace must not disable Reprint.
     setEditSourceSale(null);
     setCartLineSaveFailed(false);
     setReplacingLineId(null);
@@ -7123,88 +7297,16 @@ export function PosScreen({ standalone = false }) {
         ? "New order — previous edits keep syncing in the background."
         : "New order — scan or search a product.",
     );
-
-    // Instant empty workspace — do not wait on DELETE / POST cart (that made F8 feel slow).
     applyFreshWorkspacePlaceholder(activeCart, peekNextPos);
-
-    if (standalone) {
-      notifySuccess(
-        editingPrevious && pendingSync > 0
-          ? "Workspace cleared — ready for a new order (sync continues in background)."
-          : "Workspace cleared — ready for a new order.",
-      );
-    }
     focusProductSearch();
 
-    // Cleanup + real TemporaryCart in the background; first scan uses ensureCart if needed.
     const bootstrap = (async () => {
       try {
-        await clearPreviousOrderEditDraft();
-        await clearLocalPosCart().catch(() => {});
-        if (abandonCart) {
-          await abandonOfflineSaleEdit(abandonCart);
-        } else if (clearOfflineCart) {
-          await clearLocalPosCart();
-        } else if (deleteCartId) {
-          markServerCartConsumed(deleteCartId);
-          try {
-            await apiRequest(`/sales/carts/${deleteCartId}/lines`, {
-              method: "DELETE",
-              loading: false,
-              reportIssues: false,
-            });
-          } catch (e) {
-            if (!isMissingTemporaryCartError(e)) throw e;
-          }
-        }
-        // Background sync must not block a fresh workspace — outbox replays on its own.
-        if (standalone) void flushOutboxNow();
-
-        if (generation !== freshWorkspaceGenerationRef.current) return cartRef.current;
-
-        const next = await loadCashierCart({ skipEditDraftRestore: true });
-        if (generation !== freshWorkspaceGenerationRef.current) return next;
-        const live = cartRef.current;
-        // Cashier scanned into a different server cart while bootstrap ran — keep their work.
-        // Also keep same-id carts when live already has lines the empty GET would wipe.
-        if (
-          live &&
-          isServerPosCartId(live.id) &&
-          (live.lines?.length ?? 0) > 0 &&
-          !live?.held_order_num &&
-          !live?.superseded_sale_id
-        ) {
-          const nextLen = next?.lines?.length ?? 0;
-          const liveLen = live.lines?.length ?? 0;
-          if (
-            live.id !== next?.id ||
-            liveLen > nextLen ||
-            cartHasOptimisticLines(live)
-          ) {
-            return live;
-          }
-        }
-        // Stale background sync may have re-attached a previous-order edit — force a blank cart.
-        const merged = mergeFreshWorkspaceCart(
-          stripPreviousOrderEditSession(next),
-          peekNextPos,
-        );
-        cartRef.current = merged;
-        setCart(merged);
-        orderNoUserEditedRef.current = false;
-        const displayPos =
-          resolvePosNextBrowseNumber(merged) ??
-          (peekNextPos != null ? peekNextPos : null);
-        setEditOrderNo(displayPos != null ? String(displayPos) : "");
-        if (enablePosOrderEdit && standalone) {
-          void loadCompletedPosOrders();
-        }
-        return merged;
+        await completeFreshWorkspaceBootstrap({ generation, peekNextPos });
       } catch (e) {
         if (generation !== freshWorkspaceGenerationRef.current) return cartRef.current;
         const message = e instanceof ApiError ? e.message : "Failed to start new order";
         setStatusMessage(message);
-        if (standalone) notifyError(message);
         if (isMissingTemporaryCartError(e)) {
           try {
             const recovered = await recoverMissingServerCart();
@@ -8193,23 +8295,22 @@ export function PosScreen({ standalone = false }) {
       );
     }
 
-    /** Alt+H/F/P are cashier chords — do not block on payment or sync banners. */
-    function blocksAltPosShortcuts(state) {
-      return (
-        state.saveOrderOpen
-        || state.heldOrdersOpen
-        || state.leaveGuardOpen
-        || state.priceCheckerOpen
-        || state.floatModalOpen
-        || state.floatDetailsOpen
-        || state.xReportOpen
-        || state.closeSessionOpen
-        || state.zReportOpen
-        || state.autoHeldPrompt
-        || state.discountReasonDialogOpen
-        || state.preparingNextOpen
-        || isConfirmDialogOpen()
-      );
+    /** Human label for whichever dialog is blocking Alt shortcuts (null if clear). */
+    function altShortcutBlockerLabel(state) {
+      if (state.saveOrderOpen) return "hold/save order";
+      if (state.heldOrdersOpen) return "held orders";
+      if (state.leaveGuardOpen) return "leave confirmation";
+      if (state.priceCheckerOpen) return "price checker";
+      if (state.floatModalOpen) return "till float";
+      if (state.floatDetailsOpen) return "float details";
+      if (state.xReportOpen) return "X-report";
+      if (state.closeSessionOpen) return "close session";
+      if (state.zReportOpen) return "Z-report";
+      if (state.autoHeldPrompt) return "auto-held order";
+      if (state.discountReasonDialogOpen) return "discount reason";
+      if (state.preparingNextOpen) return "preparing next order";
+      if (isConfirmDialogOpen()) return "confirmation";
+      return null;
     }
 
     function isTypingTarget(el) {
@@ -8333,6 +8434,16 @@ export function PosScreen({ standalone = false }) {
       const altOpts = { altHeld };
       const altLetter = resolvePosAltShortcutLetter(e, altOpts);
       if (altLetter) {
+        const realAlt = isPosRealAltActive(e, altOpts);
+        const blocker = altShortcutBlockerLabel(state);
+
+        // After Alt+H opens Hold, the release-grace latch still matches bare H/P for a
+        // moment. Claiming those keystrokes steals letters from the name field and
+        // flashes a false "close the open dialog" error. Only block real Alt chords.
+        if (blocker && !realAlt) {
+          return;
+        }
+
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
 
@@ -8346,12 +8457,29 @@ export function PosScreen({ standalone = false }) {
           handledOnKeyDownAt[altStampKey] = Date.now();
         }
 
-        if (blocksAltPosShortcuts(state)) {
+        if (blocker) {
+          // Alt+H while hold/save is already open — tell the cashier what to do.
+          if (altLetter === "h" && state.saveOrderOpen) {
+            actions.flashPosShortcutMessage?.(
+              "Hold dialog is already open — enter the customer name, or press Esc to cancel.",
+            );
+            return;
+          }
+          if (altLetter === "p" && state.saveOrderOpen) {
+            actions.flashPosShortcutMessage?.(
+              "Finish or cancel the Hold dialog (Esc) before reprinting (Alt+P).",
+            );
+            return;
+          }
           actions.flashPosShortcutMessage?.(
-            "Close the open dialog first, then try the shortcut again.",
+            `Close the ${blocker} dialog first (Esc), then try Alt+${altLetter.toUpperCase()} again.`,
           );
           return;
         }
+
+        // Chord consumed — drop grace latch so the next typed H/P is not a shortcut.
+        altHeld = false;
+        clearPosAltLatch();
 
         actions.closeProductSearchDropdown?.();
         if (altLetter === "h") {
@@ -8375,36 +8503,34 @@ export function PosScreen({ standalone = false }) {
       }
 
       if (e.key === "Escape") {
-        claimPosFunctionKeyEvent(e);
-        e.__centrixPosShortcutHandled = true;
         const wasPaymentOpen = Boolean(state.paymentOpen);
         const modalOpen = isModalOpen(state);
+
+        // Do not claim Esc while a non-payment dialog is open — our capture
+        // listeners (window/document) otherwise stopImmediatePropagation and the
+        // Hold / confirm / float dialogs never receive Esc, so their flags stay
+        // true and Alt+H keeps saying "close the open dialog".
+        if (modalOpen && !wasPaymentOpen) {
+          return;
+        }
+
+        claimPosFunctionKeyEvent(e);
+        e.__centrixPosShortcutHandled = true;
         if (state.replacingLineId && !modalOpen) {
           actions.cancelReplaceCartLine();
         }
-        // Capture steals Esc from dialogs — close payment ourselves so Esc works.
+        // Payment has no reliable Esc handler under capture — close it ourselves.
         if (wasPaymentOpen) {
           actions.closePayment?.();
-        }
-        if (state.standalone) {
-          // External POS: always return keyboard to Scan code.
-          if (modalOpen && !wasPaymentOpen) {
-            focusScanAfterEsc(actions);
-          } else if (wasPaymentOpen) {
-            focusScanAfterEsc(actions);
-          } else {
-            actions.focusProductSearch();
-          }
+          focusScanAfterEsc(actions);
           return;
         }
-        if (modalOpen && !wasPaymentOpen) {
-          focusScanAfterEsc(actions);
-        } else if (wasPaymentOpen) {
-          focusScanAfterEsc(actions);
-        } else {
-          // Open workspace: reset entry row and focus Scan code.
+        if (state.standalone) {
           actions.focusProductSearch();
+          return;
         }
+        // Open workspace: reset entry row and focus Scan code.
+        actions.focusProductSearch();
         return;
       }
 
@@ -8436,12 +8562,10 @@ export function PosScreen({ standalone = false }) {
       onPosKeyEvent(e, "keyup");
     }
     function onWindowBlur() {
-      // Only grace-latch if Alt was actually held — avoid treating H/F/P as shortcuts
-      // for ~400ms after every unrelated focus loss.
-      if (altHeld) {
-        altHeld = false;
-        notePosAltKeyEvent({ key: "Alt", code: "AltLeft" }, "keyup");
-      }
+      // Always drop Alt state on focus loss — a missed Alt keyup otherwise leaves
+      // posAltPhysicallyDown stuck and every H/P becomes a false shortcut.
+      altHeld = false;
+      clearPosAltLatch();
     }
     function onVisibilityChange() {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
@@ -10056,6 +10180,10 @@ export function PosScreen({ standalone = false }) {
         open={saveOrderOpen}
         mode={orderDialogMode}
         onClose={() => {
+          posShortcutStateRef.current = {
+            ...posShortcutStateRef.current,
+            saveOrderOpen: false,
+          };
           setSaveOrderOpen(false);
           setSaveOrderError(null);
         }}

@@ -37,6 +37,133 @@ function formatKes(amount) {
   return n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Strip legacy W/R prefixes from quantity labels ("W 3 Bag" → "3 Bag"). */
+export function cleanPickingQuantityLabel(label) {
+  const raw = String(label ?? "").trim();
+  if (!raw) return "";
+  return raw
+    .replace(/\bW\s+/g, "")
+    .replace(/\bR\s+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/** Normalize legacy price text toward "2,250 per bag, 52 per kg". */
+export function cleanPickingPriceLabel(label) {
+  const raw = String(label ?? "").trim();
+  if (!raw) return "";
+
+  function extractAmounts(text) {
+    const matches = String(text).match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g) ?? [];
+    return matches
+      .map((n) => formatPickingPriceAmount(Number(String(n).replace(/,/g, ""))))
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  return raw
+    .split(/\s*·\s*/)
+    .map((part) => {
+      let text = part
+        .replace(/^W\s+/i, "")
+        .replace(/^R\s+/i, "")
+        .replace(/^Ksh\s+/i, "")
+        .trim();
+      const slash = text.match(/^(.+?)\s*\/\s*(.+)$/i);
+      if (slash) {
+        const amounts = extractAmounts(slash[1]);
+        const unit = String(slash[2]).trim().toLowerCase();
+        return amounts ? `${amounts} per ${unit}` : "";
+      }
+      const per = text.match(/^(.+?)\s+per\s+(.+)$/i);
+      if (per) {
+        const amounts = extractAmounts(per[1]);
+        const unit = String(per[2]).trim().toLowerCase();
+        return amounts ? `${amounts} per ${unit}` : "";
+      }
+      const amountsOnly = extractAmounts(text);
+      if (amountsOnly && amountsOnly === formatPickingPriceAmount(Number(text.replace(/,/g, "")))) {
+        return amountsOnly;
+      }
+      if (/^[\d,]+(?:\.\d+)?$/.test(text)) {
+        return formatPickingPriceAmount(Number(text.replace(/,/g, "")));
+      }
+      return text;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatPickingPriceAmount(amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return Math.round(n).toLocaleString("en-KE");
+}
+
+function formatPickingPriceList(prices) {
+  return (prices ?? [])
+    .map((price) => formatPickingPriceAmount(price))
+    .filter(Boolean)
+    .join(", ");
+}
+
+function pickingPackUnit(line, kind) {
+  if (kind === "wholesale") {
+    const explicit = String(line?.wholesale_pack_label ?? "").trim();
+    if (explicit) return explicit.toLowerCase();
+    const qty = String(line?.wholesale_qty_label || line?.quantity_label || "");
+    const match = qty.match(/\d[\d,]*(?:\.\d+)?\s+([A-Za-z]+)/);
+    return (match?.[1] || "bag").toLowerCase();
+  }
+  const explicit = String(line?.retail_pack_label ?? "").trim();
+  if (explicit) return explicit.toLowerCase();
+  const qty = String(line?.retail_qty_label || line?.quantity_label || "");
+  const match = qty.match(/(?:^|,\s*)\d[\d,]*(?:\.\d+)?\s+([A-Za-z]+)\s*$/);
+  return (match?.[1] || "kg").toLowerCase();
+}
+
+/** Wholesale then retail — e.g. "2,250 per bag, 52 per kg". */
+export function formatPickingPriceLabel(line) {
+  const wholesalePrices = Array.isArray(line?.wholesale_unit_prices)
+    ? line.wholesale_unit_prices
+    : Number(line?.wholesale_unit_price) > 0
+      ? [line.wholesale_unit_price]
+      : [];
+  const retailPrices = Array.isArray(line?.retail_unit_prices)
+    ? line.retail_unit_prices
+    : Number(line?.retail_unit_price) > 0
+      ? [line.retail_unit_price]
+      : [];
+
+  const parts = [];
+  const wholesaleText = formatPickingPriceList(wholesalePrices);
+  const retailText = formatPickingPriceList(retailPrices);
+  if (wholesaleText) {
+    parts.push(`${wholesaleText} per ${pickingPackUnit(line, "wholesale")}`);
+  }
+  if (retailText) {
+    parts.push(`${retailText} per ${pickingPackUnit(line, "retail")}`);
+  }
+  if (parts.length) return parts.join(", ");
+
+  return cleanPickingPriceLabel(line?.price_label ?? "");
+}
+
+/** Strip customer names from legacy retail breakdown ("Jane 20 kg" → "20 kg"). */
+export function cleanRetailBreakdown(breakdown) {
+  const raw = String(breakdown ?? "").trim();
+  if (!raw) return "";
+  return raw
+    .split(/,\s*/)
+    .map((part) => {
+      const trimmed = part.trim();
+      const match = trimmed.match(/(\d[\d,]*(?:\.\d+)?\s+[a-zA-Z]+)\s*$/);
+      return match ? match[1] : trimmed;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
 /** Leading package count from labels like "W 26 Jer" / "W 4 Bag, R 10 kg". */
 export function primaryPackageCountFromLine(line) {
   const label = String(line?.quantity_label ?? line?.wholesale_qty_label ?? "").trim();
@@ -109,10 +236,11 @@ function normalizePickingLines(lines, uomByProductCode) {
     const pickedLabel = formatFulfillmentQty(picked, line, uomByProductCode);
     const shortageLabel = shortage > 0 ? formatFulfillmentQty(shortage, line, uomByProductCode) : "—";
 
-    const quantityLabel =
+    const quantityLabel = cleanPickingQuantityLabel(
       String(line.quantity_label ?? "").trim() ||
-      [line.wholesale_qty_label, line.retail_qty_label].filter(Boolean).join(", ") ||
-      requestedLabel;
+        [line.wholesale_qty_label, line.retail_qty_label].filter(Boolean).join(", ") ||
+        requestedLabel,
+    );
 
     return {
       ...line,
@@ -125,8 +253,8 @@ function normalizePickingLines(lines, uomByProductCode) {
       quantity_label: quantityLabel,
       picked_label: pickedLabel,
       shortage_label: shortageLabel,
-      retail_breakdown: String(line.retail_breakdown ?? "").trim(),
-      price_label: String(line.price_label ?? "").trim(),
+      retail_breakdown: cleanRetailBreakdown(line.retail_breakdown ?? ""),
+      price_label: formatPickingPriceLabel(line),
       line_total: Number(line.line_total ?? 0),
       pack_breakdown:
         line.pack_breakdown && line.pack_breakdown !== requestedLabel ? line.pack_breakdown : "",
@@ -301,8 +429,8 @@ export function buildPickingListHtml({
           <tr>
             <th class="col-no">No.</th>
             <th class="col-product">Product Name</th>
-            <th class="col-qty">Quantity (W, Retail)</th>
-            <th class="col-price">Price (W, R)</th>
+            <th class="col-qty">Quantity</th>
+            <th class="col-price">Price</th>
             <th class="col-total">Line amount</th>
           </tr>`;
     rowHtml =
@@ -440,23 +568,31 @@ export function samplePickingListPreviewData({ salesLayout = false } = {}) {
         lines: [
           {
             product_name: "KAMANDE",
-            quantity_label: "W 10 Bag, R 30 kg",
-            retail_breakdown: "Jane Wanjiku 12 kg, Peter Otieno 10 kg, Mary Akinyi 8 kg",
-            price_label: "W Ksh 2,250 / Bag · R Ksh 48 / kg",
+            quantity_label: "10 Bag, 30 kg",
+            retail_breakdown: "12 kg, 10 kg, 8 kg",
+            price_label: "2,250 per bag, 48 per kg",
+            wholesale_pack_label: "Bag",
+            retail_pack_label: "kg",
+            wholesale_unit_prices: [2250],
+            retail_unit_prices: [48],
             line_total: 45000,
           },
           {
             product_name: "SUGAR 50 KG",
-            quantity_label: "W 4 Bag",
+            quantity_label: "4 Bag",
             retail_breakdown: "",
-            price_label: "W Ksh 6,000 / Bag",
+            price_label: "6,000 per bag",
+            wholesale_pack_label: "Bag",
+            wholesale_unit_prices: [6000],
             line_total: 24000,
           },
           {
             product_name: "RICE BIRIYANI",
-            quantity_label: "R 25 kg",
-            retail_breakdown: "John Kamau 10 kg, Grace Njeri 5 kg, Samuel Ochieng 5 kg, Ann Mwangi 5 kg",
-            price_label: "R Ksh 90 / kg",
+            quantity_label: "25 kg",
+            retail_breakdown: "10 kg, 5 kg, 5 kg, 5 kg",
+            price_label: "90 per kg",
+            retail_pack_label: "kg",
+            retail_unit_prices: [90],
             line_total: 18500,
           },
         ],

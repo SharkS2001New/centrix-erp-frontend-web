@@ -60,6 +60,33 @@ describe("F12 qty Enter keeps typed quantity", () => {
     expect(posEntryToBaseQty("5", sugarProduct, false, sugarRetailPackage)).toBe(5);
     expect(posEntryToBaseQty("5", sugarProduct, true, sugarRetailPackage)).toBe(250);
   });
+
+  it("mode switch reprices when unit override is cleared (wholesale ↔ retail)", () => {
+    const wholesaleLine = computePosLine({
+      product: sugarProduct,
+      entryQty: "5",
+      sellWholesale: true,
+      retailPackage: sugarRetailPackage,
+    });
+    const retailLine = computePosLine({
+      product: sugarProduct,
+      entryQty: "5",
+      sellWholesale: false,
+      retailPackage: sugarRetailPackage,
+    });
+    expect(wholesaleLine.displayUnitPrice).not.toBe(retailLine.displayUnitPrice);
+    expect(wholesaleLine.lineAmount).not.toBe(retailLine.lineAmount);
+
+    const stuckWholesalePrice = computePosLine({
+      product: sugarProduct,
+      entryQty: "5",
+      sellWholesale: false,
+      retailPackage: sugarRetailPackage,
+      unitPriceOverride: wholesaleLine.displayUnitPrice,
+    });
+    expect(stuckWholesalePrice.displayUnitPrice).toBe(wholesaleLine.displayUnitPrice);
+    expect(stuckWholesalePrice.lineAmount).not.toBe(retailLine.lineAmount);
+  });
 });
 
 describe("sell_on_retail gate", () => {

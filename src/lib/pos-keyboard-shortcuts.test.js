@@ -8,6 +8,7 @@ import {
   isPosClassicAltShortcut,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
+  isPosRealAltActive,
   notePosAltKeyEvent,
   resolvePosAltShortcutLetter,
   resolvePosShortcutKey,
@@ -145,10 +146,22 @@ describe("POS Alt latch / release grace", () => {
     expect(
       resolvePosAltShortcutLetter(fakeEvent({ key: "f", code: "KeyF", altKey: false })),
     ).toBe("f");
-    vi.advanceTimersByTime(401);
+    vi.advanceTimersByTime(101);
     expect(isPosAltLatched()).toBe(false);
     expect(
       resolvePosAltShortcutLetter(fakeEvent({ key: "f", code: "KeyF", altKey: false })),
     ).toBe(null);
+  });
+
+  it("distinguishes real Alt from post-release grace latch", () => {
+    notePosAltKeyEvent(fakeEvent({ key: "Alt", code: "AltLeft" }), "keydown");
+    expect(
+      isPosRealAltActive(fakeEvent({ key: "h", code: "KeyH", altKey: false }), { altHeld: true }),
+    ).toBe(true);
+    notePosAltKeyEvent(fakeEvent({ key: "Alt", code: "AltLeft" }), "keyup");
+    expect(
+      isPosRealAltActive(fakeEvent({ key: "h", code: "KeyH", altKey: false }), { altHeld: false }),
+    ).toBe(false);
+    expect(isPosAltLatched()).toBe(true);
   });
 });
