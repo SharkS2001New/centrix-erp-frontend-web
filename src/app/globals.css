@@ -75,12 +75,12 @@ html[data-theme="dark"] .auth-card {
 }
 
 html[data-theme="light"] .app-shell-bg {
-  background-color: #405189;
+  background-color: var(--erp-sidebar-bg, #405189);
   color: #212529;
 }
 
 html[data-theme="dark"] .app-shell-bg {
-  background-color: #212529;
+  background-color: var(--erp-sidebar-bg, #212529);
   color: #e9ecef;
 }
 
@@ -181,14 +181,14 @@ html[data-theme="dark"] .theme-muted {
 
 .velzon-sidebar,
 html[data-theme="light"] .app-sidebar.velzon-sidebar {
-  background-color: #405189;
-  border-color: #364574;
+  background-color: var(--erp-sidebar-bg, #405189);
+  border-color: var(--erp-sidebar-border, #364574);
   color: #a3b1cc;
 }
 
 html[data-theme="dark"] .app-sidebar.velzon-sidebar {
-  background-color: #212529;
-  border-color: #2a2f34;
+  background-color: var(--erp-sidebar-bg, #212529);
+  border-color: var(--erp-sidebar-border, #2a2f34);
   color: #878a99;
 }
 
@@ -294,23 +294,23 @@ html[data-theme="dark"] .velzon-sidebar .app-sidebar-org p {
 
 html[data-theme="light"] .velzon-sidebar-flyout,
 html[data-theme="dark"] .velzon-sidebar-flyout {
-  background: #405189;
+  background: var(--erp-sidebar-bg, #405189);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 0.375rem;
 }
 
 html[data-theme="light"] .velzon-sidebar-subnav,
 html[data-theme="dark"] .velzon-sidebar-subnav {
-  background: #405189;
+  background: var(--erp-sidebar-bg, #405189);
   color: #abb9e8;
 }
 
 html[data-theme="dark"] .velzon-sidebar-flyout {
-  background: #2a3042;
+  background: var(--erp-sidebar-bg, #2a3042);
 }
 
 html[data-theme="dark"] .velzon-sidebar-subnav {
-  background: #2a3042;
+  background: var(--erp-sidebar-bg, #2a3042);
   color: #abb9e8;
 }
 

@@ -35,16 +35,9 @@ export const CLASSIC_POS_LEGACY_VARS = {
  */
 export const CLASSIC_POS_THEME_TEMPLATES = [
   {
-    id: "legacy",
-    label: "Legacy beige",
-    description: "Original classic cashier — warm tan workspace.",
-    preview: ["#b8a574", "#cdb48b", "#f7f1e4"],
-    vars: { ...CLASSIC_POS_LEGACY_VARS },
-  },
-  {
     id: "centrix",
-    label: "Centrix",
-    description: "Cool indigo workspace — clean and familiar.",
+    label: "Centrix (original)",
+    description: "Default Centrix ERP look — cool indigo workspace.",
     preview: ["#4c5ba4", "#eef0f8", "#f4f5f9"],
     vars: {
       "--classic-bg": "#c8ccd8",
@@ -71,6 +64,13 @@ export const CLASSIC_POS_THEME_TEMPLATES = [
       "--classic-rownum": "#64748b",
       "--classic-dropdown-shadow": "0 8px 24px rgba(76, 91, 164, 0.22)",
     },
+  },
+  {
+    id: "legacy",
+    label: "Legacy beige",
+    description: "Original classic cashier — warm tan workspace.",
+    preview: ["#b8a574", "#cdb48b", "#f7f1e4"],
+    vars: { ...CLASSIC_POS_LEGACY_VARS },
   },
   {
     id: "ocean",
@@ -489,14 +489,13 @@ export function classicPosThemeCssVars(id, colorOverrides = null) {
 }
 
 /**
- * Bridge org theme palette onto global `--theme-*` tokens so the whole ERP
- * (sidebar, panels, dialogs) and Classic POS popups share one chosen palette.
+ * Bridge Classic POS palette onto `--theme-*` tokens for the Classic External POS
+ * workspace (full surfaces, text, borders, buttons).
  */
 export function classicPosThemeBridgeVars(id, colorOverrides = null) {
   const classic = classicPosThemeCssVars(id, colorOverrides);
   const header = classic["--classic-header"];
   const button = classic["--classic-button"] || header;
-  const headerFg = classic["--classic-header-fg"] ?? "#ffffff";
   const panel = classic["--classic-panel"];
   const table = classic["--classic-table"];
   const border = classic["--classic-border"];
@@ -535,13 +534,44 @@ export function classicPosThemeBridgeVars(id, colorOverrides = null) {
   };
 }
 
+/** Button primary tokens shared by org chrome and Classic POS. */
+function orgErpButtonThemeVars(classic) {
+  const header = classic["--classic-header"] || "#405189";
+  const button = classic["--classic-button"] || header;
+  const panel = classic["--classic-panel"] || "#eef0f8";
+  const buttonRgb = parseHexColor(button);
+  const buttonFg =
+    buttonRgb && relativeLuminance(buttonRgb) > 0.35
+      ? classic["--classic-text"] ?? "#1a1a1a"
+      : "#f8fafc";
+  return {
+    "--theme-primary": button,
+    "--theme-primary-hover": mixHexToward(button, [0, 0, 0], 0.12),
+    "--theme-primary-fg": buttonFg,
+    "--theme-primary-subtle": hexToRgba(button, 0.14),
+    "--theme-primary-muted": panel,
+  };
+}
+
+/**
+ * Backoffice / non-POS modules: sidebar background + primary button colors only.
+ * Does not recolor page surfaces, footers, panels, or text.
+ */
+export function orgErpSidebarThemeVars(id, colorOverrides = null) {
+  const classic = classicPosThemeCssVars(id, colorOverrides);
+  const header = classic["--classic-header"] || "#405189";
+  return {
+    "--erp-sidebar-bg": header,
+    "--erp-sidebar-border": mixHexToward(header, [0, 0, 0], 0.12),
+    ...orgErpButtonThemeVars(classic),
+  };
+}
+
 const CLASSIC_POS_DOCUMENT_STYLE_KEYS = new Set();
 
-/** Apply chosen org theme vars on `html` so the whole ERP inherits them. */
-export function applyClassicPosDocumentTheme(id, colorOverrides = null) {
+function writeDocumentThemeVars(vars, { classicPosActive = false, themeId } = {}) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  const vars = classicPosThemeBridgeVars(id, colorOverrides);
   for (const key of CLASSIC_POS_DOCUMENT_STYLE_KEYS) {
     if (!(key in vars)) root.style.removeProperty(key);
   }
@@ -551,9 +581,33 @@ export function applyClassicPosDocumentTheme(id, colorOverrides = null) {
     root.style.setProperty(key, String(value));
     CLASSIC_POS_DOCUMENT_STYLE_KEYS.add(key);
   }
-  root.dataset.classicPosActive = "true";
-  root.dataset.erpTheme = normalizeClassicPosThemeTemplate(id);
-  root.dataset.classicPosTheme = normalizeClassicPosThemeTemplate(id);
+  const normalized = normalizeClassicPosThemeTemplate(themeId);
+  root.dataset.erpTheme = normalized;
+  if (classicPosActive) {
+    root.dataset.classicPosActive = "true";
+    root.dataset.classicPosTheme = normalized;
+  } else {
+    delete root.dataset.classicPosActive;
+    delete root.dataset.classicPosTheme;
+  }
+}
+
+/** Apply org theme to sidebar + primary buttons (backoffice / non-Classic-POS). */
+export function applyOrgErpSidebarTheme(id, colorOverrides = null) {
+  writeDocumentThemeVars(orgErpSidebarThemeVars(id, colorOverrides), {
+    classicPosActive: false,
+    themeId: id,
+  });
+}
+
+/** Apply full Classic POS palette on `html` while the Classic External POS desk is open. */
+export function applyClassicPosDocumentTheme(id, colorOverrides = null) {
+  const sidebar = orgErpSidebarThemeVars(id, colorOverrides);
+  const full = classicPosThemeBridgeVars(id, colorOverrides);
+  writeDocumentThemeVars({ ...full, ...sidebar }, {
+    classicPosActive: true,
+    themeId: id,
+  });
 }
 
 export function clearClassicPosDocumentTheme() {

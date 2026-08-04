@@ -54,6 +54,7 @@ import {
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
+import { ClassicPosThemePicker } from "@/components/admin/external-pos-platform-fields";
 import {
   HOTEL_POS_THEME_DEFAULT,
   HOTEL_POS_THEME_TEMPLATES,
@@ -1340,6 +1341,27 @@ export function OrganizationModuleToggles({
       }
     >
       <div className="space-y-4">
+        {!isHotelProfile && typeof onSalesChange === "function" ? (
+          <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-4">
+            <ClassicPosThemePicker
+              value={salesPlatform?.classic_pos_theme_template}
+              onChange={(id) =>
+                onSalesChange({
+                  ...(salesPlatform ?? {}),
+                  classic_pos_theme_template: id,
+                })
+              }
+              colors={salesPlatform?.classic_pos_theme_colors}
+              onColorsChange={(next) =>
+                onSalesChange({
+                  ...(salesPlatform ?? {}),
+                  classic_pos_theme_colors: next,
+                })
+              }
+              description="Backoffice: sidebar + primary buttons only. Classic External POS: full palette. Organization admins can also change this under Centrix ERP Themes."
+            />
+          </div>
+        ) : null}
         {workspaces.length === 0 ? (
           <p className="theme-subtext text-sm">No applications available for this deployment profile.</p>
         ) : null}
@@ -1373,9 +1395,8 @@ export function OrganizationModuleToggles({
                   <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                   {workspace.id === "pos" && enabled ? (
                     <span className="theme-subtext mt-1 block text-xs">
-                      Layout and cashier behaviour are under Administration → Centrix ERP Themes
-                      (Organization settings). ERP color themes apply organization-wide from that same
-                      screen.
+                      Color theme is above. POS layout and cashier behaviour are under Organization
+                      settings → Centrix ERP Themes.
                     </span>
                   ) : null}
                   {isDistribution ? (

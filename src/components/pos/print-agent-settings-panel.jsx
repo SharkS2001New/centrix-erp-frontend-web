@@ -31,9 +31,22 @@ import {
   downloadPrintAgentDotnet,
   downloadPrintAgentSource,
 } from "@/lib/print-agent-installer-download";
+import {
+  PRINT_AGENT_DOTNET_SDK_URL,
+  PRINT_AGENT_SUMATRA_PDF_URL,
+  PRINT_AGENT_WKHTMLTOPDF_URL,
+} from "@/lib/print-agent-download-links";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { P } from "@/lib/permission-codes";
+
+function ExternalDownloadLink({ href, children }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="font-medium text-[var(--theme-accent)] underline">
+      {children}
+    </a>
+  );
+}
 
 /** Organization local printing — browser or Centrix Print Agent. */
 export function PrintAgentSettingsPanel({ compact = false }) {
@@ -354,27 +367,70 @@ export function PrintAgentSettingsPanel({ compact = false }) {
             Centrix opens the browser print dialog instead.
           </p>
           <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
-            <p className="theme-heading font-medium">Install Windows print service</p>
+            <p className="theme-heading font-medium">Install Centrix Print Agent (Windows)</p>
+            <p className="theme-subtext mt-1 text-xs">
+              Do this once on each till PC. The agent runs as a Windows service and prints silently to your
+              thermal printer.
+            </p>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
+            <div className="mt-3 rounded-md border border-[var(--theme-border)] bg-white/70 px-3 py-2.5">
+              <p className="theme-heading text-xs font-semibold">Downloads you may need</p>
+              <ul className="theme-subtext mt-2 list-disc space-y-1.5 pl-4 text-xs">
+                <li>
+                  <ExternalDownloadLink href={PRINT_AGENT_SUMATRA_PDF_URL}>
+                    SumatraPDF (free)
+                  </ExternalDownloadLink>
+                  {" — "}
+                  required for silent thermal printing. After install, Sumatra must live{" "}
+                  <strong>inside the Print Agent folder</strong> (see step below). Installing only under Program
+                  Files is not enough for the Windows service.
+                </li>
+                <li>
+                  <ExternalDownloadLink href={PRINT_AGENT_DOTNET_SDK_URL}>
+                    .NET 8 SDK (Windows x64)
+                  </ExternalDownloadLink>
+                  {" — "}
+                  only if you use <strong>Download build package</strong> (first build on a Windows PC). Not
+                  needed when a ready installer zip is already available.
+                </li>
+                <li>
+                  <ExternalDownloadLink href={PRINT_AGENT_WKHTMLTOPDF_URL}>
+                    wkhtmltopdf (Windows x64)
+                  </ExternalDownloadLink>
+                  {" — "}
+                  one-time install so receipts render to PDF. The build picks it up from{" "}
+                  <code className="text-[11px]">Program Files\wkhtmltopdf</code> automatically.
+                </li>
+              </ul>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
                 onClick={() => void handleDownloadSource()}
                 disabled={downloadingSource || !sourceAvailable}
-            className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {downloadingSource ? "Downloading…" : "Download build package (source)"}
-          </button>
+              </button>
               {dotnetAvailable ? (
-          <button
-            type="button"
+                <button
+                  type="button"
                   onClick={() => void handleDownloadDotnet()}
                   disabled={downloadingDotnet}
-            className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
-          >
+                  className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
                   {downloadingDotnet ? "Downloading…" : "Download ready installer (zip)"}
-          </button>
+                </button>
               ) : null}
+              <a
+                href={PRINT_AGENT_SUMATRA_PDF_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="theme-btn-secondary inline-flex items-center rounded-lg border px-4 py-2 text-sm font-medium"
+              >
+                Download SumatraPDF
+              </a>
             </div>
 
             {!sourceAvailable ? (
@@ -385,48 +441,78 @@ export function PrintAgentSettingsPanel({ compact = false }) {
             ) : (
               <div className="theme-subtext mt-3 space-y-2 text-xs">
                 <p className="theme-heading text-xs font-medium text-[var(--theme-heading)]">
-                  How to build (Windows PC)
+                  Setup guide (org admin)
                 </p>
                 <ol className="list-decimal space-y-1.5 pl-4">
                   <li>
-                    Click <strong>Download build package (source)</strong> and unzip it. Open the folder{" "}
-                    <code className="text-[11px]">print-agent-dotnet</code>.
+                    On the till Windows PC, download{" "}
+                    <ExternalDownloadLink href={PRINT_AGENT_SUMATRA_PDF_URL}>SumatraPDF</ExternalDownloadLink>{" "}
+                    and install it (or download the portable zip).
                   </li>
                   <li>
-                    Install the{" "}
-                    <a
-                      href="https://dotnet.microsoft.com/download/dotnet/8.0"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="underline"
-                    >
-                      .NET 8 SDK (Windows x64)
-                    </a>{" "}
-                    once, then close all terminals.
+                    Optionally install{" "}
+                    <ExternalDownloadLink href={PRINT_AGENT_WKHTMLTOPDF_URL}>wkhtmltopdf</ExternalDownloadLink>{" "}
+                    once for receipt rendering.
                   </li>
                   <li>
-                    <strong>
-                      Double‑click <code className="text-[11px]">BUILD-AND-INSTALL.bat</code>
-                    </strong>{" "}
-                    and allow Administrator. Wait for <strong>SUCCESS</strong>.
-                    <p className="mt-1">
-                      Do <strong>not</strong> type <code className="text-[11px]">cd path\to\...</code> — that was
-                      only a placeholder. The bat file runs from the unzipped folder.
+                    {dotnetAvailable ? (
+                      <>
+                        Prefer <strong>Download ready installer (zip)</strong> when shown — unzip and run the
+                        install script as Administrator (no .NET SDK).
+                      </>
+                    ) : (
+                      <>
+                        Click <strong>Download build package (source)</strong>, unzip, open{" "}
+                        <code className="text-[11px]">print-agent-dotnet</code>, install the{" "}
+                        <ExternalDownloadLink href={PRINT_AGENT_DOTNET_SDK_URL}>.NET 8 SDK</ExternalDownloadLink>
+                        , then double‑click <code className="text-[11px]">BUILD-AND-INSTALL.bat</code> and allow
+                        Administrator. Wait for <strong>SUCCESS</strong>.
+                      </>
+                    )}
+                  </li>
+                  <li>
+                    <strong>Copy Sumatra into the Print Agent folder</strong> (required after install). The agent
+                    looks for:
+                    <p className="mt-1 rounded bg-white/80 px-2 py-1 font-mono text-[11px] text-[var(--theme-heading)]">
+                      C:\Program Files\Centrix\PrintAgent\tools\SumatraPDF\SumatraPDF.exe
                     </p>
+                    <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                      <li>
+                        <strong>Easiest:</strong> open an elevated PowerShell in the unzipped{" "}
+                        <code className="text-[11px]">print-agent-dotnet</code> folder and run:
+                        <p className="mt-1 font-mono text-[11px]">
+                          .\scripts\configure-sumatra.ps1
+                        </p>
+                        That downloads or copies Sumatra into{" "}
+                        <code className="text-[11px]">tools\SumatraPDF\</code> next to the agent and restarts the
+                        service.
+                      </li>
+                      <li>
+                        If Sumatra is already installed elsewhere, run:
+                        <p className="mt-1 font-mono text-[11px]">
+                          .\scripts\configure-sumatra.ps1 -SkipDownload
+                        </p>
+                        Or manually copy <code className="text-[11px]">SumatraPDF.exe</code> into that{" "}
+                        <code className="text-[11px]">tools\SumatraPDF\</code> path (create the folder if missing).
+                      </li>
+                    </ul>
                   </li>
                   <li>
-                    SumatraPDF (silent printing) is configured automatically during install. If test print does not
-                    reach the printer, run <code className="text-[11px]">scripts\configure-sumatra.ps1</code> as
-                    Administrator on the till PC.
+                    Confirm health shows <code className="text-[11px]">&quot;sumatra_available&quot;: true</code> at{" "}
+                    <code className="text-[11px]">http://127.0.0.1:9247/v1/health</code>.
                   </li>
-                  <li>Back here: Test connection → pick printer → Save.</li>
+                  <li>
+                    Back here: <strong>Test connection</strong> → pick preferred printer →{" "}
+                    <strong>Test print</strong> → <strong>Save settings</strong>.
+                  </li>
                 </ol>
                 <p>
-                  Full rules are in <code className="text-[11px]">BUILD.md</code> inside the zip.
+                  Full notes are in <code className="text-[11px]">BUILD.md</code> inside the zip. The agent
+                  listens on <code className="text-[11px]">http://127.0.0.1:9247</code>.
                 </p>
                 {!dotnetAvailable ? (
                   <p>
-                    After you build once, put{" "}
+                    After the first successful build, place{" "}
                     <code className="text-[11px]">CentrixPrintAgent-win-x64.zip</code> on the server (
                     <code className="text-[11px]">PRINT_AGENT_DOTNET_URL</code> or{" "}
                     <code className="text-[11px]">print-agent-dotnet/publish/</code>) so other tills can use{" "}

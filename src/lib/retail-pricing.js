@@ -10,6 +10,12 @@ import {
   uomHasMiddlePack,
 } from "./uom-packaging";
 import { splitBaseToHierarchy, uomConversionFactor } from "./stock-uom";
+import {
+  evaluatePricingFormula,
+  DEFAULT_PRICING_FORMULAS,
+  normalizePricingFormulas,
+  buildLineFormulaVars,
+} from "./pricing-formula";
 
 export function tiersForRetailPackage(retailPackage, uom = null) {
   if (!retailPackage) return [];
@@ -224,27 +230,59 @@ export function retailMarkupChunkSize(tier, uom) {
   return Math.max(1, smallUnitsPerLevel(uom, level));
 }
 
-export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom, { scaleMarkup = null } = {}) {
+export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom, { scaleMarkup = null, formulas = null } = {}) {
   const qty = Number(quantityInSmall ?? 0);
   const markup = Number(tier?.markup_price ?? 0);
   const mode = normalizeTierPriceMode(tier);
-  // Aggregate wholesale for the sold qty (e.g. 125/kg × 25kg = 3125).
-  const aggregateWholesale = wholesalePricePerSmallUnit(baseUnitPrice, uom) * qty;
+  const factor = uomConversionFactor(uom);
+  const perSmall = wholesalePricePerSmallUnit(baseUnitPrice, uom);
+  const aggregateWholesale = perSmall * qty;
+  const packQty = factor > 1 ? qty / factor : qty;
   const shouldScale =
     scaleMarkup == null ? mode === "retail" : Boolean(scaleMarkup);
+  const resolved = normalizePricingFormulas(formulas);
 
   // Wholesale POS session: one flat markup on the aggregate (legacy behaviour).
   if (mode === "wholesale" && !shouldScale) {
-    return Math.round((aggregateWholesale + markup) * 100) / 100;
+    const fallback = Math.round((aggregateWholesale + markup) * 100) / 100;
+    return evaluatePricingFormula(
+      resolved.wholesale_line || DEFAULT_PRICING_FORMULAS.wholesale_line,
+      buildLineFormulaVars({
+        aggregateWholesale,
+        tierMarkup: markup,
+        markupApps: 1,
+        qty,
+        packQty,
+        conversion: factor,
+        perSmall,
+        middleFactor: resolvedMiddleFactor(uom),
+        basePrice: Number(baseUnitPrice) || 0,
+      }),
+      fallback,
+    );
   }
 
   // Retail selling: add package markup onto the aggregate (not into unit price).
-  // Sugar 25kg @ 6250/50 bag + 30 → 3125 + 30 = 3155.
   const apps = retailMarkupApplications(qty, tier, uom);
-  return Math.round((aggregateWholesale + markup * apps) * 100) / 100;
+  const fallback = Math.round((aggregateWholesale + markup * apps) * 100) / 100;
+  return evaluatePricingFormula(
+    resolved.retail_line || DEFAULT_PRICING_FORMULAS.retail_line,
+    buildLineFormulaVars({
+      aggregateWholesale,
+      tierMarkup: markup,
+      markupApps: apps,
+      qty,
+      packQty,
+      conversion: factor,
+      perSmall,
+      middleFactor: resolvedMiddleFactor(uom),
+      basePrice: Number(baseUnitPrice) || 0,
+    }),
+    fallback,
+  );
 }
 
-export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true, uom = null) {
+export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true, uom = null, formulas = null) {
   const qty = Number(quantityInSmall ?? 0);
   if (!tiers?.length) {
     const perSmall = wholesalePricePerSmallUnit(baseUnitPrice, uom);
@@ -261,6 +299,7 @@ export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true
   // Retail session: always accumulate markups as qty grows (25+25 → 2× markup).
   return linePriceForTier(baseUnitPrice, tier, qty, uom, {
     scaleMarkup: isRetail ? true : normalizeTierPriceMode(tier) === "retail",
+    formulas,
   });
 }
 

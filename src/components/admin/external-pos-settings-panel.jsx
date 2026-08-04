@@ -228,8 +228,9 @@ export function ExternalPosSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Centrix ERP Themes</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Color palette for the whole ERP — sidebar, panels, buttons, Classic POS, and dialogs. Default
-          is Centrix.
+          Color palette for Centrix ERP Themes. Backoffice and other modules only change the{" "}
+          <strong>sidebar background</strong> and <strong>primary button colors</strong>. Classic
+          External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.
           {hasPosSales
             ? " Optional cashier terminal preferences for the external POS workspace (/pos) are below."
             : ""}
@@ -264,8 +265,10 @@ export function ExternalPosSettingsPanel({
                     <p className="mt-1 text-xs text-slate-600">
                       Current layout:{" "}
                       <span className="font-medium">{isClassic ? "Classic" : "Modern"}</span>
-                      . Theme colors below apply across the ERP
-                      {isClassic ? " and Classic POS" : ""}. Layout is set by the platform.
+                      . Theme colors below tint the ERP sidebar and primary buttons
+                      {isClassic
+                        ? "; Classic External POS still uses the full palette"
+                        : ""}. Layout is set by the platform.
                     </p>
                   </div>
                 ) : null}

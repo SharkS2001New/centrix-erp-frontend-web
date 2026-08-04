@@ -152,6 +152,7 @@ import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
   applyClassicPosDocumentTheme,
+  applyOrgErpSidebarTheme,
   classicPosThemeCssVars,
   isDarkClassicPosTheme,
   resolveClassicPosThemeColors,
@@ -974,6 +975,7 @@ export function PosScreen({ standalone = false }) {
   const enableBarcodeScanner = posSalesConfig.enableBarcodeScanner;
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
   const addRouteMarkupPrices = posSalesConfig.addRouteMarkupPrices;
+  const pricingFormulas = posSalesConfig.pricingFormulas;
   const posOrderTypeMode = posSalesConfig.posOrderTypeMode;
   // External POS (/pos) → require_pos_till_float (platform). Backoffice create order → require_backoffice_till_float (org admin).
   const requireTillFloat = isWorkspaceTillFloatRequired(capabilities?.module_settings, { standalone });
@@ -2249,17 +2251,18 @@ export function PosScreen({ standalone = false }) {
     cart,
   ]);
 
-  // Classic External POS: force light (or midnight dark) for the cashier desk.
-  // Org-wide `--theme-*` colors are owned by OrgThemeBridge — do not clear them on leave.
+  // Classic External POS: full theme palette on the cashier desk.
+  // Leaving POS restores sidebar + button org theme (backoffice keeps default surfaces).
   useEffect(() => {
     if (!classicLayout) return undefined;
     const previous = getTheme();
     const forceLight = !isDarkClassicPosTheme(classicThemeTemplate);
     if (forceLight) applyTheme("light");
+    if (isDarkClassicPosTheme(classicThemeTemplate)) applyTheme("dark");
     applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
     return () => {
-      applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
-      if (forceLight) applyTheme(previous);
+      applyOrgErpSidebarTheme(classicThemeTemplate, classicThemeColors);
+      applyTheme(previous);
     };
   }, [classicLayout, classicThemeTemplate, classicThemeColors]);
 
@@ -3426,6 +3429,7 @@ export function PosScreen({ standalone = false }) {
         routeMarkupPerUnit,
         retailLine: lineRetailFlag,
         cashRound,
+        formulas: pricingFormulas,
       });
       discountAmount = computeProductLineDiscount(
         product,
@@ -3444,6 +3448,7 @@ export function PosScreen({ standalone = false }) {
         routeMarkupPerUnit,
         retailLine: lineRetailFlag,
         cashRound,
+        formulas: pricingFormulas,
       }).packQty ?? 0));
       // Cashier input is per sold pack/unit; convert to line-total discount.
       discountAmount = perUnitDiscount * qtyForDiscount;
@@ -3459,6 +3464,7 @@ export function PosScreen({ standalone = false }) {
       routeMarkupPerUnit,
       retailLine: lineRetailFlag,
       cashRound,
+      formulas: pricingFormulas,
     });
 
     return {
@@ -4417,6 +4423,7 @@ export function PosScreen({ standalone = false }) {
       retailPackage,
       discount: 0,
       routeMarkupPerUnit,
+      formulas: pricingFormulas,
     });
     const lineRetailStockFlag = posLineRetailStockFlag(
       posSalesConfig,
@@ -4506,6 +4513,7 @@ export function PosScreen({ standalone = false }) {
       retailPackage,
       discount: 0,
       routeMarkupPerUnit,
+      formulas: pricingFormulas,
     });
     const mergeTarget = editingLineId
       ? null
@@ -4683,6 +4691,7 @@ export function PosScreen({ standalone = false }) {
         discount: Number(row.discount_given ?? 0),
         routeMarkupPerUnit: nextMarkup,
         retailLine: isRetailLine,
+        formulas: pricingFormulas,
       });
       repriced.push({
         ...row,

@@ -19,7 +19,17 @@ The installer **does not download wkhtmltopdf** by default. Install it once your
 **wkhtmltopdf (one-time, for receipt rendering):**  
 https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.msvc2015-win64.exe
 
-**SumatraPDF (silent PDF to printer):** installed automatically by the build, or run `scripts\configure-sumatra.ps1` as Administrator on an existing install.
+**SumatraPDF (silent PDF to printer):** must end up next to the Print Agent:
+
+`C:\Program Files\Centrix\PrintAgent\tools\SumatraPDF\SumatraPDF.exe`
+
+`BUILD-AND-INSTALL.bat` / `configure-sumatra.ps1` copy it there. If you installed Sumatra separately, run as Administrator:
+
+```powershell
+.\scripts\configure-sumatra.ps1 -SkipDownload
+```
+
+Or manually copy `SumatraPDF.exe` into that `tools\SumatraPDF\` folder.
 
 If Windows blocks the script, right‑click `BUILD-AND-INSTALL.bat` → **Run as administrator**.
 

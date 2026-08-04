@@ -14,6 +14,7 @@ import {
 } from "@/lib/receipt-payment-details";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { defaultCancelOrderStatusesFromWorkflow } from "@/lib/order-action-stages-defaults";
+import { normalizePricingFormulas } from "@/lib/pricing-formula";
 import { P } from "@/lib/permission-codes";
 
 const SALES_DEFAULTS = {
@@ -57,6 +58,12 @@ const SALES_DEFAULTS = {
   enable_checkout_customer_name: false,
   retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
+  pricing_formulas: {
+    retail_line: "{aggregate_wholesale} + {tier_markup} * {markup_apps}",
+    wholesale_line: "{aggregate_wholesale} + {tier_markup}",
+    route_retail: "{line} + {route_markup}",
+    route_wholesale: "{line} + {route_markup} * {pack_qty}",
+  },
   backoffice_order_type_mode: "toggle",
   pos_order_type_mode: "normal",
   enable_mobile_orders: true,
@@ -551,6 +558,12 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   show_checkout_on_create_order: true,
   enable_checkout_customer_name: false,
   add_route_markup_prices: false,
+  pricing_formulas: {
+    retail_line: "{aggregate_wholesale} + {tier_markup} * {markup_apps}",
+    wholesale_line: "{aggregate_wholesale} + {tier_markup}",
+    route_retail: "{line} + {route_markup}",
+    route_wholesale: "{line} + {route_markup} * {pack_qty}",
+  },
   backoffice_order_type_mode: "toggle",
   pos_order_type_mode: "normal",
   blind_till_close: false,
@@ -641,6 +654,12 @@ export function salesOrganizationFormFromApi(res) {
     show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
+    pricing_formulas: normalizePricingFormulas(
+      sales.pricing_formulas ?? sales.pricing_formula_defaults,
+    ),
+    pricing_formula_defaults: normalizePricingFormulas(sales.pricing_formula_defaults),
+    pricing_formula_placeholders: sales.pricing_formula_placeholders ?? null,
+    pricing_formula_examples: sales.pricing_formula_examples ?? null,
     backoffice_order_type_mode: resolveBackofficeOrderTypeMode(sales),
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
     blind_till_close: Boolean(sales.blind_till_close),
@@ -796,6 +815,7 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     orders_list_sort: normalizeOrdersListSort(withDiscountApproval.orders_list_sort),
     discount_approval_threshold_percent:
       Number(withDiscountApproval.discount_approval_threshold_percent) || 10,
+    pricing_formulas: normalizePricingFormulas(withDiscountApproval.pricing_formulas),
   };
 }
 
@@ -1536,6 +1556,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     }),
     enableBarcodeScanner: Boolean(sales.enable_barcode_scanner),
     addRouteMarkupPrices: Boolean(sales.add_route_markup_prices),
+    pricingFormulas: normalizePricingFormulas(sales.pricing_formulas),
     posOrderTypeMode: resolveRouteOrderTypeMode(sales, {
       standalone,
     }),

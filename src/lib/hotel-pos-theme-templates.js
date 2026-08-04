@@ -9,8 +9,8 @@ export const HOTEL_POS_THEME_DEFAULT = "centrix";
 export const HOTEL_POS_THEME_TEMPLATES = [
   {
     id: "centrix",
-    label: "Centrix",
-    description: "Default indigo — clean and familiar.",
+    label: "Centrix (original)",
+    description: "Default Centrix look — cool indigo.",
     preview: ["#4c5ba4", "#eef0f8", "#f7f8fb"],
     vars: {
       "--theme-primary": "#4c5ba4",

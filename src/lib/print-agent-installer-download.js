@@ -155,7 +155,7 @@ export async function downloadPrintAgentMsi() {
     const res = await fetch(publicUrl, { cache: "no-store" });
     if (!res.ok) {
       throw new Error(
-        `Could not download MSI from the configured URL (${res.status}). Check Platform → Print Agent MSI.`,
+        `Could not download MSI from the configured URL (${res.status}). Use Download build package or ready installer under Administration → Local printing instead.`,
       );
     }
     const blob = await res.blob();
@@ -169,7 +169,7 @@ export async function downloadPrintAgentMsi() {
     const body = await res.json().catch(() => ({}));
     throw new Error(
       body.message ??
-        "MSI installer is not configured yet. Open Platform → Print Agent MSI to set the R2 path or build/upload the installer.",
+        "MSI installer is not available. Use Download build package or Download ready installer under Administration → Local printing instead.",
     );
   }
 

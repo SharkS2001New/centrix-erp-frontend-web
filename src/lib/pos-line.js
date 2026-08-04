@@ -8,6 +8,12 @@ import {
   wholesalePricePerSmallUnit,
   wholesaleTierBaseAtMeasureLevel,
 } from "@/lib/retail-pricing";
+import {
+  evaluatePricingFormula,
+  DEFAULT_PRICING_FORMULAS,
+  normalizePricingFormulas,
+  buildRouteFormulaVars,
+} from "@/lib/pricing-formula";
 import { formatSaleKes } from "@/lib/sales";
 import {
   baseToDisplayQty,
@@ -238,18 +244,37 @@ function applyRouteMarkupToLine({
   retailLine,
   packQty,
   baseQty,
+  formulas = null,
 }) {
   const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
   if (routeMarkup <= 0 || baseQty <= 0) {
     return lineAmount;
   }
 
+  const resolved = normalizePricingFormulas(formulas);
+  const wholesaleQty = Math.max(0, Number(packQty) || Number(baseQty) || 0);
+  const vars = buildRouteFormulaVars({
+    lineAmount,
+    routeMarkup,
+    packQty: wholesaleQty,
+    qty: Number(baseQty) || 0,
+  });
+
   if (isRetailRouteLine(sellWholesale, retailLine)) {
-    return lineAmount + routeMarkup;
+    const fallback = lineAmount + routeMarkup;
+    return evaluatePricingFormula(
+      resolved.route_retail || DEFAULT_PRICING_FORMULAS.route_retail,
+      vars,
+      fallback,
+    );
   }
 
-  const wholesaleQty = Math.max(0, Number(packQty) || Number(baseQty) || 0);
-  return lineAmount + routeMarkup * wholesaleQty;
+  const fallback = lineAmount + routeMarkup * wholesaleQty;
+  return evaluatePricingFormula(
+    resolved.route_wholesale || DEFAULT_PRICING_FORMULAS.route_wholesale,
+    vars,
+    fallback,
+  );
 }
 
 /**
@@ -388,6 +413,7 @@ export function computePosLine({
   routeMarkupPerUnit = 0,
   retailLine = null,
   cashRound = false,
+  formulas = null,
 }) {
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
@@ -397,6 +423,7 @@ export function computePosLine({
   const catalogUnitPrice = Number(product?.unit_price ?? 0);
   const tiers = tiersForRetailPackage(retailPackage, uom);
   const wholesaleMarkup = Number(retailPackage?.wholesale_markup_price ?? 0);
+  const pricingFormulas = formulas;
 
   let lineAmount;
   const override =
@@ -408,7 +435,7 @@ export function computePosLine({
     // Override is wholesale per small unit; markup still accumulates on amount.
     // e.g. 125/kg × 25kg + 30 = 3155 (never 130×25 with markup inside the unit).
     const catalogFromOverride = factor > 1 ? override * factor : override;
-    lineAmount = linePrice(catalogFromOverride, tiers, baseQty, true, uom);
+    lineAmount = linePrice(catalogFromOverride, tiers, baseQty, true, uom, pricingFormulas);
   } else if (override != null) {
     if (retailSession || factor <= 1) {
       lineAmount = baseQty * override;
@@ -417,14 +444,16 @@ export function computePosLine({
     }
   } else if (retailSession && resolved.tier) {
     if (pricingRetail && baseQty > 0) {
-      lineAmount = linePrice(catalogUnitPrice, tiers, baseQty, true, uom);
+      lineAmount = linePrice(catalogUnitPrice, tiers, baseQty, true, uom, pricingFormulas);
     } else if (baseQty > 0) {
       lineAmount = wholesalePricePerSmallUnit(catalogUnitPrice, uom) * baseQty;
     } else {
       lineAmount = 0;
     }
   } else if (resolved.tier) {
-    lineAmount = linePriceForTier(catalogUnitPrice, resolved.tier, baseQty, uom);
+    lineAmount = linePriceForTier(catalogUnitPrice, resolved.tier, baseQty, uom, {
+      formulas: pricingFormulas,
+    });
   } else if (retailSession && baseQty > 0) {
     lineAmount = wholesalePricePerSmallUnit(catalogUnitPrice, uom) * baseQty + wholesaleMarkup;
   } else {
@@ -438,6 +467,7 @@ export function computePosLine({
     retailLine,
     packQty,
     baseQty,
+    formulas: pricingFormulas,
   });
 
   const lineAmountBeforeDiscount = lineAmount;

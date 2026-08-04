@@ -98,13 +98,13 @@ function ClassicPosColorField({ field, value, fallback, onChange }) {
   );
 }
 
-/** Centrix ERP color template picker — applies across the whole ERP (and Classic POS). */
+/** Centrix ERP theme picker — sidebar + buttons org-wide; full palette on Classic POS only. */
 export function ClassicPosThemePicker({
   value,
   onChange,
   colors = {},
   onColorsChange,
-  description = "Sidebar, panels, buttons, Classic POS, and dialogs use this palette. Default is Centrix.",
+  description = "In backoffice and other modules, this changes the sidebar background and primary button colors only. Classic External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.",
 }) {
   const selectedId = normalizeClassicPosThemeTemplate(value);
   const overrides = normalizeClassicPosThemeColors(colors);
@@ -147,7 +147,14 @@ export function ClassicPosThemePicker({
                     />
                   ))}
                 </span>
-                <span className="block text-sm font-semibold text-slate-900">{theme.label}</span>
+                <span className="flex items-center gap-2">
+                  <span className="block text-sm font-semibold text-slate-900">{theme.label}</span>
+                  {theme.id === "centrix" ? (
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                      Default
+                    </span>
+                  ) : null}
+                </span>
                 <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
                   {theme.description}
                 </span>
@@ -163,8 +170,9 @@ export function ClassicPosThemePicker({
             <div>
               <p className="text-sm font-medium text-slate-700">Custom colors</p>
               <p className="mt-0.5 text-xs text-slate-500">
-                Optional overrides on top of the selected template. Leave blank to use the template
-                default.
+                Optional overrides on top of the selected template. Header tints the ERP sidebar;
+                button colors apply org-wide; workspace and footer apply on Classic External POS only.
+                Leave blank to use the template default.
               </p>
             </div>
             {hasCustomColors ? (
@@ -221,7 +229,7 @@ export function ExternalPosPlatformFields({
           onChange={(id) => patch({ classic_pos_theme_template: id })}
           colors={value?.classic_pos_theme_colors}
           onColorsChange={(next) => patch({ classic_pos_theme_colors: next })}
-          description="Applies across Centrix ERP (sidebar, panels, Classic POS). Organization admins can change this anytime under Centrix ERP Themes."
+          description="Backoffice: sidebar + primary buttons only. Classic External POS: full palette. Organization admins can change this anytime under Centrix ERP Themes."
         />
       ) : null}
 
@@ -244,8 +252,8 @@ export function ExternalPosPlatformFields({
               <option value="classic">Classic — cart on top, Find window, themeable colors</option>
             </select>
             <p className="mt-1 text-xs text-slate-500">
-              Only affects the external POS workspace (/pos). Organization colors for the whole ERP
-              are under Administration → Centrix ERP Themes (or Organization settings).
+              Only affects the external POS workspace (/pos). Organization sidebar color for the rest of
+              the ERP is under Administration → Centrix ERP Themes (or Organization settings).
             </p>
           </Field>
         </div>

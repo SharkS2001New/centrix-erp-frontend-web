@@ -21,6 +21,7 @@ import { getSalesOrderQueueWorkflow } from "@/lib/order-workflow";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SalesCustomerOrderAlerts } from "@/components/admin/customer-notification-fields";
+import { MarkupPricingFormulasPanel } from "@/components/admin/markup-pricing-formulas-panel";
 import {
   notificationsFormFromApi,
   salesCustomerAlertsPayloadFromForm,
@@ -206,6 +207,7 @@ function CheckoutPricingTab({
           ) : null}
         </fieldset>
       ) : null}
+      <MarkupPricingFormulasPanel salesForm={salesForm} setSalesForm={setSalesForm} />
       <Toggle
         label="Allow product discounts"
         description="Applies product discount rules on POS lines automatically. The discount field is read-only unless manual entry is enabled below."

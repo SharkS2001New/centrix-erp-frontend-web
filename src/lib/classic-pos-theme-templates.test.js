@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  classicPosThemeBridgeVars,
   classicPosThemeCssVars,
   normalizeClassicPosHexColor,
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
+  orgErpSidebarThemeVars,
 } from "@/lib/classic-pos-theme-templates";
 
 describe("classic POS theme color overrides", () => {
@@ -60,5 +62,26 @@ describe("classic POS theme color overrides", () => {
     expect(custom["--classic-select"]).toBe("#7a2031");
     expect(custom["--classic-row-selected"]).toBe("#7a2031");
     expect(custom["--classic-select-fg"]).toBe("#f8fafc");
+  });
+
+  it("org sidebar theme exposes sidebar + primary button CSS vars only", () => {
+    const sidebar = orgErpSidebarThemeVars("rose");
+    const classic = classicPosThemeCssVars("rose");
+    expect(sidebar["--erp-sidebar-bg"]).toBe(classic["--classic-header"]);
+    expect(sidebar["--theme-primary"]).toBe(classic["--classic-button"] || classic["--classic-header"]);
+    expect(sidebar["--theme-primary-hover"]).toBeTruthy();
+    expect(sidebar["--theme-primary-fg"]).toBeTruthy();
+    expect(sidebar["--theme-primary-subtle"]).toBeTruthy();
+    expect(sidebar["--theme-primary-muted"]).toBeTruthy();
+    expect(sidebar["--theme-page-bg"]).toBeUndefined();
+    expect(sidebar["--theme-surface"]).toBeUndefined();
+    expect(sidebar["--classic-footer"]).toBeUndefined();
+  });
+
+  it("classic POS bridge includes full theme tokens", () => {
+    const bridge = classicPosThemeBridgeVars("rose");
+    expect(bridge["--theme-primary"]).toBeTruthy();
+    expect(bridge["--classic-footer"]).toBeTruthy();
+    expect(bridge["--classic-bg"]).toBeTruthy();
   });
 });
