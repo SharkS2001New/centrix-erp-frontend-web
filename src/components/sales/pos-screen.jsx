@@ -206,6 +206,7 @@ import { applyTheme, getTheme } from "@/lib/theme";
 import {
   PosPriceCheckerModal,
   PosPreviousOrderLoadingOverlay,
+  PosPrepareNextOrderOverlay,
 } from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
@@ -1378,6 +1379,8 @@ export function PosScreen({ standalone = false }) {
   const [busy, setBusy] = useState(false);
   const [previousOrderLoading, setPreviousOrderLoading] = useState(false);
   const previousOrderLoadingDepthRef = useRef(0);
+  const [preparingNextOpen, setPreparingNextOpen] = useState(false);
+  const [preparingNextProgress, setPreparingNextProgress] = useState(0);
   const [lineBusy, setLineBusy] = useState(false);
   const [cartLineSaveFailed, setCartLineSaveFailed] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -2037,20 +2040,21 @@ export function PosScreen({ standalone = false }) {
       if (classicLayout) {
         const el = classicCartTableScrollRef.current;
         if (!el) return;
-        const entryRow = el.querySelector(".classic-pos-cart-entry-row");
-        if (entryRow instanceof HTMLElement) {
-          entryRow.scrollIntoView({ block: "end", behavior: "auto" });
-        } else {
-          el.scrollTop = el.scrollHeight;
-        }
+        // Scroll only inside the cart pane — never scrollIntoView (that jumps
+        // outer layout and can pin the scan box at the top of the screen).
+        el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
         return;
       }
       const el = cartLinesScrollRef.current;
       if (!el) return;
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
     };
 
-    requestAnimationFrame(scrollToLatest);
+    requestAnimationFrame(() => {
+      scrollToLatest();
+      // Second frame: layout may grow after the new row paints.
+      requestAnimationFrame(scrollToLatest);
+    });
   }, [cart?.lines?.length, classicLayout]);
 
   const cartSummary = useMemo(() => {
@@ -5279,7 +5283,7 @@ export function PosScreen({ standalone = false }) {
     if (classicLayout) {
       focusClassicProductSearch();
     } else {
-      window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      window.requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
     }
   }
 
@@ -5516,7 +5520,7 @@ export function PosScreen({ standalone = false }) {
       });
       setStatusMessage(`Editing line #${line.line_no ?? line.id} (${posCartLineTypeLabel(line)}).`);
       window.requestAnimationFrame(() => {
-        qtyInputRef.current?.focus();
+        qtyInputRef.current?.focus({ preventScroll: true });
         qtyInputRef.current?.select?.();
       });
     } finally {
@@ -5666,7 +5670,11 @@ export function PosScreen({ standalone = false }) {
       force = false,
       pendingSale = null,
       keepPaymentOpen = false,
+      onProgress = null,
     } = {}) => {
+      const report = (pct) => {
+        if (typeof onProgress === "function") onProgress(pct);
+      };
       if (!standalone) return;
       if (preparingNextOrderRef.current) {
         if (!force) return;
@@ -5675,6 +5683,7 @@ export function PosScreen({ standalone = false }) {
         }
       }
       preparingNextOrderRef.current = true;
+      report(8);
       if (!keepPaymentOpen) {
         setPaymentOpen(false);
         // Don't clear receiptPrintStatus here — print may still be in flight.
@@ -5693,16 +5702,19 @@ export function PosScreen({ standalone = false }) {
         sessionPosOrders,
         saleForPeek,
       );
+      report(28);
       const generation = ++freshWorkspaceGenerationRef.current;
 
       applyFreshWorkspacePlaceholder(cartRef.current, peekNextPos);
       setStatusMessage("New order — scan or search a product.");
+      report(45);
 
       const task = (async () => {
         try {
           if (generation !== freshWorkspaceGenerationRef.current) return cartRef.current;
 
           const next = await loadCashierCart({ skipEditDraftRestore: true });
+          report(78);
           if (generation !== freshWorkspaceGenerationRef.current) return next;
 
           const live = cartRef.current;
@@ -5722,6 +5734,7 @@ export function PosScreen({ standalone = false }) {
               liveLen > nextLen ||
               cartHasOptimisticLines(live)
             ) {
+              report(100);
               return live;
             }
           }
@@ -5739,11 +5752,14 @@ export function PosScreen({ standalone = false }) {
           if (enablePosOrderEdit) {
             void loadCompletedPosOrders();
           }
+          report(100);
           if (focusScan) {
             if (classicLayout) {
               focusClassicProductSearch();
             } else {
-              window.requestAnimationFrame(() => searchInputRef.current?.focus());
+              window.requestAnimationFrame(() =>
+                searchInputRef.current?.focus({ preventScroll: true }),
+              );
             }
           }
           return merged;
@@ -5762,6 +5778,7 @@ export function PosScreen({ standalone = false }) {
                 );
                 cartRef.current = merged;
                 setCart(merged);
+                report(100);
                 return merged;
               }
             } catch {
@@ -5858,34 +5875,68 @@ export function PosScreen({ standalone = false }) {
   );
 
   function afterSaleCheckoutComplete(sale, options = {}) {
-    const shouldAutoNext = standalone && !options.skipAutoNextOrder;
     const shouldPrint =
       !options.skipPrint && sale?.id && posSalesConfig.showCheckoutOnCreate;
 
     void clearPreviousOrderEditDraft().catch(() => {});
 
-    // Print first — never block the receipt on outbox sync or next-order bootstrap.
+    // Print receipt only — keep payment on ORDER COMPLETE until cashier presses OK.
+    // Next workspace is prepared on OK (with progress) so the till never sticks on
+    // the completed sale lines.
     if (shouldPrint) {
-      schedulePosReceiptPrint(sale, {
-        onSettled: () => {
-          if (!shouldAutoNext) return;
-          void handleContinueNextOrder();
-        },
-      });
-    }
-
-    if (shouldAutoNext) {
-      // Focus immediately — do not wait for receipt print to settle.
-      queuePrepareNextPosOrderAfterSale({
-        focusScan: true,
-        keepPaymentOpen: false,
-        pendingSale: sale,
-      });
-    }
-
-    setPaymentOpen(false);
-    if (!shouldPrint) {
+      schedulePosReceiptPrint(sale);
+    } else {
       setReceiptPrintStatus(null);
+    }
+  }
+
+  async function handleContinueNextOrder() {
+    setReceiptPrintStatus(null);
+    if (standalone) {
+      setPreparingNextProgress(0);
+      setPreparingNextOpen(true);
+      try {
+        await prepareNextPosOrderAfterSale({
+          force: true,
+          focusScan: true,
+          keepPaymentOpen: true,
+          pendingSale: completedSaleRef.current,
+          onProgress: setPreparingNextProgress,
+        });
+        setPreparingNextProgress(100);
+        await new Promise((r) => window.setTimeout(r, 120));
+      } catch (e) {
+        const message = e instanceof ApiError ? e.message : "Failed to start next order";
+        setStatusMessage(message);
+      } finally {
+        setPreparingNextOpen(false);
+        setPreparingNextProgress(0);
+        setPaymentOpen(false);
+        setPaymentError(null);
+        if (classicLayout) {
+          focusClassicProductSearch();
+        } else {
+          window.requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
+        }
+      }
+      return;
+    }
+    setPaymentOpen(false);
+    setPaymentError(null);
+    clearLineEntry();
+    setBusy(true);
+    try {
+      await loadCashierCart();
+      setStatusMessage(
+        completedSale?.order_num
+          ? `Ready for next order — previous Cash Sales #${formatPosBrowseLabel(completedSale)}.`
+          : "Ready for next order.",
+      );
+    } catch (e) {
+      setStatusMessage(e instanceof ApiError ? e.message : "Failed to start next order");
+    } finally {
+      setBusy(false);
+      window.requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
     }
   }
 
@@ -6594,71 +6645,11 @@ export function PosScreen({ standalone = false }) {
           `Order #${sale.order_num} completed — M-Pesa ${formatSaleKes(payNow)} received. Ready for next order.`,
         );
         window.requestAnimationFrame(() => {
-          searchInputRef.current?.focus();
+          searchInputRef.current?.focus({ preventScroll: true });
         });
       }
     }
     return sale ?? null;
-  }
-
-  async function handleContinueNextOrder() {
-    setPaymentOpen(false);
-    setPaymentError(null);
-    setReceiptPrintStatus(null);
-    if (standalone) {
-      const live = cartRef.current;
-      // Next-order workspace already started (or cashier already typed/scanned).
-      // Only restore focus — never force a second prepare that wipes the cart.
-      const nextOrderAlreadyReady =
-        isFreshWorkspacePlaceholder(live) ||
-        preparingNextOrderRef.current ||
-        Boolean(freshCartBootstrapRef.current) ||
-        (isServerPosCartId(live?.id) &&
-          !isServerCartConsumed(live?.id) &&
-          !live?.held_order_num &&
-          !live?.superseded_sale_id);
-      if (nextOrderAlreadyReady) {
-        if (prepareNextOrderInFlightRef.current) {
-          await prepareNextOrderInFlightRef.current.catch(() => {});
-        } else if (freshCartBootstrapRef.current) {
-          await freshCartBootstrapRef.current.catch(() => {});
-        }
-        if (
-          isStalePostCheckoutWorkspace(cartRef.current, completedSaleRef.current)
-        ) {
-          await prepareNextPosOrderAfterSale({
-            force: true,
-            pendingSale: completedSaleRef.current,
-          });
-        }
-        if (classicLayout) {
-          focusClassicProductSearch();
-        } else {
-          window.requestAnimationFrame(() => searchInputRef.current?.focus());
-        }
-        return;
-      }
-      await prepareNextPosOrderAfterSale({
-        force: true,
-        pendingSale: completedSaleRef.current,
-      });
-      return;
-    }
-    clearLineEntry();
-    setBusy(true);
-    try {
-      await loadCashierCart();
-      setStatusMessage(
-        completedSale?.order_num
-          ? `Ready for next order — previous Cash Sales #${formatPosBrowseLabel(completedSale)}.`
-          : "Ready for next order.",
-      );
-    } catch (e) {
-      setStatusMessage(e instanceof ApiError ? e.message : "Failed to start next order");
-    } finally {
-      setBusy(false);
-      window.requestAnimationFrame(() => searchInputRef.current?.focus());
-    }
   }
 
   async function handleSaveOrder({ walkIn, walkInName, customer, hold = false } = {}) {
@@ -7938,6 +7929,7 @@ export function PosScreen({ standalone = false }) {
     zReportOpen,
     autoHeldPrompt: Boolean(autoHeldPrompt),
     discountReasonDialogOpen,
+    preparingNextOpen,
     replacingLineId,
     selectedLineId,
     selectedLineCount,
@@ -7999,6 +7991,7 @@ export function PosScreen({ standalone = false }) {
         || state.zReportOpen
         || state.autoHeldPrompt
         || state.discountReasonDialogOpen
+        || state.preparingNextOpen
         || isConfirmDialogOpen()
       );
     }
@@ -8017,6 +8010,7 @@ export function PosScreen({ standalone = false }) {
         || state.zReportOpen
         || state.autoHeldPrompt
         || state.discountReasonDialogOpen
+        || state.preparingNextOpen
         || isConfirmDialogOpen()
       );
     }
@@ -10007,6 +10001,10 @@ export function PosScreen({ standalone = false }) {
       />
 
       <PosPreviousOrderLoadingOverlay open={previousOrderLoading} />
+      <PosPrepareNextOrderOverlay
+        open={preparingNextOpen}
+        progress={preparingNextProgress}
+      />
 
       {standalone ? (
         classicLayout ? (

@@ -1205,11 +1205,8 @@ export function PosPaymentPanel({
   }
 
   async function handleOrderCompleteOk() {
-    try {
-      await onContinueNextOrder?.();
-    } finally {
-      onClose?.();
-    }
+    // Parent prepares next workspace (progress bar) then closes payment.
+    await onContinueNextOrder?.();
   }
 
   const creditValidationError = hasCreditCustomer
@@ -1275,6 +1272,7 @@ export function PosPaymentPanel({
     enterActionRef.current = (e) => {
       if (e.key !== "Enter" || saving || step === "saving") return;
       if (step === "complete") {
+        if (receiptPrintStatus === "pending") return;
         e.preventDefault();
         void handleOrderCompleteOk();
         return;
@@ -1663,8 +1661,9 @@ export function PosPaymentPanel({
             <button
               ref={completeOkRef}
               type="button"
+              disabled={receiptPrintStatus === "pending"}
               onClick={() => void handleOrderCompleteOk()}
-              className={`${POS_DIALOG_PRIMARY_BTN}${receiptPrintStatus === "failed" ? "" : " w-full"}`}
+              className={`${POS_DIALOG_PRIMARY_BTN}${receiptPrintStatus === "failed" ? "" : " w-full"} disabled:opacity-50`}
             >
               OK
             </button>
@@ -1689,7 +1688,11 @@ export function PosPaymentPanel({
             <strong>Administration → {LOCAL_PRINTING_ADMIN_LABEL}</strong>.
           </p>
         ) : null}
-        <p className="mt-2 text-sm">Press Enter or OK to continue to the next order.</p>
+        <p className="mt-2 text-sm font-medium">
+          {receiptPrintStatus === "pending"
+            ? "Wait for print, then press OK to open the next order."
+            : "Press Enter or OK to continue to the next order."}
+        </p>
       </PosNestedDialog>
     ) : null;
 

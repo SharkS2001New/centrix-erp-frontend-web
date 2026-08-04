@@ -317,7 +317,7 @@ export function ClassicPosCartTable({
         </colgroup>
         <thead>
           <tr>
-            <th className="classic-pos-cart-rownum" aria-label="#" />
+            <th className="classic-pos-col-num classic-pos-cart-rownum" aria-label="#" />
             <th className="classic-pos-col-scan">Scan code</th>
             <th className="classic-pos-col-desc">Product description</th>
             <th className="classic-pos-col-pkg">Package</th>
@@ -362,7 +362,7 @@ export function ClassicPosCartTable({
                 }
                 onClick={() => onSelectLine?.(line.id)}
               >
-                <td className="classic-pos-cart-rownum">{index + 1}</td>
+                <td className="classic-pos-col-num classic-pos-cart-rownum">{index + 1}</td>
                 <td
                   className={`classic-pos-col-scan font-mono${
                     replacing ? "" : " classic-pos-col-scan--swap"
@@ -464,7 +464,7 @@ export function ClassicPosCartTable({
           })}
 
           <tr className="classic-pos-cart-entry-row">
-            <td className="classic-pos-cart-rownum">{lines.length + 1}</td>
+            <td className="classic-pos-col-num classic-pos-cart-rownum">{lines.length + 1}</td>
             <td className="classic-pos-cart-scan-cell classic-pos-col-scan">
               {replacingLineId ? (
                 <span className="classic-pos-cart-entry-muted text-xs" aria-hidden="true">

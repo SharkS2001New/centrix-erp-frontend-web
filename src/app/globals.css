@@ -3084,13 +3084,17 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
 
 /* Locked column widths so headers and cells stay lined up */
 .classic-pos-cart-table .classic-pos-col-num,
-.classic-pos-cart-table col.classic-pos-col-num {
+.classic-pos-cart-table col.classic-pos-col-num,
+.classic-pos-cart-table th.classic-pos-col-num,
+.classic-pos-cart-table td.classic-pos-col-num {
   width: 2.25rem;
+  min-width: 2.25rem;
+  max-width: 2.25rem;
 }
 
 .classic-pos-cart-table col.classic-pos-col-scan {
-  width: 24%;
-  min-width: 9rem;
+  width: 18%;
+  min-width: 7.5rem;
 }
 
 .classic-pos-cart-table col.classic-pos-col-desc {
@@ -3098,15 +3102,15 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
 }
 
 .classic-pos-cart-table col.classic-pos-col-pkg {
-  width: 8%;
+  width: 9%;
 }
 
 .classic-pos-cart-table col.classic-pos-col-qty {
-  width: 16%;
+  width: 14%;
 }
 
 .classic-pos-cart-table col.classic-pos-col-price {
-  width: 9%;
+  width: 10%;
 }
 
 .classic-pos-cart-table col.classic-pos-col-disc {
@@ -3118,7 +3122,7 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
 }
 
 .classic-pos-cart-table col.classic-pos-col-amt {
-  width: 10%;
+  width: 11%;
 }
 
 .classic-pos-cart-table col.classic-pos-col-select {
@@ -3165,8 +3169,18 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
   text-align: center;
 }
 
+.classic-pos-cart-table th.classic-pos-col-price,
+.classic-pos-cart-table td.classic-pos-col-price,
+.classic-pos-cart-table th.classic-pos-col-amt,
+.classic-pos-cart-table td.classic-pos-col-amt,
+.classic-pos-cart-table th.classic-pos-col-disc,
+.classic-pos-cart-table td.classic-pos-col-disc {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .classic-pos-cart-table td.classic-pos-col-qty {
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* Portaled to document.body — theme tokens via html[data-theme] */
@@ -3178,14 +3192,15 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
   --classic-th-bg: #f3f3f3;
   --classic-th-border: #b0b0b0;
   --classic-td-border: #d0d0d0;
-  --classic-dropdown-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --classic-dropdown-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
   --classic-row-selected: #fff4c8;
   box-sizing: border-box;
   overflow: auto;
   background: var(--classic-table);
-  border: 2px solid var(--classic-border);
+  border: 1px solid var(--classic-border);
   box-shadow: var(--classic-dropdown-shadow);
   color: var(--classic-text);
+  border-radius: 4px;
 }
 
 html[data-theme="dark"] .classic-pos-scan-dropdown {
@@ -3245,7 +3260,11 @@ html[data-theme="dark"] .classic-pos-scan-dropdown {
 }
 
 .classic-pos-cart-entry-row td {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   background: var(--classic-row-entry, #faf7f0);
+  box-shadow: 0 -1px 0 var(--classic-grid-border, #c5d0e8);
 }
 
 .classic-pos-cart-scan-cell {
@@ -3287,8 +3306,9 @@ html[data-theme="dark"] .classic-pos-scan-dropdown {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.2rem;
+  gap: 0.15rem;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   flex-wrap: nowrap;
 }
@@ -3384,6 +3404,30 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 /* Find-table rows inside portaled dropdown */
 .classic-pos-scan-dropdown .classic-pos-find-table {
   color: var(--classic-text);
+}
+
+.classic-pos-scan-dropdown .classic-pos-find-table--compact th,
+.classic-pos-scan-dropdown .classic-pos-find-table--compact td {
+  padding: 0.28rem 0.4rem;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.classic-pos-scan-dropdown .classic-pos-find-col-code {
+  width: 28%;
+  white-space: nowrap;
+}
+
+.classic-pos-scan-dropdown .classic-pos-find-col-name {
+  width: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.classic-pos-scan-dropdown .classic-pos-find-col-price {
+  width: 22%;
+  white-space: nowrap;
 }
 
 .classic-pos-scan-dropdown .classic-pos-find-table th {

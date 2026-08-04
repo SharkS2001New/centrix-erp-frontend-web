@@ -7,9 +7,9 @@ import { createPortal } from "react-dom";
 const defaultInputCls =
   "theme-input theme-input-focus h-[38px] w-full min-w-[12rem] rounded-lg border px-3 py-2 text-sm outline-none";
 
-const LIST_MAX_HEIGHT = 200;
-const SEARCH_HEADER_HEIGHT = 44;
-const MENU_GAP = 4;
+const LIST_MAX_HEIGHT = 160;
+const SEARCH_HEADER_HEIGHT = 36;
+const MENU_GAP = 2;
 const PANEL_MAX_HEIGHT = LIST_MAX_HEIGHT + SEARCH_HEADER_HEIGHT;
 
 /**

@@ -85,6 +85,39 @@ export function PosPreviousOrderLoadingOverlay({
   );
 }
 
+/** After receipt OK — blocks till while the next empty workspace is created (0–100%). */
+export function PosPrepareNextOrderOverlay({ open, progress = 0, message = "Preparing next order…" }) {
+  if (!open || typeof document === "undefined") return null;
+
+  const pct = Math.max(0, Math.min(100, Math.round(Number(progress) || 0)));
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[180] flex items-center justify-center p-4"
+      aria-live="polite"
+      aria-busy="true"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct}
+    >
+      <div className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px]" aria-hidden="true" />
+      <div className="relative w-full max-w-sm theme-panel rounded-xl border px-6 py-7 text-center shadow-2xl ring-1 ring-slate-900/5">
+        <p className="theme-heading text-sm font-semibold">{message}</p>
+        <p className="theme-subtext mt-1 text-sm">Clearing the last sale and opening a fresh till…</p>
+        <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <div
+            className="h-full rounded-full bg-[var(--theme-primary)] transition-[width] duration-150 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="mt-2 text-sm font-bold tabular-nums text-[var(--theme-primary)]">{pct}%</p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function PosPriceCheckerModal({
   open,
   onClose,
