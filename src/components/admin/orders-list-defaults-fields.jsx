@@ -1,12 +1,17 @@
 "use client";
 
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
-import { ORDERS_LIST_SORT_OPTIONS } from "@/lib/sales-settings";
+import {
+  ORDER_LIST_COLUMN_OPTIONS,
+  ORDERS_LIST_SORT_OPTIONS,
+  normalizeOrdersListVisibleColumns,
+} from "@/lib/sales-settings";
 
 export function OrdersListDefaultsFields({ value, onChange, idPrefix = "orders-list" }) {
   const days = value?.orders_list_default_days ?? "14";
   const searchDays = value?.orders_list_search_days ?? "30";
   const sort = value?.orders_list_sort ?? "-created_at";
+  const visibleColumns = normalizeOrdersListVisibleColumns(value?.orders_list_visible_columns);
 
   function patch(partial) {
     onChange?.({ ...value, ...partial });
@@ -59,6 +64,46 @@ export function OrdersListDefaultsFields({ value, onChange, idPrefix = "orders-l
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Columns shown by default">
+        <div className="mt-1 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
+          <p className="mb-3 text-xs text-slate-500">
+            These are the columns staff see first in Sales → Orders. Hidden columns still appear in
+            the `Columns` picker so each user can turn them on when needed.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {ORDER_LIST_COLUMN_OPTIONS.map((column) => {
+              const checked = visibleColumns.includes(column.id);
+              return (
+                <label
+                  key={column.id}
+                  className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
+                    column.required
+                      ? "cursor-not-allowed text-slate-500"
+                      : "cursor-pointer text-slate-700 hover:bg-white/70"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300"
+                    checked={checked}
+                    disabled={column.required}
+                    onChange={() => {
+                      const next = checked
+                        ? visibleColumns.filter((id) => id !== column.id)
+                        : [...visibleColumns, column.id];
+                      patch({ orders_list_visible_columns: normalizeOrdersListVisibleColumns(next) });
+                    }}
+                  />
+                  <span>
+                    {column.label}
+                    {column.required ? " (always shown)" : ""}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
       </Field>
     </div>
   );

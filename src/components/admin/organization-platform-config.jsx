@@ -19,6 +19,7 @@ import {
   workflowPipelineSteps,
 } from "@/lib/order-workflow";
 import {
+  getOrdersListVisibleColumns,
   normalizeStockDeductOn,
   normalizeOrdersListDefaultDays,
   normalizeOrdersListSearchDays,
@@ -359,6 +360,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     orders_list_default_days: "14",
     orders_list_search_days: "30",
     orders_list_sort: "-created_at",
+    orders_list_visible_columns: getOrdersListVisibleColumns(null),
     order_expiry_enabled: true,
     order_expiry_days: "5",
     order_expiry_before_status: "processed",
@@ -442,6 +444,11 @@ export function salesPlatformFromApi(apiPayload) {
       ),
     ),
     orders_list_sort: normalizeOrdersListSort(apiPayload.orders_list_sort),
+    orders_list_visible_columns: getOrdersListVisibleColumns({
+      sales: {
+        orders_list_visible_columns: apiPayload.orders_list_visible_columns,
+      },
+    }),
     order_expiry_enabled: apiPayload.order_expiry_enabled !== false,
     order_expiry_days: String(
       Math.min(90, Math.max(1, Number(apiPayload.order_expiry_days) || 5)),

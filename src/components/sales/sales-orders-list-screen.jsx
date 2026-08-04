@@ -889,12 +889,29 @@ export default function SalesOrdersListScreen({
       );
     }
 
+    async function prepareChunkForPrint(chunk) {
+      const details = await fetchChunkDetails(chunk);
+      const printCache = await warmSalePrintBatch(details.filter(Boolean), {
+        organization,
+        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+        uomById,
+        user,
+        skipSettingsRefresh: true,
+        skipOrganizationRefresh: true,
+      });
+      return { details, printCache };
+    }
+
     const chunks = chunkItems(printable, BATCH_PRINT_CHUNK_SIZE);
     let printed = 0;
     let failed = 0;
+    let queued = 0;
 
-    // Kick off the first fetch immediately.
-    let nextDetailsPromise = chunks.length > 0 ? fetchChunkDetails(chunks[0]) : null;
+    // Kick off the first chunk immediately. Each loop warms the next chunk while the
+    // current one is being queued to the print agent/browser.
+    let nextChunkPromise = chunks.length > 0 ? prepareChunkForPrint(chunks[0]) : null;
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
       const chunk = chunks[chunkIndex];
@@ -911,42 +928,44 @@ export default function SalesOrdersListScreen({
             : `Loading receipts ${from}–${to} of ${printable.length}…`,
       );
 
-      const details = await nextDetailsPromise;
+      const prepared = await nextChunkPromise;
+      const details = prepared?.details ?? [];
+      const printCache = prepared?.printCache ?? null;
 
-      // Prefetch the next chunk while this one prints.
-      nextDetailsPromise = hasNext ? fetchChunkDetails(chunks[chunkIndex + 1]) : null;
-
-      // Warm shared print metadata for this whole chunk up front so the printer can
-      // receive 1-5 continuously instead of pausing on per-receipt lookups.
-      const printCache = await warmSalePrintBatch(details.filter(Boolean), {
-        organization,
-        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
-        moduleSettings: capabilities?.module_settings,
-        capabilities,
-        uomById,
-        user,
-        skipSettingsRefresh: true,
-        skipOrganizationRefresh: true,
-      });
+      // While this batch is being queued/printed, prepare the next one fully.
+      nextChunkPromise = hasNext ? prepareChunkForPrint(chunks[chunkIndex + 1]) : null;
 
       if (printingBusy) setBatchBusy(printingBusy);
       setActionMessage(
         printable.length === 1
-          ? "Printing in background…"
+          ? "Printing receipt 1 of 1…"
           : hasNext
-            ? `Printing ${from}–${to} of ${printable.length} (loading next batch)…`
-            : `Printing ${from}–${to} of ${printable.length}…`,
+            ? `Printing receipts ${from}–${to} of ${printable.length} (preparing next batch)…`
+            : `Printing receipts ${from}–${to} of ${printable.length}…`,
       );
 
       for (let i = 0; i < chunk.length; i += 1) {
         const detail = details[i] ?? chunk[i];
         if (!detail?.id || !saleHasPrintableItems(detail)) {
           failed += 1;
+          setActionMessage(`Skipped receipt ${queued + failed + 1} of ${printable.length}.`);
           continue;
         }
+        const current = queued + failed + 1;
+        setActionMessage(
+          hasNext || i + 1 < chunk.length
+            ? `Printing receipt ${current} of ${printable.length} (next batch preparing)…`
+            : `Printing receipt ${current} of ${printable.length}…`,
+        );
         const ok = await printOrder(detail, documentType, { batch: true, printCache });
         if (ok) printed += 1;
         else failed += 1;
+        queued += 1;
+        setActionMessage(
+          queued < printable.length
+            ? `Queued ${queued} of ${printable.length} receipts to print…`
+            : `Queued all ${queued} receipts to print…`,
+        );
         // Yield so React can paint and the UI stays responsive.
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
