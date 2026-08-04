@@ -460,7 +460,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                           {product.product_code}
                         </span>
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums">
+                      <td className="px-2 py-1.5 text-right tabular-nums font-bold">
                         {Number(price).toLocaleString()}
                       </td>
                       {showShopStock ? (

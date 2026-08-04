@@ -120,6 +120,62 @@ export function buildReceiptTenderSnapshot(amounts, { changeDue = 0, amountPaid 
 }
 
 /**
+ * Sum payment_adjustments of a given type (previous-order edit return / top-up).
+ * @param {object|null|undefined} sale
+ * @param {"return"|"topup"} type
+ */
+export function sumSalePaymentAdjustments(sale, type) {
+  const rows = Array.isArray(sale?.payment_adjustments) ? sale.payment_adjustments : [];
+  return roundMoney(
+    rows.reduce(
+      (sum, row) =>
+        row?.adjustment_type === type ? sum + (Number(row.amount) || 0) : sum,
+      0,
+    ),
+  );
+}
+
+/**
+ * Change amount to print on a receipt.
+ *
+ * Previous-order edits record return/top-up in payment_adjustments. Those must win over
+ * tender math: a top-up is money received (never "Change Given"); a return's change is
+ * exactly the recorded return amount (not max'd with inflated original tenders).
+ *
+ * @param {object|null|undefined} sale
+ * @param {{ totalPaid?: number, orderTotal?: number }} [opts]
+ */
+export function resolveSaleReceiptChangeGiven(sale, { totalPaid, orderTotal } = {}) {
+  const adjustmentReturn = sumSalePaymentAdjustments(sale, "return");
+  const adjustmentTopup = sumSalePaymentAdjustments(sale, "topup");
+  if (adjustmentReturn > 0.0001 || adjustmentTopup > 0.0001) {
+    return adjustmentReturn > 0.0001 ? adjustmentReturn : 0;
+  }
+
+  const total = Number(orderTotal ?? sale?.order_total ?? 0);
+  const paid = Number(
+    totalPaid ??
+      Number(sale?.cash ?? 0) +
+        Number(sale?.mpesa_amount ?? 0) +
+        Number(sale?.equity_amount ?? 0) +
+        Number(sale?.kcb_amount ?? 0) +
+        Number(sale?.voucher_payment_amount ?? 0) +
+        Number(sale?.points_payment_amount ?? 0),
+  );
+  const cashTendered = Number(sale?._cash_tendered ?? 0);
+  const effectiveTendered = cashTendered > paid ? cashTendered : paid;
+  const tenderChange = Math.max(0, effectiveTendered - total);
+
+  return roundMoney(
+    Math.max(
+      Number(sale?._change_given ?? 0),
+      Number(sale?.order_change ?? 0),
+      tenderChange,
+    ),
+  );
+}
+
+/**
  * Overlay cashier-entered tenders onto the sale for immediate receipt print.
  * Backend stores applied (post-change) cash; receipt should show what was typed + change.
  */
@@ -128,14 +184,32 @@ export function annotateSaleWithReceiptTenders(sale, receiptTenders, cashTendere
   const tenders = receiptTenders && typeof receiptTenders === "object" ? receiptTenders : null;
   const tendered = Number(cashTendered ?? tenders?.amount_paid ?? 0);
   const orderTotal = Number(sale.order_total ?? 0);
+  const hasEditAdjustments =
+    sumSalePaymentAdjustments(sale, "return") > 0.0001 ||
+    sumSalePaymentAdjustments(sale, "topup") > 0.0001;
+
+  const next = { ...sale };
+
+  // Previous-order edit: keep source tenders on the sale; only stamp exact return change.
+  // Do not treat the adjustment amount as a full-order cash tender (that invents "change").
+  if (hasEditAdjustments) {
+    const changeGiven = resolveSaleReceiptChangeGiven(next, { orderTotal });
+    if (changeGiven > 0.0001) {
+      next._change_given = changeGiven;
+      next.order_change = changeGiven;
+    } else {
+      delete next._change_given;
+      next.order_change = 0;
+    }
+    return next;
+  }
+
   const changeGiven = Math.max(
     0,
     Number(tenders?.change ?? 0),
     tendered > 0 ? tendered - orderTotal : 0,
     Number(sale.order_change ?? 0),
   );
-
-  const next = { ...sale };
 
   if (tenders) {
     if (tenders.cash > 0 || Number(sale.cash ?? 0) <= 0) {

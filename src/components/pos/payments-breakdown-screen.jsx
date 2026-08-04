@@ -13,7 +13,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
-import { formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
+import { formatAccountingAmount } from "@/lib/accounting-shared";
+import { todayDashboardDateRange } from "@/lib/dashboard-dates";
 import { notifyError } from "@/lib/notify";
 import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { filterByOrganization } from "@/lib/admin";
@@ -176,7 +177,7 @@ function PaymentsMethodTabs({ methods, activeCode, onChange }) {
 export function PaymentsBreakdownScreen() {
   const { user, capabilities } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
-  const initialRange = defaultAccountingDateRange();
+  const initialRange = todayDashboardDateRange();
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [branchId, setBranchId] = useState("");

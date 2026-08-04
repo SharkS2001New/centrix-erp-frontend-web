@@ -6,6 +6,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { pingApiHealth } from "@/lib/network-status";
 import {
   ensurePosOfflineOrderNumbers,
+  getPosOfflineAutoRetryCount,
   getPosOfflinePendingCount,
   preparePosOfflineReady,
   searchPosOfflineCatalog,
@@ -123,12 +124,16 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
    * Safe to call fire-and-forget after every local save.
    * Runs whenever the API is reachable (including slow).
    *
-   * @param {{ manual?: boolean }} [options]
+   * @param {{ manual?: boolean, includeErrors?: boolean }} [options]
+   *   includeErrors defaults true. Background retries pass false so a failed
+   *   previous_order_edit cannot restore-to-cart / reload the order in a loop.
    */
   const flushOutboxNow = useCallback((options = {}) => {
     if (!enabled) return Promise.resolve([]);
 
     const manual = Boolean(options.manual);
+    const includeErrors =
+      options.includeErrors != null ? Boolean(options.includeErrors) : true;
     if (manual) manualFlushRef.current = true;
 
     const generation = ++flushGenerationRef.current;
@@ -151,6 +156,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       const showProgress = manualFlushRef.current;
       try {
         const results = await syncPosOfflineOutbox({
+          includeErrors,
           onProgress: (progress) => {
             setSyncProgress({
               phase: progress.phase ?? "syncing",
@@ -164,13 +170,13 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
             if (progress.message) {
               setLastSyncMessage(progress.message);
             }
-            // Keep the pending badge roughly accurate while a long flush runs.
+            // Keep the pending badge accurate while a long flush runs.
+            // Failed rows remain in the outbox — do not subtract them from pending
+            // or the pending-sync popup closes/reopens (and reloads) in a loop.
             if (progress.phase === "start" || progress.phase === "item_done") {
               const remaining = Math.max(
                 0,
-                Number(progress.total ?? 0) -
-                  Number(progress.done ?? 0) -
-                  Number(progress.failed ?? 0),
+                Number(progress.total ?? 0) - Number(progress.done ?? 0),
               );
               setPendingSync(remaining);
             }
@@ -201,8 +207,12 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
             await ensurePosOfflineOrderNumbers({ force: false });
           }
         } else if (failed.length) {
-          pendingFlushRef.current = true;
-          setLastSyncMessage(`Could not sync ${failed.length} sale(s). Will retry.`);
+          // Errored rows stay in the queue for manual Sync — do not arm the
+          // zero-delay deferred flush path (that reloaded previous_order_edit).
+          pendingFlushRef.current = false;
+          setLastSyncMessage(
+            `Could not sync ${failed.length} sale(s). Open Pending sync or tap Sync to retry.`,
+          );
         } else if (showProgress) {
           setLastSyncMessage("No offline orders waiting to sync.");
           setSyncProgress({
@@ -303,15 +313,28 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
         break;
       }
 
-      lastResults = await flushOutboxNow();
+      // Only auto-retry still-pending rows. Once marked error (e.g. previous_order_edit),
+      // stop — further attempts would reload restore-to-cart in a loop.
+      lastResults = await flushOutboxNow({ includeErrors: false });
       await refreshCounts();
 
       const pending = await getPosOfflinePendingCount();
+      const autoRetry = await getPosOfflineAutoRetryCount();
       const failed = lastResults.filter((row) => !row.ok);
 
       if (pending === 0 && failed.length === 0) {
         pendingFlushRef.current = false;
         return { ok: true, results: lastResults, pending: 0 };
+      }
+
+      if (autoRetry === 0) {
+        pendingFlushRef.current = false;
+        return {
+          ok: false,
+          results: lastResults,
+          pending,
+          failed,
+        };
       }
 
       if (failed.length > 0 || pending > 0) {
@@ -329,7 +352,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     const failed = lastResults.filter((row) => !row.ok);
     const ok = pending === 0 && failed.length === 0;
     if (!ok) {
-      pendingFlushRef.current = true;
+      pendingFlushRef.current = false;
     }
     return {
       ok,
@@ -395,20 +418,31 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     }
   }, [enabled, canFlushOutbox, flushOutboxNow]);
 
-  // Retry / deferred flush while API is reachable (immediate when post-sale deferred).
+  // Retry still-pending outbox rows while API is reachable. Skip sync_status=error
+  // so a stuck previous_order_edit cannot restore-to-cart / flicker Pending sync.
   useEffect(() => {
     if (!enabled || !canFlushOutbox || syncing) return undefined;
-    if (pendingSync <= 0 && !pendingFlushRef.current) return undefined;
+    if (pendingSync <= 0) {
+      pendingFlushRef.current = false;
+      return undefined;
+    }
 
-    const deferred = pendingFlushRef.current;
-    const delay = deferred ? 0 : RETRY_BACKOFF_MS;
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      if (deferred) {
+      void (async () => {
+        const autoRetry = await getPosOfflineAutoRetryCount();
+        if (cancelled || autoRetry <= 0) {
+          pendingFlushRef.current = false;
+          return;
+        }
         pendingFlushRef.current = false;
-      }
-      void flushOutboxNow();
-    }, delay);
-    return () => window.clearTimeout(timer);
+        void flushOutboxNow({ includeErrors: false });
+      })();
+    }, RETRY_BACKOFF_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [enabled, canFlushOutbox, pendingSync, syncing, flushOutboxNow]);
 
   const searchOffline = useCallback(async (query, limit = 40) => {

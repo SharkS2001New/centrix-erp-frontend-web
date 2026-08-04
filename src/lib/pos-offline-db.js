@@ -297,11 +297,20 @@ export async function idbGetOutboxSale(uuid) {
   return withStore("outbox", "readonly", (store) => store.get(uuid));
 }
 
-export async function idbListPendingOutbox() {
+export async function idbListPendingOutbox({ includeErrors = true } = {}) {
   const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
   return rows
-    .filter((r) => r.sync_status === "pending" || r.sync_status === "error")
+    .filter((r) => {
+      if (r.sync_status === "pending") return true;
+      if (includeErrors && r.sync_status === "error") return true;
+      return false;
+    })
     .sort((a, b) => Number(a.created_at_ms ?? 0) - Number(b.created_at_ms ?? 0));
+}
+
+/** Rows that background flush may retry (excludes failed — those need manual Sync). */
+export async function idbListAutoRetryOutbox() {
+  return idbListPendingOutbox({ includeErrors: false });
 }
 
 /** Pending + mid-edit rows for POS ← browse (excludes syncing/synced). */
@@ -377,9 +386,13 @@ export async function idbMarkOutboxSyncing(uuid) {
   return true;
 }
 
-export async function idbCountPendingOutbox() {
-  const pending = await idbListPendingOutbox();
+export async function idbCountPendingOutbox({ includeErrors = true } = {}) {
+  const pending = await idbListPendingOutbox({ includeErrors });
   return pending.length;
+}
+
+export async function idbCountAutoRetryOutbox() {
+  return idbCountPendingOutbox({ includeErrors: false });
 }
 
 export async function idbMarkOutboxSynced(uuid, serverSale, extras = {}) {

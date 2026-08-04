@@ -10,6 +10,7 @@ import {
   idbClearLocalCart,
   idbClearStore,
   idbCountOrderNumbers,
+  idbCountAutoRetryOutbox,
   idbCountPendingOutbox,
   idbDeleteOutboxSale,
   idbGetAllCatalog,
@@ -1062,8 +1063,6 @@ export function buildPreviousOrderEditPrintSale(
         },
       };
     });
-  if (!items.length) return null;
-
   const adjustments = Array.isArray(cart.payment_adjustments)
     ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
     : [];
@@ -1072,6 +1071,9 @@ export function buildPreviousOrderEditPrintSale(
       .filter((row) => row.adjustment_type === "return")
       .reduce((sum, row) => sum + (Number(row.amount) || 0), 0) * 100,
   ) / 100;
+  // Empty cart is a cancel print only when the full return was recorded.
+  if (!items.length && !(returnGiven > 0.0001)) return null;
+
   const topupAmount = Math.round(
     adjustments
       .filter((row) => row.adjustment_type === "topup")
@@ -1098,6 +1100,21 @@ export function buildPreviousOrderEditPrintSale(
     else if (code.includes("EQUITY")) equityAmount += amt;
     else if (code.includes("KCB")) kcbAmount += amt;
     else cash += amt;
+  }
+
+  // Apply returns against tenders so Cash/M-Pesa rows match the revised total;
+  // "Change Given" on the receipt comes from payment_adjustments (exact return).
+  if (returnGiven > 0.0001) {
+    let remaining = returnGiven;
+    const reduce = (current) => {
+      const take = Math.min(Math.max(0, current), remaining);
+      remaining = Math.round((remaining - take) * 100) / 100;
+      return Math.round((current - take) * 100) / 100;
+    };
+    cash = reduce(cash);
+    mpesaAmount = reduce(mpesaAmount);
+    equityAmount = reduce(equityAmount);
+    kcbAmount = reduce(kcbAmount);
   }
 
   if (!hasSourcePayments && topupAmount <= 0 && returnGiven <= 0) {
@@ -1137,6 +1154,8 @@ export function buildPreviousOrderEditPrintSale(
       (Number.isFinite(parsedReceiptAt) ? parsedReceiptAt : Date.now()),
   );
 
+  const isEmptyCancel = !items.length && returnGiven > 0.0001;
+
   return {
     id: cart.server_sale_id ?? sourceSale?.id ?? `edit:${orderNum}`,
     order_num: orderNum,
@@ -1149,12 +1168,12 @@ export function buildPreviousOrderEditPrintSale(
     branch_id: cart.branch_id ?? user?.branch_id ?? null,
     channel: "pos",
     order_source: "pos",
-    status: "completed",
-    payment_status: "paid",
+    status: isEmptyCancel ? "cancelled" : "completed",
+    payment_status: isEmptyCancel ? "refunded" : "paid",
     payment_method_code: paymentMethodCode,
-    order_total: summary.total,
-    total_vat: summary.vat,
-    amount_paid: Math.max(0, payNow + returnGiven),
+    order_total: isEmptyCancel ? 0 : summary.total,
+    total_vat: isEmptyCancel ? 0 : summary.vat,
+    amount_paid: isEmptyCancel ? 0 : Math.max(0, payNow + returnGiven),
     cash,
     mpesa_amount: mpesaAmount,
     equity_amount: equityAmount,
@@ -1506,9 +1525,16 @@ export async function getPosOfflinePendingCount() {
   return idbCountPendingOutbox();
 }
 
+/** Rows background flush may retry (excludes failed — those need manual Sync). */
+export async function getPosOfflineAutoRetryCount() {
+  return idbCountAutoRetryOutbox();
+}
+
 /** Failed outbox rows (sync_status error) — for reprint while retrying. */
 export async function listFailedOutboxSales() {
-  const rows = (await idbListPendingOutbox()).filter((row) => row.sync_status === "error");
+  const rows = (await idbListPendingOutbox({ includeErrors: true })).filter(
+    (row) => row.sync_status === "error",
+  );
   return rows
     .map((row) => mapOutboxRowForDisplay(row))
     .sort((a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0));
@@ -1749,9 +1775,24 @@ async function findExistingSyncedSaleForOutboxRow(row, orderNum) {
   return candidates.find((sale) => outboxRowMatchesServerSale(row, sale, orderNum)) ?? null;
 }
 
+const reportedOutboxFailureAt = new Map();
+const OUTBOX_FAILURE_REPORT_COOLDOWN_MS = 60_000;
+
 function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
   const message = err?.message ?? "Sync failed";
   const httpStatus = err instanceof ApiError ? err.status : null;
+  const reportKey = [
+    row.client_sale_uuid ?? "",
+    row.sync_kind ?? "sale",
+    row.content_revision ?? "",
+    message,
+  ].join("|");
+  const lastAt = reportedOutboxFailureAt.get(reportKey) ?? 0;
+  if (Date.now() - lastAt < OUTBOX_FAILURE_REPORT_COOLDOWN_MS) {
+    return;
+  }
+  reportedOutboxFailureAt.set(reportKey, Date.now());
+
   void submitSystemIssueReport({
     kind: "error",
     message: `POS outbox sync failed for order #${printedOrderNum}: ${message}`,
@@ -1774,11 +1815,16 @@ function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
  * Marks each row `syncing` while in flight so concurrent flushes cannot double-post.
  * Never creates a second server sale for the same POS ticket / client uuid — recovers
  * the existing row when checkout would duplicate.
+ *
+ * @param {{ onProgress?: Function, includeErrors?: boolean }} [options]
+ *   includeErrors — when false, skip rows already marked sync_status=error so a stuck
+ *   previous_order_edit cannot restore-to-cart / reload the order in a background loop.
+ *   Manual Sync and reconnect should pass true (default).
  */
-export async function syncPosOfflineOutbox({ onProgress } = {}) {
+export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } = {}) {
   return withPosOfflineExclusiveLock(async () => {
     await idbReclaimStuckSyncingOutbox({ olderThanMs: 60_000 });
-    const pending = await idbListPendingOutbox();
+    const pending = await idbListPendingOutbox({ includeErrors });
     const total = pending.length;
     const results = [];
     let done = 0;

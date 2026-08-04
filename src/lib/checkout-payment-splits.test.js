@@ -3,6 +3,7 @@ import {
   alignPaymentSplitsToPayNow,
   annotateSaleWithReceiptTenders,
   buildReceiptTenderSnapshot,
+  resolveSaleReceiptChangeGiven,
 } from "@/lib/checkout-payment-splits";
 
 describe("alignPaymentSplitsToPayNow", () => {
@@ -69,5 +70,86 @@ describe("annotateSaleWithReceiptTenders", () => {
     expect(sale._cash_tendered).toBe(1200);
     expect(sale._change_given).toBe(200);
     expect(sale.order_change).toBe(200);
+  });
+
+  it("does not invent change from top-up tender vs full order total", () => {
+    const sale = annotateSaleWithReceiptTenders(
+      {
+        id: 1,
+        order_total: 1500,
+        cash: 1000,
+        mpesa_amount: 0,
+        payment_adjustments: [
+          { adjustment_type: "topup", method_code: "CASH", amount: 500 },
+        ],
+      },
+      buildReceiptTenderSnapshot(
+        { cashAmount: "500" },
+        { changeDue: 0, amountPaid: 500 },
+      ),
+      500,
+    );
+    expect(sale.cash).toBe(1000);
+    expect(sale._change_given).toBeUndefined();
+    expect(sale.order_change).toBe(0);
+  });
+
+  it("stamps exact return amount as change for previous-order edit", () => {
+    const sale = annotateSaleWithReceiptTenders(
+      {
+        id: 1,
+        order_total: 800,
+        cash: 1200,
+        payment_adjustments: [
+          { adjustment_type: "return", method_code: "CASH", amount: 200 },
+        ],
+      },
+      buildReceiptTenderSnapshot(
+        { cashAmount: "200" },
+        { changeDue: 0, amountPaid: 200 },
+      ),
+      200,
+    );
+    expect(sale.cash).toBe(1200);
+    expect(sale._change_given).toBe(200);
+    expect(sale.order_change).toBe(200);
+  });
+});
+
+describe("resolveSaleReceiptChangeGiven", () => {
+  it("uses exact return adjustment and ignores inflated tender math", () => {
+    const change = resolveSaleReceiptChangeGiven(
+      {
+        order_total: 800,
+        cash: 1200,
+        payment_adjustments: [
+          { adjustment_type: "return", method_code: "CASH", amount: 200 },
+        ],
+      },
+      { totalPaid: 1200, orderTotal: 800 },
+    );
+    expect(change).toBe(200);
+  });
+
+  it("shows no change for top-up even when tenders exceed order total", () => {
+    const change = resolveSaleReceiptChangeGiven(
+      {
+        order_total: 1100,
+        cash: 1300,
+        payment_adjustments: [
+          { adjustment_type: "topup", method_code: "CASH", amount: 100 },
+        ],
+      },
+      { totalPaid: 1300, orderTotal: 1100 },
+    );
+    expect(change).toBe(0);
+  });
+
+  it("falls back to normal tender change when there are no adjustments", () => {
+    const change = resolveSaleReceiptChangeGiven(
+      { order_total: 1000, cash: 700, mpesa_amount: 500, _cash_tendered: 1200 },
+      { totalPaid: 1200, orderTotal: 1000 },
+    );
+    expect(change).toBe(200);
   });
 });

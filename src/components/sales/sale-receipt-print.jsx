@@ -36,6 +36,7 @@ import {
   THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
 } from "@/lib/thermal-receipt-layout";
+import { resolveSaleReceiptChangeGiven } from "@/lib/checkout-payment-splits";
 
 function tendersFromSalePayments(sale) {
   const payments = Array.isArray(sale?.payments) ? sale.payments : [];
@@ -274,24 +275,9 @@ export function buildSaleReceiptHtml(
     Number(sale.points_payment_amount ?? 0);
   // _cash_tendered is a frontend-only annotation set at checkout time (the amount the customer
   // physically handed over, which may exceed the order total for cash payments). It is never
-  // stored on the server. Fall back to totalPaid so reprints still show 0 change when unknown.
-  // Previous-order edit returns use payment_adjustments / _change_given ("Change Given").
-  const cashTendered = Number(sale._cash_tendered ?? 0);
-  const effectiveTendered = cashTendered > totalPaid ? cashTendered : totalPaid;
-  const tenderChange = Math.max(0, effectiveTendered - orderTotal);
-  const adjustmentReturn = Array.isArray(sale.payment_adjustments)
-    ? sale.payment_adjustments.reduce(
-        (sum, row) =>
-          row?.adjustment_type === "return" ? sum + (Number(row.amount) || 0) : sum,
-        0,
-      )
-    : 0;
-  const changeGiven = Math.max(
-    Number(sale._change_given ?? 0),
-    Number(sale.order_change ?? 0),
-    adjustmentReturn,
-    tenderChange,
-  );
+  // stored on the server. Previous-order edit return/top-up use payment_adjustments — return
+  // change is exact; top-up must not appear as "Change Given".
+  const changeGiven = resolveSaleReceiptChangeGiven(sale, { totalPaid, orderTotal });
   const totalDiscount = discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
   const showDiscountTotal =
     (showDiscountColumn || orderDiscountEnabled) && totalDiscount > 0.0001;

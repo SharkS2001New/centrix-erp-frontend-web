@@ -1189,6 +1189,11 @@ export function PosScreen({ standalone = false }) {
         branch_id: branchId,
       });
       setFloatModalOpen(false);
+      defaultScanFocusDoneRef.current = false;
+      window.requestAnimationFrame(() => {
+        searchInputRef.current?.focus({ preventScroll: true });
+        searchInputRef.current?.select?.();
+      });
     } catch {
       /* sessionError set in context */
     }
@@ -1501,6 +1506,7 @@ export function PosScreen({ standalone = false }) {
   const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
   const pendingLeaveHrefRef = useRef(null);
   const floatModalDismissedRef = useRef(false);
+  const defaultScanFocusDoneRef = useRef(false);
   const cartRef = useRef(null);
   /** Server TemporaryCart ids checkout/delete already consumed — never reuse for line adds. */
   const consumedServerCartIdsRef = useRef(new Set());
@@ -1809,14 +1815,18 @@ export function PosScreen({ standalone = false }) {
     rememberCompletedPosOrder(sale);
   }
 
-  function promptPreviousOrderPaymentAdjustment(delta, orderNum) {
+  function promptPreviousOrderPaymentAdjustment(delta, orderNum, options = {}) {
     return new Promise((resolve, reject) => {
       resolveEditAdjustmentRef.current = { resolve, reject };
-      setEditAdjustmentDialog({ delta, orderNum });
+      setEditAdjustmentDialog({
+        delta,
+        orderNum,
+        confirmLabel: options.confirmLabel ?? "Save & continue",
+      });
     });
   }
 
-  async function ensurePreviousOrderPaymentAdjustment(cartNow) {
+  async function ensurePreviousOrderPaymentAdjustment(cartNow, options = {}) {
     if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return cartNow;
     const delta = computePreviousOrderEditPaymentDelta(editSourceSale, cartNow);
     if (!delta.type || !(Number(delta.amount) > 0)) return cartNow;
@@ -1824,6 +1834,7 @@ export function PosScreen({ standalone = false }) {
     const adjustments = await promptPreviousOrderPaymentAdjustment(
       delta,
       cartNow.held_order_num ?? resolvePosBrowseNumber(cartNow),
+      options,
     );
     const next = withEditDraftDirty({ ...cartNow, payment_adjustments: adjustments });
     cartRef.current = next;
@@ -1997,7 +2008,9 @@ export function PosScreen({ standalone = false }) {
     if (!standalone || !enablePosOrderEdit) return;
     if (offlineSyncing) return;
     if (!lastSyncMessage) return;
-    // After offline sync, refresh ← browse list with real server sale ids.
+    // Only refresh ← browse after a successful sync. Failed retries used to reload
+    // completed orders on every attempt (and reopen the pending-sync popup).
+    if (!/^Synced\s+\d+/i.test(String(lastSyncMessage).trim())) return;
     void loadCompletedPosOrders();
   }, [
     standalone,
@@ -2010,6 +2023,8 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     if (!standalone) return;
     if (pendingSync <= 0) {
+      // Mid-flush progress can briefly under-count; keep the popup stable until flush ends.
+      if (offlineSyncing) return;
       pendingSyncAlertRef.current = false;
       if (pendingSyncOpen) {
         setPendingSyncOpen(false);
@@ -2027,6 +2042,7 @@ export function PosScreen({ standalone = false }) {
     standalone,
     pendingSync,
     pendingSyncOpen,
+    offlineSyncing,
     failedSyncOrders.length,
     syncProgress?.phase,
     syncProgress?.failed,
@@ -2360,6 +2376,74 @@ export function PosScreen({ standalone = false }) {
 
   const posShellReady = !sessionLoading && uomById.size > 0;
   usePageNavigationReady(posShellReady);
+
+  // Default keyboard focus: Scan code so cashiers can start searching/scanning immediately.
+  useEffect(() => {
+    if (!standalone) return undefined;
+    if (!posShellReady || cart == null) return undefined;
+
+    const blockingOverlay =
+      floatDeclareDialogOpen ||
+      paymentOpen ||
+      saveOrderOpen ||
+      heldOrdersOpen ||
+      pendingSyncOpen ||
+      leaveGuardOpen ||
+      priceCheckerOpen ||
+      zReportOpen ||
+      xReportOpen ||
+      closeSessionOpen ||
+      Boolean(autoHeldPrompt) ||
+      Boolean(editAdjustmentDialog) ||
+      preparingNextOpen;
+
+    if (blockingOverlay) {
+      // Re-focus scan after till float / other overlays close.
+      defaultScanFocusDoneRef.current = false;
+      return undefined;
+    }
+
+    if (defaultScanFocusDoneRef.current) return undefined;
+
+    const active = typeof document !== "undefined" ? document.activeElement : null;
+    if (
+      active &&
+      active !== document.body &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        active.isContentEditable)
+    ) {
+      if (active === searchInputRef.current) {
+        defaultScanFocusDoneRef.current = true;
+      }
+      return undefined;
+    }
+
+    defaultScanFocusDoneRef.current = true;
+    const frame = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select?.();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    standalone,
+    posShellReady,
+    cart,
+    floatDeclareDialogOpen,
+    paymentOpen,
+    saveOrderOpen,
+    heldOrdersOpen,
+    pendingSyncOpen,
+    leaveGuardOpen,
+    priceCheckerOpen,
+    zReportOpen,
+    xReportOpen,
+    closeSessionOpen,
+    autoHeldPrompt,
+    editAdjustmentDialog,
+    preparingNextOpen,
+  ]);
 
   const loadPosReferenceData = useCallback(async () => {
     // Do not warm the full retail-package catalog — hydrate packages for cart/search codes only.
@@ -2861,6 +2945,8 @@ export function PosScreen({ standalone = false }) {
    * superseded_sale_id at the new live sale. Do NOT call restore-to-cart here —
    * that re-cancels the order and makes it vanish from Sales & Orders / X/Z maths
    * for the whole remaining edit session.
+   *
+   * Empty-line cancel sync returns status=cancelled — leave the edit session.
    */
   async function refreshPreviousOrderEditCartAfterSync(sale, { workspaceGeneration } = {}) {
     if (!sale?.id || !standalone) return;
@@ -2873,6 +2959,38 @@ export function PosScreen({ standalone = false }) {
       workspaceGeneration != null &&
       freshWorkspaceGenerationRef.current !== workspaceGeneration
     ) {
+      return;
+    }
+
+    if (String(sale.status ?? "").toLowerCase() === "cancelled") {
+      skipEditAutosaveRef.current = true;
+      try {
+        await clearPreviousOrderEditDraft().catch(() => {});
+        markSaleForReprint(sale);
+        setEditSourceSale(null);
+        setCompletedSale(sale);
+        // Drop edit markers first so F8/fresh bootstrap does not prompt to leave edit.
+        const cleared = stripPreviousOrderEditSession({
+          ...active,
+          lines: [],
+          payment_adjustments: undefined,
+          _editDraftDirty: undefined,
+        });
+        cartRef.current = cleared;
+        setCart(cleared);
+        await startFreshWorkspace();
+        setStatusMessage(
+          `Order #${formatPosBrowseLabel({
+            order_num: sale.order_num,
+            pos_order_num: sale.pos_order_num,
+          })} cancelled — return recorded.`,
+        );
+        if (enablePosOrderEdit) {
+          void loadCompletedPosOrders();
+        }
+      } finally {
+        skipEditAutosaveRef.current = false;
+      }
       return;
     }
 
@@ -5321,8 +5439,8 @@ export function PosScreen({ standalone = false }) {
         title: "Clear cart",
         message: cart.held_order_num
           ? instantAutoEditSync
-            ? "Clear all items from this revised order? Stock was restored when you opened this receipt. The empty order saves automatically when you add items again."
-            : "Clear all items from this revised order? Stock was restored when you opened this receipt. Use Alt+P to finish the empty or revised order."
+            ? "Clear all items? This cancels the order and records a full return once payment breakdown is entered."
+            : "Clear all items? Enter the return, then Alt+P to cancel this order and record the refund."
           : "Clear all items from the cart?",
         confirmLabel: "Clear",
         destructive: true,
@@ -5352,8 +5470,8 @@ export function PosScreen({ standalone = false }) {
         setStatusMessage(
           isPreviousOrderEditSession(cart)
             ? instantAutoEditSync
-              ? "Lines cleared — syncing empty revision…"
-              : "Lines cleared — complete the order to save, or start a new order to abandon."
+              ? "Lines cleared — recording full return and cancelling order…"
+              : "Lines cleared — enter the return, then Alt+P to cancel this order."
             : "Cart cleared.",
         );
         window.requestAnimationFrame(() => {
@@ -6556,7 +6674,14 @@ export function PosScreen({ standalone = false }) {
       }
       // Annotate with cashier-entered tenders + change so the receipt is correct
       // even when aligned payment_splits stored net (post-change) cash on the sale.
-      sale = annotateSaleWithReceiptTenders(sale, receiptTenders, cashTendered);
+      // Keep payment_adjustments on the sale so top-up/return change resolves exactly.
+      sale = annotateSaleWithReceiptTenders(
+        checkoutBody.payment_adjustments?.length
+          ? { ...sale, payment_adjustments: checkoutBody.payment_adjustments }
+          : sale,
+        receiptTenders,
+        cashTendered,
+      );
       if (sale?.fulfillment_meta?.same_day_customer_append) {
         const label = formatPosBrowseLabel(sale);
         setStatusMessage(`Items added to customer order #${label}.`);
@@ -6712,7 +6837,9 @@ export function PosScreen({ standalone = false }) {
             }
           }
           setStatusMessage(
-            `Cash Sales #${formatPosBrowseLabel(cartNow)} saved — syncing… (Alt+P to reprint)`,
+            (cartNow.lines?.length ?? 0) === 0
+              ? `Cash Sales #${formatPosBrowseLabel(cartNow)} cancelling — syncing return…`
+              : `Cash Sales #${formatPosBrowseLabel(cartNow)} saved — syncing… (Alt+P to reprint)`,
           );
           void refreshOfflineCounts();
           const { results } = await flushOutboxAfterSale();
@@ -7546,7 +7673,9 @@ export function PosScreen({ standalone = false }) {
       }
 
       try {
-        await ensurePreviousOrderPaymentAdjustment(cartRef.current);
+        await ensurePreviousOrderPaymentAdjustment(cartRef.current, {
+          confirmLabel: "Save & reprint",
+        });
       } catch (e) {
         if (e instanceof Error && /cancel/i.test(e.message)) return;
         notifyError(
@@ -7557,7 +7686,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // Queue sync (and background KRA) without blocking the draft reprint.
+      // Persist payment breakdown + queue sync before the draft reprint.
       scheduleEditedOrderAutosave({ immediate: true });
     }
 
@@ -10343,6 +10472,7 @@ export function PosScreen({ standalone = false }) {
         open={Boolean(editAdjustmentDialog)}
         delta={editAdjustmentDialog?.delta ?? null}
         orderNum={editAdjustmentDialog?.orderNum ?? null}
+        confirmLabel={editAdjustmentDialog?.confirmLabel ?? "Save & continue"}
         onConfirm={(adjustments) => {
           resolveEditAdjustmentRef.current?.resolve(adjustments);
           resolveEditAdjustmentRef.current = null;

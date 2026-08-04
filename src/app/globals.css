@@ -2816,6 +2816,7 @@ html[data-theme="dark"] .pos-workspace-classic {
   border-bottom: 1px solid var(--classic-td-border, #d9ceb0);
   padding: 0.4rem 0.6rem;
   vertical-align: top;
+  font-weight: 700;
 }
 
 .classic-pos-find-table tbody tr {
@@ -3549,6 +3550,7 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 .classic-pos-scan-dropdown .classic-pos-find-table td {
   border-bottom: 1px solid var(--classic-td-border);
   color: var(--classic-text);
+  font-weight: 700;
 }
 
 .classic-pos-scan-dropdown .classic-pos-find-empty {
