@@ -28,6 +28,7 @@ import {
   resolveOrganizationLicense,
 } from "@/lib/organization-license";
 import { ChangeSubscriptionPlanModal } from "@/components/platform/change-subscription-plan-modal";
+import { EditSubscriptionPeriodModal } from "@/components/platform/edit-subscription-period-modal";
 
 function BillingSection({ title, description, children }) {
   return (
@@ -62,6 +63,7 @@ export function OrganizationBillingPanel({
   const [viewerContract, setViewerContract] = useState(null);
   const [viewerInvoice, setViewerInvoice] = useState(null);
   const [changePlanOpen, setChangePlanOpen] = useState(false);
+  const [editPeriodOpen, setEditPeriodOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -229,6 +231,18 @@ export function OrganizationBillingPanel({
                 <p className="mt-1 text-xs text-slate-500">
                   Period {formatBillingDate(subscription.current_period_start)} →{" "}
                   {formatBillingDate(subscription.current_period_end)}
+                  {!isTenant ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="font-medium text-[#185FA5] hover:underline"
+                        onClick={() => setEditPeriodOpen(true)}
+                      >
+                        Edit dates
+                      </button>
+                    </>
+                  ) : null}
                 </p>
                 {license?.days_remaining != null ? (
                   <p
@@ -274,6 +288,13 @@ export function OrganizationBillingPanel({
                     Change package
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  className="font-medium text-[#185FA5] hover:underline"
+                  onClick={() => setEditPeriodOpen(true)}
+                >
+                  Edit period
+                </button>
                 <Link href="/platform/subscriptions" className="font-medium text-[#185FA5] hover:underline">
                   Manage subscriptions
                 </Link>
@@ -459,6 +480,15 @@ export function OrganizationBillingPanel({
         organizationLabel={organization?.org_name}
         onClose={() => setChangePlanOpen(false)}
         onSaved={() => void load()}
+      />
+      <EditSubscriptionPeriodModal
+        open={editPeriodOpen}
+        subscription={subscription}
+        onClose={() => setEditPeriodOpen(false)}
+        onSaved={() => {
+          setEditPeriodOpen(false);
+          void load();
+        }}
       />
     </>
   );

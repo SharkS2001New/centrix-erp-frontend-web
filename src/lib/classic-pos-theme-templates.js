@@ -1,6 +1,6 @@
-/** Platform-controlled Classic External POS visual theme templates. */
+/** Org-wide Centrix ERP visual theme templates (also used by Classic External POS). */
 
-export const CLASSIC_POS_THEME_DEFAULT = "legacy";
+export const CLASSIC_POS_THEME_DEFAULT = "centrix";
 
 /** Default legacy beige palette (matches globals.css fallbacks). */
 export const CLASSIC_POS_LEGACY_VARS = {
@@ -489,8 +489,8 @@ export function classicPosThemeCssVars(id, colorOverrides = null) {
 }
 
 /**
- * Bridge Classic palette onto global `--theme-*` tokens so portaled POS dialogs
- * (held orders, payment, hold/save, pending sync, leave guard) match the template.
+ * Bridge org theme palette onto global `--theme-*` tokens so the whole ERP
+ * (sidebar, panels, dialogs) and Classic POS popups share one chosen palette.
  */
 export function classicPosThemeBridgeVars(id, colorOverrides = null) {
   const classic = classicPosThemeCssVars(id, colorOverrides);
@@ -537,7 +537,7 @@ export function classicPosThemeBridgeVars(id, colorOverrides = null) {
 
 const CLASSIC_POS_DOCUMENT_STYLE_KEYS = new Set();
 
-/** Apply Classic template vars on `html` so body-portaled popups inherit them. */
+/** Apply chosen org theme vars on `html` so the whole ERP inherits them. */
 export function applyClassicPosDocumentTheme(id, colorOverrides = null) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
@@ -552,6 +552,7 @@ export function applyClassicPosDocumentTheme(id, colorOverrides = null) {
     CLASSIC_POS_DOCUMENT_STYLE_KEYS.add(key);
   }
   root.dataset.classicPosActive = "true";
+  root.dataset.erpTheme = normalizeClassicPosThemeTemplate(id);
   root.dataset.classicPosTheme = normalizeClassicPosThemeTemplate(id);
 }
 
@@ -564,6 +565,7 @@ export function clearClassicPosDocumentTheme() {
   CLASSIC_POS_DOCUMENT_STYLE_KEYS.clear();
   delete root.dataset.classicPosActive;
   delete root.dataset.classicPosTheme;
+  delete root.dataset.erpTheme;
 }
 
 export function resolveClassicPosThemeTemplate(moduleSettingsOrCapabilities = null) {

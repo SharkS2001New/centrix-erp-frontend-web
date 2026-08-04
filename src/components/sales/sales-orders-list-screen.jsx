@@ -30,6 +30,8 @@ import {
   canRestoreExpiredOrder,
   expiredOrderRestoreTarget,
   isPrintInvoiceVisible,
+  isPrintProformaVisible,
+  isCustomerReturnAllowedForOrder,
   workflowStatusFilterOptions,
   workflowStatusLabel,
 } from "@/lib/order-workflow";
@@ -49,7 +51,8 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
-import { shouldShowSalesDiscountColumn, canApproveDiscountRequests } from "@/lib/sales-settings";
+import { shouldShowSalesDiscountColumn, canApproveDiscountRequests, isMobileOrdersReturnsCardEnabled, isMobileOrdersPaymentsCardEnabled } from "@/lib/sales-settings";
+import { MobileOrdersQuickActions } from "@/components/sales/mobile-orders-quick-actions";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
   orderSourceFilterOptions,
@@ -295,6 +298,10 @@ export default function SalesOrdersListScreen({
   );
   const includeMobileOrders = isOrgMobileSalesEnabled(capabilities);
   const includeWhatsappOrders = isPlatformWhatsappEnabled(capabilities);
+  const showMobileReturnsCard =
+    queueSlug === "mobile" && isMobileOrdersReturnsCardEnabled(capabilities);
+  const showMobilePaymentsCard =
+    queueSlug === "mobile" && isMobileOrdersPaymentsCardEnabled(capabilities);
   const queueConfig = useMemo(
     () =>
       resolveSalesOrderQueue(queueSlug, orgWorkflow, {
@@ -1596,10 +1603,12 @@ export default function SalesOrdersListScreen({
       includePrint: contextMenu.includePrint !== false,
       hasExternalPos,
       canEdit: isOrderEditActionVisible(sale, workflow, capabilities),
+      canReturn: isCustomerReturnAllowedForOrder(sale, capabilities),
       balanceDue: saleBalanceDue(sale),
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),
       onEdit: () => openEditOrder(sale),
+      onReturn: () => router.push(`/sales/returns/new?sale_id=${sale.id}`),
       onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
         ? () => openCollectPayment(sale)
         : null,
@@ -1615,7 +1624,7 @@ export default function SalesOrdersListScreen({
       onAdvance: routeOrdersOnly ? null : (status) => handleAdvance(sale, status),
       onCancel: routeOrdersOnly ? null : () => handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, queueSlug]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, queueSlug, router]);
 
   useEffect(() => {
     setPage(1);
@@ -1863,12 +1872,24 @@ export default function SalesOrdersListScreen({
 
         <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 md:col-span-8 lg:col-span-6">
-            <SearchInput
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search product, customer, amount, S0034, POS #…"
-              className="w-full min-w-0 shrink"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <SearchInput
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search product, customer, amount, S0034, POS #…"
+                className="min-w-0 flex-1"
+              />
+              {showMobileReturnsCard || showMobilePaymentsCard ? (
+                <MobileOrdersQuickActions
+                  enabledReturns={showMobileReturnsCard}
+                  enabledPayments={showMobilePaymentsCard}
+                  pageOrders={pageSlice}
+                  fromDate={appliedFromDate}
+                  toDate={appliedToDate}
+                  onDone={() => void loadOrders()}
+                />
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -2075,6 +2096,18 @@ export default function SalesOrdersListScreen({
                             onCollectPayment={
                               canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
                                 ? () => openCollectPayment(sale)
+                                : null
+                            }
+                            onEdit={
+                              !routeOrdersOnly &&
+                              isOrderEditActionVisible(sale, rowWorkflow, capabilities)
+                                ? () => openEditOrder(sale)
+                                : null
+                            }
+                            onReturn={
+                              !routeOrdersOnly &&
+                              isCustomerReturnAllowedForOrder(sale, capabilities)
+                                ? () => router.push(`/sales/returns/new?sale_id=${sale.id}`)
                                 : null
                             }
                             onRestore={

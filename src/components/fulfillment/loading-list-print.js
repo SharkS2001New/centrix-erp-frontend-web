@@ -499,26 +499,28 @@ function loadingSheetPrintStyles(generalSettings = null) {
   return `
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
-    html { height: 100%; }
+    html { height: auto; }
     body {
       font-family: ${font};
       color: #000;
-      margin: 20px 28px;
+      margin: 0;
+      padding: 10mm 12mm 32mm 12mm;
       font-size: ${px(12)};
       line-height: 1.35;
       position: relative;
-      min-height: 100%;
+      min-height: 0;
       ${orgPrintInkStyles(generalSettings, "loading_sheet")}
     }
     .page {
       max-width: 900px;
       margin: 0 auto;
-      position: relative;
+      position: static;
       z-index: 1;
     }
     .page-body { }
     ${reportWatermarkCss()}
-    .sheet { position: relative; z-index: 1; }
+    /* Keep sheet static in print — position:relative ancestors break page-break-inside:avoid in Chromium. */
+    .sheet { position: static; z-index: 1; }
     .org-header { text-align: center; margin-bottom: 16px; }
     .org-logo { display: block; margin: 0 auto 10px; max-height: 56px; max-width: 220px; object-fit: contain; }
     .org-name {
@@ -552,16 +554,25 @@ function loadingSheetPrintStyles(generalSettings = null) {
       color: #475569;
       line-height: 1.45;
     }
+    /* Keep each customer order together — never clip mid-order across the page footer. */
     .customer-stop {
-      margin-top: 24px;
+      display: block;
+      width: 100%;
+      margin-top: 0;
+      padding-top: 20px;
+      overflow: visible;
+      break-inside: avoid;
       page-break-inside: avoid;
+      -webkit-column-break-inside: avoid;
     }
-    .customer-stop:first-of-type { margin-top: 0; }
+    .customer-stop:first-of-type { padding-top: 0; }
     .customer-stop-header {
       border-top: 2px solid #333;
       border-bottom: 1px solid #c9c9c9;
       padding: 10px 0 8px;
       margin-bottom: 4px;
+      break-after: avoid;
+      page-break-after: avoid;
     }
     .customer-stop-title {
       margin: 0;
@@ -577,6 +588,11 @@ function loadingSheetPrintStyles(generalSettings = null) {
       color: #475569;
     }
     .customer-stop-table { margin-bottom: 0; }
+    .customer-stop-table thead { display: table-header-group; }
+    .customer-stop-table tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
     .customer-stop-subtotal td {
       padding-top: 10px;
       font-weight: 700;
@@ -588,6 +604,8 @@ function loadingSheetPrintStyles(generalSettings = null) {
       border-top: 2px solid #333;
       font-size: ${px(12)};
       line-height: 1.5;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .trip-summary-title {
       margin: 0 0 8px;
@@ -674,6 +692,8 @@ function loadingSheetPrintStyles(generalSettings = null) {
       margin-left: auto;
       border-top: 1px solid #c9c9c9;
       padding-top: 14px;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .sheet-totals-title {
       margin: 0 0 10px;
@@ -713,6 +733,8 @@ function loadingSheetPrintStyles(generalSettings = null) {
       grid-template-columns: 1fr 1fr;
       gap: 32px;
       margin-top: 36px;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .signatures h3 {
       margin: 0 0 48px;
@@ -741,7 +763,24 @@ function loadingSheetPrintStyles(generalSettings = null) {
     }
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
     @media print {
-      body { margin: 0; font-size: ${px(12, true)}; }
+      body {
+        margin: 0 !important;
+        padding: 10mm 12mm 34mm 12mm !important;
+        font-size: ${px(12, true)};
+      }
+      .page, .sheet { position: static !important; }
+      .customer-stop {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+      .customer-stop-header {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+      }
+      .customer-stop-table tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
       .org-name { font-size: ${px(22, true)}; }
       .title-block .doc-title { font-size: ${px(14, true)}; }
       .title-block .route-name { font-size: ${px(13, true)}; }

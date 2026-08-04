@@ -93,8 +93,9 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
         <p className="mt-1 text-sm text-slate-500">
           SMS and email delivery for{" "}
           <span className="font-medium text-slate-700">{form.organization_name || "this organization"}</span>.
-          Customer alert toggles and templates live under each module — Sales, Finance, Distribution, and
-          Manager approvals. Staff bell notifications are configured under In-app alerts.
+          Customer alert toggles and templates live under each module — Sales (order placed + payment),
+          Finance (payment), Distribution, and Manager approvals. Staff bell notifications are configured
+          under In-app alerts.
         </p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
@@ -109,6 +110,13 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
 
             {activeTab === "sms" ? (
             <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Africa&apos;s Talking (SMS)</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Org admins configure SMS credentials here. Customer order and payment alerts (Sales →
+                  Alerts / Finance → Alerts) use this channel when SMS is enabled.
+                </p>
+              </div>
               <Toggle
                 label="Enable SMS channel"
                 checked={form.sms_enabled}
@@ -116,14 +124,14 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
               />
               {form.sms_enabled ? (
                 <>
-                  <Field label="Username">
+                  <Field label="Africa's Talking username">
                     <input
                       className={inputClassName()}
                       value={form.africas_talking_username}
                       onChange={(e) => setForm((f) => ({ ...f, africas_talking_username: e.target.value }))}
                     />
                   </Field>
-                  <Field label="API key">
+                  <Field label="Africa's Talking API key">
                     <input
                       type="password"
                       className={inputClassName()}

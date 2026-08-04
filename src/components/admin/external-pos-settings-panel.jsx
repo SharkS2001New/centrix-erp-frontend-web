@@ -159,7 +159,7 @@ export function ExternalPosSettingsPanel({
       setThemeTemplate(fromApi.classic_pos_theme_template);
       setThemeColors(fromApi.classic_pos_theme_colors);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load External POS settings");
+      setError(e instanceof ApiError ? e.message : "Failed to load Centrix ERP Themes");
     } finally {
       setLoading(false);
     }
@@ -172,7 +172,6 @@ export function ExternalPosSettingsPanel({
 
   async function handleSave(e) {
     e.preventDefault();
-    if (!hasPosSales) return;
     setSaving(true);
     try {
       const themeId = normalizeClassicPosThemeTemplate(
@@ -182,8 +181,10 @@ export function ExternalPosSettingsPanel({
         platformManaged ? platformForm.classic_pos_theme_colors : themeColors,
       );
       const body = {
-        ...salesOrganizationPayloadFromForm(salesForm, capabilities),
-        // Organization admins own Classic color themes + custom color overrides.
+        ...(hasPosSales
+          ? salesOrganizationPayloadFromForm(salesForm, capabilities)
+          : {}),
+        // Organization admins own ERP color themes + custom color overrides.
         classic_pos_theme_template: themeId,
         classic_pos_theme_colors: colors,
         ...(platformManaged
@@ -214,9 +215,9 @@ export function ExternalPosSettingsPanel({
       setPlatformForm(fromApi);
       setThemeTemplate(fromApi.classic_pos_theme_template);
       setThemeColors(fromApi.classic_pos_theme_colors);
-      setMessage("External POS settings saved.");
+      setMessage("Centrix ERP Themes saved.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save External POS settings");
+      setError(e instanceof ApiError ? e.message : "Failed to save Centrix ERP Themes");
     } finally {
       setSaving(false);
     }
@@ -225,18 +226,17 @@ export function ExternalPosSettingsPanel({
   return (
     <form onSubmit={handleSave}>
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
-        <h2 className="text-lg font-medium text-slate-900">External POS</h2>
+        <h2 className="text-lg font-medium text-slate-900">Centrix ERP Themes</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Classic color themes and cashier terminal preferences for the external POS workspace (/pos).
+          Color palette for the whole ERP — sidebar, panels, buttons, Classic POS, and dialogs. Default
+          is Centrix.
+          {hasPosSales
+            ? " Optional cashier terminal preferences for the external POS workspace (/pos) are below."
+            : ""}
         </p>
 
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
-        ) : !hasPosSales ? (
-          <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            External POS is not enabled for this organization. Ask your platform administrator to enable
-            it under Applications.
-          </p>
         ) : (
           <div className="mt-5 space-y-6">
             {platformManaged ? (
@@ -251,42 +251,45 @@ export function ExternalPosSettingsPanel({
                     setThemeColors(normalizeClassicPosThemeColors(next.classic_pos_theme_colors));
                   }
                 }}
-                posEnabled
+                posEnabled={hasPosSales}
                 showTheme
+                showLayout={hasPosSales}
+                showBehaviourToggles={hasPosSales}
               />
             ) : (
               <>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  <p className="font-medium text-slate-900">POS layout</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Current layout:{" "}
-                    <span className="font-medium">{isClassic ? "Classic" : "Modern"}</span>
-                    {isClassic
-                      ? ". Choose colors below."
-                      : ". Classic color themes apply when the platform sets layout to Classic."}
-                  </p>
-                </div>
-                {isClassic ? (
-                  <ClassicPosThemePicker
-                    value={themeTemplate}
-                    onChange={setThemeTemplate}
-                    colors={themeColors}
-                    onColorsChange={setThemeColors}
-                  />
+                {hasPosSales ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    <p className="font-medium text-slate-900">POS layout</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Current layout:{" "}
+                      <span className="font-medium">{isClassic ? "Classic" : "Modern"}</span>
+                      . Theme colors below apply across the ERP
+                      {isClassic ? " and Classic POS" : ""}. Layout is set by the platform.
+                    </p>
+                  </div>
                 ) : null}
+                <ClassicPosThemePicker
+                  value={themeTemplate}
+                  onChange={setThemeTemplate}
+                  colors={themeColors}
+                  onColorsChange={setThemeColors}
+                />
               </>
             )}
 
-            <ExternalPosDayToDayFields
-              salesForm={salesForm}
-              setSalesForm={setSalesForm}
-              hasCustomers={hasCustomers}
-              posCheckoutEnabled={posCheckoutEnabled}
-            />
+            {hasPosSales ? (
+              <ExternalPosDayToDayFields
+                salesForm={salesForm}
+                setSalesForm={setSalesForm}
+                hasCustomers={hasCustomers}
+                posCheckoutEnabled={posCheckoutEnabled}
+              />
+            ) : null}
 
             <div className="pt-2">
               <PrimaryButton type="submit" disabled={saving}>
-                {saving ? "Saving…" : "Save External POS settings"}
+                {saving ? "Saving…" : "Save Centrix ERP Themes"}
               </PrimaryButton>
             </div>
           </div>

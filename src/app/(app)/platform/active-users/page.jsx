@@ -52,7 +52,7 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
     setBusyId(sessionId);
     try {
       await apiRequest(`/admin/active-sessions/${sessionId}`, { method: "DELETE" });
-      await onRefresh?.();
+      await onRefresh?.(undefined);
       notifySuccess("Session ended");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not end session.");
@@ -72,7 +72,7 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
     setBusyId(`disable-${sessionId}`);
     try {
       await apiRequest(`/admin/active-sessions/${sessionId}/disable-user`, { method: "POST" });
-      await onRefresh?.();
+      await onRefresh?.(undefined);
       notifySuccess("User login disabled");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not disable user.");
@@ -167,23 +167,42 @@ export default function PlatformActiveUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (signal) => {
     setError(null);
     try {
-      const res = await apiRequest("/admin/active-sessions");
+      const res = await apiRequest("/admin/active-sessions", {
+        signal,
+        loading: false,
+        reportIssues: false,
+      });
+      if (signal?.aborted) return;
       setGroups(res.data ?? []);
     } catch (e) {
+      if (signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) return;
+      if (e instanceof Error && /aborted/i.test(e.message)) return;
       setError(e instanceof ApiError ? e.message : "Failed to load active sessions.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
-    const timer = window.setInterval(load, 30000);
-    return () => window.clearInterval(timer);
+    let activeController = null;
+
+    async function tick() {
+      activeController?.abort();
+      activeController = new AbortController();
+      await load(activeController.signal);
+    }
+
+    void tick();
+    const timer = window.setInterval(() => {
+      void tick();
+    }, 30000);
+    return () => {
+      activeController?.abort();
+      window.clearInterval(timer);
+    };
   }, [load]);
 
   const totalSessions = groups.reduce((sum, g) => sum + (g.sessions?.length ?? 0), 0);

@@ -19,7 +19,7 @@ import {
   buildOrderWorkflowTimeline,
   canCancelOrder,
   getOrderWorkflow,
-  isCheckoutCompleteStatus,
+  isCustomerReturnAllowedForOrder,
   isPaymentGatedWorkflowTransition,
   PAYMENT_STEP_KEYS,
   resolveOrderWorkflowActions,
@@ -898,7 +898,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const printLabel = orderDocumentPrintLabel(capabilities?.module_settings, capabilities);
   const showDiscountColumn = shouldShowSalesDiscountColumn(capabilities?.module_settings);
   const createReturnHref =
-    sale?.id && isCheckoutCompleteStatus(sale.status, saleWorkflow, sale.channel ?? "backend")
+    sale?.id && isCustomerReturnAllowedForOrder(sale, capabilities)
       ? `/sales/returns/new?sale_id=${sale.id}`
       : null;
   const totalReturned = useMemo(
@@ -1083,7 +1083,11 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   href={createReturnHref}
                   className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
                 >
-                  Create return
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 14 4 9l5-5" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" />
+                  </svg>
+                  Return items
                 </Link>
               ) : null}
               {isPrintProformaVisible(sale, null, capabilities) ? (

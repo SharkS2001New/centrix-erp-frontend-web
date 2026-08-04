@@ -7,6 +7,13 @@ import {
 } from "@/lib/classic-pos-theme-templates";
 
 describe("classic POS theme color overrides", () => {
+  it("defaults unknown templates to centrix", () => {
+    expect(normalizeClassicPosThemeTemplate(null)).toBe("centrix");
+    expect(normalizeClassicPosThemeTemplate("default")).toBe("centrix");
+    expect(normalizeClassicPosThemeTemplate("nope")).toBe("centrix");
+    expect(normalizeClassicPosThemeTemplate("legacy")).toBe("legacy");
+  });
+
   it("normalizes hex colors", () => {
     expect(normalizeClassicPosHexColor("#BE185D")).toBe("#be185d");
     expect(normalizeClassicPosHexColor("CDB48B")).toBe("#cdb48b");

@@ -152,9 +152,7 @@ import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
   applyClassicPosDocumentTheme,
-  clearClassicPosDocumentTheme,
   classicPosThemeCssVars,
-  CLASSIC_POS_THEME_DEFAULT,
   isDarkClassicPosTheme,
   resolveClassicPosThemeColors,
   resolveClassicPosThemeTemplate,
@@ -801,12 +799,12 @@ export function PosScreen({ standalone = false }) {
   const { user, capabilities, organization, hasPermission, logout } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
   const classicThemeTemplate = useMemo(
-    () => (classicLayout ? resolveClassicPosThemeTemplate(capabilities) : CLASSIC_POS_THEME_DEFAULT),
-    [classicLayout, capabilities],
+    () => resolveClassicPosThemeTemplate(capabilities),
+    [capabilities],
   );
   const classicThemeColors = useMemo(
-    () => (classicLayout ? resolveClassicPosThemeColors(capabilities) : {}),
-    [classicLayout, capabilities],
+    () => resolveClassicPosThemeColors(capabilities),
+    [capabilities],
   );
   const classicThemeVars = useMemo(
     () =>
@@ -2251,19 +2249,16 @@ export function PosScreen({ standalone = false }) {
     cart,
   ]);
 
-  // Classic External POS: scoped theme templates (not global light/dark toggle).
-  // Bridge vars onto documentElement so body-portaled popups (held orders, payment, etc.) match.
+  // Classic External POS: force light (or midnight dark) for the cashier desk.
+  // Org-wide `--theme-*` colors are owned by OrgThemeBridge — do not clear them on leave.
   useEffect(() => {
-    if (!classicLayout) {
-      clearClassicPosDocumentTheme();
-      return undefined;
-    }
+    if (!classicLayout) return undefined;
     const previous = getTheme();
     const forceLight = !isDarkClassicPosTheme(classicThemeTemplate);
     if (forceLight) applyTheme("light");
     applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
     return () => {
-      clearClassicPosDocumentTheme();
+      applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
       if (forceLight) applyTheme(previous);
     };
   }, [classicLayout, classicThemeTemplate, classicThemeColors]);

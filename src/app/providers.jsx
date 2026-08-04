@@ -7,21 +7,24 @@ import { PosSessionProvider } from "@/contexts/pos-session-context";
 import { ConfirmProvider } from "@/contexts/confirm-context";
 import { AppToaster } from "@/components/shared/app-toaster";
 import { NotificationRealtimeProvider } from "@/components/realtime/notification-realtime-provider";
+import { OrgThemeBridge } from "@/components/layout/org-theme-bridge";
 
 export function Providers({ children }) {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <LockScreenProvider>
-          <PosSessionProvider>
-            <ConfirmProvider>
-              <NotificationRealtimeProvider>
-                {children}
-                <AppToaster />
-              </NotificationRealtimeProvider>
-            </ConfirmProvider>
-          </PosSessionProvider>
-        </LockScreenProvider>
+        <OrgThemeBridge>
+          <LockScreenProvider>
+            <PosSessionProvider>
+              <ConfirmProvider>
+                <NotificationRealtimeProvider>
+                  {children}
+                  <AppToaster />
+                </NotificationRealtimeProvider>
+              </ConfirmProvider>
+            </PosSessionProvider>
+          </LockScreenProvider>
+        </OrgThemeBridge>
       </AuthProvider>
     </ThemeProvider>
   );

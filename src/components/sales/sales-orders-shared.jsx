@@ -386,6 +386,8 @@ export function buildOrderContextMenuItems({
   onView,
   onEdit,
   canEdit = false,
+  onReturn,
+  canReturn = false,
   onPrintThermal,
   onPrintA4,
   onPrintProforma,
@@ -416,6 +418,16 @@ export function buildOrderContextMenuItems({
       icon: "edit",
       disabled: busy,
       onClick: onEdit,
+    });
+  }
+  if (canReturn && onReturn && sale?.status !== "cancelled" && sale?.status !== "expired") {
+    items.push({
+      key: "return",
+      label: "Return items",
+      processingLabel: "Opening return…",
+      icon: "return",
+      disabled: busy,
+      onClick: onReturn,
     });
   }
 
@@ -589,6 +601,14 @@ function ContextMenuIcon({ name }) {
       </svg>
     );
   }
+  if (name === "return") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 14 4 9l5-5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" />
+      </svg>
+    );
+  }
   if (name === "advance") {
     return (
       <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -751,6 +771,24 @@ function MoreIcon() {
   );
 }
 
+function EditRowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function ReturnRowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 14 4 9l5-5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" />
+    </svg>
+  );
+}
+
 function CollectPaymentIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -761,18 +799,55 @@ function CollectPaymentIcon() {
   );
 }
 
+const ROW_QUICK_BTN_CLASS =
+  "inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50";
+
 export function OrderRowActions({
   onView,
   onPrint,
   onCollectPayment,
   onRestore = null,
   restoreLabel = "Restore order",
+  onEdit = null,
+  onReturn = null,
   onOpenMenu,
   busy = false,
   printAriaLabel = "Print",
 }) {
   return (
     <div className="flex items-center justify-end gap-0.5">
+      {onReturn ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation();
+            onReturn();
+          }}
+          className={`${ROW_QUICK_BTN_CLASS} text-amber-800 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40`}
+          aria-label="Return items"
+          title="Return items from this order"
+        >
+          <ReturnRowIcon />
+          <span>Return</span>
+        </button>
+      ) : null}
+      {onEdit ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit();
+          }}
+          className={`${ROW_QUICK_BTN_CLASS} text-[var(--theme-primary)] hover:bg-[color-mix(in_srgb,var(--theme-primary)_12%,transparent)]`}
+          aria-label="Edit order"
+          title="Edit order"
+        >
+          <EditRowIcon />
+          <span>Edit</span>
+        </button>
+      ) : null}
       {onCollectPayment ? (
         <button
           type="button"
@@ -1007,6 +1082,8 @@ export function OrderListTableRow({
   onView,
   onOpenActionsMenu,
   onCollectPayment = null,
+  onEdit = null,
+  onReturn = null,
   actionBusy = false,
   printAriaLabel = "Print",
   showOrderColumn = true,
@@ -1262,6 +1339,8 @@ export function OrderListTableRow({
             onView={onView}
             onPrint={onPrint}
             onCollectPayment={onCollectPayment}
+            onEdit={onEdit}
+            onReturn={onReturn}
             onRestore={onRestore}
             restoreLabel={restoreLabel ?? "Restore order"}
             onOpenMenu={onOpenActionsMenu}

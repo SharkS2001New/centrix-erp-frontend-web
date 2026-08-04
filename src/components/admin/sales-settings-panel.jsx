@@ -20,10 +20,10 @@ import {
 import { getSalesOrderQueueWorkflow } from "@/lib/order-workflow";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { SalesOrderPlacedAlerts } from "@/components/admin/customer-notification-fields";
+import { SalesCustomerOrderAlerts } from "@/components/admin/customer-notification-fields";
 import {
   notificationsFormFromApi,
-  salesOrderAlertPayloadFromForm,
+  salesCustomerAlertsPayloadFromForm,
 } from "@/lib/notifications-settings";
 
 const SALES_SETTINGS_TABS = [
@@ -497,7 +497,7 @@ function TillsCheckoutSettingsTab({
         {hasPosSales ? (
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
             External POS till close, barcode scanner, customer prompts, and credit checkout are under{" "}
-            <strong>Organization settings → External POS</strong>.
+            <strong>Organization settings → Centrix ERP Themes</strong>.
           </p>
         ) : null}
       </div>
@@ -568,7 +568,7 @@ export function SalesSettingsPanel({
         }),
         apiRequest(settingsPath("notifications"), {
           method: "PATCH",
-          body: salesOrderAlertPayloadFromForm(alertForm),
+          body: salesCustomerAlertsPayloadFromForm(alertForm),
         }),
       ]);
       const caps = (await afterSave?.()) ?? capabilities;
@@ -593,8 +593,8 @@ export function SalesSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Sales settings</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Day-to-day pricing, payment recording, and backoffice till preferences. External POS layout,
-          theme colors, and cashier terminal options are under the External POS tab.
+          Day-to-day pricing, payment recording, and backoffice till preferences. ERP color themes,
+          External POS layout, and cashier terminal options are under the Centrix ERP Themes tab.
         </p>
 
         {loading ? (
@@ -651,7 +651,7 @@ export function SalesSettingsPanel({
             ) : null}
 
             {activeTab === "alerts" ? (
-              <SalesOrderPlacedAlerts form={alertForm} setForm={setAlertForm} />
+              <SalesCustomerOrderAlerts form={alertForm} setForm={setAlertForm} />
             ) : null}
           </div>
         )}

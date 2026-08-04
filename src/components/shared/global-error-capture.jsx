@@ -38,6 +38,11 @@ function rejectionMessage(reason) {
   return "Unhandled promise rejection";
 }
 
+function isBenignNetworkFailure(reason) {
+  const message = reason instanceof Error ? reason.message : String(reason ?? "");
+  return /failed to fetch|networkerror|load failed|network request failed/i.test(message);
+}
+
 export function GlobalErrorCapture() {
   useEffect(() => {
     function onError(event) {
@@ -45,6 +50,9 @@ export function GlobalErrorCapture() {
         return;
       }
       const message = event.error instanceof Error ? event.error.message : event.message;
+      if (isBenignNetworkFailure(message)) {
+        return;
+      }
       void reportUnhandledError(message, {
         pageUrl: window.location.pathname,
         source: event.filename,
@@ -56,6 +64,12 @@ export function GlobalErrorCapture() {
     function onRejection(event) {
       const reason = event.reason;
       if (isAbortError(reason)) {
+        event.preventDefault?.();
+        return;
+      }
+      // Transient connectivity blips are already surfaced by apiRequest when caught;
+      // don't open a system-issue prompt for every Failed to fetch.
+      if (isBenignNetworkFailure(reason)) {
         event.preventDefault?.();
         return;
       }

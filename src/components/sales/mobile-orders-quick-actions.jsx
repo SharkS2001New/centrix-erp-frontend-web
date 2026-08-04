@@ -1,0 +1,601 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { apiRequest, ApiError } from "@/lib/api";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { formatReceiptNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { saleBalanceDue } from "@/lib/order-workflow";
+import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+
+const CARD_CLASS =
+  "flex min-w-[9.5rem] flex-col gap-0.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const PRIMARY_BTN =
+  "inline-flex items-center justify-center rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50";
+
+function formatWhen(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function ModalShell({ open, title, onClose, children, footer, busy = false, widthClass = "max-w-lg" }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e) {
+      if (e.key === "Escape" && !busy) onClose?.();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onClose, open]);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose?.();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`theme-panel flex max-h-[90vh] w-full ${widthClass} flex-col overflow-hidden rounded-xl border shadow-xl`}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm">{children}</div>
+        {footer ? (
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function unpaidOrdersOnPage(orders) {
+  return (orders ?? []).filter((sale) => {
+    if (!sale?.id) return false;
+    if (String(sale.status ?? "").toLowerCase() === "cancelled") return false;
+    return saleBalanceDue(sale) > 0.009;
+  });
+}
+
+function returnItemSummary(row) {
+  const lines = Array.isArray(row?.lines) ? row.lines : [];
+  return lines.map((l) => `${l.product_code || "?"} × ${l.return_qty}`).join(", ");
+}
+
+function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" }) {
+  const [tab, setTab] = useState("performed");
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [performed, setPerformed] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (fromDate) qs.set("from_date", fromDate);
+      if (toDate) qs.set("to_date", toDate);
+      const query = qs.toString() ? `?${qs.toString()}` : "";
+
+      const [performedRes, pendingRes] = await Promise.all([
+        apiRequest(`/sales/mobile-orders/performed-returns${query}`, { loading: false }),
+        apiRequest("/sales/mobile-orders/pending-returns", { loading: false }),
+      ]);
+      const performedRows = Array.isArray(performedRes?.data) ? performedRes.data : [];
+      const pendingRows = Array.isArray(pendingRes?.data) ? pendingRes.data : [];
+      setPerformed(performedRows);
+      setPending(pendingRows);
+      setSelected(new Set(pendingRows.map((r) => r.id)));
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load returns.");
+      setPerformed([]);
+      setPending([]);
+      setSelected(new Set());
+    } finally {
+      setLoading(false);
+    }
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    if (!open) return;
+    setTab("performed");
+    void load();
+  }, [load, open]);
+
+  const toggle = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const approve = async () => {
+    const ids = [...selected];
+    if (!ids.length) {
+      notifyError("Select at least one return to approve.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await apiRequest("/sales/mobile-orders/approve-returns", {
+        method: "POST",
+        body: { return_ids: ids },
+        loading: false,
+      });
+      const count = Number(res?.approved_count ?? 0);
+      const errs = Array.isArray(res?.errors) ? res.errors : [];
+      if (count > 0) {
+        notifySuccess(
+          count === 1
+            ? "1 return approved — stock restocked."
+            : `${count} returns approved — stock restocked.`,
+        );
+      }
+      if (errs.length) {
+        notifyError(errs.map((e) => e.message).filter(Boolean).join(" · ") || "Some returns failed.");
+      }
+      onApproved?.();
+      await load();
+      setTab("performed");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to approve returns.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dateHint =
+    fromDate && toDate
+      ? fromDate === toDate
+        ? fromDate
+        : `${fromDate} → ${toDate}`
+      : fromDate || toDate || "all dates";
+
+  return (
+    <ModalShell
+      open={open}
+      title="Returns"
+      onClose={onClose}
+      busy={busy}
+      widthClass="max-w-2xl"
+      footer={
+        tab === "pending" ? (
+          <>
+            <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
+              Close
+            </button>
+            <button
+              type="button"
+              disabled={busy || loading || selected.size === 0}
+              onClick={() => void approve()}
+              className={PRIMARY_BTN}
+            >
+              {busy ? "Approving…" : "Approve Returns"}
+            </button>
+          </>
+        ) : (
+          <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
+            Close
+          </button>
+        )
+      }
+    >
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setTab("performed")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+            tab === "performed"
+              ? "bg-[var(--theme-primary)] text-white"
+              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+          }`}
+        >
+          View returns performed
+          {!loading ? ` (${performed.length})` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("pending")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+            tab === "pending"
+              ? "bg-[var(--theme-primary)] text-white"
+              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+          }`}
+        >
+          Pending approve
+          {!loading ? ` (${pending.length})` : ""}
+        </button>
+      </div>
+
+      {tab === "performed" ? (
+        <>
+          <p className="mb-3 text-slate-500">Approved mobile returns for {dateHint}.</p>
+          {loading ? (
+            <p className="text-slate-500">Loading returns…</p>
+          ) : performed.length === 0 ? (
+            <p className="text-slate-500">No returns performed in this date range.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Return</th>
+                    <th className="px-3 py-2">Order</th>
+                    <th className="px-3 py-2">Customer</th>
+                    <th className="px-3 py-2">Items</th>
+                    <th className="px-3 py-2">Approved</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {performed.map((row) => {
+                    const itemSummary = returnItemSummary(row);
+                    return (
+                      <tr key={row.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2 font-medium text-slate-900">
+                          {row.return_no ?? `#${row.id}`}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {row.sale ? formatReceiptNumber(row.sale) : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {saleCustomerLabel(row.sale ?? row)}
+                        </td>
+                        <td className="max-w-[12rem] truncate px-3 py-2 text-slate-600" title={itemSummary}>
+                          {itemSummary || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                          {formatWhen(row.approved_at)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                          {formatSaleKes(row.total_amount)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : loading ? (
+        <p className="text-slate-500">Loading pending returns…</p>
+      ) : pending.length === 0 ? (
+        <p className="text-slate-500">No pending mobile returns to approve.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="w-10 px-3 py-2" />
+                <th className="px-3 py-2">Return</th>
+                <th className="px-3 py-2">Order</th>
+                <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2">Items</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending.map((row) => {
+                const itemSummary = returnItemSummary(row);
+                return (
+                  <tr key={row.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(row.id)}
+                        onChange={() => toggle(row.id)}
+                        disabled={busy}
+                        aria-label={`Select return ${row.return_no ?? row.id}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2 font-medium text-slate-900">
+                      {row.return_no ?? `#${row.id}`}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {row.sale ? formatReceiptNumber(row.sale) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {saleCustomerLabel(row.sale ?? row)}
+                    </td>
+                    <td className="max-w-[12rem] truncate px-3 py-2 text-slate-600" title={itemSummary}>
+                      {itemSummary || "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                      {formatSaleKes(row.total_amount)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+function PaymentsChoiceModal({ open, onClose, unpaidCount, onMarkAll, onSelectOrders }) {
+  return (
+    <ModalShell
+      open={open}
+      title="Mark orders as paid"
+      onClose={onClose}
+      footer={
+        <button type="button" className={SECONDARY_BTN_CLASS} onClick={onClose}>
+          Cancel
+        </button>
+      }
+    >
+      <p className="mb-4 text-slate-600">
+        {unpaidCount === 0
+          ? "There are no unpaid orders on this page."
+          : unpaidCount === 1
+            ? "1 unpaid order on this page."
+            : `${unpaidCount} unpaid orders on this page.`}
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          disabled={unpaidCount === 0}
+          onClick={onMarkAll}
+          className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
+        >
+          <span className="text-sm font-semibold text-slate-900">Mark all as paid</span>
+          <span className="text-xs text-slate-500">Convert every unpaid order on this page</span>
+        </button>
+        <button
+          type="button"
+          disabled={unpaidCount === 0}
+          onClick={onSelectOrders}
+          className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
+        >
+          <span className="text-sm font-semibold text-slate-900">Select orders</span>
+          <span className="text-xs text-slate-500">Choose which unpaid orders to mark paid</span>
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function SelectPaidModal({ open, orders, onClose, onConfirm }) {
+  const [selected, setSelected] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setSelected(new Set((orders ?? []).map((o) => o.id)));
+      setBusy(false);
+    }
+  }, [open, orders]);
+
+  const toggle = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const confirm = async () => {
+    const ids = [...selected];
+    if (!ids.length) {
+      notifyError("Select at least one order.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await onConfirm?.(ids);
+      onClose?.();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ModalShell
+      open={open}
+      title="Select orders to mark as paid"
+      onClose={onClose}
+      busy={busy}
+      widthClass="max-w-xl"
+      footer={
+        <>
+          <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy || selected.size === 0}
+            onClick={() => void confirm()}
+            className={PRIMARY_BTN}
+          >
+            {busy ? "Updating…" : "Mark selected as paid"}
+          </button>
+        </>
+      }
+    >
+      {(orders ?? []).length === 0 ? (
+        <p className="text-slate-500">No unpaid orders on this page.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="w-10 px-3 py-2" />
+                <th className="px-3 py-2">Order</th>
+                <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(orders ?? []).map((sale) => (
+                <tr key={sale.id} className="border-t border-slate-100">
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(sale.id)}
+                      onChange={() => toggle(sale.id)}
+                      disabled={busy}
+                      aria-label={`Select order ${formatReceiptNumber(sale)}`}
+                    />
+                  </td>
+                  <td className="px-3 py-2 font-medium text-slate-900">{formatReceiptNumber(sale)}</td>
+                  <td className="px-3 py-2 text-slate-700">{saleCustomerLabel(sale)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                    {formatSaleKes(sale.order_total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+/**
+ * Platform-gated Returns + Payments cards for the Mobile orders queue.
+ * Off by default; enable per org under Platform → Sales.
+ */
+export function MobileOrdersQuickActions({
+  enabledReturns = false,
+  enabledPayments = false,
+  pageOrders = [],
+  fromDate = "",
+  toDate = "",
+  onDone,
+}) {
+  const [returnsOpen, setReturnsOpen] = useState(false);
+  const [paymentsChoiceOpen, setPaymentsChoiceOpen] = useState(false);
+  const [selectPaidOpen, setSelectPaidOpen] = useState(false);
+  const [markBusy, setMarkBusy] = useState(false);
+
+  const unpaid = useMemo(() => unpaidOrdersOnPage(pageOrders), [pageOrders]);
+
+  if (!enabledReturns && !enabledPayments) return null;
+
+  const markPaid = async (saleIds) => {
+    if (!saleIds?.length) return;
+    setMarkBusy(true);
+    try {
+      const res = await apiRequest("/sales/mobile-orders/mark-paid", {
+        method: "POST",
+        body: { sale_ids: saleIds },
+        loading: false,
+      });
+      const count = Number(res?.updated_count ?? 0);
+      const errs = Array.isArray(res?.errors) ? res.errors : [];
+      if (count > 0) {
+        notifySuccess(count === 1 ? "1 order marked as paid." : `${count} orders marked as paid.`);
+      } else if (!errs.length) {
+        notifySuccess("No orders needed updating.");
+      }
+      if (errs.length) {
+        notifyError(errs.map((e) => e.message).filter(Boolean).join(" · ") || "Some orders failed.");
+      }
+      onDone?.();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to mark orders as paid.");
+      throw e;
+    } finally {
+      setMarkBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex flex-wrap items-stretch gap-2">
+        {enabledReturns ? (
+          <button type="button" className={CARD_CLASS} onClick={() => setReturnsOpen(true)}>
+            <span className="text-sm font-semibold text-slate-900">Returns</span>
+            <span className="text-xs text-slate-500">View returns performed</span>
+          </button>
+        ) : null}
+        {enabledPayments ? (
+          <button
+            type="button"
+            className={CARD_CLASS}
+            disabled={markBusy}
+            onClick={() => setPaymentsChoiceOpen(true)}
+          >
+            <span className="text-sm font-semibold text-slate-900">Payments</span>
+            <span className="text-xs text-slate-500">
+              {unpaid.length === 0
+                ? "No unpaid on this page"
+                : unpaid.length === 1
+                  ? "1 unpaid · mark paid"
+                  : `${unpaid.length} unpaid · mark paid`}
+            </span>
+          </button>
+        ) : null}
+      </div>
+
+      <ReturnsModal
+        open={returnsOpen}
+        onClose={() => setReturnsOpen(false)}
+        onApproved={onDone}
+        fromDate={fromDate}
+        toDate={toDate}
+      />
+
+      <PaymentsChoiceModal
+        open={paymentsChoiceOpen}
+        unpaidCount={unpaid.length}
+        onClose={() => setPaymentsChoiceOpen(false)}
+        onMarkAll={() => {
+          setPaymentsChoiceOpen(false);
+          void markPaid(unpaid.map((s) => s.id)).catch(() => {});
+        }}
+        onSelectOrders={() => {
+          setPaymentsChoiceOpen(false);
+          setSelectPaidOpen(true);
+        }}
+      />
+
+      <SelectPaidModal
+        open={selectPaidOpen}
+        orders={unpaid}
+        onClose={() => setSelectPaidOpen(false)}
+        onConfirm={markPaid}
+      />
+    </>
+  );
+}

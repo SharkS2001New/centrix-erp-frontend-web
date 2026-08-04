@@ -60,6 +60,8 @@ const SALES_DEFAULTS = {
   backoffice_order_type_mode: "toggle",
   pos_order_type_mode: "normal",
   enable_mobile_orders: true,
+  enable_mobile_orders_returns_card: false,
+  enable_mobile_orders_payments_card: false,
   mobile_enable_checkout_location_verification: false,
   mobile_allow_offline_orders: false,
   mobile_checkout_location_radius_metres: 5,
@@ -392,6 +394,18 @@ export function isOrgMobileSalesEnabled(capabilities) {
 /** Whether Mobile Orders appears in the sales sidebar and queue routes. */
 export function isMobileOrdersEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).enable_mobile_orders);
+}
+
+/** Platform-gated Returns shortcut on the Mobile orders queue. */
+export function isMobileOrdersReturnsCardEnabled(capabilities) {
+  if (!isOrgMobileSalesEnabled(capabilities)) return false;
+  return Boolean(mergeSalesSettings(capabilities?.module_settings).enable_mobile_orders_returns_card);
+}
+
+/** Platform-gated Payments shortcut on the Mobile orders queue. */
+export function isMobileOrdersPaymentsCardEnabled(capabilities) {
+  if (!isOrgMobileSalesEnabled(capabilities)) return false;
+  return Boolean(mergeSalesSettings(capabilities?.module_settings).enable_mobile_orders_payments_card);
 }
 
 /** Mobile checkout GPS verification settings for the field sales app. */

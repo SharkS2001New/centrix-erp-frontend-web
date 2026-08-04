@@ -16,9 +16,12 @@ export const NOTIFICATIONS_DEFAULTS = {
   notify_on_dispatch: false,
   notify_on_delivery: false,
   notify_on_order_placed: false,
-  order_placed_scope: "all",
+  order_placed_scope: ["all"],
   notify_on_debtor_payment: false,
-  debtor_payment_scope: "debtors",
+  debtor_payment_scope: ["debtors"],
+  notify_on_debt_reminder: false,
+  debt_reminder_after_days: 7,
+  debt_reminder_scope: ["debtors"],
   dispatch_sms_template: "Your order {order_num} is out for delivery on route {route_name}.",
   delivery_sms_template: "Your order {order_num} was delivered. Thank you for your business.",
   dispatch_email_template: "",
@@ -29,6 +32,9 @@ export const NOTIFICATIONS_DEFAULTS = {
   debtor_payment_sms_template:
     "Payment of KES {amount} received for order {order_num}. Balance due: KES {balance_due}.",
   debtor_payment_email_template: "",
+  debt_reminder_sms_template:
+    "Reminder: order {order_num} still has an unpaid balance of KES {balance_due}. Please arrange payment. Thank you.",
+  debt_reminder_email_template: "",
   notify_on_approval_request: false,
   notify_on_approval_outcome: false,
   approval_request_email_subject: "Approval required: {title}",
@@ -132,9 +138,10 @@ export const IN_APP_ALERT_GROUPS = [
 ];
 
 export const NOTIFICATION_SCOPE_OPTIONS = [
-  { value: "all", label: "All orders (customer must have phone and/or email)" },
-  { value: "debtors", label: "Debtor / credit orders only" },
-  { value: "route_orders", label: "Route orders only" },
+  { value: "all", label: "All orders", description: "Every order with a customer phone and/or email" },
+  { value: "mobile", label: "Mobile orders", description: "Orders placed from the mobile field sales app" },
+  { value: "debtors", label: "Debtors / credit", description: "Credit sales and customers with outstanding balance" },
+  { value: "route_orders", label: "Route orders", description: "Orders assigned to a delivery route" },
 ];
 
 export const SMTP_ENCRYPTION_OPTIONS = [
@@ -142,6 +149,34 @@ export const SMTP_ENCRYPTION_OPTIONS = [
   { value: "ssl", label: "SSL (465)" },
   { value: "none", label: "None" },
 ];
+
+/** Normalize legacy string scope or array into a unique allowed list. */
+export function normalizeNotificationScopes(value, fallback = "all") {
+  const allowed = new Set(NOTIFICATION_SCOPE_OPTIONS.map((o) => o.value));
+  const raw = Array.isArray(value) ? value : value != null && value !== "" ? [value] : [];
+  const scopes = [
+    ...new Set(
+      raw
+        .map((v) => String(v ?? "").toLowerCase().trim())
+        .filter((v) => allowed.has(v)),
+    ),
+  ];
+  if (scopes.includes("all")) return ["all"];
+  if (scopes.length) return scopes;
+  return allowed.has(fallback) ? [fallback] : ["all"];
+}
+
+export function toggleNotificationScope(current, value, checked, fallback = "all") {
+  const scopes = new Set(normalizeNotificationScopes(current, fallback));
+  if (value === "all") {
+    return checked ? ["all"] : normalizeNotificationScopes([], fallback);
+  }
+  scopes.delete("all");
+  if (checked) scopes.add(value);
+  else scopes.delete(value);
+  const next = [...scopes];
+  return next.length ? next : normalizeNotificationScopes([], fallback);
+}
 
 export function mergeNotificationsSettings(moduleSettings) {
   return { ...NOTIFICATIONS_DEFAULTS, ...(moduleSettings?.notifications ?? {}) };
@@ -170,9 +205,15 @@ export function notificationsFormFromApi(res) {
     notify_on_dispatch: Boolean(notifications.notify_on_dispatch),
     notify_on_delivery: Boolean(notifications.notify_on_delivery),
     notify_on_order_placed: Boolean(notifications.notify_on_order_placed),
-    order_placed_scope: notifications.order_placed_scope || "all",
+    order_placed_scope: normalizeNotificationScopes(notifications.order_placed_scope, "all"),
     notify_on_debtor_payment: Boolean(notifications.notify_on_debtor_payment),
-    debtor_payment_scope: notifications.debtor_payment_scope || "debtors",
+    debtor_payment_scope: normalizeNotificationScopes(notifications.debtor_payment_scope, "debtors"),
+    notify_on_debt_reminder: Boolean(notifications.notify_on_debt_reminder),
+    debt_reminder_after_days: Math.max(
+      1,
+      Math.min(365, Number(notifications.debt_reminder_after_days) || 7),
+    ),
+    debt_reminder_scope: normalizeNotificationScopes(notifications.debt_reminder_scope, "debtors"),
     dispatch_sms_template: notifications.dispatch_sms_template ?? NOTIFICATIONS_DEFAULTS.dispatch_sms_template,
     delivery_sms_template: notifications.delivery_sms_template ?? NOTIFICATIONS_DEFAULTS.delivery_sms_template,
     dispatch_email_template: notifications.dispatch_email_template ?? "",
@@ -183,6 +224,9 @@ export function notificationsFormFromApi(res) {
     debtor_payment_sms_template:
       notifications.debtor_payment_sms_template ?? NOTIFICATIONS_DEFAULTS.debtor_payment_sms_template,
     debtor_payment_email_template: notifications.debtor_payment_email_template ?? "",
+    debt_reminder_sms_template:
+      notifications.debt_reminder_sms_template ?? NOTIFICATIONS_DEFAULTS.debt_reminder_sms_template,
+    debt_reminder_email_template: notifications.debt_reminder_email_template ?? "",
     notify_on_approval_request: Boolean(notifications.notify_on_approval_request),
     notify_on_approval_outcome: Boolean(notifications.notify_on_approval_outcome),
     approval_request_email_subject:
@@ -230,18 +274,32 @@ export function notificationChannelsPayloadFromForm(form) {
 export function salesOrderAlertPayloadFromForm(form) {
   return {
     notify_on_order_placed: Boolean(form.notify_on_order_placed),
-    order_placed_scope: form.order_placed_scope || "all",
+    order_placed_scope: normalizeNotificationScopes(form.order_placed_scope, "all"),
     order_placed_sms_template: form.order_placed_sms_template?.trim() ?? "",
     order_placed_email_template: form.order_placed_email_template?.trim() ?? "",
   };
 }
 
 export function financeDebtorAlertPayloadFromForm(form) {
+  const days = Number(form.debt_reminder_after_days);
   return {
     notify_on_debtor_payment: Boolean(form.notify_on_debtor_payment),
-    debtor_payment_scope: form.debtor_payment_scope || "debtors",
+    debtor_payment_scope: normalizeNotificationScopes(form.debtor_payment_scope, "debtors"),
     debtor_payment_sms_template: form.debtor_payment_sms_template?.trim() ?? "",
     debtor_payment_email_template: form.debtor_payment_email_template?.trim() ?? "",
+    notify_on_debt_reminder: Boolean(form.notify_on_debt_reminder),
+    debt_reminder_after_days: Number.isFinite(days) ? Math.max(1, Math.min(365, Math.round(days))) : 7,
+    debt_reminder_scope: normalizeNotificationScopes(form.debt_reminder_scope, "debtors"),
+    debt_reminder_sms_template: form.debt_reminder_sms_template?.trim() ?? "",
+    debt_reminder_email_template: form.debt_reminder_email_template?.trim() ?? "",
+  };
+}
+
+/** Order placed + payment alerts saved together from Sales → Alerts. */
+export function salesCustomerAlertsPayloadFromForm(form) {
+  return {
+    ...salesOrderAlertPayloadFromForm(form),
+    ...financeDebtorAlertPayloadFromForm(form),
   };
 }
 

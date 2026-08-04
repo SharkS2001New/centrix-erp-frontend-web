@@ -9,7 +9,6 @@ import {
   isTillFloatWorkflowEnabled,
   loadingListNavHref,
 } from "@/lib/sales-settings";
-import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isNavItemVisible, isNavSectionVisible, navSections } from "@/lib/nav-config";
 import { withNavItemIcon } from "@/lib/nav-item-icons";
 import { formatNavLabel } from "@/lib/nav-label-format";
@@ -43,9 +42,9 @@ export function buildWorkspaceNavSections({
 }) {
   const requireTillFloat = isTillFloatWorkflowEnabled(capabilities?.module_settings);
   const workflow = getSalesOrderQueueWorkflow(capabilities, "backend");
-  const includeMobile =
-    isOrgMobileSalesEnabled(capabilities) &&
-    userHasMobileChannel(navContext.user?.login_channels);
+  // Backoffice Mobile Orders is permission + org-mobile gated — not login_channels.
+  // The mobile login channel is only for the field-sales / driver apps.
+  const includeMobile = isOrgMobileSalesEnabled(capabilities);
   const salesOrderNavItems = [
     ...salesOrderSidebarNavItems(workflow, { excludeMobile: true }),
     ...salesTerminalOrderQueueNavItems({

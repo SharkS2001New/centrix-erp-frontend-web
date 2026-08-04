@@ -326,6 +326,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     show_checkout_on_create_order: defaultBackofficeCheckoutOnCreate(deploymentProfile),
     show_pos_checkout_on_create: true,
     enable_mobile_orders: mobileProfiles.has(deploymentProfile),
+    enable_mobile_orders_returns_card: false,
+    enable_mobile_orders_payments_card: false,
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
     mobile_enable_driver_attendance: false,
@@ -390,6 +392,8 @@ export function salesPlatformFromApi(apiPayload) {
     show_checkout_on_create_order: Boolean(apiPayload.show_checkout_on_create_order ?? true),
     show_pos_checkout_on_create: posCheckout,
     enable_mobile_orders: apiPayload.enable_mobile_orders !== false,
+    enable_mobile_orders_returns_card: Boolean(apiPayload.enable_mobile_orders_returns_card),
+    enable_mobile_orders_payments_card: Boolean(apiPayload.enable_mobile_orders_payments_card),
     mobile_enable_field_attendance: Boolean(apiPayload.mobile_enable_field_attendance),
     mobile_enable_driver_app: apiPayload.mobile_enable_driver_app !== false,
     mobile_enable_driver_attendance: Boolean(apiPayload.mobile_enable_driver_attendance),
@@ -557,6 +561,21 @@ export function OrganizationPlatformSalesSettings({
                 checked={Boolean(salesPlatform?.mobile_enable_driver_attendance)}
                 onChange={(v) => patch({ mobile_enable_driver_attendance: v })}
                 disabled={salesPlatform?.mobile_enable_driver_app === false}
+              />
+              <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Mobile orders queue shortcuts
+              </p>
+              <Toggle
+                label="Returns card on Mobile orders"
+                description="Off by default. Shows a Returns card beside search on Sales → Mobile orders. View returns performed for the selected dates, or approve pending returns."
+                checked={Boolean(salesPlatform?.enable_mobile_orders_returns_card)}
+                onChange={(v) => patch({ enable_mobile_orders_returns_card: v })}
+              />
+              <Toggle
+                label="Payments card on Mobile orders"
+                description="Off by default. Shows a Payments card beside search on Sales → Mobile orders. Mark all unpaid orders on the page as paid, or select specific orders."
+                checked={Boolean(salesPlatform?.enable_mobile_orders_payments_card)}
+                onChange={(v) => patch({ enable_mobile_orders_payments_card: v })}
               />
             </div>
           ) : null}
@@ -1354,8 +1373,9 @@ export function OrganizationModuleToggles({
                   <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                   {workspace.id === "pos" && enabled ? (
                     <span className="theme-subtext mt-1 block text-xs">
-                      Layout, cashier behaviour, and Classic color themes are managed by the organization
-                      under Administration → Organization settings → External POS.
+                      Layout and cashier behaviour are under Administration → Centrix ERP Themes
+                      (Organization settings). ERP color themes apply organization-wide from that same
+                      screen.
                     </span>
                   ) : null}
                   {isDistribution ? (

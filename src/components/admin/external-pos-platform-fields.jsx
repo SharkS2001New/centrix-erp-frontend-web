@@ -98,13 +98,13 @@ function ClassicPosColorField({ field, value, fallback, onChange }) {
   );
 }
 
-/** Classic External POS color template picker — editable by organization admins. */
+/** Centrix ERP color template picker — applies across the whole ERP (and Classic POS). */
 export function ClassicPosThemePicker({
   value,
   onChange,
   colors = {},
   onColorsChange,
-  description = "Workspace, Find dropdown, held orders, hold/save, payment, and other popups use this palette.",
+  description = "Sidebar, panels, buttons, Classic POS, and dialogs use this palette. Default is Centrix.",
 }) {
   const selectedId = normalizeClassicPosThemeTemplate(value);
   const overrides = normalizeClassicPosThemeColors(colors);
@@ -122,7 +122,7 @@ export function ClassicPosThemePicker({
   return (
     <div className="space-y-5">
       <div>
-        <p className="mb-1 text-sm font-medium text-slate-700">Classic POS colors</p>
+        <p className="mb-1 text-sm font-medium text-slate-700">Centrix ERP Themes</p>
         {description ? <p className="mb-3 text-xs text-slate-500">{description}</p> : null}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {CLASSIC_POS_THEME_TEMPLATES.map((theme) => {
@@ -195,8 +195,8 @@ export function ClassicPosThemePicker({
 }
 
 /**
- * External POS controls for platform org configuration / platform-managed settings.
- * Classic colors are primarily owned by the organization admin in Organization settings.
+ * External POS / Centrix ERP Themes controls for platform org configuration.
+ * Themes apply org-wide; layout and cashier behaviour require External POS.
  */
 export function ExternalPosPlatformFields({
   value,
@@ -210,21 +210,29 @@ export function ExternalPosPlatformFields({
     onChange?.({ ...(value ?? {}), ...partial });
   }
 
-  if (!posEnabled) {
-    return (
-      <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        Enable the <strong>External POS</strong> application under Applications to configure layout and
-        cashier behaviour for <code className="text-xs">/pos</code>.
-      </p>
-    );
-  }
-
   const showPosCheckout = value?.show_pos_checkout_on_create !== false;
   const layout = value?.external_pos_layout === "classic" ? "classic" : "modern";
 
   return (
     <div className="space-y-6">
-      {showLayout ? (
+      {showTheme ? (
+        <ClassicPosThemePicker
+          value={value?.classic_pos_theme_template}
+          onChange={(id) => patch({ classic_pos_theme_template: id })}
+          colors={value?.classic_pos_theme_colors}
+          onColorsChange={(next) => patch({ classic_pos_theme_colors: next })}
+          description="Applies across Centrix ERP (sidebar, panels, Classic POS). Organization admins can change this anytime under Centrix ERP Themes."
+        />
+      ) : null}
+
+      {!posEnabled ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Enable the <strong>External POS</strong> application under Applications to configure layout and
+          cashier behaviour for <code className="text-xs">/pos</code>.
+        </p>
+      ) : null}
+
+      {posEnabled && showLayout ? (
         <div className="space-y-4">
           <Field label="POS layout">
             <select
@@ -236,31 +244,14 @@ export function ExternalPosPlatformFields({
               <option value="classic">Classic — cart on top, Find window, themeable colors</option>
             </select>
             <p className="mt-1 text-xs text-slate-500">
-              Only affects the external POS workspace (/pos). Organization admins choose Classic color
-              themes under Administration → Organization settings → External POS.
+              Only affects the external POS workspace (/pos). Organization colors for the whole ERP
+              are under Administration → Centrix ERP Themes (or Organization settings).
             </p>
           </Field>
-
-          {showTheme && layout === "classic" ? (
-            <ClassicPosThemePicker
-              value={value?.classic_pos_theme_template}
-              onChange={(id) => patch({ classic_pos_theme_template: id })}
-              colors={value?.classic_pos_theme_colors}
-              onColorsChange={(next) => patch({ classic_pos_theme_colors: next })}
-              description="Optional default palette. Organization admins can change this anytime under Organization settings → External POS."
-            />
-          ) : null}
-
-          {!showTheme && layout === "classic" ? (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Classic layout is on. The organization admin picks color themes in{" "}
-              <strong>Organization settings → External POS</strong>.
-            </p>
-          ) : null}
         </div>
       ) : null}
 
-      {showBehaviourToggles ? (
+      {posEnabled && showBehaviourToggles ? (
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cashier behaviour</p>
           <Toggle

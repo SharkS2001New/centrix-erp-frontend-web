@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
@@ -30,7 +31,7 @@ const TABS = [
   { id: "general", label: "General" },
   { id: "printouts", label: "Printouts" },
   { id: "sales", label: "Sales" },
-  { id: "external-pos", label: "External POS" },
+  { id: "external-pos", label: "Centrix ERP Themes" },
   { id: "mobile", label: "Mobile application" },
   { id: "distribution", label: "Distribution" },
   { id: "manager-approvals", label: "Manager approvals" },
@@ -45,6 +46,12 @@ const TABS = [
   { id: "security", label: "Security" },
 ];
 
+function normalizeSettingsTabId(raw) {
+  const id = String(raw ?? "").trim().toLowerCase();
+  if (id === "themes" || id === "centrix-erp-themes") return "external-pos";
+  return id;
+}
+
 export function OrganizationSettingsContent({
   capabilities,
   platformManaged = false,
@@ -57,7 +64,9 @@ export function OrganizationSettingsContent({
     ? TENANT_ORG_SETTINGS_SUBTITLE
     : "Platform configuration for module provisioning, workflows, accounting books setup, and integration gates. Tenants manage day-to-day module preferences under Administration → Organization settings.",
 }) {
-  const [tab, setTab] = useState("general");
+  const searchParams = useSearchParams();
+  const tabFromUrl = normalizeSettingsTabId(searchParams?.get("tab"));
+  const [tab, setTab] = useState(tabFromUrl || "general");
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
   const setError = toastErrorSetter;
@@ -66,6 +75,13 @@ export function OrganizationSettingsContent({
     () => visibleOrgSettingsTabs(TABS, capabilities, { platformManaged, tenantSelfService }),
     [capabilities, platformManaged, tenantSelfService],
   );
+
+  useEffect(() => {
+    if (!tabFromUrl) return;
+    if (visibleTabs.some((item) => item.id === tabFromUrl)) {
+      setTab(tabFromUrl);
+    }
+  }, [tabFromUrl, visibleTabs]);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;

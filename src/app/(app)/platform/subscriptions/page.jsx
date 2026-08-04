@@ -31,6 +31,7 @@ import {
 } from "@/lib/organization-license";
 import { periodEndForPlanInterval, isAnnualBillingInterval } from "@/lib/provision-subscription";
 import { ChangeSubscriptionPlanModal } from "@/components/platform/change-subscription-plan-modal";
+import { EditSubscriptionPeriodModal } from "@/components/platform/edit-subscription-period-modal";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -74,6 +75,7 @@ export default function PlatformSubscriptionsPage() {
   const [attachTarget, setAttachTarget] = useState(null);
   const [attachInvoiceId, setAttachInvoiceId] = useState("");
   const [changePlanTarget, setChangePlanTarget] = useState(null);
+  const [periodTarget, setPeriodTarget] = useState(null);
   const [extendDays, setExtendDays] = useState("30");
   const [extendUntil, setExtendUntil] = useState("");
   const [saving, setSaving] = useState(false);
@@ -459,24 +461,31 @@ export default function PlatformSubscriptionsPage() {
                         })()}
                       </td>
                       <td className="px-5 py-3 text-slate-600">
-                        {formatBillingDate(sub.current_period_start)} → {formatBillingDate(sub.current_period_end)}
-                        {license?.days_remaining != null ? (
-                          <span
-                            className={`mt-1 block text-xs ${
-                              expired
-                                ? "font-medium text-red-700"
-                                : soon
-                                  ? "font-medium text-amber-700"
-                                  : "text-slate-500"
-                            }`}
-                          >
-                            {expired
-                              ? "Expired — org locked"
-                              : license.days_remaining === 0
-                                ? "Expires today"
-                                : `${license.days_remaining} day${license.days_remaining === 1 ? "" : "s"} left`}
-                          </span>
-                        ) : null}
+                        <button
+                          type="button"
+                          className="text-left hover:underline"
+                          title="Edit start and end dates"
+                          onClick={() => setPeriodTarget(sub)}
+                        >
+                          {formatBillingDate(sub.current_period_start)} → {formatBillingDate(sub.current_period_end)}
+                          {license?.days_remaining != null ? (
+                            <span
+                              className={`mt-1 block text-xs ${
+                                expired
+                                  ? "font-medium text-red-700"
+                                  : soon
+                                    ? "font-medium text-amber-700"
+                                    : "text-slate-500"
+                              }`}
+                            >
+                              {expired
+                                ? "Expired — org locked"
+                                : license.days_remaining === 0
+                                  ? "Expires today"
+                                  : `${license.days_remaining} day${license.days_remaining === 1 ? "" : "s"} left`}
+                            </span>
+                          ) : null}
+                        </button>
                       </td>
                       <td className="px-5 py-3 text-slate-600">
                         {sub.invoice?.id || sub.invoice_id ? (
@@ -510,6 +519,13 @@ export default function PlatformSubscriptionsPage() {
                             onClick={() => openExtend(sub)}
                           >
                             Extend licence
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-[#185FA5] hover:underline"
+                            onClick={() => setPeriodTarget(sub)}
+                          >
+                            Edit period
                           </button>
                           <button
                             type="button"
@@ -931,6 +947,16 @@ export default function PlatformSubscriptionsPage() {
         onClose={() => setChangePlanTarget(null)}
         onSaved={() => {
           setChangePlanTarget(null);
+          void load();
+        }}
+      />
+
+      <EditSubscriptionPeriodModal
+        open={Boolean(periodTarget)}
+        subscription={periodTarget}
+        onClose={() => setPeriodTarget(null)}
+        onSaved={() => {
+          setPeriodTarget(null);
           void load();
         }}
       />

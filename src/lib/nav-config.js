@@ -218,7 +218,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.backend",
         permission: P.sales.order_queues.mobile.view,
         mobileOrdersNav: true,
-        requireUserMobileChannel: true,
       },
       {
         href: "/sales/loading-sheets",
@@ -1043,6 +1042,13 @@ const NAV_SECTION_DEFINITIONS = [
         label: "License Information",
         module: "admin",
         permission: P.admin.license.view,
+        orgAdminOnly: true,
+      },
+      {
+        href: "/admin/settings?tab=external-pos",
+        label: "Centrix ERP Themes",
+        requireOperationalModule: true,
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         orgAdminOnly: true,
       },
       {
