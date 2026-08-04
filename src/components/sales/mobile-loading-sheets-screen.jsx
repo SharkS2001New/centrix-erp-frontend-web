@@ -16,22 +16,15 @@ import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { LoadingListDocumentPreview } from "@/components/fulfillment/loading-list-document-preview";
 import { formatSaleKes } from "@/lib/sales";
-import { shouldShowMobileLoadingSheets } from "@/lib/sales-settings";
+import {
+  getMobileSheetsDefaultDateRange,
+  shouldShowMobileLoadingSheets,
+} from "@/lib/sales-settings";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysAgoIso(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
 
 function formatDisplayDate(dateStr) {
   if (!dateStr) return "—";
@@ -47,9 +40,10 @@ export default function MobileLoadingSheetsScreen() {
   const loadingListPrintSettings = resolveLoadingSheetPrintSettings(
     capabilities?.module_settings?.distribution,
   );
+  const defaultRange = getMobileSheetsDefaultDateRange(capabilities?.module_settings);
 
-  const [fromDate, setFromDate] = useState(daysAgoIso(5));
-  const [toDate, setToDate] = useState(todayIso());
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [search, setSearch] = useState("");
   const [sheets, setSheets] = useState([]);
   const [loading, setLoading] = useState(true);

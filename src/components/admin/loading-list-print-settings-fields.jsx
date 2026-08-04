@@ -20,8 +20,39 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
+const LABELS = {
+  loading: {
+    fontNote:
+      "Font size and family for loading lists are configured under Admin → Printouts → Loading sheets.",
+    qtyDescription:
+      "Turn off when staff only need product names (e.g. product labels on shelf).",
+    priceDescription: "Includes unit price (R/W) and line totals. Turn off for quantity-only lists.",
+    totalLabel: "Show loading sheet total",
+    totalDescription: "Print the sales total amount below the loading list table.",
+    tripExpensesDescription:
+      "Print fuel, tolls, and other trip costs on the loading list totals block.",
+    tripProfitDescription:
+      "Print gross profit and net profit (after expenses) on the loading list.",
+    footerLabel: "Loading list footer lines",
+  },
+  picking: {
+    fontNote:
+      "Font size and family for picking lists are configured under Admin → Printouts → Picking lists.",
+    qtyDescription:
+      "Turn off when pickers only need product names (e.g. product labels on shelf).",
+    priceDescription: "Includes unit price and line totals. Turn off for quantity-only pick lists.",
+    totalLabel: "Show picking list total",
+    totalDescription: "Print the order total amount below the picking list table.",
+    tripExpensesDescription:
+      "Print fuel, tolls, and other trip costs on the list totals block.",
+    tripProfitDescription: "Print gross profit and net profit (after expenses) on the list.",
+    footerLabel: "Picking list footer lines",
+  },
+};
+
 /**
- * Loading list print layout — shared by Distribution, Printouts, and Mobile settings.
+ * Loading / picking list print layout — shared by Distribution, Printouts, and Mobile settings.
+ * Pass variant="picking" in Mobile application settings (non-Distribution orgs).
  */
 export function LoadingListPrintSettingsFields({
   form,
@@ -29,29 +60,28 @@ export function LoadingListPrintSettingsFields({
   showExtendedFields = true,
   showFontNote = false,
   showTripFields = true,
+  variant = "loading",
 }) {
+  const copy = LABELS[variant] ?? LABELS.loading;
+
   return (
     <div className="space-y-3">
-      {showFontNote ? (
-        <p className="theme-subtext text-xs">
-          Font size and family for loading lists are configured under Admin → Printouts → Loading sheets.
-        </p>
-      ) : null}
+      {showFontNote ? <p className="theme-subtext text-xs">{copy.fontNote}</p> : null}
       <Toggle
         label="Show quantity column"
-        description="Turn off when pickers only need product names (e.g. product labels on shelf)."
+        description={copy.qtyDescription}
         checked={form.loading_sheet_show_qty_column !== false}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_qty_column: v }))}
       />
       <Toggle
         label="Show price and amount columns"
-        description="Includes unit price (R/W) and line totals. Turn off for quantity-only lists."
+        description={copy.priceDescription}
         checked={form.loading_sheet_show_price_columns !== false}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_price_columns: v }))}
       />
       <Toggle
-        label="Show loading sheet total"
-        description="Print the sales total amount below the loading list table."
+        label={copy.totalLabel}
+        description={copy.totalDescription}
         checked={form.loading_sheet_show_total !== false}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_total: v }))}
       />
@@ -59,13 +89,13 @@ export function LoadingListPrintSettingsFields({
         <>
           <Toggle
             label="Show trip expenses"
-            description="Print fuel, tolls, and other trip costs on the loading list totals block."
+            description={copy.tripExpensesDescription}
             checked={form.loading_sheet_show_trip_expenses !== false}
             onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_expenses: v }))}
           />
           <Toggle
             label="Show trip profit"
-            description="Print gross profit and net profit (after expenses) on the loading list."
+            description={copy.tripProfitDescription}
             checked={form.loading_sheet_show_trip_profit !== false}
             onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_profit: v }))}
           />
@@ -92,7 +122,7 @@ export function LoadingListPrintSettingsFields({
             />
           </Field>
           <MultilinePrintNotesField
-            label="Loading list footer lines"
+            label={copy.footerLabel}
             hint="One line per row below the table."
             value={form.loading_sheet_footer_lines ?? ""}
             onChange={(value) => setForm((f) => ({ ...f, loading_sheet_footer_lines: value }))}

@@ -61,7 +61,7 @@ import {
   normalizeOrdersListSummary,
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
-import { printSaleOrder, resolveOrderPrintType } from "@/components/sales/sale-order-print";
+import { printSaleOrder, resolveOrderPrintType, warmSalePrintBatch } from "@/components/sales/sale-order-print";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
@@ -799,7 +799,7 @@ export default function SalesOrdersListScreen({
     void loadOrders();
   }
 
-  async function printOrder(sale, documentType = null, { batch = false } = {}) {
+  async function printOrder(sale, documentType = null, { batch = false, printCache = null } = {}) {
     if (!sale?.id) return false;
 
     const cachedType =
@@ -831,6 +831,7 @@ export default function SalesOrdersListScreen({
         uomById,
         user,
         printWindow,
+        printCache,
         skipSaleRefresh: saleHasPrintableItems(detail),
         skipSettingsRefresh: batch,
         skipOrganizationRefresh: batch,
@@ -915,6 +916,19 @@ export default function SalesOrdersListScreen({
       // Prefetch the next chunk while this one prints.
       nextDetailsPromise = hasNext ? fetchChunkDetails(chunks[chunkIndex + 1]) : null;
 
+      // Warm shared print metadata for this whole chunk up front so the printer can
+      // receive 1-5 continuously instead of pausing on per-receipt lookups.
+      const printCache = await warmSalePrintBatch(details.filter(Boolean), {
+        organization,
+        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+        uomById,
+        user,
+        skipSettingsRefresh: true,
+        skipOrganizationRefresh: true,
+      });
+
       if (printingBusy) setBatchBusy(printingBusy);
       setActionMessage(
         printable.length === 1
@@ -930,7 +944,7 @@ export default function SalesOrdersListScreen({
           failed += 1;
           continue;
         }
-        const ok = await printOrder(detail, documentType, { batch: true });
+        const ok = await printOrder(detail, documentType, { batch: true, printCache });
         if (ok) printed += 1;
         else failed += 1;
         // Yield so React can paint and the UI stays responsive.

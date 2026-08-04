@@ -67,6 +67,8 @@ const SALES_DEFAULTS = {
   mobile_product_list_mode: 'in_stock_only',
   mobile_enable_field_attendance: false,
   mobile_show_customer_phone: false,
+  /** Default From/To window for mobile picking & loading sheets (1 = today only). */
+  mobile_sheets_default_days: 5,
   require_pos_till_float: false,
   external_pos_layout: "modern",
   /** Light Stores–style last-digit cash rounding on external POS (/pos). */
@@ -109,6 +111,23 @@ const SALES_DEFAULTS = {
   orders_list_default_days: 14,
   orders_list_search_days: 30,
   orders_list_sort: "-created_at",
+  orders_list_visible_columns: [
+    "order",
+    "customer",
+    "branch",
+    "route",
+    "delivery_date",
+    "connectivity",
+    "amount",
+    "amount_paid",
+    "balance",
+    "discount",
+    "vat",
+    "status",
+    "method",
+    "source",
+    "placed_by",
+  ],
   edit_order_statuses: ["booked", "pending", "editable"],
   print_invoice_statuses: null,
   collect_payment_statuses: ["unpaid", "pending_payment"],
@@ -123,12 +142,86 @@ export const ORDERS_LIST_SORT_OPTIONS = [
   { value: "order_num", label: "Lowest order number first" },
 ];
 
+export const ORDER_LIST_COLUMN_OPTIONS = [
+  { id: "order", label: "Order", required: true },
+  { id: "customer", label: "Customer", required: true },
+  { id: "branch", label: "Branch" },
+  { id: "route", label: "Route" },
+  { id: "delivery_date", label: "Delivery date" },
+  { id: "connectivity", label: "Connectivity" },
+  { id: "amount", label: "Amount", required: true },
+  { id: "amount_paid", label: "Amount paid" },
+  { id: "balance", label: "Balance" },
+  { id: "discount", label: "Discount" },
+  { id: "vat", label: "VAT" },
+  { id: "status", label: "Status", required: true },
+  { id: "method", label: "Method", required: true },
+  { id: "source", label: "Source" },
+  { id: "placed_by", label: "Placed by", required: true },
+];
+
+const ORDER_LIST_COLUMN_ID_SET = new Set(ORDER_LIST_COLUMN_OPTIONS.map((option) => option.id));
+const ORDER_LIST_REQUIRED_COLUMN_IDS = ORDER_LIST_COLUMN_OPTIONS
+  .filter((option) => option.required)
+  .map((option) => option.id);
+const DEFAULT_ORDER_LIST_VISIBLE_COLUMNS = [
+  "order",
+  "customer",
+  "branch",
+  "route",
+  "delivery_date",
+  "connectivity",
+  "amount",
+  "amount_paid",
+  "balance",
+  "discount",
+  "vat",
+  "status",
+  "method",
+  "source",
+  "placed_by",
+];
+
 const ORDERS_LIST_SORT_VALUES = new Set(ORDERS_LIST_SORT_OPTIONS.map((option) => option.value));
 
 export function normalizeOrdersListDefaultDays(value) {
   const days = Number(value);
   if (!Number.isFinite(days)) return SALES_DEFAULTS.orders_list_default_days;
   return Math.min(90, Math.max(1, Math.round(days)));
+}
+
+export function normalizeOrdersListVisibleColumns(value) {
+  const incoming = Array.isArray(value) ? value : DEFAULT_ORDER_LIST_VISIBLE_COLUMNS;
+  const seen = new Set();
+  const allowed = [];
+  for (const item of incoming) {
+    const key = String(item ?? "").trim();
+    if (!ORDER_LIST_COLUMN_ID_SET.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    allowed.push(key);
+  }
+  for (const required of ORDER_LIST_REQUIRED_COLUMN_IDS) {
+    if (!seen.has(required)) allowed.push(required);
+  }
+  return allowed;
+}
+
+export function getOrdersListVisibleColumns(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return normalizeOrdersListVisibleColumns(sales.orders_list_visible_columns);
+}
+
+/** Inclusive calendar days for mobile picking / loading sheet lists (1 = today only). */
+export function normalizeMobileSheetsDefaultDays(value) {
+  const days = Number(value);
+  if (!Number.isFinite(days)) return SALES_DEFAULTS.mobile_sheets_default_days;
+  return Math.min(90, Math.max(1, Math.round(days)));
+}
+
+/** Default From/To for Sales → Picking list and Loading sheets. */
+export function getMobileSheetsDefaultDateRange(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return defaultDateRange(normalizeMobileSheetsDefaultDays(sales.mobile_sheets_default_days));
 }
 
 /** Search window days — never narrower than the list date filter window. */
@@ -336,6 +429,7 @@ export const EMPTY_MOBILE_APPLICATION_FORM = {
   mobile_checkout_mode: "save_only",
   mobile_product_list_mode: "in_stock_only",
   mobile_show_customer_phone: false,
+  mobile_sheets_default_days: "5",
 };
 
 export function mobileApplicationFormFromApi(res) {
@@ -351,6 +445,9 @@ export function mobileApplicationFormFromApi(res) {
     mobile_checkout_mode: normalizeMobileCheckoutMode(sales.mobile_checkout_mode),
     mobile_product_list_mode: normalizeMobileProductListMode(sales.mobile_product_list_mode),
     mobile_show_customer_phone: sales.mobile_show_customer_phone === true,
+    mobile_sheets_default_days: String(
+      normalizeMobileSheetsDefaultDays(sales.mobile_sheets_default_days),
+    ),
   };
 }
 
@@ -365,6 +462,7 @@ export function mobileApplicationPayloadFromForm(form) {
     mobile_checkout_mode: normalizeMobileCheckoutMode(form.mobile_checkout_mode),
     mobile_product_list_mode: normalizeMobileProductListMode(form.mobile_product_list_mode),
     mobile_show_customer_phone: form.mobile_show_customer_phone === true,
+    mobile_sheets_default_days: normalizeMobileSheetsDefaultDays(form.mobile_sheets_default_days),
   };
 }
 

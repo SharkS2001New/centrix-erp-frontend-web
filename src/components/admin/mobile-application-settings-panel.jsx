@@ -10,6 +10,7 @@ import {
   MOBILE_PRODUCT_LIST_MODES,
   mobileApplicationFormFromApi,
   mobileApplicationPayloadFromForm,
+  normalizeMobileSheetsDefaultDays,
 } from "@/lib/sales-settings";
 import {
   LOADING_SHEET_PRINT_DEFAULTS,
@@ -315,12 +316,44 @@ export function MobileApplicationSettingsPanel({
                 </div>
               </div>
 
+              <div>
+                <h3 className="text-sm font-medium text-slate-900">Picking &amp; loading lists</h3>
+                <p className="theme-subtext mt-1 text-xs">
+                  Default date window for Sales → Picking list and Loading sheets when Distribution is
+                  not enabled. Use 1 for today only, or enter how many calendar days to include
+                  (including today).
+                </p>
+                <div className="mt-3">
+                  <Field label="Date range (days)">
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      className={`${inputClassName()} w-32`}
+                      value={form.mobile_sheets_default_days}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          mobile_sheets_default_days: e.target.value,
+                        }))
+                      }
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      {normalizeMobileSheetsDefaultDays(form.mobile_sheets_default_days) === 1
+                        ? "Lists open showing today’s records only."
+                        : `Lists open showing the last ${normalizeMobileSheetsDefaultDays(form.mobile_sheets_default_days)} days (including today).`}{" "}
+                      Staff can still change the From / To filters on each screen.
+                    </p>
+                  </Field>
+                </div>
+              </div>
+
               {showLoadingSettings ? (
                 <div>
-                  <h3 className="text-sm font-medium text-slate-900">Loading</h3>
+                  <h3 className="text-sm font-medium text-slate-900">Picking list</h3>
                   <p className="theme-subtext mt-1 text-xs">
-                    Column layout for backoffice and field-sales loading lists (and related picking sheets)
-                    when Distribution is not enabled. Fonts and footers are under Printouts → Loading sheets.
+                    Column layout for mobile picking lists when Distribution is not enabled. Fonts and
+                    footers are under Printouts → Picking lists.
                   </p>
                   <div className="mt-3">
                     <LoadingListPrintSettingsFields
@@ -328,15 +361,17 @@ export function MobileApplicationSettingsPanel({
                       setForm={setForm}
                       showTripFields={false}
                       showFontNote
+                      variant="picking"
                     />
                   </div>
                 </div>
               ) : (
                 <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-xs">
-                  <p className="theme-heading font-medium">Loading list layout</p>
+                  <p className="theme-heading font-medium">Picking &amp; loading list layout</p>
                   <p className="theme-subtext mt-1">
-                    Distribution is enabled — configure loading list columns under Distribution → Trips &amp;
-                    loading, or Printouts → Loading sheets.
+                    Distribution is enabled — configure list columns under Distribution → Trips &amp;
+                    loading, or Printouts → Loading sheets / Picking lists. The date range above still
+                    applies to any non-Distribution mobile sheets.
                   </p>
                 </div>
               )}

@@ -5103,7 +5103,7 @@ export function PosScreen({ standalone = false }) {
       if (ok) {
         setSelectedLineId(line.id);
         // After qty Enter, park on Scan code for the next item.
-        window.requestAnimationFrame(() => focusProductSearch());
+        window.requestAnimationFrame(() => focusScanCode());
       }
     };
 
@@ -7124,6 +7124,7 @@ export function PosScreen({ standalone = false }) {
         : null;
     const abandonCart = editingQueuedOfflineSale ? activeCart : null;
     const clearOfflineCart = Boolean(isOfflineCart && !editingQueuedOfflineSale);
+    const immediateNextPos = resolveFreshWorkspacePosNum(activeCart, sessionPosOrders);
 
     const completeFreshWorkspaceBootstrap = async ({
       generation,
@@ -7216,6 +7217,7 @@ export function PosScreen({ standalone = false }) {
           ? "New order — previous edits keep syncing in the background."
           : "New order — scan or search a product.",
       );
+      applyFreshWorkspacePlaceholder(activeCart, immediateNextPos);
 
       report(18);
       const peekNextPos = await resolveNextPosTicketForWorkspace(activeCart, sessionPosOrders);
@@ -7408,27 +7410,6 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     if (receiptPrintStatus === "pending") return;
-
-    if (
-      !saleHasPrintableItems(sale) &&
-      !isOfflinePendingSaleId(sale.id) &&
-      !String(sale.id ?? "").startsWith("edit:")
-    ) {
-      try {
-        const detail = await apiRequest(`/sales/${sale.id}`, {
-          loading: false,
-          reportIssues: false,
-        });
-        if (detail?.id) {
-          sale = detail;
-          if (isCartEditSession && editSourceSale?.id === detail.id) {
-            setEditSourceSale(detail);
-          }
-        }
-      } catch {
-        /* printSaleOrder will try ensureSaleForPrint */
-      }
-    }
 
     setReceiptPrintStatus("pending");
     const orderLabel = sale.order_num ? `#${sale.order_num}` : "";

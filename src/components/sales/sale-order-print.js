@@ -38,6 +38,39 @@ import {
 } from "@/lib/open-print-window";
 import { isPrintAgentEnabled } from "@/lib/print-agent";
 
+function ensureBatchPrintCache(cache = null) {
+  if (cache && typeof cache === "object") {
+    return {
+      moduleSettingsPromise: cache.moduleSettingsPromise ?? null,
+      organizationPromise: cache.organizationPromise ?? null,
+      logoDataUrlPromise: cache.logoDataUrlPromise ?? null,
+      branchById: cache.branchById ?? new Map(),
+      customerByNum: cache.customerByNum ?? new Map(),
+      routeById: cache.routeById ?? new Map(),
+      userNameById: cache.userNameById ?? new Map(),
+    };
+  }
+  return {
+    moduleSettingsPromise: null,
+    organizationPromise: null,
+    logoDataUrlPromise: null,
+    branchById: new Map(),
+    customerByNum: new Map(),
+    routeById: new Map(),
+    userNameById: new Map(),
+  };
+}
+
+function getOrCreateCachedPromise(map, key, factory) {
+  if (key == null || key === "") return Promise.resolve(null);
+  if (map.has(key)) return map.get(key);
+  const promise = Promise.resolve()
+    .then(factory)
+    .catch(() => null);
+  map.set(key, promise);
+  return promise;
+}
+
 function isOfflineSalePrint(sale, options = {}) {
   return (
     Boolean(options.skipNetworkLookups) ||
@@ -131,6 +164,11 @@ async function fetchUserPrintName(userId) {
   }
 }
 
+async function fetchUserPrintNameCached(userId, cache = null) {
+  const batchCache = ensureBatchPrintCache(cache);
+  return getOrCreateCachedPromise(batchCache.userNameById, userId, () => fetchUserPrintName(userId));
+}
+
 async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
   // Prefer names already in memory (sale payload / POS session) — never block print on WAN.
   const preparedBy =
@@ -146,13 +184,69 @@ async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
     return "—";
   }
 
-  const createdByName = await fetchUserPrintName(sale?.created_by);
+  const createdByName = await fetchUserPrintNameCached(sale?.created_by, options.printCache);
   if (createdByName) return createdByName;
 
-  const cashierName = await fetchUserPrintName(sale?.cashier_id);
+  const cashierName = await fetchUserPrintNameCached(sale?.cashier_id, options.printCache);
   if (cashierName) return cashierName;
 
   return "—";
+}
+
+export async function warmSalePrintBatch(sales, options = {}) {
+  const batchCache = ensureBatchPrintCache(options.printCache);
+  const rows = Array.isArray(sales) ? sales.filter(Boolean) : [];
+  const fallbackModuleSettings =
+    options.moduleSettings ?? options.capabilities?.module_settings ?? null;
+  const organizationId =
+    options.organization?.id ??
+    options.capabilities?.organization_id ??
+    options.capabilities?.organization?.id ??
+    null;
+  const organizationAlreadyUsable =
+    Boolean(options.organization?.name) || Boolean(options.organizationName);
+
+  if (!(options.skipSettingsRefresh && fallbackModuleSettings) && !batchCache.moduleSettingsPromise) {
+    batchCache.moduleSettingsPromise = fetchPrintModuleSettings(fallbackModuleSettings)
+      .catch(() => fallbackModuleSettings ?? null);
+  }
+
+  if (
+    !batchCache.organizationPromise &&
+    !(options.skipOrganizationRefresh && organizationAlreadyUsable) &&
+    organizationId
+  ) {
+    batchCache.organizationPromise = fetchOrganizationForPrint(organizationId).catch(() => null);
+  }
+
+  await Promise.allSettled(rows.flatMap((sale) => {
+    const skipNetworkLookups = isOfflineSalePrint(sale, options);
+    const tasks = [];
+
+    if (!skipNetworkLookups) {
+      tasks.push(getOrCreateCachedPromise(batchCache.branchById, sale?.branch_id, () => fetchBranch(sale?.branch_id)));
+      tasks.push(
+        getOrCreateCachedPromise(batchCache.customerByNum, sale?.customer_num, () => fetchCustomer(sale?.customer_num)),
+      );
+      tasks.push(getOrCreateCachedPromise(batchCache.routeById, sale?.route_id, () => fetchRoute(sale?.route_id)));
+      tasks.push(fetchUserPrintNameCached(sale?.created_by, batchCache));
+      tasks.push(fetchUserPrintNameCached(sale?.cashier_id, batchCache));
+    }
+    return tasks;
+  }));
+
+  const organizationFromCache = batchCache.organizationPromise
+    ? await batchCache.organizationPromise.catch(() => null)
+    : options.organization ?? null;
+  const organization = organizationFromCache
+    ? { ...(options.organization ?? {}), ...organizationFromCache }
+    : options.organization ?? null;
+
+  if (!batchCache.logoDataUrlPromise && organization) {
+    batchCache.logoDataUrlPromise = fetchOrganizationLogoDataUrl(organization).catch(() => null);
+  }
+
+  return batchCache;
 }
 
 /**
@@ -205,6 +299,7 @@ export async function printSaleOrder(sale, options = {}) {
 
   const fallbackModuleSettings =
     options.moduleSettings ?? options.capabilities?.module_settings ?? null;
+  const batchCache = ensureBatchPrintCache(options.printCache);
 
   const documentType = await resolveOrderPrintType(
     fallbackModuleSettings,
@@ -261,7 +356,11 @@ export async function printSaleOrder(sale, options = {}) {
     const moduleSettings =
       options.skipSettingsRefresh && fallbackModuleSettings
         ? fallbackModuleSettings
-        : await fetchPrintModuleSettings(fallbackModuleSettings);
+        : await (
+          batchCache.moduleSettingsPromise
+            ?? (batchCache.moduleSettingsPromise = fetchPrintModuleSettings(fallbackModuleSettings)
+              .catch(() => fallbackModuleSettings ?? null))
+        );
     const sales = mergeSalesSettings(moduleSettings);
     const general = mergeGeneralSettings(moduleSettings);
     const organizationId =
@@ -279,7 +378,10 @@ export async function printSaleOrder(sale, options = {}) {
       skipNetworkLookups || (options.skipOrganizationRefresh && organizationAlreadyUsable)
         ? null
         : organizationId
-          ? await fetchOrganizationForPrint(organizationId)
+          ? await (
+            batchCache.organizationPromise
+              ?? (batchCache.organizationPromise = fetchOrganizationForPrint(organizationId).catch(() => null))
+          )
           : null;
     const organization = fetchedOrganization
       ? { ...(options.organization ?? {}), ...fetchedOrganization }
@@ -290,17 +392,21 @@ export async function printSaleOrder(sale, options = {}) {
         ? Promise.resolve(options.branch)
         : skipNetworkLookups
           ? Promise.resolve(null)
-          : fetchBranch(saleForPrint.branch_id),
+          : getOrCreateCachedPromise(batchCache.branchById, saleForPrint.branch_id, () => fetchBranch(saleForPrint.branch_id)),
       options.customer
         ? Promise.resolve(options.customer)
         : skipNetworkLookups
           ? Promise.resolve(null)
-          : fetchCustomer(saleForPrint.customer_num),
+          : getOrCreateCachedPromise(
+            batchCache.customerByNum,
+            saleForPrint.customer_num,
+            () => fetchCustomer(saleForPrint.customer_num),
+          ),
       options.route
         ? Promise.resolve(options.route)
         : skipNetworkLookups
           ? Promise.resolve(null)
-          : fetchRoute(saleForPrint.route_id),
+          : getOrCreateCachedPromise(batchCache.routeById, saleForPrint.route_id, () => fetchRoute(saleForPrint.route_id)),
     ]);
 
     const seller =
@@ -327,7 +433,10 @@ export async function printSaleOrder(sale, options = {}) {
     const logoDataUrl =
       options.skipLogoFetch || skipNetworkLookups
         ? null
-        : await fetchOrganizationLogoDataUrl(organization);
+        : await (
+          batchCache.logoDataUrlPromise
+            ?? (batchCache.logoDataUrlPromise = fetchOrganizationLogoDataUrl(organization).catch(() => null))
+        );
     if (logoDataUrl) {
       branding = { ...branding, logoUrl: logoDataUrl };
     }
