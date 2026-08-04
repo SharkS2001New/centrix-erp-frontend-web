@@ -321,7 +321,6 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   const [lines, setLines] = useState([]);
   const [pendingFocusQtyKey, setPendingFocusQtyKey] = useState(null);
   const qtyInputRefs = useRef(new Map());
-  const linesPanelRef = useRef(null);
   const [removedIds, setRemovedIds] = useState([]);
   const [baselineDraft, setBaselineDraft] = useState([]);
   const [baselineRemovedIds, setBaselineRemovedIds] = useState([]);
@@ -589,22 +588,75 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     if (addAsRetail && !allowsRetail) {
       setError("This product has wholesale pricing only — added as wholesale.");
     }
+
+    const existing = lines.find(
+      (line) =>
+        String(line.product_code) === code &&
+        isRetailLine(line) === asRetail,
+    );
+    if (existing) {
+      const focusKey = lineKey(existing);
+      const nextQty = Math.max(0.0001, Number(existing.draftQty) + 1);
+      setLines((prev) =>
+        prev.map((line) =>
+          lineKey(line) === focusKey ? { ...line, draftQty: String(nextQty) } : line,
+        ),
+      );
+      setPendingFocusQtyKey(focusKey);
+      setAddProductCode("");
+      return;
+    }
+
+    const newLine = buildNewDraftLine(product, uomById, packages, {
+      asRetail,
+      routeMarkupPerUnit,
+      cashRound: enablePosCashRounding,
+    });
+    let focusKey = lineKey(newLine);
     setLines((prev) => {
-      const existing = prev.find(
+      const again = prev.find(
         (line) =>
           String(line.product_code) === code &&
           isRetailLine(line) === asRetail,
       );
-      if (existing) {
-        const nextQty = Math.max(0.0001, Number(existing.draftQty) + 1);
+      if (again) {
+        focusKey = lineKey(again);
+        const nextQty = Math.max(0.0001, Number(again.draftQty) + 1);
         return prev.map((line) =>
-          lineKey(line) === lineKey(existing) ? { ...line, draftQty: String(nextQty) } : line,
+          lineKey(line) === focusKey ? { ...line, draftQty: String(nextQty) } : line,
         );
       }
-      return [...prev, buildNewDraftLine(product, uomById, packages, { asRetail, routeMarkupPerUnit, cashRound: enablePosCashRounding })];
+      return [...prev, newLine];
     });
+    setPendingFocusQtyKey(focusKey);
     setAddProductCode("");
   }
+
+  useEffect(() => {
+    if (!pendingFocusQtyKey) return;
+    const key = pendingFocusQtyKey;
+    let cancelled = false;
+    let attempts = 0;
+    const focusQty = () => {
+      if (cancelled) return;
+      const input = qtyInputRefs.current.get(key);
+      if (!input) {
+        if (attempts++ < 8) {
+          requestAnimationFrame(focusQty);
+        }
+        return;
+      }
+      setPendingFocusQtyKey(null);
+      input.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      input.focus({ preventScroll: true });
+      if (typeof input.select === "function") input.select();
+    };
+    const frame = requestAnimationFrame(focusQty);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [lines, pendingFocusQtyKey]);
 
   const isEditableResubmit = sale?.status === "editable";
   const advisedDiscountLines = advisedDiscountLinesFromRejection(sale?.discount_rejection);
@@ -984,6 +1036,10 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                       ) : null}
                       <td className="px-3 py-2.5 text-right">
                         <input
+                          ref={(el) => {
+                            if (el) qtyInputRefs.current.set(key, el);
+                            else qtyInputRefs.current.delete(key);
+                          }}
                           type="number"
                           min="0.0001"
                           step="any"
