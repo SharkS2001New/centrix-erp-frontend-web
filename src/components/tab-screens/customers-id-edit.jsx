@@ -197,7 +197,6 @@ export function CustomersIdEditScreen() {
     }
   }
 
-  const pageLoading = loading || resourcesLoading;
   const { exitTo } = useTabFormExit(tabEditTitle("customer", form?.customer_name));
 
   return (
@@ -207,10 +206,14 @@ export function CustomersIdEditScreen() {
       title="Edit customer"
       subtitle="Update customer details, shop photo, and GPS location"
     >
-      {pageLoading ? (
+      {loading ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : form ? (
-        <CustomerFormCard
+        <>
+          {resourcesLoading ? (
+            <p className="mb-3 text-xs text-slate-500">Loading routes and branches…</p>
+          ) : null}
+          <CustomerFormCard
           onSubmit={saveCustomer}
           actions={
             <>
@@ -224,10 +227,10 @@ export function CustomersIdEditScreen() {
                 />
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || resourcesLoading}
                   className="rounded-lg bg-[#185FA5] px-6 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
                 >
-                  {saving ? "Saving…" : "Save changes"}
+                  {saving ? "Saving…" : resourcesLoading ? "Loading…" : "Save changes"}
                 </button>
               </div>
             </>
@@ -253,6 +256,7 @@ export function CustomersIdEditScreen() {
             savingLocation={savingLocation}
           />
         </CustomerFormCard>
+        </>
       ) : null}
     </CustomerFormPageShell>
   );

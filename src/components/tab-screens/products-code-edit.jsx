@@ -82,7 +82,7 @@ export function ProductsCodeEditScreen() {
     draftKey: formDraftKey("product", productCode),
     value: form,
     setValue: setForm,
-    enabled: !metaLoading && !productLoading && serverForm != null,
+    enabled: !productLoading && serverForm != null,
     isBaseline,
   });
 
@@ -106,8 +106,8 @@ export function ProductsCodeEditScreen() {
       ]);
       if (abortSignal?.aborted) return;
       const product = productRes.data ?? productRes;
-      const uom = uoms.find((u) => String(u.id) === String(product.unit_id)) ?? null;
-      const next = productToForm({ ...product, is_active: !product.deleted_at }, retailPackage, uom);
+      // UOM list may still be loading; productToForm tolerates a missing UOM.
+      const next = productToForm({ ...product, is_active: !product.deleted_at }, retailPackage, null);
       if (hotelCatalogue) {
         next.sell_on_retail = false;
       }
@@ -125,12 +125,12 @@ export function ProductsCodeEditScreen() {
     } finally {
       setProductLoading(false);
     }
-  }, [abortSignal, productCode, uoms, user?.branch_id, capabilities, hotelCatalogue]);
+  }, [abortSignal, productCode, user?.branch_id, capabilities, hotelCatalogue]);
 
   const { isActive } = useTabPaneActive();
 
   useEffect(() => {
-    if (!isActive || metaLoading || productLoadedRef.current) return undefined;
+    if (!isActive || productLoadedRef.current) return undefined;
     let cancelled = false;
     void (async () => {
       await loadProduct();
@@ -139,7 +139,7 @@ export function ProductsCodeEditScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isActive, metaLoading, loadProduct]);
+  }, [isActive, loadProduct]);
 
   useEffect(() => {
     return () => {
@@ -149,8 +149,9 @@ export function ProductsCodeEditScreen() {
     };
   }, [imagePreview]);
 
-  const loading = metaLoading || productLoading;
-  const error = metaError || loadError;
+  // Only wait on the product record — reference dropdowns fill in while the form paints.
+  const loading = productLoading;
+  const error = loadError || (!productLoading && metaError && !serverForm ? metaError : null);
 
   function updateField(key, value) {
     setIsDirty(true);
@@ -261,10 +262,10 @@ export function ProductsCodeEditScreen() {
                   <TabFormCancelButton href={detailHref} onClick={handleCancel} />
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || metaLoading}
                     className="rounded-lg bg-[#185FA5] px-6 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
                   >
-                    {saving ? "Saving…" : "Save changes"}
+                    {saving ? "Saving…" : metaLoading ? "Loading…" : "Save changes"}
                   </button>
                 </div>
               </>
@@ -285,6 +286,7 @@ export function ProductsCodeEditScreen() {
               onOpenSubcategoryModal={() => setSubcategoryModalOpen(true)}
               allowDiscounts={allowDiscounts}
               branches={branches}
+              refsLoading={metaLoading}
             />
           </ProductFormCard>
 

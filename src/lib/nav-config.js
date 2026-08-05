@@ -191,14 +191,14 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/sales/orders",
-        label: "All orders",
+        label: "All Orders",
         module: "sales.backend",
         permission: P.sales.order_queues.all.view,
         ordersNav: true,
       },
       {
         href: "/sales/orders/queues/whatsapp",
-        label: "WhatsApp",
+        label: "WhatsApp Orders",
         module: "sales.backend",
         permission: P.sales.orders.view,
         requireWhatsappOrders: true,
@@ -214,7 +214,7 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       {
         href: "/sales/orders/queues/mobile",
-        label: "Mobile orders",
+        label: "Mobile Orders",
         module: "sales.backend",
         permission: P.sales.order_queues.mobile.view,
         mobileOrdersNav: true,

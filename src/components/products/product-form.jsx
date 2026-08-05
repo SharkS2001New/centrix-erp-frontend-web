@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { apiV1BaseUrl } from "@/lib/api-base-url";
-import { apiFetchCredentials } from "@/lib/auth-config";
 import { isProductCodeInCatalogCached } from "@/lib/catalog-cache";
-import { getStoredOrganization, getToken } from "@/lib/auth-storage";
+import { getStoredOrganization } from "@/lib/auth-storage";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { RetailPricingTiersEditor, defaultRetailPricingTier } from "@/components/catalog/retail-pricing-tiers";
@@ -305,17 +303,13 @@ export function useProductFormResources() {
   const load = useCallback(async () => {
     if (abortSignal?.aborted) return;
     setError(null);
+    setLoading(true);
     try {
-      const [{ categories, subCategories, suppliers, uoms, vats }, branchRes, settingsRes] =
+      // Critical dropdown data only — do not wait on system-settings for first paint.
+      const [{ categories, subCategories, suppliers, uoms, vats }, branches] =
         await Promise.all([
           fetchCatalogReferenceDataCached(user?.organization_id),
-          fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
-          apiRequest("/system-settings", {
-            searchParams: { per_page: 1 },
-            signal: abortSignal ?? undefined,
-            loading: false,
-            reportIssues: false,
-          }).catch(() => null),
+          fetchBranchesCached(user?.organization_id),
         ]);
       if (abortSignal?.aborted) return;
       setCategories(categories);
@@ -323,14 +317,27 @@ export function useProductFormResources() {
       setSuppliers(suppliers);
       setUoms(uoms);
       setVats(vats ?? []);
-      setBranches(branchRes.data ?? []);
-      const settingsRows = settingsRes?.data ?? settingsRes ?? [];
-      setSystemSettings(Array.isArray(settingsRows) ? settingsRows[0] : settingsRows);
+      setBranches(branches ?? []);
     } catch (e) {
       if (e?.name === "AbortError" || abortSignal?.aborted) return;
       setError(e instanceof Error ? e.message : "Failed to load form data");
     } finally {
-      setLoading(false);
+      if (!abortSignal?.aborted) setLoading(false);
+    }
+
+    // Optional reorder hint — never blocks the form shell.
+    try {
+      const settingsRes = await apiRequest("/system-settings", {
+        searchParams: { per_page: 1 },
+        signal: abortSignal ?? undefined,
+        loading: false,
+        reportIssues: false,
+      }).catch(() => null);
+      if (abortSignal?.aborted) return;
+      const settingsRows = settingsRes?.data ?? settingsRes ?? [];
+      setSystemSettings(Array.isArray(settingsRows) ? settingsRows[0] : settingsRows);
+    } catch {
+      /* ignore */
     }
   }, [abortSignal, user?.organization_id]);
 
@@ -360,6 +367,8 @@ export function useProductFormResources() {
 async function isProductCodeAvailable(code) {
   try {
     const orgId = getStoredOrganization()?.id;
+    // Prefer list/search — never hit GET /products/{code}, which surfaces
+    // "Product not found or is not available at this branch" for missing codes.
     const taken = await isProductCodeInCatalogCached(orgId, code);
     return !taken;
   } catch {
@@ -369,28 +378,24 @@ async function isProductCodeAvailable(code) {
 }
 
 /**
- * Ask the API for a SKU when the dedicated endpoint exists.
- * Many backends route GET /products/{code} ahead of /products/generate-code, so
- * failures are expected. Uses a quiet fetch (not apiRequest) to avoid Next.js
- * treating a 404 product-lookup miss as a runtime ApiError overlay.
+ * Ask the API for the next SKU (GET /products/generate-code).
+ * Uses reportIssues:false so a missing/legacy API never opens the system-issue dialog.
  */
 async function tryServerGeneratedSku() {
   try {
-    const token = getToken();
-    const headers = { Accept: "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch(`${apiV1BaseUrl()}/products/generate-code`, {
-      method: "GET",
-      headers,
-      credentials: apiFetchCredentials(),
+    const res = await apiRequest("/products/generate-code", {
+      loading: false,
+      reportIssues: false,
     });
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => null);
-    const code = data?.code ?? data?.data?.code;
+    const code = res?.code ?? res?.data?.code;
     return code ? String(code) : null;
   } catch {
     return null;
   }
+}
+
+function randomSixDigitSku() {
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 export async function generateProductSku() {
@@ -398,14 +403,14 @@ export async function generateProductSku() {
   if (fromServer) return fromServer;
 
   for (let attempt = 0; attempt < 30; attempt++) {
-    const candidate = String(Math.floor(100000 + Math.random() * 900000));
+    const candidate = randomSixDigitSku();
     if (await isProductCodeAvailable(candidate)) {
       return candidate;
     }
   }
 
   // Last resort — still return a code so the user can save / edit.
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return randomSixDigitSku();
 }
 
 function RetailPackageFields({ form, onChange, productUom }) {
@@ -436,6 +441,7 @@ export function ProductFormFields({
   onGenerateSku,
   allowDiscounts = true,
   branches = [],
+  refsLoading = false,
 }) {
   const { capabilities, user } = useAuth();
   const { workspaceId } = useTabWorkspace();
@@ -590,6 +596,7 @@ export function ProductFormFields({
             placeholder="Select sub-category"
             searchPlaceholder="Search sub-category…"
             required
+            loading={refsLoading && subcategoryOptions.length === 0}
             inputClassName={`${inputClassName()} min-w-0 flex-1`}
           />
           <button
@@ -612,6 +619,7 @@ export function ProductFormFields({
             options={supplierOptions}
             placeholder="Select supplier"
             searchPlaceholder="Search supplier…"
+            loading={refsLoading && supplierOptions.length === 0}
             inputClassName={inputClassName()}
           />
         </Field>
@@ -633,6 +641,7 @@ export function ProductFormFields({
           placeholder="Select unit"
           searchPlaceholder="Search unit…"
           required
+          loading={refsLoading && uomOptions.length === 0}
           inputClassName={inputClassName()}
         />
         {suggestedUom && !form.unit_id ? (
@@ -776,6 +785,7 @@ export function ProductFormFields({
           placeholder="Select VAT rate"
           searchPlaceholder="Search VAT rate…"
           required
+          loading={refsLoading && vatOptions.length === 0}
           inputClassName={inputClassName()}
         />
       </Field>
@@ -825,6 +835,7 @@ export function ProductFormFields({
                   placeholder="Select branch"
                   searchPlaceholder="Search branch…"
                   required
+                  loading={refsLoading && branchOptions.length === 0}
                   inputClassName={inputClassName()}
                 />
               </Field>

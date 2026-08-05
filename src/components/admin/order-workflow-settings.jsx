@@ -208,7 +208,7 @@ export function OrderWorkflowSettingsEditor({
       <p className={embedded ? "theme-subtext text-sm" : "theme-subtext mt-1 text-xs"}>
         Define the order pipeline for this client. Stages can be inserted, edited, reordered, or
         deleted. Status moves follow this pipeline — one step up or down only. Enabled stages
-        appear as sidebar order pages in this order (View All, then each stage).
+        appear as sidebar order pages in this order (All Orders, then each stage).
         {saveOrderMode
           ? hasPosSales && !posCheckout && showCheckoutOnCreate
             ? " External POS uses Save order — configure the initial save status below. Backoffice Create order still opens checkout."

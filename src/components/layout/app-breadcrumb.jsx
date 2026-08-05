@@ -24,12 +24,13 @@ export function AppBreadcrumb({ items }) {
 }
 
 const ORDER_QUEUE_LABELS = {
-  all: "All orders",
-  mobile: "Mobile orders",
-  pending_approval: "Pending approval",
-  editable: "Returned for revision",
-  cancelled: "Cancelled orders",
-  expired: "Expired orders",
+  all: "All Orders",
+  mobile: "Mobile Orders",
+  pending_approval: "Pending Approval Orders",
+  "pending-approval": "Pending Approval Orders",
+  editable: "Editable Orders",
+  cancelled: "Cancelled Orders",
+  expired: "Expired Orders",
 };
 
 /** Parent crumb for sales order detail when opened from a list or workflow screen. */

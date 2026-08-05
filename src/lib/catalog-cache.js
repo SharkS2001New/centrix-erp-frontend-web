@@ -230,11 +230,31 @@ export async function fetchProductsByCodesCached(organizationId, productCodes, {
 }
 
 export async function isProductCodeInCatalogCached(organizationId, productCode, options = {}) {
-  const product = await fetchProductByCodeCached(organizationId, productCode, {
-    status: "all",
-    ...options,
-  });
-  return Boolean(product);
+  const code = String(productCode ?? "").trim();
+  if (!code) return false;
+  void resolveOrgId(organizationId);
+
+  try {
+    // List/filter — do NOT use GET /products/{code}. A miss on show() returns
+    // "Product not found or is not available at this branch" and can surface as
+    // a system issue for technical viewers when Generate SKU probes uniqueness.
+    const res = await apiRequest("/products", {
+      searchParams: {
+        per_page: 5,
+        page: 1,
+        product_codes: code,
+        status: options.status ?? "all",
+      },
+      loading: false,
+      reportIssues: false,
+    });
+    const rows = Array.isArray(res?.data) ? res.data : [];
+    return rows.some(
+      (row) => String(row?.product_code ?? "").toLowerCase() === code.toLowerCase(),
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

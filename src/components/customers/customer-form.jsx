@@ -3,7 +3,8 @@
 import { TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { apiRequest, resolveCustomerMediaUrl } from "@/lib/api";
+import { resolveCustomerMediaUrl } from "@/lib/api";
+import { fetchBranchesCached, fetchRoutesCached } from "@/lib/reference-data-cache";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { CustomerLocationSection } from "@/components/customers/customer-location-section";
 import { CustomerShopImageField } from "@/components/customers/customer-shop-image-field";
@@ -120,25 +121,20 @@ export function useCustomerFormResources() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [routeRes, branchRes] = await Promise.all([
-        apiRequest("/routes", { searchParams: { per_page: 200 } }),
-        apiRequest("/branches", { searchParams: { per_page: 200 } }),
-      ]);
       const orgId = user?.organization_id;
-      const orgBranches = (branchRes.data ?? []).filter(
-        (b) => !orgId || b.organization_id === orgId,
-      );
-      setRoutes((routeRes.data ?? []).filter(
-        (route) => !orgId || route.organization_id === orgId,
-      ));
-      setBranches(orgBranches);
+      const [routesData, branchesData] = await Promise.all([
+        fetchRoutesCached(orgId),
+        fetchBranchesCached(orgId),
+      ]);
+      setRoutes(routesData ?? []);
+      setBranches(branchesData ?? []);
     } finally {
       setLoading(false);
     }
   }, [user?.organization_id]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const showBranchSelect = useMemo(

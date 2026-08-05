@@ -13,6 +13,8 @@ import {
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabNameFirstWord } from "@/hooks/use-tab-form-exit";
 import { formatShortDate, getSaleTimestamp } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
@@ -666,6 +668,15 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     () => getOrderWorkflow(capabilities, sale),
     [capabilities, sale],
   );
+
+  const orderTabTitle = useMemo(() => {
+    if (!sale) return null;
+    const orderNo = formatOrderNumber(sale);
+    const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
+    const firstName = tabNameFirstWord(customerName) || "Walk-in";
+    return `Order - ${orderNo} - ${firstName}`;
+  }, [sale, customer]);
+  useTabTitle(orderTabTitle);
 
   const subById = useMemo(() => new Map(subCategories.map((s) => [s.id, s])), [subCategories]);
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);

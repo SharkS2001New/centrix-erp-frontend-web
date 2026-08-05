@@ -823,25 +823,16 @@ export function salesOrderQueueTitle(pageName) {
   return `${trimmed} Orders`;
 }
 
-/** Sidebar order links — shorter labels; mobile queue is injected under Field sales. */
+/** Sidebar order links — same labels as page/tab titles (All Orders, Unpaid Orders, …). */
 export function salesOrderSidebarNavItems(workflow, { excludeMobile = true } = {}) {
   return salesOrderQueueNavItems(workflow, { includeMobile: !excludeMobile })
-    .filter((item) => (excludeMobile ? item.slug !== "mobile" : true))
-    .map((item) => ({
-      ...item,
-      label:
-        item.slug === "all"
-          ? "All orders"
-          : item.slug === "mobile"
-            ? "Mobile orders"
-            : String(item.label).replace(/ Orders$/i, ""),
-    }));
+    .filter((item) => (excludeMobile ? item.slug !== "mobile" : true));
 }
 
 /** Full order queue list (filters, routes, search). */
 export function salesOrderQueueNavItems(workflow, { includeMobile = false } = {}) {
   const items = [
-    { slug: "all", label: salesOrderQueueTitle("View All"), href: "/sales/orders" },
+    { slug: "all", label: salesOrderQueueTitle("All"), href: "/sales/orders" },
   ];
   for (const step of workflowPipelineSteps(workflow)) {
     if (QUEUE_EXCLUDED_STATUSES.has(step.key)) continue;
@@ -957,7 +948,7 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   if (!slug || slug === "all") {
     return {
       slug: "all",
-      title: salesOrderQueueTitle("View All"),
+      title: salesOrderQueueTitle("All"),
       subtitle: "Browse and manage every sales order in your workflow",
       fixedStatusFilter: null,
       fixedSourceFilter: null,

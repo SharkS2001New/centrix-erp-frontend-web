@@ -144,9 +144,9 @@ export function CustomersNewScreen() {
       }
     >
       {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
-      ) : (
-        <CustomerFormCard
+        <p className="mb-3 text-xs text-slate-500">Loading routes and branches…</p>
+      ) : null}
+      <CustomerFormCard
           onSubmit={saveCustomer}
           actions={
             <>
@@ -157,10 +157,10 @@ export function CustomersNewScreen() {
                 <TabFormCancelButton href="/customers" onClick={() => clearDraft()} />
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || loading}
                   className="rounded-lg bg-[#185FA5] px-6 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
                 >
-                  {saving ? "Saving…" : "Add customer"}
+                  {saving ? "Saving…" : loading ? "Loading…" : "Add customer"}
                 </button>
               </div>
             </>
@@ -178,7 +178,6 @@ export function CustomersNewScreen() {
             locationError={locationError}
           />
         </CustomerFormCard>
-      )}
     </CustomerFormPageShell>
   );
 }

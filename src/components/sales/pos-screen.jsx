@@ -1433,14 +1433,7 @@ export function PosScreen({ standalone = false }) {
       const code = value.lineForm.product_code?.trim?.() || value.lineForm.product_code;
       if (code) {
         setSelectedProductCode(code);
-        setSelectedProduct((prev) =>
-          prev?.product_code === code
-            ? prev
-            : {
-                product_code: code,
-                product_name: value.lineForm.description || code,
-              },
-        );
+        setSelectedProduct((prev) => (prev?.product_code === code ? prev : null));
       }
     }
     if (typeof value.sellFromShop === "boolean") setSellFromShop(value.sellFromShop);
@@ -3543,8 +3536,7 @@ export function PosScreen({ standalone = false }) {
       await ensureRetailPackageForProduct(enriched);
       return enriched;
     } catch {
-      await ensureRetailPackages([trimmed]);
-      return productByCodeRef.current[trimmed] ?? null;
+      return null;
     }
   }
 

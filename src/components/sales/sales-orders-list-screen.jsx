@@ -14,8 +14,10 @@ import { fetchBranchesCached, fetchRoutesAndUomsCached, fetchUsersCached } from 
 import { filterByOrganization } from "@/lib/admin";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { AiAnalyzeButton, AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { formatNavLabel } from "@/lib/nav-label-format";
 import {
   getOrderWorkflow,
   getSalesOrderQueueWorkflow,
@@ -311,6 +313,13 @@ export default function SalesOrdersListScreen({
       }),
     [queueSlug, orgWorkflow, includeMobileOrders, includeWhatsappOrders, capabilities],
   );
+  const ordersTabTitle = useMemo(() => {
+    if (routeOrdersOnly) {
+      return formatNavLabel(queueConfig?.title ?? "Route orders");
+    }
+    return formatNavLabel(queueConfig?.title ?? "All Orders");
+  }, [routeOrdersOnly, queueConfig?.title]);
+  useTabTitle(ordersTabTitle);
   const statusOptions = useMemo(() => {
     const options = workflowStatusFilterOptions(orgWorkflow);
     if (queueConfig?.slug === "mobile") {
@@ -1671,7 +1680,7 @@ export default function SalesOrdersListScreen({
       title={
         routeOrdersOnly
           ? (queueConfig?.title ?? "Route orders")
-          : queueConfig?.title ?? "View All Orders"
+          : queueConfig?.title ?? "All Orders"
       }
         subtitle={
           routeOrdersOnly

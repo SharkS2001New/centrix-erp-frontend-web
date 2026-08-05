@@ -73,21 +73,21 @@ export function ProductsNewScreen() {
     draftKey: formDraftKey("product", "new"),
     value: form,
     setValue: setForm,
-    enabled: !loading,
+    enabled: true,
     isBaseline,
   });
 
   useEffect(() => {
-    if (loading) return;
     const defaultVat = vats[0]?.id ? String(vats[0].id) : "";
     const defaultUnit =
       uoms.find((u) => Number(u.conversion_factor ?? 1) === 1)?.id ?? uoms[0]?.id;
+    if (!defaultVat && !defaultUnit) return;
     setForm((prev) => ({
       ...prev,
       unit_id: prev.unit_id || (defaultUnit ? String(defaultUnit) : ""),
       vat_id: prev.vat_id || defaultVat,
     }));
-  }, [loading, uoms, vats]);
+  }, [uoms, vats]);
 
   useEffect(() => {
     return () => {
@@ -201,12 +201,13 @@ export function ProductsNewScreen() {
           : "Register a new product with pricing and opening stock"
       }
     >
+      {loadError ? (
+        <p className="mb-4 text-sm text-red-600">{loadError}</p>
+      ) : null}
       {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
-      ) : loadError ? (
-        <p className="text-sm text-red-600">{loadError}</p>
-      ) : (
-        <>
+        <p className="mb-3 text-xs text-slate-500">Loading dropdown options…</p>
+      ) : null}
+      <>
           <ProductFormCard
             onSubmit={saveProduct}
             actions={
@@ -218,10 +219,10 @@ export function ProductsNewScreen() {
                   <TabFormCancelButton href="/products" onClick={handleCancel} />
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || loading}
                     className="rounded-lg bg-[#185FA5] px-6 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
                   >
-                    {saving ? "Saving…" : "Save product"}
+                    {saving ? "Saving…" : loading ? "Loading…" : "Save product"}
                   </button>
                 </div>
               </>
@@ -244,6 +245,7 @@ export function ProductsNewScreen() {
               onGenerateSku={onGenerateSku}
               allowDiscounts={allowDiscounts}
               branches={branches}
+              refsLoading={loading}
             />
           </ProductFormCard>
 
@@ -253,8 +255,7 @@ export function ProductsNewScreen() {
             onClose={() => setSubcategoryModalOpen(false)}
             onCreated={handleSubcategoryCreated}
           />
-        </>
-      )}
+      </>
     </ProductFormPageShell>
   );
 }

@@ -98,17 +98,17 @@ export function HrEmployeesNewScreen() {
       subtitle="Complete each tab in order — employee code is assigned automatically"
     >
       {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
-      ) : (
-        <EmployeeFormWizard
+        <p className="mb-3 text-xs text-slate-500">Loading departments and roles…</p>
+      ) : null}
+      <EmployeeFormWizard
           mode="create"
           form={form}
           setForm={setForm}
           onSubmit={saveEmployee}
-          saving={saving}
+          saving={saving || loading}
           formError={formError}
           cancelHref="/hr/employees"
-          submitLabel="Save employee"
+          submitLabel={loading ? "Loading…" : "Save employee"}
             departments={departments}
             positions={positions}
             shifts={shifts}
@@ -120,7 +120,6 @@ export function HrEmployeesNewScreen() {
           photoPreview={photoPreview}
           onPhotoSelect={onPhotoSelect}
         />
-      )}
     </EmployeeFormPageShell>
   );
 }
