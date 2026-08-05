@@ -23,3 +23,9 @@ export const BRAND_COLORS = {
   navy: "#405189",
   emerald: "#059669",
 };
+
+/** Default PWA / browser chrome (`theme-color`) before an org theme loads. */
+export const DEFAULT_PWA_THEME_COLOR = BRAND_COLORS.blue;
+
+/** Dark-mode PWA / browser chrome when no org sidebar color is applied. */
+export const DARK_PWA_THEME_COLOR = "#1a1d21";

@@ -2274,8 +2274,8 @@ export function PosScreen({ standalone = false }) {
     if (isDarkClassicPosTheme(classicThemeTemplate)) applyTheme("dark");
     applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
     return () => {
-      applyOrgErpSidebarTheme(classicThemeTemplate, classicThemeColors);
       applyTheme(previous);
+      applyOrgErpSidebarTheme(classicThemeTemplate, classicThemeColors, { mode: previous });
     };
   }, [classicLayout, classicThemeTemplate, classicThemeColors]);
 

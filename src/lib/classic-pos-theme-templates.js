@@ -1,6 +1,10 @@
+import { DEFAULT_PWA_THEME_COLOR, DARK_PWA_THEME_COLOR } from "@/lib/branding";
+
 /** Org-wide Centrix ERP visual theme templates (also used by Classic External POS). */
 
 export const CLASSIC_POS_THEME_DEFAULT = "centrix";
+
+export { DEFAULT_PWA_THEME_COLOR, DARK_PWA_THEME_COLOR };
 
 /** Default legacy beige palette (matches globals.css fallbacks). */
 export const CLASSIC_POS_LEGACY_VARS = {
@@ -535,11 +539,33 @@ export function classicPosThemeBridgeVars(id, colorOverrides = null) {
 }
 
 /** Button primary tokens shared by org chrome and Classic POS. */
-function orgErpButtonThemeVars(classic) {
+function orgErpButtonThemeVars(classic, mode = "light") {
   const header = classic["--classic-header"] || "#405189";
   const button = classic["--classic-button"] || header;
   const panel = classic["--classic-panel"] || "#eef0f8";
   const buttonRgb = parseHexColor(button);
+
+  if (mode === "dark") {
+    // Keep brand primary, but never paint light “muted” panels over dark surfaces.
+    let primary = button;
+    if (buttonRgb && relativeLuminance(buttonRgb) < 0.12) {
+      primary = mixHexToward(button, [255, 255, 255], 0.18);
+    }
+    const primaryRgb = parseHexColor(primary);
+    const primaryFg =
+      primaryRgb && relativeLuminance(primaryRgb) > 0.55
+        ? classic["--classic-text"] ?? "#1a1a1a"
+        : "#f8fafc";
+    return {
+      "--theme-primary": primary,
+      "--theme-primary-hover": mixHexToward(primary, [255, 255, 255], 0.12),
+      "--theme-primary-fg": primaryFg,
+      "--theme-primary-subtle": hexToRgba(primary, 0.22),
+      "--theme-primary-muted": "#252a35",
+      "--theme-accent-text": "#dee2e6",
+    };
+  }
+
   const buttonFg =
     buttonRgb && relativeLuminance(buttonRgb) > 0.35
       ? classic["--classic-text"] ?? "#1a1a1a"
@@ -556,18 +582,78 @@ function orgErpButtonThemeVars(classic) {
 /**
  * Backoffice / non-POS modules: sidebar background + primary button colors only.
  * Does not recolor page surfaces, footers, panels, or text.
+ * Dark mode keeps the UI dark while preserving brand primary accents.
+ *
+ * @param {string|null} id
+ * @param {Record<string, string>|null} colorOverrides
+ * @param {"light"|"dark"} [mode]
  */
-export function orgErpSidebarThemeVars(id, colorOverrides = null) {
+export function orgErpSidebarThemeVars(id, colorOverrides = null, mode = "light") {
   const classic = classicPosThemeCssVars(id, colorOverrides);
   const header = classic["--classic-header"] || "#405189";
+  const colorMode = mode === "dark" ? "dark" : "light";
+
+  if (colorMode === "dark") {
+    // Blend brand header into the dark shell so dark mode stays dark.
+    const sidebarBg = mixHexToward(header, [33, 37, 41], 0.78);
+    return {
+      "--erp-sidebar-bg": sidebarBg,
+      "--erp-sidebar-border": mixHexToward(sidebarBg, [0, 0, 0], 0.25),
+      ...orgErpButtonThemeVars(classic, "dark"),
+    };
+  }
+
   return {
     "--erp-sidebar-bg": header,
     "--erp-sidebar-border": mixHexToward(header, [0, 0, 0], 0.12),
-    ...orgErpButtonThemeVars(classic),
+    ...orgErpButtonThemeVars(classic, "light"),
   };
 }
 
 const CLASSIC_POS_DOCUMENT_STYLE_KEYS = new Set();
+
+/**
+ * Pick the chrome color that should drive the installed PWA title bar.
+ * Prefers sidebar/header tokens from org theme CSS vars.
+ *
+ * @param {Record<string, string>} [vars]
+ * @param {"light"|"dark"} [mode]
+ */
+export function resolvePwaThemeColor(vars = {}, mode = "light") {
+  const fromVars =
+    normalizeClassicPosHexColor(vars["--erp-sidebar-bg"]) ||
+    normalizeClassicPosHexColor(vars["--classic-header"]) ||
+    normalizeClassicPosHexColor(vars["--theme-primary"]);
+  if (mode === "dark") {
+    return fromVars || DARK_PWA_THEME_COLOR;
+  }
+  return fromVars || DEFAULT_PWA_THEME_COLOR;
+}
+
+/**
+ * Keep browser / installed-PWA chrome in sync with the org theme header color.
+ * Chromium standalone windows read `theme-color` for the title bar.
+ */
+export function syncDocumentThemeColor(hex, mode = "light") {
+  if (typeof document === "undefined") return;
+  const fallback = mode === "dark" ? DARK_PWA_THEME_COLOR : DEFAULT_PWA_THEME_COLOR;
+  const color = normalizeClassicPosHexColor(hex) || fallback;
+  let metas = document.querySelectorAll('meta[name="theme-color"]');
+  if (metas.length === 0) {
+    const meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.appendChild(meta);
+    metas = document.querySelectorAll('meta[name="theme-color"]');
+  }
+  metas.forEach((meta) => {
+    meta.setAttribute("content", color);
+  });
+}
+
+function readDocumentColorMode() {
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
 
 function writeDocumentThemeVars(vars, { classicPosActive = false, themeId } = {}) {
   if (typeof document === "undefined") return;
@@ -590,11 +676,17 @@ function writeDocumentThemeVars(vars, { classicPosActive = false, themeId } = {}
     delete root.dataset.classicPosActive;
     delete root.dataset.classicPosTheme;
   }
+  const mode = readDocumentColorMode();
+  syncDocumentThemeColor(resolvePwaThemeColor(vars, mode), mode);
 }
 
 /** Apply org theme to sidebar + primary buttons (backoffice / non-Classic-POS). */
-export function applyOrgErpSidebarTheme(id, colorOverrides = null) {
-  writeDocumentThemeVars(orgErpSidebarThemeVars(id, colorOverrides), {
+export function applyOrgErpSidebarTheme(id, colorOverrides = null, options = {}) {
+  const mode =
+    options?.mode === "dark" || options?.mode === "light"
+      ? options.mode
+      : readDocumentColorMode();
+  writeDocumentThemeVars(orgErpSidebarThemeVars(id, colorOverrides, mode), {
     classicPosActive: false,
     themeId: id,
   });
@@ -602,7 +694,8 @@ export function applyOrgErpSidebarTheme(id, colorOverrides = null) {
 
 /** Apply full Classic POS palette on `html` while the Classic External POS desk is open. */
 export function applyClassicPosDocumentTheme(id, colorOverrides = null) {
-  const sidebar = orgErpSidebarThemeVars(id, colorOverrides);
+  // Classic POS owns its authored palette (light or midnight). Do not dark-adapt ERP chrome here.
+  const sidebar = orgErpSidebarThemeVars(id, colorOverrides, "light");
   const full = classicPosThemeBridgeVars(id, colorOverrides);
   writeDocumentThemeVars({ ...full, ...sidebar }, {
     classicPosActive: true,
@@ -620,6 +713,8 @@ export function clearClassicPosDocumentTheme() {
   delete root.dataset.classicPosActive;
   delete root.dataset.classicPosTheme;
   delete root.dataset.erpTheme;
+  const mode = readDocumentColorMode();
+  syncDocumentThemeColor(mode === "dark" ? DARK_PWA_THEME_COLOR : DEFAULT_PWA_THEME_COLOR, mode);
 }
 
 export function resolveClassicPosThemeTemplate(moduleSettingsOrCapabilities = null) {

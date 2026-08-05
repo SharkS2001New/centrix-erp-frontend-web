@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
   applyOrgErpSidebarTheme,
@@ -8,13 +8,16 @@ import {
   resolveClassicPosThemeColors,
   resolveClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
+import { getTheme, subscribeTheme } from "@/lib/theme";
 
 /**
  * Applies the organization Centrix ERP theme to sidebar background + primary buttons.
  * Full workspace / panel / footer colors apply only inside Classic External POS.
+ * Re-applies when light/dark mode changes so color themes never override dark mode surfaces.
  */
 export function OrgThemeBridge({ children }) {
   const { capabilities, user } = useAuth();
+  const colorMode = useSyncExternalStore(subscribeTheme, getTheme, () => "light");
 
   const template = useMemo(
     () => resolveClassicPosThemeTemplate(capabilities),
@@ -43,9 +46,9 @@ export function OrgThemeBridge({ children }) {
       return undefined;
     }
 
-    applyOrgErpSidebarTheme(template, colors);
+    applyOrgErpSidebarTheme(template, colors, { mode: colorMode });
     return undefined;
-  }, [user, template, colors]);
+  }, [user, template, colors, colorMode]);
 
   return children;
 }

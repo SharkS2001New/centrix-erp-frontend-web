@@ -1,4 +1,9 @@
-import { APP_DESCRIPTION, APP_TITLE, PRODUCT_SHORT_NAME } from "@/lib/branding";
+import {
+  APP_DESCRIPTION,
+  APP_TITLE,
+  DEFAULT_PWA_THEME_COLOR,
+  PRODUCT_SHORT_NAME,
+} from "@/lib/branding";
 
 export default function manifest() {
   return {
@@ -10,7 +15,7 @@ export default function manifest() {
     display: "standalone",
     orientation: "any",
     background_color: "#ffffff",
-    theme_color: "#185FA5",
+    theme_color: DEFAULT_PWA_THEME_COLOR,
     categories: ["business", "finance", "productivity"],
     icons: [
       {

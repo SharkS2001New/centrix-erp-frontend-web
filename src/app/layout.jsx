@@ -9,11 +9,12 @@ const dmSans = DM_Sans({
   variable: "--font-sans",
 });
 
-import { APP_DESCRIPTION, APP_TITLE } from "@/lib/branding";
+import { APP_DESCRIPTION, APP_TITLE, DEFAULT_PWA_THEME_COLOR } from "@/lib/branding";
 
 export const metadata = {
   title: APP_TITLE,
   description: APP_DESCRIPTION,
+  themeColor: DEFAULT_PWA_THEME_COLOR,
   appleWebApp: {
     capable: true,
     title: APP_TITLE,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BRAND_COLORS, DEFAULT_PWA_THEME_COLOR, DARK_PWA_THEME_COLOR } from "@/lib/branding";
 import {
   classicPosThemeBridgeVars,
   classicPosThemeCssVars,
@@ -6,6 +7,7 @@ import {
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
   orgErpSidebarThemeVars,
+  resolvePwaThemeColor,
 } from "@/lib/classic-pos-theme-templates";
 
 describe("classic POS theme color overrides", () => {
@@ -78,10 +80,32 @@ describe("classic POS theme color overrides", () => {
     expect(sidebar["--classic-footer"]).toBeUndefined();
   });
 
+  it("org sidebar dark mode keeps surfaces dark while preserving brand primary", () => {
+    const light = orgErpSidebarThemeVars("ocean");
+    const dark = orgErpSidebarThemeVars("ocean", null, "dark");
+    const classic = classicPosThemeCssVars("ocean");
+    expect(light["--erp-sidebar-bg"]).toBe(classic["--classic-header"]);
+    expect(dark["--erp-sidebar-bg"]).not.toBe(light["--erp-sidebar-bg"]);
+    expect(dark["--theme-primary-muted"]).toBe("#252a35");
+    expect(dark["--theme-page-bg"]).toBeUndefined();
+    expect(dark["--theme-surface"]).toBeUndefined();
+    expect(dark["--theme-primary"]).toBeTruthy();
+  });
+
   it("classic POS bridge includes full theme tokens", () => {
     const bridge = classicPosThemeBridgeVars("rose");
     expect(bridge["--theme-primary"]).toBeTruthy();
     expect(bridge["--classic-footer"]).toBeTruthy();
     expect(bridge["--classic-bg"]).toBeTruthy();
+  });
+
+  it("resolves PWA theme color from sidebar/header vars", () => {
+    expect(DEFAULT_PWA_THEME_COLOR).toBe(BRAND_COLORS.blue);
+    expect(resolvePwaThemeColor({})).toBe(DEFAULT_PWA_THEME_COLOR);
+    expect(resolvePwaThemeColor({}, "dark")).toBe(DARK_PWA_THEME_COLOR);
+    expect(resolvePwaThemeColor({ "--erp-sidebar-bg": "#0d9488" })).toBe("#0d9488");
+    expect(resolvePwaThemeColor(orgErpSidebarThemeVars("ocean"))).toBe(
+      orgErpSidebarThemeVars("ocean")["--erp-sidebar-bg"],
+    );
   });
 });
