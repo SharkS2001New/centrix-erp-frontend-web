@@ -350,45 +350,54 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
   );
 }
 
-function PaymentsChoiceModal({ open, onClose, unpaidCount, onMarkAll, onSelectOrders }) {
+function PaymentsChoiceModal({ open, onClose, unpaidCount, loading, onMarkAll, onSelectOrders }) {
   return (
     <ModalShell
       open={open}
       title="Mark orders as paid"
       onClose={onClose}
+      busy={loading}
       footer={
-        <button type="button" className={SECONDARY_BTN_CLASS} onClick={onClose}>
+        <button type="button" className={SECONDARY_BTN_CLASS} disabled={loading} onClick={onClose}>
           Cancel
         </button>
       }
     >
-      <p className="mb-4 text-slate-600">
-        {unpaidCount === 0
-          ? "There are no unpaid orders on this page."
-          : unpaidCount === 1
-            ? "1 unpaid order on this page."
-            : `${unpaidCount} unpaid orders on this page.`}
-      </p>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          disabled={unpaidCount === 0}
-          onClick={onMarkAll}
-          className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
-        >
-          <span className="text-sm font-semibold text-slate-900">Mark all as paid</span>
-          <span className="text-xs text-slate-500">Convert every unpaid order on this page</span>
-        </button>
-        <button
-          type="button"
-          disabled={unpaidCount === 0}
-          onClick={onSelectOrders}
-          className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
-        >
-          <span className="text-sm font-semibold text-slate-900">Select orders</span>
-          <span className="text-xs text-slate-500">Choose which unpaid orders to mark paid</span>
-        </button>
-      </div>
+      {loading ? (
+        <p className="text-slate-500">Loading unpaid orders for this filter…</p>
+      ) : (
+        <>
+          <p className="mb-4 text-slate-600">
+            {unpaidCount === 0
+              ? "There are no unpaid orders matching the current dates and filters."
+              : unpaidCount === 1
+                ? "1 unpaid order matching the current dates and filters."
+                : `${unpaidCount} unpaid orders matching the current dates and filters.`}
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              disabled={unpaidCount === 0}
+              onClick={onMarkAll}
+              className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
+            >
+              <span className="text-sm font-semibold text-slate-900">Mark all as paid</span>
+              <span className="text-xs text-slate-500">
+                Convert every unpaid order in this filter (all pages)
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={unpaidCount === 0}
+              onClick={onSelectOrders}
+              className={`${CARD_CLASS} flex-1 disabled:opacity-50`}
+            >
+              <span className="text-sm font-semibold text-slate-900">Select orders</span>
+              <span className="text-xs text-slate-500">Choose which unpaid orders to mark paid</span>
+            </button>
+          </div>
+        </>
+      )}
     </ModalShell>
   );
 }
@@ -452,7 +461,7 @@ function SelectPaidModal({ open, orders, onClose, onConfirm }) {
       }
     >
       {(orders ?? []).length === 0 ? (
-        <p className="text-slate-500">No unpaid orders on this page.</p>
+        <p className="text-slate-500">No unpaid orders match the current dates and filters.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="min-w-full text-left text-sm">
@@ -494,10 +503,13 @@ function SelectPaidModal({ open, orders, onClose, onConfirm }) {
 /**
  * Platform-gated Returns + Payments cards for the Mobile orders queue.
  * Off by default; enable per org under Platform → Sales.
+ * Payments operate on all unpaid orders matching the list filters (all pages).
  */
 export function MobileOrdersQuickActions({
   enabledReturns = false,
   enabledPayments = false,
+  unpaidHintCount = null,
+  loadUnpaidOrders,
   pageOrders = [],
   fromDate = "",
   toDate = "",
@@ -507,10 +519,41 @@ export function MobileOrdersQuickActions({
   const [paymentsChoiceOpen, setPaymentsChoiceOpen] = useState(false);
   const [selectPaidOpen, setSelectPaidOpen] = useState(false);
   const [markBusy, setMarkBusy] = useState(false);
+  const [unpaidLoading, setUnpaidLoading] = useState(false);
+  const [unpaid, setUnpaid] = useState([]);
 
-  const unpaid = useMemo(() => unpaidOrdersOnPage(pageOrders), [pageOrders]);
+  const fallbackUnpaid = useMemo(() => unpaidOrdersOnPage(pageOrders), [pageOrders]);
+  const hintCount =
+    unpaidHintCount != null && Number.isFinite(Number(unpaidHintCount))
+      ? Number(unpaidHintCount)
+      : fallbackUnpaid.length;
 
   if (!enabledReturns && !enabledPayments) return null;
+
+  const resolveUnpaid = async () => {
+    if (typeof loadUnpaidOrders !== "function") {
+      setUnpaid(fallbackUnpaid);
+      return fallbackUnpaid;
+    }
+    setUnpaidLoading(true);
+    try {
+      const rows = await loadUnpaidOrders();
+      const list = Array.isArray(rows) ? rows : [];
+      setUnpaid(list);
+      return list;
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load unpaid orders.");
+      setUnpaid([]);
+      return [];
+    } finally {
+      setUnpaidLoading(false);
+    }
+  };
+
+  const openPayments = async () => {
+    setPaymentsChoiceOpen(true);
+    await resolveUnpaid();
+  };
 
   const markPaid = async (saleIds) => {
     if (!saleIds?.length) return;
@@ -542,7 +585,7 @@ export function MobileOrdersQuickActions({
 
   return (
     <>
-      <div className="flex flex-wrap items-stretch gap-2">
+      <div className="flex flex-wrap items-stretch justify-end gap-2">
         {enabledReturns ? (
           <button type="button" className={CARD_CLASS} onClick={() => setReturnsOpen(true)}>
             <span className="text-sm font-semibold text-slate-900">Returns</span>
@@ -554,15 +597,15 @@ export function MobileOrdersQuickActions({
             type="button"
             className={CARD_CLASS}
             disabled={markBusy}
-            onClick={() => setPaymentsChoiceOpen(true)}
+            onClick={() => void openPayments()}
           >
             <span className="text-sm font-semibold text-slate-900">Payments</span>
             <span className="text-xs text-slate-500">
-              {unpaid.length === 0
-                ? "No unpaid on this page"
-                : unpaid.length === 1
+              {hintCount === 0
+                ? "No unpaid in filter"
+                : hintCount === 1
                   ? "1 unpaid · mark paid"
-                  : `${unpaid.length} unpaid · mark paid`}
+                  : `${hintCount} unpaid · mark paid`}
             </span>
           </button>
         ) : null}
@@ -578,7 +621,8 @@ export function MobileOrdersQuickActions({
 
       <PaymentsChoiceModal
         open={paymentsChoiceOpen}
-        unpaidCount={unpaid.length}
+        unpaidCount={unpaidLoading ? hintCount : unpaid.length}
+        loading={unpaidLoading}
         onClose={() => setPaymentsChoiceOpen(false)}
         onMarkAll={() => {
           setPaymentsChoiceOpen(false);

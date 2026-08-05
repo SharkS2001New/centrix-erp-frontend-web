@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Field, inputClassName, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
@@ -8,13 +9,162 @@ import { formatSaleKes } from "@/lib/sales";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import {
   DEFAULT_PRICING_FORMULAS,
+  PRICING_FORMULA_DESCRIPTIONS,
+  PRICING_FORMULA_EXAMPLES,
   PRICING_FORMULA_LABELS,
   PRICING_FORMULA_PLACEHOLDERS,
-  PRICING_FORMULA_EXAMPLES,
+  PRICING_FORMULA_PRIMARY_TOKENS,
+  formatPricingFormulaFriendly,
   normalizePricingFormulas,
+  pricingFormulaTokenLabel,
 } from "@/lib/pricing-formula";
 
 const FORMULA_KEYS = ["retail_line", "wholesale_line", "route_retail", "route_wholesale"];
+
+function MarkupFormulasHelpDialog({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    function onKeyDown(e) {
+      if (e.key === "Escape") onClose?.();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[1px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="markup-formulas-help-title"
+      onClick={onClose}
+    >
+      <div
+        className="theme-modal max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 id="markup-formulas-help-title" className="theme-heading text-base font-semibold">
+            How to set up markup formulas
+          </h2>
+          <button
+            type="button"
+            className="theme-subtext rounded-md px-2 py-1 text-sm hover:bg-slate-100"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="theme-subtext mt-3 space-y-4 text-sm">
+          <p>
+            Each formula is a small math expression using named values in square brackets below
+            (stored as <code className="rounded bg-slate-100 px-1 text-xs">{"{token}"}</code> in the
+            formula box). Use <strong>+</strong>, <strong>−</strong>, <strong>×</strong>,{" "}
+            <strong>÷</strong>, and parentheses.
+          </p>
+
+          <div>
+            <p className="theme-heading font-medium text-slate-900">The four formulas</p>
+            <ol className="mt-2 list-decimal space-y-2 pl-5">
+              {FORMULA_KEYS.map((key) => (
+                <li key={key}>
+                  <span className="font-medium text-slate-800">
+                    {PRICING_FORMULA_LABELS[key]}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-600">
+                    {PRICING_FORMULA_DESCRIPTIONS[key]}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div>
+            <p className="theme-heading font-medium text-slate-900">Common building blocks</p>
+            <ul className="mt-2 space-y-1.5 text-xs">
+              <li>
+                <strong>Wholesale total</strong> — wholesale amount for the quantity sold.
+              </li>
+              <li>
+                <strong>Tier markup</strong> — markup from the product&apos;s retail package tier.
+              </li>
+              <li>
+                <strong>Markup applications</strong> — how many times tier markup applies (e.g. half
+                bags).
+              </li>
+              <li>
+                <strong>Line total</strong> — line amount after package/tier pricing, before route
+                markup.
+              </li>
+              <li>
+                <strong>Route markup</strong> — amount from the selected sales route.
+              </li>
+              <li>
+                <strong>Quantity</strong> — quantity in small units (kg, pcs, …).
+              </li>
+              <li>
+                <strong>Pack quantity</strong> — number of packs/bags sold.
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="theme-heading font-medium text-slate-900">Once vs per qty / pack</p>
+            <p className="mt-1 text-xs">
+              Add markup once on the whole line, or multiply it by quantity / packs / applications:
+            </p>
+            <ul className="mt-2 space-y-1.5 font-mono text-[11px] text-slate-700">
+              <li>
+                Once →{" "}
+                <span className="rounded bg-slate-100 px-1">
+                  {formatPricingFormulaFriendly("{line_total} + {route_markup}")}
+                </span>
+              </li>
+              <li>
+                Per pack →{" "}
+                <span className="rounded bg-slate-100 px-1">
+                  {formatPricingFormulaFriendly("{line_total} + {route_markup} * {pack_qty}")}
+                </span>
+              </li>
+              <li>
+                Per qty →{" "}
+                <span className="rounded bg-slate-100 px-1">
+                  {formatPricingFormulaFriendly("{line_total} + {route_markup} * {qty}")}
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <p className="theme-heading font-medium text-slate-900">Quick setup</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs">
+              <li>Enable “Add route markup prices” under Prices &amp; discounts if you use routes.</li>
+              <li>Pick a preset chip under each formula, or click a named value to insert it.</li>
+              <li>Use Preview on a product to compare results before saving.</li>
+              <li>Click Save on the Sales settings page when finished.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button type="button" className={SECONDARY_BTN_CLASS} onClick={onClose}>
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
   const { settingsPath } = useSettingsApi();
@@ -32,6 +182,7 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
       ? salesForm.pricing_formula_examples
       : PRICING_FORMULA_EXAMPLES;
 
+  const [helpOpen, setHelpOpen] = useState(false);
   const [productQuery, setProductQuery] = useState("");
   const [productHits, setProductHits] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -100,6 +251,13 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
     }));
   }
 
+  function insertToken(key, token) {
+    const current = String(formulas[key] ?? "").trim();
+    const piece = `{${token}}`;
+    const next = current ? `${current} ${piece}` : piece;
+    patchFormula(key, next);
+  }
+
   function resetAll() {
     setSalesForm((f) => ({
       ...f,
@@ -140,80 +298,128 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
 
   return (
     <div className="space-y-4 rounded-xl border border-[var(--theme-border)] p-4">
+      <MarkupFormulasHelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="theme-heading text-sm font-semibold">Markup price formulas</h3>
           <p className="theme-subtext mt-1 text-xs">
-            Type any formula with + − × ÷ and parentheses. You choose whether markup is once on the
-            whole line or per quantity / pack / chunk by how you multiply. Defaults match current
-            Centrix math — use Return to default anytime.
-          </p>
-          <p className="theme-subtext mt-1 text-xs">
-            Examples: once → <code className="rounded bg-slate-100 px-1">{"{aggregate_wholesale} + {tier_markup}"}</code>
-            {" · "}
-            per qty → <code className="rounded bg-slate-100 px-1">{"{aggregate_wholesale} + {tier_markup} * {qty}"}</code>
-            {" · "}
-            per chunk → <code className="rounded bg-slate-100 px-1">{"{aggregate_wholesale} + {tier_markup} * {markup_apps}"}</code>
+            Build each price with named values (Line total, Route markup, Pack quantity, …). Click a
+            name to insert it, or use a preset. Defaults match current Centrix math.
           </p>
         </div>
-        <button type="button" className={SECONDARY_BTN_CLASS} onClick={resetAll}>
-          Return to default
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setHelpOpen(true)}>
+            How to set up
+          </button>
+          <button type="button" className={SECONDARY_BTN_CLASS} onClick={resetAll}>
+            Return to default
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-4">
-        {FORMULA_KEYS.map((key) => (
-          <div key={key} className="space-y-1.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="theme-heading text-sm font-medium">
-                {PRICING_FORMULA_LABELS[key] ?? key}
-              </label>
-              <button
-                type="button"
-                className="text-xs font-medium text-[var(--theme-primary)] hover:underline"
-                onClick={() => resetOne(key)}
-              >
-                Reset
-              </button>
-            </div>
-            <textarea
-              className={`${inputClassName()} min-h-[56px] font-mono text-xs`}
-              value={formulas[key] ?? ""}
-              onChange={(e) => patchFormula(key, e.target.value)}
-              spellCheck={false}
-              placeholder={defaults[key] ?? DEFAULT_PRICING_FORMULAS[key]}
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {(examples[key] ?? []).map((ex) => (
+      <div className="space-y-5">
+        {FORMULA_KEYS.map((key) => {
+          const primaryTokens = PRICING_FORMULA_PRIMARY_TOKENS[key] ?? [];
+          const friendly = formatPricingFormulaFriendly(formulas[key] ?? "");
+          return (
+            <div key={key} className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <label className="theme-heading text-sm font-medium">
+                    {PRICING_FORMULA_LABELS[key] ?? key}
+                  </label>
+                  <p className="theme-subtext mt-0.5 text-[11px]">
+                    {PRICING_FORMULA_DESCRIPTIONS[key]}
+                  </p>
+                </div>
                 <button
-                  key={`${key}-${ex.label}`}
                   type="button"
-                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-700 hover:border-[var(--theme-primary)] hover:text-[var(--theme-primary)]"
-                  title={ex.formula}
-                  onClick={() => patchFormula(key, ex.formula)}
+                  className="text-xs font-medium text-[var(--theme-primary)] hover:underline"
+                  onClick={() => resetOne(key)}
                 >
-                  {ex.label}
+                  Reset
                 </button>
-              ))}
+              </div>
+
+              <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                Reads as: <span className="font-medium text-slate-900">{friendly || "—"}</span>
+              </p>
+
+              <textarea
+                className={`${inputClassName()} min-h-[56px] font-mono text-xs`}
+                value={formulas[key] ?? ""}
+                onChange={(e) => patchFormula(key, e.target.value)}
+                spellCheck={false}
+                placeholder={defaults[key] ?? DEFAULT_PRICING_FORMULAS[key]}
+                aria-label={PRICING_FORMULA_LABELS[key] ?? key}
+              />
+
+              <div>
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Insert value
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {primaryTokens.map((row) => (
+                    <button
+                      key={`${key}-${row.token}`}
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-800 hover:border-[var(--theme-primary)] hover:text-[var(--theme-primary)]"
+                      title={`${row.hint} — inserts {${row.token}}`}
+                      onClick={() => insertToken(key, row.token)}
+                    >
+                      {pricingFormulaTokenLabel(row.token)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Presets
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(examples[key] ?? []).map((ex) => (
+                    <button
+                      key={`${key}-${ex.label}`}
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-700 hover:border-[var(--theme-primary)] hover:text-[var(--theme-primary)]"
+                      title={formatPricingFormulaFriendly(ex.formula)}
+                      onClick={() => patchFormula(key, ex.formula)}
+                    >
+                      {ex.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="theme-subtext text-[11px]">
+                Also available:{" "}
+                {(placeholders[key] ?? [])
+                  .filter((p) => !primaryTokens.some((row) => row.token === p))
+                  .map((p) => pricingFormulaTokenLabel(p))
+                  .join(" · ")}
+              </p>
             </div>
-            <p className="theme-subtext text-[11px]">
-              Placeholders: {(placeholders[key] ?? []).map((p) => `{${p}}`).join(" · ")}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="space-y-3 border-t border-[var(--theme-border)] pt-4">
         <h4 className="theme-heading text-sm font-semibold">Preview on a product</h4>
         <p className="theme-subtext text-xs">
           Pick an item with a retail package, enter quantity in small units (e.g. kg), then preview
-          how your formula prices the line — try once-on-line vs per-qty chips above and compare.
+          how your formula prices the line — try once-on-line vs per-qty presets and compare.
         </p>
         <div className="grid gap-3 lg:grid-cols-2">
           <Field label="Product">
             <input
               className={inputClassName()}
-              value={selectedProduct ? `${selectedProduct.product_code} — ${selectedProduct.product_name ?? ""}` : productQuery}
+              value={
+                selectedProduct
+                  ? `${selectedProduct.product_code} — ${selectedProduct.product_name ?? ""}`
+                  : productQuery
+              }
               onChange={(e) => {
                 setSelectedProduct(null);
                 setProductQuery(e.target.value);
@@ -296,17 +502,17 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
             ) : null}
             <dl className="grid gap-1 sm:grid-cols-2">
               <div>
-                <dt className="text-xs text-slate-500">Wholesale aggregate</dt>
+                <dt className="text-xs text-slate-500">Wholesale total</dt>
                 <dd className="font-medium tabular-nums">{formatSaleKes(preview.aggregate_wholesale)}</dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Tier markup × apps</dt>
+                <dt className="text-xs text-slate-500">Tier markup × applications</dt>
                 <dd className="font-medium tabular-nums">
                   {formatSaleKes(preview.tier_markup)} × {preview.markup_apps}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-500">Line before route</dt>
+                <dt className="text-xs text-slate-500">Line total (before route)</dt>
                 <dd className="font-medium tabular-nums">{formatSaleKes(preview.line_before_route)}</dd>
               </div>
               <div>

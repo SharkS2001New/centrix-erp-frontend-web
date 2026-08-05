@@ -17,6 +17,13 @@ const CARDS = [
     permission: P.admin.settings.view,
   },
   {
+    href: "/admin/themes",
+    title: "Centrix ERP Themes",
+    description: "ERP sidebar colors, primary buttons, and Classic External POS palette.",
+    icon: "🎨",
+    permission: P.admin.settings.view,
+  },
+  {
     href: "/admin/company",
     title: "Company profile",
     description: "Manage organization info, registration details, and logo.",

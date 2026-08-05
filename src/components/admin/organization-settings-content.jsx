@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
@@ -16,7 +16,6 @@ import { PrintoutsSettingsPanel } from "@/components/admin/printouts-settings-pa
 import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
 import { SalesSettingsPanel } from "@/components/admin/sales-settings-panel";
-import { ExternalPosSettingsPanel } from "@/components/admin/external-pos-settings-panel";
 import { ManagerApprovalsSettingsPanel } from "@/components/admin/manager-approvals-settings-panel";
 import { PlatformAccountingSettingsPanel } from "@/components/admin/platform-accounting-settings-panel";
 import { RbacHelpDialog } from "@/components/admin/rbac-help";
@@ -31,7 +30,6 @@ const TABS = [
   { id: "general", label: "General" },
   { id: "printouts", label: "Printouts" },
   { id: "sales", label: "Sales" },
-  { id: "external-pos", label: "Centrix ERP Themes" },
   { id: "mobile", label: "Mobile application" },
   { id: "distribution", label: "Distribution" },
   { id: "manager-approvals", label: "Manager approvals" },
@@ -46,10 +44,10 @@ const TABS = [
   { id: "security", label: "Security" },
 ];
 
+const LEGACY_THEMES_TAB_IDS = new Set(["external-pos", "themes", "centrix-erp-themes"]);
+
 function normalizeSettingsTabId(raw) {
-  const id = String(raw ?? "").trim().toLowerCase();
-  if (id === "themes" || id === "centrix-erp-themes") return "external-pos";
-  return id;
+  return String(raw ?? "").trim().toLowerCase();
 }
 
 export function OrganizationSettingsContent({
@@ -65,8 +63,11 @@ export function OrganizationSettingsContent({
     : "Platform configuration for module provisioning, workflows, accounting books setup, and integration gates. Tenants manage day-to-day module preferences under Administration → Organization settings.",
 }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const tabFromUrl = normalizeSettingsTabId(searchParams?.get("tab"));
-  const [tab, setTab] = useState(tabFromUrl || "general");
+  const [tab, setTab] = useState(
+    tabFromUrl && !LEGACY_THEMES_TAB_IDS.has(tabFromUrl) ? tabFromUrl : "general",
+  );
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
   const setError = toastErrorSetter;
@@ -77,7 +78,14 @@ export function OrganizationSettingsContent({
   );
 
   useEffect(() => {
-    if (!tabFromUrl) return;
+    if (!LEGACY_THEMES_TAB_IDS.has(tabFromUrl)) return;
+    // Platform org settings keep themes on the org profile; tenant bookmarks go to the standalone page.
+    if (platformManaged) return;
+    router.replace("/admin/themes");
+  }, [tabFromUrl, router, platformManaged]);
+
+  useEffect(() => {
+    if (!tabFromUrl || LEGACY_THEMES_TAB_IDS.has(tabFromUrl)) return;
     if (visibleTabs.some((item) => item.id === tabFromUrl)) {
       setTab(tabFromUrl);
     }
@@ -145,8 +153,6 @@ export function OrganizationSettingsContent({
           {tab === "printouts" ? <PrintoutsSettingsPanel {...panelProps} /> : null}
 
           {tab === "sales" ? <SalesSettingsPanel {...panelProps} /> : null}
-
-          {tab === "external-pos" ? <ExternalPosSettingsPanel {...panelProps} /> : null}
 
           {tab === "mobile" ? <MobileApplicationSettingsPanel {...panelProps} /> : null}
           {tab === "distribution" ? <DistributionSettingsPanel {...panelProps} /> : null}

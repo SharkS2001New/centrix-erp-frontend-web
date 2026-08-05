@@ -295,7 +295,7 @@ export function financeDebtorAlertPayloadFromForm(form) {
   };
 }
 
-/** Order placed + payment alerts saved together from Sales → Alerts. */
+/** Order placed + payment alerts saved together from Messaging → Customer alerts. */
 export function salesCustomerAlertsPayloadFromForm(form) {
   return {
     ...salesOrderAlertPayloadFromForm(form),

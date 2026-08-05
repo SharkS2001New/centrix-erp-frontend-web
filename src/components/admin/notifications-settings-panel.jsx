@@ -5,13 +5,19 @@ import { apiRequest, ApiError } from "@/lib/api";
 import {
   IN_APP_ALERT_GROUPS,
   SMTP_ENCRYPTION_OPTIONS,
+  distributionDeliveryAlertPayloadFromForm,
   inAppAlertsPayloadFromForm,
   notificationChannelsPayloadFromForm,
   notificationsFormFromApi,
+  salesCustomerAlertsPayloadFromForm,
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import {
+  DistributionDeliveryAlerts,
+  SalesCustomerOrderAlerts,
+} from "@/components/admin/customer-notification-fields";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -35,21 +41,31 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 
-export function NotificationsSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
+export function NotificationsSettingsPanel({
+  saving,
+  setSaving,
+  setError,
+  setMessage,
+  onAfterSave,
+  capabilities,
+}) {
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
   const [form, setForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("sms");
 
-  const visibleTabs = useMemo(
-    () => [
+  const hasDistribution = Boolean(capabilities?.modules?.distribution);
+
+  const visibleTabs = useMemo(() => {
+    const tabs = [
       { id: "sms", label: "Text messages (SMS)" },
       { id: "email", label: "Email setup" },
+      { id: "customer", label: "Customer alerts" },
       { id: "in_app", label: "In-app alerts" },
-    ],
-    [],
-  );
+    ];
+    return tabs;
+  }, []);
 
   useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
@@ -72,13 +88,15 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
         body: {
           ...notificationChannelsPayloadFromForm(form),
           ...inAppAlertsPayloadFromForm(form),
+          ...salesCustomerAlertsPayloadFromForm(form),
+          ...(hasDistribution ? distributionDeliveryAlertPayloadFromForm(form) : {}),
         },
       });
       setForm(notificationsFormFromApi(res));
       await afterSave();
-      setMessage("Notification settings saved.");
+      setMessage("Messaging settings saved.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save notification settings");
+      setError(e instanceof ApiError ? e.message : "Failed to save messaging settings");
     } finally {
       setSaving(false);
     }
@@ -89,13 +107,10 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
   return (
     <form onSubmit={handleSave}>
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
-        <h2 className="text-lg font-medium text-slate-900">Messaging channels</h2>
+        <h2 className="text-lg font-medium text-slate-900">Messaging</h2>
         <p className="mt-1 text-sm text-slate-500">
-          SMS and email delivery for{" "}
+          SMS, email, customer alert templates, and staff bell notifications for{" "}
           <span className="font-medium text-slate-700">{form.organization_name || "this organization"}</span>.
-          Customer alert toggles and templates live under each module — Sales (order placed + payment),
-          Finance (payment), Distribution, and Manager approvals. Staff bell notifications are configured
-          under In-app alerts.
         </p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
@@ -105,7 +120,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
               tabs={visibleTabs}
               activeTab={activeTab}
               onTabChange={setActiveTab}
-              ariaLabel="Notification settings"
+              ariaLabel="Messaging settings"
             />
 
             {activeTab === "sms" ? (
@@ -113,8 +128,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Africa&apos;s Talking (SMS)</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Org admins configure SMS credentials here. Customer order and payment alerts (Sales →
-                  Alerts / Finance → Alerts) use this channel when SMS is enabled.
+                  Configure SMS credentials here. Customer alerts use this channel when SMS is enabled.
                 </p>
               </div>
               <Toggle
@@ -277,13 +291,22 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
             </div>
             ) : null}
 
+            {activeTab === "customer" ? (
+              <div className="space-y-6">
+                <SalesCustomerOrderAlerts form={form} setForm={setForm} />
+                {hasDistribution ? <DistributionDeliveryAlerts form={form} setForm={setForm} /> : null}
+              </div>
+            ) : null}
+
             {activeTab === "in_app" ? (
               <div className="space-y-6">
                 <p className="text-sm text-slate-600">
                   Choose which events create notifications in the bell icon for managers and staff. Disabled
                   events are not sent to anyone in this organization.
                 </p>
-                {IN_APP_ALERT_GROUPS.map((group) => (
+                {IN_APP_ALERT_GROUPS.filter(
+                  (group) => !group.requiresDistribution || hasDistribution,
+                ).map((group) => (
                   <div key={group.id} className="space-y-3">
                     <h3 className="text-sm font-semibold text-slate-900">{group.label}</h3>
                     {group.items.map((item) => (

@@ -1045,7 +1045,7 @@ const NAV_SECTION_DEFINITIONS = [
         orgAdminOnly: true,
       },
       {
-        href: "/admin/settings?tab=external-pos",
+        href: "/admin/themes",
         label: "Centrix ERP Themes",
         requireOperationalModule: true,
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],

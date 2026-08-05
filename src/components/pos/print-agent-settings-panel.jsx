@@ -423,14 +423,6 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                   {downloadingDotnet ? "Downloading…" : "Download ready installer (zip)"}
                 </button>
               ) : null}
-              <a
-                href={PRINT_AGENT_SUMATRA_PDF_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="theme-btn-secondary inline-flex items-center rounded-lg border px-4 py-2 text-sm font-medium"
-              >
-                Download SumatraPDF
-              </a>
             </div>
 
             {!sourceAvailable ? (

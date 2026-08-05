@@ -190,6 +190,7 @@ export const NAV_HREF_ICONS = {
   "/admin/payment-methods": "wallet",
   "/admin/kra-responses": "file",
   "/admin/settings": "settings",
+  "/admin/themes": "palette",
 };
 
 /** Order workflow queue slugs → icon. */

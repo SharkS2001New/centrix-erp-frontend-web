@@ -229,6 +229,22 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
     if (!hasLines && !isQueuedEdit && !isPreviousOrderEdit && existing.held_order_num) {
       await idbClearLocalCart("active");
     } else if (hasLines || isQueuedEdit || isPreviousOrderEdit || existing.offline) {
+      // Keep lines, but refresh till/session from the open float after a new day.
+      const nextTill = seed.till_id ?? existing.till_id ?? null;
+      const nextSession = seed.float_session_id ?? existing.float_session_id ?? null;
+      if (
+        String(existing.till_id ?? "") !== String(nextTill ?? "") ||
+        String(existing.float_session_id ?? "") !== String(nextSession ?? "")
+      ) {
+        const refreshed = {
+          ...existing,
+          till_id: nextTill,
+          float_session_id: nextSession,
+          updated_at_ms: Date.now(),
+        };
+        await idbPutLocalCart(refreshed);
+        return refreshed;
+      }
       return existing;
     } else if (existing) {
       return existing;
@@ -858,6 +874,7 @@ export async function completeOfflineCashSale({
     ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
     organization_id: organization?.id ?? user?.organization_id ?? null,
     branch_id: cart.branch_id ?? user?.branch_id ?? null,
+    // Prefer the open session till when both are present (avoids stale IDB/server cart till).
     till_id: cart.till_id ?? null,
     float_session_id: floatSessionId ?? cart.float_session_id ?? null,
     cashier_id: user?.id ?? null,

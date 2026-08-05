@@ -1870,27 +1870,35 @@ export default function SalesOrdersListScreen({
           <OrderSummaryStats summary={summary} hint={summaryHint} />
         ) : null}
 
-        <div className="grid grid-cols-12 gap-3">
-          <div className="col-span-12 md:col-span-8 lg:col-span-6">
-            <div className="flex flex-wrap items-center gap-2">
-              <SearchInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search product, customer, amount, S0034, POS #…"
-                className="min-w-0 flex-1"
-              />
-              {showMobileReturnsCard || showMobilePaymentsCard ? (
-                <MobileOrdersQuickActions
-                  enabledReturns={showMobileReturnsCard}
-                  enabledPayments={showMobilePaymentsCard}
-                  pageOrders={pageSlice}
-                  fromDate={appliedFromDate}
-                  toDate={appliedToDate}
-                  onDone={() => void loadOrders()}
-                />
-              ) : null}
-            </div>
+        <div className="grid grid-cols-12 items-start gap-3">
+          <div className="col-span-12 lg:col-span-6">
+            <SearchInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search product, customer, amount, S0034, POS #…"
+              className="w-full min-w-0"
+            />
           </div>
+          {showMobileReturnsCard || showMobilePaymentsCard ? (
+            <div className="col-span-12 flex justify-end lg:col-span-6">
+              <MobileOrdersQuickActions
+                enabledReturns={showMobileReturnsCard}
+                enabledPayments={showMobilePaymentsCard}
+                unpaidHintCount={(summary?.unpaid ?? 0) + (summary?.partial ?? 0)}
+                loadUnpaidOrders={async () => {
+                  const allRows = await fetchAllFilteredOrders();
+                  return (allRows ?? []).filter((sale) => {
+                    if (!sale?.id) return false;
+                    if (String(sale.status ?? "").toLowerCase() === "cancelled") return false;
+                    return saleBalanceDue(sale) > 0.009;
+                  });
+                }}
+                fromDate={appliedFromDate}
+                toDate={appliedToDate}
+                onDone={() => void loadOrders()}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="theme-panel theme-table-shell relative overflow-hidden rounded-xl shadow-sm">
@@ -1956,17 +1964,12 @@ export default function SalesOrdersListScreen({
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2 theme-table-head-row border-b px-4 py-2">
-                <p className="text-xs text-slate-500">
-                  {pageSlice.length === 0
-                    ? "No orders on this page"
-                    : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page`}
-                </p>
+              <div className="flex flex-wrap items-center gap-3 theme-table-head-row border-b px-4 py-2">
                 <button
                   type="button"
                   disabled={!pageSlice.length}
                   onClick={toggleExpandAllOnPage}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
                     allPageExpanded
                       ? "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
                       : "border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
@@ -1974,22 +1977,29 @@ export default function SalesOrdersListScreen({
                 >
                   {allPageExpanded ? "Collapse all" : "Expand all"}
                 </button>
-                <OrdersColumnsMenu
-                  open={columnsMenuOpen}
-                  onOpen={() => setColumnsMenuOpen(true)}
-                  onClose={() => setColumnsMenuOpen(false)}
-                  visibleColumnIds={visibleColumnIds}
-                  availableColumns={availableOrderColumns}
-                  onToggleColumn={(columnId) => {
-                    setVisibleColumnIds((prev) => {
-                      const has = prev.includes(columnId);
-                      const next = has ? prev.filter((id) => id !== columnId) : [...prev, columnId];
-                      if (next.length === 0) return prev;
-                      return normalizeOrdersListVisibleColumns(next);
-                    });
-                  }}
-                  onReset={() => setVisibleColumnIds(defaultVisibleColumnIds)}
-                />
+                <p className="text-xs text-slate-500">
+                  {pageSlice.length === 0
+                    ? "No orders on this page"
+                    : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page`}
+                </p>
+                <div className="ml-auto">
+                  <OrdersColumnsMenu
+                    open={columnsMenuOpen}
+                    onOpen={() => setColumnsMenuOpen(true)}
+                    onClose={() => setColumnsMenuOpen(false)}
+                    visibleColumnIds={visibleColumnIds}
+                    availableColumns={availableOrderColumns}
+                    onToggleColumn={(columnId) => {
+                      setVisibleColumnIds((prev) => {
+                        const has = prev.includes(columnId);
+                        const next = has ? prev.filter((id) => id !== columnId) : [...prev, columnId];
+                        if (next.length === 0) return prev;
+                        return normalizeOrdersListVisibleColumns(next);
+                      });
+                    }}
+                    onReset={() => setVisibleColumnIds(defaultVisibleColumnIds)}
+                  />
+                </div>
               </div>
               <div className="overflow-x-auto">
                 {tableSortActive ? (

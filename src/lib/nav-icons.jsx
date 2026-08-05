@@ -48,6 +48,7 @@ export const NAV_BOOTSTRAP_ICONS = {
   archive: "archive",
   chat: "chat-dots",
   bell: "bell",
+  palette: "palette",
 };
 
 const HREF_ICON_FALLBACK_RULES = [

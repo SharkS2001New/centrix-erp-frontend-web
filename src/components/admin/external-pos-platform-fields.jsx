@@ -253,7 +253,7 @@ export function ExternalPosPlatformFields({
             </select>
             <p className="mt-1 text-xs text-slate-500">
               Only affects the external POS workspace (/pos). Organization sidebar color for the rest of
-              the ERP is under Administration → Centrix ERP Themes (or Organization settings).
+              the ERP is under Administration → Centrix ERP Themes.
             </p>
           </Field>
         </div>

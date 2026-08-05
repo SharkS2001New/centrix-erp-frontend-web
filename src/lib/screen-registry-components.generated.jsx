@@ -225,6 +225,9 @@ export const SCREEN_COMPONENTS = {
   "admin-settings": lazy(() =>
     import("@/components/tab-screens/admin-settings").then((m) => ({ default: m.AdminSettingsScreen })),
   ),
+  "admin-themes": lazy(() =>
+    import("@/components/tab-screens/admin-themes").then((m) => ({ default: m.AdminThemesScreen })),
+  ),
   "admin-till-printing": lazy(() =>
     import("@/components/tab-screens/admin-till-printing").then((m) => ({ default: m.AdminTillPrintingScreen })),
   ),

@@ -16,22 +16,18 @@ import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/setting
 import {
   isPlatformMpesaStkEnabled,
   isPlatformWhatsappEnabled,
+  isPlatformPosCheckoutOnCreateEnabled,
 } from "@/lib/platform-org-features";
 import { getSalesOrderQueueWorkflow } from "@/lib/order-workflow";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { SalesCustomerOrderAlerts } from "@/components/admin/customer-notification-fields";
 import { MarkupPricingFormulasPanel } from "@/components/admin/markup-pricing-formulas-panel";
-import {
-  notificationsFormFromApi,
-  salesCustomerAlertsPayloadFromForm,
-} from "@/lib/notifications-settings";
 
 const SALES_SETTINGS_TABS = [
   { id: "checkout", label: "Prices & discounts" },
+  { id: "formulas", label: "Markup price formulas" },
   { id: "payment", label: "Recording payments" },
   { id: "pos", label: "Tills" },
-  { id: "alerts", label: "Customer alerts" },
 ];
 
 function SalesSettingsTabBar({ tabs, activeTab, onTabChange }) {
@@ -207,7 +203,6 @@ function CheckoutPricingTab({
           ) : null}
         </fieldset>
       ) : null}
-      <MarkupPricingFormulasPanel salesForm={salesForm} setSalesForm={setSalesForm} />
       <Toggle
         label="Allow product discounts"
         description="Applies product discount rules on POS lines automatically. The discount field is read-only unless manual entry is enabled below."
@@ -485,6 +480,8 @@ function TillsCheckoutSettingsTab({
   salesForm,
   setSalesForm,
   hasPosSales,
+  hasCustomers,
+  posCheckoutEnabled,
 }) {
   return (
     <div className="space-y-6">
@@ -497,12 +494,59 @@ function TillsCheckoutSettingsTab({
           onChange={(v) => setSalesForm((f) => ({ ...f, require_backoffice_till_float: v }))}
         />
         {hasPosSales ? (
-          <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            External POS till close, barcode scanner, customer prompts, and credit checkout are under{" "}
-            <strong>Organization settings → Centrix ERP Themes</strong>.
-          </p>
+          <Toggle
+            label="Hide expected cash at till close"
+            description="When a till session is closed, staff enter the cash they counted without seeing the system's expected drawer balance. After close, variance appears on the Z report."
+            checked={salesForm.blind_till_close}
+            onChange={(v) => setSalesForm((f) => ({ ...f, blind_till_close: v }))}
+          />
         ) : null}
       </div>
+
+      {hasPosSales ? (
+        <div className="space-y-3">
+          <h3 className="theme-heading text-sm font-medium">External POS terminal</h3>
+          {!posCheckoutEnabled ? (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              External POS is configured for <strong>save order</strong> (no checkout on create).
+              Checkout options below apply when checkout-on-create is enabled by the platform.
+            </p>
+          ) : (
+            <>
+              <Toggle
+                label="Enable barcode scanner"
+                description="Scan SKU/barcode to add qty 1 directly to the cart on POS."
+                checked={salesForm.enable_barcode_scanner}
+                onChange={(v) => setSalesForm((f) => ({ ...f, enable_barcode_scanner: v }))}
+              />
+              <Toggle
+                label="Request customer name on checkout"
+                description="When enabled, POS prompts for a customer on save order, hold order, and checkout. Default is walk-in name; staff can switch to Existing customer."
+                checked={salesForm.enable_checkout_customer_name}
+                onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
+              />
+              {!hasCustomers ? (
+                <p className="text-xs text-slate-500">
+                  Enable the Customers module to show a credit customer search field at POS checkout.
+                </p>
+              ) : (
+                <Toggle
+                  label="Credit customer field at POS checkout"
+                  description="Shows a searchable credit customer field at checkout. Unpaid balance posts to the customer's account."
+                  checked={salesForm.enable_credit_payment}
+                  onChange={(v) =>
+                    setSalesForm((f) => ({
+                      ...f,
+                      enable_credit_payment: v,
+                      allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
+                    }))
+                  }
+                />
+              )}
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -519,7 +563,6 @@ export function SalesSettingsPanel({
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
-  const [alertForm, setAlertForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("checkout");
 
@@ -527,6 +570,7 @@ export function SalesSettingsPanel({
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
   const mpesaPlatformEnabled = isPlatformMpesaStkEnabled(capabilities);
+  const posCheckoutEnabled = isPlatformPosCheckoutOnCreateEnabled(capabilities);
 
   const visibleTabs = useMemo(
     () => SALES_SETTINGS_TABS.filter((tab) => !tab.requiresPosSales || hasPosSales),
@@ -538,20 +582,15 @@ export function SalesSettingsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [salesRes, notificationsRes] = await Promise.all([
-        apiRequest(settingsPath("sales")),
-        apiRequest(settingsPath("notifications")),
-      ]);
+      const salesRes = await apiRequest(settingsPath("sales"));
       setSalesForm(
         sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(salesRes), capabilities),
       );
-      setAlertForm(notificationsFormFromApi(notificationsRes));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load settings");
     } finally {
       setLoading(false);
     }
-    // capabilities used only for sanitize — do not re-fetch when caps refresh after save
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: mount / path only
   }, [setError, settingsPath]);
 
@@ -563,25 +602,15 @@ export function SalesSettingsPanel({
     e.preventDefault();
     setSaving(true);
     try {
-      await Promise.all([
-        apiRequest(settingsPath("sales"), {
-          method: "PATCH",
-          body: salesOrganizationPayloadFromForm(salesForm, capabilities),
-        }),
-        apiRequest(settingsPath("notifications"), {
-          method: "PATCH",
-          body: salesCustomerAlertsPayloadFromForm(alertForm),
-        }),
-      ]);
+      await apiRequest(settingsPath("sales"), {
+        method: "PATCH",
+        body: salesOrganizationPayloadFromForm(salesForm, capabilities),
+      });
       const caps = (await afterSave?.()) ?? capabilities;
-      const [salesRes, notificationsRes] = await Promise.all([
-        apiRequest(settingsPath("sales")),
-        apiRequest(settingsPath("notifications")),
-      ]);
+      const salesRes = await apiRequest(settingsPath("sales"));
       setSalesForm(
         sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(salesRes), caps),
       );
-      setAlertForm(notificationsFormFromApi(notificationsRes));
       setMessage("Sales settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save settings");
@@ -595,8 +624,9 @@ export function SalesSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Sales settings</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Day-to-day pricing, payment recording, and backoffice till preferences. ERP color themes,
-          External POS layout, and cashier terminal options are under the Centrix ERP Themes tab.
+          Day-to-day pricing, payment recording, till close, barcode scanner, and POS customer prompts.
+          Customer SMS/email alerts are under Messaging → Customer alerts. Color themes stay under
+          Administration → Centrix ERP Themes.
         </p>
 
         {loading ? (
@@ -634,6 +664,10 @@ export function SalesSettingsPanel({
               />
             ) : null}
 
+            {activeTab === "formulas" ? (
+              <MarkupPricingFormulasPanel salesForm={salesForm} setSalesForm={setSalesForm} />
+            ) : null}
+
             {activeTab === "payment" ? (
               <PaymentFieldsTab
                 salesForm={salesForm}
@@ -649,11 +683,9 @@ export function SalesSettingsPanel({
                 salesForm={salesForm}
                 setSalesForm={setSalesForm}
                 hasPosSales={hasPosSales}
+                hasCustomers={hasCustomers}
+                posCheckoutEnabled={posCheckoutEnabled}
               />
-            ) : null}
-
-            {activeTab === "alerts" ? (
-              <SalesCustomerOrderAlerts form={alertForm} setForm={setAlertForm} />
             ) : null}
           </div>
         )}

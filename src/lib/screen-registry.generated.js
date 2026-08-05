@@ -375,6 +375,10 @@ function match_admin_settings(pathname) {
   return pathname === "/admin/settings";
 }
 
+function match_admin_themes(pathname) {
+  return pathname === "/admin/themes";
+}
+
 function match_admin_till_printing(pathname) {
   return pathname === "/admin/till-printing";
 }
@@ -1288,6 +1292,12 @@ export const SCREEN_REGISTRY = [
     title: "Settings",
     route: "/admin/settings",
     match: match_admin_settings,
+  },
+  {
+    id: "admin-themes",
+    title: "Centrix ERP Themes",
+    route: "/admin/themes",
+    match: match_admin_themes,
   },
   {
     id: "admin-till-printing",

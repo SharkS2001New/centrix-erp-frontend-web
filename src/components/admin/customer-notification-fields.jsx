@@ -38,7 +38,7 @@ function ScopeCheckboxes({ value, onChange, fallback = "all" }) {
     <fieldset className="space-y-2">
       <legend className="theme-heading mb-1 text-sm font-medium">Apply to</legend>
       <p className="theme-subtext mb-2 text-xs">
-        Tick one or more. SMS and/or email send when those channels are enabled under Messaging.
+        Tick one or more. SMS and/or email send when those channels are enabled.
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
         {NOTIFICATION_SCOPE_OPTIONS.map((opt) => (
@@ -103,8 +103,8 @@ export function CustomerNotificationTemplateFields({
 export function CustomerNotificationChannelHint({ form }) {
   return (
     <p className="theme-subtext text-xs">
-      {channelHint(form)} Configure Africa&apos;s Talking SMS keys and email/SMTP under{" "}
-      <strong>Organization settings → Messaging</strong>.
+      {channelHint(form)} Enable Africa&apos;s Talking SMS and/or Email setup on the other Messaging
+      tabs first.
     </p>
   );
 }
@@ -183,7 +183,7 @@ export function FinanceDebtorPaymentAlerts({ form, setForm }) {
           <h3 className="theme-heading text-sm font-semibold">Unpaid debt reminder</h3>
           <p className="theme-subtext mt-0.5 text-xs">
             Daily job reminds customers whose order balance is still unpaid after the number of days you set.
-            Repeats every same interval while unpaid. Configure SMS/email under Messaging.
+            Repeats every same interval while unpaid.
           </p>
         </div>
         <Toggle
@@ -230,15 +230,14 @@ export function FinanceDebtorPaymentAlerts({ form, setForm }) {
   );
 }
 
-/** Order placed + payment alerts side-by-side for Sales → Alerts. */
+/** Order placed + payment alerts for Messaging → Customer alerts. */
 export function SalesCustomerOrderAlerts({ form, setForm }) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="theme-heading text-base font-semibold">Customer order notifications</h3>
+        <h3 className="theme-heading text-base font-semibold">Customer order &amp; payment alerts</h3>
         <p className="theme-subtext mt-1 text-sm">
           Configure when customers get SMS/email for new orders, payments, and unpaid balances.
-          Enable channels and Africa&apos;s Talking keys under Messaging first.
         </p>
       </div>
       <SalesOrderPlacedAlerts form={form} setForm={setForm} />

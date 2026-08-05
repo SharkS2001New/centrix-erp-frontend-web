@@ -207,6 +207,10 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     return workspaceId === "admin";
   }
 
+  if (item.href === "/admin/themes" || item.href?.startsWith("/admin/themes/")) {
+    return workspaceId === "admin";
+  }
+
   if (
     item.href &&
     SHARED_WORKSPACE_PATHS.some((p) => item.href === p || item.href.startsWith(`${p}/`))

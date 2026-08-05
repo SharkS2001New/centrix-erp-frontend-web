@@ -1,16 +1,74 @@
 /** Safe arithmetic evaluator for org markup formulas (mirrors backend PricingFormulaEvaluator). */
 
 export const DEFAULT_PRICING_FORMULAS = {
-  retail_line: "{aggregate_wholesale} + {tier_markup} * {markup_apps}",
-  wholesale_line: "{aggregate_wholesale} + {tier_markup}",
-  route_retail: "{line} + {route_markup}",
-  route_wholesale: "{line} + {route_markup} * {pack_qty}",
+  retail_line: "{wholesale_total} + {tier_markup} * {markup_apps}",
+  wholesale_line: "{wholesale_total} + {tier_markup}",
+  route_retail: "{line_total} + {route_markup}",
+  route_wholesale: "{line_total} + {route_markup} * {pack_qty}",
+};
+
+/** Human labels for formula placeholders (token → display name). */
+export const PRICING_FORMULA_TOKEN_LABELS = {
+  aggregate_wholesale: "Wholesale total",
+  wholesale_total: "Wholesale total",
+  base_price: "Base price",
+  per_small: "Price per small unit",
+  wholesale_unit: "Price per small unit",
+  tier_markup: "Tier markup",
+  markup: "Markup",
+  flat_markup: "Flat markup",
+  markup_apps: "Markup applications",
+  apps: "Markup applications",
+  one: "One (1)",
+  scaled_markup: "Scaled markup",
+  qty_markup: "Qty × markup",
+  qty: "Quantity",
+  quantity: "Quantity",
+  pack_qty: "Pack quantity",
+  packs: "Pack quantity",
+  conversion_factor: "Conversion factor",
+  conversion: "Conversion factor",
+  middle_factor: "Middle factor",
+  line: "Line total",
+  line_total: "Line total",
+  route_markup: "Route markup",
+  flat_route: "Flat route markup",
+  scaled_route: "Scaled route markup",
+};
+
+/** Primary tokens shown as insert chips (label + short help). */
+export const PRICING_FORMULA_PRIMARY_TOKENS = {
+  retail_line: [
+    { token: "wholesale_total", hint: "Wholesale amount for the sold quantity" },
+    { token: "tier_markup", hint: "Markup from the active retail package tier" },
+    { token: "markup_apps", hint: "How many times tier markup applies (e.g. half-bags)" },
+    { token: "qty", hint: "Quantity in small units (kg, pcs, …)" },
+    { token: "pack_qty", hint: "Number of packs / bags sold" },
+  ],
+  wholesale_line: [
+    { token: "wholesale_total", hint: "Wholesale amount for the sold quantity" },
+    { token: "tier_markup", hint: "Markup from the active package tier" },
+    { token: "qty", hint: "Quantity in small units" },
+    { token: "pack_qty", hint: "Number of packs / bags sold" },
+  ],
+  route_retail: [
+    { token: "line_total", hint: "Line amount after package / tier markup" },
+    { token: "route_markup", hint: "Route markup from the selected route" },
+    { token: "qty", hint: "Quantity in small units" },
+    { token: "pack_qty", hint: "Number of packs / bags sold" },
+  ],
+  route_wholesale: [
+    { token: "line_total", hint: "Line amount after package / tier markup" },
+    { token: "route_markup", hint: "Route markup from the selected route" },
+    { token: "pack_qty", hint: "Number of packs / bags sold" },
+    { token: "qty", hint: "Quantity in small units" },
+  ],
 };
 
 export const PRICING_FORMULA_PLACEHOLDERS = {
   retail_line: [
-    "aggregate_wholesale",
     "wholesale_total",
+    "aggregate_wholesale",
     "base_price",
     "per_small",
     "wholesale_unit",
@@ -31,8 +89,8 @@ export const PRICING_FORMULA_PLACEHOLDERS = {
     "middle_factor",
   ],
   wholesale_line: [
-    "aggregate_wholesale",
     "wholesale_total",
+    "aggregate_wholesale",
     "base_price",
     "per_small",
     "wholesale_unit",
@@ -53,8 +111,8 @@ export const PRICING_FORMULA_PLACEHOLDERS = {
     "middle_factor",
   ],
   route_retail: [
-    "line",
     "line_total",
+    "line",
     "route_markup",
     "markup",
     "flat_route",
@@ -66,8 +124,8 @@ export const PRICING_FORMULA_PLACEHOLDERS = {
     "one",
   ],
   route_wholesale: [
-    "line",
     "line_total",
+    "line",
     "route_markup",
     "markup",
     "flat_route",
@@ -82,25 +140,28 @@ export const PRICING_FORMULA_PLACEHOLDERS = {
 
 export const PRICING_FORMULA_EXAMPLES = {
   retail_line: [
-    { label: "Per markup chunk (default)", formula: "{aggregate_wholesale} + {tier_markup} * {markup_apps}" },
-    { label: "Once on whole line", formula: "{aggregate_wholesale} + {tier_markup}" },
-    { label: "Per small unit qty", formula: "{aggregate_wholesale} + {tier_markup} * {qty}" },
-    { label: "Per pack", formula: "{aggregate_wholesale} + {tier_markup} * {pack_qty}" },
+    {
+      label: "Per markup chunk (default)",
+      formula: "{wholesale_total} + {tier_markup} * {markup_apps}",
+    },
+    { label: "Once on whole line", formula: "{wholesale_total} + {tier_markup}" },
+    { label: "Per small unit qty", formula: "{wholesale_total} + {tier_markup} * {qty}" },
+    { label: "Per pack", formula: "{wholesale_total} + {tier_markup} * {pack_qty}" },
   ],
   wholesale_line: [
-    { label: "Once on whole line (default)", formula: "{aggregate_wholesale} + {tier_markup}" },
-    { label: "Per small unit qty", formula: "{aggregate_wholesale} + {tier_markup} * {qty}" },
-    { label: "Per pack", formula: "{aggregate_wholesale} + {tier_markup} * {pack_qty}" },
+    { label: "Once on whole line (default)", formula: "{wholesale_total} + {tier_markup}" },
+    { label: "Per small unit qty", formula: "{wholesale_total} + {tier_markup} * {qty}" },
+    { label: "Per pack", formula: "{wholesale_total} + {tier_markup} * {pack_qty}" },
   ],
   route_retail: [
-    { label: "Once on line (default)", formula: "{line} + {route_markup}" },
-    { label: "Per small unit qty", formula: "{line} + {route_markup} * {qty}" },
-    { label: "Per pack", formula: "{line} + {route_markup} * {pack_qty}" },
+    { label: "Once on line (default)", formula: "{line_total} + {route_markup}" },
+    { label: "Per small unit qty", formula: "{line_total} + {route_markup} * {qty}" },
+    { label: "Per pack", formula: "{line_total} + {route_markup} * {pack_qty}" },
   ],
   route_wholesale: [
-    { label: "Per pack (default)", formula: "{line} + {route_markup} * {pack_qty}" },
-    { label: "Once on line", formula: "{line} + {route_markup}" },
-    { label: "Per small unit qty", formula: "{line} + {route_markup} * {qty}" },
+    { label: "Per pack (default)", formula: "{line_total} + {route_markup} * {pack_qty}" },
+    { label: "Once on line", formula: "{line_total} + {route_markup}" },
+    { label: "Per small unit qty", formula: "{line_total} + {route_markup} * {qty}" },
   ],
 };
 
@@ -110,6 +171,31 @@ export const PRICING_FORMULA_LABELS = {
   route_retail: "Route markup on retail lines",
   route_wholesale: "Route markup on wholesale lines",
 };
+
+export const PRICING_FORMULA_DESCRIPTIONS = {
+  retail_line:
+    "How retail (package) lines are priced before any route markup. Usually wholesale total plus package tier markup.",
+  wholesale_line:
+    "How wholesale lines are priced before any route markup.",
+  route_retail:
+    "How route markup is added on top of a retail line total when a route is selected.",
+  route_wholesale:
+    "How route markup is added on top of a wholesale line total when a route is selected.",
+};
+
+/** Replace `{token}` in a formula with a friendly display name for UI copy. */
+export function formatPricingFormulaFriendly(formula) {
+  return String(formula ?? "").replace(/\{([a-z][a-z0-9_]*)\}/gi, (_, raw) => {
+    const key = String(raw).toLowerCase();
+    const label = PRICING_FORMULA_TOKEN_LABELS[key] ?? raw.replaceAll("_", " ");
+    return `[${label}]`;
+  });
+}
+
+export function pricingFormulaTokenLabel(token) {
+  const key = String(token ?? "").toLowerCase();
+  return PRICING_FORMULA_TOKEN_LABELS[key] ?? key.replaceAll("_", " ");
+}
 
 export function normalizePricingFormulas(raw) {
   const out = { ...DEFAULT_PRICING_FORMULAS };

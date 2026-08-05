@@ -122,6 +122,16 @@ export function canAccessRoute(pathname, ctx, options = {}) {
     });
   }
 
+  if (pathname === "/admin/themes" || pathname.startsWith("/admin/themes/")) {
+    return canAccessTenantOrganizationSettings({
+      organization: ctx.organization,
+      isSuperAdmin: ctx.isSuperAdmin,
+      hasPermission: ctx.hasPermission,
+      user: ctx.user,
+      capabilities: ctx.capabilities,
+    });
+  }
+
   if (
     (pathname.startsWith("/admin") || isOrgAdminSettingsPath(pathname)) &&
     !isAdministrationModuleEnabled(ctx.capabilities)

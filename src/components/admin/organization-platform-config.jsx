@@ -1395,8 +1395,9 @@ export function OrganizationModuleToggles({
                   <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                   {workspace.id === "pos" && enabled ? (
                     <span className="theme-subtext mt-1 block text-xs">
-                      Color theme is above. POS layout and cashier behaviour are under Organization
-                      settings → Centrix ERP Themes.
+                      Color theme is above. POS layout and cashier behaviour are under Administration
+                      → Centrix ERP Themes. Till close, barcode, and customer prompts are under
+                      Organization settings → Sales → Tills.
                     </span>
                   ) : null}
                   {isDistribution ? (

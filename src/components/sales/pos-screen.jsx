@@ -3650,8 +3650,8 @@ export function PosScreen({ standalone = false }) {
             client_line_id: l.client_line_id ?? l.id,
           })),
           branch_id: activeCart?.branch_id ?? user?.branch_id,
-          till_id: activeCart?.till_id ?? tillId,
-          float_session_id: activeCart?.float_session_id ?? floatSessionId,
+          till_id: tillId ?? activeCart?.till_id,
+          float_session_id: floatSessionId ?? activeCart?.float_session_id,
           held_order_num: preserveOfflineIdentity ? activeCart?.held_order_num ?? null : null,
           offline_client_sale_uuid: preserveOfflineIdentity
             ? activeCart?.offline_client_sale_uuid ?? null
@@ -6405,7 +6405,7 @@ export function PosScreen({ standalone = false }) {
             client_line_id: l.client_line_id ?? l.id,
           })),
           branch_id: checkoutCart.branch_id ?? user?.branch_id,
-          till_id: checkoutCart.till_id ?? tillId,
+          till_id: tillId ?? checkoutCart.till_id,
           float_session_id: floatSessionId ?? checkoutCart.float_session_id,
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
           customer_name_override:
@@ -6501,7 +6501,7 @@ export function PosScreen({ standalone = false }) {
               client_line_id: l.client_line_id ?? l.id,
             })),
             branch_id: checkoutCart.branch_id ?? user?.branch_id,
-            till_id: checkoutCart.till_id ?? tillId,
+            till_id: tillId ?? checkoutCart.till_id,
             float_session_id: floatSessionId ?? checkoutCart.float_session_id,
             customer_num: body?.customer_num ?? checkoutCart.customer_num,
             customer_name_override:
