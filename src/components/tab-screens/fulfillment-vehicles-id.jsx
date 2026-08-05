@@ -14,6 +14,8 @@ import {
   vehicleRecentTrips,
 } from "@/components/fulfillment/fulfillment-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 export function FulfillmentVehiclesIdScreen() {
   const params = useParams();
@@ -42,6 +44,18 @@ export function FulfillmentVehiclesIdScreen() {
   }, [vehicleId]);
 
   useTabAwareDataLoad(loadData);
+
+  useTabTitle(
+    vehicle
+      ? tabDetailTitle(
+          "Vehicle",
+          vehicle.vehicle_name ||
+            vehicle.plate_number ||
+            vehicle.registration_number ||
+            vehicle.vehicle_code,
+        )
+      : null,
+  );
 
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
 

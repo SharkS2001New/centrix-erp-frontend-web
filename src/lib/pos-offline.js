@@ -427,38 +427,93 @@ export function serverCartLinesToLocal(lines) {
 }
 
 /**
- * When the link drops mid-sale, copy the open online cart into IndexedDB so lines
- * are not wiped the next time offline cart helpers run.
+ * Mid-sale outage: keep selling on the open cart in place.
+ *
+ * Do not rebuild/re-key lines from a TemporaryCart copy — that raced with classic
+ * POS adds and spawned duplicate rows when the link flapped. Persist a snapshot
+ * for crash recovery only; completed-sale sync stays in the outbox.
  */
-export async function adoptOnlineCartForOffline(onlineCart, seed = {}) {
-  if (onlineCart?.offline && Array.isArray(onlineCart.lines)) {
-    const saved = await saveLocalPosCart(onlineCart);
-    return saved;
+export async function continueOpenCartThroughOutage(openCart, seed = {}) {
+  if (!openCart) return null;
+
+  if (openCart.offline && Array.isArray(openCart.lines)) {
+    try {
+      await saveLocalPosCart(openCart);
+    } catch {
+      /* keep in-memory cart even if IDB write fails */
+    }
+    return openCart;
   }
 
-  const lines = serverCartLinesToLocal(onlineCart?.lines);
+  const lines = (openCart.lines ?? [])
+    .map((line) => {
+      const qty = Number(line.quantity ?? 0);
+      if (!line?.product_code || !(qty > 0)) return null;
+      const clientLineId = String(
+        line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
+      );
+      const { _optimistic: _dropOptimistic, ...rest } = line;
+      return {
+        ...rest,
+        client_line_id: clientLineId,
+        product_code: line.product_code,
+        product_name: line.product_name ?? line.description ?? line.product_code,
+        quantity: qty,
+        unit_price: Number(line.unit_price ?? line.price ?? 0),
+        display_unit_price:
+          line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+        amount: line.amount != null ? Number(line.amount) : undefined,
+        uom: line.uom ?? null,
+        unit_id: line.unit_id ?? line.product?.unit_id ?? line.product?.unit?.id ?? null,
+        unit:
+          snapshotUomForPrint(line.unit) ??
+          snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
+        on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
+        discount_given: Number(line.discount_given ?? 0),
+        product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+        vat_rate: Number(line.vat_rate ?? line.tax_rate ?? 0),
+      };
+    })
+    .filter(Boolean);
+
+  const migratedFrom =
+    isServerPosCartId(openCart.id) ? openCart.id : openCart.migrated_from_online_cart_id ?? null;
+
   const local = {
     id: "active",
     offline: true,
     channel: "pos",
     lines,
-    branch_id: onlineCart?.branch_id ?? seed.branch_id ?? null,
-    till_id: onlineCart?.till_id ?? seed.till_id ?? null,
-    float_session_id: onlineCart?.float_session_id ?? seed.float_session_id ?? null,
-    customer_num: onlineCart?.customer_num ?? null,
-    customer_name_override: onlineCart?.customer_name_override ?? null,
-    held_order_num: onlineCart?.held_order_num ?? null,
-    offline_client_sale_uuid: onlineCart?.offline_client_sale_uuid ?? null,
-    offline_edit_snapshot: onlineCart?.offline_edit_snapshot ?? null,
-    migrated_from_online_cart_id: onlineCart?.id ?? null,
+    branch_id: openCart.branch_id ?? seed.branch_id ?? null,
+    till_id: openCart.till_id ?? seed.till_id ?? null,
+    float_session_id: openCart.float_session_id ?? seed.float_session_id ?? null,
+    customer_num: openCart.customer_num ?? null,
+    customer_name_override: openCart.customer_name_override ?? null,
+    order_discount: Number(openCart.order_discount ?? 0) || 0,
+    held_order_num: openCart.held_order_num ?? null,
+    superseded_sale_id: openCart.superseded_sale_id ?? null,
+    offline_client_sale_uuid: openCart.offline_client_sale_uuid ?? null,
+    offline_edit_snapshot: openCart.offline_edit_snapshot ?? null,
+    migrated_from_online_cart_id: migratedFrom,
     updated_at_ms: Date.now(),
   };
-  await idbPutLocalCart(local);
+
+  try {
+    await idbPutLocalCart(local);
+  } catch {
+    /* in-memory continue still works */
+  }
   return local;
 }
 
+/** @deprecated Use {@link continueOpenCartThroughOutage} — kept for older call sites. */
+export async function adoptOnlineCartForOffline(onlineCart, seed = {}) {
+  return continueOpenCartThroughOutage(onlineCart, seed);
+}
+
+/** Merge key matches classic POS merge (SKU + retail/wholesale), not UOM label. */
 function lineKey(line) {
-  return `${line.product_code}|${line.uom ?? ""}|${line.on_wholesale_retail ? 1 : 0}`;
+  return `${line.product_code}|${line.on_wholesale_retail ? 1 : 0}`;
 }
 
 export async function upsertLocalPosCartLine(cart, line) {

@@ -164,7 +164,7 @@ import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
 import {
   abandonOfflineSaleEdit,
   cartHasStaleFailedOutboxAttachment,
-  adoptOnlineCartForOffline,
+  continueOpenCartThroughOutage,
   beginOfflineSaleEdit,
   buildPreviousOrderEditPrintSale,
   clearLocalPosCart,
@@ -524,6 +524,23 @@ function presentLocalOfflineCart(local) {
       };
     }),
   };
+}
+
+/** True when a TemporaryCart line save failed because the link dropped. */
+function isPosNetworkDropError(error) {
+  if (!error) return false;
+  if (error instanceof TypeError && /fetch|network|failed/i.test(String(error.message ?? ""))) {
+    return true;
+  }
+  if (error instanceof ApiError) {
+    const status = Number(error.status ?? 0);
+    if (!status || status === 408 || status === 502 || status === 503 || status === 504) {
+      return true;
+    }
+    const msg = String(error.message ?? "");
+    if (/network|offline|failed to fetch|timeout|temporar/i.test(msg)) return true;
+  }
+  return false;
 }
 
 function isOfflinePendingSaleId(saleId) {
@@ -2570,13 +2587,13 @@ export function PosScreen({ standalone = false }) {
     if (!user?.branch_id) return null;
     if (standalone && offlineMode) {
       const current = cartRef.current;
-      // Mid-sale drop: keep in-memory online lines instead of loading an empty IDB cart.
+      // Mid-sale outage: keep the open workspace lines — do not rebuild/copy the cart.
       if (
         current &&
-        !current.offline &&
         (current.lines?.length > 0 || current.held_order_num)
       ) {
-        const local = await adoptOnlineCartForOffline(current, {
+        if (current.offline) return current;
+        const local = await continueOpenCartThroughOutage(current, {
           branch_id: user.branch_id,
           till_id: tillId,
           float_session_id: floatSessionId,
@@ -2847,7 +2864,7 @@ export function PosScreen({ standalone = false }) {
     if (standalone && offlineMode) {
       if (current?.offline && Array.isArray(current.lines)) return current;
       if (current && (current.lines?.length > 0 || current.held_order_num)) {
-        const local = await adoptOnlineCartForOffline(current, {
+        const local = await continueOpenCartThroughOutage(current, {
           branch_id: user?.branch_id,
           till_id: tillId,
           float_session_id: floatSessionId,
@@ -2895,6 +2912,15 @@ export function PosScreen({ standalone = false }) {
           return merged;
         }
         return bootstrapped;
+      }
+      // Open sale already continuing locally after an outage — keep it.
+      // Rematerializing onto TemporaryCart re-POSTed lines and duplicated items.
+      if (
+        current?.offline &&
+        (current.lines?.length > 0 || current.held_order_num) &&
+        !current.offline_client_sale_uuid
+      ) {
+        return current;
       }
       if (current?.lines?.length > 0 || current?.held_order_num) {
         try {
@@ -3123,11 +3149,13 @@ export function PosScreen({ standalone = false }) {
       cancelled = true;
     };
     // Only remount when channel/branch changes — not when offlineMode flips
-    // (that would wipe an open mid-sale cart). Offline adopt/materialize handles drops.
+    // (that would wipe an open mid-sale cart). Outage continue keeps the sale in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [channel, user?.branch_id]);
 
-  // When the link drops mid-sale, immediately adopt the open cart into IndexedDB.
+  // Mid-sale outage: keep the open sale in place. Do not copy/rebuild the cart into
+  // IndexedDB (that raced classic line adds and created duplicate rows). Quietly mark
+  // the workspace as local-only; completed-order sync is what waits for reconnect.
   const wasOfflineModeRef = useRef(offlineMode);
   useEffect(() => {
     if (!standalone) return;
@@ -3140,37 +3168,28 @@ export function PosScreen({ standalone = false }) {
     if (!(current.lines?.length > 0 || current.held_order_num)) return;
 
     let cancelled = false;
-    const lineCount = current.lines?.length ?? 0;
-    setCartBridgeStatus(
-      lineCount
-        ? `Saving your cart locally (${lineCount} item${lineCount === 1 ? "" : "s"})… Please wait.`
-        : "Switching to offline mode… Please wait.",
-    );
     void (async () => {
       try {
-        const local = await adoptOnlineCartForOffline(current, {
+        const local = await continueOpenCartThroughOutage(current, {
           branch_id: user?.branch_id,
           till_id: tillId,
           float_session_id: floatSessionId,
         });
         if (cancelled) return;
+        // Only flip the working cart if a line-add has not already continued locally.
+        if (cartRef.current?.offline) return;
         const presented = presentLocalOfflineCart(local);
         cartRef.current = presented;
         setCart(presented);
         const n = presented.lines?.length ?? 0;
         setStatusMessage(
           n
-            ? `Connection dropped — ${n} item(s) kept in cart (cash only).`
-            : "Connection dropped — selling from local cache (cash only).",
+            ? `Connection dropped — sale continues (${n} item${n === 1 ? "" : "s"}). Sync when back online.`
+            : "Connection dropped — sale continues offline. Sync when back online.",
         );
         void refreshOfflineCounts();
       } catch (e) {
-        console.warn("Failed to adopt cart for offline", e);
-        if (!cancelled) {
-          setStatusMessage("Connection dropped — could not copy cart locally. Check items before selling.");
-        }
-      } finally {
-        if (!cancelled) setCartBridgeStatus(null);
+        console.warn("Failed to continue cart through outage", e);
       }
     })();
     return () => {
@@ -3185,42 +3204,9 @@ export function PosScreen({ standalone = false }) {
     refreshOfflineCounts,
   ]);
 
-  // When the link returns with a local cart still open, push lines back to the server.
-  useEffect(() => {
-    if (!standalone || offlineMode) return;
-    const current = cartRef.current;
-    if (!current?.offline || !(current.lines?.length > 0 || current.held_order_num)) return;
-
-    let cancelled = false;
-    const lineCount = current.lines?.length ?? 0;
-    setCartBridgeStatus(
-      lineCount
-        ? `Restoring your cart online (${lineCount} item${lineCount === 1 ? "" : "s"})… Please wait.`
-        : "Reconnecting cart to the server… Please wait.",
-    );
-    void (async () => {
-      try {
-        const next = await materializeOfflineCartOnServer(current);
-        if (cancelled || !next) return;
-        const n = next.lines?.length ?? 0;
-        if (n) {
-          setStatusMessage(`Back online — ${n} item(s) restored to the server cart.`);
-        }
-      } catch (e) {
-        console.warn("Failed to rehydrate offline cart after reconnect", e);
-        if (!cancelled) {
-          setStatusMessage(
-            "Back online — could not restore cart to the server yet. Keep this screen open and try again.",
-          );
-        }
-      } finally {
-        if (!cancelled) setCartBridgeStatus(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [standalone, offlineMode, materializeOfflineCartOnServer]);
+  // Reconnect: do not rematerialize an open mid-sale cart onto TemporaryCart.
+  // Checkout is already local-first (outbox → sync). Rematerializing mid-sale
+  // re-POSTed lines and duplicated items when the link flapped.
 
   useEffect(() => {
     if (!cart?.route_id || !showRouteOrderUi || !routes.length) return;
@@ -3656,13 +3642,32 @@ export function PosScreen({ standalone = false }) {
     }
 
     if (standalone && offlineMode) {
-      const activeCart = await ensureCart();
-      const preserveOfflineIdentity = isActiveOfflineEditSession(activeCart);
+      // Continue the open sale in place — never rebuild/copy TemporaryCart lines here.
+      const live = cartRef.current;
+      const activeCart =
+        live?.offline && Array.isArray(live.lines)
+          ? live
+          : presentLocalOfflineCart(
+              await continueOpenCartThroughOutage(live ?? (await ensureCart()), {
+                branch_id: user?.branch_id,
+                till_id: tillId,
+                float_session_id: floatSessionId,
+              }),
+            );
+      if (activeCart && !cartRef.current?.offline) {
+        cartRef.current = activeCart;
+        setCart(activeCart);
+      }
+      const working = cartRef.current ?? activeCart;
+      const preserveOfflineIdentity = isActiveOfflineEditSession(working);
       const localLine = {
         client_line_id:
           editingId != null
             ? String(editingRef ?? editingId)
-            : mergeTarget?.client_line_id ?? newClientSaleUuid(),
+            : mergeTarget?.client_line_id ??
+              mergeTarget?.update_code ??
+              mergeTarget?.id ??
+              newClientSaleUuid(),
         product_code: product.product_code,
         product_name: product.product_name ?? product.description ?? product.product_code,
         quantity: finalComputed.baseQty,
@@ -3677,35 +3682,39 @@ export function PosScreen({ standalone = false }) {
         discount_given:
           allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
         vat_rate: Number(product.vat_rate ?? product.tax_rate ?? 0),
+        product_vat: lineProductVat(product, finalComputed.lineAmount),
       };
       const nextLocal = await upsertLocalPosCartLine(
         {
           id: "active",
-          lines: (activeCart?.lines ?? []).map((l) => ({
+          offline: true,
+          lines: (working?.lines ?? []).map((l) => ({
             ...l,
-            client_line_id: l.client_line_id ?? l.id,
+            client_line_id: l.client_line_id ?? l.update_code ?? l.id,
           })),
-          branch_id: activeCart?.branch_id ?? user?.branch_id,
-          till_id: tillId ?? activeCart?.till_id,
-          float_session_id: floatSessionId ?? activeCart?.float_session_id,
-          held_order_num: preserveOfflineIdentity ? activeCart?.held_order_num ?? null : null,
+          branch_id: working?.branch_id ?? user?.branch_id,
+          till_id: tillId ?? working?.till_id,
+          float_session_id: floatSessionId ?? working?.float_session_id,
+          order_discount: Number(working?.order_discount ?? 0) || 0,
+          held_order_num: preserveOfflineIdentity ? working?.held_order_num ?? null : null,
           offline_client_sale_uuid: preserveOfflineIdentity
-            ? activeCart?.offline_client_sale_uuid ?? null
+            ? working?.offline_client_sale_uuid ?? null
             : null,
           offline_edit_snapshot: preserveOfflineIdentity
-            ? activeCart?.offline_edit_snapshot ?? null
+            ? working?.offline_edit_snapshot ?? null
             : null,
-          customer_num: activeCart?.customer_num ?? null,
-          customer_name_override: activeCart?.customer_name_override ?? null,
+          customer_num: working?.customer_num ?? null,
+          customer_name_override: working?.customer_name_override ?? null,
+          migrated_from_online_cart_id: working?.migrated_from_online_cart_id ?? null,
         },
         localLine,
       );
-      setCart(presentLocalOfflineCart(nextLocal));
+      const presented = presentLocalOfflineCart(nextLocal);
+      cartRef.current = presented;
+      setCart(presented);
       setStatusMessage(
         successMessage ??
-          (offlineMode
-            ? `Added offline (will sync when online). ${orderNumbersLeft} order # left.`
-            : "Line added."),
+          `Added offline (will sync when online). ${orderNumbersLeft} order # left.`,
       );
       if (clearEntry) clearClassicEntryFields();
       void refreshOfflineCounts();
@@ -3988,6 +3997,37 @@ export function PosScreen({ standalone = false }) {
           throw retryErr;
         }
       }
+
+      // Link dropped mid-add: keep the workspace line and continue the sale locally.
+      // Do not revert + retry TemporaryCart (that spawned duplicate classic lines).
+      if (standalone && isPosNetworkDropError(error)) {
+        const live = cartRef.current ?? optimisticCart ?? activeCart;
+        const committed = {
+          ...live,
+          lines: (live?.lines ?? []).map((line) => {
+            const { _optimistic: _drop, ...rest } = line;
+            return rest;
+          }),
+        };
+        const local = await continueOpenCartThroughOutage(committed, {
+          branch_id: user?.branch_id,
+          till_id: tillId,
+          float_session_id: floatSessionId,
+        });
+        const presented = presentLocalOfflineCart(local);
+        cartRef.current = presented;
+        setCart(presented);
+        setCartLineSaveFailed(false);
+        setStatusMessage(
+          successMessage ??
+            "Connection dropped — line kept. Sale continues; sync when back online.",
+        );
+        if (clearEntry && !unlockUiEarly) clearClassicEntryFields();
+        else if (clearEntry && unlockUiEarly) focusScanAfterItemAdded();
+        void refreshOfflineCounts();
+        return true;
+      }
+
       setCart((current) => {
         const reverted = revertOptimisticCartMutation(current, {
           previousLineSnapshot:
@@ -6437,12 +6477,17 @@ export function PosScreen({ standalone = false }) {
         : null,
     });
 
-    // True offline (no network): cash-only, reserved numbers, queue sync.
-    // Do NOT use cart.offline alone — restored holds / local-first carts are not cash-locked.
-    // Revising a queued pending sync sale still uses this cash completion path.
+    // Local cash + outbox when:
+    // - truly offline / slow (offlineMode), or
+    // - this workspace continued locally after an outage (cart.offline), or
+    // - revising a queued pending-sync sale (offline_client_sale_uuid).
+    // Mid-sale outage carts keep offline:true after reconnect (we do not rematerialize),
+    // so cart.offline must take this path or F10 would hit TemporaryCart with id "active".
     if (
       standalone &&
-      (offlineMode || Boolean(activeCart.offline_client_sale_uuid)) &&
+      (offlineMode ||
+        Boolean(activeCart.offline) ||
+        Boolean(activeCart.offline_client_sale_uuid)) &&
       (!activeCart.held_order_num || isQueuedOfflineEdit || isPreviousOrderCashEdit)
     ) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
@@ -6456,9 +6501,9 @@ export function PosScreen({ standalone = false }) {
       }
       if (body?.is_credit_sale) {
         setPaymentError("Credit sales are not available offline.");
-      return null;
-    }
-    setBusy(true);
+        return null;
+      }
+      setBusy(true);
     setPaymentError(null);
     setReceiptPrintStatus(null);
     try {

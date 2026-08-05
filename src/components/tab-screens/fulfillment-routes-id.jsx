@@ -20,6 +20,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { parsePaginator } from "@/lib/paginated-api";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 export function FulfillmentRoutesIdScreen() {
   const params = useParams();
@@ -69,6 +71,8 @@ export function FulfillmentRoutesIdScreen() {
       cancelled = true;
     };
   }, [routeId]);
+
+  useTabTitle(route ? tabDetailTitle("Route", route.route_name || `Route #${routeId}`) : null);
 
   const loadSales = useCallback(async () => {
     try {

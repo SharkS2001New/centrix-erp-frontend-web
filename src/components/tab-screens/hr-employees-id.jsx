@@ -30,6 +30,8 @@ import {
 } from "@/components/media/entity-photo-display";
 import { ProtectedPhotoEnlarge } from "@/components/media/protected-file-preview";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 export function HrEmployeesIdScreen() {
   const params = useParams();
@@ -87,6 +89,10 @@ export function HrEmployeesIdScreen() {
   }, [employeeId]);
 
   useTabAwareDataLoad(loadData);
+
+  useTabTitle(
+    employee ? tabDetailTitle("Employee", composeEmployeeDisplayName(employee)) : null,
+  );
 
   const ytdEarnings = useMemo(
     () => sumEmployeeYtd(payrollLines, employeeId),

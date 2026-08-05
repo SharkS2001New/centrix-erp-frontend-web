@@ -14,7 +14,8 @@ import {
   fetchVatsCached,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { useTabWorkspace, useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { productsCatalogHref } from "@/lib/products-list-state";
@@ -513,6 +514,15 @@ export function ProductsCodeScreen() {
         ? enrichProduct(product, subById, catById, supplierById, uomById, vatById, retailPackage)
         : null,
     [product, subById, catById, supplierById, uomById, vatById, retailPackage],
+  );
+
+  useTabTitle(
+    enriched
+      ? tabDetailTitle(
+          hotelCatalogue ? "menu product" : "Product",
+          enriched.product_name || enriched.product_code,
+        )
+      : null,
   );
 
   const profitMargin = useMemo(() => {

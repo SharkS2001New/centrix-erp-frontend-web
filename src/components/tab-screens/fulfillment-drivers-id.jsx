@@ -13,6 +13,8 @@ import {
   driverInitials,
 } from "@/components/fulfillment/fulfillment-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 export function FulfillmentDriversIdScreen() {
   const params = useParams();
@@ -46,6 +48,8 @@ export function FulfillmentDriversIdScreen() {
   }, [driverId]);
 
   useTabAwareDataLoad(loadData);
+
+  useTabTitle(driver ? tabDetailTitle("Driver", driver.full_name) : null);
 
   const deliveryStats = useMemo(() => deliveryStatsFromSales(deliveries), [deliveries]);
 

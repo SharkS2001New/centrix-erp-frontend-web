@@ -19,6 +19,8 @@ import {
 } from "@/components/suppliers/suppliers-shared";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -65,6 +67,12 @@ export function SuppliersIdScreen() {
   const supplier = summary?.supplier;
   const stats = summary?.stats;
   const purchases = summary?.purchases ?? [];
+
+  useTabTitle(
+    supplier
+      ? tabDetailTitle("Supplier", supplier.supplier_name || supplier.supplier_code || supplierId)
+      : null,
+  );
 
   function selectLpo(row) {
     const full =

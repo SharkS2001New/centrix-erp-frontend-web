@@ -24,6 +24,8 @@ import {
 import { formatOrderNumber, orderSourceLabel } from "@/lib/sales";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { canManagePayments } from "@/lib/access-control";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 export function CustomersIdScreen() {
   const params = useParams();
@@ -89,6 +91,12 @@ export function CustomersIdScreen() {
   }, [customerNum]);
 
   useTabAwareDataLoad(loadData);
+
+  useTabTitle(
+    customer
+      ? tabDetailTitle("Customer", customer.customer_name || customer.customer_code || customerNum)
+      : null,
+  );
 
   const isActive = useMemo(() => customer && !customer.deleted_at, [customer]);
 
