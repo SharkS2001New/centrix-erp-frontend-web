@@ -2,8 +2,8 @@
 
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
@@ -33,7 +33,7 @@ function lineFromProduct(product) {
 }
 
 export function InventoryDamagesNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("damage"));
   const { user, capabilities, hasPermission, isOrgWide } = useAuth();
 
   const [branches, setBranches] = useState([]);
@@ -133,7 +133,7 @@ export function InventoryDamagesNewScreen() {
       if (!useRequestFlow) {
         notifySuccess("Damage recorded.");
       }
-      router.push("/inventory/damages");
+      exitTo("/inventory/damages");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to record damage");
     } finally {
@@ -144,9 +144,9 @@ export function InventoryDamagesNewScreen() {
   return (
     <InventoryPageShell title="Record damage" subtitle="Write off damaged, expired, or lost stock">
       <div className="mb-4">
-        <Link href="/inventory/damages" className="text-sm text-[#185FA5] hover:underline">
+        <TabFormExitButton href="/inventory/damages" className="text-sm text-[#185FA5] hover:underline">
           ← Back to damages
-        </Link>
+        </TabFormExitButton>
       </div>
 
       <form
@@ -249,12 +249,7 @@ export function InventoryDamagesNewScreen() {
         />
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <Link
-            href="/inventory/damages"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </Link>
+          <TabFormCancelButton href="/inventory/damages" />
           <PrimaryButton type="submit" showIcon={false} disabled={saving || !branchId}>
             {saving ? "Saving…" : "Save damages"}
           </PrimaryButton>

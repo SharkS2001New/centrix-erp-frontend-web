@@ -2,8 +2,9 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { fetchSuppliersCached, fetchUomsCached } from "@/lib/reference-data-cache";
@@ -66,7 +67,7 @@ const EMPTY_RECEIVE_FORM = {
 };
 
 export function InventoryReceiptsReceiveScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("stock receipt"));
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const branchId = user?.branch_id ?? 1;
@@ -350,7 +351,7 @@ export function InventoryReceiptsReceiveScreen() {
         });
       }
       clearDraft();
-      router.push(`/inventory/receipts/${encodeURIComponent(receiptRef)}`);
+      exitTo(`/inventory/receipts/${encodeURIComponent(receiptRef)}`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : err.message ?? "Receipt failed");
     } finally {
@@ -392,7 +393,7 @@ export function InventoryReceiptsReceiveScreen() {
         });
       }
       clearDraft();
-      router.push(`/inventory/receipts/${encodeURIComponent(receiptRef)}`);
+      exitTo(`/inventory/receipts/${encodeURIComponent(receiptRef)}`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Receipt failed");
     } finally {
@@ -703,12 +704,7 @@ export function InventoryReceiptsReceiveScreen() {
             ) : null}
 
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-              <Link
-                href="/inventory/receipts"
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
+              <TabFormCancelButton href="/inventory/receipts" />
               <PrimaryButton type="submit" showIcon={false} disabled={saving || !form.lpo_no}>
                 {saving ? "Saving…" : "Complete receipt"}
               </PrimaryButton>
@@ -779,12 +775,7 @@ export function InventoryReceiptsReceiveScreen() {
             />
 
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-              <Link
-                href="/inventory/receipts"
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
+              <TabFormCancelButton href="/inventory/receipts" />
               <PrimaryButton type="submit" showIcon={false} disabled={saving}>
                 {saving ? "Saving…" : "Complete receipt"}
               </PrimaryButton>

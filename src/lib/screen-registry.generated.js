@@ -863,7 +863,7 @@ function match_vats(pathname) {
 export const SCREEN_REGISTRY = [
   {
     id: "sales-credit-notes-supplier-new",
-    title: "New",
+    title: "Add supplier credit note",
     route: "/sales/credit-notes/supplier/new",
     match: match_sales_credit_notes_supplier_new,
   },
@@ -875,7 +875,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "hr-employees-id-edit",
-    title: "Edit",
+    title: "Edit employee",
     route: "/hr/employees/[id]/edit",
     match: match_hr_employees_id_edit,
   },
@@ -899,19 +899,19 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "sales-returns-id-edit",
-    title: "Edit",
+    title: "Edit customer return",
     route: "/sales/returns/[id]/edit",
     match: match_sales_returns_id_edit,
   },
   {
     id: "suppliers-returns-id-edit",
-    title: "Edit",
+    title: "Edit supplier return",
     route: "/suppliers/returns/[id]/edit",
     match: match_suppliers_returns_id_edit,
   },
   {
     id: "accounting-journal-entries-new",
-    title: "New",
+    title: "Add journal entry",
     route: "/accounting/journal-entries/new",
     match: match_accounting_journal_entries_new,
   },
@@ -929,43 +929,43 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "hr-employees-new",
-    title: "New",
+    title: "Add employee",
     route: "/hr/employees/new",
     match: match_hr_employees_new,
   },
   {
     id: "inventory-adjustments-new",
-    title: "New",
+    title: "Adjust stock",
     route: "/inventory/adjustments/new",
     match: match_inventory_adjustments_new,
   },
   {
     id: "inventory-branch-transfers-new",
-    title: "New",
+    title: "Inter-branch transfer",
     route: "/inventory/branch-transfers/new",
     match: match_inventory_branch_transfers_new,
   },
   {
     id: "inventory-damages-new",
-    title: "New",
+    title: "Record damage",
     route: "/inventory/damages/new",
     match: match_inventory_damages_new,
   },
   {
     id: "inventory-receipts-receive",
-    title: "Receive",
+    title: "Receive stock",
     route: "/inventory/receipts/receive",
     match: match_inventory_receipts_receive,
   },
   {
     id: "inventory-transfers-new",
-    title: "New",
+    title: "Transfer stock",
     route: "/inventory/transfers/new",
     match: match_inventory_transfers_new,
   },
   {
     id: "sales-credit-notes-new",
-    title: "New",
+    title: "Add credit note",
     route: "/sales/credit-notes/new",
     match: match_sales_credit_notes_new,
   },
@@ -977,13 +977,13 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "sales-legacy-returns-new",
-    title: "New",
+    title: "Add legacy return",
     route: "/sales/legacy-returns/new",
     match: match_sales_legacy_returns_new,
   },
   {
     id: "sales-returns-new",
-    title: "New",
+    title: "Add customer return",
     route: "/sales/returns/new",
     match: match_sales_returns_new,
   },
@@ -1007,13 +1007,13 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "suppliers-payments-new",
-    title: "New",
+    title: "Record supplier payment",
     route: "/suppliers/payments/new",
     match: match_suppliers_payments_new,
   },
   {
     id: "suppliers-returns-new",
-    title: "New",
+    title: "Record supplier return",
     route: "/suppliers/returns/new",
     match: match_suppliers_returns_new,
   },
@@ -1037,7 +1037,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "customers-id-edit",
-    title: "Edit",
+    title: "Edit customer",
     route: "/customers/[id]/edit",
     match: match_customers_id_edit,
   },
@@ -1085,7 +1085,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "lpo-lpoNo-edit",
-    title: "Edit",
+    title: "Edit purchase order",
     route: "/lpo/[lpoNo]/edit",
     match: match_lpo_lpoNo_edit,
   },
@@ -1109,7 +1109,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "products-code-edit",
-    title: "Edit",
+    title: "Edit Product",
     route: "/products/[code]/edit",
     match: match_products_code_edit,
   },
@@ -1121,7 +1121,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "routes-id-edit",
-    title: "Edit",
+    title: "Edit route",
     route: "/routes/[id]/edit",
     match: match_routes_id_edit,
   },
@@ -1133,7 +1133,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "suppliers-id-edit",
-    title: "Edit",
+    title: "Edit supplier",
     route: "/suppliers/[id]/edit",
     match: match_suppliers_id_edit,
   },
@@ -1313,7 +1313,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "customers-new",
-    title: "New",
+    title: "Add customer",
     route: "/customers/new",
     match: match_customers_new,
   },
@@ -1565,7 +1565,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "lpo-new",
-    title: "New",
+    title: "Add purchase order",
     route: "/lpo/new",
     match: match_lpo_new,
   },
@@ -1583,7 +1583,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "products-new",
-    title: "New",
+    title: "Add product",
     route: "/products/new",
     match: match_products_new,
   },
@@ -1631,7 +1631,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "routes-new",
-    title: "New",
+    title: "Add route",
     route: "/routes/new",
     match: match_routes_new,
   },
@@ -1769,7 +1769,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "suppliers-new",
-    title: "New",
+    title: "Add supplier",
     route: "/suppliers/new",
     match: match_suppliers_new,
   },

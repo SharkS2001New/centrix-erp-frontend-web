@@ -45,8 +45,9 @@ import {
   PaginationBar,
   PrimaryButton,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 
 function formatCell(key, value, row) {
   return formatReportCell(key, value, undefined, row);
@@ -71,6 +72,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [branchId, setBranchId] = useState("");
@@ -95,14 +97,14 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   }, [user, isOrgWide]);
 
   const queryFiltersKey = useMemo(() => JSON.stringify(queryFilters), [queryFilters]);
-  const depsKey = `${reportKey}|${apiPath}|${page}|${fromDate}|${toDate}|${branchId}|${queryFiltersKey}|${payrollRunId}`;
+  const depsKey = `${reportKey}|${apiPath}|${page}|${pageSize}|${fromDate}|${toDate}|${branchId}|${queryFiltersKey}|${payrollRunId}`;
 
   const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const searchParams = {
-        per_page: PAGE_SIZE,
+        per_page: pageSize,
         page,
         ...buildReportQueryParams(reportKey, {
           fromDate,
@@ -116,7 +118,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       const res = await apiRequest(apiPath, { searchParams, loading: false });
       const centrixRows = normalizeReportRows(res);
       setRows(centrixRows);
-      setMeta(normalizeReportMeta(res, page, PAGE_SIZE));
+      setMeta(normalizeReportMeta(res, page, pageSize));
       setReportSummary(normalizeReportSummary(res));
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
@@ -127,7 +129,12 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, queryFilters, payrollRunId, reportKey, paneHref, depsKey]);
+  }, [apiPath, page, pageSize, fromDate, toDate, branchId, queryFilters, payrollRunId, reportKey, paneHref, depsKey]);
+
+  function handlePageSizeChange(next) {
+    setPageSize(next);
+    setPage(1);
+  }
 
   const hasData = rows.length > 0 || meta != null;
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
@@ -370,7 +377,15 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             </table>
           </div>
         )}
-        <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
+        <PaginationBar
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+          pageSizeOptions={[10, 20, 25, 50, 100]}
+        />
       </div>
     </CatalogPageShell>
       <AiInsightPanel

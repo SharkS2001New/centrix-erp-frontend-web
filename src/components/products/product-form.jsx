@@ -7,6 +7,7 @@ import { apiFetchCredentials } from "@/lib/auth-config";
 import { isProductCodeInCatalogCached } from "@/lib/catalog-cache";
 import { getStoredOrganization, getToken } from "@/lib/auth-storage";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { RetailPricingTiersEditor, defaultRetailPricingTier } from "@/components/catalog/retail-pricing-tiers";
 import {
   coercePricingTiersInput,
@@ -28,7 +29,6 @@ import {
   CustomerFormCard,
   CustomerFormPageShell,
 } from "@/components/customers/customer-form";
-import { EntityPhotoField } from "@/components/media/entity-photo-field";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
@@ -431,8 +431,6 @@ export function ProductFormFields({
   uoms = [],
   vats = [],
   globalReorderLevel = null,
-  imagePreview = null,
-  onImageSelect,
   onOpenSubcategoryModal,
   generatingSku = false,
   onGenerateSku,
@@ -484,6 +482,61 @@ export function ProductFormFields({
     return activeUoms.find((u) => Number(u.conversion_factor ?? 1) === 1) ?? activeUoms[0] ?? null;
   }, [activeUoms, hotelCatalogue]);
 
+  const subcategoryOptions = useMemo(
+    () => [
+      { value: "", label: "Select sub-category" },
+      ...subCategories.map((s) => ({
+        value: String(s.id),
+        label: subcategoryLabel(s, categoryById),
+      })),
+    ],
+    [subCategories, categoryById],
+  );
+
+  const supplierOptions = useMemo(
+    () => [
+      { value: "", label: "Select supplier" },
+      ...suppliers.map((s) => ({
+        value: String(s.id),
+        label: s.supplier_name ?? `Supplier #${s.id}`,
+      })),
+    ],
+    [suppliers],
+  );
+
+  const uomOptions = useMemo(
+    () => [
+      { value: "", label: "Select unit" },
+      ...activeUoms.map((u) => ({
+        value: String(u.id),
+        label: formatUomOption(u),
+      })),
+    ],
+    [activeUoms],
+  );
+
+  const vatOptions = useMemo(
+    () => [
+      { value: "", label: "Select VAT rate" },
+      ...vats.map((v) => ({
+        value: String(v.id),
+        label: `${v.vat_name ?? v.vat_code} (${v.vat_percentage}%)`,
+      })),
+    ],
+    [vats],
+  );
+
+  const branchOptions = useMemo(
+    () => [
+      { value: "", label: "Select branch" },
+      ...branches.map((branch) => ({
+        value: String(branch.id),
+        label: `${branch.branch_name} (${branch.branch_code})`,
+      })),
+    ],
+    [branches],
+  );
+
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2 xl:grid-cols-3">
       <Field label="SKU / barcode" required>
@@ -530,19 +583,15 @@ export function ProductFormFields({
 
       <Field label="Sub-category" required>
         <div className="flex gap-2">
-          <select
+          <PosSearchableSelect
             value={form.subcategory_id}
-            onChange={(e) => onChange("subcategory_id", e.target.value)}
+            onChange={(value) => onChange("subcategory_id", value)}
+            options={subcategoryOptions}
+            placeholder="Select sub-category"
+            searchPlaceholder="Search sub-category…"
             required
-            className={`${inputClassName()} min-w-0 flex-1`}
-          >
-            <option value="">Select sub-category</option>
-            {subCategories.map((s) => (
-              <option key={s.id} value={String(s.id)}>
-                {subcategoryLabel(s, categoryById)}
-              </option>
-            ))}
-          </select>
+            inputClassName={`${inputClassName()} min-w-0 flex-1`}
+          />
           <button
             type="button"
             onClick={onOpenSubcategoryModal}
@@ -557,26 +606,21 @@ export function ProductFormFields({
 
       {!hotelCatalogue ? (
         <Field label="Supplier">
-          <select
+          <PosSearchableSelect
             value={form.supplier_id}
-            onChange={(e) => onChange("supplier_id", e.target.value)}
-            className={inputClassName()}
-          >
-            <option value="">Select supplier</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={String(s.id)}>
-                {s.supplier_name}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => onChange("supplier_id", value)}
+            options={supplierOptions}
+            placeholder="Select supplier"
+            searchPlaceholder="Search supplier…"
+            inputClassName={inputClassName()}
+          />
         </Field>
       ) : null}
 
       <Field label="Unit of measure" required>
-        <select
+        <PosSearchableSelect
           value={form.unit_id}
-          onChange={(e) => {
-            const value = e.target.value;
+          onChange={(value) => {
             onChange("unit_id", value);
             if (!hotelCatalogue && form.sell_on_retail) {
               const nextUom = activeUoms.find((u) => String(u.id) === String(value)) ?? null;
@@ -585,16 +629,12 @@ export function ProductFormFields({
               }
             }
           }}
+          options={uomOptions}
+          placeholder="Select unit"
+          searchPlaceholder="Search unit…"
           required
-          className={inputClassName()}
-        >
-          <option value="">Select unit</option>
-          {activeUoms.map((u) => (
-            <option key={u.id} value={String(u.id)}>
-              {formatUomOption(u)}
-            </option>
-          ))}
-        </select>
+          inputClassName={inputClassName()}
+        />
         {suggestedUom && !form.unit_id ? (
           <button
             type="button"
@@ -621,12 +661,6 @@ export function ProductFormFields({
           </p>
         </Field>
       ) : null}
-
-      <EntityPhotoField
-        label="Product image (optional)"
-        previewUrl={imagePreview}
-        onFileSelect={onImageSelect}
-      />
 
       <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pricing</p>
@@ -735,21 +769,15 @@ export function ProductFormFields({
       ) : null}
 
       <Field label="VAT status" required>
-        <select
+        <PosSearchableSelect
           value={form.vat_id}
-          onChange={(e) => onChange("vat_id", e.target.value)}
+          onChange={(value) => onChange("vat_id", value)}
+          options={vatOptions}
+          placeholder="Select VAT rate"
+          searchPlaceholder="Search VAT rate…"
           required
-          className={inputClassName()}
-        >
-          <option value="" disabled>
-            Select VAT rate
-          </option>
-          {vats.map((v) => (
-            <option key={v.id} value={String(v.id)}>
-              {v.vat_name ?? v.vat_code} ({v.vat_percentage}%)
-            </option>
-          ))}
-        </select>
+          inputClassName={inputClassName()}
+        />
       </Field>
 
       {multiBranch ? (
@@ -790,19 +818,15 @@ export function ProductFormFields({
           {form.catalog_scope === "branch" ? (
             <div className="mt-3 max-w-md">
               <Field label="Branch" required>
-                <select
+                <PosSearchableSelect
                   value={form.branch_id}
-                  onChange={(e) => onChange("branch_id", e.target.value)}
+                  onChange={(value) => onChange("branch_id", value)}
+                  options={branchOptions}
+                  placeholder="Select branch"
+                  searchPlaceholder="Search branch…"
                   required
-                  className={inputClassName()}
-                >
-                  <option value="">Select branch</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={String(branch.id)}>
-                      {branch.branch_name} ({branch.branch_code})
-                    </option>
-                  ))}
-                </select>
+                  inputClassName={inputClassName()}
+                />
               </Field>
             </div>
           ) : null}

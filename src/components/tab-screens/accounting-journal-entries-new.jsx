@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -13,7 +13,7 @@ import { notifySuccess } from "@/lib/notify";
 import { isJournalEntryApprovalEnabled } from "@/lib/sales-settings";
 
 export function AccountingJournalEntriesNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("journal entry"));
   const { capabilities, hasPermission } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -54,7 +54,7 @@ export function AccountingJournalEntriesNewScreen() {
     setError(null);
     try {
       const entry = await createEntry(payload);
-      router.push(`/accounting/journal-entries/${entry.id}`);
+      exitTo(`/accounting/journal-entries/${entry.id}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save draft");
       throw e;
@@ -78,7 +78,7 @@ export function AccountingJournalEntriesNewScreen() {
       } else {
         await apiRequest(`/accounting/journal-entries/${entry.id}/post`, { method: "POST" });
       }
-      router.push(`/accounting/journal-entries/${entry.id}`);
+      exitTo(`/accounting/journal-entries/${entry.id}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not post entry");
       throw e;
@@ -92,9 +92,12 @@ export function AccountingJournalEntriesNewScreen() {
       title="New Journal Entry"
       subtitle="Accounting > Journal Entries > New"
       actions={
-        <Link href="/accounting/journal-entries" className="text-sm font-medium text-[#185FA5] hover:underline">
+        <TabFormExitButton
+          href="/accounting/journal-entries"
+          className="text-sm font-medium text-[#185FA5] hover:underline"
+        >
           Back to list
-        </Link>
+        </TabFormExitButton>
       }
     >
       {loading ? (

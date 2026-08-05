@@ -141,6 +141,35 @@ export function isLicenseExpiringSoon(license) {
   return license.days_remaining <= (license.warning_days ?? LICENSE_WARNING_DAYS);
 }
 
+/**
+ * Platform subscriptions table: show "Extend licence" for trials, expiry, or overdue.
+ * @param {object | null | undefined} sub
+ * @param {ReturnType<typeof resolveOrganizationLicense> | null} license
+ * @param {{ expired?: boolean, overdue?: boolean, soon?: boolean }} flags
+ */
+export function canExtendPlatformLicence(sub, license, { expired = false, overdue = false, soon = false } = {}) {
+  if (!sub) return false;
+  if (expired || overdue) return true;
+  if (sub.status === "past_due" || sub.status === "expired") return true;
+  if (sub.status === "trialing" || license?.is_trial) return true;
+  if (soon) return true;
+  return false;
+}
+
+/**
+ * Platform subscriptions table: offer a free trial only when there is no healthy active licence.
+ * @param {object | null | undefined} sub
+ * @param {ReturnType<typeof resolveOrganizationLicense> | null} license
+ * @param {{ expired?: boolean }} flags
+ */
+export function canStartPlatformTrial(sub, license, { expired = false } = {}) {
+  if (!sub) return false;
+  if (sub.status === "trialing" || license?.is_trial) return false;
+  if (sub.status === "cancelled") return true;
+  if (expired || sub.status === "expired") return true;
+  return false;
+}
+
 export function licenseExpiryLabel(license) {
   if (!license?.expires_at) return "—";
   return formatBillingDate(license.expires_at);

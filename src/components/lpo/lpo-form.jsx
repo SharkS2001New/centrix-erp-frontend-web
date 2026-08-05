@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { TabFormExitButton, TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { LpoOrderItemsSection } from "./lpo-order-items-section";
 import { isLpoHeaderComplete } from "./lpo-shared";
@@ -15,9 +15,9 @@ export function LpoFormShell({ backHref, backLabel, title, subtitle, children })
     <div className="theme-workspace min-h-full">
       <div className="w-full max-w-[1400px]">
         <div className="mb-6">
-          <Link href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
+          <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
             {backLabel}
-          </Link>
+          </TabFormExitButton>
           <h1 className="mt-2 text-xl font-medium text-slate-900">{title}</h1>
           {subtitle ? <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p> : null}
         </div>
@@ -202,12 +202,7 @@ export function LpoFormFields({
               </p>
             ) : null}
             <div className="mt-6 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
-              <Link
-                href={cancelHref}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
+              <TabFormCancelButton href={cancelHref} />
               <button
                 type="button"
                 onClick={goToItems}
@@ -241,12 +236,7 @@ export function LpoFormFields({
               >
                 ← Back to LPO header
               </button>
-              <Link
-                href={cancelHref}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
+              <TabFormCancelButton href={cancelHref} />
               <button
                 type="button"
                 disabled={saving}

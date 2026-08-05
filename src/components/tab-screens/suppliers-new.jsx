@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   buildSupplierBody,
@@ -15,7 +15,7 @@ import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
 
 export function SuppliersNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("supplier"));
   const [form, setForm] = useState(EMPTY_SUPPLIER_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -50,7 +50,7 @@ export function SuppliersNewScreen() {
         body: buildSupplierBody(form),
       });
       clearDraft();
-      router.push(`/suppliers/${created.id}`);
+      exitTo(`/suppliers/${created.id}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -73,12 +73,7 @@ export function SuppliersNewScreen() {
               <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
             )}
             <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
-              <Link
-                href="/suppliers"
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
+              <TabFormCancelButton href="/suppliers" onClick={() => clearDraft()} />
               <button
                 type="submit"
                 disabled={saving}

@@ -2,8 +2,9 @@
 
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
@@ -35,7 +36,7 @@ function lineFromProduct(product) {
 }
 
 export function InventoryAdjustmentsNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("stock adjustment"));
   const searchParams = useSearchParams();
   const { user, capabilities, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
@@ -128,7 +129,7 @@ export function InventoryAdjustmentsNewScreen() {
       if (!useRequestFlow) {
         notifySuccess("Stock adjusted.");
       }
-      router.push("/inventory/adjustments");
+      exitTo("/inventory/adjustments");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to save adjustment");
     } finally {
@@ -232,12 +233,7 @@ export function InventoryAdjustmentsNewScreen() {
         </p>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <Link
-            href="/inventory/adjustments"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </Link>
+          <TabFormCancelButton href="/inventory/adjustments" />
           <PrimaryButton type="submit" showIcon={false} disabled={saving}>
             {saving ? "Saving…" : "Save adjustments"}
           </PrimaryButton>

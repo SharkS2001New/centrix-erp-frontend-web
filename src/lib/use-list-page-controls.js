@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export const LIST_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+export const LIST_PAGE_SIZE_OPTIONS = [10, 20, 25, 50, 100];
 export const LIST_PAGE_SIZE_STORAGE_KEY = "centrix-erp-list-page-size";
 
 function readStoredPageSize(defaultSize) {

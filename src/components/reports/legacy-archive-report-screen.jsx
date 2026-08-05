@@ -28,6 +28,7 @@ import {
 } from "@/lib/print-dispatch";
 import { notifyError } from "@/lib/notify";
 import { getOrderDocumentType } from "@/lib/sales-settings";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 
 const PAGE_SIZE = 20;
 
@@ -387,6 +388,7 @@ export function LegacyArchiveReportScreen() {
   const [minTotalFilter, setMinTotalFilter] = useState("");
   const [maxTotalFilter, setMaxTotalFilter] = useState("");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(PAGE_SIZE);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingSales, setLoadingSales] = useState(true);
   const [error, setError] = useState(null);
@@ -427,7 +429,7 @@ export function LegacyArchiveReportScreen() {
         fetchLegacyArchiveSales({
           channel: applied.q ? "all" : applied.channel,
           page: applied.page,
-          per_page: PAGE_SIZE,
+          per_page: pageSize,
           from_date: applied.fromDate,
           to_date: applied.toDate,
           ...(applied.q ? { q: applied.q } : {}),
@@ -443,7 +445,7 @@ export function LegacyArchiveReportScreen() {
     } finally {
       setLoadingSales(false);
     }
-  }, [applied]);
+  }, [applied, pageSize]);
 
   useTabAwareDataLoad(loadSales);
 
@@ -492,6 +494,12 @@ export function LegacyArchiveReportScreen() {
     setApplied((prev) => ({ ...prev, page: nextPage }));
   }
 
+  function handlePageSizeChange(nextSize) {
+    setPageSize(nextSize);
+    setPage(1);
+    setApplied((prev) => ({ ...prev, page: 1 }));
+  }
+
   if (!loadingStatus && status && !status.enabled) {
     return (
       <div>
@@ -517,7 +525,7 @@ export function LegacyArchiveReportScreen() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Legacy sales archive</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Browse historical LightStores sales (read-only). Pick a date range — {PAGE_SIZE} sales load per page.
+            Browse historical LightStores sales (read-only). Pick a date range — {pageSize} sales load per page.
           </p>
           {status ? (
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -733,8 +741,9 @@ export function LegacyArchiveReportScreen() {
           page={page}
           totalPages={totalPages}
           total={total}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           onChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
         />
       </div>
 

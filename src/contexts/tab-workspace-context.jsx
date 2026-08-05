@@ -29,6 +29,7 @@ import {
   writeTabWorkspaceStore,
 } from "@/lib/tab-workspace";
 import { finishNavigation } from "@/lib/app-loading";
+import { resolveScreen } from "@/lib/screen-registry";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import {
   pathBelongsToWorkspace,
@@ -220,7 +221,8 @@ export function TabWorkspaceProvider({ children }) {
     if (!pathBelongsToWorkspace(pathname, workspaceId)) return;
     const qs = typeof window !== "undefined" ? window.location.search : "";
     const fullHref = normalizeTabHref(qs ? `${pathname}${qs}` : pathname);
-    upsertTab(fullHref, titleFromPathname(pathname));
+    const screen = resolveScreen(fullHref);
+    upsertTab(fullHref, screen?.title ?? titleFromPathname(pathname));
   }, [enabled, pathname, upsertTab, workspaceId]);
 
   useEffect(() => {

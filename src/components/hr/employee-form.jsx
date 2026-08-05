@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { TabFormExitButton, TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
@@ -251,9 +251,9 @@ export function EmployeeFormPageShell({ backHref, backLabel, title, subtitle, ch
     <div className="theme-workspace min-h-full">
       <div className="flex w-full min-h-[calc(100vh-8rem)] flex-col">
         <div className="mb-6 shrink-0">
-          <Link href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
+          <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
             {backLabel}
-          </Link>
+          </TabFormExitButton>
           <h1 className="mt-2 text-xl font-medium text-slate-900">{title}</h1>
           {subtitle ? <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p> : null}
         </div>
@@ -1191,12 +1191,7 @@ export function EmployeeFormWizard({
       )}
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-6 py-5 md:px-8">
-        <Link
-          href={cancelHref}
-          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          Cancel
-        </Link>
+        <TabFormCancelButton href={cancelHref} />
         <div className="flex gap-2">
           {tabIndex > 0 && (
             <button

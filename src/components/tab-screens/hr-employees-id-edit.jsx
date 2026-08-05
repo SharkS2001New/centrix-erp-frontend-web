@@ -3,7 +3,8 @@
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
 import { invalidateReferenceResource } from "@/lib/reference-data-cache";
 import {
@@ -22,7 +23,6 @@ import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 
 export function HrEmployeesIdEditScreen() {
   const params = useParams();
-  const router = useRouter();
   const confirm = useConfirm();
   const employeeId = params.id;
 
@@ -121,7 +121,7 @@ export function HrEmployeesIdEditScreen() {
       if (photoFile) {
         await uploadEmployeePhoto(employeeId, photoFile);
       }
-      router.push(`/hr/employees/${employeeId}`);
+      exitTo(`/hr/employees/${employeeId}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -130,6 +130,7 @@ export function HrEmployeesIdEditScreen() {
   }
 
   const pageLoading = loading || resourcesLoading;
+  const { exitTo } = useTabFormExit(tabEditTitle("employee", composeEmployeeDisplayName(form)));
 
   return (
     <EmployeeFormPageShell

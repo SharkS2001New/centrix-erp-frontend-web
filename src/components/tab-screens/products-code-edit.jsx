@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { apiRequest, ApiError, uploadProductImage } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
+import { tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { catalogMetaFromCapabilities } from "@/lib/catalog-scope";
 import { mergeSalesSettings } from "@/lib/sales-settings";
@@ -32,10 +34,8 @@ import { productPhotoFileUrl } from "@/components/media/entity-photo-display";
 
 export function ProductsCodeEditScreen() {
   const params = useParams();
-  const router = useRouter();
-  const pathname = usePathname();
   const { abortSignal } = useTabPaneActive();
-  const { enabled: tabWorkspaceEnabled, clearTabDirty, workspaceId } = useTabWorkspace();
+  const { workspaceId } = useTabWorkspace();
   const { capabilities, user } = useAuth();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
@@ -213,8 +213,7 @@ export function ProductsCodeEditScreen() {
       await saveRetailPackageSetting(form, productCode, { hotelCatalogue });
       setIsDirty(false);
       clearDraft();
-      if (tabWorkspaceEnabled) clearTabDirty(pathname);
-      router.push(`/products/${encodeURIComponent(productCode)}`);
+      exitTo(detailHref);
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Failed to save product");
     } finally {
@@ -222,14 +221,23 @@ export function ProductsCodeEditScreen() {
     }
   }
 
-  const title = useMemo(() => form.product_name || productCode, [form.product_name, productCode]);
+  const displayName = useMemo(() => form.product_name || productCode, [form.product_name, productCode]);
+  const editTabTitle = hotelCatalogue
+    ? tabEditTitle("menu product", displayName)
+    : tabEditTitle("Product", displayName);
+  const { exitTo } = useTabFormExit(editTabTitle);
+  const detailHref = `/products/${encodeURIComponent(productCode)}`;
+
+  function handleCancel() {
+    clearDraft();
+  }
 
   return (
     <ProductFormPageShell
-      backHref={`/products/${encodeURIComponent(productCode)}`}
+      backHref={detailHref}
       backLabel={hotelCatalogue ? "← Back to menu product" : "← Back to product"}
       title={hotelCatalogue ? "Edit menu product" : "Edit product"}
-      subtitle={title}
+      subtitle={displayName}
     >
       {loading ? (
         <p className="text-sm text-slate-500">Loading…</p>
@@ -250,12 +258,7 @@ export function ProductsCodeEditScreen() {
                   <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
                 ) : null}
                 <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
-                  <Link
-                    href={`/products/${encodeURIComponent(productCode)}`}
-                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </Link>
+                  <TabFormCancelButton href={detailHref} onClick={handleCancel} />
                   <button
                     type="submit"
                     disabled={saving}

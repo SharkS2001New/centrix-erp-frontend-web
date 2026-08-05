@@ -2,8 +2,9 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchBranchesCached, fetchUomsCached } from "@/lib/reference-data-cache";
@@ -23,6 +24,7 @@ import { damageQtyToBase } from "@/lib/stock-uom";
 
 export function InventoryBranchTransfersNewScreen() {
   const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("branch transfer"));
   const { user, capabilities } = useAuth();
   const defaultBranchId = user?.branch_id ?? 1;
   const multiBranch = isMultiBranchCatalog(capabilities);
@@ -112,7 +114,7 @@ export function InventoryBranchTransfersNewScreen() {
           notes: notes.trim() || undefined,
         },
       });
-      router.push("/inventory/transactions?type=TRANSFER");
+      exitTo("/inventory/transactions?type=TRANSFER");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Branch transfer failed");
     } finally {
@@ -251,12 +253,7 @@ export function InventoryBranchTransfersNewScreen() {
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <Link
-            href="/inventory/transfers"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </Link>
+          <TabFormCancelButton href="/inventory/transfers" />
           <PrimaryButton type="submit" showIcon={false} disabled={saving || !selected}>
             {saving ? "Transferring…" : "Transfer between branches"}
           </PrimaryButton>

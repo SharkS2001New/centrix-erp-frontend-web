@@ -1469,6 +1469,9 @@ export function PosScreen({ standalone = false }) {
   const [editingLineRef, setEditingLineRef] = useState(null);
   const [busy, setBusy] = useState(false);
   const [previousOrderLoading, setPreviousOrderLoading] = useState(false);
+  const [previousOrderLoadingMessage, setPreviousOrderLoadingMessage] = useState(
+    "Loading previous order…",
+  );
   const previousOrderLoadingDepthRef = useRef(0);
   const [preparingNextOpen, setPreparingNextOpen] = useState(false);
   const [preparingNextProgress, setPreparingNextProgress] = useState(0);
@@ -2353,8 +2356,9 @@ export function PosScreen({ standalone = false }) {
 
   const cartActionPending = busy || lineBusy;
 
-  const beginPreviousOrderLoading = useCallback(() => {
+  const beginPreviousOrderLoading = useCallback((message = "Loading previous order…") => {
     previousOrderLoadingDepthRef.current += 1;
+    setPreviousOrderLoadingMessage(message);
     setPreviousOrderLoading(true);
   }, []);
 
@@ -2720,34 +2724,54 @@ export function PosScreen({ standalone = false }) {
         body,
         ...POS_CART_REQUEST,
       });
-      if (!Array.isArray(serverCart?.lines)) {
-        serverCart = await apiRequest(`/sales/carts/${serverCart.id}`, POS_CART_REQUEST);
-      }
 
-      if (serverCart?.lines?.length) {
-        await apiRequest(`/sales/carts/${serverCart.id}/lines`, {
-          method: "DELETE",
-          ...POS_CART_REQUEST,
-        });
-        serverCart = { ...serverCart, lines: [] };
-      }
-
-      for (const line of localCart.lines) {
-        if (!line?.product_code || !(Number(line.quantity) > 0)) continue;
-        serverCart = await apiRequest(`/sales/carts/${serverCart.id}/lines`, {
-          method: "POST",
-          body: {
+      const linePayload = (localCart.lines ?? [])
+        .filter((line) => line?.product_code && Number(line.quantity) > 0)
+        .map((line) => {
+          const qty = Number(line.quantity);
+          const unitPrice = Number(line.unit_price ?? 0);
+          return {
             product_code: line.product_code,
-            quantity: Number(line.quantity),
-            unit_price: Number(line.unit_price ?? 0),
+            quantity: qty,
+            unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
             display_unit_price:
               line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
             uom: line.uom ?? undefined,
-            on_wholesale_retail: line.on_wholesale_retail ? 1 : 0,
+            on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
             discount_given: Number(line.discount_given ?? 0) || 0,
+            product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+            amount: line.amount != null ? Number(line.amount) : undefined,
+          };
+        });
+
+      if (linePayload.length) {
+        serverCart = await apiRequest(`/sales/carts/${serverCart.id}/lines`, {
+          method: "PUT",
+          body: {
+            lines: linePayload,
+            order_discount: Number(localCart.order_discount ?? 0) || 0,
           },
           ...POS_CART_REQUEST,
         });
+      }
+
+      if (localCart.customer_num != null || localCart.customer_name_override) {
+        try {
+          serverCart = await apiRequest(`/sales/carts/${serverCart.id}`, {
+            method: "PATCH",
+            body: {
+              ...(localCart.customer_num != null
+                ? { customer_num: localCart.customer_num }
+                : {}),
+              ...(localCart.customer_name_override
+                ? { customer_name_override: localCart.customer_name_override }
+                : {}),
+            },
+            ...POS_CART_REQUEST,
+          });
+        } catch {
+          /* customer optional */
+        }
       }
 
       if (localCart.held_order_num && !localCart.offline_client_sale_uuid) {
@@ -2758,9 +2782,10 @@ export function PosScreen({ standalone = false }) {
       }
 
       await clearLocalPosCart();
-      cartRef.current = serverCart;
-      setCart(serverCart);
-      return serverCart;
+      const normalized = normalizeCartResponse(serverCart) ?? serverCart;
+      cartRef.current = normalized;
+      setCart(normalized);
+      return normalized;
     },
     [user?.branch_id, tillId, loadCashierCart],
   );
@@ -5677,6 +5702,8 @@ export function PosScreen({ standalone = false }) {
           const saved = await saveLocalPosCart({ ...localCart, offline: true });
           applyRestoredHeldCart(presentLocalOfflineCart(saved), park);
         } else {
+          applyRestoredHeldCart(localCart, park);
+          beginPreviousOrderLoading("Preparing held order for checkout…");
           try {
             const serverCart = await materializeOfflineCartOnServer({
               ...localCart,
@@ -5698,13 +5725,20 @@ export function PosScreen({ standalone = false }) {
               { ...presentLocalOfflineCart(saved), offline: false },
               park,
             );
+          } finally {
+            endPreviousOrderLoading();
           }
         }
         setHeldOrdersOpen(false);
         notifySuccess("Held sale restored — complete when ready.");
         return;
       }
-      await restoreHeldSaleToNewCart(autoHeldPrompt.saleId, { replace: true });
+      beginPreviousOrderLoading("Restoring held order…");
+      try {
+        await restoreHeldSaleToNewCart(autoHeldPrompt.saleId, { replace: true });
+      } finally {
+        endPreviousOrderLoading();
+      }
       setHeldOrdersOpen(false);
       notifySuccess("Held sale restored — complete when ready.");
     } catch (e) {
@@ -10591,7 +10625,6 @@ export function PosScreen({ standalone = false }) {
           float_session_id: cart?.float_session_id ?? floatSessionId ?? null,
         }}
         onRestored={async (restoredCart, sourceSale, meta = {}) => {
-          // Drop every blocking dialog flag so F10 / Alt+H work after restore.
           setHeldOrdersOpen(false);
           setSaveOrderOpen(false);
           setPaymentOpen(false);
@@ -10614,7 +10647,9 @@ export function PosScreen({ standalone = false }) {
               const saved = await saveLocalPosCart({ ...restoredCart, offline: true });
               applyRestoredHeldCart(presentLocalOfflineCart(saved), sourceSale);
             } else {
-              // Online: put held lines on a server cart so M-Pesa / all tenders work.
+              // Paint workspace immediately from the local park — do not wait on the server.
+              applyRestoredHeldCart(restoredCart, sourceSale);
+              beginPreviousOrderLoading("Preparing held order for checkout…");
               try {
                 const serverCart = await materializeOfflineCartOnServer({
                   ...restoredCart,
@@ -10640,10 +10675,17 @@ export function PosScreen({ standalone = false }) {
                   { ...presentLocalOfflineCart(saved), offline: false },
                   sourceSale,
                 );
+              } finally {
+                endPreviousOrderLoading();
               }
             }
           } else {
-            applyRestoredHeldCart(restoredCart, sourceSale);
+            beginPreviousOrderLoading("Restoring held order…");
+            try {
+              applyRestoredHeldCart(restoredCart, sourceSale);
+            } finally {
+              endPreviousOrderLoading();
+            }
           }
           setStatusMessage("Held order restored — ready to complete as a new sale.");
           if (standalone) {
@@ -10724,7 +10766,10 @@ export function PosScreen({ standalone = false }) {
         embedded={!standalone}
       />
 
-      <PosPreviousOrderLoadingOverlay open={previousOrderLoading} />
+      <PosPreviousOrderLoadingOverlay
+        open={previousOrderLoading}
+        message={previousOrderLoadingMessage}
+      />
       <PosPrepareNextOrderOverlay
         open={preparingNextOpen}
         progress={preparingNextProgress}

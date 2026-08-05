@@ -2,8 +2,8 @@
 
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
@@ -44,7 +44,7 @@ function lineFromProduct(product) {
 }
 
 export function InventoryTransfersNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("stock transfer"));
   const { user, capabilities, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
@@ -145,11 +145,11 @@ export function InventoryTransfersNewScreen() {
       }
       if (pendingApproval) {
         notifySuccess("Transfer submitted for manager approval.");
-        router.push("/notifications");
+        exitTo("/notifications");
         return;
       }
       notifySuccess(toPost.length === 1 ? "Stock transferred." : `${toPost.length} transfers completed.`);
-      router.push("/inventory/transactions?type=TRANSFER");
+      exitTo("/inventory/transactions?type=TRANSFER");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Transfer failed");
     } finally {
@@ -279,12 +279,7 @@ export function InventoryTransfersNewScreen() {
         />
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-          <Link
-            href="/inventory/transactions"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </Link>
+          <TabFormCancelButton href="/inventory/transactions" />
           <PrimaryButton type="submit" showIcon={false} disabled={saving || lines.length === 0}>
             {saving
               ? useRequestFlow

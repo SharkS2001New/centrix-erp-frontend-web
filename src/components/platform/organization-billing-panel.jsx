@@ -18,7 +18,9 @@ import {
   isSubscriptionOverdue,
   licenseBasisLabel,
   planModuleLabels,
+  platformInvoiceLabel,
   resolveAgreementPrices,
+  resolveSubscriptionInvoices,
   subscriptionStatusLabel,
   workspaceLabels,
 } from "@/lib/platform-billing";
@@ -53,6 +55,7 @@ export function OrganizationBillingPanel({
   mode = "platform",
   showInvoice = true,
   showRevoke = false,
+  readOnly = false,
 }) {
   const confirm = useConfirm();
   const isTenant = mode === "tenant";
@@ -168,13 +171,18 @@ export function OrganizationBillingPanel({
   const licenseExpired = license ? isLicenseExpired(license) : false;
   const licenseSoon = license ? isLicenseExpiringSoon(license) : false;
   const invoice = subscription?.invoice ?? null;
+  const { initial: initialInvoice, renewal: renewalInvoice } = subscription
+    ? resolveSubscriptionInvoices(subscription)
+    : { initial: null, renewal: null };
   const canRevoke =
+    !readOnly &&
     showRevoke &&
     !isTenant &&
     subscription?.id &&
     subscription.status !== "cancelled" &&
     subscription.status !== "expired";
-  const canChangePlan = !isTenant && subscription?.id;
+  const canChangePlan = !readOnly && !isTenant && subscription?.id;
+  const showPlatformActions = !readOnly && !isTenant;
 
   return (
     <>
@@ -231,7 +239,7 @@ export function OrganizationBillingPanel({
                 <p className="mt-1 text-xs text-slate-500">
                   Period {formatBillingDate(subscription.current_period_start)} →{" "}
                   {formatBillingDate(subscription.current_period_end)}
-                  {!isTenant ? (
+                  {showPlatformActions ? (
                     <>
                       {" · "}
                       <button
@@ -277,7 +285,7 @@ export function OrganizationBillingPanel({
                 {overdue ? "Overdue" : subscriptionStatusLabel(subscription.status)}
               </span>
             </div>
-            {!isTenant ? (
+            {showPlatformActions ? (
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                 {canChangePlan ? (
                   <button
@@ -322,75 +330,80 @@ export function OrganizationBillingPanel({
 
       {showInvoice ? (
         <BillingSection
-          title="Attached invoice"
+          title="Invoices"
           description={
             isTenant
-              ? "Invoice linked to your current subscription."
-              : "Primary invoice attached to this organization’s subscription."
+              ? "First payment and renewal invoices linked to your subscription."
+              : "Initial (first payment) and renewal invoices for this subscription."
           }
         >
           {loading ? (
-            <p className="text-sm text-slate-500">Loading invoice…</p>
-          ) : !invoice?.id && !subscription?.invoice_id ? (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40">
-              {isTenant ? (
-                "No invoice is attached to your subscription yet."
-              ) : (
-                <>
-                  No invoice attached.{" "}
-                  <Link href="/platform/subscriptions" className="font-medium text-[#185FA5] hover:underline">
-                    Attach from Subscriptions
-                  </Link>
-                  {" · "}
-                  <Link
-                    href={`/platform/invoices/new?organization=${organizationId}`}
-                    className="font-medium text-[#185FA5] hover:underline"
-                  >
-                    Create invoice
-                  </Link>
-                </>
-              )}
-            </div>
+            <p className="text-sm text-slate-500">Loading invoices…</p>
           ) : (
-            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    {invoice?.invoice_number || `Invoice #${invoice?.id ?? subscription.invoice_id}`}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                {
+                  key: "initial",
+                  title: "Initial invoice",
+                  invoice: initialInvoice,
+                },
+                {
+                  key: "renewal",
+                  title: "Renewal invoice",
+                  invoice: renewalInvoice,
+                },
+              ].map(({ key, title, invoice: row }) => (
+                <div
+                  key={key}
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40"
+                >
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                    {title}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Issued {formatBillingDate(invoice?.issue_date)}
-                    {invoice?.due_date ? ` · Due ${formatBillingDate(invoice.due_date)}` : ""}
-                  </p>
-                  {invoice?.total != null ? (
-                    <p className="mt-1 text-sm font-medium tabular-nums text-slate-800 dark:text-slate-100">
-                      {formatBillingMoney(invoice.total, invoice.currency)}
-                    </p>
-                  ) : null}
+                  {!row?.id ? (
+                    <p className="mt-2 text-sm text-slate-500">Not linked yet.</p>
+                  ) : (
+                    <>
+                      <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        {platformInvoiceLabel(row)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Issued {formatBillingDate(row.issue_date)}
+                        {row.due_date ? ` · Due ${formatBillingDate(row.due_date)}` : ""}
+                      </p>
+                      {row.total != null ? (
+                        <p className="mt-1 text-sm font-medium tabular-nums text-slate-800 dark:text-slate-100">
+                          {formatBillingMoney(row.total, row.currency)}
+                        </p>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="mt-2 text-sm font-medium text-[#185FA5] hover:underline"
+                        onClick={() => setViewerInvoice(row)}
+                      >
+                        View
+                      </button>
+                    </>
+                  )}
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  {invoice?.status ? (
-                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                      {invoice.status}
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-[#185FA5] hover:underline"
-                    onClick={() =>
-                      setViewerInvoice(
-                        invoice?.id
-                          ? invoice
-                          : { id: subscription.invoice_id, ...invoice },
-                      )
-                    }
-                  >
-                    View
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
           )}
+          {!loading && !initialInvoice?.id && !renewalInvoice?.id && !isTenant ? (
+            <p className="text-xs text-slate-500">
+              Attach invoices from{" "}
+              <Link href="/platform/subscriptions" className="font-medium text-[#185FA5] hover:underline">
+                Subscriptions
+              </Link>
+              {" · "}
+              <Link
+                href={`/platform/invoices/new?organization=${organizationId}`}
+                className="font-medium text-[#185FA5] hover:underline"
+              >
+                Create invoice
+              </Link>
+            </p>
+          ) : null}
         </BillingSection>
       ) : null}
 

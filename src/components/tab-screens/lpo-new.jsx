@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -15,7 +16,7 @@ import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
 
 export function LpoNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("purchase order"));
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const presetSupplier = searchParams.get("supplier_id");
@@ -110,7 +111,7 @@ export function LpoNewScreen() {
       const created = await apiRequest("/lpo-mst/full", { method: "POST", body });
       const lpoNo = created?.lpo?.lpo_no ?? created?.lpo_no;
       clearDraft();
-      router.push(lpoNo ? `/lpo/${lpoNo}` : "/lpo");
+      exitTo(lpoNo ? `/lpo/${lpoNo}` : "/lpo");
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {

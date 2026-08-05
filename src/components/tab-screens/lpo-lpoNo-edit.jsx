@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -19,9 +20,9 @@ import {
 
 export function LpoLpoNoEditScreen() {
   const params = useParams();
-  const router = useRouter();
   const { user } = useAuth();
   const lpoNo = params.lpoNo;
+  const { exitTo } = useTabFormExit(tabEditTitle("purchase order", `PO-${lpoNo}`));
 
   const [form, setForm] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
@@ -84,7 +85,7 @@ export function LpoLpoNoEditScreen() {
     setFormError(null);
     try {
       await apiRequest(`/lpo-mst/${lpoNo}/full`, { method: "PUT", body });
-      router.push(`/lpo/${lpoNo}`);
+      exitTo(`/lpo/${lpoNo}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {

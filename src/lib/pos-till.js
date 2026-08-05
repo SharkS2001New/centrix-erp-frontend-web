@@ -674,3 +674,18 @@ export function formatFloatEntryDate(value) {
     minute: "2-digit",
   });
 }
+
+/** Business date for a till session — mirrors backend TillOperationsController::sessionBusinessDate. */
+export function sessionBusinessDate(session) {
+  if (!session) return null;
+  const raw = session.session_date ?? session.opened_at;
+  if (!raw) return null;
+  return String(raw).slice(0, 10);
+}
+
+/** Closed sessions may only be reopened on the same calendar day (today in org timezone). */
+export function canReopenTillSession(session, todayKey) {
+  if (!session || !todayKey) return false;
+  if (String(session.status ?? "").toLowerCase() !== "closed") return false;
+  return sessionBusinessDate(session) === todayKey;
+}

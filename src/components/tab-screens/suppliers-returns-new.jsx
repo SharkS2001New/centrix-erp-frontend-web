@@ -1,10 +1,11 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { RecordSupplierReturnForm } from "@/components/suppliers/record-supplier-return-form";
 
 export function SuppliersReturnsNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("supplier return"));
   const searchParams = useSearchParams();
   const supplierId = searchParams.get("supplier_id") ?? searchParams.get("supplier");
   const returnTo = searchParams.get("return");
@@ -25,10 +26,10 @@ export function SuppliersReturnsNewScreen() {
       }
       onSuccess={() => {
         if (returnTo === "returns" || !supplierId) {
-          router.push("/suppliers/returns");
+          exitTo("/suppliers/returns");
           return;
         }
-        router.push(`/suppliers/${supplierId}`);
+        exitTo(`/suppliers/${supplierId}`);
       }}
     />
   );

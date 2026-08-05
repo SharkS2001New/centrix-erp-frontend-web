@@ -20,7 +20,9 @@ import {
   formatBillingMoney,
   isSubscriptionOverdue,
   licenseBasisLabel,
+  platformInvoiceLabel,
   resolveAgreementPrices,
+  resolveSubscriptionInvoices,
   subscriptionStatusLabel,
 } from "@/lib/platform-billing";
 import {
@@ -28,10 +30,14 @@ import {
   resolveOrganizationLicense,
   isLicenseExpired,
   isLicenseExpiringSoon,
+  canExtendPlatformLicence,
+  canStartPlatformTrial,
 } from "@/lib/organization-license";
 import { periodEndForPlanInterval, isAnnualBillingInterval } from "@/lib/provision-subscription";
 import { ChangeSubscriptionPlanModal } from "@/components/platform/change-subscription-plan-modal";
 import { EditSubscriptionPeriodModal } from "@/components/platform/edit-subscription-period-modal";
+import { SubscriptionLicenseInfoModal } from "@/components/platform/subscription-license-info-modal";
+import { PlatformInvoiceViewer } from "@/components/platform/platform-invoice-viewer";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -49,7 +55,7 @@ function emptyAssignForm() {
     current_period_start: start,
     current_period_end: "",
     trial_days: "14",
-    invoice_id: "",
+    initial_invoice_id: "",
   };
 }
 
@@ -58,6 +64,26 @@ function invoiceOptionLabel(inv) {
   const total = formatBillingMoney(inv.total, inv.currency);
   const status = inv.status ? String(inv.status) : "draft";
   return `${number} · ${total} · ${status}`;
+}
+
+function SubscriptionInvoiceCell({ label, invoice, onView }) {
+  const invoiceLabel = platformInvoiceLabel(invoice);
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wide text-slate-400">{label}</p>
+      {invoiceLabel ? (
+        <button
+          type="button"
+          className="mt-0.5 font-medium text-[#185FA5] hover:underline"
+          onClick={() => onView(invoice)}
+        >
+          {invoiceLabel}
+        </button>
+      ) : (
+        <span className="mt-0.5 block text-slate-400">—</span>
+      )}
+    </div>
+  );
 }
 
 export default function PlatformSubscriptionsPage() {
@@ -73,9 +99,12 @@ export default function PlatformSubscriptionsPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [extendTarget, setExtendTarget] = useState(null);
   const [attachTarget, setAttachTarget] = useState(null);
+  const [attachInvoiceKind, setAttachInvoiceKind] = useState("initial");
   const [attachInvoiceId, setAttachInvoiceId] = useState("");
+  const [viewerInvoice, setViewerInvoice] = useState(null);
   const [changePlanTarget, setChangePlanTarget] = useState(null);
   const [periodTarget, setPeriodTarget] = useState(null);
+  const [licenseInfoTarget, setLicenseInfoTarget] = useState(null);
   const [extendDays, setExtendDays] = useState("30");
   const [extendUntil, setExtendUntil] = useState("");
   const [saving, setSaving] = useState(false);
@@ -195,7 +224,7 @@ export default function PlatformSubscriptionsPage() {
           current_period_end: form.current_period_end || null,
           is_trial: form.status === "trialing",
           trial_days: form.status === "trialing" ? Number(form.trial_days) || 14 : null,
-          invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
+          initial_invoice_id: form.initial_invoice_id ? Number(form.initial_invoice_id) : null,
         },
       });
       notifySuccess(form.status === "trialing" ? "Free trial started." : "Subscription assigned.");
@@ -217,25 +246,34 @@ export default function PlatformSubscriptionsPage() {
     setExtendUntil(end ? addCalendarDays(end, 30) : addCalendarDays(undefined, 30));
   }
 
-  function openAttachInvoice(sub) {
+  function openAttachInvoice(sub, kind = "initial") {
+    const { initial, renewal } = resolveSubscriptionInvoices(sub);
+    const current = kind === "renewal" ? renewal : initial;
     setAttachTarget(sub);
-    setAttachInvoiceId(sub.invoice_id ? String(sub.invoice_id) : sub.invoice?.id ? String(sub.invoice.id) : "");
+    setAttachInvoiceKind(kind);
+    setAttachInvoiceId(current?.id ? String(current.id) : "");
   }
 
   async function handleAttachInvoice(e) {
     e.preventDefault();
     if (!attachTarget) return;
+    const field = attachInvoiceKind === "renewal" ? "invoice_id" : "initial_invoice_id";
     setSaving(true);
     try {
       await apiRequest(`/admin/platform-subscriptions/${attachTarget.id}`, {
         method: "PATCH",
         body: {
-          invoice_id: attachInvoiceId ? Number(attachInvoiceId) : null,
+          [field]: attachInvoiceId ? Number(attachInvoiceId) : null,
         },
       });
-      notifySuccess(attachInvoiceId ? "Invoice attached." : "Invoice detached.");
+      notifySuccess(
+        attachInvoiceId
+          ? `${attachInvoiceKind === "renewal" ? "Renewal" : "Initial"} invoice attached.`
+          : "Invoice detached.",
+      );
       setAttachTarget(null);
       setAttachInvoiceId("");
+      setAttachInvoiceKind("initial");
       setOrgInvoices([]);
       await load();
     } catch (err) {
@@ -381,7 +419,7 @@ export default function PlatformSubscriptionsPage() {
         and block sign-in (web + mobile) until you extend the licence here.
       </p>
 
-      <div className="mb-4">
+      <div className="mb-4 w-fit">
         <FilterSelect
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -422,7 +460,7 @@ export default function PlatformSubscriptionsPage() {
                   <th className="px-5 py-3">Organization</th>
                   <th className="px-5 py-3">Plan</th>
                   <th className="px-5 py-3">Period / expiry</th>
-                  <th className="px-5 py-3">Invoice</th>
+                  <th className="px-5 py-3">Invoices</th>
                   <th className="px-5 py-3">Seats</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -435,12 +473,24 @@ export default function PlatformSubscriptionsPage() {
                   const expired = isLicenseExpired(license) || sub.status === "expired";
                   const soon = isLicenseExpiringSoon(license);
                   const status = expired ? "expired" : overdue ? "past_due" : sub.status;
+                  const showExtend = canExtendPlatformLicence(sub, license, { expired, overdue, soon });
+                  const showStartTrial = canStartPlatformTrial(sub, license, { expired });
+                  const { initial: initialInvoice, renewal: renewalInvoice } = resolveSubscriptionInvoices(sub);
                   return (
                     <tr key={sub.id}>
                       <td className="px-5 py-3">
-                        <p className="font-medium text-slate-900">
-                          {sub.organization?.org_name ?? "—"}
-                        </p>
+                        {sub.organization_id ? (
+                          <Link
+                            href={`/platform/organizations/${sub.organization_id}`}
+                            className="font-medium text-[#185FA5] hover:underline"
+                          >
+                            {sub.organization?.org_name ?? "—"}
+                          </Link>
+                        ) : (
+                          <p className="font-medium text-slate-900">
+                            {sub.organization?.org_name ?? "—"}
+                          </p>
+                        )}
                         {sub.organization?.company_code ? (
                           <p className="font-mono text-xs text-slate-500">{sub.organization.company_code}</p>
                         ) : null}
@@ -488,16 +538,18 @@ export default function PlatformSubscriptionsPage() {
                         </button>
                       </td>
                       <td className="px-5 py-3 text-slate-600">
-                        {sub.invoice?.id || sub.invoice_id ? (
-                          <Link
-                            href={`/platform/invoices/${sub.invoice?.id ?? sub.invoice_id}`}
-                            className="font-medium text-[#185FA5] hover:underline"
-                          >
-                            {sub.invoice?.invoice_number || `Invoice #${sub.invoice?.id ?? sub.invoice_id}`}
-                          </Link>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
+                        <div className="space-y-2">
+                          <SubscriptionInvoiceCell
+                            label="Initial"
+                            invoice={initialInvoice}
+                            onView={setViewerInvoice}
+                          />
+                          <SubscriptionInvoiceCell
+                            label="Renewal"
+                            invoice={renewalInvoice}
+                            onView={setViewerInvoice}
+                          />
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-slate-600">{sub.seat_count ?? "—"}</td>
                       <td className="px-5 py-3">
@@ -513,13 +565,15 @@ export default function PlatformSubscriptionsPage() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex flex-col items-end gap-1">
-                          <button
-                            type="button"
-                            className="text-sm font-medium text-[#185FA5] hover:underline"
-                            onClick={() => openExtend(sub)}
-                          >
-                            Extend licence
-                          </button>
+                          {showExtend ? (
+                            <button
+                              type="button"
+                              className="text-sm font-medium text-[#185FA5] hover:underline"
+                              onClick={() => openExtend(sub)}
+                            >
+                              Extend licence
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="text-xs font-medium text-[#185FA5] hover:underline"
@@ -534,7 +588,7 @@ export default function PlatformSubscriptionsPage() {
                           >
                             Change package
                           </button>
-                          {sub.status !== "trialing" ? (
+                          {showStartTrial ? (
                             <button
                               type="button"
                               className="text-xs font-medium text-sky-700 hover:underline"
@@ -547,9 +601,16 @@ export default function PlatformSubscriptionsPage() {
                           <button
                             type="button"
                             className="text-xs font-medium text-indigo-700 hover:underline"
-                            onClick={() => openAttachInvoice(sub)}
+                            onClick={() => openAttachInvoice(sub, "initial")}
                           >
-                            {sub.invoice?.id || sub.invoice_id ? "Change invoice" : "Attach invoice"}
+                            {initialInvoice?.id ? "Change initial invoice" : "Attach initial invoice"}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-indigo-700 hover:underline"
+                            onClick={() => openAttachInvoice(sub, "renewal")}
+                          >
+                            {renewalInvoice?.id ? "Change renewal invoice" : "Attach renewal invoice"}
                           </button>
                           <button
                             type="button"
@@ -559,20 +620,13 @@ export default function PlatformSubscriptionsPage() {
                             Draft next invoice
                           </button>
                           {sub.organization_id ? (
-                            <Link
-                              href={`/platform/organizations/${sub.organization_id}/admin/license`}
+                            <button
+                              type="button"
                               className="text-xs text-slate-600 hover:underline"
+                              onClick={() => setLicenseInfoTarget(sub)}
                             >
                               License info
-                            </Link>
-                          ) : null}
-                          {sub.organization_id ? (
-                            <Link
-                              href={`/platform/organizations/${sub.organization_id}`}
-                              className="text-xs text-slate-600 hover:underline"
-                            >
-                              Open organization
-                            </Link>
+                            </button>
                           ) : null}
                           {sub.status !== "cancelled" && sub.status !== "expired" ? (
                             <button
@@ -612,7 +666,7 @@ export default function PlatformSubscriptionsPage() {
                     setForm((f) => ({
                       ...f,
                       organization_id: e.target.value,
-                      invoice_id: "",
+                      initial_invoice_id: "",
                     }))
                   }
                 >
@@ -626,13 +680,13 @@ export default function PlatformSubscriptionsPage() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">
-                  Invoice (optional)
+                  Initial invoice (optional)
                 </span>
                 <select
                   className={inputClass}
-                  value={form.invoice_id}
+                  value={form.initial_invoice_id}
                   disabled={!form.organization_id || loadingOrgInvoices}
-                  onChange={(e) => setForm((f) => ({ ...f, invoice_id: e.target.value }))}
+                  onChange={(e) => setForm((f) => ({ ...f, initial_invoice_id: e.target.value }))}
                 >
                   <option value="">
                     {!form.organization_id
@@ -883,12 +937,32 @@ export default function PlatformSubscriptionsPage() {
             onSubmit={(e) => void handleAttachInvoice(e)}
             className="theme-modal w-full max-w-md rounded-xl border p-6 shadow-2xl"
           >
-            <h2 className="text-base font-semibold text-slate-900">Attach invoice</h2>
+            <h2 className="text-base font-semibold text-slate-900">
+              {attachInvoiceKind === "renewal" ? "Attach renewal invoice" : "Attach initial invoice"}
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
-              {attachTarget.organization?.org_name ?? "Organization"} — choose an invoice for this
-              organization.
+              {attachTarget.organization?.org_name ?? "Organization"} — choose the{" "}
+              {attachInvoiceKind === "renewal" ? "renewal" : "first-time payment"} invoice for this
+              subscription.
             </p>
             <div className="mt-4 space-y-3">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Invoice type</span>
+                <select
+                  className={inputClass}
+                  value={attachInvoiceKind}
+                  onChange={(e) => {
+                    const kind = e.target.value;
+                    const { initial, renewal } = resolveSubscriptionInvoices(attachTarget);
+                    const current = kind === "renewal" ? renewal : initial;
+                    setAttachInvoiceKind(kind);
+                    setAttachInvoiceId(current?.id ? String(current.id) : "");
+                  }}
+                >
+                  <option value="initial">Initial invoice (first payment)</option>
+                  <option value="renewal">Renewal invoice</option>
+                </select>
+              </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Invoice</span>
                 <select
@@ -927,6 +1001,7 @@ export default function PlatformSubscriptionsPage() {
                 onClick={() => {
                   setAttachTarget(null);
                   setAttachInvoiceId("");
+                  setAttachInvoiceKind("initial");
                   setOrgInvoices([]);
                 }}
               >
@@ -959,6 +1034,19 @@ export default function PlatformSubscriptionsPage() {
           setPeriodTarget(null);
           void load();
         }}
+      />
+
+      <SubscriptionLicenseInfoModal
+        open={Boolean(licenseInfoTarget)}
+        subscription={licenseInfoTarget}
+        onClose={() => setLicenseInfoTarget(null)}
+      />
+
+      <PlatformInvoiceViewer
+        open={Boolean(viewerInvoice)}
+        invoice={viewerInvoice}
+        expanded
+        onClose={() => setViewerInvoice(null)}
       />
     </CatalogPageShell>
   );

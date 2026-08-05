@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { apiRequest, ApiError, uploadProductImage } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
@@ -21,17 +19,19 @@ import {
 import { resolveOpeningStockBranchId } from "@/components/products/product-inventory-fields";
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
 import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 
 export function ProductsNewScreen() {
-  const router = useRouter();
-  const pathname = usePathname();
   const { capabilities, user } = useAuth();
-  const { enabled: tabWorkspaceEnabled, clearTabDirty, workspaceId } = useTabWorkspace();
+  const { workspaceId } = useTabWorkspace();
   const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const addTabTitle = hotelCatalogue ? tabAddTitle("menu product") : tabAddTitle("product");
+  const { exitTo } = useTabFormExit(addTabTitle);
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const {
@@ -178,13 +178,16 @@ export function ProductsNewScreen() {
       await saveRetailPackageSetting(form, code, { hotelCatalogue });
       setIsDirty(false);
       clearDraft();
-      if (tabWorkspaceEnabled) clearTabDirty(pathname);
-      router.push(`/products/${encodeURIComponent(code)}`);
+      exitTo(`/products/${encodeURIComponent(code)}`);
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Failed to save product");
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCancel() {
+    clearDraft();
   }
 
   return (
@@ -212,12 +215,7 @@ export function ProductsNewScreen() {
                   <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
                 ) : null}
                 <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
-                  <Link
-                    href="/products"
-                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </Link>
+                  <TabFormCancelButton href="/products" onClick={handleCancel} />
                   <button
                     type="submit"
                     disabled={saving}

@@ -20,8 +20,9 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 
-const PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 25;
 const CHART_COLORS = ["#185FA5", "#0F766E", "#B45309", "#7C3AED", "#BE123C", "#0369A1", "#4D7C0F"];
 
 export function ExpensesReportScreen({ definition }) {
@@ -34,6 +35,7 @@ export function ExpensesReportScreen({ definition }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -54,14 +56,19 @@ export function ExpensesReportScreen({ definition }) {
     () => JSON.stringify({ fromDate: applied.fromDate, toDate: applied.toDate, branchId: applied.branchId }),
     [applied],
   );
-  const depsKey = `${definition.apiPath}|${page}|${appliedKey}`;
+  const depsKey = `${definition.apiPath}|${page}|${pageSize}|${appliedKey}`;
+
+  function handlePageSizeChange(next) {
+    setPageSize(next);
+    setPage(1);
+  }
 
   const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const searchParams = {
-        per_page: PAGE_SIZE,
+        per_page: pageSize,
         page,
         date_column: "expense_date",
       };
@@ -70,7 +77,7 @@ export function ExpensesReportScreen({ definition }) {
       if (applied.branchId) searchParams.branch_id = applied.branchId;
       const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
       setRows(normalizeReportRows(res));
-      setReportMeta(normalizeReportMeta(res, page, PAGE_SIZE));
+      setReportMeta(normalizeReportMeta(res, page, pageSize));
       setReportSummary(normalizeReportSummary(res));
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
@@ -81,7 +88,7 @@ export function ExpensesReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath, page, paneHref, depsKey]);
+  }, [applied, definition.apiPath, page, pageSize, paneHref, depsKey]);
 
   const hasData = rows.length > 0 || reportMeta != null;
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
@@ -237,8 +244,9 @@ export function ExpensesReportScreen({ definition }) {
               page={page}
               totalPages={totalPages}
               total={reportMeta?.total ?? rows.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </div>
         </div>

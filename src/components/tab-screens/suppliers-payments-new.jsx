@@ -1,10 +1,11 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { RecordSupplierPaymentForm } from "@/components/suppliers/record-supplier-payment-form";
 
 export function SuppliersPaymentsNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("supplier payment"));
   const searchParams = useSearchParams();
 
   const supplierId = searchParams.get("supplier_id") ?? searchParams.get("supplier");
@@ -13,14 +14,14 @@ export function SuppliersPaymentsNewScreen() {
 
   function handleSuccess(id) {
     if (returnTo === "payments") {
-      router.push("/suppliers/payments");
+      exitTo("/suppliers/payments");
       return;
     }
     if (id) {
-      router.push(`/suppliers/${id}?tab=payments`);
+      exitTo(`/suppliers/${id}?tab=payments`);
       return;
     }
-    router.push("/suppliers/payments");
+    exitTo("/suppliers/payments");
   }
 
   const backHref =

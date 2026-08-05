@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   buildSupplierBody,
@@ -17,7 +18,6 @@ import { useFormDraft } from "@/hooks/use-form-draft";
 
 export function SuppliersIdEditScreen() {
   const params = useParams();
-  const router = useRouter();
   const supplierId = params.id;
 
   const [form, setForm] = useState(null);
@@ -80,13 +80,15 @@ export function SuppliersIdEditScreen() {
         body: buildSupplierBody(form),
       });
       clearDraft();
-      router.push(`/suppliers/${supplierId}`);
+      exitTo(`/suppliers/${supplierId}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
   }
+
+  const { exitTo } = useTabFormExit(tabEditTitle("supplier", form?.supplier_name));
 
   return (
     <SupplierFormPageShell
@@ -108,12 +110,10 @@ export function SuppliersIdEditScreen() {
                 <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
               )}
               <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
-                <Link
+                <TabFormCancelButton
                   href={`/suppliers/${supplierId}`}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </Link>
+                  onClick={() => clearDraft()}
+                />
                 <button
                   type="submit"
                   disabled={saving}

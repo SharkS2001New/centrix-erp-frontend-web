@@ -71,6 +71,7 @@ export function PosHeldOrdersOverlay({
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [busyOrderId, setBusyOrderId] = useState(null);
+  const [restoreStatus, setRestoreStatus] = useState(null);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [uomById, setUomById] = useState(() => new Map());
@@ -97,6 +98,11 @@ export function PosHeldOrdersOverlay({
     setLoading(true);
     try {
       const localRows = await listLocalHeldOrders();
+      // Local parks are on-device — show them immediately.
+      setRows(localRows);
+      setTotalCount(localRows.length);
+      onCountChange?.(localRows.length);
+
       let serverRows = [];
       try {
         const res = await apiRequest("/sales", {
@@ -110,17 +116,25 @@ export function PosHeldOrdersOverlay({
         });
         serverRows = (res.data ?? []).map((row) => ({ ...row, local_held: false }));
       } catch {
-        // Offline / API down — local parks still show.
         serverRows = [];
       }
+
       const list = [...localRows, ...serverRows];
-      const count = list.length;
       setRows(list);
-      setTotalCount(count);
-      setDetailsById({});
+      setTotalCount(list.length);
+      onCountChange?.(list.length);
+      setDetailsById((prev) => {
+        const next = { ...prev };
+        for (const row of localRows) {
+          const key = orderKey(row);
+          if (key && (row.items?.length || row.lines?.length)) {
+            next[key] = row;
+          }
+        }
+        return next;
+      });
       setSelectedOrderId(null);
       setExpandedIds(new Set());
-      onCountChange?.(count);
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load held orders");
     } finally {
@@ -138,6 +152,7 @@ export function PosHeldOrdersOverlay({
       setActionError(null);
       setDetailLoadingId(null);
       setBusyOrderId(null);
+      setRestoreStatus(null);
       setSelectedOrderId(null);
       setExpandedIds(new Set());
       return;
@@ -222,8 +237,21 @@ export function PosHeldOrdersOverlay({
   }
 
   function selectOrder(order) {
-    setSelectedOrderId(order?.id ?? null);
+    if (!order) return;
+    const key = orderKey(order);
+    setSelectedOrderId(order.id ?? null);
     setActionError(null);
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    const hasItems = (order.items?.length ?? order.lines?.length ?? 0) > 0;
+    if (hasItems) {
+      setDetailsById((prev) => ({ ...prev, [key]: order }));
+    } else {
+      void loadOrderDetail(order);
+    }
   }
 
   function toggleExpand(order, event) {
@@ -244,11 +272,9 @@ export function PosHeldOrdersOverlay({
   }
 
   async function handleRestore(order) {
-    if (!order?.id) return;
+    if (!order?.id || busyOrderId) return;
 
     if (workspaceHasLines) {
-      // Close before confirm so shortcut guards do not stick on stacked dialogs.
-      onClose?.();
       const ok = await confirm({
         title: "Restore held order",
         message: "Your workspace has an open order. Replace it with this held order?",
@@ -260,29 +286,37 @@ export function PosHeldOrdersOverlay({
     }
 
     setBusyOrderId(order.id);
+    setRestoreStatus(
+      order?.local_held || isLocalHeldId(order.id)
+        ? "Restoring held order…"
+        : "Restoring held order from server…",
+    );
     setActionError(null);
     try {
       if (order?.local_held || isLocalHeldId(order.id)) {
         const { cart, park } = await restoreLocalHeldOrder(order.id, cartSeed ?? {});
-        // Drop from in-memory held list before closing so the badge count stays accurate.
         removeHeldOrderFromMemory(park ?? order);
+        await onRestored?.(cart, park, { local: true });
         onClose?.();
-        onRestored?.(cart, park, { local: true });
         return;
       }
 
       const cart = await apiRequest(`/sales/orders/${order.id}/restore-to-cart`, {
         method: "POST",
         body: { replace: true },
+        loading: false,
+        reportIssues: false,
       });
       removeHeldOrderFromMemory(order);
+      await onRestored?.(cart, order, { local: false });
       onClose?.();
-      onRestored?.(cart, order, { local: false });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to restore order";
+      setRestoreStatus(null);
       onRestoreFailed?.(message);
     } finally {
       setBusyOrderId(null);
+      setRestoreStatus(null);
     }
   }
 
@@ -358,7 +392,7 @@ export function PosHeldOrdersOverlay({
                 ) : null}
               </div>
               <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs text-white/75">
-                Select an order, then Restore or Delete. Expand only shows line items.
+                Click an order to view its items, then Restore or Delete.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -369,7 +403,7 @@ export function PosHeldOrdersOverlay({
                 className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--theme-primary)] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busyOrderId && selectedOrder && busyOrderId === selectedOrder.id
-                  ? "…"
+                  ? "Restoring…"
                   : "Restore"}
               </button>
               <button
@@ -405,9 +439,25 @@ export function PosHeldOrdersOverlay({
               Selected: <span className="font-semibold text-slate-800">{heldOrderTitle(selectedOrder)}</span>
             </p>
           ) : filtered.length > 0 ? (
-            <p className="mt-1.5 text-xs text-slate-500">Click a row to select it.</p>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Click a row to select it and show line items.
+            </p>
           ) : null}
         </div>
+
+        {restoreStatus ? (
+          <div
+            className="shrink-0 flex items-center gap-3 border-b border-[var(--theme-border)] bg-[var(--theme-primary-subtle)] px-4 py-2.5 text-sm text-[var(--theme-primary)]"
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+              aria-hidden
+            />
+            <span>{restoreStatus}</span>
+          </div>
+        ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--theme-surface-subtle)]">
           {loading ? (
@@ -447,6 +497,11 @@ export function PosHeldOrdersOverlay({
                       tabIndex={0}
                       aria-pressed={isSelected}
                       onClick={() => selectOrder(order)}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        selectOrder(order);
+                        void handleRestore(order);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();

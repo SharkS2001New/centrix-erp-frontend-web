@@ -15,6 +15,7 @@ import {
   IconButton,
   PaginationBar,
   PencilIcon,
+  PrimaryButton,
   SearchInput,
   StatCard,
   formatShortDate,
@@ -40,14 +41,15 @@ import {
   tillLockLabel,
   tillStatusLabel,
   tillStatusTone,
+  canReopenTillSession,
 } from "@/lib/pos-till";
 import { getPosDeviceIdentifier } from "@/lib/pos-device";
-import { todayCalendarDate } from "@/lib/datetime";
+import { addDaysToCalendarDate, todayCalendarDate } from "@/lib/datetime";
 import { isBlindTillCloseEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 import { useConfirm } from "@/lib/use-confirm";
 
 const TABS = [
-  { id: "tills", label: "Tills" },
+  { id: "tills", label: "Current Open Sessions" },
   { id: "locks", label: "Till locks" },
   { id: "history", label: "Session history" },
 ];
@@ -208,6 +210,7 @@ export function TillManagementScreen() {
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const orgTimeZone = capabilities?.general?.timezone ?? "Africa/Nairobi";
   const todayKey = todayCalendarDate(orgTimeZone);
+  const defaultHistoryFromDate = addDaysToCalendarDate(todayKey, -1, orgTimeZone);
 
   const [tab, setTab] = useState(initialTab);
   const [pageError, setPageError] = useState(null);
@@ -242,7 +245,10 @@ export function TillManagementScreen() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatus, setHistoryStatus] = useState("");
-  const [historyDate, setHistoryDate] = useState(todayKey);
+  const [historyFromDate, setHistoryFromDate] = useState(defaultHistoryFromDate);
+  const [historyToDate, setHistoryToDate] = useState(todayKey);
+  const [historyFromDraft, setHistoryFromDraft] = useState(defaultHistoryFromDate);
+  const [historyToDraft, setHistoryToDraft] = useState(todayKey);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
@@ -347,7 +353,8 @@ export function TillManagementScreen() {
         page: historyPage,
       };
       if (historyStatus) params["filter[status]"] = historyStatus;
-      if (historyDate) params.session_date = historyDate;
+      if (historyFromDate) params.from_date = historyFromDate;
+      if (historyToDate) params.to_date = historyToDate;
       const sessionRes = await apiRequest("/till-float-sessions", { searchParams: params });
       setHistoryRows(sessionRes.data ?? []);
       setHistoryTotal(Number(sessionRes.total ?? sessionRes.meta?.total ?? 0));
@@ -357,7 +364,13 @@ export function TillManagementScreen() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [historyStatus, historyDate, historyPage]);
+  }, [historyStatus, historyFromDate, historyToDate, historyPage]);
+
+  const applyHistoryDateRange = useCallback(() => {
+    setHistoryFromDate(historyFromDraft);
+    setHistoryToDate(historyToDraft);
+    setHistoryPage(1);
+  }, [historyFromDraft, historyToDraft]);
 
   useEffect(() => {
     if (searchParams.get("tab") === "shift") {
@@ -561,6 +574,10 @@ export function TillManagementScreen() {
   }
 
   async function reopenHistorySession(row) {
+    if (!canReopenTillSession(row, todayKey)) {
+      setPageError("Only today's closed sessions can be reopened.");
+      return;
+    }
     const ok = await confirm({
       title: "Reopen session",
       message: `Reopen session #${row.id} for today so the cashier can continue selling?`,
@@ -633,11 +650,28 @@ export function TillManagementScreen() {
     if (tab === "history") loadHistory();
   }
 
+  function openAddTill() {
+    setEditingTill(null);
+    setDrawerOpen(true);
+  }
+
+  function openEditTill(till) {
+    setEditingTill(till);
+    setDrawerOpen(true);
+  }
+
   return (
     <>
       <CatalogPageShell
         title="Till Management"
         subtitle="Monitor tills and cashier sessions. Managers can close an active session or reopen today's closed session if it was closed by mistake."
+        action={
+          tab === "tills" ? (
+            <PrimaryButton type="button" onClick={openAddTill}>
+              Add New Till
+            </PrimaryButton>
+          ) : null
+        }
         banner={
           displayError ? (
             <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{displayError}</p>
@@ -683,7 +717,18 @@ export function TillManagementScreen() {
               {metaLoading ? (
                 <p className="px-5 py-8 text-center text-sm text-slate-500">Loading tills…</p>
               ) : tillSlice.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-slate-500">No tills match your filters.</p>
+                <div className="px-5 py-10 text-center">
+                  <p className="text-sm text-slate-500">
+                    {tills.length === 0
+                      ? "No tills yet. Create one to start cashier sessions."
+                      : "No tills match your filters."}
+                  </p>
+                  {tills.length === 0 ? (
+                    <PrimaryButton type="button" className="mt-4" onClick={openAddTill}>
+                      Add New Till
+                    </PrimaryButton>
+                  ) : null}
+                </div>
               ) : (
                 <table className="w-full border-collapse text-sm">
                   <thead>
@@ -754,11 +799,11 @@ export function TillManagementScreen() {
                                   <EyeIcon />
                                 </IconButton>
                               )}
-                              <IconButton label="Edit till" onClick={() => { setEditingTill(till); setDrawerOpen(true); }}>
+                              <IconButton label="Edit till" onClick={() => openEditTill(till)}>
                                 <PencilIcon />
                               </IconButton>
                               <TillActionsMenu
-                                onEditTill={() => { setEditingTill(till); setDrawerOpen(true); }}
+                                onEditTill={() => openEditTill(till)}
                                 onCorrectFloat={
                                   openSessionRow && sessionHasFloat(openSessionRow)
                                     ? () => openFloatCorrection(openSessionRow, till, cashier)
@@ -892,15 +937,28 @@ export function TillManagementScreen() {
                 placeholder="Search session, till, cashier…"
                 className="max-w-xl"
               />
-              <input
-                type="date"
-                value={historyDate}
-                onChange={(e) => {
-                  setHistoryDate(e.target.value);
-                  setHistoryPage(1);
-                }}
-                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
-              />
+              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                From
+                <input
+                  type="date"
+                  value={historyFromDraft}
+                  onChange={(e) => {
+                    setHistoryFromDraft(e.target.value);
+                  }}
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                To
+                <input
+                  type="date"
+                  value={historyToDraft}
+                  onChange={(e) => {
+                    setHistoryToDraft(e.target.value);
+                  }}
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700"
+                />
+              </label>
               <FilterSelect
                 value={historyStatus}
                 onChange={(e) => { setHistoryStatus(e.target.value); setHistoryPage(1); }}
@@ -910,6 +968,9 @@ export function TillManagementScreen() {
                   { value: "closed", label: "Closed" },
                 ]}
               />
+              <PrimaryButton type="button" onClick={() => applyHistoryDateRange()}>
+                Apply
+              </PrimaryButton>
             </div>
             <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
               {historyLoading ? (
@@ -936,6 +997,7 @@ export function TillManagementScreen() {
                       const cashier = userById.get(row.cashier_id);
                       const isOpen = String(row.status).toLowerCase() === "open";
                       const isSuspended = String(row.status).toLowerCase() === "suspended";
+                      const canReopen = canReopenTillSession(row, todayKey);
                       return (
                         <tr key={row.id} className="border-b border-slate-100 last:border-b-0">
                           <td className="px-4 py-3 font-medium text-slate-900">#{row.id}</td>
@@ -991,7 +1053,7 @@ export function TillManagementScreen() {
                                   >
                                     Z
                                   </button>
-                                  {!isSuspended ? (
+                                  {!isSuspended && canReopen ? (
                                     <button
                                       type="button"
                                       onClick={() => void reopenHistorySession(row)}
@@ -1023,7 +1085,7 @@ export function TillManagementScreen() {
               <PaginationBar
                 page={historySafePage}
                 totalPages={historyTotalPages}
-                total={historyDate && !historySearch.trim() ? historyTotal : filteredHistory.length}
+                total={!historySearch.trim() ? historyTotal : filteredHistory.length}
                 pageSize={HISTORY_PAGE_SIZE}
                 onChange={setHistoryPage}
               />
@@ -1113,7 +1175,10 @@ export function TillManagementScreen() {
 
       <TillFormDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          setEditingTill(null);
+        }}
         onSaved={loadMeta}
         editing={editingTill}
         branches={branches}

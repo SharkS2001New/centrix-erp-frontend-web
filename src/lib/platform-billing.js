@@ -437,3 +437,52 @@ export function isSubscriptionOverdue(sub) {
   const end = new Date(`${String(sub.current_period_end).slice(0, 10)}T23:59:59`);
   return end.getTime() < Date.now() && sub.status === "active";
 }
+
+function nestedPlatformInvoice(sub, relationKey, idKey) {
+  const nested = sub?.[relationKey];
+  if (nested?.id) return nested;
+  const id = sub?.[idKey];
+  return id ? { id } : null;
+}
+
+/**
+ * Initial (first payment) and renewal invoices linked to a platform subscription.
+ * @param {object | null | undefined} sub
+ */
+export function resolveSubscriptionInvoices(sub) {
+  if (!sub) return { initial: null, renewal: null };
+
+  let initial = nestedPlatformInvoice(sub, "initial_invoice", "initial_invoice_id");
+  let renewal = nestedPlatformInvoice(sub, "invoice", "invoice_id");
+
+  // Legacy rows: one invoice_id before initial_invoice_id existed.
+  if (!initial?.id && renewal?.id && !sub.initial_invoice_id) {
+    const inv = sub.invoice;
+    if (inv?.id) {
+      const prices = resolveAgreementPrices(sub);
+      const total = Number(inv.total ?? 0);
+      const first = Number(prices.first_payment_price ?? 0);
+      const renewalAmt = Number(prices.renewal_price ?? 0);
+      if (first > 0 && Math.abs(total - first) < 0.01) {
+        initial = inv;
+        if (renewalAmt > 0 && Math.abs(total - renewalAmt) >= 0.01) {
+          renewal = null;
+        }
+      } else if (renewalAmt > 0 && Math.abs(total - renewalAmt) < 0.01) {
+        initial = null;
+        renewal = inv;
+      } else {
+        initial = inv;
+        renewal = null;
+      }
+    }
+  }
+
+  return { initial, renewal };
+}
+
+/** @param {object | null | undefined} invoice */
+export function platformInvoiceLabel(invoice) {
+  if (!invoice?.id) return null;
+  return invoice.invoice_number || `Invoice #${invoice.id}`;
+}

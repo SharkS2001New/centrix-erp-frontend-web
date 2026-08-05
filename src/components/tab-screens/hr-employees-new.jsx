@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
 import { invalidateReferenceResource } from "@/lib/reference-data-cache";
 import {
@@ -18,7 +18,7 @@ import {
 import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
 
 export function HrEmployeesNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("employee"));
   const {
     user,
     departments,
@@ -82,7 +82,7 @@ export function HrEmployeesNewScreen() {
       if (photoFile) {
         await uploadEmployeePhoto(created.id, photoFile);
       }
-      router.push(`/hr/employees/${created.id}`);
+      exitTo(`/hr/employees/${created.id}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {

@@ -21,8 +21,8 @@ export function SearchableFilterSelect({
 }) {
   const inputClassName = `${CONTROL_CLASS} ${className}`.trim();
 
-  // Tiny lists stay as native selects (status yes/no, etc.).
-  if (options.length <= 4) {
+  // Short enum lists use a compact native select (status filters, yes/no, etc.).
+  if (options.length <= 10) {
     return (
       <select
         value={value}

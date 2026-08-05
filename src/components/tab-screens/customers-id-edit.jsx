@@ -2,8 +2,9 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
@@ -26,7 +27,6 @@ import { useFormDraft } from "@/hooks/use-form-draft";
 
 export function CustomersIdEditScreen() {
   const params = useParams();
-  const router = useRouter();
   const confirm = useConfirm();
   const customerNum = params.id;
   const { capabilities } = useAuth();
@@ -189,7 +189,7 @@ export function CustomersIdEditScreen() {
         }));
       }
       clearDraft();
-      router.push(`/customers/${customerNum}`);
+      exitTo(`/customers/${customerNum}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -198,6 +198,7 @@ export function CustomersIdEditScreen() {
   }
 
   const pageLoading = loading || resourcesLoading;
+  const { exitTo } = useTabFormExit(tabEditTitle("customer", form?.customer_name));
 
   return (
     <CustomerFormPageShell
@@ -217,12 +218,10 @@ export function CustomersIdEditScreen() {
                 <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
               )}
               <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
-                <Link
+                <TabFormCancelButton
                   href={`/customers/${customerNum}`}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </Link>
+                  onClick={() => clearDraft()}
+                />
                 <button
                   type="submit"
                   disabled={saving}

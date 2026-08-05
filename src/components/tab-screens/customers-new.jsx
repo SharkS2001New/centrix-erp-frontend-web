@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useAuth } from "@/contexts/auth-context";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { apiRequest, ApiError, uploadCustomerShopImage } from "@/lib/api";
@@ -32,7 +32,7 @@ function isEmptyCustomerDraft(form, routeCustomersOnly) {
 }
 
 export function CustomersNewScreen() {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("customer"));
   const { capabilities } = useAuth();
   const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
   const { user, routes, branches, loading, showBranchSelect, defaultBranch } =
@@ -124,7 +124,7 @@ export function CustomersNewScreen() {
         await uploadCustomerShopImage(created.customer_num, shopImageFile);
       }
       clearDraft();
-      router.push(`/customers/${created.customer_num}`);
+      exitTo(`/customers/${created.customer_num}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -154,12 +154,7 @@ export function CustomersNewScreen() {
                 <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
               )}
               <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
-                <Link
-                  href="/customers"
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </Link>
+                <TabFormCancelButton href="/customers" onClick={() => clearDraft()} />
                 <button
                   type="submit"
                   disabled={saving}

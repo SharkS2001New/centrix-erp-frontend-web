@@ -25,8 +25,9 @@ import {
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 
-const PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 25;
 
 export function CustomReportScreen({ templateId }) {
   const { user, capabilities } = useAuth();
@@ -40,6 +41,7 @@ export function CustomReportScreen({ templateId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -69,7 +71,7 @@ export function CustomReportScreen({ templateId }) {
     () => JSON.stringify({ fromDate: applied.fromDate, toDate: applied.toDate, branchId: applied.branchId }),
     [applied],
   );
-  const depsKey = `${templateId}|${definition?.apiPath ?? ""}|${page}|${appliedKey}|${workspaceId}`;
+  const depsKey = `${templateId}|${definition?.apiPath ?? ""}|${page}|${pageSize}|${appliedKey}|${workspaceId}`;
 
   const loadReport = useCallback(async () => {
     if (!definition) return;
@@ -77,7 +79,7 @@ export function CustomReportScreen({ templateId }) {
     setError(null);
     try {
       const searchParams = {
-        per_page: PAGE_SIZE,
+        per_page: pageSize,
         page,
         workspace_id: workspaceId,
       };
@@ -88,7 +90,7 @@ export function CustomReportScreen({ templateId }) {
       if (applied.branchId) searchParams.branch_id = applied.branchId;
       const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
       setRows(normalizeReportRows(res));
-      setReportMeta(normalizeReportMeta(res, page, PAGE_SIZE));
+      setReportMeta(normalizeReportMeta(res, page, pageSize));
       setReportSummary(normalizeReportSummary(res));
       markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
@@ -99,7 +101,12 @@ export function CustomReportScreen({ templateId }) {
     } finally {
       setLoading(false);
     }
-  }, [definition, applied, workspaceId, page, paneHref, depsKey]);
+  }, [definition, applied, workspaceId, page, pageSize, paneHref, depsKey]);
+
+  function handlePageSizeChange(next) {
+    setPageSize(next);
+    setPage(1);
+  }
 
   const hasData = rows.length > 0 || reportMeta != null;
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
@@ -279,8 +286,9 @@ export function CustomReportScreen({ templateId }) {
             page={page}
             totalPages={totalPages}
             total={reportMeta?.total ?? rows.length}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
           />
         </>
       )}

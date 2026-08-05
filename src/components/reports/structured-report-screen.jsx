@@ -32,8 +32,9 @@ import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/r
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
 import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
 const CACHE_SLOT = "structured-report";
 
 export function StructuredReportScreen({ definition }) {
@@ -81,6 +82,7 @@ function StandardReportScreen({ definition }) {
   );
   const [error, setError] = useState(null);
   const [page, setPage] = useState(() => (cacheMatchesDefinition ? cachedBundle.page ?? 1 : 1));
+  const { pageSize, setPageSize } = useListPageSize(DEFAULT_PAGE_SIZE);
   const [fromDate, setFromDate] = useState(() =>
     cacheMatchesDefinition ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
   );
@@ -153,7 +155,7 @@ function StandardReportScreen({ definition }) {
     filterRowsRef.current = definition.filterRows;
   }, [applied, definition.filterRows]);
 
-  const depsKey = `${definition.key}|${definition.apiPath}|${page}|${appliedKey}`;
+  const depsKey = `${definition.key}|${definition.apiPath}|${page}|${pageSize}|${appliedKey}`;
 
   useLayoutEffect(() => {
     if (cacheMatchesDefinition && cachedBundle?.depsKey === depsKey) {
@@ -167,7 +169,7 @@ function StandardReportScreen({ definition }) {
     const currentApplied = appliedRef.current;
     try {
       const searchParams = {
-        per_page: PAGE_SIZE,
+        per_page: pageSize,
         page,
         ...buildReportQueryParams(definition.key, {
           fromDate: currentApplied.fromDate,
@@ -187,7 +189,7 @@ function StandardReportScreen({ definition }) {
       if (definition.key === "stock-movement") {
         centrixRows = filterStockMovementRows(centrixRows, capabilitiesRef.current);
       }
-      const meta = normalizeReportMeta(res, page, PAGE_SIZE);
+      const meta = normalizeReportMeta(res, page, pageSize);
       const summary = normalizeReportSummary(res);
       setRows(centrixRows);
       setReportMeta(meta);
@@ -216,7 +218,12 @@ function StandardReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [definition.key, definition.apiPath, definition.dateColumn, page, paneHref, depsKey]);
+  }, [definition.key, definition.apiPath, definition.dateColumn, page, pageSize, paneHref, depsKey]);
+
+  function handlePageSizeChange(next) {
+    setPageSize(next);
+    setPage(1);
+  }
 
   const hasData =
     rows.length > 0 ||
@@ -449,8 +456,10 @@ function StandardReportScreen({ definition }) {
             page={page}
             totalPages={totalPages}
             total={reportMeta?.total ?? rows.length}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={[10, 20, 25, 50, 100]}
           />
         </>
       )}
