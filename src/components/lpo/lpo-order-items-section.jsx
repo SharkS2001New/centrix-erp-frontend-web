@@ -152,14 +152,13 @@ export function LpoOrderItemsSection({
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-slate-300 bg-white">
           <div className="max-h-[380px] overflow-auto">
-            <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+            <table className="w-full min-w-[680px] table-fixed border-collapse text-sm">
               <colgroup>
-                <col className="w-[26%]" />
-                <col className="w-[16%]" />
-                <col className="w-[20%]" />
-                <col className="w-[14%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
+                <col className="w-[30%]" />
+                <col className="w-[18%]" />
+                <col className="w-[22%]" />
+                <col className="w-[15%]" />
+                <col className="w-[15%]" />
               </colgroup>
               <thead className="sticky top-0 z-10 bg-slate-100">
                 <tr className="text-left text-xs font-semibold text-slate-600">
@@ -177,20 +176,19 @@ export function LpoOrderItemsSection({
                     <span className="block">Amount</span>
                     <span className="block font-normal text-slate-500">(Qty × cost)</span>
                   </th>
-                  <th className="px-2 py-2 text-right">VAT</th>
                 </tr>
               </thead>
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-12 text-center text-slate-500">
+                    <td colSpan={5} className="px-3 py-12 text-center text-slate-500">
                       No items in this order yet.
                     </td>
                   </tr>
                 ) : (
                   lines.map((line, index) => {
                     const uom = uomById.get(line.unit_id);
-                    const { gross, vat } = computeLpoLineTotals(line);
+                    const { gross } = computeLpoLineTotals(line);
                     const rowSelected = selectedLineIndex === index;
                     const countsFlat = {};
                     const orderCounts =
@@ -271,9 +269,6 @@ export function LpoOrderItemsSection({
                         <td className="px-2 py-2 text-right align-middle font-medium tabular-nums text-slate-900">
                           {formatLpoAmount(gross)}
                         </td>
-                        <td className="px-2 py-2 text-right align-middle tabular-nums text-slate-700">
-                          {vat > 0 ? formatLpoAmount(vat) : "—"}
-                        </td>
                       </tr>
                     );
                   })
@@ -286,12 +281,9 @@ export function LpoOrderItemsSection({
         <div className="mt-3 flex items-end justify-between gap-4 border-t border-slate-200 pt-3">
           <p className="text-xs text-slate-500">
             Enter quantity at each packaging level from UOM settings (e.g. bags, outers, kg).
-            Cost is per full package and VAT-inclusive; VAT is extracted from the catalog rate.
+            Cost is per full package and VAT-inclusive.
           </p>
           <div className="text-right">
-            <p className="text-xs text-slate-500">
-              Subtotal (ex-VAT) {formatLpoKes(totals.subtotal)} · VAT {formatLpoKes(totals.vat)}
-            </p>
             <p className="text-lg font-bold text-slate-900">TOTAL: {formatLpoKes(totals.total)}</p>
           </div>
         </div>
