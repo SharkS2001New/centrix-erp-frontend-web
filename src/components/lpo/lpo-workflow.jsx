@@ -430,7 +430,9 @@ export function LpoDetailActions({ lpo, lpoNo, onDelete, deleting, printContext 
   const { hasPermission } = useAuth();
   const canView = hasPermission(P.purchasing.lpo.view);
   const canEdit = hasPermission(P.purchasing.lpo.edit) && lpoCanEdit(lpo);
-  const canDelete = hasPermission(P.purchasing.lpo.delete) && lpoCanDelete(lpo);
+  const canDelete =
+    (hasPermission(P.purchasing.lpo.delete) || hasPermission(P.purchasing.lpo.edit)) &&
+    lpoCanDelete(lpo);
   const { printing, printError, printDocument } = useLpoPrintActions(lpoNo, printContext);
   const { printingGrn, grnError, printGrn } = useGrnPrint(lpoNo, printContext);
   const showGrn = lpoHasReceivedStock(printContext?.lpoSummary);

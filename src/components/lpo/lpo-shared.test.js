@@ -20,4 +20,12 @@ describe("LPO VAT-inclusive cost totals", () => {
     expect(totals.vat).toBe(32);
     expect(totals.subtotal).toBe(300);
   });
+
+  it("shows line amount as qty × inclusive cost (gross)", () => {
+    const line = { ordered_qty: 1200, cost_price: 6300, vat_rate: 16 };
+    const totals = computeLpoLineTotals(line);
+    expect(totals.gross).toBe(7_560_000);
+    expect(totals.net).toBeCloseTo(6_517_241.38, 1);
+    expect(totals.vat).toBeCloseTo(1_042_758.62, 1);
+  });
 });

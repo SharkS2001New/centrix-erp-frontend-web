@@ -171,11 +171,11 @@ export function LpoOrderItemsSection({
                   </th>
                   <th className="whitespace-nowrap px-2 py-2 text-right">
                     <span className="block">Cost price</span>
-                    <span className="block font-normal text-slate-500">(Supplier selling price)</span>
+                    <span className="block font-normal text-slate-500">(VAT-inclusive)</span>
                   </th>
                   <th className="whitespace-nowrap px-2 py-2 text-right">
                     <span className="block">Amount</span>
-                    <span className="block font-normal text-slate-500">(Before VAT)</span>
+                    <span className="block font-normal text-slate-500">(Qty × cost)</span>
                   </th>
                   <th className="px-2 py-2 text-right">VAT</th>
                 </tr>
@@ -190,7 +190,7 @@ export function LpoOrderItemsSection({
                 ) : (
                   lines.map((line, index) => {
                     const uom = uomById.get(line.unit_id);
-                    const { net, vat } = computeLpoLineTotals(line);
+                    const { gross, vat } = computeLpoLineTotals(line);
                     const rowSelected = selectedLineIndex === index;
                     const countsFlat = {};
                     const orderCounts =
@@ -269,7 +269,7 @@ export function LpoOrderItemsSection({
                           />
                         </td>
                         <td className="px-2 py-2 text-right align-middle font-medium tabular-nums text-slate-900">
-                          {formatLpoAmount(net)}
+                          {formatLpoAmount(gross)}
                         </td>
                         <td className="px-2 py-2 text-right align-middle tabular-nums text-slate-700">
                           {vat > 0 ? formatLpoAmount(vat) : "—"}
@@ -290,7 +290,7 @@ export function LpoOrderItemsSection({
           </p>
           <div className="text-right">
             <p className="text-xs text-slate-500">
-              Subtotal (Before VAT) {formatLpoKes(totals.subtotal)} · VAT {formatLpoKes(totals.vat)}
+              Subtotal (ex-VAT) {formatLpoKes(totals.subtotal)} · VAT {formatLpoKes(totals.vat)}
             </p>
             <p className="text-lg font-bold text-slate-900">TOTAL: {formatLpoKes(totals.total)}</p>
           </div>

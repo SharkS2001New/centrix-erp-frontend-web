@@ -133,7 +133,9 @@ export function useLpoListPermissions() {
     canView: hasPermission(P.purchasing.lpo.view),
     canCreate: hasPermission(P.purchasing.lpo.create),
     canEdit: hasPermission(P.purchasing.lpo.edit),
-    canDelete: hasPermission(P.purchasing.lpo.delete),
+    // Editors may remove draft / pre-receive POs; dedicated delete right also applies.
+    canDelete:
+      hasPermission(P.purchasing.lpo.delete) || hasPermission(P.purchasing.lpo.edit),
     canApprove: hasPermission(P.purchasing.lpo.approve),
   };
 }

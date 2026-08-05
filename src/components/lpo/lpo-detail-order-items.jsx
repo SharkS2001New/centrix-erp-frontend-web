@@ -54,11 +54,11 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
             ) : null}
             <th className="whitespace-nowrap px-2 py-2 text-right align-top">
               <span className="block">Cost Price</span>
-              <span className="theme-subtext block font-normal">(Supplier selling price)</span>
+              <span className="theme-subtext block font-normal">(VAT-inclusive)</span>
             </th>
             <th className="whitespace-nowrap px-2 py-2 text-right align-top">
-              <span className="block">Total</span>
-              <span className="theme-subtext block font-normal">(Before VAT)</span>
+              <span className="block">Amount</span>
+              <span className="theme-subtext block font-normal">(Qty × cost)</span>
             </th>
             <th className="px-2 py-2 text-right align-top">VAT</th>
             <th className="px-2 py-2 align-top">Status</th>
@@ -68,7 +68,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
         <tbody>
           {lines.map((line, i) => {
             const uom = line.unit_id ? uomById.get(line.unit_id) : null;
-            const { net: lineNet, vat: lineVat } = computeLpoLineTotals(line);
+            const { gross: lineGross, vat: lineVat } = computeLpoLineTotals(line);
             const lineReturned = lpoLineReturnedQty(line);
 
             return (
@@ -100,7 +100,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
                   </div>
                 </td>
                 <td className="px-2 py-2.5 text-right align-middle font-medium tabular-nums">
-                  {formatLpoKes(lineNet)}
+                  {formatLpoKes(lineGross)}
                 </td>
                 <td className="px-2 py-2.5 text-right align-middle tabular-nums theme-subtext">
                   {lineVat > 0 ? formatLpoAmount(lineVat) : "—"}
@@ -143,17 +143,15 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
           <tfoot>
             <tr className="theme-table-footer text-xs">
               <td colSpan={footerLabelColSpan} className="px-2 py-2.5 text-right font-medium theme-subtext">
-                Subtotal (Before VAT)
+                Subtotal (ex-VAT) {formatLpoKes(totals.subtotal)}
               </td>
-              <td className="px-2 py-2.5 text-right font-medium tabular-nums">
-                {formatLpoKes(totals.subtotal)}
+              <td className="theme-heading px-2 py-2.5 text-right font-semibold tabular-nums">
+                {formatLpoKes(totals.total)}
               </td>
               <td className="px-2 py-2.5 text-right font-medium tabular-nums">
                 {formatLpoKes(totals.vat)}
               </td>
-              <td colSpan={2} className="theme-heading px-2 py-2.5 text-right font-semibold">
-                Total {formatLpoKes(totals.total)}
-              </td>
+              <td colSpan={2} />
             </tr>
           </tfoot>
         ) : null}
