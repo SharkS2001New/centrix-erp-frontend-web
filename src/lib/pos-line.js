@@ -430,15 +430,34 @@ export function computePosLine({
     unitPriceOverride != null && Number(unitPriceOverride) > 0
       ? Number(unitPriceOverride)
       : null;
+  // Retail overrides are per small unit. Callers sometimes lock API wholesale
+  // unit_price (per pack) — detect and convert down so we never do pack×factor again.
+  const perSmallCatalog = wholesalePricePerSmallUnit(catalogUnitPrice, uom);
+  const retailOverrideLooksLikePack =
+    override != null &&
+    factor > 1 &&
+    perSmallCatalog > 0 &&
+    override > perSmallCatalog * 4 &&
+    (Math.abs(override - catalogUnitPrice) <= Math.max(1, catalogUnitPrice * 0.2) ||
+      override >= catalogUnitPrice * 0.85);
+  const retailPerSmallOverride =
+    override != null && retailOverrideLooksLikePack ? override / factor : override;
 
-  if (override != null && retailSession && resolved.tier && pricingRetail && baseQty > 0) {
+  if (
+    retailPerSmallOverride != null &&
+    retailSession &&
+    resolved.tier &&
+    pricingRetail &&
+    baseQty > 0
+  ) {
     // Override is wholesale per small unit; markup still accumulates on amount.
     // e.g. 125/kg × 25kg + 30 = 3155 (never 130×25 with markup inside the unit).
-    const catalogFromOverride = factor > 1 ? override * factor : override;
+    const catalogFromOverride =
+      factor > 1 ? retailPerSmallOverride * factor : retailPerSmallOverride;
     lineAmount = linePrice(catalogFromOverride, tiers, baseQty, true, uom, pricingFormulas);
   } else if (override != null) {
     if (retailSession || factor <= 1) {
-      lineAmount = baseQty * override;
+      lineAmount = baseQty * (retailPerSmallOverride ?? override);
     } else {
       lineAmount = packQty * override;
     }
@@ -478,8 +497,8 @@ export function computePosLine({
   // Wholesale: pack unit from priced amount (includes flat line markup).
   let displayUnitPrice =
     retailSession && pricingRetail
-      ? override != null
-        ? Math.round(override * 100) / 100
+      ? retailPerSmallOverride != null
+        ? Math.round(retailPerSmallOverride * 100) / 100
         : retailDisplayWholesaleUnitPrice(catalogUnitPrice, uom)
       : reversePosDisplayUnitPrice(lineAmountBeforeDiscount, uom, {
           retailSession,
@@ -609,6 +628,16 @@ export function cartLineDisplayUnitPrice(
   }
 
   return finalizePosDisplayUnitPrice(Number.isFinite(stored) ? stored : 0, { cashRound });
+}
+
+/**
+ * Cashier-facing unit to lock when editing/merging a cart line.
+ * Always use display (per bag / per kg) — never API amortized `unit_price`, which
+ * retail override paths would multiply by conversion_factor again (e.g. 3600×25).
+ */
+export function cartLineLockedUnitOverride(line, uom, isRetailLine = false, { cashRound = false } = {}) {
+  const display = cartLineDisplayUnitPrice(line, uom, isRetailLine, { cashRound });
+  return display > 0 ? display : null;
 }
 
 /** Rebuild POS entry quantity from a saved cart line (base qty in DB). */

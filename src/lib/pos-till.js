@@ -173,14 +173,58 @@ export function isDuplicateTillCode(existingTills, branchId, tillCode, excludeTi
 /** True when the till is unlocked, or locked to this cashier. Locked-to-other = not available. */
 export function isTillAvailableForCashier(till, userId) {
   if (!till) return false;
+  if (till.lock_mode === "computer") return true;
   if (till.cashier_id == null || till.cashier_id === "") return true;
   return Number(till.cashier_id) === Number(userId);
+}
+
+/** Till locked to this computer/device at a branch, if any. */
+export function findComputerLockedTill(tills, deviceIdentifier, branchId = null) {
+  const device = normalizeDeviceIdentifier(deviceIdentifier).toLowerCase();
+  if (!device) return null;
+  return (
+    (tills ?? []).find((till) => {
+      if (till.lock_mode !== "computer") return false;
+      if (branchId != null && Number(till.branch_id) !== Number(branchId)) return false;
+      return normalizeDeviceIdentifier(till.ip_address).toLowerCase() === device;
+    }) ?? null
+  );
+}
+
+function normalizeDeviceIdentifier(value) {
+  return String(value ?? "").trim();
+}
+
+export function tillLockLabel(till, userById = null) {
+  if (!till) return null;
+  if (till.lock_mode === "computer" && till.ip_address) {
+    return `Computer: ${till.ip_address}`;
+  }
+  if ((till.lock_mode === "user" || till.cashier_id) && till.cashier_id) {
+    const user = userById?.get?.(till.cashier_id);
+    const name = user?.full_name ?? user?.username ?? `User #${till.cashier_id}`;
+    return `User: ${name}`;
+  }
+  return null;
+}
+
+/** Map till_id → list of open sessions (supports multi-session on computer-locked tills). */
+export function groupOpenSessionsByTill(sessions) {
+  const map = new Map();
+  for (const session of sessions ?? []) {
+    if (String(session.status).toLowerCase() !== "open" || session.till_id == null) continue;
+    const list = map.get(session.till_id) ?? [];
+    list.push(session);
+    map.set(session.till_id, list);
+  }
+  return map;
 }
 
 /** Cashier's locked till at a branch, if any. */
 export function findAssignedTillForCashier(tills, userId, branchId = null) {
   return (tills ?? []).find((till) => {
     if (Number(till.cashier_id) !== Number(userId)) return false;
+    if (till.lock_mode === "computer") return false;
     if (branchId != null && Number(till.branch_id) !== Number(branchId)) return false;
     return true;
   }) ?? null;
@@ -192,12 +236,13 @@ function tillSortKey(till) {
 
 /**
  * Pick till for declare-float / POS login:
- * 1) Cashier's locked till (if any)
- * 2) Lowest free (unlocked) Till01–Till10 without an open session by someone else
- * 3) Else suggest creating the next free Till01–Till10 slot (null if all 10 exist)
+ * 1) Computer-locked till for this device (if any)
+ * 2) Cashier's user-locked till (if any)
+ * 3) Lowest free (unlocked) Till01–Till10 without an open session by someone else
+ * 4) Else suggest creating the next free Till01–Till10 slot (null if all 10 exist)
  * Never auto-picks a till locked to another user.
  */
-export function pickBranchTillForCashier({ branchId, tills = [], openSessions = [], userId }) {
+export function pickBranchTillForCashier({ branchId, tills = [], openSessions = [], userId, deviceIdentifier = null }) {
   if (!branchId) {
     return { till: tills[0] ?? null, suggested: null };
   }
@@ -209,8 +254,21 @@ export function pickBranchTillForCashier({ branchId, tills = [], openSessions = 
     .sort((a, b) => tillSortKey(a) - tillSortKey(b));
   const branchTills = branchAllTills.filter((t) => t.is_active !== false);
 
+  const computerTill = findComputerLockedTill(branchAllTills, deviceIdentifier, branchId);
+  if (computerTill) {
+    const ownOpen = openSessions.find(
+      (s) =>
+        Number(s.till_id) === Number(computerTill.id)
+        && Number(s.cashier_id) === Number(userId)
+        && ["open", "suspended"].includes(String(s.status).toLowerCase()),
+    );
+    if (ownOpen || !openByTill.has(computerTill.id) || computerTill.lock_mode === "computer") {
+      return { till: computerTill, suggested: null };
+    }
+  }
+
   const assignedTill = findAssignedTillForCashier(branchAllTills, userId, branchId);
-  if (assignedTill) {
+  if (assignedTill && assignedTill.lock_mode !== "computer") {
     const open = openByTill.get(assignedTill.id);
     if (!open || Number(open.cashier_id) === Number(userId)) {
       return { till: assignedTill, suggested: null };
@@ -218,8 +276,9 @@ export function pickBranchTillForCashier({ branchId, tills = [], openSessions = 
     return { till: null, suggested: null };
   }
 
-  // Auto-pick only unlocked tills (cashier_id null).
+  // Auto-pick only unlocked tills (cashier_id null, not computer-locked).
   for (const till of branchTills) {
+    if (till.lock_mode === "computer") continue;
     if (till.cashier_id != null && till.cashier_id !== "") continue;
     const open = openByTill.get(till.id);
     if (!open || Number(open.cashier_id) === Number(userId)) {

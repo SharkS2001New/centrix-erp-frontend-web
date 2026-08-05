@@ -11,6 +11,8 @@ const LIST_MAX_HEIGHT = 200;
 const SEARCH_HEADER_HEIGHT = 44;
 const MENU_GAP = 4;
 const PANEL_MAX_HEIGHT = LIST_MAX_HEIGHT + SEARCH_HEADER_HEIGHT;
+const MIN_PANEL_WIDTH = 224; // 14rem — room for names; trigger can be narrower in toolbars
+const VIEWPORT_EDGE_PADDING = 8;
 
 /**
  * Select-style dropdown with an in-panel search field (credit customers, etc.).
@@ -140,6 +142,14 @@ export function PosSearchableSelect({
       if (!anchor) return;
 
       const rect = anchor.getBoundingClientRect();
+      const menuWidth = Math.max(rect.width, MIN_PANEL_WIDTH);
+      const maxLeft = window.innerWidth - menuWidth - VIEWPORT_EDGE_PADDING;
+      let left = rect.left;
+      if (left + menuWidth > window.innerWidth - VIEWPORT_EDGE_PADDING) {
+        left = rect.right - menuWidth;
+      }
+      left = Math.max(VIEWPORT_EDGE_PADDING, Math.min(left, maxLeft));
+
       const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP;
       const spaceAbove = rect.top - MENU_GAP;
       const openUp =
@@ -153,8 +163,8 @@ export function PosSearchableSelect({
 
       setMenuStyle({
         position: "fixed",
-        left: rect.left,
-        width: rect.width,
+        left,
+        width: menuWidth,
         zIndex: 60,
         height: panelHeight,
         ...(openUp

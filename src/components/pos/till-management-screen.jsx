@@ -31,24 +31,28 @@ import {
   currentFloatAmount,
   formatSessionTime,
   formatTillKes,
+  groupOpenSessionsByTill,
   indexOpenSessionsByTill,
   normalizeFloatEntries,
   openingFloatAmount,
   tillCode,
   tillDisplayName,
+  tillLockLabel,
   tillStatusLabel,
   tillStatusTone,
 } from "@/lib/pos-till";
+import { getPosDeviceIdentifier } from "@/lib/pos-device";
 import { todayCalendarDate } from "@/lib/datetime";
 import { isBlindTillCloseEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 import { useConfirm } from "@/lib/use-confirm";
 
 const TABS = [
   { id: "tills", label: "Tills" },
+  { id: "locks", label: "Till locks" },
   { id: "history", label: "Session history" },
 ];
 
-const HISTORY_PAGE_SIZE = 15;
+const HISTORY_PAGE_SIZE = 10;
 const TILLS_PAGE_SIZE = 10;
 
 function TabBar({ active, onChange }) {
@@ -194,7 +198,9 @@ export function TillManagementScreen() {
   const router = useRouter();
   const confirm = useConfirm();
   const searchParams = useSearchParams();
-  const initialTab = searchParams.get("tab") === "history" ? "history" : "tills";
+  const initialTab = ["history", "locks"].includes(searchParams.get("tab") ?? "")
+    ? searchParams.get("tab")
+    : "tills";
 
   const { user, capabilities } = useAuth();
   const { activeSession, clearSession } = usePosSession();
@@ -236,7 +242,14 @@ export function TillManagementScreen() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyStatus, setHistoryStatus] = useState("");
+  const [historyDate, setHistoryDate] = useState(todayKey);
   const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+
+  // Till locks tab
+  const [lockDrafts, setLockDrafts] = useState({});
+  const [lockSavingId, setLockSavingId] = useState(null);
   const [zReportSessionId, setZReportSessionId] = useState(null);
   const [handoverTarget, setHandoverTarget] = useState(null);
   const [handoverBusy, setHandoverBusy] = useState(false);
@@ -329,16 +342,22 @@ export function TillManagementScreen() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const params = { per_page: 200 };
+      const params = {
+        per_page: HISTORY_PAGE_SIZE,
+        page: historyPage,
+      };
       if (historyStatus) params["filter[status]"] = historyStatus;
+      if (historyDate) params.session_date = historyDate;
       const sessionRes = await apiRequest("/till-float-sessions", { searchParams: params });
       setHistoryRows(sessionRes.data ?? []);
+      setHistoryTotal(Number(sessionRes.total ?? sessionRes.meta?.total ?? 0));
+      setHistoryTotalPages(Math.max(1, Number(sessionRes.last_page ?? sessionRes.meta?.last_page ?? 1)));
     } catch (e) {
       setPageError(e instanceof ApiError ? e.message : "Failed to load session history");
     } finally {
       setHistoryLoading(false);
     }
-  }, [historyStatus]);
+  }, [historyStatus, historyDate, historyPage]);
 
   useEffect(() => {
     if (searchParams.get("tab") === "shift") {
@@ -370,6 +389,8 @@ export function TillManagementScreen() {
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const openByTill = useMemo(() => indexOpenSessionsByTill(openSessions), [openSessions]);
+  const openSessionsByTill = useMemo(() => groupOpenSessionsByTill(openSessions), [openSessions]);
+  const localDeviceId = useMemo(() => getPosDeviceIdentifier(), []);
 
   const displayError = pageError;
 
@@ -422,12 +443,85 @@ export function TillManagementScreen() {
     });
   }, [historyRows, historySearch, tills, userById]);
 
-  const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / HISTORY_PAGE_SIZE));
   const historySafePage = Math.min(historyPage, historyTotalPages);
-  const historySlice = filteredHistory.slice(
-    (historySafePage - 1) * HISTORY_PAGE_SIZE,
-    historySafePage * HISTORY_PAGE_SIZE,
+  const historySlice = filteredHistory;
+
+  const availableLockTills = useMemo(
+    () => tills.filter((t) => t.is_active !== false),
+    [tills],
   );
+
+  function lockDraftForTill(till) {
+    if (lockDrafts[till.id]) return lockDrafts[till.id];
+    return {
+      lock_mode: till.lock_mode ?? "",
+      cashier_id: till.cashier_id != null ? String(till.cashier_id) : "",
+      ip_address: till.ip_address ?? "",
+    };
+  }
+
+  function setLockDraft(tillId, till, patch) {
+    setLockDrafts((prev) => ({
+      ...prev,
+      [tillId]: { ...lockDraftForTill(till), ...patch },
+    }));
+  }
+
+  function tillHasActiveSession(tillId) {
+    return (openSessionsByTill.get(tillId) ?? []).length > 0;
+  }
+
+  function userHasActiveSession(userId) {
+    return openSessions.some((s) => Number(s.cashier_id) === Number(userId));
+  }
+
+  async function saveTillLock(till) {
+    const draft = lockDrafts[till.id] ?? lockDraftForTill(till);
+    const lockMode = draft.lock_mode || null;
+
+    if (lockMode === "user") {
+      if (tillHasActiveSession(till.id)) {
+        setPageError("Close active sessions on this till before locking it to a user.");
+        return;
+      }
+      if (!draft.cashier_id) {
+        setPageError("Select a cashier to lock this till.");
+        return;
+      }
+      if (userHasActiveSession(draft.cashier_id)) {
+        setPageError("That cashier has an active session. Close it before assigning this till.");
+        return;
+      }
+    }
+
+    if (lockMode === "computer" && !String(draft.ip_address ?? "").trim()) {
+      setPageError("Enter a computer identifier (device ID or address).");
+      return;
+    }
+
+    setLockSavingId(till.id);
+    setPageError(null);
+    try {
+      const body = lockMode
+        ? {
+            lock_mode: lockMode,
+            cashier_id: lockMode === "user" ? Number(draft.cashier_id) : null,
+            ip_address: lockMode === "computer" ? String(draft.ip_address).trim() : null,
+          }
+        : { lock_mode: null, cashier_id: null, ip_address: null };
+      await apiRequest(`/tills/${till.id}`, { method: "PATCH", body });
+      setLockDrafts((prev) => {
+        const next = { ...prev };
+        delete next[till.id];
+        return next;
+      });
+      await loadMeta();
+    } catch (e) {
+      setPageError(e instanceof ApiError ? e.message : "Could not save till lock");
+    } finally {
+      setLockSavingId(null);
+    }
+  }
 
   function promptCloseSession(row, till, cashier) {
     setCloseError(null);
@@ -628,6 +722,16 @@ export function TillManagementScreen() {
                                 (Locked to {lockedCashier.full_name ?? lockedCashier.username ?? "user"})
                               </span>
                             ) : null}
+                            {till.lock_mode === "computer" && till.ip_address ? (
+                              <span className="ml-2 text-xs text-slate-500">
+                                (Computer: {till.ip_address})
+                              </span>
+                            ) : null}
+                            {(openSessionsByTill.get(till.id) ?? []).length > 1 ? (
+                              <span className="ml-2 text-xs text-slate-500">
+                                (+{(openSessionsByTill.get(till.id) ?? []).length - 1} sessions)
+                              </span>
+                            ) : null}
                           </td>
                           <td className="px-4 py-3"><PosStatusBadge label={status} tone={tone} /></td>
                           <td className="px-4 py-3 text-right text-slate-900">
@@ -680,6 +784,105 @@ export function TillManagementScreen() {
           </>
         ) : null}
 
+        {tab === "locks" ? (
+          <>
+            <p className="mb-4 text-sm text-slate-600">
+              Lock a till to one cashier, or to this computer so any user on that PC opens the same till.
+              User lock and computer lock are mutually exclusive. Computer-locked tills allow multiple cashiers
+              on the same till when a session is already open.
+            </p>
+            {localDeviceId ? (
+              <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+                This browser&apos;s device ID: <span className="font-mono text-slate-800">{localDeviceId}</span>
+                {" "}(use when locking a till to this computer)
+              </p>
+            ) : null}
+            <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+              {metaLoading ? (
+                <p className="px-5 py-8 text-center text-sm text-slate-500">Loading tills…</p>
+              ) : availableLockTills.length === 0 ? (
+                <p className="px-5 py-8 text-center text-sm text-slate-500">No tills available.</p>
+              ) : (
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="theme-table-head-row text-left text-xs font-medium">
+                      <th className="px-4 py-2.5">Till</th>
+                      <th className="px-4 py-2.5">Branch</th>
+                      <th className="px-4 py-2.5">Current lock</th>
+                      <th className="px-4 py-2.5">Lock mode</th>
+                      <th className="px-4 py-2.5">Assign to</th>
+                      <th className="px-4 py-2.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {availableLockTills.map((till) => {
+                      const draft = lockDraftForTill(till);
+                      const activeSessions = openSessionsByTill.get(till.id) ?? [];
+                      const busy = activeSessions.length > 0;
+                      return (
+                        <tr key={till.id} className="border-b border-slate-100 last:border-b-0">
+                          <td className="px-4 py-3 font-medium text-slate-900">{tillDisplayName(till)}</td>
+                          <td className="px-4 py-3 text-slate-700">{branchById.get(till.branch_id)?.branch_name ?? "—"}</td>
+                          <td className="px-4 py-3 text-slate-600">{tillLockLabel(till, userById) ?? "None"}</td>
+                          <td className="px-4 py-3">
+                            <select
+                              className="w-full min-w-[8rem] rounded-md border border-slate-200 px-2 py-1.5 text-sm"
+                              value={draft.lock_mode}
+                              onChange={(e) => setLockDraft(till.id, till, { lock_mode: e.target.value })}
+                            >
+                              <option value="">No lock</option>
+                              <option value="user">Lock to user</option>
+                              <option value="computer">Lock to computer</option>
+                            </select>
+                          </td>
+                          <td className="px-4 py-3">
+                            {draft.lock_mode === "user" ? (
+                              <select
+                                className="w-full min-w-[10rem] rounded-md border border-slate-200 px-2 py-1.5 text-sm"
+                                value={draft.cashier_id}
+                                onChange={(e) => setLockDraft(till.id, till, { cashier_id: e.target.value })}
+                              >
+                                <option value="">Select cashier</option>
+                                {users
+                                  .filter((u) => u?.is_active !== false)
+                                  .map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.full_name ?? u.username ?? `User #${u.id}`}
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : draft.lock_mode === "computer" ? (
+                              <input
+                                className="w-full min-w-[12rem] rounded-md border border-slate-200 px-2 py-1.5 text-sm font-mono"
+                                value={draft.ip_address}
+                                onChange={(e) => setLockDraft(till.id, till, { ip_address: e.target.value })}
+                                placeholder="Device ID or IP address"
+                              />
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              disabled={lockSavingId === till.id || (busy && draft.lock_mode)}
+                              onClick={() => void saveTillLock(till)}
+                              className="rounded-md bg-[#185FA5] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#134d87] disabled:opacity-50"
+                              title={busy ? "Close active sessions before changing lock" : undefined}
+                            >
+                              {lockSavingId === till.id ? "Saving…" : "Save"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        ) : null}
+
         {tab === "history" ? (
           <>
             <div className="mb-4 flex flex-wrap gap-3">
@@ -688,6 +891,15 @@ export function TillManagementScreen() {
                 onChange={(e) => setHistorySearch(e.target.value)}
                 placeholder="Search session, till, cashier…"
                 className="max-w-xl"
+              />
+              <input
+                type="date"
+                value={historyDate}
+                onChange={(e) => {
+                  setHistoryDate(e.target.value);
+                  setHistoryPage(1);
+                }}
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
               />
               <FilterSelect
                 value={historyStatus}
@@ -811,7 +1023,7 @@ export function TillManagementScreen() {
               <PaginationBar
                 page={historySafePage}
                 totalPages={historyTotalPages}
-                total={filteredHistory.length}
+                total={historyDate && !historySearch.trim() ? historyTotal : filteredHistory.length}
                 pageSize={HISTORY_PAGE_SIZE}
                 onChange={setHistoryPage}
               />

@@ -10,13 +10,6 @@ import { P } from "@/lib/permission-codes";
 
 const CARDS = [
   {
-    href: "/admin/license",
-    title: "License Information",
-    description: "View your Centrix plan, attached invoice, and contracts.",
-    icon: "📜",
-    permission: P.admin.license.view,
-  },
-  {
     href: "/admin/settings",
     title: "Organization settings",
     description: "Sales, inventory, finance, HR, notifications, security, and AI preferences.",

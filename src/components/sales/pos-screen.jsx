@@ -30,6 +30,7 @@ import { uomCompactPackageLabel } from "@/lib/uom-packaging";
 import {
   applyCatalogPricesToCart,
   cartLineDisplayUnitPrice,
+  cartLineLockedUnitOverride,
   computePosLine,
   defaultPosEntryQty,
   isPosRetailSession,
@@ -218,6 +219,7 @@ import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
+import { getPosDeviceIdentifier } from "@/lib/pos-device";
 import {
   createBranchTill,
   indexOpenSessionsByTill,
@@ -1088,6 +1090,7 @@ export function PosScreen({ standalone = false }) {
           tills,
           openSessions: sessions,
           userId: user?.id,
+          deviceIdentifier: getPosDeviceIdentifier(),
         });
         setPreferredTillId(picked.till?.id ?? null);
         setPendingTillSuggestion(picked.suggested);
@@ -1187,6 +1190,7 @@ export function PosScreen({ standalone = false }) {
         ...payload,
         till_id: tillId,
         branch_id: branchId,
+        device_identifier: getPosDeviceIdentifier(),
       });
       setFloatModalOpen(false);
       defaultScanFocusDoneRef.current = false;
@@ -1500,6 +1504,7 @@ export function PosScreen({ standalone = false }) {
   const [swapDraft, setSwapDraft] = useState(null);
   const swapDraftRef = useRef(null);
   const swapLineQtyRef = useRef(null);
+  const swapCommitInFlightRef = useRef(false);
   const [editAdjustmentDialog, setEditAdjustmentDialog] = useState(null);
   const resolveEditAdjustmentRef = useRef(null);
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
@@ -3571,9 +3576,15 @@ export function PosScreen({ standalone = false }) {
         retailPackage,
         cartLineRetailStockFlag(mergeTarget),
       );
-      // Keep the price already on the cart line (important for order edits / same-day append).
+      // Keep the cashier-facing price already on the cart line (important for order edits / same-day append).
+      // Never lock API amortized unit_price — retail paths would × conversion again (e.g. 3600×25).
       const lockedUnit =
-        Number(mergeTarget.unit_price) > 0 ? Number(mergeTarget.unit_price) : override;
+        cartLineLockedUnitOverride(
+          mergeTarget,
+          product.uom,
+          cartLineRetailStockFlag(mergeTarget),
+          { cashRound: enablePosCashRounding },
+        ) ?? override;
       finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
     }
 
@@ -3701,6 +3712,19 @@ export function PosScreen({ standalone = false }) {
       !finalComputed.autoProductDiscount &&
       discountAmount > 0;
 
+    // Snapshot the pre-edit row before optimistic paint so failed PATCHes can restore it.
+    const previousLineSnapshot =
+      targetLineRef != null
+        ? {
+            ...(mergeTarget ??
+              liveCart.lines?.find(
+                (line) => String(cartLineRef(line)) === String(targetLineRef),
+              ) ??
+              {}),
+          }
+        : null;
+    const serverUpdateNo = liveCart?.update_no;
+
     const paintOptimisticOn = (baseCart) => {
       if (!baseCart?.id || needsLineDiscountApproval) return null;
       const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
@@ -3766,7 +3790,7 @@ export function PosScreen({ standalone = false }) {
             method: "PATCH",
             body: {
               ...deferredLineBody,
-              update_no: activeCart.update_no,
+              update_no: serverUpdateNo ?? activeCart.update_no,
             },
             ...POS_CART_REQUEST,
           });
@@ -3803,17 +3827,6 @@ export function PosScreen({ standalone = false }) {
         throw error;
       }
     }
-
-    const previousLineSnapshot =
-      targetLineRef != null
-        ? {
-            ...(mergeTarget ??
-              activeCart.lines?.find(
-                (line) => String(cartLineRef(line)) === String(targetLineRef),
-              ) ??
-              {}),
-          }
-        : null;
 
     const optimisticLine =
       painted?.optimisticLine ?? buildOptimisticCartLine(product, lineBody, finalComputed);
@@ -3884,7 +3897,7 @@ export function PosScreen({ standalone = false }) {
           method: "PATCH",
           body: {
             ...lineBody,
-            update_no: activeCart.update_no,
+            update_no: serverUpdateNo ?? activeCart.update_no,
           },
           ...POS_CART_REQUEST,
         });
@@ -4083,11 +4096,14 @@ export function PosScreen({ standalone = false }) {
   async function completeSwapFromDraft(entryQtyRaw) {
     const draft = swapDraftRef.current;
     if (!draft?.line || !draft?.product) return false;
+    if (swapCommitInFlightRef.current) return false;
     const entryQty = parseDecimalInput(entryQtyRaw ?? draft.quantity);
     if (!(entryQty > 0)) {
       setStatusMessage("Enter a quantity greater than zero to complete the swap.");
       return false;
     }
+
+    swapCommitInFlightRef.current = true;
 
     const finishSwap = async () => {
       try {
@@ -4102,6 +4118,7 @@ export function PosScreen({ standalone = false }) {
           swapDraftRef.current = null;
           setSwapDraft(null);
           setReplacingLineId(null);
+          replacingLineIdRef.current = null;
           setSelectedProduct(null);
           setSelectedProductCode(null);
           setSearchQuery("");
@@ -4110,14 +4127,14 @@ export function PosScreen({ standalone = false }) {
             `Swapped ${posProductDisplayName(draft.line)} with ${posProductDisplayName(draft.product)}.`,
           );
           // After swap qty Enter, focus Scan code for the next new line.
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => focusProductSearch());
-          });
+          focusScanAfterItemAdded();
         }
         return ok;
       } catch (e) {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to swap line");
         return false;
+      } finally {
+        swapCommitInFlightRef.current = false;
       }
     };
 
@@ -4222,6 +4239,7 @@ export function PosScreen({ standalone = false }) {
   function beginReplaceCartLine(lineId) {
     const line = (cart?.lines ?? []).find((row) => sameLineId(row.id, lineId));
     if (!line || busy || lineBusy) return;
+    swapCommitInFlightRef.current = false;
     swapDraftRef.current = null;
     setSwapDraft(null);
     setReplacingLineId(line.id);
@@ -4249,10 +4267,12 @@ export function PosScreen({ standalone = false }) {
   }
 
   function cancelReplaceCartLine() {
-    if (!replacingLineId) return;
+    if (!replacingLineId && !swapDraftRef.current) return;
     setReplacingLineId(null);
+    replacingLineIdRef.current = null;
     swapDraftRef.current = null;
     setSwapDraft(null);
+    swapCommitInFlightRef.current = false;
     setSelectedProduct(null);
     setSelectedProductCode(null);
     setSearchQuery("");
@@ -4263,7 +4283,8 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function replaceCartLineWithProduct(line, product, entryQty, discount = 0, override = null) {
-    if (!line || !product || !cart?.id) return false;
+    const activeCart = cartRef.current ?? cart;
+    if (!line || !product || !activeCart?.id) return false;
     const isRetailLine = cartLineRetailStockFlag(line);
     const computed = applyComputedPrice(
       product,
@@ -5110,7 +5131,9 @@ export function PosScreen({ standalone = false }) {
         retailPackage,
       );
       const perUnitDiscount = lineDiscountPerUnit(line.discount_given, packQty);
-      const lockedUnit = Number(line.unit_price) > 0 ? Number(line.unit_price) : null;
+      const lockedUnit = cartLineLockedUnitOverride(line, product.uom, isRetailLine, {
+        cashRound: enablePosCashRounding,
+      });
       const computed = applyComputedPrice(
         product,
         entryQty,
@@ -5162,8 +5185,11 @@ export function PosScreen({ standalone = false }) {
    * price/mode follow the current F12 retail/wholesale session. Other lines are unchanged.
    */
   async function setCartLineEntryQuantity(line, entryQtyRaw) {
-    if (!line || !cart?.id) return;
-    if (swapDraft && sameLineId(swapDraft.lineId, line.id)) {
+    if (!line || !(cartRef.current ?? cart)?.id) return;
+    if (
+      swapDraftRef.current &&
+      sameLineId(swapDraftRef.current.lineId, line.id)
+    ) {
       void completeSwapFromDraft(entryQtyRaw);
       return;
     }
@@ -5198,8 +5224,11 @@ export function PosScreen({ standalone = false }) {
 
       // Use the number in the qty field as-is in the F12 session mode (do not × conversion).
       // When F12 session differs from the line's mode, reprice from catalog — do not lock old unit.
-      const lockedUnit =
-        !switchingMode && Number(line.unit_price) > 0 ? Number(line.unit_price) : null;
+      const lockedUnit = !switchingMode
+        ? cartLineLockedUnitOverride(line, product.uom, lineIsRetail, {
+            cashRound: enablePosCashRounding,
+          })
+        : null;
       const computedPreview = applyComputedPrice(
         product,
         entryQty,
@@ -5509,7 +5538,10 @@ export function PosScreen({ standalone = false }) {
     setEditingLineId(null);
     setEditingLineRef(null);
     setReplacingLineId(null);
+    replacingLineIdRef.current = null;
+    swapDraftRef.current = null;
     setSwapDraft(null);
+    swapCommitInFlightRef.current = false;
   }
 
   function completeLeaveNavigation(href) {

@@ -18,6 +18,7 @@ function ClassicLineQtyCell({
 }) {
   const committed = String(entryQty ?? "");
   const [draft, setDraft] = useState(committed);
+  const skipBlurCommitRef = useRef(false);
 
   useEffect(() => {
     setDraft(committed);
@@ -52,18 +53,28 @@ function ClassicLineQtyCell({
           onDraftQtyChange?.(line, e.target.value);
         }}
         onFocus={(e) => e.target.select()}
-        onBlur={() => commit({ force: swapQtyCommit })}
+        onBlur={() => {
+          if (skipBlurCommitRef.current) {
+            skipBlurCommitRef.current = false;
+            return;
+          }
+          commit({ force: swapQtyCommit });
+        }}
         onKeyDown={(e) => {
           if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
           e.stopPropagation();
           if (e.key === "Enter") {
             e.preventDefault();
+            // Enter already commits — skip the blur commit that would fire next
+            // (double swap/qty PATCH raced update_no and left the old SKU on the server).
+            skipBlurCommitRef.current = true;
             commit({ force: true });
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {
             e.preventDefault();
             setDraft(committed);
+            skipBlurCommitRef.current = true;
             e.currentTarget.blur();
           }
         }}

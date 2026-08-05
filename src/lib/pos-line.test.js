@@ -77,6 +77,7 @@ describe("F12 qty Enter keeps typed quantity", () => {
     expect(wholesaleLine.displayUnitPrice).not.toBe(retailLine.displayUnitPrice);
     expect(wholesaleLine.lineAmount).not.toBe(retailLine.lineAmount);
 
+    // Pack-sized wholesale lock must not be treated as per-kg (would do 6280×50).
     const stuckWholesalePrice = computePosLine({
       product: sugarProduct,
       entryQty: "5",
@@ -84,11 +85,57 @@ describe("F12 qty Enter keeps typed quantity", () => {
       retailPackage: sugarRetailPackage,
       unitPriceOverride: wholesaleLine.displayUnitPrice,
     });
-    expect(stuckWholesalePrice.displayUnitPrice).toBe(wholesaleLine.displayUnitPrice);
-    expect(stuckWholesalePrice.lineAmount).not.toBe(retailLine.lineAmount);
+    expect(stuckWholesalePrice.lineAmount).toBe(retailLine.lineAmount);
+    expect(stuckWholesalePrice.displayUnitPrice).toBe(retailLine.displayUnitPrice);
   });
 });
 
+describe("pack price lock must not inflate retail amounts", () => {
+  it("does not multiply per-bag lock by conversion (BanjaB-style 3600×25 bug)", () => {
+    const riceUom = {
+      conversion_factor: 25,
+      measure_name: "kg",
+      package_name: "bag",
+      uom_type: "bag",
+      full_name: "bag",
+    };
+    const rice = {
+      product_code: "BANJAB",
+      unit_price: 3600,
+      sell_on_retail: true,
+      uom: riceUom,
+    };
+    const pkg = {
+      pricing_tiers: [
+        {
+          min_qty: 1,
+          max_qty: 25,
+          measure_level: "full",
+          price_mode: "wholesale",
+          markup_price: 2000,
+        },
+      ],
+    };
+    const wholesale = computePosLine({
+      product: rice,
+      entryQty: "1",
+      sellWholesale: true,
+      retailPackage: pkg,
+    });
+    expect(wholesale.lineAmount).toBe(5600);
+
+    // Reprice 25kg retail while locking the per-bag API/display unit (3600 or 5600).
+    const withPackLock = computePosLine({
+      product: rice,
+      entryQty: "25",
+      sellWholesale: false,
+      retailPackage: pkg,
+      unitPriceOverride: wholesale.displayUnitPrice,
+    });
+    expect(withPackLock.lineAmount).toBeLessThan(10000);
+    expect(withPackLock.lineAmount).not.toBe(92000);
+  });
+});
 describe("sell_on_retail gate", () => {
   const wholesaleOnly = { ...sugarProduct, sell_on_retail: false };
 

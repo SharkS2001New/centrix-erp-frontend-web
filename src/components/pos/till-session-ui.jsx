@@ -29,6 +29,7 @@ const EMPTY = {
   till_number: "",
   till_name: "",
   branch_id: "",
+  lock_mode: "",
   cashier_id: "",
   description: "",
   ip_address: "",
@@ -56,6 +57,7 @@ export function TillFormDrawer({
         till_number: editing.till_number ?? "",
         till_name: editing.till_name ?? "",
         branch_id: String(editing.branch_id ?? ""),
+        lock_mode: editing.lock_mode ?? (editing.cashier_id ? "user" : editing.ip_address ? "computer" : ""),
         cashier_id: editing.cashier_id != null ? String(editing.cashier_id) : "",
         description: editing.description ?? "",
         ip_address: editing.ip_address ?? "",
@@ -103,10 +105,11 @@ export function TillFormDrawer({
         till_number: tillNumber,
         till_name: form.till_name.trim() || null,
         branch_id: branchId,
-        cashier_id: form.cashier_id ? Number(form.cashier_id) : null,
         description: form.description.trim() || null,
-        ip_address: form.ip_address.trim() || null,
         is_active: Boolean(form.is_active),
+        lock_mode: form.lock_mode || null,
+        cashier_id: form.lock_mode === "user" && form.cashier_id ? Number(form.cashier_id) : null,
+        ip_address: form.lock_mode === "computer" && form.ip_address.trim() ? form.ip_address.trim() : null,
       };
       if (editing?.id) {
         await apiRequest(`/tills/${editing.id}`, { method: "PATCH", body });
@@ -167,30 +170,50 @@ export function TillFormDrawer({
           ))}
         </select>
       </Field>
-      <Field label="Lock to cashier (optional)">
+      <Field label="Till lock (optional)">
         <select
           className={inputClassName()}
-          value={form.cashier_id}
-          onChange={(e) => setForm((f) => ({ ...f, cashier_id: e.target.value }))}
+          value={form.lock_mode}
+          onChange={(e) => setForm((f) => ({
+            ...f,
+            lock_mode: e.target.value,
+            cashier_id: e.target.value === "user" ? f.cashier_id : "",
+            ip_address: e.target.value === "computer" ? f.ip_address : "",
+          }))}
         >
-          <option value="">Not locked (any cashier can use)</option>
-          {users
-            .filter((u) => u?.is_active !== false)
-            .map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name ?? u.username ?? `User #${u.id}`}
-              </option>
-            ))}
+          <option value="">No lock — any cashier can use</option>
+          <option value="user">Lock to cashier</option>
+          <option value="computer">Lock to computer</option>
         </select>
       </Field>
-      <Field label="IP address (optional)">
-        <input
-          className={inputClassName()}
-          value={form.ip_address}
-          onChange={(e) => setForm((f) => ({ ...f, ip_address: e.target.value }))}
-          placeholder="192.168.1.10"
-        />
-      </Field>
+      {form.lock_mode === "user" ? (
+        <Field label="Cashier">
+          <select
+            className={inputClassName()}
+            value={form.cashier_id}
+            onChange={(e) => setForm((f) => ({ ...f, cashier_id: e.target.value }))}
+          >
+            <option value="">Select cashier</option>
+            {users
+              .filter((u) => u?.is_active !== false)
+              .map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name ?? u.username ?? `User #${u.id}`}
+                </option>
+              ))}
+          </select>
+        </Field>
+      ) : null}
+      {form.lock_mode === "computer" ? (
+        <Field label="Computer identifier">
+          <input
+            className={inputClassName()}
+            value={form.ip_address}
+            onChange={(e) => setForm((f) => ({ ...f, ip_address: e.target.value }))}
+            placeholder="Device ID or IP address"
+          />
+        </Field>
+      ) : null}
       <Field label="Description">
         <textarea
           className={`${inputClassName()} min-h-[80px]`}

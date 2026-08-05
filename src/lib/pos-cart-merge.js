@@ -174,9 +174,11 @@ export function applyOptimisticCartMutation(prevCart, optimisticLine, { mergeTar
     lines.push(optimisticLine);
   }
 
+  // Keep server update_no unchanged — optimistic paint is UI-only. Bumping here made
+  // PATCH send N+1 while TemporaryCart still had N ("Cart was updated elsewhere"),
+  // which broke line edits and item swaps (UI showed the new SKU; server kept the old).
   return {
     ...prevCart,
-    update_no: Number(prevCart.update_no ?? 0) + 1,
     lines,
   };
 }
@@ -207,7 +209,6 @@ export function revertOptimisticCartMutation(
 
   return {
     ...cartAfterOptimistic,
-    update_no: Math.max(0, Number(cartAfterOptimistic.update_no ?? 1) - 1),
     lines,
   };
 }

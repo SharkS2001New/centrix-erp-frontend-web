@@ -183,7 +183,7 @@ export function PosSessionProvider({ children }) {
   ]);
 
   const openSession = useCallback(
-    async ({ till_id, branch_id, working_amount, payment_type }) => {
+    async ({ till_id, branch_id, working_amount, payment_type, device_identifier }) => {
       if (!tillFloatEnabled) {
         throw new Error("Till sessions are not enabled for this organization.");
       }
@@ -197,6 +197,7 @@ export function PosSessionProvider({ children }) {
             branch_id,
             working_amount: Number(working_amount) || 0,
             payment_type: payment_type || "CASH",
+            ...(device_identifier ? { device_identifier } : {}),
           },
         });
         setStoredActiveSession(session);
