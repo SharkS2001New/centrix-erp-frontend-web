@@ -58,6 +58,7 @@ export function HospitalityRoomsScreen() {
       <HospitalityPlaceholderScreen
         title="Rooms"
         description="Rooms are not enabled for this organization. Ask your Centrix platform administrator to turn on the Rooms service."
+        serviceKey="rooms"
       />
     );
   }

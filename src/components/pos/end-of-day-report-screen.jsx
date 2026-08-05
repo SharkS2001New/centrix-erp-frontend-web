@@ -292,12 +292,8 @@ function printEodReport(report, meta) {
     ...(showDiscounts
       ? [printKpiCard("Total discounts", formatTillKes(s.total_discounts), "Discounts given")]
       : []),
-    printKpiCard("Total refunds", formatTillKes(s.total_refunds), "Refunds issued"),
-    printKpiCard(
-      "Net sales (incl VAT)",
-      formatTillKes(s.net_sales),
-      showDiscounts ? "After discounts & refunds" : "After refunds",
-    ),
+    printKpiCard("Total refunds", formatTillKes(s.total_refunds), "Info only — already in order total"),
+    printKpiCard("Net sales (incl VAT)", formatTillKes(s.net_sales), "Order total (incl VAT)"),
     printKpiCard("Net sales (ex VAT)", formatTillKes(netEx), "Net after VAT"),
     ...(showFloat
       ? [
@@ -322,7 +318,7 @@ function printEodReport(report, meta) {
     );
   }
   salesRows.push(
-    printSummaryRow("Total refunds", `-${formatTillKes(s.total_refunds)}`, { tone: "danger" }),
+    printSummaryRow("Product returns (info)", formatTillKes(s.total_refunds)),
     `<div class="divider"></div>`,
     printSummaryRow("Net sales (incl VAT)", formatTillKes(s.net_sales), {
       tone: "success",
@@ -1045,16 +1041,16 @@ export function EndOfDayReportScreen() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <StatCard label="Gross sales (ex VAT)" value={formatTillKes(grossSalesExVat)} hint="Before VAT" />
             <StatCard label="VAT collected" value={formatTillKes(summary.total_vat)} hint="Tax on sales" />
-            <StatCard label="Gross sales (incl VAT)" value={formatTillKes(summary.gross_sales)} hint="Including VAT" />
+            <StatCard label="Gross sales (incl VAT)" value={formatTillKes(summary.gross_sales)} hint="Order total including VAT" />
             <StatCard label="Total transactions" value={summary.transactions ?? 0} hint="All transactions" />
             {discountsEnabled ? (
               <StatCard label="Total discounts" value={formatTillKes(summary.total_discounts)} hint="Discounts given" />
             ) : null}
-            <StatCard label="Total refunds" value={formatTillKes(summary.total_refunds)} hint="Refunds issued" />
+            <StatCard label="Total refunds" value={formatTillKes(summary.total_refunds)} hint="Info only — already in order total" />
             <StatCard
               label="Net sales (incl VAT)"
               value={formatTillKes(summary.net_sales)}
-              hint={discountsEnabled ? "After discounts & refunds" : "After refunds"}
+              hint="Order total (incl VAT)"
             />
             <StatCard label="Net sales (ex VAT)" value={formatTillKes(netSalesExVat)} hint="Net after VAT" />
             {requireTillFloat ? (
@@ -1075,7 +1071,7 @@ export function EndOfDayReportScreen() {
               {discountsEnabled ? (
                 <SummaryRow label="Total discounts" value={`-${formatTillKes(summary.total_discounts)}`} tone="danger" />
               ) : null}
-              <SummaryRow label="Total refunds" value={`-${formatTillKes(summary.total_refunds)}`} tone="danger" />
+              <SummaryRow label="Product returns (info)" value={formatTillKes(summary.total_refunds)} />
               <div className="my-2 border-t border-[var(--theme-border)]" />
               <SummaryRow label="Net sales (incl VAT)" value={formatTillKes(summary.net_sales)} tone="success" bold />
               <SummaryRow label="Net sales (ex VAT)" value={formatTillKes(netSalesExVat)} />

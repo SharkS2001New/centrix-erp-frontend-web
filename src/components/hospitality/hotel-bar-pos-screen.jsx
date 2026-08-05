@@ -92,12 +92,14 @@ async function printCheckReceiptSafe(check, { title, organization, capabilities,
       }),
     );
     if (result && result.ok === false) {
-      notifyError("Receipt could not be printed. Check the Centrix Print Agent or allow pop-ups.");
+      notifyError(
+        "Receipt could not be printed. Use Reprint, or check the Centrix Print Agent / allow pop-ups.",
+      );
     }
     return result;
   } catch (e) {
-    notifyError(dedupeError(e) || "Receipt print failed.");
-    return null;
+    notifyError(dedupeError(e) || "Receipt print failed. Use Reprint to try again.");
+    return { ok: false };
   }
 }
 
@@ -116,6 +118,8 @@ export function HotelBarPosScreen() {
     status: connectionStatus,
     offlineMode,
     pendingSync,
+    failedSyncChecks,
+    checkNumbersLeft,
     syncing: offlineSyncing,
     flushOutboxAfterSale,
     syncOfflineChecks,
@@ -142,6 +146,7 @@ export function HotelBarPosScreen() {
   const [chargeToRoom, setChargeToRoom] = useState(false);
   const [selectedFolioId, setSelectedFolioId] = useState("");
   const [heldCount, setHeldCount] = useState(0);
+  const [lastReceiptCheck, setLastReceiptCheck] = useState(null);
   const [partialEnabled, setPartialEnabled] = useState(paymentWorkflow.partially_paid);
   const [floorTables, setFloorTables] = useState([]);
   const [selectedTableId, setSelectedTableId] = useState("");
@@ -722,13 +727,15 @@ export function HotelBarPosScreen() {
       let active = check;
       active = await ensureGuestAssigned(active);
       const res = await holdHotelCheck(active.id);
-      await printCheckReceiptSafe(res?.check ?? active, {
+      const printed = res?.check ?? active;
+      await printCheckReceiptSafe(printed, {
         title: "Unpaid order",
         organization,
         capabilities,
         user,
         checkPrintSettings,
       });
+      if (printed) setLastReceiptCheck(printed);
       notifySuccess(`Order ${check.check_number} saved unpaid.`);
       await startFreshCheck();
       void refreshHeldCount();
@@ -756,13 +763,15 @@ export function HotelBarPosScreen() {
       const res = await saveHotelCheck(active.id, {
         floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
       });
-      await printCheckReceiptSafe(res?.check ?? active, {
+      const printed = res?.check ?? active;
+      await printCheckReceiptSafe(printed, {
         title: "Unpaid order",
         organization,
         capabilities,
         user,
         checkPrintSettings,
       });
+      if (printed) setLastReceiptCheck(printed);
       notifySuccess(`Order ${check.check_number} saved unpaid — receipt printed.`);
       await startFreshCheck();
       void refreshHeldCount();
@@ -910,6 +919,7 @@ export function HotelBarPosScreen() {
           user,
           checkPrintSettings,
         });
+        if (paid) setLastReceiptCheck(paid);
         notifySuccess(
           `Paid ${paid?.check_number ?? ""} — ${formatHotelMoney(paid?.total)} (pending sync)`,
         );
@@ -937,6 +947,7 @@ export function HotelBarPosScreen() {
           user,
           checkPrintSettings,
         });
+        if (next) setLastReceiptCheck(next);
         const roomLabel = next?.folio?.room_number
           ? `Rm ${next.folio.room_number}`
           : next?.folio?.folio_number
@@ -960,6 +971,7 @@ export function HotelBarPosScreen() {
           user,
           checkPrintSettings,
         });
+        if (next) setLastReceiptCheck(next);
         notifySuccess(
           `Partial payment on ${next?.check_number ?? ""} — balance ${formatHotelMoney(next?.balance_due)}`,
         );
@@ -977,6 +989,41 @@ export function HotelBarPosScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleReprintLast() {
+    if (!lastReceiptCheck || busy) return;
+    const status = String(lastReceiptCheck.status ?? "").toLowerCase();
+    const title =
+      status === "paid" || status === "settled"
+        ? "Paid receipt"
+        : status === "partial" || status === "partially_paid"
+          ? "Partial payment"
+          : "Unpaid order";
+    await printCheckReceiptSafe(lastReceiptCheck, {
+      title,
+      organization,
+      capabilities,
+      user,
+      checkPrintSettings,
+    });
+  }
+
+  async function handleReprintFailed() {
+    const failed = failedSyncChecks?.[0];
+    const checkToPrint = failed?.check ?? failed;
+    if (!checkToPrint) {
+      notifyError("No failed offline receipt to reprint.");
+      return;
+    }
+    setLastReceiptCheck(checkToPrint);
+    await printCheckReceiptSafe(checkToPrint, {
+      title: "Paid receipt",
+      organization,
+      capabilities,
+      user,
+      checkPrintSettings,
+    });
   }
 
   async function bumpQty(line, delta) {
@@ -1065,6 +1112,17 @@ export function HotelBarPosScreen() {
             ) : null}
           </div>
           <div className="hotel-pos-header-tools relative z-[60] flex shrink-0 items-center justify-end gap-1.5 justify-self-end sm:gap-2">
+            {lastReceiptCheck ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleReprintLast()}
+                className="pos-header-action-btn inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wide disabled:opacity-50"
+                title={`Reprint ${lastReceiptCheck.check_number ?? "last receipt"}`}
+              >
+                Reprint
+              </button>
+            ) : null}
             <NotificationBell />
             <WorkspaceSwitcher />
             <UserAccountMenu
@@ -1207,9 +1265,12 @@ export function HotelBarPosScreen() {
             version="1.0.0"
             connectionStatus={connectionStatus}
             pendingSync={pendingSync}
+            failedSyncCount={failedSyncChecks?.length ?? 0}
+            checkNumbersLeft={checkNumbersLeft}
             syncing={offlineSyncing}
             offlineMode={offlineMode}
             onSync={syncOfflineChecks}
+            onReprintFailed={handleReprintFailed}
           />
         </div>
 

@@ -643,28 +643,32 @@ export function PaymentsBreakdownScreen({
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
             {formatAccountingAmount(summary.total_amount ?? 0)}
           </p>
+          <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">Order total share</p>
         </div>
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Return amount</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
             {formatAdjustmentCell(activeMethodStats.return_amount)}
           </p>
+          <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">Info only — in order total</p>
         </div>
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Top-up amount</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
             {formatAdjustmentCell(activeMethodStats.topup_amount)}
           </p>
+          <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">Info only — in order total</p>
         </div>
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Orders on tab</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">{summary.order_count ?? 0}</p>
         </div>
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
-          <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Visible tabs total</p>
+          <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Sales total</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
             {formatAccountingAmount(summary.grand_total ?? 0)}
           </p>
+          <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">Sum of order totals</p>
         </div>
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Visible tabs orders</p>

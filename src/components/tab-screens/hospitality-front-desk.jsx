@@ -17,6 +17,7 @@ import {
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { useConfirm } from "@/lib/use-confirm";
 
 export function HospitalityFrontDeskScreen() {
   const { capabilities } = useAuth();
@@ -29,6 +30,7 @@ export function HospitalityFrontDeskScreen() {
 }
 
 function FrontDeskManager() {
+  const confirm = useConfirm();
   const [tab, setTab] = useState("arrivals");
   const [arrivals, setArrivals] = useState([]);
   const [departures, setDepartures] = useState([]);
@@ -37,6 +39,10 @@ function FrontDeskManager() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [walkIn, setWalkIn] = useState({ guest_name: "", guest_phone: "", room_id: "" });
+  /** reservationId → room_id chosen at the desk for check-in */
+  const [arrivalRoomById, setArrivalRoomById] = useState({});
+  /** folioId → room_id for reassignment while in house */
+  const [inHouseRoomById, setInHouseRoomById] = useState({});
 
   const load = useCallback(async () => {
     try {
@@ -50,6 +56,8 @@ function FrontDeskManager() {
       setDepartures(d?.data ?? []);
       setInHouse(h?.data ?? []);
       setRooms(r?.data ?? r ?? []);
+      setArrivalRoomById({});
+      setInHouseRoomById({});
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load front desk");
     } finally {
@@ -64,14 +72,48 @@ function FrontDeskManager() {
     [rooms],
   );
 
+  function roomsForArrival(row) {
+    const reservedId = row.room_id ? Number(row.room_id) : null;
+    const reserved = reservedId
+      ? rooms.find((r) => Number(r.id) === reservedId)
+      : null;
+    const options = [...availableRooms];
+    if (reserved && !options.some((r) => Number(r.id) === reservedId)) {
+      options.unshift(reserved);
+    }
+    return options;
+  }
+
+  function roomsForInHouse(row) {
+    const currentId = row.room_id ? Number(row.room_id) : null;
+    const current = currentId ? rooms.find((r) => Number(r.id) === currentId) : null;
+    const options = [...availableRooms];
+    if (current && !options.some((r) => Number(r.id) === currentId)) {
+      options.unshift(current);
+    }
+    return options;
+  }
+
+  function selectedArrivalRoomId(row) {
+    if (arrivalRoomById[row.id] != null && arrivalRoomById[row.id] !== "") {
+      return String(arrivalRoomById[row.id]);
+    }
+    return row.room_id ? String(row.room_id) : "";
+  }
+
   async function checkInReservation(row) {
+    const roomId = Number(selectedArrivalRoomId(row) || 0);
+    if (!roomId) {
+      notifyError("Select a room before check-in.");
+      return;
+    }
     setBusy(true);
     try {
       await apiRequest("/hospitality/front-desk/check-in", {
         method: "POST",
         body: {
           reservation_id: row.id,
-          room_id: row.room_id || undefined,
+          room_id: roomId,
         },
       });
       notifySuccess(`Checked in ${row.guest_name}`);
@@ -95,7 +137,7 @@ function FrontDeskManager() {
           room_id: Number(walkIn.room_id),
         },
       });
-      notifySuccess("Walk-in checked in");
+      notifySuccess("Walk-in checked in — guest folio opened");
       setWalkIn({ guest_name: "", guest_phone: "", room_id: "" });
       await load();
     } catch (err) {
@@ -105,10 +147,48 @@ function FrontDeskManager() {
     }
   }
 
-  async function checkOut(folioId) {
+  async function assignInHouseRoom(row) {
+    const roomId = Number(inHouseRoomById[row.id] || row.room_id || 0);
+    if (!roomId) {
+      notifyError("Select a room to assign.");
+      return;
+    }
+    if (row.room_id && Number(row.room_id) === roomId) {
+      notifyError("Guest is already in that room.");
+      return;
+    }
     setBusy(true);
     try {
-      await apiRequest(`/hospitality/front-desk/folios/${folioId}/check-out`, { method: "POST", body: {} });
+      await apiRequest(`/hospitality/front-desk/folios/${row.id}/assign-room`, {
+        method: "POST",
+        body: { room_id: roomId },
+      });
+      notifySuccess(`Room assigned on folio ${row.folio_number}`);
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not assign room");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkOut(folioId, balance = 0) {
+    const bal = Number(balance ?? 0);
+    if (Math.abs(bal) > 0.009) {
+      const ok = await confirm({
+        title: "Folio still has a balance",
+        message: `Balance is ${bal.toFixed(2)}. Check out anyway? Prefer collecting payment on the Folios screen first.`,
+        confirmLabel: "Check out with balance",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest(`/hospitality/front-desk/folios/${folioId}/check-out`, {
+        method: "POST",
+        body: { allow_balance: Math.abs(bal) > 0.009 },
+      });
       notifySuccess("Checked out");
       await load();
     } catch (e) {
@@ -119,7 +199,10 @@ function FrontDeskManager() {
   }
 
   return (
-    <CatalogPageShell title="Front desk" subtitle="Arrivals, in-house guests, walk-in check-in, and check-out.">
+    <CatalogPageShell
+      title="Front desk"
+      subtitle="Assign rooms, check guests in (opens a folio), and check out when the folio is settled."
+    >
       <div className="mb-4 flex flex-wrap gap-2">
         {[
           ["arrivals", "Arrivals"],
@@ -152,32 +235,52 @@ function FrontDeskManager() {
               <tr className={TABLE_HEAD_ROW_CLASS}>
                 <th className="px-3 py-2 text-left">Code</th>
                 <th className="px-3 py-2 text-left">Guest</th>
-                <th className="px-3 py-2 text-left">Room</th>
+                <th className="px-3 py-2 text-left">Assign room</th>
                 <th className="px-3 py-2 text-left">Action</th>
               </tr>
             </thead>
             <tbody>
-              {arrivals.map((row) => (
-                <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
-                  <td className="px-3 py-2">{row.confirmation_code}</td>
-                  <td className="px-3 py-2">{row.guest_name}</td>
-                  <td className="px-3 py-2">
-                    {row.room_number || row.room_type_name || "Assign at check-in"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <PrimaryButton
-                      showIcon={false}
-                      disabled={busy || !row.room_id}
-                      onClick={() => void checkInReservation(row)}
-                    >
-                      Check in
-                    </PrimaryButton>
-                    {!row.room_id ? (
-                      <span className="theme-subtext ml-2 text-xs">Assign room on reservation first</span>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
+              {arrivals.map((row) => {
+                const roomValue = selectedArrivalRoomId(row);
+                const options = roomsForArrival(row);
+                return (
+                  <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
+                    <td className="px-3 py-2">{row.confirmation_code}</td>
+                    <td className="px-3 py-2">{row.guest_name}</td>
+                    <td className="px-3 py-2">
+                      <select
+                        className={inputClassName()}
+                        value={roomValue}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setArrivalRoomById((prev) => ({
+                            ...prev,
+                            [row.id]: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Select vacant/clean room…</option>
+                        {options.map((r) => (
+                          <option key={r.id} value={String(r.id)}>
+                            {r.room_number}
+                            {r.status ? ` (${r.status})` : ""}
+                            {row.room_id && Number(row.room_id) === Number(r.id) ? " · reserved" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <PrimaryButton
+                        showIcon={false}
+                        disabled={busy || !roomValue}
+                        onClick={() => void checkInReservation(row)}
+                      >
+                        Check in
+                      </PrimaryButton>
+                    </td>
+                  </tr>
+                );
+              })}
               {!arrivals.length ? (
                 <tr>
                   <td colSpan={4} className="theme-subtext px-3 py-8 text-center">
@@ -212,7 +315,10 @@ function FrontDeskManager() {
                     {Number(row.balance ?? 0).toFixed(2)}
                   </td>
                   <td className="px-3 py-2">
-                    <SecondaryButton disabled={busy} onClick={() => void checkOut(row.id)}>
+                    <SecondaryButton
+                      disabled={busy}
+                      onClick={() => void checkOut(row.id, row.balance)}
+                    >
                       Check out
                     </SecondaryButton>
                   </td>
@@ -243,19 +349,60 @@ function FrontDeskManager() {
               </tr>
             </thead>
             <tbody>
-              {inHouse.map((row) => (
-                <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
-                  <td className="px-3 py-2">{row.folio_number}</td>
-                  <td className="px-3 py-2">{row.guest_name}</td>
-                  <td className="px-3 py-2">{row.room_number || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{Number(row.balance).toFixed(2)}</td>
-                  <td className="px-3 py-2">
-                    <SecondaryButton disabled={busy} onClick={() => void checkOut(row.id)}>
-                      Check out
-                    </SecondaryButton>
-                  </td>
-                </tr>
-              ))}
+              {inHouse.map((row) => {
+                const pick =
+                  inHouseRoomById[row.id] != null && inHouseRoomById[row.id] !== ""
+                    ? String(inHouseRoomById[row.id])
+                    : row.room_id
+                      ? String(row.room_id)
+                      : "";
+                return (
+                  <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
+                    <td className="px-3 py-2">{row.folio_number}</td>
+                    <td className="px-3 py-2">{row.guest_name}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          className={`${inputClassName()} min-w-[8rem]`}
+                          value={pick}
+                          disabled={busy}
+                          onChange={(e) =>
+                            setInHouseRoomById((prev) => ({
+                              ...prev,
+                              [row.id]: e.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Select room…</option>
+                          {roomsForInHouse(row).map((r) => (
+                            <option key={r.id} value={String(r.id)}>
+                              {r.room_number}
+                              {r.status ? ` (${r.status})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <SecondaryButton
+                          disabled={busy || !pick || (row.room_id && Number(row.room_id) === Number(pick))}
+                          onClick={() => void assignInHouseRoom(row)}
+                        >
+                          Assign
+                        </SecondaryButton>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {Number(row.balance).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <SecondaryButton
+                        disabled={busy}
+                        onClick={() => void checkOut(row.id, row.balance)}
+                      >
+                        Check out
+                      </SecondaryButton>
+                    </td>
+                  </tr>
+                );
+              })}
               {!inHouse.length ? (
                 <tr>
                   <td colSpan={5} className="theme-subtext px-3 py-8 text-center">
@@ -270,6 +417,10 @@ function FrontDeskManager() {
 
       {!loading && tab === "walkin" ? (
         <form className="max-w-md space-y-3 rounded-xl border border-[var(--theme-border)] p-4" onSubmit={checkInWalkIn}>
+          <p className="theme-subtext text-xs">
+            Check-in opens a <strong>guest folio</strong> — the running bill for room charges and F&amp;B
+            (including Hotel POS “Charge to room”).
+          </p>
           <Field label="Guest name">
             <input
               required

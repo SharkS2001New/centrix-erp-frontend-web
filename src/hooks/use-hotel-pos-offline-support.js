@@ -38,6 +38,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
   const canFlushOutbox = enabled && browserOnline && apiOnline;
   const offlineMode = enabled && status !== "online";
   const [pendingSync, setPendingSync] = useState(0);
+  const [failedSyncChecks, setFailedSyncChecks] = useState([]);
   const [checkNumbersLeft, setCheckNumbersLeft] = useState(0);
   const [catalogReady, setCatalogReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -77,13 +78,21 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
       const { peekHotelPosOfflineCheckNumberCount, listFailedHotelOutboxChecks } = await import(
         "@/lib/hotel-pos-offline"
       );
-      const [left, pending] = await Promise.all([
+      const [left, pending, failed] = await Promise.all([
         peekHotelPosOfflineCheckNumberCount(),
         getHotelPosOfflinePendingCount(),
+        listFailedHotelOutboxChecks(),
       ]);
       setCheckNumbersLeft(left);
       setPendingSync(pending);
-      void listFailedHotelOutboxChecks;
+      setFailedSyncChecks(
+        (failed ?? []).map((row) => ({
+          client_check_uuid: row.client_check_uuid,
+          check_number: row.check_number ?? row.check_payload?.check_number ?? null,
+          sync_error: row.sync_error ?? null,
+          check: row.check_payload ?? null,
+        })),
+      );
     } catch {
       /* ignore */
     }
@@ -172,8 +181,12 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
             const base = failed.length
               ? `Synced ${ok.length} check(s); ${failed.length} failed.`
               : `Synced ${ok.length} check(s).`;
-            setLastSyncMessage(base);
-            if (showProgress && !failed.length) notifySuccess(base);
+            const reprints = ok.filter((r) => r.needs_reprint);
+            const reprintNote = reprints.length
+              ? ` ${reprints.length} receipt(s) may need reprint (check # changed).`
+              : "";
+            setLastSyncMessage(`${base}${reprintNote}`);
+            if (showProgress && !failed.length) notifySuccess(`${base}${reprintNote}`);
             if (fullyOnline) {
               await warmHotelPosOfflineCatalog({
                 force: true,
@@ -314,6 +327,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
     canFlushOutbox,
     offlineMode,
     pendingSync,
+    failedSyncChecks,
     checkNumbersLeft,
     catalogReady,
     syncing,
