@@ -126,7 +126,7 @@ export const WORKSPACE_DASHBOARD_HREFS = WORKSPACE_ANALYTICS_HREFS;
 
 /** Route prefixes owned by each workspace (reports handled separately). */
 export const WORKSPACE_PATH_PREFIXES = {
-  pos: ["/pos", "/sales/pos"],
+  pos: ["/pos"],
   hotel_bar_pos: ["/hotel-bar-pos"],
   hospitality_backoffice: [
     "/hospitality",

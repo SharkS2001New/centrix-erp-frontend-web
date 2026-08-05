@@ -31,6 +31,7 @@ export function HospitalityFrontDeskScreen() {
 function FrontDeskManager() {
   const [tab, setTab] = useState("arrivals");
   const [arrivals, setArrivals] = useState([]);
+  const [departures, setDepartures] = useState([]);
   const [inHouse, setInHouse] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,12 +40,14 @@ function FrontDeskManager() {
 
   const load = useCallback(async () => {
     try {
-      const [a, h, r] = await Promise.all([
+      const [a, d, h, r] = await Promise.all([
         apiRequest("/hospitality/front-desk/arrivals"),
+        apiRequest("/hospitality/front-desk/departures"),
         apiRequest("/hospitality/front-desk/in-house"),
         apiRequest("/hospitality/rooms", { searchParams: { per_page: 200 } }),
       ]);
       setArrivals(a?.data ?? []);
+      setDepartures(d?.data ?? []);
       setInHouse(h?.data ?? []);
       setRooms(r?.data ?? r ?? []);
     } catch (e) {
@@ -120,6 +123,7 @@ function FrontDeskManager() {
       <div className="mb-4 flex flex-wrap gap-2">
         {[
           ["arrivals", "Arrivals"],
+          ["departures", "Departures"],
           ["inhouse", "In house"],
           ["walkin", "Walk-in"],
         ].map(([id, label]) => (
@@ -178,6 +182,46 @@ function FrontDeskManager() {
                 <tr>
                   <td colSpan={4} className="theme-subtext px-3 py-8 text-center">
                     No arrivals today.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {!loading && tab === "departures" ? (
+        <div className={TABLE_SHELL_CLASS}>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className={TABLE_HEAD_ROW_CLASS}>
+                <th className="px-3 py-2 text-left">Folio</th>
+                <th className="px-3 py-2 text-left">Guest</th>
+                <th className="px-3 py-2 text-left">Room</th>
+                <th className="px-3 py-2 text-right">Balance</th>
+                <th className="px-3 py-2 text-left">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {departures.map((row) => (
+                <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
+                  <td className="px-3 py-2">{row.folio_number}</td>
+                  <td className="px-3 py-2">{row.guest_name}</td>
+                  <td className="px-3 py-2">{row.room_number || "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {Number(row.balance ?? 0).toFixed(2)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <SecondaryButton disabled={busy} onClick={() => void checkOut(row.id)}>
+                      Check out
+                    </SecondaryButton>
+                  </td>
+                </tr>
+              ))}
+              {!departures.length ? (
+                <tr>
+                  <td colSpan={5} className="theme-subtext px-3 py-8 text-center">
+                    No departures due today.
                   </td>
                 </tr>
               ) : null}

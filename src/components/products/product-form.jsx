@@ -890,7 +890,7 @@ export function ProductFormFields({
               onChange={(e) => onChange("sell_on_hotel", e.target.checked)}
               className="mt-0.5 rounded border-slate-300"
             />
-            <span>Sell on Hotel POS — shown to cashiers tied to a Hotel / restaurant outlet</span>
+            <span>Sell on Restaurant / Hotel POS — cashiers on a Restaurant outlet</span>
           </label>
         </div>
       )}

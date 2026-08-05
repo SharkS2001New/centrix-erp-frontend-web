@@ -23,7 +23,7 @@ const MODULE_LINKS = [
     href: "/sales/pos",
     title: "Create Order",
     desc: "Search products, build a cart, and checkout",
-    permissionAny: [P.pos.checkout.create, P.sales.orders.create],
+    permission: P.sales.orders.create,
   },
   { key: "inventory", href: "/inventory", title: "Inventory", desc: "Stock levels, receipts, and movements", permission: P.dashboard.inventory.view },
   { key: "customers_suppliers", href: "/customers", title: "Customers", desc: "Debtors, routes, and credit", permission: P.customers.customers.view },

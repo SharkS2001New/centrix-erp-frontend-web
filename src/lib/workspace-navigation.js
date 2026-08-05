@@ -6,6 +6,7 @@ import {
 } from "@/lib/tab-workspace";
 import {
   filterNavSectionsForWorkspace,
+  isTerminalWorkspace,
   pathBelongsToWorkspace,
   resolveAvailableWorkspaces,
   workspaceHomePath,
@@ -75,6 +76,33 @@ export function persistWorkspaceRouteBeforeSwitch(
   rememberWorkspacePath(userId, organizationId, workspaceId, pathname);
 }
 
+/** Backoffice create-order / POS product lookups — must not unlock Backoffice alone (mirrors WorkspaceResolver). */
+const BACKOFFICE_POS_SHARED_PERMISSION_CODES = new Set([
+  "sales.create",
+  "catalogue.view",
+  "catalogue.products.view",
+  "customers.view",
+  "customers.customers.view",
+]);
+
+function navItemPermissionCodes(item) {
+  if (item?.permissionAny?.length) return item.permissionAny.map(String);
+  if (item?.permission) return [String(item.permission)];
+  return [];
+}
+
+/**
+ * True when the user reaches this Backoffice nav item with a real Backoffice right,
+ * not only shared POS support permissions (product/customer lookups for checkout).
+ */
+function backofficeNavItemUnlocksWorkspace(item, ctx) {
+  const codes = navItemPermissionCodes(item);
+  if (!codes.length) return true;
+  return codes.some(
+    (code) => ctx.hasPermission(code) && !BACKOFFICE_POS_SHARED_PERMISSION_CODES.has(code),
+  );
+}
+
 /**
  * First route in the workspace sidebar the user can open (e.g. dispatch when overview is off).
  * @param {string} workspaceId
@@ -94,10 +122,18 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
   const routeOpts = { workspaceId };
 
   for (const section of sections) {
+    // Till operations (EOD / till locks) sit in the Backoffice sidebar for managers,
+    // but pos.* alone must not unlock Backoffice — cashiers stay on External POS only.
+    if (workspaceId === "backoffice" && section.id === "pos") {
+      continue;
+    }
+
     for (const item of section.items) {
-      if (canAccessRoute(item.href, ctx, routeOpts)) {
-        return item.href;
+      if (!canAccessRoute(item.href, ctx, routeOpts)) continue;
+      if (workspaceId === "backoffice" && !backofficeNavItemUnlocksWorkspace(item, ctx)) {
+        continue;
       }
+      return item.href;
     }
   }
 
@@ -105,14 +141,19 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
 }
 
 /**
- * Workspaces the user can open — API list minus shells with no reachable sidebar route.
+ * Workspaces the user can open — API list minus shells with no reachable route.
+ * Terminal shells (External POS / Hotel POS) have no sidebar nav; check home path instead.
  * @param {object} ctx
  * @param {object} capabilities
  */
 export function resolveAccessibleWorkspaces(ctx, capabilities) {
-  return resolveAvailableWorkspaces(ctx, capabilities, (workspaceId) =>
-    Boolean(firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx)),
-  );
+  return resolveAvailableWorkspaces(ctx, capabilities, (workspaceId) => {
+    if (isTerminalWorkspace(workspaceId)) {
+      const home = workspaceHomePath(workspaceId, capabilities);
+      return Boolean(ctx && home && canAccessRoute(home, ctx, { workspaceId }));
+    }
+    return Boolean(firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx));
+  });
 }
 
 /**

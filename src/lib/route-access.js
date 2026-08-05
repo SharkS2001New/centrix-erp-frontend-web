@@ -60,8 +60,8 @@ const POS_ROUTE_RULES = [
   { prefix: "/pos", permission: P.pos.terminal.view },
   {
     prefix: "/sales/pos",
-    permission: P.pos.checkout.create,
-    altPermissions: [P.sales.orders.create],
+    // Backoffice create order — cashiers use External POS (/pos), not this route.
+    permission: P.sales.orders.create,
   },
   {
     prefix: "/sales/end-of-day",

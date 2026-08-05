@@ -18,7 +18,7 @@ const MODULES_BY_WORKSPACE = {
  * to a sales order in the UI, but must not inherit Backoffice sales approvals.
  */
 const PREFIXES_BY_WORKSPACE = {
-  pos: ["/pos", "/sales/pos"],
+  pos: ["/pos"],
   hotel_bar_pos: ["/hotel-bar-pos"],
   hospitality_backoffice: [
     "/hospitality",

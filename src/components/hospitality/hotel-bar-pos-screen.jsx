@@ -54,6 +54,7 @@ import { PRODUCT_NAME } from "@/lib/branding";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PosActionButton } from "@/components/sales/pos-action-button";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
+import { HotelPosProductImage } from "@/components/hospitality/hotel-pos-product-image";
 import { HotelPosStatusFooter } from "@/components/hospitality/hotel-pos-status-footer";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
@@ -95,6 +96,9 @@ function dedupeError(e) {
 
 export function HotelBarPosScreen() {
   const { capabilities, user, organization } = useAuth();
+  const assignedOutletId =
+    user?.hospitality_outlet_id ?? capabilities?.hospitality_outlet_id ?? null;
+  const [menuOutlet, setMenuOutlet] = useState(null);
   const {
     status: connectionStatus,
     offlineMode,
@@ -102,7 +106,10 @@ export function HotelBarPosScreen() {
     syncing: offlineSyncing,
     flushOutboxAfterSale,
     syncOfflineChecks,
-  } = useHotelPosOfflineSupport({ enabled: true });
+  } = useHotelPosOfflineSupport({
+    enabled: true,
+    outletId: menuOutlet?.id ?? assignedOutletId ?? null,
+  });
   const hotelSettings = resolveHotelPosSettings(capabilities);
   const paymentWorkflow = resolveHospitalityPaymentWorkflow(capabilities);
   const [gridColumns, setGridColumns] = useState(hotelSettings.gridColumns);
@@ -143,7 +150,6 @@ export function HotelBarPosScreen() {
     isHospitalityServiceEnabled(capabilities, "room_charge"),
   );
   const [openFolios, setOpenFolios] = useState([]);
-  const [menuOutlet, setMenuOutlet] = useState(null);
   const searchRef = useRef(null);
   const tableSelectRef = useRef(null);
   const catalogScrollRef = useRef(null);
@@ -303,6 +309,7 @@ export function HotelBarPosScreen() {
           popularDays: 5,
           offset,
           menuGroup,
+          outletId: menuOutlet?.id ?? assignedOutletId ?? undefined,
         });
         if (requestId !== catalogRequestIdRef.current) return;
         const batch = Array.isArray(res?.items) ? res.items : [];
@@ -348,7 +355,7 @@ export function HotelBarPosScreen() {
         }
       }
     },
-    [catalogLimit, applyCatalogMeta, menuGroup, offlineMode],
+    [catalogLimit, applyCatalogMeta, menuGroup, offlineMode, menuOutlet?.id, assignedOutletId],
   );
 
   useEffect(() => {
@@ -876,6 +883,9 @@ export function HotelBarPosScreen() {
 
   const lines = check?.lines ?? [];
   const hasLines = lines.length > 0;
+  const menuChannel = menuOutlet?.menu_channel ?? null;
+  const posTitle = menuChannel === "bar" ? "Bar POS" : "Restaurant POS";
+  const outletAssigned = Boolean(assignedOutletId);
   const gridStyle = useMemo(
     () => ({ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }),
     [gridColumns],
@@ -912,13 +922,18 @@ export function HotelBarPosScreen() {
           </div>
           <div className="hotel-pos-header-context min-w-0 justify-self-center px-2 text-center">
             <p className="theme-heading text-[11px] font-semibold uppercase tracking-[0.08em] sm:text-xs">
-              Hotel POS
+              {posTitle}
             </p>
             {(menuOutlet?.name || menuOutlet?.menu_channel_label) ? (
               <p className="theme-subtext mt-0.5 truncate text-[11px] sm:text-xs">
                 {[menuOutlet?.name, menuOutlet?.menu_channel_label ? `${menuOutlet.menu_channel_label} menu` : null]
                   .filter(Boolean)
                   .join(" · ")}
+              </p>
+            ) : null}
+            {!outletAssigned ? (
+              <p className="mt-0.5 text-[10px] font-medium text-amber-700">
+                Assign this cashier to Bar or Restaurant under Users
               </p>
             ) : null}
           </div>
@@ -1008,8 +1023,9 @@ export function HotelBarPosScreen() {
                         <div className="hotel-pos-tile-shine pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition group-hover:opacity-100" />
                         {hasImage ? (
                           <div className="hotel-pos-tile-media relative aspect-[4/3] w-full overflow-hidden bg-[var(--theme-surface-muted)]">
-                            <EntityPhotoDisplay
-                              fileUrl={productPhotoFileUrl(product.product_code)}
+                            <HotelPosProductImage
+                              productCode={product.product_code}
+                              offlineMode={offlineMode}
                               alt={product.product_name}
                               className="h-full w-full object-cover"
                               placeholderClassName="flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400"

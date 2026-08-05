@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = "centrix-hotel-pos-offline-v1";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
@@ -26,6 +26,9 @@ function openDb() {
         if (!db.objectStoreNames.contains("catalog")) {
           const catalog = db.createObjectStore("catalog", { keyPath: "product_code" });
           catalog.createIndex("by_name", "product_name", { unique: false });
+        }
+        if (!db.objectStoreNames.contains("catalog_images")) {
+          db.createObjectStore("catalog_images", { keyPath: "product_code" });
         }
         if (!db.objectStoreNames.contains("check_numbers")) {
           db.createObjectStore("check_numbers", { keyPath: "check_number" });
@@ -103,6 +106,43 @@ export async function idbGetAllCatalog() {
 
 export async function idbGetCatalogProduct(code) {
   return withStore("catalog", "readonly", (store) => store.get(String(code)));
+}
+
+export async function idbPutCatalogImage(productCode, blob, mime = "image/jpeg") {
+  const code = String(productCode ?? "").trim();
+  if (!code || !blob) return;
+  await withStore("catalog_images", "readwrite", (store) =>
+    store.put({
+      product_code: code,
+      blob,
+      mime: mime || blob.type || "image/jpeg",
+      updated_at_ms: Date.now(),
+    }),
+  );
+}
+
+export async function idbGetCatalogImage(productCode) {
+  return withStore("catalog_images", "readonly", (store) =>
+    store.get(String(productCode ?? "")),
+  );
+}
+
+export async function idbClearCatalogImagesMissing(keepCodes) {
+  const keep = new Set((keepCodes ?? []).map((c) => String(c)));
+  const rows = (await withStore("catalog_images", "readonly", (store) => store.getAll())) ?? [];
+  const stale = rows.filter((row) => !keep.has(String(row.product_code)));
+  if (!stale.length) return 0;
+  const db = await openDb();
+  const tx = db.transaction("catalog_images", "readwrite");
+  const store = tx.objectStore("catalog_images");
+  for (const row of stale) {
+    store.delete(row.product_code);
+  }
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return stale.length;
 }
 
 export async function idbAppendCheckNumbers(numbers) {

@@ -3,15 +3,19 @@
  * local cash tickets → outbox → POST /hospitality/pos/checks/offline-sync.
  */
 
-import { apiRequest } from "@/lib/api";
+import { apiBaseOrigin, apiRequest } from "@/lib/api";
+import { apiFetchCredentials } from "@/lib/auth-config";
+import { getToken } from "@/lib/auth-storage";
 import { fetchHotelPosCatalog } from "@/lib/hospitality-pos-api";
 import {
   idbAppendCheckNumbers,
+  idbClearCatalogImagesMissing,
   idbClearLocalCheck,
   idbClearStore,
   idbCountCheckNumbers,
   idbCountPendingOutbox,
   idbGetAllCatalog,
+  idbGetCatalogImage,
   idbGetCatalogProduct,
   idbGetLocalCheck,
   idbGetMeta,
@@ -21,6 +25,7 @@ import {
   idbMarkOutboxError,
   idbMarkOutboxSynced,
   idbMarkOutboxSyncing,
+  idbPutCatalogImage,
   idbPutCatalogProducts,
   idbPutOutboxCheck,
   idbReclaimStuckSyncingOutbox,
@@ -34,6 +39,7 @@ import {
 const CATALOG_TTL_MS = 15 * 60 * 1000;
 const RESERVE_LOW = 8;
 const RESERVE_COUNT = 20;
+const IMAGE_WARM_CONCURRENCY = 4;
 
 function roundMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
@@ -81,13 +87,22 @@ export function recalculateLocalHotelCheck(check) {
   };
 }
 
-export async function warmHotelPosOfflineCatalog({ force = false } = {}) {
+export async function warmHotelPosOfflineCatalog({
+  force = false,
+  outletId = null,
+  warmImages = true,
+} = {}) {
+  const channelKey = outletId != null ? `outlet:${outletId}` : "outlet:default";
   const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
-  if (!force && last && Date.now() - last < CATALOG_TTL_MS) {
+  const lastChannel = String((await idbGetMeta("catalog_channel_key")) ?? "");
+  const channelChanged = lastChannel !== channelKey;
+  if (!force && !channelChanged && last && Date.now() - last < CATALOG_TTL_MS) {
     return { skipped: true, count: (await idbGetAllCatalog()).length };
   }
 
   const products = [];
+  let outlet = null;
+  let menuChannel = null;
   let offset = 0;
   let hasMore = true;
   let pages = 0;
@@ -97,11 +112,14 @@ export async function warmHotelPosOfflineCatalog({ force = false } = {}) {
       perPage: 100,
       popularDays: 5,
       offset,
+      outletId: outletId || undefined,
     });
     const batch = Array.isArray(res?.items) ? res.items : [];
     for (const item of batch) {
       if (item?.product_code) products.push(item);
     }
+    if (res?.outlet) outlet = res.outlet;
+    if (res?.menu_channel) menuChannel = res.menu_channel;
     hasMore = Boolean(res?.has_more);
     offset = res?.next_offset ?? offset + batch.length;
     pages += 1;
@@ -112,16 +130,87 @@ export async function warmHotelPosOfflineCatalog({ force = false } = {}) {
   await idbPutCatalogProducts(products);
   await idbSetMeta("catalog_warmed_at", Date.now());
   await idbSetMeta("catalog_count", products.length);
-  return { skipped: false, count: products.length };
+  await idbSetMeta("catalog_channel_key", channelKey);
+  await idbSetMeta(
+    "catalog_menu_channel",
+    menuChannel ?? outlet?.menu_channel ?? null,
+  );
+  await idbSetMeta("catalog_outlet_id", outlet?.id ?? outletId ?? null);
+
+  if (warmImages) {
+    void warmHotelPosOfflineImages(products).catch((err) => {
+      console.warn("Hotel POS image warm failed", err);
+    });
+  }
+
+  return {
+    skipped: false,
+    count: products.length,
+    outlet,
+    menu_channel: menuChannel ?? outlet?.menu_channel ?? null,
+  };
+}
+
+/**
+ * Download authenticated product photos into IndexedDB for offline tiles.
+ * @param {Array<{ product_code: string, has_image?: boolean, image_url?: string }>} products
+ */
+export async function warmHotelPosOfflineImages(products = []) {
+  const withImages = (products ?? []).filter(
+    (p) => p?.product_code && (p.has_image || p.image_url),
+  );
+  if (!withImages.length) return { warmed: 0 };
+
+  const token = getToken();
+  const origin = apiBaseOrigin();
+  let warmed = 0;
+
+  async function fetchOne(product) {
+    const code = String(product.product_code);
+    const url = `${origin}/api/v1/products/${encodeURIComponent(code)}/image/file`;
+    try {
+      const headers = { Accept: "image/*,*/*" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(url, {
+        headers,
+        credentials: apiFetchCredentials(),
+        cache: "force-cache",
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      if (!blob || blob.size < 32) return;
+      await idbPutCatalogImage(code, blob, blob.type || "image/jpeg");
+      warmed += 1;
+    } catch {
+      /* skip */
+    }
+  }
+
+  for (let i = 0; i < withImages.length; i += IMAGE_WARM_CONCURRENCY) {
+    const slice = withImages.slice(i, i + IMAGE_WARM_CONCURRENCY);
+    await Promise.all(slice.map((p) => fetchOne(p)));
+  }
+
+  await idbClearCatalogImagesMissing(withImages.map((p) => p.product_code));
+  await idbSetMeta("catalog_images_warmed_at", Date.now());
+  return { warmed };
+}
+
+/** @returns {Promise<string|null>} blob: URL — caller must revoke when done */
+export async function getHotelPosOfflineImageObjectUrl(productCode) {
+  const row = await idbGetCatalogImage(productCode);
+  if (!row?.blob) return null;
+  return URL.createObjectURL(row.blob);
 }
 
 export async function searchHotelPosOfflineCatalog(query, { limit = 80, menuGroup = "" } = {}) {
   const all = await idbGetAllCatalog();
+  const group = String(menuGroup ?? "").trim().toLowerCase();
   const trimmed = String(query ?? "").trim().toLowerCase();
-  // menu_group food/drinks is category-based on the server; offline catalog has no
-  // category rows — show the warmed menu and rely on search instead.
-  void menuGroup;
   let rows = all;
+  if (group === "food" || group === "drinks") {
+    rows = rows.filter((p) => String(p.menu_group ?? "").toLowerCase() === group);
+  }
   if (trimmed) {
     rows = rows.filter((p) => {
       const code = String(p.product_code ?? "").toLowerCase();
@@ -168,13 +257,14 @@ export async function listFailedHotelOutboxChecks() {
   return idbListFailedOutbox();
 }
 
-export async function prepareHotelPosOfflineReady() {
-  const catalog = await warmHotelPosOfflineCatalog({ force: false });
+export async function prepareHotelPosOfflineReady({ outletId = null } = {}) {
+  const catalog = await warmHotelPosOfflineCatalog({ force: false, outletId, warmImages: true });
   const numbers = await ensureHotelPosOfflineCheckNumbers({ force: false });
   return {
     catalogCount: catalog.count ?? 0,
     checkNumbersAvailable: numbers.available ?? 0,
     pendingSync: await getHotelPosOfflinePendingCount(),
+    menu_channel: catalog.menu_channel ?? null,
   };
 }
 

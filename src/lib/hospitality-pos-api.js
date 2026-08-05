@@ -6,10 +6,12 @@ export async function fetchHotelPosCatalog({
   popularDays = 5,
   offset = 0,
   menuGroup = "",
+  outletId = null,
 } = {}) {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (menuGroup) params.set("menu_group", String(menuGroup));
+  if (outletId) params.set("outlet_id", String(outletId));
   params.set("per_page", String(perPage));
   params.set("popular_days", String(popularDays));
   params.set("offset", String(Math.max(0, offset)));

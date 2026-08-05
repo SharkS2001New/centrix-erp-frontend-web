@@ -367,13 +367,22 @@ export function AdminUsersScreen() {
   }
 
   useEffect(() => {
-    if (!drawerOpen || editing || !form.role_id) return;
+    if (!drawerOpen || !form.role_id) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiRequest(adminPath(`/roles/${form.role_id}/permissions`));
+        const roleRes = await apiRequest(adminPath(`/roles/${form.role_id}/permissions`));
         if (cancelled) return;
-        setRolePermissionIds(permissionIdSet(res.permission_ids));
+        setRolePermissionIds(permissionIdSet(roleRes.permission_ids));
+
+        if (editing?.id) {
+          const userRes = await apiRequest(adminPath(`/users/${editing.id}/permissions`));
+          if (cancelled) return;
+          setGrantedIds(permissionIdSet(userRes.granted_permission_ids));
+          setDeniedIds(permissionIdSet(userRes.denied_permission_ids));
+          return;
+        }
+
         setGrantedIds(new Set());
         setDeniedIds(new Set());
       } catch {
@@ -385,7 +394,7 @@ export function AdminUsersScreen() {
     };
   }, [adminPath, drawerOpen, editing, form.role_id]);
 
-  function toggleCreatePermission(permissionId) {
+  function toggleDrawerPermission(permissionId) {
     const next = toggleUserPermissionOverride(
       permissionId,
       rolePermissionIds,
@@ -660,6 +669,18 @@ export function AdminUsersScreen() {
       }
       if (editing) {
         await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
+        if (!editing.is_admin) {
+          await apiRequest(adminPath(`/users/${editing.id}/permissions`), {
+            method: "PUT",
+            body: {
+              granted_permission_ids: [...grantedIds],
+              denied_permission_ids: [...deniedIds],
+            },
+          });
+          if (editing.id === user?.id) {
+            await refreshCapabilities();
+          }
+        }
       } else {
         const created = await apiRequest(adminPath("/users"), { method: "POST", body });
         const createdId = created?.id;
@@ -882,7 +903,7 @@ export function AdminUsersScreen() {
           saving={saving}
           error={formError}
           submitLabel={editing ? "Save changes" : "Create user"}
-          wide={!editing}
+          wide
         >
           <Field label="Full name">
             <input
@@ -1034,12 +1055,14 @@ export function AdminUsersScreen() {
                 value={form.hospitality_outlet_id}
                 onChange={(v) => setForm((f) => ({ ...f, hospitality_outlet_id: v }))}
                 options={[
-                  { value: "", label: "Default (Main bar)" },
+                  { value: "", label: "Unassigned — pick Bar or Restaurant" },
                   ...hospitalityOutlets
                     .filter((o) => o.is_active !== false)
                     .map((o) => {
                       const channel =
-                        String(o.outlet_type || "").toLowerCase() === "bar" ? "Bar" : "Hotel";
+                        String(o.outlet_type || "").toLowerCase() === "bar"
+                          ? "Bar menu"
+                          : "Restaurant menu";
                       return {
                         value: String(o.id),
                         label: `${o.name || o.code} · ${channel}`,
@@ -1049,8 +1072,9 @@ export function AdminUsersScreen() {
                 placeholder="Select outlet"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Bar outlets show only Bar products; Hotel / restaurant outlets show only Hotel
-                products. Create outlets under Hospitality → Outlets.
+                Required for dual Bar + Restaurant orgs. Bar cashiers only see Bar products;
+                Restaurant cashiers only see Restaurant / Hotel products. Manage outlets under
+                Hospitality → Outlets.
               </p>
             </Field>
           ) : null}
@@ -1091,11 +1115,12 @@ export function AdminUsersScreen() {
                 : "Organization administrator accounts must stay enabled."
               : "Disable login to block sign-in. Delete removes users without activity permanently; users with sales history are archived."}
           </p>
-          {!editing && form.role_id ? (
+          {form.role_id && !(editing?.is_admin) ? (
             <div className="mt-2 border-t border-[var(--theme-border)] pt-4">
               <p className="mb-2 text-sm font-medium text-slate-800">Permission overrides (optional)</p>
               <p className="mb-3 text-xs text-slate-500">
-                Grant extra rights or deny role permissions for this user when they are created.
+                Grant extra rights or deny role permissions for this user
+                {editing ? "." : " when they are created."}
               </p>
               <UserPermissionMatrix
                 applications={permissionApplications}
@@ -1103,7 +1128,7 @@ export function AdminUsersScreen() {
                 rolePermissionIds={rolePermissionIds}
                 grantedIds={grantedIds}
                 deniedIds={deniedIds}
-                onToggle={toggleCreatePermission}
+                onToggle={toggleDrawerPermission}
               />
             </div>
           ) : null}

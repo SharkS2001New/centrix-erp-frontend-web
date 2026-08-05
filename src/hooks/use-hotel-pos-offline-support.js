@@ -29,7 +29,7 @@ const EMPTY_SYNC_PROGRESS = {
  * Hotel & Bar POS short-outage bridge (same idea as External POS offline).
  * Cash-only local tickets when offline/slow; flush outbox when API is reachable.
  */
-export function useHotelPosOfflineSupport({ enabled = true } = {}) {
+export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = {}) {
   const { status, browserOnline, apiOnline, refresh: refreshNetwork } = useNetworkStatus({
     enabled,
     reportOutages: false,
@@ -49,6 +49,11 @@ export function useHotelPosOfflineSupport({ enabled = true } = {}) {
   const manualFlushRef = useRef(false);
   const pendingFlushRef = useRef(false);
   const lastNotifiedSyncErrorRef = useRef(null);
+  const outletIdRef = useRef(outletId);
+
+  useEffect(() => {
+    outletIdRef.current = outletId;
+  }, [outletId]);
 
   useEffect(() => {
     canFlushRef.current = canFlushOutbox;
@@ -94,7 +99,9 @@ export function useHotelPosOfflineSupport({ enabled = true } = {}) {
   const prepare = useCallback(async () => {
     if (!enabled || !fullyOnline) return null;
     try {
-      const ready = await prepareHotelPosOfflineReady();
+      const ready = await prepareHotelPosOfflineReady({
+        outletId: outletIdRef.current,
+      });
       setCatalogReady(ready.catalogCount > 0);
       setCheckNumbersLeft(ready.checkNumbersAvailable);
       setPendingSync(ready.pendingSync);
@@ -103,7 +110,7 @@ export function useHotelPosOfflineSupport({ enabled = true } = {}) {
       console.warn("Hotel POS offline prepare failed", err);
       return null;
     }
-  }, [enabled, fullyOnline]);
+  }, [enabled, fullyOnline, outletId]);
 
   const flushOutboxNow = useCallback(
     (options = {}) => {
@@ -168,7 +175,11 @@ export function useHotelPosOfflineSupport({ enabled = true } = {}) {
             setLastSyncMessage(base);
             if (showProgress && !failed.length) notifySuccess(base);
             if (fullyOnline) {
-              await warmHotelPosOfflineCatalog({ force: true });
+              await warmHotelPosOfflineCatalog({
+                force: true,
+                outletId: outletIdRef.current,
+                warmImages: true,
+              });
               await ensureHotelPosOfflineCheckNumbers({ force: false });
             }
           } else if (failed.length) {
@@ -286,12 +297,16 @@ export function useHotelPosOfflineSupport({ enabled = true } = {}) {
   useEffect(() => {
     if (!enabled || !fullyOnline) return undefined;
     const timer = window.setInterval(() => {
-      void warmHotelPosOfflineCatalog({ force: false });
+      void warmHotelPosOfflineCatalog({
+        force: false,
+        outletId: outletIdRef.current,
+        warmImages: true,
+      });
       void ensureHotelPosOfflineCheckNumbers({ force: false });
       void refreshCounts();
     }, 5 * 60 * 1000);
     return () => window.clearInterval(timer);
-  }, [enabled, fullyOnline, refreshCounts]);
+  }, [enabled, fullyOnline, refreshCounts, outletId]);
 
   return {
     status,
