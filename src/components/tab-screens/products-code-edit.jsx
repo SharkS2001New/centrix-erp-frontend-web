@@ -173,6 +173,13 @@ export function ProductsCodeEditScreen() {
     updateField("subcategory_id", String(sub.id));
   }
 
+  const displayName = useMemo(() => form.product_name || productCode, [form.product_name, productCode]);
+  const editTabTitle = hotelCatalogue
+    ? tabEditTitle("menu product", displayName)
+    : tabEditTitle("Product", displayName);
+  const { exitTo } = useTabFormExit(editTabTitle);
+  const detailHref = `/products/${encodeURIComponent(productCode)}`;
+
   async function saveProduct(e) {
     e.preventDefault();
     if (!form.product_name.trim()) {
@@ -220,13 +227,6 @@ export function ProductsCodeEditScreen() {
       setSaving(false);
     }
   }
-
-  const displayName = useMemo(() => form.product_name || productCode, [form.product_name, productCode]);
-  const editTabTitle = hotelCatalogue
-    ? tabEditTitle("menu product", displayName)
-    : tabEditTitle("Product", displayName);
-  const { exitTo } = useTabFormExit(editTabTitle);
-  const detailHref = `/products/${encodeURIComponent(productCode)}`;
 
   function handleCancel() {
     clearDraft();

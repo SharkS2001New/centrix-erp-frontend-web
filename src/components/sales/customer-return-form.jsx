@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -44,7 +44,11 @@ export function CustomerReturnForm({
   backLabel = "← Back to returns",
   initialSaleId = "",
 }) {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(
+    editing
+      ? tabEditTitle("customer return", editing.return_no)
+      : tabAddTitle("customer return"),
+  );
   const { user, capabilities } = useAuth();
   const returnSearchStatuses = useMemo(
     () => resolveCustomerReturnStatuses(salesSettingsFromCapabilities(capabilities)),
@@ -376,7 +380,7 @@ export function CustomerReturnForm({
       if (onSaved) {
         await onSaved();
       } else {
-        router.push("/sales/returns");
+        exitTo("/sales/returns");
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save return");
@@ -385,21 +389,17 @@ export function CustomerReturnForm({
     }
   }
 
-  function handleCancel() {
-    if (onCancel) {
-      onCancel();
-      return;
-    }
-    router.push(backHref);
-  }
 
   return (
     <form onSubmit={handleSubmit} className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href={backHref} className="text-sm text-[var(--theme-primary)] hover:underline">
+          <TabFormExitButton
+            href={backHref}
+            className="text-sm text-[var(--theme-primary)] hover:underline"
+          >
             {backLabel}
-          </Link>
+          </TabFormExitButton>
           <h2 className="mt-2 text-xl font-semibold text-slate-900">
             {editing ? `Edit ${editing.return_no}` : "Create new return"}
           </h2>
@@ -634,13 +634,15 @@ export function CustomerReturnForm({
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
       <div className="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={handleCancel}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Cancel
-        </button>
+        <TabFormCancelButton
+          href={backHref}
+          onClick={(e) => {
+            if (onCancel) {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+        />
         <PrimaryButton type="submit" showIcon={false} disabled={saving || loadingSale}>
           {saving ? "Saving…" : editing ? "Update return" : "Submit return"}
         </PrimaryButton>

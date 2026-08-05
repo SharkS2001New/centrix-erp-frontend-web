@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
@@ -26,7 +26,7 @@ export function LegacyReturnForm({
   backHref = "/sales/legacy-returns",
   backLabel = "← Back to legacy returns",
 }) {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("legacy return"));
   const { capabilities } = useAuth();
   const kraEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const { runQueuedTask } = useQueuedTask(
@@ -164,7 +164,7 @@ export function LegacyReturnForm({
         { message: "Please wait while the credit note is submitted to the KRA device…" },
       );
       onSaved?.(created);
-      router.push(`/sales/legacy-returns?return_id=${created.id}`);
+      exitTo(`/sales/legacy-returns?return_id=${created.id}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to create legacy return");
     } finally {
@@ -179,9 +179,9 @@ export function LegacyReturnForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href={backHref} className="text-sm text-slate-600 hover:text-slate-900">
+        <TabFormExitButton href={backHref} className="text-sm text-slate-600 hover:text-slate-900">
           {backLabel}
-        </Link>
+        </TabFormExitButton>
         {!kraEnabled ? (
           <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             Enable the KRA device under Finance settings to process legacy returns.

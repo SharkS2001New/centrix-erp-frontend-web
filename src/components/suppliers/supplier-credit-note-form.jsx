@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchSuppliersCached } from "@/lib/reference-data-cache";
@@ -42,7 +43,7 @@ export function SupplierCreditNoteForm({
   backLabel = "← Back to supplier credit notes",
   initialSupplierId = "",
 }) {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("supplier credit note"));
   const { user } = useAuth();
   const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState(initialSupplierId ? String(initialSupplierId) : "");
@@ -139,7 +140,7 @@ export function SupplierCreditNoteForm({
       };
 
       await apiRequest("/supplier-credit-notes", { method: "POST", body });
-      router.push("/sales/credit-notes/supplier");
+      exitTo("/sales/credit-notes/supplier");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save supplier credit note");
     } finally {
@@ -156,13 +157,9 @@ export function SupplierCreditNoteForm({
             Record a credit from a supplier for overcharges or billing adjustments. Line items are optional.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push(backHref)}
-          className="text-sm text-[#185FA5] hover:underline"
-        >
+        <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:underline">
           {backLabel}
-        </button>
+        </TabFormExitButton>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -353,13 +350,7 @@ export function SupplierCreditNoteForm({
         <PrimaryButton type="submit" disabled={saving}>
           {saving ? "Saving…" : "Create supplier credit note"}
         </PrimaryButton>
-        <button
-          type="button"
-          onClick={() => router.push(backHref)}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          Cancel
-        </button>
+        <TabFormCancelButton href={backHref} />
       </div>
     </form>
   );

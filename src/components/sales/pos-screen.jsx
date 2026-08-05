@@ -3724,10 +3724,9 @@ export function PosScreen({ standalone = false }) {
       discount_given:
         allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
       product_vat: lineProductVat(product, finalComputed.lineAmount),
-      // When cash rounding is on, send the pre-rounded amount so the backend
-      // uses it directly instead of recomputing unit_price × quantity (which
-      // would lose the rounding adjustment).
-      ...(enablePosCashRounding ? { amount: finalComputed.lineAmount } : {}),
+      // Always send the workspace line amount so hold/restore/checkout never
+      // recompute from unit_price × quantity (tier / pack pricing).
+      amount: finalComputed.lineAmount,
     };
 
     const discountAmount = Number(lineBody.discount_given ?? 0);

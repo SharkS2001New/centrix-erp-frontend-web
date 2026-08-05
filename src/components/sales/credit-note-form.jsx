@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -55,7 +56,7 @@ export function CreditNoteForm({
   backLabel = "← Back to credit notes",
   initialSaleId = "",
 }) {
-  const router = useRouter();
+  const { exitTo } = useTabFormExit(tabAddTitle("credit note"));
   const { user, capabilities } = useAuth();
   const returnSearchStatuses = useMemo(
     () => resolveCustomerReturnStatuses(salesSettingsFromCapabilities(capabilities)),
@@ -272,7 +273,7 @@ export function CreditNoteForm({
       if (onSaved) {
         await onSaved();
       } else {
-        router.push("/sales/credit-notes");
+        exitTo("/sales/credit-notes");
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save credit note");
@@ -281,13 +282,6 @@ export function CreditNoteForm({
     }
   }
 
-  function handleCancel() {
-    if (onCancel) {
-      onCancel();
-      return;
-    }
-    router.push(backHref);
-  }
 
   return (
     <form onSubmit={handleSubmit} className="theme-panel rounded-xl border p-5 shadow-sm">
@@ -298,9 +292,9 @@ export function CreditNoteForm({
             Issue a credit for billing errors or price adjustments without returning stock.
           </p>
         </div>
-        <button type="button" onClick={handleCancel} className="text-sm text-[#185FA5] hover:underline">
+        <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:underline">
           {backLabel}
-        </button>
+        </TabFormExitButton>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -497,13 +491,15 @@ export function CreditNoteForm({
         <PrimaryButton type="submit" disabled={saving || loadingSale || !canSubmit}>
           {saving ? "Saving…" : "Create credit note"}
         </PrimaryButton>
-        <button
-          type="button"
-          onClick={handleCancel}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-        >
-          Cancel
-        </button>
+        <TabFormCancelButton
+          href={backHref}
+          onClick={(e) => {
+            if (onCancel) {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+        />
       </div>
     </form>
   );

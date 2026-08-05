@@ -1,13 +1,13 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { RecordSupplierReturnForm } from "@/components/suppliers/record-supplier-return-form";
 
 export function SuppliersReturnsIdEditScreen() {
   const params = useParams();
   const documentId = params.id;
-  const { exitTo } = useTabFormExit(tabEditTitle("supplier return", `#${documentId}`));
+  const { exitTo } = useTabFormExit(null);
 
   return (
     <RecordSupplierReturnForm

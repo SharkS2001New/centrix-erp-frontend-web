@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
@@ -326,12 +326,7 @@ export function RecordSupplierPaymentForm({
               <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
             )}
             <div className="mt-6 flex gap-2 border-t border-slate-200 pt-4">
-              <Link
-                href={backHref}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
+              <TabFormCancelButton href={backHref} />
               <button
                 type="submit"
                 disabled={saving || loadingMeta}

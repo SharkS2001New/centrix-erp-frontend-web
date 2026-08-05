@@ -1,11 +1,11 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { RecordSupplierReturnForm } from "@/components/suppliers/record-supplier-return-form";
 
 export function SuppliersReturnsNewScreen() {
-  const { exitTo } = useTabFormExit(tabAddTitle("supplier return"));
+  const { exitTo } = useTabFormExit(null);
   const searchParams = useSearchParams();
   const supplierId = searchParams.get("supplier_id") ?? searchParams.get("supplier");
   const returnTo = searchParams.get("return");

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, inputClassName, formatShortDate, RequiredMark } from "@/components/catalog/catalog-shared";
@@ -63,6 +64,11 @@ export function RecordSupplierReturnForm({
   pageTitle = "Record supplier return",
   pageSubtitle = "Every return is tied to one supplier. Find products on the left, review lines on the right, then submit for approval.",
 }) {
+  useTabFormExit(
+    editDocumentId
+      ? tabEditTitle("supplier return", `#${editDocumentId}`)
+      : tabAddTitle("supplier return"),
+  );
   const { user } = useAuth();
   const [mode, setMode] = useState(
     () => initialMode ?? (initialLpoNo ? RETURN_MODES.LPO : RETURN_MODES.MANUAL),
@@ -893,9 +899,9 @@ export function RecordSupplierReturnForm({
   return (
     <div className="theme-workspace -m-6 flex min-h-[calc(100%+3rem)] w-full flex-col p-6 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
       <div className="mb-4 shrink-0">
-        <Link href={backHref} className="theme-link text-sm hover:underline">
+        <TabFormExitButton href={backHref} className="theme-link text-sm hover:underline">
           {backLabel}
-        </Link>
+        </TabFormExitButton>
         <h1 className="theme-heading mt-2 text-xl font-medium">{pageTitle}</h1>
         <p className="theme-subtext mt-1 max-w-3xl text-sm">{pageSubtitle}</p>
       </div>
@@ -1340,12 +1346,10 @@ export function RecordSupplierReturnForm({
                   ) : null}
 
                   <div className="flex flex-wrap gap-2">
-                    <Link
+                    <TabFormCancelButton
                       href={backHref}
                       className="theme-secondary-btn rounded-lg px-4 py-2 text-sm shadow-sm"
-                    >
-                      Cancel
-                    </Link>
+                    />
                     <button
                       type="submit"
                       disabled={saving || !canSubmit}

@@ -54,6 +54,28 @@ describe("pos-local-held", () => {
     expect(isLocalHeldId(99)).toBe(false);
   });
 
+  it("parks tier-priced line amount without recomputing unit_price × qty", async () => {
+    const park = await parkCartLocally(
+      {
+        lines: [
+          {
+            product_code: "BANJAB",
+            product_name: "Banjab",
+            quantity: 46,
+            unit_price: 2000,
+            amount: 3600,
+            on_wholesale_retail: 0,
+          },
+        ],
+      },
+      { walkIn: true },
+    );
+
+    expect(park.order_total).toBe(3600);
+    expect(park.items[0].amount).toBe(3600);
+    expect(park.items[0].unit_price).toBe(2000);
+  });
+
   it("parks a cart locally without consuming order_num", async () => {
     const park = await parkCartLocally(
       {

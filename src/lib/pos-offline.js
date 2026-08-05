@@ -418,6 +418,8 @@ export function serverCartLinesToLocal(lines) {
           snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
         on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
         discount_given: Number(line.discount_given ?? 0),
+        amount: line.amount != null ? Number(line.amount) : undefined,
+        product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
         vat_rate: Number(line.vat_rate ?? line.tax_rate ?? line.product_vat ?? 0),
       };
     })
