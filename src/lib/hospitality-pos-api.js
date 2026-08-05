@@ -127,6 +127,27 @@ export async function reserveHotelCheckNumbers(count = 20) {
   });
 }
 
+export async function fetchHotelPosSellableRooms({ q = "" } = {}) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", String(q));
+  return apiRequest(`/hospitality/pos/rooms?${params.toString()}`, { loading: false });
+}
+
+export async function addHotelCheckRoomStay(
+  checkId,
+  { room_id, nights, checkout_at, guest_name } = {},
+) {
+  return apiRequest(`/hospitality/pos/checks/${checkId}/room-stays`, {
+    method: "POST",
+    body: {
+      room_id,
+      nights,
+      checkout_at,
+      guest_name: guest_name || null,
+    },
+  });
+}
+
 export async function listOpenHotelFolios() {
   return apiRequest("/hospitality/folios/open", { loading: false });
 }

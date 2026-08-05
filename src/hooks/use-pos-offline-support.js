@@ -49,6 +49,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const offlineMode = enabled && status !== "online";
   const [pendingSync, setPendingSync] = useState(0);
   const [orderNumbersLeft, setOrderNumbersLeft] = useState(0);
+  const [nextPosOrderNum, setNextPosOrderNum] = useState(null);
   const [catalogReady, setCatalogReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncMessage, setLastSyncMessage] = useState(null);
@@ -121,6 +122,9 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       const ready = await preparePosOfflineReady();
       setCatalogReady(ready.catalogCount > 0);
       setOrderNumbersLeft(ready.orderNumbersAvailable);
+      if (ready.nextPosOrderNum != null) {
+        setNextPosOrderNum(Number(ready.nextPosOrderNum));
+      }
       setPendingSync(ready.pendingSync);
       return ready;
     } catch (err) {
@@ -473,6 +477,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     canFlushOutbox,
     pendingSync,
     orderNumbersLeft,
+    nextPosOrderNum,
     catalogReady,
     syncing,
     lastSyncMessage,

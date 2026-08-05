@@ -490,7 +490,7 @@ export function ZReportModal({
         showFloatBreakdown,
         moduleSettings,
       });
-      onPrinted?.();
+      await onPrinted?.();
     } finally {
       setPrinting(false);
     }
@@ -506,7 +506,7 @@ export function ZReportModal({
       title="Z report"
       subtitle={
         signOutAfterFinish
-          ? "End-of-day report for the closed session — print to finish and sign out"
+          ? "Print Z to clear local holds for the next session, then sign out"
           : "End-of-day report for the closed session"
       }
       footer={

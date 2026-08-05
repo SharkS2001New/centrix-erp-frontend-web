@@ -63,3 +63,12 @@ export function readPosLastReceipt(userId, branchId) {
     return null;
   }
 }
+
+export function clearPosLastReceipt(userId, branchId) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(storageKey(userId, branchId));
+  } catch {
+    /* ignore */
+  }
+}

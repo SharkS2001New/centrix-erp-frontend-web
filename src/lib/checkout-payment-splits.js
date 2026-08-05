@@ -4,6 +4,32 @@ function roundMoney(value) {
   return Math.round(Number(value) * 100) / 100;
 }
 
+/** Max change (KES) allowed on POS cash tender — blocks accidental double-entry overpays. */
+export const MAX_POS_CASH_CHANGE = 5000;
+
+/**
+ * @param {number} amountPaid
+ * @param {number} orderTotal
+ * @returns {number} change due (0 when not overpaid)
+ */
+export function posCashChangeDue(amountPaid, orderTotal) {
+  return roundMoney(Math.max(0, Number(amountPaid ?? 0) - Number(orderTotal ?? 0)));
+}
+
+/**
+ * @param {number} amountPaid
+ * @param {number} orderTotal
+ * @param {number} [maxChange]
+ * @returns {boolean}
+ */
+export function isPosCashChangeExcessive(
+  amountPaid,
+  orderTotal,
+  maxChange = MAX_POS_CASH_CHANGE,
+) {
+  return posCashChangeDue(amountPaid, orderTotal) - Number(maxChange) > 0.009;
+}
+
 function methodCodeOf(part) {
   return String(part?.method_code ?? part?.code ?? "").trim().toUpperCase();
 }
@@ -177,7 +203,8 @@ export function resolveSaleReceiptChangeGiven(sale, { totalPaid, orderTotal } = 
 
 /**
  * Overlay cashier-entered tenders onto the sale for immediate receipt print.
- * Backend stores applied (post-change) cash; receipt should show what was typed + change.
+ * Backend stores applied (post-change) cash; receipt should show what was typed
+ * (cash tendered) and Change Given for real overpayment.
  */
 export function annotateSaleWithReceiptTenders(sale, receiptTenders, cashTendered) {
   if (!sale) return sale;

@@ -126,10 +126,22 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
   const tableLabel = check.floor_table?.label || check.floor_table?.code || "";
   const outletLabel = check.outlet?.name || check.outlet?.code || "";
   const guestName = String(check.guest_name ?? check.folio?.guest_name ?? "").trim();
-  const roomNumber = String(check.folio?.room_number ?? "").trim();
+  const roomStayLines = lines.filter(
+    (line) => line?.is_room_stay || line?.modifiers?.type === "room_stay",
+  );
+  const roomStayMeta = roomStayLines[0]?.modifiers ?? null;
+  const roomNumber = String(
+    check.folio?.room_number ?? roomStayMeta?.room_number ?? "",
+  ).trim();
   const folioNumber = String(check.folio?.folio_number ?? "").trim();
   const checkNumber = String(check.check_number ?? "").trim();
   const serviceMode = formatServiceMode(check.service_mode);
+  const nightsLabel = roomStayMeta?.nights
+    ? `${roomStayMeta.nights} night${Number(roomStayMeta.nights) === 1 ? "" : "s"}`
+    : "";
+  const checkoutLabel = roomStayMeta?.checkout_at
+    ? formatThermalReceiptDateTime(roomStayMeta.checkout_at)
+    : "";
   const paid = Number(check.amount_paid) || 0;
   const total = Number(check.total) || 0;
   const vat = Number(check.vat_total) || 0;
@@ -291,8 +303,10 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
       ${showOutlet && outletLabel ? `<div class="meta-full"><span class="meta-label">Outlet:</span> ${escapeHtml(outletLabel)}</div>` : ""}
       ${tableLabel ? `<div class="meta-full"><span class="meta-label">Table:</span> ${escapeHtml(tableLabel)}</div>` : ""}
       ${roomNumber ? `<div class="meta-full"><span class="meta-label">Room:</span> ${escapeHtml(roomNumber)}</div>` : ""}
+      ${nightsLabel ? `<div class="meta-full"><span class="meta-label">Nights:</span> ${escapeHtml(nightsLabel)}</div>` : ""}
+      ${checkoutLabel ? `<div class="meta-full"><span class="meta-label">Checkout:</span> ${escapeHtml(checkoutLabel)}</div>` : ""}
       ${folioNumber ? `<div class="meta-full"><span class="meta-label">Folio:</span> ${escapeHtml(folioNumber)}</div>` : ""}
-      ${(showGuestName || roomNumber || folioNumber) && guestName ? `<div class="meta-full"><span class="meta-label">Guest:</span> ${escapeHtml(guestName.toUpperCase())}</div>` : ""}
+      ${(showGuestName || roomNumber || folioNumber || nightsLabel) && guestName ? `<div class="meta-full"><span class="meta-label">Guest:</span> ${escapeHtml(guestName.toUpperCase())}</div>` : ""}
       ${serviceMode ? `<div class="meta-full"><span class="meta-label">Service:</span> ${escapeHtml(serviceMode)}</div>` : ""}
       ${showCashier ? `<div class="meta-full"><span class="meta-label">Server:</span> ${escapeHtml(servedByName)}</div>` : ""}
     </div>

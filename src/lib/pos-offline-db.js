@@ -505,6 +505,15 @@ export async function idbCountHeldParks() {
   return withStore("held_parks", "readonly", (store) => store.count());
 }
 
+export async function idbClearHeldParks() {
+  await idbClearStore("held_parks");
+}
+
+/** All outbox rows (any sync_status) — used when resetting device cache after Z. */
+export async function idbListAllOutbox() {
+  return (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
+}
+
 export function newClientSaleUuid() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();

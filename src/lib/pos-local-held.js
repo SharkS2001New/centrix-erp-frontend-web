@@ -4,6 +4,7 @@
  */
 
 import {
+  idbClearHeldParks,
   idbCountHeldParks,
   idbDeleteHeldPark,
   idbGetHeldPark,
@@ -183,4 +184,10 @@ export async function restoreLocalHeldOrder(id, seed = {}) {
 export async function forgetLocalHeldOrder(id) {
   if (!isLocalHeldId(id)) return false;
   return deleteLocalHeldOrder(id);
+}
+
+/** Drop every local held park (used after Z / new till session). */
+export async function clearAllLocalHeldOrders() {
+  await idbClearHeldParks();
+  await idbSetMeta(HOLD_SEQ_META_KEY, 0);
 }

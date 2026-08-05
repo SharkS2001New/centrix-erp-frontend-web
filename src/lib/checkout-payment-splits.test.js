@@ -3,6 +3,9 @@ import {
   alignPaymentSplitsToPayNow,
   annotateSaleWithReceiptTenders,
   buildReceiptTenderSnapshot,
+  isPosCashChangeExcessive,
+  MAX_POS_CASH_CHANGE,
+  posCashChangeDue,
   resolveSaleReceiptChangeGiven,
 } from "@/lib/checkout-payment-splits";
 
@@ -113,6 +116,47 @@ describe("annotateSaleWithReceiptTenders", () => {
     expect(sale.cash).toBe(1200);
     expect(sale._change_given).toBe(200);
     expect(sale.order_change).toBe(200);
+  });
+
+  it("keeps exact cash pay as Cash = Total with no change", () => {
+    const sale = annotateSaleWithReceiptTenders(
+      { id: 1, order_total: 39670, cash: 39670 },
+      buildReceiptTenderSnapshot(
+        { cashAmount: "39670" },
+        { changeDue: 0, amountPaid: 39670 },
+      ),
+      39670,
+    );
+    expect(sale.cash).toBe(39670);
+    expect(sale._cash_tendered).toBe(39670);
+    expect(sale._change_given).toBeUndefined();
+    expect(sale.order_change ?? 0).toBe(0);
+  });
+
+  it("shows real cash overpayment within the allowed change band", () => {
+    const sale = annotateSaleWithReceiptTenders(
+      { id: 1, order_total: 39670, cash: 39670 },
+      buildReceiptTenderSnapshot(
+        { cashAmount: "40000" },
+        { changeDue: 330, amountPaid: 40000 },
+      ),
+      40000,
+    );
+    expect(sale.cash).toBe(40000);
+    expect(sale._change_given).toBe(330);
+  });
+});
+
+describe("isPosCashChangeExcessive", () => {
+  it("allows change up to the max", () => {
+    expect(isPosCashChangeExcessive(45000, 40000, 5000)).toBe(false);
+    expect(isPosCashChangeExcessive(45000, 40000)).toBe(false);
+  });
+
+  it("blocks change above the max (e.g. accidental 2× tender)", () => {
+    expect(isPosCashChangeExcessive(79340, 39670)).toBe(true);
+    expect(posCashChangeDue(79340, 39670)).toBe(39670);
+    expect(MAX_POS_CASH_CHANGE).toBe(5000);
   });
 });
 

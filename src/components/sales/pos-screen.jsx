@@ -169,6 +169,7 @@ import {
   buildPreviousOrderEditPrintSale,
   clearLocalPosCart,
   clearPreviousOrderEditDraft,
+  clearPosSessionLocalCache,
   completeOfflineCashSale,
   detachPreviousOrderEditCartId,
   resolvePreviousOrderEditServerCartId,
@@ -183,6 +184,8 @@ import {
   peekPosOfflineOrderNumberCount,
   posTicketFieldsFromCart,
   peekNextPosOfflineOrderSlot,
+  peekLocalPosTicketNext,
+  ensurePosOfflineOrderNumbers,
   purgeReservedPosTicketsUpTo,
   seedLocalPosTicketSeqFromSale,
   resolvePosTicketForCheckout,
@@ -234,7 +237,7 @@ import {
   rememberPosOrderCustomer,
   rememberPosOrderCustomerName,
 } from "@/lib/pos-customer-name-memory";
-import { readPosLastReceipt, rememberPosLastReceipt } from "@/lib/pos-last-receipt";
+import { readPosLastReceipt, rememberPosLastReceipt, clearPosLastReceipt } from "@/lib/pos-last-receipt";
 import {
   posCashLineAmount,
   posDisplayCartLineAmount,
@@ -246,6 +249,7 @@ import {
   rememberAutoHeldOrder,
 } from "@/lib/pos-auto-held";
 import {
+  clearAllLocalHeldOrders,
   countLocalHeldOrders,
   deleteLocalHeldOrder,
   forgetLocalHeldOrder,
@@ -624,8 +628,15 @@ function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = nu
   return serverNext;
 }
 
-/** Prefer reserved offline slot (starts at 1) over server watermark peek. */
+/** Prefer local/server Cash Sales seq (includes cancelled) over a stale session peek. */
 async function resolveNextPosTicketForWorkspace(activeCart, sessionOrders, pendingSale = null) {
+  // Ctrl+R / new order: reseed from server so cancelled Cash Sales #s are skipped (274→275).
+  try {
+    await ensurePosOfflineOrderNumbers({ force: false });
+  } catch {
+    /* offline — use local seq / session */
+  }
+
   const sessionNext = resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale);
   const emptyFresh =
     !(activeCart?.lines?.length > 0) &&
@@ -633,31 +644,43 @@ async function resolveNextPosTicketForWorkspace(activeCart, sessionOrders, pendi
     !activeCart?.offline_client_sale_uuid;
   const alreadyShowing = resolvePosNextBrowseNumber(activeCart);
 
-  // Already on the blank next ticket after F10 / prepare — keep it (do not +1 again).
+  // Already on the blank next ticket after F10 / prepare — keep it (do not +1 again),
+  // unless the on-device/server seq has moved past a cancelled ticket (274 → 275).
+  const localNext = await peekLocalPosTicketNext().catch(() => null);
+
   if (
     emptyFresh &&
     alreadyShowing != null &&
     sessionNext != null &&
-    Number(alreadyShowing) === Number(sessionNext)
+    Number(alreadyShowing) === Number(sessionNext) &&
+    (localNext == null || Number(alreadyShowing) >= Number(localNext))
   ) {
     return Number(alreadyShowing);
   }
 
   const slot = await peekNextPosOfflineOrderSlot().catch(() => null);
-  if (slot?.pos_order_num != null && Number(slot.pos_order_num) > 0) {
-    const slotNum = Number(slot.pos_order_num);
-    // Prefer session last+1 when the blank cart already matches it and the slot
-    // would skip ahead (slot already consumed for this open ticket).
-    if (
-      emptyFresh &&
-      alreadyShowing != null &&
-      sessionNext != null &&
-      Number(alreadyShowing) === Number(sessionNext) &&
-      slotNum > Number(sessionNext)
-    ) {
-      return Number(alreadyShowing);
-    }
-    return slotNum;
+  const slotNum =
+    slot?.pos_order_num != null && Number(slot.pos_order_num) > 0
+      ? Number(slot.pos_order_num)
+      : null;
+
+  if (
+    emptyFresh &&
+    alreadyShowing != null &&
+    sessionNext != null &&
+    Number(alreadyShowing) === Number(sessionNext) &&
+    slotNum != null &&
+    slotNum > Number(sessionNext) &&
+    (localNext == null || Number(alreadyShowing) >= Number(localNext))
+  ) {
+    return Number(alreadyShowing);
+  }
+
+  const candidates = [sessionNext, localNext, slotNum].filter(
+    (n) => n != null && Number(n) > 0,
+  );
+  if (candidates.length) {
+    return Math.max(...candidates.map((n) => Number(n)));
   }
   return sessionNext;
 }
@@ -837,6 +860,7 @@ export function PosScreen({ standalone = false }) {
     canFlushOutbox,
     pendingSync,
     orderNumbersLeft,
+    nextPosOrderNum: offlineNextPosOrderNum,
     syncing: offlineSyncing,
     lastSyncMessage,
     syncProgress,
@@ -1289,14 +1313,58 @@ export function PosScreen({ standalone = false }) {
     setZReportOpen(true);
   }
 
-  function handleZReportFinished() {
-    // End-of-day: leave POS after Z — do not prompt for a new float immediately.
+  async function resetPosLocalStateAfterZPrint() {
+    // Only after Z is printed — prepare a clean device for the next till session.
+    if (pendingSync > 0 || failedSyncOrders.length > 0) {
+      try {
+        await syncOfflineOrders();
+      } catch {
+        /* keep unsynced rows — clearPosSessionLocalCache preserves them */
+      }
+    }
+    try {
+      await clearPosSessionLocalCache();
+    } catch (e) {
+      console.warn("Could not clear POS IndexedDB after Z print", e);
+      try {
+        await clearAllLocalHeldOrders();
+        await clearLocalPosCart();
+        await clearPreviousOrderEditDraft();
+      } catch {
+        /* non-fatal — still sign out */
+      }
+    }
+    clearAutoHeldOrder();
+    clearPosLastReceipt(user?.id, user?.branch_id);
+    clearPosUiDraft();
+    cartRef.current = null;
+    setCart(null);
+    setSelectedLineId(null);
+    setHeldOrdersCount(0);
+    setCompletedSale(null);
+    completedSaleRef.current = null;
+    setSessionPosOrders([]);
+    setEditSourceSale(null);
+    setStatusMessage(null);
+  }
+
+  function leavePosAfterZ() {
     floatModalDismissedRef.current = true;
     setFloatModalOpen(false);
     setZReportPayload(null);
     setZReportOpen(false);
     setZReportTillName(null);
     void logout();
+  }
+
+  async function handleZReportPrinted() {
+    await resetPosLocalStateAfterZPrint();
+    leavePosAfterZ();
+  }
+
+  function handleZReportSignOut() {
+    // Sign out without printing — do not wipe held orders / IndexedDB.
+    leavePosAfterZ();
   }
 
   async function handleSuspendSession() {
@@ -1560,6 +1628,23 @@ export function PosScreen({ standalone = false }) {
     setEditOrderNo(peekNextPos != null ? String(peekNextPos) : "");
     return placeholder;
   }
+
+  // After Ctrl+R prepare reseeds Cash Sales seq from server (cancelled #s consumed),
+  // bump a blank workspace so the order box shows 275 instead of stale 274.
+  useEffect(() => {
+    if (!standalone || offlineNextPosOrderNum == null) return undefined;
+    const cart = cartRef.current;
+    const emptyFresh =
+      !(cart?.lines?.length > 0) &&
+      !(cart?.held_order_num && cart?.superseded_sale_id) &&
+      !cart?.offline_client_sale_uuid;
+    if (!emptyFresh) return undefined;
+    const showing = Number(cart?.next_pos_order_num ?? editOrderNo ?? 0);
+    if (Number(offlineNextPosOrderNum) > showing) {
+      applyFreshWorkspacePlaceholder(cart, Number(offlineNextPosOrderNum));
+    }
+    return undefined;
+  }, [standalone, offlineNextPosOrderNum, editOrderNo]);
 
   function getRetailPackage(code) {
     if (!code) return null;
@@ -9397,8 +9482,8 @@ export function PosScreen({ standalone = false }) {
 
       <ZReportModal
         open={zReportOpen}
-        onClose={handleZReportFinished}
-        onPrinted={handleZReportFinished}
+        onClose={handleZReportSignOut}
+        onPrinted={handleZReportPrinted}
         payload={zReportPayload}
         organizationName={organizationName}
         showFloatBreakdown={requireTillFloat}

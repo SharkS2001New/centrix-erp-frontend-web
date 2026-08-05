@@ -1,4 +1,4 @@
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
 import {
   productMatchesCatalogQuery,
   isSellableCatalogProduct,
@@ -128,14 +128,16 @@ export async function getPosOfflineCatalogMeta() {
 
 /** Reserve sequential org order numbers (S00xx) while online for offline selling.
  * Cash Sales # is NOT reserved — each cashier stays on 1,2,3… from sales only.
+ * Always refreshes the local Cash Sales sequence from the server peek (includes
+ * cancelled tickets so Ctrl+R advances 274 cancelled → next 275).
  */
 export async function ensurePosOfflineOrderNumbers({ force = false } = {}) {
   return withPosOfflineExclusiveLock(async () => {
     const available = await idbCountOrderNumbers();
-    if (!force && available >= POS_OFFLINE_RESERVE_LOW) {
-      return { reserved: 0, available };
-    }
-    const need = Math.max(POS_OFFLINE_RESERVE_COUNT - available, POS_OFFLINE_RESERVE_COUNT);
+    const poolOk = !force && available >= POS_OFFLINE_RESERVE_LOW;
+    const need = poolOk
+      ? 0
+      : Math.max(POS_OFFLINE_RESERVE_COUNT - available, POS_OFFLINE_RESERVE_COUNT);
     const res = await apiRequest("/sales/order-numbers/reserve", {
       method: "POST",
       body: { count: Math.min(need, POS_OFFLINE_RESERVE_COUNT) },
@@ -160,13 +162,27 @@ export async function ensurePosOfflineOrderNumbers({ force = false } = {}) {
     } else if (numbers.length) {
       await idbAppendOrderNumbers(numbers);
     }
-    // Seed local Cash Sales sequence from server sale max (next = saleMax+1).
+    // Seed local Cash Sales sequence from server (cancelled #s stay consumed).
     const nextPos = Number(res?.next_pos_order_num ?? 0);
     if (Number.isFinite(nextPos) && nextPos > 0) {
       await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date);
     }
-    return { reserved: slots.length || numbers.length, available: await idbCountOrderNumbers() };
+    return {
+      reserved: slots.length || numbers.length,
+      available: await idbCountOrderNumbers(),
+      next_pos_order_num: Number.isFinite(nextPos) && nextPos > 0 ? nextPos : null,
+      pos_order_date: res?.pos_order_date ?? null,
+    };
   });
+}
+
+/** Next Cash Sales # from the on-device sequence (after server reseed / local issues). */
+export async function peekLocalPosTicketNext(posOrderDate = null) {
+  const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
+  const key = `pos_ticket_seq_${today}`;
+  const current = Number((await idbGetMeta(key)) ?? 0);
+  if (!(current > 0)) return null;
+  return current + 1;
 }
 
 export async function peekPosOfflineOrderNumberCount() {
@@ -339,6 +355,8 @@ export async function loadPreviousOrderEditDraft() {
 export async function clearPreviousOrderEditDraft() {
   await idbClearLocalCart(PREVIOUS_ORDER_EDIT_DRAFT_ID);
 }
+
+export { clearPosSessionLocalCache } from "@/lib/pos-session-local-cache";
 
 export function isServerPosCartId(id) {
   return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
@@ -1723,8 +1741,19 @@ export async function discardOutboxSale(clientSaleUuid) {
     if (local?.offline_client_sale_uuid === uuid) {
       await idbClearLocalCart("active");
     }
+    // Cancelled/discarded Cash Sales # stays consumed — next local ticket is N+1.
+    const discardedPos = Number(
+      existing.sale_payload?.pos_order_num ?? existing.checkout_body?.pos_order_num ?? 0,
+    );
+    const discardedDate =
+      normalizePosOrderDate(existing.sale_payload?.pos_order_date) ??
+      normalizePosOrderDate(existing.checkout_body?.pos_order_date);
+    if (Number.isFinite(discardedPos) && discardedPos > 0) {
+      await seedLocalPosTicketSeq(discardedPos, discardedDate).catch(() => {});
+    }
+    // Refresh reserved S00xx + Cash Sales sequence from server (includes cancelled max).
     try {
-      await ensurePosOfflineOrderNumbers({ force: false });
+      await ensurePosOfflineOrderNumbers({ force: true });
     } catch {
       /* ignore when offline */
     }
@@ -1766,16 +1795,38 @@ function isDuplicateOrderNumError(err) {
 /** Cash Sales # (pos_order_num) collision — bump to next free ticket and retry upload. */
 function isCashSalesTicketCollisionError(err) {
   const msg = String(err?.message ?? err ?? "").toLowerCase();
-  if (/cash\s*sales/.test(msg) && /(already used|could not be claimed|already exists)/.test(msg)) {
+  if (/cash\s*sales/.test(msg) && /(already used|could not be claimed|already exists|could not allocate)/.test(msg)) {
     return true;
   }
   if (err instanceof ApiError) {
     const blob = JSON.stringify(err.body ?? {}).toLowerCase();
-    if (/cash\s*sales/.test(blob) && /(already used|could not be claimed|already exists)/.test(blob)) {
+    if (/cash\s*sales/.test(blob) && /(already used|could not be claimed|already exists|could not allocate)/.test(blob)) {
       return true;
     }
   }
   return false;
+}
+
+/** Generic 500 "report to admin" wrapper — often hides Cash Sales / order # collision. */
+function isOpaqueSalesServerError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  if (/an error occurred in sales/.test(msg) && /system administrator/.test(msg)) {
+    return true;
+  }
+  if (err instanceof ApiError && err.status >= 500) {
+    return true;
+  }
+  return false;
+}
+
+function outboxSyncErrorMessage(err) {
+  if (err instanceof ApiError) {
+    const formatted = formatApiErrorMessage(err.body, err.message);
+    if (formatted && !/^server error$/i.test(formatted)) {
+      return formatted;
+    }
+  }
+  return err?.message ?? "Sync failed";
 }
 
 
@@ -2021,6 +2072,7 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
               && (
                 isDuplicateOrderNumError(firstErr)
                 || isCashSalesTicketCollisionError(firstErr)
+                || isOpaqueSalesServerError(firstErr)
                 || isMissingTemporaryCartError(firstErr)
               );
 
@@ -2045,9 +2097,12 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
                   }
                 }
               }
-            } else if (isCashSalesTicketCollisionError(firstErr)) {
-              // Cash Sales # already taken on server — retry without locking the printed
-              // ticket so the API allocates the next free # (275, 276, …) and uploads.
+            } else if (
+              isCashSalesTicketCollisionError(firstErr)
+              || isOpaqueSalesServerError(firstErr)
+            ) {
+              // Cash Sales # already taken — or opaque 500 that often hides that collision.
+              // Retry without locking the printed ticket so the API allocates the next free #.
               sale = await checkoutOutboxRow(row, printedOrderNum, {
                 clear_pos_order_num: true,
               });
@@ -2144,7 +2199,7 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
             : `Synced ${done} of ${total}…`,
         });
       } catch (err) {
-        const message = err?.message ?? "Sync failed";
+        const message = outboxSyncErrorMessage(err);
         await idbMarkOutboxError(row.client_sale_uuid, message);
         reportPosOutboxSyncFailure(row, err, printedOrderNum);
         failed += 1;
@@ -2205,13 +2260,15 @@ export function isLocalFirstCashCheckout(body) {
   return true;
 }
 
-/** Prepare for offline: catalog + order number pool. */
+/** Prepare for offline: catalog + order number pool + Cash Sales seq from server. */
 export async function preparePosOfflineReady() {
   const catalog = await warmPosOfflineCatalog({ force: false });
+  // Always hit reserve (count may be 0) so Ctrl+R reseeds Cash Sales past cancelled #s.
   const numbers = await ensurePosOfflineOrderNumbers({ force: false });
   return {
     catalogCount: catalog.count,
     orderNumbersAvailable: numbers.available,
+    nextPosOrderNum: numbers.next_pos_order_num ?? null,
     pendingSync: await getPosOfflinePendingCount(),
   };
 }

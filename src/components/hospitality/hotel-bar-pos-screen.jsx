@@ -7,10 +7,12 @@ import { useHotelPosOfflineSupport } from "@/hooks/use-hotel-pos-offline-support
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   addHotelCheckLine,
+  addHotelCheckRoomStay,
   assignHotelCheckGuest,
   assignHotelCheckTable,
   clearHotelCheck,
   fetchHotelPosCatalog,
+  fetchHotelPosSellableRooms,
   fetchHotelPosSettings,
   holdHotelCheck,
   listCollectibleHotelChecks,
@@ -71,8 +73,26 @@ const MENU_FILTER_CHIPS = [
   { id: "", label: "All", short: "All" },
   { id: "food", label: "Food", short: "Food" },
   { id: "drinks", label: "Drinks", short: "Drinks" },
+  { id: "rooms", label: "Rooms", short: "Rooms", requiresRooms: true },
 ];
 
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function defaultCheckoutLocalValue(nights) {
+  const d = new Date();
+  d.setDate(d.getDate() + Math.max(1, Number(nights) || 1));
+  d.setHours(10, 0, 0, 0);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function localDatetimeToIso(localValue) {
+  if (!localValue) return null;
+  const d = new Date(localValue);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
 async function printCheckReceiptSafe(check, { title, organization, capabilities, user, checkPrintSettings }) {
   try {
     const result = await printHospitalityCheckReceipt(
@@ -164,6 +184,7 @@ export function HotelBarPosScreen() {
   );
   const [openFolios, setOpenFolios] = useState([]);
   const [activePaymentMethods, setActivePaymentMethods] = useState([]);
+  const [roomStayDraft, setRoomStayDraft] = useState(null);
   const searchRef = useRef(null);
   const tableSelectRef = useRef(null);
   const catalogScrollRef = useRef(null);
@@ -172,6 +193,11 @@ export function HotelBarPosScreen() {
 
   const showGuestField = guestNameEnabled;
   const showTableField = tablePosEnabled;
+  const roomsServiceEnabled = isHospitalityServiceEnabled(capabilities, "rooms");
+  const visibleMenuChips = useMemo(
+    () => MENU_FILTER_CHIPS.filter((chip) => !chip.requiresRooms || roomsServiceEnabled),
+    [roomsServiceEnabled],
+  );
 
   const paymentConfig = useMemo(
     () =>
@@ -355,6 +381,24 @@ export function HotelBarPosScreen() {
       if (append) setCatalogLoadingMore(true);
       else setCatalogLoading(true);
       try {
+        if (menuGroup === "rooms") {
+          if (offlineMode) {
+            if (requestId !== catalogRequestIdRef.current) return;
+            setProducts([]);
+            setCatalogHasMore(false);
+            setCatalogNextOffset(null);
+            setSearching(Boolean(String(q ?? "").trim()));
+            notifyError("Room sales need a connection. Reconnect to sell rooms.");
+            return;
+          }
+          const res = await fetchHotelPosSellableRooms({ q });
+          if (requestId !== catalogRequestIdRef.current) return;
+          setProducts(Array.isArray(res?.data) ? res.data : []);
+          setSearching(Boolean(String(q ?? "").trim()));
+          setCatalogHasMore(false);
+          setCatalogNextOffset(null);
+          return;
+        }
         if (offlineMode) {
           const batch = await searchHotelPosOfflineCatalog(q, {
             limit: catalogLimit + offset,
@@ -404,7 +448,7 @@ export function HotelBarPosScreen() {
         applyCatalogMeta(res);
       } catch (e) {
         if (requestId !== catalogRequestIdRef.current) return;
-        if (offlineMode) {
+        if (offlineMode && menuGroup !== "rooms") {
           try {
             const batch = await searchHotelPosOfflineCatalog(q, {
               limit: catalogLimit,
@@ -524,6 +568,16 @@ export function HotelBarPosScreen() {
 
   async function ensureTableAssigned(activeCheck) {
     if (!showTableField) return activeCheck;
+    const lines = activeCheck?.lines ?? [];
+    const hasFnB = lines.some(
+      (line) =>
+        !(line?.is_room_stay || line?.modifiers?.type === "room_stay") &&
+        (line?.product_code || line?.product_id),
+    );
+    if (lines.length > 0 && !hasFnB) {
+      // Room-only ticket — table not required.
+      return activeCheck;
+    }
     const tableId = selectedTableId || activeCheck?.floor_table_id;
     if (!tableId) {
       tableSelectRef.current?.focus();
@@ -570,6 +624,24 @@ export function HotelBarPosScreen() {
 
   async function handleTapProduct(product) {
     if (!product?.product_code || busy) return;
+
+    if (product.is_room || menuGroup === "rooms") {
+      if (offlineMode) {
+        notifyError("Room sales need a connection.");
+        return;
+      }
+      if (!(Number(product.nightly_rate ?? product.unit_price) > 0)) {
+        notifyError("This room has no nightly rate. Set a base rate on the room type.");
+        return;
+      }
+      setRoomStayDraft({
+        room: product,
+        nights: 1,
+        checkout_local: defaultCheckoutLocalValue(1),
+        guest_name: guestNameDraft || "",
+      });
+      return;
+    }
 
     if (showTableField) {
       const tableId = selectedTableId || check?.floor_table_id;
@@ -620,6 +692,60 @@ export function HotelBarPosScreen() {
         }
       }
       setCheck(next);
+    } catch (e) {
+      notifyError(dedupeError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRoomStay() {
+    if (!roomStayDraft?.room || busy) return;
+    const nights = Math.max(1, Math.min(90, Number(roomStayDraft.nights) || 1));
+    const checkoutIso = localDatetimeToIso(roomStayDraft.checkout_local);
+    if (!checkoutIso) {
+      notifyError("Choose a valid checkout date and time.");
+      return;
+    }
+    if (new Date(checkoutIso).getTime() <= Date.now()) {
+      notifyError("Checkout time must be in the future.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      let active = check;
+      const needsNew =
+        !active?.id ||
+        active.status === "paid" ||
+        active.status === "settled" ||
+        active.status === "void" ||
+        (offlineMode && active?.id && !isLocalHotelCheckId(active.id) && !active.offline);
+
+      if (needsNew) {
+        active = await startFreshCheck();
+      }
+      if (!active?.id) throw new Error("Could not open check.");
+
+      const guest = String(roomStayDraft.guest_name ?? "").trim();
+      const roomNumber = roomStayDraft.room.room_number;
+      const res = await addHotelCheckRoomStay(active.id, {
+        room_id: Number(roomStayDraft.room.id),
+        nights,
+        checkout_at: checkoutIso,
+        guest_name: guest || null,
+      });
+      const next = res?.check ?? null;
+      setCheck(next);
+      if (guest) setGuestNameDraft(guest);
+      setRoomStayDraft(null);
+      notifySuccess(
+        `Room ${roomNumber} · ${nights} night${nights === 1 ? "" : "s"} added — collect payment to print`,
+      );
+      // Refresh available rooms so occupied-pending aren't re-shown after settle; after add still vacant until pay.
+      if (menuGroup === "rooms") {
+        void loadCatalog(debouncedSearch, { offset: 0, append: false });
+      }
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -951,6 +1077,9 @@ export function HotelBarPosScreen() {
         );
         setPayOpen(false);
         await startFreshCheck();
+        if (menuGroup === "rooms") {
+          void loadCatalog(debouncedSearch, { offset: 0, append: false });
+        }
       } else {
         await printCheckReceiptSafe(next, {
           title: "Partial payment",
@@ -1128,7 +1257,7 @@ export function HotelBarPosScreen() {
               role="toolbar"
               aria-label="Menu filter"
             >
-              {MENU_FILTER_CHIPS.map((chip) => (
+              {visibleMenuChips.map((chip) => (
                 <button
                   key={chip.id || "all"}
                   type="button"
@@ -1153,7 +1282,7 @@ export function HotelBarPosScreen() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search item…"
+              placeholder={menuGroup === "rooms" ? "Search room…" : "Search item…"}
               className="theme-input hotel-pos-field w-full rounded-xl px-4 py-2.5 text-sm"
               autoComplete="off"
             />
@@ -1174,19 +1303,28 @@ export function HotelBarPosScreen() {
 
           <div ref={catalogScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
             {catalogLoading && !products.length ? (
-              <p className="theme-subtext py-20 text-center text-sm">Loading menu…</p>
+              <p className="theme-subtext py-20 text-center text-sm">
+                {menuGroup === "rooms" ? "Loading rooms…" : "Loading menu…"}
+              </p>
             ) : !products.length ? (
               <p className="theme-subtext py-20 text-center text-sm">
-                {debouncedSearch ? "No products match your search." : "No products in catalogue yet."}
+                {menuGroup === "rooms"
+                  ? debouncedSearch
+                    ? "No available rooms match your search."
+                    : "No vacant rooms right now."
+                  : debouncedSearch
+                    ? "No products match your search."
+                    : "No products in catalogue yet."}
               </p>
             ) : (
               <>
                 <div className="grid gap-3" style={gridStyle}>
                   {products.map((product) => {
                     const hasImage = Boolean(product.has_image || product.image_url);
+                    const isRoom = Boolean(product.is_room || menuGroup === "rooms");
                     return (
                       <button
-                        key={product.product_code}
+                        key={product.product_code || product.id}
                         type="button"
                         disabled={busy}
                         onClick={() => void handleTapProduct(product)}
@@ -1208,24 +1346,40 @@ export function HotelBarPosScreen() {
                               </span>
                             ) : null}
                           </div>
+                        ) : isRoom ? (
+                          <div className="hotel-pos-tile-media relative flex aspect-[4/3] w-full items-center justify-center bg-[var(--theme-surface-muted)]">
+                            <span className="theme-heading text-3xl font-bold tabular-nums">
+                              {product.room_number}
+                            </span>
+                          </div>
                         ) : null}
                         <div className="flex min-h-0 flex-1 flex-col justify-between gap-2 p-3.5">
                           <div className="flex items-start justify-between gap-2">
                             <span className="theme-heading line-clamp-2 text-[15px] font-semibold leading-snug">
-                              {product.product_name}
+                              {isRoom
+                                ? `Room ${product.room_number}`
+                                : product.product_name}
                             </span>
-                            {!hasImage && product.is_popular ? (
+                            {!hasImage && !isRoom && product.is_popular ? (
                               <span className="hotel-pos-top-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
                                 Top
                               </span>
                             ) : null}
                           </div>
+                          {isRoom && product.room_type?.name ? (
+                            <p className="theme-subtext text-[11px]">{product.room_type.name}</p>
+                          ) : null}
                           <div className="flex items-end justify-between gap-2">
                             <p className="text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
-                              {formatHotelMoney(product.unit_price)}
+                              {formatHotelMoney(product.unit_price ?? product.nightly_rate)}
+                              {isRoom ? (
+                                <span className="theme-subtext ml-1 text-[10px] font-semibold uppercase">
+                                  / night
+                                </span>
+                              ) : null}
                             </p>
                             <span className="hotel-pos-add-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide opacity-80 group-hover:opacity-100">
-                              Add
+                              {isRoom ? "Book" : "Add"}
                             </span>
                           </div>
                         </div>
@@ -1407,39 +1561,47 @@ export function HotelBarPosScreen() {
                         <div className="min-w-0 flex-1">
                           <p className="theme-heading text-sm font-semibold">{line.description}</p>
                           <p className="theme-subtext mt-0.5 text-xs">
-                            {formatHotelMoney(line.unit_price)} each
+                            {line.is_room_stay || line.modifiers?.type === "room_stay"
+                              ? `${formatHotelMoney(line.unit_price)} / night`
+                              : `${formatHotelMoney(line.unit_price)} each`}
                           </p>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1.5">
                           <span className="text-sm font-bold tabular-nums">
                             {formatHotelMoney(line.line_total)}
                           </span>
-                          <div
-                            className="flex items-center gap-1"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              type="button"
-                              className="theme-secondary-btn flex h-8 w-8 items-center justify-center rounded-full text-base font-bold"
-                              disabled={busy}
-                              onClick={() => void bumpQty(line, -1)}
-                              aria-label="Decrease quantity"
-                            >
-                              −
-                            </button>
-                            <span className="min-w-[1.75rem] text-center text-sm font-semibold tabular-nums">
-                              {line.qty}
+                          {line.is_room_stay || line.modifiers?.type === "room_stay" ? (
+                            <span className="theme-subtext text-[11px] font-semibold tabular-nums">
+                              {Number(line.qty)} night{Number(line.qty) === 1 ? "" : "s"}
                             </span>
-                            <button
-                              type="button"
-                              className="theme-secondary-btn flex h-8 w-8 items-center justify-center rounded-full text-base font-bold"
-                              disabled={busy}
-                              onClick={() => void bumpQty(line, 1)}
-                              aria-label="Increase quantity"
+                          ) : (
+                            <div
+                              className="flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              +
-                            </button>
-                          </div>
+                              <button
+                                type="button"
+                                className="theme-secondary-btn flex h-8 w-8 items-center justify-center rounded-full text-base font-bold"
+                                disabled={busy}
+                                onClick={() => void bumpQty(line, -1)}
+                                aria-label="Decrease quantity"
+                              >
+                                −
+                              </button>
+                              <span className="min-w-[1.75rem] text-center text-sm font-semibold tabular-nums">
+                                {line.qty}
+                              </span>
+                              <button
+                                type="button"
+                                className="theme-secondary-btn flex h-8 w-8 items-center justify-center rounded-full text-base font-bold"
+                                disabled={busy}
+                                onClick={() => void bumpQty(line, 1)}
+                                aria-label="Increase quantity"
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </button>
                     </li>
@@ -1601,6 +1763,114 @@ export function HotelBarPosScreen() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {roomStayDraft ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/45 p-4 sm:items-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="hotel-pos-room-stay-title"
+            className="w-full max-w-md rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 shadow-xl"
+          >
+            <h2 id="hotel-pos-room-stay-title" className="theme-heading text-lg font-semibold">
+              Room {roomStayDraft.room.room_number}
+            </h2>
+            <p className="theme-subtext mt-1 text-sm">
+              {formatHotelMoney(roomStayDraft.room.nightly_rate ?? roomStayDraft.room.unit_price)} / night
+              {roomStayDraft.room.room_type?.name ? ` · ${roomStayDraft.room.room_type.name}` : ""}
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="theme-subtext mb-1 block text-[11px] font-semibold uppercase tracking-wide">
+                  Nights
+                </span>
+                <select
+                  className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
+                  value={String(roomStayDraft.nights)}
+                  onChange={(e) => {
+                    const nights = Number(e.target.value) || 1;
+                    setRoomStayDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            nights,
+                            checkout_local: defaultCheckoutLocalValue(nights),
+                          }
+                        : prev,
+                    );
+                  }}
+                >
+                  {Array.from({ length: 14 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n} night{n === 1 ? "" : "s"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="theme-subtext mb-1 block text-[11px] font-semibold uppercase tracking-wide">
+                  Checkout date &amp; time
+                </span>
+                <input
+                  type="datetime-local"
+                  className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
+                  value={roomStayDraft.checkout_local}
+                  onChange={(e) =>
+                    setRoomStayDraft((prev) =>
+                      prev ? { ...prev, checkout_local: e.target.value } : prev,
+                    )
+                  }
+                />
+              </label>
+              <label className="block">
+                <span className="theme-subtext mb-1 block text-[11px] font-semibold uppercase tracking-wide">
+                  Guest name
+                </span>
+                <input
+                  type="text"
+                  className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
+                  value={roomStayDraft.guest_name}
+                  onChange={(e) =>
+                    setRoomStayDraft((prev) =>
+                      prev ? { ...prev, guest_name: e.target.value } : prev,
+                    )
+                  }
+                  placeholder="Guest name"
+                  maxLength={160}
+                />
+              </label>
+              <p className="theme-subtext text-xs">
+                Total{" "}
+                <strong className="theme-heading">
+                  {formatHotelMoney(
+                    Number(roomStayDraft.room.nightly_rate ?? roomStayDraft.room.unit_price) *
+                      Math.max(1, Number(roomStayDraft.nights) || 1),
+                  )}
+                </strong>
+                . Room stays occupied until checkout time, then frees automatically.
+              </p>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setRoomStayDraft(null)}
+                className="theme-secondary-btn flex-1 rounded-xl py-3 text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void confirmRoomStay()}
+                className="hotel-pos-primary-cta flex-1 rounded-xl py-3 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+              >
+                Add to ticket
+              </button>
             </div>
           </div>
         </div>

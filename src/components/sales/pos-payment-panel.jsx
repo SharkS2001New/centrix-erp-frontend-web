@@ -7,7 +7,14 @@ import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
-import { buildCheckoutPaymentSplits, alignPaymentSplitsToPayNow, buildReceiptTenderSnapshot } from "@/lib/checkout-payment-splits";
+import {
+  alignPaymentSplitsToPayNow,
+  buildCheckoutPaymentSplits,
+  buildReceiptTenderSnapshot,
+  isPosCashChangeExcessive,
+  MAX_POS_CASH_CHANGE,
+  posCashChangeDue,
+} from "@/lib/checkout-payment-splits";
 import {
   customerCreditSummary,
   validateCustomerCreditSale,
@@ -572,7 +579,7 @@ export function PosPaymentPanel({
     );
     const receiptTenders = buildReceiptTenderSnapshot(tenderAmounts, {
       changeDue: adjustmentMode ? 0 : Math.max(0, amountPaid - checkoutTotal),
-      amountPaid: adjustmentMode ? amountPaid : amountPaid,
+      amountPaid,
     });
 
     const body = {
@@ -638,6 +645,14 @@ export function PosPaymentPanel({
     }
     if (cfg.rejectOverpayment && amountPaid - checkoutTotal > 0.01) {
       return `Payment of ${formatSaleKes(amountPaid)} exceeds the amount due of ${formatSaleKes(checkoutTotal)}. Enter the correct amount to continue.`;
+    }
+    if (!cfg.rejectOverpayment && isPosCashChangeExcessive(amountPaid, checkoutTotal)) {
+      const change = posCashChangeDue(amountPaid, checkoutTotal);
+      return (
+        `Overpay too large — change would be ${formatSaleKes(change)}. ` +
+        `Only reasonable change is allowed (max ${formatSaleKes(MAX_POS_CASH_CHANGE)}). ` +
+        `Enter the amount the customer actually tendered.`
+      );
     }
     if (cfg.allowPartialPayment && amountPaid > 0 && amountPaid + 0.01 < checkoutTotal) {
       return null;
@@ -1223,12 +1238,18 @@ export function PosPaymentPanel({
       })
     : null;
 
+  const changeExcessive =
+    !adjustmentMode &&
+    !cfg.rejectOverpayment &&
+    isPosCashChangeExcessive(amountPaid, checkoutTotal);
+
   const canComplete =
     adjustmentMode
       ? checkoutTotal <= 0.01 || amountPaid + 0.01 >= checkoutTotal
-      : (hasCreditCustomer && !creditValidationError) ||
-        amountPaid + 0.01 >= checkoutTotal ||
-        (cfg.allowPartialPayment && amountPaid > 0);
+      : !changeExcessive &&
+        ((hasCreditCustomer && !creditValidationError) ||
+          amountPaid + 0.01 >= checkoutTotal ||
+          (cfg.allowPartialPayment && amountPaid > 0));
 
   /** Credit customer field is shown whenever credit payment is enabled in admin settings. */
   const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode;
@@ -1945,8 +1966,16 @@ export function PosPaymentPanel({
         {!adjustmentMode ? (
         <div className="flex justify-between">
           <dt>Change Due</dt>
-          <dd className="font-bold">{formatSaleKes(changeDue)}</dd>
+          <dd className={`font-bold${changeExcessive ? " text-amber-700 dark:text-amber-400" : ""}`}>
+            {formatSaleKes(changeDue)}
+          </dd>
         </div>
+        ) : null}
+        {changeExcessive ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+            Overpay — change of {formatSaleKes(changeDue)} is too high. Max change is{" "}
+            {formatSaleKes(MAX_POS_CASH_CHANGE)}. Enter a realistic tender amount.
+          </p>
         ) : null}
       </dl>
 
