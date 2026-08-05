@@ -3,12 +3,14 @@
 import { Suspense, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { workspaceLandingPath } from "@/lib/workspace-navigation";
-import { getStoredWorkspace } from "@/lib/auth-storage";
-import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
   defaultWorkspaceId,
   needsWorkspaceSelection,
+  workspaceLandingPath,
+} from "@/lib/workspace-navigation";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
+import {
   pathBelongsToWorkspace,
   workspaceHomePath,
 } from "@/lib/workspaces";

@@ -3,16 +3,17 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { workspaceLandingPath } from "@/lib/workspace-navigation";
+import {
+  defaultWorkspaceId,
+  needsWorkspaceSelection,
+  workspaceLandingPath,
+} from "@/lib/workspace-navigation";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
-  defaultWorkspaceId,
   isPosWorkspace,
-  needsWorkspaceSelection,
   pathBelongsToWorkspace,
-  workspaceHomePath,
 } from "@/lib/workspaces";
 
 /** Keeps POS shell routes scoped to the POS workspace. */
