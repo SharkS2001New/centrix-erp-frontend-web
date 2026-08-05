@@ -29,10 +29,22 @@ const BANK_TRANSFER_ALWAYS_HIDDEN = new Set([
 /** Same remittance-style layout as bank transfer (NSSF / other deductions by period). */
 const PAYROLL_REMITTANCE_ALWAYS_HIDDEN = BANK_TRANSFER_ALWAYS_HIDDEN;
 
+/**
+ * Statutory deductions / payroll sheet — keep Gross, PAYE, SHIF, Housing Levy, Net, etc.
+ * Drop employee ids/codes/department and run meta (shown in document header when uniform).
+ */
+const STATUTORY_DEDUCTIONS_ALWAYS_HIDDEN = new Set([
+  ...BANK_TRANSFER_ALWAYS_HIDDEN,
+  "employee_code",
+  "department_name",
+  "branch_id",
+]);
+
 const PAYROLL_REMITTANCE_REPORT_KEYS = new Set([
   "bank-transfer",
   "nssf-remittance",
   "other-deductions",
+  "statutory-deductions",
 ]);
 
 /** @param {object[]} rows @param {string} key */
@@ -141,6 +153,18 @@ const REPORT_COLUMN_LABELS = {
   calc_type: "Calc type",
   frequency: "Frequency",
   amount: "Amount",
+  full_name: "Employee",
+  gross_pay: "Gross Pay",
+  taxable_income: "Taxable Income",
+  paye: "PAYE",
+  nssf: "NSSF",
+  shif: "SHIF",
+  housing_levy: "Housing Levy",
+  other_deductions: "Other Deductions",
+  total_deductions: "Total Deductions",
+  net_pay: "Net Pay",
+  employer_nssf: "Employer NSSF",
+  employer_housing: "Employer Housing",
 };
 
 /**
@@ -173,6 +197,9 @@ export function isRedundantReportColumn(
     if (key === "payment_method" && isUniformReportColumn(rows, "payment_method")) {
       return true;
     }
+  }
+  if (reportKey === "statutory-deductions") {
+    if (STATUTORY_DEDUCTIONS_ALWAYS_HIDDEN.has(key)) return true;
   }
   if (reportKey === "nssf-remittance" || reportKey === "other-deductions") {
     if (PAYROLL_REMITTANCE_ALWAYS_HIDDEN.has(key)) return true;

@@ -47,6 +47,8 @@ const PRODUCT_IMPORT_COLUMNS = [
   { key: "vat_code", label: "VAT code" },
   { key: "vat_id", label: "VAT ID" },
   { key: "sell_on_retail", label: "Sell on retail" },
+  { key: "sell_on_bar", label: "Sell on bar" },
+  { key: "sell_on_hotel", label: "Sell on hotel / restaurant" },
 ];
 
 const SAMPLE_HEADERS = [
@@ -68,6 +70,8 @@ const SAMPLE_HEADERS = [
   "supplier_name",
   "vat_code",
   "sell_on_retail",
+  "sell_on_bar",
+  "sell_on_hotel",
 ];
 
 const SAMPLE_ROW = [
@@ -89,6 +93,8 @@ const SAMPLE_ROW = [
   "Sample Supplier Ltd",
   "A",
   "false",
+  "true",
+  "true",
 ];
 
 function productImportColumns(includeShelfLocation) {
@@ -283,6 +289,11 @@ function ImportModal({ open, onClose, onImported, includeShelfLocation = false }
     const sell = String(row.sell_on_retail ?? "").toLowerCase();
     if (sell === "true" || sell === "1" || sell === "yes") body.sell_on_retail = true;
     if (sell === "false" || sell === "0" || sell === "no") body.sell_on_retail = false;
+    for (const channelKey of ["sell_on_bar", "sell_on_hotel"]) {
+      const channel = String(row[channelKey] ?? "").toLowerCase();
+      if (channel === "true" || channel === "1" || channel === "yes") body[channelKey] = true;
+      if (channel === "false" || channel === "0" || channel === "no") body[channelKey] = false;
+    }
     return body;
   }
 

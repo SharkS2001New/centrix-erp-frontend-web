@@ -11,6 +11,8 @@ export const BACKOFFICE_FINANCE_REPORT_SLUGS = [
   "ar-aging",
   "invoice-payments",
   "kra-receipts",
+  "kra-compliance-summary",
+  "kra-unfiscalized-sales",
 ];
 
 /** Either sales or accounting reports module unlocks these slugs. */

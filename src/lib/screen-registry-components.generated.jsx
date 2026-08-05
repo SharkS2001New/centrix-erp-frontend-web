@@ -111,6 +111,9 @@ export const SCREEN_COMPONENTS = {
   "fulfillment-vehicles-id": lazy(() =>
     import("@/components/tab-screens/fulfillment-vehicles-id").then((m) => ({ default: m.FulfillmentVehiclesIdScreen })),
   ),
+  "hospitality-orders-id": lazy(() =>
+    import("@/components/tab-screens/hospitality-orders-id").then((m) => ({ default: m.HospitalityOrderDetailScreen })),
+  ),
   "hr-employees-id": lazy(() =>
     import("@/components/tab-screens/hr-employees-id").then((m) => ({ default: m.HrEmployeesIdScreen })),
   ),
@@ -285,13 +288,11 @@ export const SCREEN_COMPONENTS = {
   "hospitality-orders": lazy(() =>
     import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityOrdersScreen })),
   ),
-  "hospitality-orders-id": lazy(() =>
-    import("@/components/tab-screens/hospitality-orders-id").then((m) => ({
-      default: m.HospitalityOrderDetailScreen,
-    })),
-  ),
   "hospitality-outlets": lazy(() =>
     import("@/components/tab-screens/hospitality-outlets").then((m) => ({ default: m.HospitalityOutletsScreen })),
+  ),
+  "hospitality-payments-breakdown": lazy(() =>
+    import("@/components/tab-screens/hospitality-payments-breakdown").then((m) => ({ default: m.HospitalityPaymentsBreakdownScreen })),
   ),
   "hospitality-reservations": lazy(() =>
     import("@/components/tab-screens/hospitality-reservations").then((m) => ({ default: m.HospitalityReservationsScreen })),

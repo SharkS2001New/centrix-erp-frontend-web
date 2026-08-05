@@ -12,7 +12,9 @@ const CARDS = [
   {
     href: "/admin/settings",
     title: "Organization settings",
-    description: "Sales, inventory, finance, HR, notifications, security, and AI preferences.",
+    description: "Inventory, finance, HR, notifications, security, and AI preferences.",
+    descriptionHospitality:
+      "Hotel inventory, procurement, printouts, HR, notifications, and security preferences.",
     icon: "⚙️",
     permission: P.admin.settings.view,
   },
@@ -20,6 +22,7 @@ const CARDS = [
     href: "/admin/themes",
     title: "Centrix ERP Themes",
     description: "ERP sidebar colors, primary buttons, and Classic External POS palette.",
+    descriptionHospitality: "ERP sidebar colors and primary buttons for Hotel Backoffice and Admin.",
     icon: "🎨",
     permission: P.admin.settings.view,
   },
@@ -83,6 +86,9 @@ export function AdminOverviewCards() {
     user,
     capabilities,
   });
+  const isHospitality =
+    capabilities?.industry === "hospitality" ||
+    capabilities?.deployment_profile === "hotel_bar";
   const navContext = {
     hasPermission,
     isModuleEnabled,
@@ -125,7 +131,11 @@ export function AdminOverviewCards() {
               <h2 className="theme-heading text-[15px] font-medium group-hover:text-[var(--theme-accent-text)]">
                 {card.title}
               </h2>
-              <p className="theme-subtext mt-1 text-sm">{card.description}</p>
+              <p className="theme-subtext mt-1 text-sm">
+                {isHospitality && card.descriptionHospitality
+                  ? card.descriptionHospitality
+                  : card.description}
+              </p>
             </div>
           </div>
         </AppNavLink>

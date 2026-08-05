@@ -73,6 +73,8 @@ export function buildReportPrintHtml({
   const noteColumns = (columns ?? []).filter((col) => col.printAsRow || col.print_as_row);
   const headers = tableColumns.map((col) => col.label);
   const colSpan = Math.max(1, tableColumns.length);
+  const landscape = tableColumns.length >= 7;
+  const veryWide = tableColumns.length >= 10;
   const period =
     meta.fromDate || meta.toDate
       ? `${meta.fromDate ? formatOrgDate(meta.fromDate) : "—"} – ${meta.toDate ? formatOrgDate(meta.toDate) : "—"}`
@@ -88,11 +90,18 @@ export function buildReportPrintHtml({
   const orgHeaderHtml = branding ? buildReportOrgHeaderHtml(branding) : "";
   const watermarkHtml = branding ? buildReportWatermarkHtml(branding) : "";
   const footerText = branding?.documentFooterText?.trim?.() || "";
+  const compactTableCss = landscape
+    ? veryWide
+      ? "table { font-size: 8px; } th, td { padding: 2px 3px; } th { white-space: nowrap; }"
+      : "table { font-size: 9px; } th, td { padding: 3px 4px; } th { white-space: nowrap; }"
+    : "";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
 <style>
+@page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm; }
 ${reportDocumentStyles(generalSettings)}
 tr.note-row td { background: #f8fafc; color: #334155; font-size: 0.92em; padding-top: 4px; padding-bottom: 6px; }
+${compactTableCss}
 </style></head><body>
 ${watermarkHtml}
 ${orgHeaderHtml}

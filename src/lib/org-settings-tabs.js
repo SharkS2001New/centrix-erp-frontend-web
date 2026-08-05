@@ -56,7 +56,25 @@ function moduleEnabled(capabilities, moduleKey) {
 }
 
 /** @param {object} capabilities erp/capabilities payload */
+function isHospitalityIndustry(capabilities) {
+  return (
+    capabilities?.industry === "hospitality" ||
+    capabilities?.deployment_profile === "hotel_bar"
+  );
+}
+
+/** @param {object} capabilities erp/capabilities payload */
 export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false, tenantSelfService = false } = {}) {
+  const hospitality = isHospitalityIndustry(capabilities);
+
+  // Retail / distribution settings are not used on Hotel deployments.
+  if (
+    hospitality &&
+    ["sales", "external-pos", "mobile", "distribution", "whatsapp"].includes(tabId)
+  ) {
+    return false;
+  }
+
   switch (tabId) {
     case "general":
     case "notifications":
@@ -77,10 +95,14 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
 
     case "external-pos":
     case "themes":
+      // Themes live on /admin/themes. Hide retail External POS tab for hotels;
+      // keep themes only when sales.pos is on (commerce) — hotel uses Themes page for sidebar colors.
+      if (tabId === "themes") {
+        return false;
+      }
       return (
         moduleEnabled(capabilities, "sales.pos") ||
-        moduleEnabled(capabilities, "sales") ||
-        moduleEnabled(capabilities, "admin")
+        moduleEnabled(capabilities, "sales")
       );
 
     case "mobile":
@@ -174,6 +196,9 @@ export function capabilitiesFromOrganizationPayload(payload) {
   return {
     modules,
     module_settings: moduleSettings,
+    industry: capabilities?.industry ?? payload?.organization?.industry ?? null,
+    deployment_profile:
+      capabilities?.deployment_profile ?? payload?.organization?.deployment_profile ?? null,
     channels: resolveSalesChannelsFromModules(modules, {
       mobileOrdersEnabled: sales.enable_mobile_orders !== false,
     }),

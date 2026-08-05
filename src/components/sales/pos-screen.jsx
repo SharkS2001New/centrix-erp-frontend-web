@@ -2038,33 +2038,28 @@ export function PosScreen({ standalone = false }) {
     loadCompletedPosOrders,
   ]);
 
+  const closePendingSyncOverlay = useCallback(() => {
+    // Treat as acknowledged so Close cannot be undone by a stale syncProgress
+    // "failed" flag re-opening the dialog on the next effect pass.
+    pendingSyncAlertRef.current = true;
+    setPendingSyncOpen(false);
+  }, []);
+
   useEffect(() => {
     if (!standalone) return;
     if (pendingSync <= 0) {
       // Mid-flush progress can briefly under-count; keep the popup stable until flush ends.
       if (offlineSyncing) return;
       pendingSyncAlertRef.current = false;
-      if (pendingSyncOpen) {
-        setPendingSyncOpen(false);
-      }
+      setPendingSyncOpen(false);
       return;
     }
-    const hasFailure =
-      failedSyncOrders.length > 0 ||
-      (syncProgress?.phase === "complete" && Number(syncProgress?.failed ?? 0) > 0);
-    if (hasFailure && !pendingSyncAlertRef.current) {
+    // Only real failed outbox rows — do not use syncProgress.failed (stays set after Remove).
+    if (failedSyncOrders.length > 0 && !pendingSyncAlertRef.current) {
       pendingSyncAlertRef.current = true;
       setPendingSyncOpen(true);
     }
-  }, [
-    standalone,
-    pendingSync,
-    pendingSyncOpen,
-    offlineSyncing,
-    failedSyncOrders.length,
-    syncProgress?.phase,
-    syncProgress?.failed,
-  ]);
+  }, [standalone, pendingSync, offlineSyncing, failedSyncOrders.length]);
 
   /** After a failed sync, drop stale offline/edit markers so a new ticket cannot reattach to the old order. */
   useEffect(() => {
@@ -10740,7 +10735,7 @@ export function PosScreen({ standalone = false }) {
 
       <PosPendingSyncOverlay
         open={pendingSyncOpen}
-        onClose={() => setPendingSyncOpen(false)}
+        onClose={closePendingSyncOverlay}
         onCountChange={handlePendingSyncCountChange}
         onDiscarded={() => {
           void refreshOfflineCounts();

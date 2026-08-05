@@ -32,6 +32,7 @@ export const REPORT_UI_ROUTES = {
   "balance-sheet": "/accounting/balance-sheet",
   "cash-flow": "/accounting/cash-flow",
   "general-ledger": "/accounting/general-ledger",
+  "audit-trail": "/admin/audit",
 };
 
 export function reportHref(key, path) {
@@ -159,9 +160,15 @@ export const REPORT_CATEGORY_DEFS = [
   {
     id: "compliance",
     title: "Compliance Reports",
-    description: "Tax receipts and audit trail",
+    description: "KRA fiscal summary, per-invoice receipts, gaps, VAT, and audit trail",
     icon: "compliance",
-    keys: ["kra-receipts", "audit-trail"],
+    keys: [
+      "kra-compliance-summary",
+      "kra-receipts",
+      "kra-unfiscalized-sales",
+      "vat-collected",
+      "audit-trail",
+    ],
   },
   {
     id: "hr",

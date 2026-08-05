@@ -14,13 +14,20 @@ export function AdminThemesScreen() {
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
   const setError = toastErrorSetter;
+  const isHospitality =
+    capabilities?.industry === "hospitality" ||
+    capabilities?.deployment_profile === "hotel_bar";
 
   return (
     <AdminGuard settingsOnly>
       <SettingsApiProvider apiPrefix="/erp/settings">
         <CatalogPageShell
           title="Centrix ERP Themes"
-          subtitle="Color palette for the ERP sidebar and primary buttons. Classic External POS can use the full theme palette."
+          subtitle={
+            isHospitality
+              ? "Color palette for the ERP sidebar and primary buttons across Hotel Backoffice and Admin."
+              : "Color palette for the ERP sidebar and primary buttons. Classic External POS can use the full theme palette."
+          }
           banner={
             <AdminBreadcrumb
               items={[

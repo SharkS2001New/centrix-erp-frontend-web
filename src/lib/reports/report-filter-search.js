@@ -16,6 +16,9 @@ export const REPORT_SHORT_SELECT_KEYS = new Set([
   "channels",
   "paymentStatuses",
   "orderStatuses",
+  "attendanceStatuses",
+  "kraStatuses",
+  "latenessWaiverStatuses",
   "stockLocations",
   "inventoryLocations",
 ]);

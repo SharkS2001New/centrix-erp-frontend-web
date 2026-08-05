@@ -23,7 +23,7 @@ const EXPECTED_FILES = [
 
 const EXPECTED_SET = new Set(EXPECTED_FILES.map((n) => n.toLowerCase()));
 
-const IMPORT_CSV_ORDER = [
+const COMMERCE_IMPORT_CSV_ORDER = [
   "vats-import.csv",
   "categories-import.csv",
   "subcategories-import.csv",
@@ -33,6 +33,15 @@ const IMPORT_CSV_ORDER = [
   "customers-import.csv",
   "products-import.csv",
   "retail-packages-import.csv",
+];
+
+const HOSPITALITY_IMPORT_CSV_ORDER = [
+  "vats-import.csv",
+  "categories-import.csv",
+  "subcategories-import.csv",
+  "uoms-import.csv",
+  "suppliers-import.csv",
+  "products-import.csv",
 ];
 
 function basename(path) {
@@ -74,13 +83,13 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function resolveConvertZip(files, onStatus) {
+async function resolveConvertZip(files, targetIndustry, onStatus) {
   onStatus?.("Uploading and converting…");
   const result = await apiUploadFilesForBlob(
     "/admin/legacy-import-converter/convert",
     files,
     "files",
-    { sync: "1" },
+    { sync: "1", target_industry: targetIndustry },
   );
 
   if (result instanceof Blob) {
@@ -126,6 +135,13 @@ export default function LegacyImportConverterPage() {
   const [converting, setConverting] = useState(false);
   const [status, setStatus] = useState("");
   const [skippedFolderCount, setSkippedFolderCount] = useState(0);
+  const [targetIndustry, setTargetIndustry] = useState("commerce");
+
+  const isHospitality = targetIndustry === "hospitality";
+  const importCsvOrder = isHospitality ? HOSPITALITY_IMPORT_CSV_ORDER : COMMERCE_IMPORT_CSV_ORDER;
+  const zipFilename = isHospitality
+    ? "centrix-hotel-menu-import-csv.zip"
+    : "centrix-import-csv.zip";
 
   function applyFileSelection(selected, { fromFolder = false } = {}) {
     if (fromFolder) {
@@ -153,12 +169,12 @@ export default function LegacyImportConverterPage() {
     setConverting(true);
     setStatus("");
     try {
-      const zipBlob = await resolveConvertZip(files, setStatus);
+      const zipBlob = await resolveConvertZip(files, targetIndustry, setStatus);
 
       if (downloadCsvs) {
         setStatus("Extracting import CSVs…");
         const entries = await unzipTextFiles(zipBlob);
-        const importFiles = IMPORT_CSV_ORDER.filter((name) => entries[name]);
+        const importFiles = importCsvOrder.filter((name) => entries[name]);
         if (!importFiles.length) {
           throw new ApiError("ZIP did not contain Centrix import CSV files.", 422, null);
         }
@@ -167,10 +183,18 @@ export default function LegacyImportConverterPage() {
           // Stagger downloads so the browser does not collapse them into one save.
           await sleep(180);
         }
-        notifySuccess(`Downloaded ${importFiles.length} Centrix import CSV file(s).`);
+        notifySuccess(
+          isHospitality
+            ? `Downloaded ${importFiles.length} Hotel Menu Catalogue import CSV file(s).`
+            : `Downloaded ${importFiles.length} Centrix import CSV file(s).`,
+        );
       } else {
-        downloadBlob(zipBlob, "centrix-import-csv.zip");
-        notifySuccess("Centrix import CSV ZIP downloaded.");
+        downloadBlob(zipBlob, zipFilename);
+        notifySuccess(
+          isHospitality
+            ? "Hotel Menu Catalogue import ZIP downloaded."
+            : "Centrix import CSV ZIP downloaded.",
+        );
       }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Conversion failed.");
@@ -204,11 +228,52 @@ export default function LegacyImportConverterPage() {
         <p className="mt-2 text-sm text-slate-600">
           Upload a <strong>single LightStores SQL dump</strong> (one file can contain many tables), or
           separate table dumps such as{" "}
-          <code className="rounded bg-slate-100 px-1">superdb_product.sql</code>. The converter reads{" "}
-          <code className="rounded bg-slate-100 px-1">INSERT INTO</code> rows and builds one Centrix
-          import CSV per entity (VAT, categories, UOM, routes, suppliers, customers, products, retail
-          packages). Catalog pages still import <strong>one CSV at a time</strong>.
+          <code className="rounded bg-slate-100 px-1">superdb_product.sql</code>. Choose the target
+          industry so products become either retail catalogue items or{" "}
+          <strong>Hotel Menu Catalogue</strong> items for Hotel POS and Backoffice.
         </p>
+
+        <fieldset className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+            Target industry
+          </legend>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:gap-6">
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
+              <input
+                type="radio"
+                name="target_industry"
+                value="commerce"
+                checked={targetIndustry === "commerce"}
+                onChange={() => setTargetIndustry("commerce")}
+                disabled={converting}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-medium">Retail &amp; Distribution</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Products, routes, customers, retail packages
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
+              <input
+                type="radio"
+                name="target_industry"
+                value="hospitality"
+                checked={targetIndustry === "hospitality"}
+                onChange={() => setTargetIndustry("hospitality")}
+                disabled={converting}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-medium">Hotel &amp; Hospitality</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Menu catalogue with Bar / Restaurant channels for Hotel POS
+                </span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
 
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -217,13 +282,21 @@ export default function LegacyImportConverterPage() {
           <ul className="mt-2 grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
             {EXPECTED_FILES.map((name) => {
               const selected = files.some((f) => basename(f.name).toLowerCase() === name.toLowerCase());
+              const hotelSkip =
+                isHospitality &&
+                (name.includes("routes") ||
+                  name.includes("customer") ||
+                  name.includes("retail_package"));
               return (
                 <li
                   key={name}
-                  className={`font-mono text-xs ${selected ? "text-emerald-700" : "text-slate-700"}`}
+                  className={`font-mono text-xs ${
+                    selected ? "text-emerald-700" : hotelSkip ? "text-slate-400 line-through" : "text-slate-700"
+                  }`}
                 >
                   {selected ? "✓ " : ""}
                   {name}
+                  {hotelSkip ? " (skipped for hotel)" : ""}
                 </li>
               );
             })}
@@ -243,7 +316,9 @@ export default function LegacyImportConverterPage() {
               disabled={converting}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Prefer one full database dump. Multiple table dumps also work.
+              Prefer one full database dump. Multiple table dumps also work —{" "}
+              <code className="rounded bg-slate-100 px-1">superdb_product.sql</code> alone is enough
+              for menu items when categories/UOM/VAT are already in Centrix.
             </p>
           </div>
           <div>
@@ -277,18 +352,33 @@ export default function LegacyImportConverterPage() {
 
         <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-medium">Recommended import order in Centrix</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-5">
-            <li>VAT rates</li>
-            <li>Categories → Subcategories</li>
-            <li>Units of measure</li>
-            <li>Routes</li>
-            <li>Suppliers</li>
-            <li>Customers</li>
-            <li>Products</li>
-            <li>Retail package settings</li>
-          </ol>
+          {isHospitality ? (
+            <ol className="mt-2 list-decimal space-y-1 pl-5">
+              <li>VAT rates</li>
+              <li>Categories → Subcategories</li>
+              <li>Units of measure</li>
+              <li>Suppliers</li>
+              <li>
+                Products (Hotel Menu Catalogue — sets Bar / Restaurant channels for Hotel POS)
+              </li>
+            </ol>
+          ) : (
+            <ol className="mt-2 list-decimal space-y-1 pl-5">
+              <li>VAT rates</li>
+              <li>Categories → Subcategories</li>
+              <li>Units of measure</li>
+              <li>Routes</li>
+              <li>Suppliers</li>
+              <li>Customers</li>
+              <li>Products</li>
+              <li>Retail package settings</li>
+            </ol>
+          )}
           <p className="mt-2 text-amber-800">
             Enable <strong>Advanced data import</strong> on the tenant organization before importing.
+            {isHospitality
+              ? " Import products under Hospitality Backoffice → Menu catalogue."
+              : ""}
           </p>
         </div>
 

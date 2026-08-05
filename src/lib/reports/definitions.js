@@ -1006,8 +1006,8 @@ export const REPORT_DEFINITIONS = {
 
   "vat-collected": {
     title: "VAT Collected Report",
-    subtitle: "VAT on sales across booked → completed orders (incl. unpaid / partial)",
-    section: "Finance",
+    subtitle: "VAT on sales across booked → completed orders — useful for KRA / tax filing checks",
+    section: "Compliance",
     apiPath: "/reports/vat-collected",
     dateColumn: "sale_date",
     showDateRange: true,
@@ -1191,6 +1191,196 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["expense_count", "total_amount"],
+  },
+
+  "kra-receipts": {
+    title: "KRA receipts (per invoice)",
+    subtitle: "One row per fiscal receipt — order number, CU number, date, VAT, and invoice preview",
+    section: "Compliance",
+    apiPath: "/reports/kra-receipts",
+    dateColumn: "receipt_date",
+    showDateRange: true,
+    variant: "kra-receipts",
+    columns: [
+      { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
+      { key: "order_no", label: "Order #", accessor: (r) => r.order_no },
+      { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number },
+      { key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number },
+      { key: "status", label: "Status", accessor: (r) => r.status },
+      { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
+      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+    ],
+    footerTotals: ["order_total", "total_vat"],
+  },
+
+  "kra-compliance-summary": {
+    title: "KRA compliance summary",
+    subtitle:
+      "Overall fiscalization health by day — success rate, CU invoices, fiscalized/failed totals and VAT",
+    section: "Compliance",
+    apiPath: "/reports/kra-compliance-summary",
+    dateColumn: "receipt_date",
+    showDateRange: true,
+    columns: [
+      { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
+      { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
+      { key: "receipt_count", label: "Submissions", accessor: (r) => r.receipt_count, align: "right", total: true },
+      { key: "sale_count", label: "Sales", accessor: (r) => r.sale_count, align: "right", total: true },
+      { key: "success_count", label: "Success", accessor: (r) => r.success_count, align: "right", total: true },
+      { key: "failed_count", label: "Failed", accessor: (r) => r.failed_count, align: "right", total: true },
+      { key: "pending_count", label: "Pending", accessor: (r) => r.pending_count, align: "right", total: true },
+      {
+        key: "cu_invoice_count",
+        label: "CU invoices",
+        accessor: (r) => r.cu_invoice_count,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "success_rate_pct",
+        label: "Success %",
+        accessor: (r) => (r.success_rate_pct != null ? `${Number(r.success_rate_pct).toFixed(1)}%` : "—"),
+        align: "right",
+      },
+      {
+        key: "fiscalized_total",
+        label: "Fiscalized total",
+        accessor: (r) => r.fiscalized_total,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "fiscalized_vat",
+        label: "Fiscalized VAT",
+        accessor: (r) => r.fiscalized_vat,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "failed_total",
+        label: "Failed total",
+        accessor: (r) => r.failed_total,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "failed_vat",
+        label: "Failed VAT",
+        accessor: (r) => r.failed_vat,
+        align: "right",
+        total: true,
+      },
+      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "VAT total", accessor: (r) => r.total_vat, align: "right", total: true },
+    ],
+    kpis: [
+      {
+        id: "receipts",
+        label: "Submissions",
+        compute: (rows, summary) => ({
+          value: String(Math.round(summary?.receipt_count ?? sum(rows, "receipt_count"))),
+        }),
+      },
+      {
+        id: "success-rate",
+        label: "Success rate",
+        compute: (rows, summary) => {
+          const success = Number(summary?.success_count ?? sum(rows, "success_count")) || 0;
+          const total = Number(summary?.receipt_count ?? sum(rows, "receipt_count")) || 0;
+          const pct = total > 0 ? (100 * success) / total : 0;
+          return { value: `${pct.toFixed(1)}%` };
+        },
+      },
+      {
+        id: "cu",
+        label: "CU invoices",
+        compute: (rows, summary) => ({
+          value: String(Math.round(summary?.cu_invoice_count ?? sum(rows, "cu_invoice_count"))),
+        }),
+      },
+      {
+        id: "failed",
+        label: "Failed",
+        compute: (rows, summary) => ({
+          value: String(Math.round(summary?.failed_count ?? sum(rows, "failed_count"))),
+        }),
+      },
+      {
+        id: "fiscalized",
+        label: "Fiscalized total",
+        compute: (rows, summary) => ({
+          value: kes(summary?.fiscalized_total ?? sum(rows, "fiscalized_total")),
+        }),
+      },
+      {
+        id: "fiscalized-vat",
+        label: "Fiscalized VAT",
+        compute: (rows, summary) => ({
+          value: kes(summary?.fiscalized_vat ?? sum(rows, "fiscalized_vat")),
+        }),
+      },
+    ],
+    footerTotals: [
+      "receipt_count",
+      "sale_count",
+      "success_count",
+      "failed_count",
+      "pending_count",
+      "cu_invoice_count",
+      "fiscalized_total",
+      "fiscalized_vat",
+      "failed_total",
+      "failed_vat",
+      "order_total",
+      "total_vat",
+    ],
+  },
+
+  "kra-unfiscalized-sales": {
+    title: "Unfiscalized sales",
+    subtitle: "Completed sales with no successful KRA CU invoice — gaps to investigate or retry",
+    section: "Compliance",
+    apiPath: "/reports/kra-unfiscalized-sales",
+    dateColumn: "sale_date",
+    showDateRange: true,
+    columns: [
+      { key: "sale_date", label: "Sale date", accessor: (r) => r.sale_date },
+      { key: "order_no", label: "Order #", accessor: (r) => r.order_no },
+      { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
+      { key: "sale_status", label: "Sale status", accessor: (r) => r.sale_status },
+      { key: "payment_status", label: "Payment", accessor: (r) => r.payment_status },
+      { key: "last_kra_status", label: "Last KRA status", accessor: (r) => r.last_kra_status || "None" },
+      { key: "last_kra_error", label: "Last error", accessor: (r) => r.last_kra_error || "—" },
+      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+    ],
+    kpis: [
+      {
+        id: "orders",
+        label: "Unfiscalized orders",
+        compute: (rows, summary) => ({
+          value: String(Math.round(summary?.row_count ?? rows.length)),
+        }),
+      },
+      {
+        id: "total",
+        label: "Order total",
+        compute: (rows, summary) => ({
+          value: kes(summary?.order_total ?? sum(rows, "order_total")),
+        }),
+      },
+      {
+        id: "vat",
+        label: "VAT at risk",
+        compute: (rows, summary) => ({
+          value: kes(summary?.total_vat ?? sum(rows, "total_vat")),
+        }),
+      },
+    ],
+    footerTotals: ["order_total", "total_vat"],
   },
 };
 

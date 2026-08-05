@@ -3,7 +3,7 @@
  * local cash tickets → outbox → POST /hospitality/pos/checks/offline-sync.
  */
 
-import { apiBaseOrigin, apiRequest } from "@/lib/api";
+import { apiBaseOrigin, apiRequest, ApiError } from "@/lib/api";
 import { apiFetchCredentials } from "@/lib/auth-config";
 import { getToken } from "@/lib/auth-storage";
 import { fetchHotelPosCatalog } from "@/lib/hospitality-pos-api";
@@ -14,6 +14,7 @@ import {
   idbClearStore,
   idbCountCheckNumbers,
   idbCountPendingOutbox,
+  idbDeleteOutboxCheck,
   idbGetAllCatalog,
   idbGetCatalogImage,
   idbGetCatalogProduct,
@@ -545,6 +546,24 @@ export async function completeOfflineHotelCashCheck({
   return { check: snapshot, outbox };
 }
 
+function isDuplicateHotelCheckError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  if (/check[_\s-]?number|duplicate|unique|already exists|1062|idempoten/.test(msg)) {
+    return true;
+  }
+  if (err instanceof ApiError) {
+    const body = err.body;
+    const blob = JSON.stringify(body ?? {}).toLowerCase();
+    if (/check_number|duplicate|unique|1062|client_check_uuid|pos_sync_id/.test(blob)) {
+      return true;
+    }
+    if (err.status === 422 || err.status === 409) {
+      return /check|duplicate|unique/.test(msg) || /check|duplicate|unique/.test(blob);
+    }
+  }
+  return false;
+}
+
 export async function syncHotelPosOfflineOutbox({ onProgress, includeErrors = true } = {}) {
   await idbReclaimStuckSyncingOutbox({ olderThanMs: 60_000 });
   const pending = await idbListPendingOutbox({ includeErrors });
@@ -611,6 +630,42 @@ export async function syncHotelPosOfflineOutbox({ onProgress, includeErrors = tr
         message: `Synced ${done} of ${total}…`,
       });
     } catch (err) {
+      if (isDuplicateHotelCheckError(err)) {
+        // Server already has this check (idempotency miss / unique collision). Drop local.
+        await idbDeleteOutboxCheck(row.client_check_uuid);
+        const local = await idbGetLocalCheck();
+        if (
+          local &&
+          (String(local.client_check_uuid ?? "") === String(row.client_check_uuid) ||
+            String(local.offline_client_check_uuid ?? "") === String(row.client_check_uuid) ||
+            String(local.id ?? "") === `offline:${row.client_check_uuid}`)
+        ) {
+          await idbClearLocalCheck();
+        }
+        done += 1;
+        results.push({
+          ok: true,
+          discarded_duplicate: true,
+          check_number: printed,
+          printed_check_number: printed,
+          needs_reprint: false,
+          client_check_uuid: row.client_check_uuid,
+          check: null,
+        });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: true,
+          discarded_duplicate: true,
+          check_number: printed,
+          message: `Cleared local duplicate check #${printed} (${done} of ${total})…`,
+        });
+        continue;
+      }
+
       const message = err?.message ?? "Sync failed";
       await idbMarkOutboxError(row.client_check_uuid, message);
       failed += 1;

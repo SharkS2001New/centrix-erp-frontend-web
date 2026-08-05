@@ -47,6 +47,9 @@ export function ExternalPosSettingsPanel({
 
   const modules = capabilities?.modules ?? {};
   const hasPosSales = Boolean(modules["sales.pos"]);
+  const isHospitality =
+    capabilities?.industry === "hospitality" ||
+    capabilities?.deployment_profile === "hotel_bar";
   const layoutFromCaps = resolveExternalPosLayout(capabilities);
   const layout = platformManaged
     ? platformForm.external_pos_layout === "classic"
@@ -125,12 +128,22 @@ export function ExternalPosSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Centrix ERP Themes</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Color palette for Centrix ERP Themes. Backoffice and other modules only change the{" "}
-          <strong>sidebar background</strong> and <strong>primary button colors</strong>. Classic
-          External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.
-          {hasPosSales
-            ? " Till close, barcode scanner, and POS customer prompts are under Organization settings → Sales → Tills."
-            : ""}
+          {isHospitality ? (
+            <>
+              Color palette for Centrix ERP Themes. Hotel Backoffice and Admin change the{" "}
+              <strong>sidebar background</strong> and <strong>primary button colors</strong>. Default
+              is Centrix.
+            </>
+          ) : (
+            <>
+              Color palette for Centrix ERP Themes. Backoffice and other modules only change the{" "}
+              <strong>sidebar background</strong> and <strong>primary button colors</strong>. Classic
+              External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.
+              {hasPosSales
+                ? " Till close, barcode scanner, and POS customer prompts are under Organization settings → Sales → Tills."
+                : ""}
+            </>
+          )}
         </p>
 
         {loading ? (

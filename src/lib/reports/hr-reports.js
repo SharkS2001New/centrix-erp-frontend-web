@@ -14,7 +14,12 @@ export const HR_REPORT_DEFS = [
     icon: "alert",
   },
   { key: "payroll-summary", label: "Payroll summary", subtitle: "Payroll run totals and breakdown", icon: "receipt" },
-  { key: "statutory-deductions", label: "Statutory deductions", subtitle: "PAYE, NSSF, NHIF and other statutory lines", icon: "percent" },
+  {
+    key: "statutory-deductions",
+    label: "Statutory deductions",
+    subtitle: "Payroll sheet — Gross, PAYE, NSSF, SHIF, Housing Levy, Net (CSV & PDF)",
+    icon: "percent",
+  },
   { key: "bank-transfer", label: "Bank transfer", subtitle: "Net pay due for bank disbursement", icon: "wallet" },
   {
     key: "nssf-remittance",

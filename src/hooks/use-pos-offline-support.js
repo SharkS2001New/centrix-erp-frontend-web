@@ -93,6 +93,16 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       setOrderNumbersLeft(left);
       setPendingSync(pending);
       setFailedSyncOrders(failedRows);
+      // Drop stale "complete + failed" progress once the outbox no longer has errors
+      // (e.g. after Remove) so UI does not keep treating sync as failed.
+      if (failedRows.length === 0) {
+        setSyncProgress((prev) => {
+          if (prev?.phase === "complete" && Number(prev?.failed ?? 0) > 0) {
+            return { ...EMPTY_SYNC_PROGRESS, phase: "idle" };
+          }
+          return prev;
+        });
+      }
     } catch {
       /* ignore */
     }

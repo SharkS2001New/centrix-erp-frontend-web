@@ -30,7 +30,7 @@ const HR_LINKS = [
   { href: "/reports/attendance-register", title: "Attendance register", desc: "Daily check-in/out and paid hours" },
   { href: "/reports/lateness-list", title: "Lateness list", desc: "Late arrivals and waivers" },
   { href: "/reports/payroll-summary", title: "Payroll summary", desc: "Payroll runs summary" },
-  { href: "/reports/statutory-deductions", title: "Statutory deductions", desc: "NSSF, SHIF, PAYE, and levies" },
+  { href: "/reports/statutory-deductions", title: "Statutory deductions", desc: "Gross, PAYE, NSSF, SHIF, Housing Levy, Net" },
   { href: "/reports/bank-transfer", title: "Bank transfer", desc: "Net pay bank payment file" },
   { href: "/reports/nssf-remittance", title: "NSSF remittance", desc: "Member + employer NSSF statement" },
   { href: "/reports/other-deductions", title: "Other deductions", desc: "Custom deductions by pay period" },

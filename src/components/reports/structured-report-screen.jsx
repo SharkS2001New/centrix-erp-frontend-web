@@ -28,6 +28,7 @@ import { buildReportQueryParams, reportHidesBranchFilter, reportShowsDateRange, 
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
+import { KraReceiptsReportScreen } from "@/components/reports/kra-receipts-report-screen";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
@@ -43,6 +44,9 @@ export function StructuredReportScreen({ definition }) {
   }
   if (definition.variant === "expenses") {
     return <ExpensesReportScreen definition={definition} />;
+  }
+  if (definition.variant === "kra-receipts") {
+    return <KraReceiptsReportScreen definition={definition} />;
   }
 
   return <StandardReportScreen definition={definition} />;

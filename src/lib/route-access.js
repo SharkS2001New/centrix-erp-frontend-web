@@ -70,10 +70,29 @@ const POS_ROUTE_RULES = [
   },
   {
     prefix: "/sales/payments-breakdown",
-    permission: P.pos.end_of_day.view,
+    permission: P.pos.payments_breakdown.view,
     altPermissions: [
+      P.pos.end_of_day.view,
       P.pos.till_management.view,
-      P.payments.sale_payments.view,
+    ],
+  },
+];
+
+/** Hospitality backoffice pages that need explicit route rules (not only nav flatten). */
+export const HOSPITALITY_ROUTE_RULES = [
+  {
+    prefix: "/hospitality/payments-breakdown",
+    permission: P.hospitality.payments_breakdown.view,
+    altPermissions: [P.hospitality.reports.view],
+  },
+  {
+    prefix: "/hospitality/orders",
+    permission: P.hospitality.orders.view,
+    altPermissions: [
+      P.hospitality.dashboard.view,
+      P.hospitality.reports.view,
+      P.hotel_bar_pos.checks.view,
+      P.hospitality.settings.view,
     ],
   },
 ];
@@ -191,6 +210,14 @@ export function canAccessRoute(pathname, ctx, options = {}) {
   }
 
   for (const rule of POS_ROUTE_RULES) {
+    if (pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`)) {
+      if (ctx.hasPermission(rule.permission)) return true;
+      if (rule.altPermissions?.some((code) => ctx.hasPermission(code))) return true;
+      return false;
+    }
+  }
+
+  for (const rule of HOSPITALITY_ROUTE_RULES) {
     if (pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`)) {
       if (ctx.hasPermission(rule.permission)) return true;
       if (rule.altPermissions?.some((code) => ctx.hasPermission(code))) return true;

@@ -102,6 +102,7 @@ export const P = {
     checkout: { create: "pos.checkout.create" },
     terminal: { view: "pos.terminal.view" },
     end_of_day: { view: "pos.end_of_day.view" },
+    payments_breakdown: { view: "pos.payments_breakdown.view" },
   },
   hotel_bar_pos: {
     terminal: { view: "hotel_bar_pos.terminal.view" },
@@ -141,6 +142,8 @@ export const P = {
       view: "hospitality.night_audit.view",
       create: "hospitality.night_audit.create",
     },
+    orders: { view: "hospitality.orders.view" },
+    payments_breakdown: { view: "hospitality.payments_breakdown.view" },
     reports: { view: "hospitality.reports.view" },
     settings: { view: "hospitality.settings.view", edit: "hospitality.settings.edit" },
   },
@@ -254,6 +257,8 @@ export const P = {
     journal_register: { view: "reports.journal_register.view" },
     subledger_reconciliation: { view: "reports.subledger_reconciliation.view" },
     kra_receipts: { view: "reports.kra_receipts.view" },
+    kra_compliance_summary: { view: "reports.kra_compliance_summary.view" },
+    kra_unfiscalized_sales: { view: "reports.kra_unfiscalized_sales.view" },
     payroll_summary: { view: "reports.payroll_summary.view" },
     legacy_archive: { view: "reports.legacy_archive.view" },
     builder: {
@@ -369,6 +374,8 @@ export function reportPermissionCode(reportKey) {
     "customer-statement": P.reports.customer_statement.view,
     "audit-trail": P.admin.audit.view,
     "kra-receipts": P.reports.kra_receipts.view,
+    "kra-compliance-summary": P.reports.kra_compliance_summary.view,
+    "kra-unfiscalized-sales": P.reports.kra_unfiscalized_sales.view,
     "mobile-route-sales": P.reports.mobile_route_sales.view,
     "dispatch-trips": P.reports.dispatch_trips.view,
     "vehicle-trip-loads": P.reports.dispatch_trips.view,
@@ -379,6 +386,21 @@ export function reportPermissionCode(reportKey) {
     "legacy-archive": P.reports.legacy_archive.view,
     "journal-register": P.reports.journal_register.view,
     "ar-aging": P.reports.ar_aging.view,
+    "hospitality-occupancy": P.hospitality.reports.view,
+    "hospitality-kpi-occupancy": P.hospitality.reports.view,
+    "hospitality-arrivals-departures": P.hospitality.reports.view,
+    "hospitality-folio-balances": P.hospitality.reports.view,
+    "hospitality-room-revenue": P.hospitality.reports.view,
+    "hospitality-manager-flash": P.hospitality.reports.view,
+    "hospitality-fnb-checks": P.hospitality.reports.view,
+    "hospitality-fnb-by-outlet": P.hospitality.reports.view,
+    "hospitality-fnb-by-hour": P.hospitality.reports.view,
+    "hospitality-fnb-by-category": P.hospitality.reports.view,
+    "hospitality-open-checks": P.hospitality.reports.view,
+    "hospitality-voids": P.hospitality.reports.view,
+    "hospitality-eod-cashier": P.hospitality.reports.view,
+    "hospitality-profit-loss": P.hospitality.reports.view,
+    "hospitality-consumption-variance": P.hospitality.reports.view,
   };
   return map[reportKey] ?? P.reports.hub.view;
 }
@@ -440,6 +462,12 @@ export function canViewReport(reportKey, hasPermission) {
   }
   if (ACCOUNTING_REPORT_KEYS.has(reportKey)) {
     return hasPermission(reportPermissionCode(reportKey)) || hasPermission(P.reports.hub.view);
+  }
+  if (String(reportKey ?? "").startsWith("hospitality-")) {
+    return (
+      hasPermission(P.hospitality.reports.view) ||
+      hasPermission(P.reports.hub.view)
+    );
   }
   return (
     hasPermission(reportPermissionCode(reportKey)) ||

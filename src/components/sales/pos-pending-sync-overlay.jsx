@@ -142,12 +142,18 @@ export function PosPendingSyncOverlay({
     setActionError(null);
     try {
       await discardOutboxSale(uuid);
+      let remaining = 0;
       setRows((prev) => {
         const next = prev.filter((row) => orderKey(row) !== key);
-        onCountChangeRef.current?.(next.length);
+        remaining = next.length;
+        onCountChangeRef.current?.(remaining);
         return next;
       });
       onDiscarded?.(order);
+      // Empty queue — dismiss so Close is not left fighting an auto-reopen effect.
+      if (remaining <= 0) {
+        onClose?.();
+      }
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to remove offline order");
     } finally {
@@ -158,11 +164,11 @@ export function PosPendingSyncOverlay({
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
-      if (e.key === "Escape" && !busyKey) onClose?.();
+      if (e.key === "Escape") onClose?.();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose, busyKey]);
+  }, [open, onClose]);
 
   if (!open || !mounted) return null;
 
@@ -171,18 +177,18 @@ export function PosPendingSyncOverlay({
       {!embedded ? (
         <button
           type="button"
-          className="absolute inset-0"
+          className="absolute inset-0 z-0"
           aria-label="Close"
-          onClick={() => {
-            if (!busyKey) onClose?.();
-          }}
+          onClick={() => onClose?.()}
         />
       ) : null}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="pending-sync-title"
-        className={`${posModalPanelClass(embedded, "flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl")}`}
+        className={`${posModalPanelClass(embedded, "relative z-10 flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl")}`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <header className="classic-pos-themed-dialog-header shrink-0 border-b border-amber-700 bg-amber-600 px-4 py-3 text-white">
           <div className="flex items-center justify-between gap-4">
@@ -212,9 +218,8 @@ export function PosPendingSyncOverlay({
             </button>
             <button
               type="button"
-              disabled={Boolean(busyKey)}
-              onClick={onClose}
-              className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-50"
+              onClick={() => onClose?.()}
+              className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20"
             >
               Close
             </button>

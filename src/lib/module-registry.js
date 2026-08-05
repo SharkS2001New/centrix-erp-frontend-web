@@ -53,6 +53,8 @@ export const REPORT_MODULE_BY_SLUG = {
   "accounts-payable": "accounting.reports",
   "subledger-reconciliation": "accounting.reports",
   "kra-receipts": "accounting.reports",
+  "kra-compliance-summary": "accounting.reports",
+  "kra-unfiscalized-sales": "accounting.reports",
   "customer-statement": "customers_suppliers",
   "supplier-statement": "customers_suppliers",
 

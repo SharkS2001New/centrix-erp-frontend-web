@@ -78,6 +78,13 @@ export const ATTENDANCE_STATUS_OPTIONS = [
   { value: "holiday", label: "Holiday / off" },
 ];
 
+export const KRA_STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  { value: "success", label: "Success" },
+  { value: "failed", label: "Failed" },
+  { value: "pending", label: "Pending" },
+];
+
 export const LATENESS_WAIVER_OPTIONS = [
   { value: "", label: "All (waived & open)" },
   { value: "false", label: "Not waived" },
@@ -145,6 +152,8 @@ export const REPORT_DATE_COLUMNS = {
   "invoice-payments": "date_paid",
   "ar-aging": "invoice_date",
   "kra-receipts": "receipt_date",
+  "kra-compliance-summary": "receipt_date",
+  "kra-unfiscalized-sales": "sale_date",
   "till-sessions": "session_date",
   "audit-trail": "created_at",
   "statutory-deductions": "run_date",
@@ -207,6 +216,17 @@ export const REPORT_EXTRA_FILTERS = {
     { id: "sub_category_id", label: "Subcategory", type: "select", optionsKey: "subcategories" },
   ],
   "vat-collected": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
+  "kra-receipts": [
+    { id: "status", label: "Status", type: "select", optionsKey: "kraStatuses" },
+    { id: "q", label: "Search", type: "text", placeholder: "Order # or CU number…" },
+  ],
+  "kra-compliance-summary": [
+    { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
+  ],
+  "kra-unfiscalized-sales": [
+    { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
+    { id: "q", label: "Search", type: "text", placeholder: "Order #…" },
+  ],
   "discount-summary": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
   "payment-collection": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },

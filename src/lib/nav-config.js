@@ -150,9 +150,9 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Payments breakdown",
         module: "sales.pos",
         permissionAny: [
+          P.pos.payments_breakdown.view,
           P.pos.end_of_day.view,
           P.pos.till_management.view,
-          P.payments.sale_payments.view,
         ],
       },
     ],
@@ -357,7 +357,7 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/expenses",
         label: "Expenses",
-        moduleAny: ["accounting", "customers_suppliers"],
+        module: "accounting",
         permission: P.accounting.expenses.view,
       },
     ],
@@ -869,6 +869,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "F&B orders",
         module: "hospitality.backend",
         permissionAny: [
+          P.hospitality.orders.view,
           P.hospitality.dashboard.view,
           P.hospitality.reports.view,
           P.hotel_bar_pos.checks.view,
@@ -880,8 +881,8 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Payments breakdown",
         module: "hospitality.backend",
         permissionAny: [
+          P.hospitality.payments_breakdown.view,
           P.hospitality.reports.view,
-          P.hospitality.dashboard.view,
         ],
       },
     ],

@@ -53,7 +53,7 @@ export function isReportNavEnabled(reportKey, capabilities) {
     return isLegacyArchiveEnabled(capabilities);
   }
 
-  if (reportKey === "kra-receipts") {
+  if (reportKey === "kra-receipts" || reportKey === "kra-compliance-summary" || reportKey === "kra-unfiscalized-sales") {
     return isKraNavEnabled(capabilities);
   }
 

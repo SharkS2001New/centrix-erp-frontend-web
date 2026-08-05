@@ -28,11 +28,33 @@ import {
   printPayrollReceipt,
   printPayrollReceipts,
 } from "@/components/hr/payroll-receipt-print";
+import {
+  buildReportMeta,
+  downloadReportCsv,
+  normalizeExportColumns,
+  printReportTable,
+  reportPrintedAt,
+  slugifyReportFilename,
+} from "@/lib/reports/export";
+import { resolveReportBranding } from "@/lib/reports/report-branding";
+import { formatOrgDate } from "@/lib/format";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 const AUTO_PROCESS_KEY = (id) => `payroll-auto-process-${id}`;
+
+const PAYROLL_SHEET_COLUMNS = [
+  { key: "employee", label: "Employee", align: "left" },
+  { key: "gross_pay", label: "Gross Pay", align: "right" },
+  { key: "paye", label: "PAYE", align: "right" },
+  { key: "nssf", label: "NSSF", align: "right" },
+  { key: "shif", label: "SHIF", align: "right" },
+  { key: "housing_levy", label: "Housing Levy", align: "right" },
+  { key: "other_deductions", label: "Other", align: "right" },
+  { key: "deductions", label: "Total Deductions", align: "right" },
+  { key: "net_pay", label: "Net Pay", align: "right" },
+];
 
 function lineHasEmployeeEmail(line) {
   const employee = line?.employee;
@@ -40,6 +62,19 @@ function lineHasEmployeeEmail(line) {
   const work = String(employee.email ?? "").trim();
   const personal = String(employee.personal_email ?? "").trim();
   return work !== "" || personal !== "";
+}
+
+function employeeNameFromLine(line) {
+  const emp = line?.employee;
+  return (
+    composeEmployeeDisplayName(emp) ||
+    emp?.full_name ||
+    `#${line?.employee_id ?? ""}`
+  );
+}
+
+function moneyCell(value) {
+  return formatHrKesFull(value);
 }
 
 export function HrPayrollRunsIdScreen() {
@@ -193,6 +228,99 @@ export function HrPayrollRunsIdScreen() {
       organization,
       generalSettings: generalSettings(),
     });
+  }
+
+  function payrollSheetRows(targetLines = lines) {
+    return targetLines.map((line) => ({
+      employee: employeeNameFromLine(line),
+      gross_pay: moneyCell(line.gross_pay),
+      paye: moneyCell(line.paye),
+      nssf: moneyCell(line.nssf),
+      shif: moneyCell(line.shif),
+      housing_levy: moneyCell(line.housing_levy),
+      other_deductions: moneyCell(line.other_deductions),
+      deductions: moneyCell(line.deductions),
+      net_pay: moneyCell(line.net_pay),
+    }));
+  }
+
+  function exportPayrollSheetCsv() {
+    if (!lines.length) {
+      notifyError("No payroll lines to export.");
+      return;
+    }
+    const periodText = periodLabel(period) || run?.period_code || "";
+    const meta = buildReportMeta({
+      organizationName: organization?.org_name ?? "",
+      title: "Payroll sheet",
+      subtitle: periodText ? `Pay period ${periodText}` : `Payroll run #${run?.id ?? runId}`,
+      printedAt: reportPrintedAt(),
+      extraLines: reportConstantHeaderForRun(),
+    });
+    const columns = normalizeExportColumns(
+      PAYROLL_SHEET_COLUMNS.map((col) => ({
+        key: col.key,
+        label: col.label,
+        align: col.align,
+        accessor: (row) => String(row[col.key] ?? ""),
+      })),
+    );
+    downloadReportCsv(
+      slugifyReportFilename(`payroll-sheet-${run?.id ?? runId}`),
+      meta,
+      columns,
+      payrollSheetRows(),
+    );
+    notifySuccess("Payroll sheet CSV downloaded.");
+  }
+
+  function printPayrollSheet() {
+    if (!lines.length) {
+      notifyError("No payroll lines to print.");
+      return;
+    }
+    const periodText = periodLabel(period) || run?.period_code || "";
+    const branding = resolveReportBranding({
+      organization,
+      generalSettings: generalSettings(),
+    });
+    const meta = buildReportMeta({
+      organizationName: organization?.org_name ?? "",
+      title: "Payroll sheet",
+      subtitle: periodText ? `Pay period ${periodText}` : `Payroll run #${run?.id ?? runId}`,
+      printedAt: reportPrintedAt(),
+      extraLines: reportConstantHeaderForRun(),
+    });
+    const columns = normalizeExportColumns(
+      PAYROLL_SHEET_COLUMNS.map((col) => ({
+        key: col.key,
+        label: col.label,
+        align: col.align,
+        accessor: (row) => String(row[col.key] ?? ""),
+      })),
+    );
+    try {
+      printReportTable({
+        meta,
+        columns,
+        rows: payrollSheetRows(),
+        branding,
+        generalSettings: generalSettings(),
+      });
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Print failed");
+    }
+  }
+
+  function reportConstantHeaderForRun() {
+    const linesOut = [];
+    if (run?.run_date) linesOut.push(`Run date: ${formatOrgDate(run.run_date)}`);
+    if (period?.period_start || period?.period_end) {
+      const start = period?.period_start ? formatOrgDate(period.period_start) : "—";
+      const end = period?.period_end ? formatOrgDate(period.period_end) : "—";
+      linesOut.push(`Pay period: ${start} – ${end}`);
+    }
+    return linesOut;
   }
 
   async function emailReceiptLines(targetLines, { selected = false } = {}) {
@@ -467,6 +595,27 @@ export function HrPayrollRunsIdScreen() {
                 <>
                   <button
                     type="button"
+                    onClick={() => exportPayrollSheetCsv()}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Export sheet CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => printPayrollSheet()}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Print / PDF sheet
+                  </button>
+                  <Link
+                    href={`/reports/statutory-deductions?payroll_run_id=${run.id}`}
+                    prefetch={false}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Statutory deductions
+                  </Link>
+                  <button
+                    type="button"
                     onClick={() => printReceiptLines(lines, "print")}
                     className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
@@ -556,10 +705,10 @@ export function HrPayrollRunsIdScreen() {
 
           <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
-              <h2 className="text-[15px] font-medium text-slate-900">Employee payroll lines</h2>
+              <h2 className="text-[15px] font-medium text-slate-900">Payroll sheet</h2>
               <p className="mt-0.5 text-xs text-slate-500">
-                Select rows to print or email receipts for chosen employees. Click a name or the view
-                action for the breakdown.
+                Gross Pay, PAYE, NSSF, SHIF, Housing Levy, and Net Pay. Export CSV or Print / PDF
+                from the actions above. Select rows to print or email individual payslips.
               </p>
               {canPrintOrEmailReceipts && selectedCount > 0 ? (
                 <p className="mt-2 text-xs font-medium text-slate-700">
@@ -575,7 +724,7 @@ export function HrPayrollRunsIdScreen() {
               ) : null}
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-sm">
+              <table className="w-full min-w-[1100px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="w-10 px-4 py-2.5">
@@ -590,33 +739,33 @@ export function HrPayrollRunsIdScreen() {
                       ) : null}
                     </th>
                     <th className="px-4 py-2.5">Employee</th>
-                    <th className="px-4 py-2.5 text-right">Gross</th>
+                    <th className="px-4 py-2.5 text-right">Gross Pay</th>
                     <th className="px-4 py-2.5 text-right">PAYE</th>
-                    <th className="px-4 py-2.5 text-right">Deductions</th>
-                    <th className="px-4 py-2.5 text-right">Net salary</th>
+                    <th className="px-4 py-2.5 text-right">NSSF</th>
+                    <th className="px-4 py-2.5 text-right">SHIF</th>
+                    <th className="px-4 py-2.5 text-right">Housing Levy</th>
+                    <th className="px-4 py-2.5 text-right">Other</th>
+                    <th className="px-4 py-2.5 text-right">Total Deductions</th>
+                    <th className="px-4 py-2.5 text-right">Net Pay</th>
                     <th className="w-[70px] px-4 py-2.5">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {processing ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
                         Calculating employee lines… results will appear here when ready.
                       </td>
                     </tr>
                   ) : lines.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
                         No payroll lines for this run.
                       </td>
                     </tr>
                   ) : (
                     lines.map((line) => {
-                      const emp = line.employee;
-                      const name =
-                        composeEmployeeDisplayName(emp) ||
-                        emp?.full_name ||
-                        `#${line.employee_id}`;
+                      const name = employeeNameFromLine(line);
                       const isSelected = selectedLine?.id === line.id;
                       const isChecked = selectedLineIds.has(String(line.id));
                       const hasEmail = lineHasEmployeeEmail(line);
@@ -649,6 +798,12 @@ export function HrPayrollRunsIdScreen() {
                           </td>
                           <td className="px-4 py-3 text-right">{formatHrKesFull(line.gross_pay)}</td>
                           <td className="px-4 py-3 text-right">{formatHrKesFull(line.paye)}</td>
+                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.nssf)}</td>
+                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.shif)}</td>
+                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.housing_levy)}</td>
+                          <td className="px-4 py-3 text-right">
+                            {formatHrKesFull(line.other_deductions)}
+                          </td>
                           <td className="px-4 py-3 text-right">
                             {formatHrKesFull(line.deductions)}
                           </td>

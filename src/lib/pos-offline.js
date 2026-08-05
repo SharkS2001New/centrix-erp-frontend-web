@@ -1944,9 +1944,42 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
             if (isDuplicateOrderNumError(firstErr)) {
               sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
               if (!sale) {
-                throw new Error(
-                  `Order #${printedOrderNum} already exists on the server — sync skipped to avoid a duplicate sale.`,
-                );
+                // Server already has this order # (or a colliding unique key). Drop the
+                // local outbox row so sync stops retrying / reporting — do not leave a
+                // stuck "duplicate" error. Skip previous-order edits (those need recovery).
+                if (row.sync_kind === "previous_order_edit") {
+                  throw new Error(
+                    `Order #${printedOrderNum} already exists on the server — sync skipped to avoid a duplicate sale.`,
+                  );
+                }
+                await idbDeleteOutboxSale(row.client_sale_uuid);
+                const local = await idbGetLocalCart("active");
+                if (local?.offline_client_sale_uuid === row.client_sale_uuid) {
+                  await idbClearLocalCart("active");
+                }
+                done += 1;
+                results.push({
+                  ok: true,
+                  discarded_duplicate: true,
+                  order_num: printedOrderNum,
+                  printed_order_num: printedOrderNum,
+                  needs_reprint: false,
+                  client_sale_uuid: row.client_sale_uuid,
+                  sync_kind: row.sync_kind ?? "sale",
+                  sale: null,
+                });
+                onProgress?.({
+                  phase: "item_done",
+                  current,
+                  total,
+                  done,
+                  failed,
+                  ok: true,
+                  discarded_duplicate: true,
+                  order_num: printedOrderNum,
+                  message: `Cleared local duplicate order #${printedOrderNum} (${done} of ${total})…`,
+                });
+                continue;
               }
             } else {
               throw firstErr;
