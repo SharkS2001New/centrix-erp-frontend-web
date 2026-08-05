@@ -1,6 +1,7 @@
 /** Desktop-style in-app tab workspace (platform-controlled per organization). */
 
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
+import { lookupReportLabel } from "@/lib/reports/report-nav";
 
 export const TAB_WORKSPACE_MAX_TABS = 10;
 
@@ -100,6 +101,10 @@ export function titleFromPathname(pathname) {
   const path = normalizeTabHref(pathname);
   const segments = path.split("/").filter(Boolean);
   if (segments.length === 0) return "Home";
+
+  if (segments[0] === "reports" && segments[1] && segments[1] !== "custom" && segments[1] !== "builder") {
+    return lookupReportLabel(segments[1]);
+  }
 
   const last = segments[segments.length - 1];
   if (/^\d+$/.test(last) && segments.length > 1) {

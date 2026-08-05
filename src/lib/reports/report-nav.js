@@ -30,9 +30,15 @@ const LABEL_OVERRIDES = {
   "items-currently-in-stock": "Items currently in stock",
   "purchases-by-supplier": "Purchases summary",
   "sales-by-user": "Sales by user",
+  "kra-compliance-summary": "KRA compliance",
+  "kra-receipts": "KRA receipts",
+  "kra-unfiscalized-sales": "Unfiscalized sales",
+  "vat-collected": "VAT collected",
+  "audit-trail": "Audit trail",
 };
 
-function lookupReportLabel(key) {
+export function lookupReportLabel(key) {
+  if (!key) return "Report";
   if (LABEL_OVERRIDES[key]) return LABEL_OVERRIDES[key];
 
   const hr = HR_REPORT_DEFS.find((row) => row.key === key);
@@ -49,7 +55,13 @@ function lookupReportLabel(key) {
 
   return key
     .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => {
+      const lower = part.toLowerCase();
+      if (lower === "kra" || lower === "vat" || lower === "pos" || lower === "lpo" || lower === "eod" || lower === "ar" || lower === "gl") {
+        return lower.toUpperCase();
+      }
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
     .join(" ");
 }
 

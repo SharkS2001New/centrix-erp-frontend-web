@@ -222,7 +222,13 @@ export function TabWorkspaceProvider({ children }) {
     const qs = typeof window !== "undefined" ? window.location.search : "";
     const fullHref = normalizeTabHref(qs ? `${pathname}${qs}` : pathname);
     const screen = resolveScreen(fullHref);
-    upsertTab(fullHref, screen?.title ?? titleFromPathname(pathname));
+    const pathTitle = titleFromPathname(pathname);
+    // `/reports/[key]` registry title is the generic "Reports" — use the specific report name.
+    const title =
+      screen?.id === "reports-key" || pathOnlyFromHref(fullHref).startsWith("/reports/")
+        ? pathTitle
+        : (screen?.title ?? pathTitle);
+    upsertTab(fullHref, title);
   }, [enabled, pathname, upsertTab, workspaceId]);
 
   useEffect(() => {
@@ -411,12 +417,17 @@ export function TabWorkspaceProvider({ children }) {
     (href, title) => {
       const normalized = normalizeTabHref(href);
       if (!workspaceId) return;
+      const pathKey = pathOnlyFromHref(normalized);
 
       titleOverridesRef.current.set(normalized, title);
       setTabStore((store) =>
         updateWorkspaceTabs(store, workspaceId, (current) => ({
           ...current,
-          tabs: current.tabs.map((tab) => (tab.href === normalized ? { ...tab, title } : tab)),
+          tabs: current.tabs.map((tab) => {
+            if (pathOnlyFromHref(tab.href) !== pathKey) return tab;
+            titleOverridesRef.current.set(tab.href, title);
+            return { ...tab, title };
+          }),
         })),
       );
     },

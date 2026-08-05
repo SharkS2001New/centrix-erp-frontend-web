@@ -14,10 +14,12 @@ import {
   HOSPITALITY_REPORT_DEFS,
   hospitalityReportSubtitle,
 } from "@/lib/reports/hospitality-reports";
+import { lookupReportLabel } from "@/lib/reports/report-nav";
 import { StructuredReportScreen } from "@/components/reports/structured-report-screen";
 import { GenericReportScreen } from "@/components/reports/generic-report-screen";
 import { apiRequest } from "@/lib/api";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
 
 /** Known generic reports that must not depend on GET /reports (reports.view-only catalog). */
 const KNOWN_GENERIC_REPORT_META = Object.fromEntries(
@@ -51,6 +53,8 @@ function ReportViewerPageContent() {
   const reportKey = reportKeyFromParams ?? stableReportKey;
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
+
+  useTabTitle(reportKey ? lookupReportLabel(reportKey) : null);
 
   const externalRoute = reportKey ? REPORT_UI_ROUTES[reportKey] : undefined;
   const redirectsOutsideReports =

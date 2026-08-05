@@ -1194,7 +1194,7 @@ export const REPORT_DEFINITIONS = {
   },
 
   "kra-receipts": {
-    title: "KRA receipts (per invoice)",
+    title: "KRA receipts",
     subtitle: "One row per fiscal receipt — order number, CU number, date, VAT, and invoice preview",
     section: "Compliance",
     apiPath: "/reports/kra-receipts",
@@ -1215,7 +1215,7 @@ export const REPORT_DEFINITIONS = {
   },
 
   "kra-compliance-summary": {
-    title: "KRA compliance summary",
+    title: "KRA compliance",
     subtitle:
       "Overall fiscalization health by day — success rate, CU invoices, fiscalized/failed totals and VAT",
     section: "Compliance",
