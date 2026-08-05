@@ -852,6 +852,7 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/hospitality/folios",
         label: "Guest folios",
+        // Pay-later / room-charge account; hidden when folios service is off.
         module: "hospitality.backend",
         permission: P.hospitality.folios.view,
         requireHospitalityService: "folios",

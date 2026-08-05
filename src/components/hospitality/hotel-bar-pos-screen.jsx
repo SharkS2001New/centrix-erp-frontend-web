@@ -73,12 +73,6 @@ const MENU_FILTER_CHIPS = [
   { id: "drinks", label: "Drinks", short: "Drinks" },
 ];
 
-const SERVICE_MODES = [
-  { id: "dine_in", label: "Dine in", short: "Dine in" },
-  { id: "room_service", label: "Room service", short: "Room" },
-  { id: "take_away", label: "Take away", short: "Takeaway" },
-];
-
 async function printCheckReceiptSafe(check, { title, organization, capabilities, user, checkPrintSettings }) {
   try {
     const result = await printHospitalityCheckReceipt(
@@ -142,7 +136,6 @@ export function HotelBarPosScreen() {
   );
   const [unpaidEnabled, setUnpaidEnabled] = useState(paymentWorkflow.unpaid);
   const [menuGroup, setMenuGroup] = useState("");
-  const [serviceMode, setServiceMode] = useState("dine_in");
   const [chargeToRoom, setChargeToRoom] = useState(false);
   const [selectedFolioId, setSelectedFolioId] = useState("");
   const [heldCount, setHeldCount] = useState(0);
@@ -166,7 +159,8 @@ export function HotelBarPosScreen() {
   const [payOpen, setPayOpen] = useState(false);
   const [payError, setPayError] = useState(null);
   const [roomChargeEnabled, setRoomChargeEnabled] = useState(
-    isHospitalityServiceEnabled(capabilities, "room_charge"),
+    isHospitalityServiceEnabled(capabilities, "room_charge") &&
+      isHospitalityServiceEnabled(capabilities, "folios"),
   );
   const [openFolios, setOpenFolios] = useState([]);
   const [activePaymentMethods, setActivePaymentMethods] = useState([]);
@@ -176,8 +170,8 @@ export function HotelBarPosScreen() {
   const loadMoreSentinelRef = useRef(null);
   const catalogRequestIdRef = useRef(0);
 
-  const showGuestField = guestNameEnabled || serviceMode === "room_service";
-  const showTableField = tablePosEnabled && serviceMode === "dine_in";
+  const showGuestField = guestNameEnabled;
+  const showTableField = tablePosEnabled;
 
   const paymentConfig = useMemo(
     () =>
@@ -211,7 +205,10 @@ export function HotelBarPosScreen() {
     setStockDeductOnSettle(hotelSettings.stockDeductOnSettle);
     setThemeTemplate(hotelSettings.themeTemplate);
     setTablePosEnabled(isHospitalityServiceEnabled(capabilities, "table_pos"));
-    setRoomChargeEnabled(isHospitalityServiceEnabled(capabilities, "room_charge"));
+    setRoomChargeEnabled(
+      isHospitalityServiceEnabled(capabilities, "room_charge") &&
+        isHospitalityServiceEnabled(capabilities, "folios"),
+    );
     setUnpaidEnabled(paymentWorkflow.unpaid);
     setPartialEnabled(paymentWorkflow.partially_paid);
   }, [
@@ -226,14 +223,11 @@ export function HotelBarPosScreen() {
   ]);
 
   useEffect(() => {
-    if (serviceMode === "room_service" && roomChargeEnabled && collectPayment) {
-      setChargeToRoom(true);
-    }
-    if (serviceMode === "take_away") {
+    if (!roomChargeEnabled) {
       setChargeToRoom(false);
       setSelectedFolioId("");
     }
-  }, [serviceMode, roomChargeEnabled, collectPayment]);
+  }, [roomChargeEnabled]);
 
   useEffect(() => {
     if (!roomChargeEnabled || offlineMode) {
@@ -270,8 +264,6 @@ export function HotelBarPosScreen() {
     setSelectedFolioId("");
     if (!keepChargePreference) {
       setChargeToRoom(false);
-    } else if (serviceMode === "room_service" && roomChargeEnabled && collectPayment) {
-      setChargeToRoom(true);
     }
   }
 
@@ -512,9 +504,7 @@ export function HotelBarPosScreen() {
       setCheck(opened);
       setSelectedLineId(null);
       setGuestNameDraft(opened.guest_name ? String(opened.guest_name) : "");
-      resetRoomChargeSelection({
-        keepChargePreference: serviceMode === "room_service",
-      });
+      resetRoomChargeSelection();
       return opened;
     }
     const body = { branch_id: user?.branch_id ?? undefined };
@@ -528,9 +518,7 @@ export function HotelBarPosScreen() {
     setCheck(opened?.check ?? null);
     setSelectedLineId(null);
     setGuestNameDraft("");
-    resetRoomChargeSelection({
-      keepChargePreference: serviceMode === "room_service",
-    });
+    resetRoomChargeSelection();
     return opened?.check ?? null;
   }
 
@@ -1068,14 +1056,13 @@ export function HotelBarPosScreen() {
       ? "Charge to room"
       : "Pay"
     : "Save";
-  const emptyTicketHint =
-    serviceMode === "room_service" || (chargeToRoom && roomChargeEnabled)
-      ? selectedFolioId
-        ? "Tap a menu item — Charge to room will collect payment and print"
-        : "Assign a room / folio, then tap a menu item"
-      : showTableField
-        ? "Choose a table, then tap a menu item to add it here"
-        : "Tap a menu item to add it here";
+  const emptyTicketHint = chargeToRoom && roomChargeEnabled
+    ? selectedFolioId
+      ? "Tap a menu item — Charge to room will collect payment and print"
+      : "Assign a room / folio, then tap a menu item"
+    : showTableField
+      ? "Choose a table, then tap a menu item to add it here"
+      : "Tap a menu item to add it here";
 
   return (
     <div
@@ -1290,22 +1277,6 @@ export function HotelBarPosScreen() {
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5">
-              {SERVICE_MODES.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  aria-pressed={serviceMode === mode.id}
-                  onClick={() => setServiceMode(mode.id)}
-                  className={`hotel-pos-service-mode${
-                    serviceMode === mode.id ? " hotel-pos-service-mode-active" : ""
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-
             <div className="grid gap-2 sm:grid-cols-2">
               {showTableField ? (
                 <div className={showGuestField || roomChargeEnabled ? undefined : "sm:col-span-2"}>
@@ -1332,18 +1303,14 @@ export function HotelBarPosScreen() {
               {showGuestField ? (
                 <div className={showTableField || roomChargeEnabled ? undefined : "sm:col-span-2"}>
                   <label className="sr-only" htmlFor="hotel-pos-guest-name">
-                    {serviceMode === "room_service" ? "Room / guest" : "Guest name"}
+                    Guest name
                   </label>
                   <input
                     id="hotel-pos-guest-name"
                     type="text"
                     value={guestNameDraft}
                     onChange={(e) => setGuestNameDraft(e.target.value)}
-                    placeholder={
-                      serviceMode === "room_service"
-                        ? "Room / guest (e.g. 101 — John)"
-                        : "Guest name (optional)"
-                    }
+                    placeholder="Guest name (optional)"
                     className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
                     autoComplete="off"
                     maxLength={160}

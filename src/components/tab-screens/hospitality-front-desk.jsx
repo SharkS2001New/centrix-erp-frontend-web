@@ -30,6 +30,8 @@ export function HospitalityFrontDeskScreen() {
 }
 
 function FrontDeskManager() {
+  const { capabilities } = useAuth();
+  const foliosEnabled = isHospitalityServiceEnabled(capabilities, "folios");
   const confirm = useConfirm();
   const [tab, setTab] = useState("arrivals");
   const [arrivals, setArrivals] = useState([]);
@@ -41,7 +43,7 @@ function FrontDeskManager() {
   const [walkIn, setWalkIn] = useState({ guest_name: "", guest_phone: "", room_id: "" });
   /** reservationId → room_id chosen at the desk for check-in */
   const [arrivalRoomById, setArrivalRoomById] = useState({});
-  /** folioId → room_id for reassignment while in house */
+  /** stay row id → room_id for reassignment while in house */
   const [inHouseRoomById, setInHouseRoomById] = useState({});
 
   const load = useCallback(async () => {
@@ -101,6 +103,10 @@ function FrontDeskManager() {
     return row.room_id ? String(row.room_id) : "";
   }
 
+  function stayRoomId(row) {
+    return Number(row.room_id || row.id || 0);
+  }
+
   async function checkInReservation(row) {
     const roomId = Number(selectedArrivalRoomId(row) || 0);
     if (!roomId) {
@@ -116,7 +122,11 @@ function FrontDeskManager() {
           room_id: roomId,
         },
       });
-      notifySuccess(`Checked in ${row.guest_name}`);
+      notifySuccess(
+        foliosEnabled
+          ? `Checked in ${row.guest_name} — folio opened`
+          : `Checked in ${row.guest_name} — room assigned`,
+      );
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Check-in failed");
@@ -137,7 +147,11 @@ function FrontDeskManager() {
           room_id: Number(walkIn.room_id),
         },
       });
-      notifySuccess("Walk-in checked in — guest folio opened");
+      notifySuccess(
+        foliosEnabled
+          ? "Walk-in checked in — guest folio opened"
+          : "Walk-in checked in — room occupied (collect payment at the desk)",
+      );
       setWalkIn({ guest_name: "", guest_phone: "", room_id: "" });
       await load();
     } catch (err) {
@@ -159,11 +173,20 @@ function FrontDeskManager() {
     }
     setBusy(true);
     try {
-      await apiRequest(`/hospitality/front-desk/folios/${row.id}/assign-room`, {
-        method: "POST",
-        body: { room_id: roomId },
-      });
-      notifySuccess(`Room assigned on folio ${row.folio_number}`);
+      if (foliosEnabled) {
+        await apiRequest(`/hospitality/front-desk/folios/${row.id}/assign-room`, {
+          method: "POST",
+          body: { room_id: roomId },
+        });
+        notifySuccess(`Room assigned on folio ${row.folio_number}`);
+      } else {
+        const fromId = stayRoomId(row);
+        await apiRequest(`/hospitality/front-desk/rooms/${fromId}/assign-room`, {
+          method: "POST",
+          body: { room_id: roomId },
+        });
+        notifySuccess("Guest moved to new room");
+      }
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not assign room");
@@ -172,9 +195,9 @@ function FrontDeskManager() {
     }
   }
 
-  async function checkOut(folioId, balance = 0) {
-    const bal = Number(balance ?? 0);
-    if (Math.abs(bal) > 0.009) {
+  async function checkOut(row) {
+    const bal = Number(row.balance ?? 0);
+    if (foliosEnabled && Math.abs(bal) > 0.009) {
       const ok = await confirm({
         title: "Folio still has a balance",
         message: `Balance is ${bal.toFixed(2)}. Check out anyway? Prefer collecting payment on the Folios screen first.`,
@@ -185,14 +208,27 @@ function FrontDeskManager() {
     }
     setBusy(true);
     try {
-      await apiRequest(`/hospitality/front-desk/folios/${folioId}/check-out`, {
-        method: "POST",
-        body: { allow_balance: Math.abs(bal) > 0.009 },
-      });
+      if (foliosEnabled) {
+        await apiRequest(`/hospitality/front-desk/folios/${row.id}/check-out`, {
+          method: "POST",
+          body: { allow_balance: Math.abs(bal) > 0.009 },
+        });
+      } else {
+        await apiRequest(`/hospitality/front-desk/rooms/${stayRoomId(row)}/check-out`, {
+          method: "POST",
+          body: {},
+        });
+      }
       notifySuccess("Checked out");
       await load();
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Check-out failed — clear folio balance first");
+      notifyError(
+        e instanceof ApiError
+          ? e.message
+          : foliosEnabled
+            ? "Check-out failed — clear folio balance first"
+            : "Check-out failed",
+      );
     } finally {
       setBusy(false);
     }
@@ -201,7 +237,11 @@ function FrontDeskManager() {
   return (
     <CatalogPageShell
       title="Front desk"
-      subtitle="Assign rooms, check guests in (opens a folio), and check out when the folio is settled."
+      subtitle={
+        foliosEnabled
+          ? "Assign rooms, check guests in (opens a folio for pay-later / room charge), and check out when settled."
+          : "Assign rooms and check guests in. Collect payment at the desk — no running folio. Enable Guest folios in platform settings only if you need pay-later or charge-to-room."
+      }
     >
       <div className="mb-4 flex flex-wrap gap-2">
         {[
@@ -298,27 +338,28 @@ function FrontDeskManager() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className={TABLE_HEAD_ROW_CLASS}>
-                <th className="px-3 py-2 text-left">Folio</th>
-                <th className="px-3 py-2 text-left">Guest</th>
+                <th className="px-3 py-2 text-left">{foliosEnabled ? "Folio" : "Guest"}</th>
+                {foliosEnabled ? <th className="px-3 py-2 text-left">Guest</th> : null}
                 <th className="px-3 py-2 text-left">Room</th>
-                <th className="px-3 py-2 text-right">Balance</th>
+                {foliosEnabled ? <th className="px-3 py-2 text-right">Balance</th> : null}
                 <th className="px-3 py-2 text-left">Action</th>
               </tr>
             </thead>
             <tbody>
               {departures.map((row) => (
                 <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
-                  <td className="px-3 py-2">{row.folio_number}</td>
-                  <td className="px-3 py-2">{row.guest_name}</td>
-                  <td className="px-3 py-2">{row.room_number || "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {Number(row.balance ?? 0).toFixed(2)}
-                  </td>
                   <td className="px-3 py-2">
-                    <SecondaryButton
-                      disabled={busy}
-                      onClick={() => void checkOut(row.id, row.balance)}
-                    >
+                    {foliosEnabled ? row.folio_number : row.guest_name}
+                  </td>
+                  {foliosEnabled ? <td className="px-3 py-2">{row.guest_name}</td> : null}
+                  <td className="px-3 py-2">{row.room_number || "—"}</td>
+                  {foliosEnabled ? (
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {Number(row.balance ?? 0).toFixed(2)}
+                    </td>
+                  ) : null}
+                  <td className="px-3 py-2">
+                    <SecondaryButton disabled={busy} onClick={() => void checkOut(row)}>
                       Check out
                     </SecondaryButton>
                   </td>
@@ -326,7 +367,7 @@ function FrontDeskManager() {
               ))}
               {!departures.length ? (
                 <tr>
-                  <td colSpan={5} className="theme-subtext px-3 py-8 text-center">
+                  <td colSpan={foliosEnabled ? 5 : 3} className="theme-subtext px-3 py-8 text-center">
                     No departures due today.
                   </td>
                 </tr>
@@ -341,10 +382,10 @@ function FrontDeskManager() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className={TABLE_HEAD_ROW_CLASS}>
-                <th className="px-3 py-2 text-left">Folio</th>
-                <th className="px-3 py-2 text-left">Guest</th>
+                <th className="px-3 py-2 text-left">{foliosEnabled ? "Folio" : "Guest"}</th>
+                {foliosEnabled ? <th className="px-3 py-2 text-left">Guest</th> : null}
                 <th className="px-3 py-2 text-left">Room</th>
-                <th className="px-3 py-2 text-right">Balance</th>
+                {foliosEnabled ? <th className="px-3 py-2 text-right">Balance</th> : null}
                 <th className="px-3 py-2 text-left">Action</th>
               </tr>
             </thead>
@@ -358,8 +399,10 @@ function FrontDeskManager() {
                       : "";
                 return (
                   <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
-                    <td className="px-3 py-2">{row.folio_number}</td>
-                    <td className="px-3 py-2">{row.guest_name}</td>
+                    <td className="px-3 py-2">
+                      {foliosEnabled ? row.folio_number : row.guest_name}
+                    </td>
+                    {foliosEnabled ? <td className="px-3 py-2">{row.guest_name}</td> : null}
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <select
@@ -389,14 +432,13 @@ function FrontDeskManager() {
                         </SecondaryButton>
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {Number(row.balance).toFixed(2)}
-                    </td>
+                    {foliosEnabled ? (
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {Number(row.balance).toFixed(2)}
+                      </td>
+                    ) : null}
                     <td className="px-3 py-2">
-                      <SecondaryButton
-                        disabled={busy}
-                        onClick={() => void checkOut(row.id, row.balance)}
-                      >
+                      <SecondaryButton disabled={busy} onClick={() => void checkOut(row)}>
                         Check out
                       </SecondaryButton>
                     </td>
@@ -405,7 +447,7 @@ function FrontDeskManager() {
               })}
               {!inHouse.length ? (
                 <tr>
-                  <td colSpan={5} className="theme-subtext px-3 py-8 text-center">
+                  <td colSpan={foliosEnabled ? 5 : 3} className="theme-subtext px-3 py-8 text-center">
                     No guests in house.
                   </td>
                 </tr>
@@ -418,8 +460,17 @@ function FrontDeskManager() {
       {!loading && tab === "walkin" ? (
         <form className="max-w-md space-y-3 rounded-xl border border-[var(--theme-border)] p-4" onSubmit={checkInWalkIn}>
           <p className="theme-subtext text-xs">
-            Check-in opens a <strong>guest folio</strong> — the running bill for room charges and F&amp;B
-            (including Hotel POS “Charge to room”).
+            {foliosEnabled ? (
+              <>
+                Check-in opens a <strong>guest folio</strong> — the running bill for room charges and F&amp;B
+                (including Hotel POS “Charge to room”).
+              </>
+            ) : (
+              <>
+                Check-in assigns the room for the stay. Collect lodging payment at the desk before handing
+                keys. Food &amp; drink is paid at the till — no charge-to-room.
+              </>
+            )}
           </p>
           <Field label="Guest name">
             <input

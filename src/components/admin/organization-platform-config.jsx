@@ -1597,8 +1597,8 @@ export function OrganizationModuleToggles({
                   <div>
                     <p className="theme-heading text-sm font-semibold">Hospitality services</p>
                     <p className="theme-subtext mt-1 text-xs">
-                      Main outlet is always on. Enable Rooms, tables, and other services per organization.
-                      Hotel &amp; Bar POS sells with or without Rooms.
+                      Main outlet is always on. Most hotels only need Rooms + Front desk (pay at check-in).
+                      Enable Guest folios only for pay-later stays and Charge to room from POS.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -1625,14 +1625,25 @@ export function OrganizationModuleToggles({
                             onChange={(e) =>
                               onSalesChange({
                                 ...(salesPlatform ?? {}),
-                                hospitality_services: {
+                                hospitality_services: normalizeHospitalityServices({
                                   ...services,
                                   [svc.key]: e.target.checked,
                                   // Table POS implies floor tables management.
                                   ...(svc.key === "table_pos" && e.target.checked
                                     ? { floor_tables: true }
                                     : {}),
-                                },
+                                  // Room charge / night audit need guest folios.
+                                  ...(svc.key === "room_charge" && e.target.checked
+                                    ? { folios: true }
+                                    : {}),
+                                  ...(svc.key === "night_audit" && e.target.checked
+                                    ? { folios: true }
+                                    : {}),
+                                  // Turning off folios also turns off dependents.
+                                  ...(svc.key === "folios" && !e.target.checked
+                                    ? { room_charge: false, night_audit: false }
+                                    : {}),
+                                }),
                               })
                             }
                           />

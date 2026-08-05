@@ -204,8 +204,13 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
             ? `Synced ${ok.length} sale(s); ${failed.length} failed.`
             : `Synced ${ok.length} sale(s).`;
           const reprintNote = reprints.length
-            ? ` ${reprints.length} receipt(s) need reprint (order # changed: ${reprints
-                .map((r) => `#${r.printed_order_num}→#${r.order_num}`)
+            ? ` ${reprints.length} receipt(s) need reprint (Cash Sales # changed: ${reprints
+                .map((r) => {
+                  const from =
+                    r.printed_pos_order_num ?? r.printed_order_num ?? "?";
+                  const to = r.pos_order_num ?? r.order_num ?? "?";
+                  return `#${from}→#${to}`;
+                })
                 .join(", ")}).`
             : "";
           setLastSyncMessage(`${base}${reprintNote}`);

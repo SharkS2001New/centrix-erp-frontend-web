@@ -16,14 +16,27 @@ export const HOSPITALITY_SERVICE_DEFAULTS = {
 export const HOSPITALITY_SERVICE_CATALOG = [
   { key: "rooms", label: "Rooms", description: "Room types and inventory. Optional — Hotel & Bar POS sells without rooms." },
   { key: "reservations", label: "Reservations", description: "Booking calendar and reservation management." },
-  { key: "front_desk", label: "Front desk", description: "Check-in / check-out and room assignment." },
-  { key: "folios", label: "Guest folios", description: "Guest accounts, charges, and folio payments." },
+  { key: "front_desk", label: "Front desk", description: "Assign rooms, check-in / check-out. Works with or without guest folios." },
+  {
+    key: "folios",
+    label: "Guest folios (pay later)",
+    description:
+      "Running guest bill for room + extras. Leave off for pay-at-check-in hotels — guests pay before keys; F&B is pay-at-till.",
+  },
   { key: "housekeeping", label: "Housekeeping", description: "Room status board (clean / dirty / OOO)." },
-  { key: "night_audit", label: "Night audit", description: "End-of-day close and room charge posting." },
+  {
+    key: "night_audit",
+    label: "Night audit",
+    description: "End-of-day close and room charge posting to open folios. Requires Guest folios.",
+  },
   { key: "extra_outlets", label: "Extra outlets", description: "Manage outlets beyond the default Main outlet." },
   { key: "floor_tables", label: "Floor tables", description: "Create and manage restaurant / bar tables." },
   { key: "table_pos", label: "Table POS mode", description: "Cashier must select a table before adding items, saving, or collecting payment." },
-  { key: "room_charge", label: "Room charge from POS", description: "Post bar checks to a guest folio." },
+  {
+    key: "room_charge",
+    label: "Room charge from POS",
+    description: "Post bar/restaurant checks to an open guest folio. Requires Guest folios. Leave off if F&B is collect-payment only.",
+  },
 ];
 
 export function normalizeHospitalityServices(raw) {
@@ -33,6 +46,14 @@ export function normalizeHospitalityServices(raw) {
     if (Object.prototype.hasOwnProperty.call(raw, key)) {
       out[key] = Boolean(raw[key]);
     }
+  }
+  // Room charge / night audit need open guest folios.
+  if (out.room_charge || out.night_audit) {
+    out.folios = true;
+  }
+  if (!out.folios) {
+    out.room_charge = false;
+    out.night_audit = false;
   }
   return out;
 }

@@ -1300,13 +1300,64 @@ function buildOutboxLineBody(line) {
  * Sync a previous-order edit: PUT lines onto the edit cart (or restore-to-cart), then checkout
  * with the same order number so the server record is updated.
  */
+async function findLiveSaleIdForPreviousOrderEdit(row) {
+  const orderNum = Number(row.order_num ?? 0);
+  const supersededId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null;
+  if (!orderNum && !supersededId) return null;
+
+  // Prefer the known superseded id when it is still a live (editable) sale.
+  if (supersededId) {
+    try {
+      const sale = await apiRequest(`/sales/${supersededId}`, {
+        loading: false,
+        reportIssues: false,
+      });
+      const status = String(sale?.status ?? "").toLowerCase();
+      if (
+        sale?.id
+        && !["cancelled", "held", "draft"].includes(status)
+        && (orderNum <= 0 || Number(sale.order_num) === orderNum)
+      ) {
+        return Number(sale.id);
+      }
+    } catch {
+      /* fall through to order # lookup */
+    }
+  }
+
+  if (!orderNum) return supersededId;
+
+  try {
+    const res = await apiRequest("/sales", {
+      searchParams: {
+        q: String(orderNum),
+        per_page: 30,
+        channel: "pos",
+        order_source: "pos",
+      },
+      loading: false,
+      reportIssues: false,
+    });
+    const rows = Array.isArray(res?.data) ? res.data : [];
+    const live = rows.find((sale) => {
+      if (Number(sale?.order_num) !== orderNum) return false;
+      const status = String(sale?.status ?? "").toLowerCase();
+      return !["cancelled", "held", "draft"].includes(status);
+    });
+    if (live?.id) return Number(live.id);
+  } catch {
+    /* ignore */
+  }
+
+  return supersededId;
+}
+
 async function resolvePreviousOrderEditCartId(row) {
   let cartId = row.server_cart_id ? Number(row.server_cart_id) : null;
-  const supersededId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null;
 
-  async function restoreFromSupersededSale() {
-    if (!supersededId) return null;
-    const restored = await apiRequest(`/sales/orders/${supersededId}/restore-to-cart`, {
+  async function restoreFromSale(saleId) {
+    if (!saleId) return null;
+    const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
       method: "POST",
       body: { replace: true },
       loading: false,
@@ -1329,7 +1380,8 @@ async function resolvePreviousOrderEditCartId(row) {
     }
   }
 
-  return restoreFromSupersededSale();
+  const liveSaleId = await findLiveSaleIdForPreviousOrderEdit(row);
+  return restoreFromSale(liveSaleId);
 }
 
 async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
@@ -1365,7 +1417,9 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   if (row.sync_kind === "previous_order_edit" && row.content_revision != null) {
     body.content_revision = Number(row.content_revision);
   }
-  if (posNum != null && posNum > 0) {
+  if (extras.clear_pos_order_num) {
+    delete body.pos_order_num;
+  } else if (posNum != null && posNum > 0) {
     body.pos_order_num = posNum;
   }
   if (posDate) {
@@ -1709,6 +1763,21 @@ function isDuplicateOrderNumError(err) {
   return false;
 }
 
+/** Cash Sales # (pos_order_num) collision — bump to next free ticket and retry upload. */
+function isCashSalesTicketCollisionError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  if (/cash\s*sales/.test(msg) && /(already used|could not be claimed|already exists)/.test(msg)) {
+    return true;
+  }
+  if (err instanceof ApiError) {
+    const blob = JSON.stringify(err.body ?? {}).toLowerCase();
+    if (/cash\s*sales/.test(blob) && /(already used|could not be claimed|already exists)/.test(blob)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 
 function outboxRowPosTicket(row) {
   const posNumRaw =
@@ -1929,7 +1998,10 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
         failed,
         order_num: printedOrderNum,
         sync_kind: row.sync_kind ?? "sale",
-        message: `Syncing ${current} of ${total} — order #${printedOrderNum}…`,
+        message:
+          row.sync_kind === "previous_order_edit"
+            ? `Updating ${current} of ${total} — order #${printedOrderNum}…`
+            : `Syncing ${current} of ${total} — order #${printedOrderNum}…`,
       });
 
       try {
@@ -1941,17 +2013,51 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
           try {
             sale = await checkoutOutboxRow(row, printedOrderNum);
           } catch (firstErr) {
-            if (isDuplicateOrderNumError(firstErr)) {
+            // Previous-order edit updates an existing online sale — the order # is
+            // supposed to exist. Recover / re-restore instead of treating it as a
+            // duplicate new upload.
+            const prevEditRecoverable =
+              row.sync_kind === "previous_order_edit"
+              && (
+                isDuplicateOrderNumError(firstErr)
+                || isCashSalesTicketCollisionError(firstErr)
+                || isMissingTemporaryCartError(firstErr)
+              );
+
+            if (prevEditRecoverable) {
               sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
               if (!sale) {
-                // Server already has this order # (or a colliding unique key). Drop the
-                // local outbox row so sync stops retrying / reporting — do not leave a
-                // stuck "duplicate" error. Skip previous-order edits (those need recovery).
-                if (row.sync_kind === "previous_order_edit") {
-                  throw new Error(
-                    `Order #${printedOrderNum} already exists on the server — sync skipped to avoid a duplicate sale.`,
+                try {
+                  sale = await checkoutOutboxRow(
+                    { ...row, server_cart_id: null },
+                    printedOrderNum,
                   );
+                } catch (retryErr) {
+                  if (isCashSalesTicketCollisionError(retryErr)) {
+                    sale = await checkoutOutboxRow(
+                      { ...row, server_cart_id: null },
+                      printedOrderNum,
+                      { clear_pos_order_num: true },
+                    );
+                    needsReprint = true;
+                  } else {
+                    throw retryErr;
+                  }
                 }
+              }
+            } else if (isCashSalesTicketCollisionError(firstErr)) {
+              // Cash Sales # already taken on server — retry without locking the printed
+              // ticket so the API allocates the next free # (275, 276, …) and uploads.
+              sale = await checkoutOutboxRow(row, printedOrderNum, {
+                clear_pos_order_num: true,
+              });
+              needsReprint = true;
+            } else if (isDuplicateOrderNumError(firstErr)) {
+              sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+              if (!sale) {
+                // Server already has this org order # (or a colliding unique key). Drop the
+                // local outbox row so sync stops retrying / reporting — do not leave a
+                // stuck "duplicate" error.
                 await idbDeleteOutboxSale(row.client_sale_uuid);
                 const local = await idbGetLocalCart("active");
                 if (local?.offline_client_sale_uuid === row.client_sale_uuid) {
@@ -1987,16 +2093,39 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
           }
         }
 
+        const originalPosTicket = outboxRowPosTicket(row).posNum;
+        const salePosTicket =
+          sale?.pos_order_num != null ? Number(sale.pos_order_num) : null;
+        if (
+          originalPosTicket != null
+          && salePosTicket != null
+          && originalPosTicket !== salePosTicket
+        ) {
+          needsReprint = true;
+        }
+        if (
+          sale?.order_num != null
+          && Number(sale.order_num) !== Number(printedOrderNum)
+        ) {
+          needsReprint = true;
+          usedOrderNum = Number(sale.order_num);
+        }
+
         await idbMarkOutboxSynced(row.client_sale_uuid, sale, {
           needs_reprint: needsReprint,
           order_num_changed: needsReprint,
           original_order_num: printedOrderNum,
         });
+        if (sale) {
+          await seedLocalPosTicketSeqFromSale(sale).catch(() => {});
+        }
         done += 1;
         results.push({
           ok: true,
           order_num: Number(sale?.order_num ?? usedOrderNum),
           printed_order_num: printedOrderNum,
+          pos_order_num: salePosTicket,
+          printed_pos_order_num: originalPosTicket,
           needs_reprint: needsReprint,
           client_sale_uuid: row.client_sale_uuid,
           sync_kind: row.sync_kind ?? "sale",
@@ -2010,7 +2139,9 @@ export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } 
           failed,
           ok: true,
           order_num: printedOrderNum,
-          message: `Synced ${done} of ${total}…`,
+          message: needsReprint
+            ? `Synced ${done} of ${total} — Cash Sales #${originalPosTicket ?? "?"}→#${salePosTicket ?? "?"} (reprint)…`
+            : `Synced ${done} of ${total}…`,
         });
       } catch (err) {
         const message = err?.message ?? "Sync failed";
