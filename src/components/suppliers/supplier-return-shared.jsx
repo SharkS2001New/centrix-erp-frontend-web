@@ -48,9 +48,23 @@ export function packageTypeOptions(packagingLabel) {
   ];
 }
 
+/**
+ * Map UI / stock-take measure keys to API package_type values.
+ * Stock-take levels use full|middle|small; the API expects full_package|partial|pieces.
+ */
+export function normalizeSupplierReturnPackageType(value) {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "full_package" || v === "full") return "full_package";
+  if (v === "pieces" || v === "small" || v === "partial") return "pieces";
+  if (v === "middle") return "partial";
+  return "full_package";
+}
+
 export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "pkg" }) {
   const options = packageTypeOptions(packagingLabel);
-  const normalized = value === "partial" ? "pieces" : value;
+  const normalized = normalizeSupplierReturnPackageType(value);
+  // UI only offers full package vs pieces; treat partial/middle as pieces in the select.
+  const selectValue = normalized === "partial" ? "pieces" : normalized;
 
   return (
     <div>
@@ -60,7 +74,7 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
       <select
         id={`${idPrefix}-type`}
         className={inputClassName()}
-        value={normalized}
+        value={selectValue}
         onChange={(e) => onChange(e.target.value)}
       >
         {options.map((o) => (
@@ -70,7 +84,7 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
         ))}
       </select>
       <p className="theme-subtext mt-1 text-[11px] leading-snug">
-        {options.find((o) => o.value === normalized)?.hint ??
+        {options.find((o) => o.value === selectValue)?.hint ??
           "Full package = whole UOM unit. Pieces / loose = individual units."}
       </p>
     </div>
@@ -136,7 +150,7 @@ export function expandLinesForSubmit(lines, reasonScope, docNotes) {
     return [
       {
         product_code: l.product_code,
-        package_type: l.package_type === "partial" ? "pieces" : l.package_type,
+        package_type: normalizeSupplierReturnPackageType(l.package_type),
         uom_label: l.uom_label,
         reason,
         stock_location: l.stock_location,

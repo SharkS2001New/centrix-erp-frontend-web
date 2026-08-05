@@ -1022,6 +1022,13 @@ const NAV_SECTION_DEFINITIONS = [
         orgAdminOnly: true,
         exact: true,
       },
+      {
+        href: "/admin/license",
+        label: "License Information",
+        module: "admin",
+        permission: P.admin.license.view,
+        orgAdminOnly: true,
+      },
     ],
   },
   {
@@ -1035,13 +1042,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Company profile",
         module: "admin",
         permission: P.admin.company.view,
-        orgAdminOnly: true,
-      },
-      {
-        href: "/admin/license",
-        label: "License Information",
-        module: "admin",
-        permission: P.admin.license.view,
         orgAdminOnly: true,
       },
       {

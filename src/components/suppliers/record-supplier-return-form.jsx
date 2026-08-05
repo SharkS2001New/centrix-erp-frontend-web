@@ -24,6 +24,7 @@ import {
   expandLinesForSubmit,
   formatStockLocationLabel,
   lpoReceivedLocationMeta,
+  normalizeSupplierReturnPackageType,
   packagingLabelFromProduct,
   stockLocationSelectOptions,
 } from "@/components/suppliers/supplier-return-shared";
@@ -200,7 +201,7 @@ export function RecordSupplierReturnForm({
             product_code: line.product_code,
             product_name: line.product_name,
             quantity: String(line.quantity),
-            package_type: line.package_type === "partial" ? "pieces" : line.package_type,
+            package_type: normalizeSupplierReturnPackageType(line.package_type),
             stock_location: line.stock_location ?? STOCK_LOCATION.STORE,
             reason: line.reason ?? "",
             uom_label: line.uom_label,
@@ -396,7 +397,7 @@ export function RecordSupplierReturnForm({
       if (existing.has(product.product_code)) continue;
       existing.add(product.product_code);
       const uom = product.uom ?? uomById.get(product.unit_id);
-      const packageType = defaultUomMeasureLevel(uom);
+      const packageType = normalizeSupplierReturnPackageType(defaultUomMeasureLevel(uom));
       newLines.push({
         key: newLineKey(),
         product_code: product.product_code,

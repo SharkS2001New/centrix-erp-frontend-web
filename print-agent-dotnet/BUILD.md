@@ -31,6 +31,14 @@ https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.
 
 Or manually copy `SumatraPDF.exe` into that `tools\SumatraPDF\` folder.
 
+**Usual install locations** (copy from whichever exists on the till PC):
+
+- `C:\Program Files\SumatraPDF\SumatraPDF.exe`
+- `C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe`
+- `C:\Users\<your Windows user>\AppData\Local\SumatraPDF\SumatraPDF.exe`
+
+Portable zip: extract and copy `SumatraPDF.exe` from the folder you unzipped. If unsure, search the PC for `SumatraPDF.exe` in File Explorer.
+
 If Windows blocks the script, right‑click `BUILD-AND-INSTALL.bat` → **Run as administrator**.
 
 ---

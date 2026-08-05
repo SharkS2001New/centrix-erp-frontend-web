@@ -12,6 +12,7 @@ import {
 } from "@/lib/local-printing-settings";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:9247";
+const HEALTH_PATH = "/v1/health";
 const HEALTH_TIMEOUT_MS = 1200;
 const QUICK_HEALTH_TIMEOUT_MS = 500;
 /** Async queue returns quickly; sync/test print may still wait for PDF + printer. */
@@ -62,6 +63,11 @@ export function savePrintAgentConfig(next) {
 
 function agentUrl(config, path) {
   return `${config.baseUrl}${path}`;
+}
+
+export function printAgentHealthUrl(config = getPrintAgentConfig()) {
+  const base = String(config?.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "") || DEFAULT_BASE_URL;
+  return `${base}${HEALTH_PATH}`;
 }
 
 function healthCacheKey(config) {
@@ -145,6 +151,11 @@ export async function checkPrintAgentHealth(
       platform: body.platform ?? null,
       defaultPrinter: body.default_printer ?? body.defaultPrinter ?? null,
       printers: Array.isArray(body.printers) ? body.printers : [],
+      sumatraAvailable: Boolean(body.sumatra_available),
+      sumatraPath: body.sumatra_path ?? null,
+      wkhtmltopdfAvailable: Boolean(body.wkhtmltopdf_available),
+      runningAsService: Boolean(body.running_as_service),
+      raw: body,
     };
     if (result.ok) {
       markPrintAgentHealthy(config, result);

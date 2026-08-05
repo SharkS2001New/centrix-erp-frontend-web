@@ -28,11 +28,7 @@ import {
   receiptPaymentDetailsToPayload,
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
 } from "@/lib/receipt-payment-details";
-import {
-  documentPrintPhonesFormFields,
-  documentPrintPhonesPayloadFields,
-  emptyPrintPhones,
-} from "@/lib/document-print-phones";
+import { emptyPrintPhones } from "@/lib/document-print-phones";
 import { isPlatformMobileOrdersEnabled } from "@/lib/platform-org-features";
 import { salesOrganizationFormFromApi } from "@/lib/sales-settings";
 
@@ -111,8 +107,6 @@ export const EMPTY_PRINTOUTS_FORM = {
   proforma_print_phones: emptyPrintPhones(),
   use_same_print_phones_for_lpo: true,
   lpo_print_phones: emptyPrintPhones(),
-  use_same_print_phones_for_other: true,
-  other_print_phones: emptyPrintPhones(),
   lpo_document_template: "default",
   lpo_print_delivery_notes: "",
   lpo_print_kebs_warning: "",
@@ -258,7 +252,6 @@ export function printoutsGeneralFormFromApi(res) {
     ...printFontFormFromGeneral(merged),
     ...documentLogoFormFromGeneral(merged),
     ...printFooterFormFromGeneral(merged),
-    ...documentPrintPhonesFormFields(merged, { prefix: "other" }),
   };
 }
 
@@ -345,7 +338,6 @@ export function printoutsGeneralPayloadFromForm(form) {
     ...printFontPayloadFromForm(form),
     ...documentLogoPayloadFromForm(form),
     ...printFooterPayloadFromForm(form),
-    ...documentPrintPhonesPayloadFields(form, { prefix: "other" }),
   };
 }
 

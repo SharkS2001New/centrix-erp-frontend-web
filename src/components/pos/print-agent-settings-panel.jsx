@@ -23,6 +23,7 @@ import { applyLocalPrintProviderSelection } from "@/lib/print-dispatch";
 import {
   checkPrintAgentHealth,
   normalizePrintAgentConfig,
+  printAgentHealthUrl,
   printViaAgent,
 } from "@/lib/print-agent";
 import {
@@ -57,6 +58,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const [provider, setProvider] = useState("browser");
   const [agentForm, setAgentForm] = useState(() => normalizePrintAgentConfig());
   const [health, setHealth] = useState(null);
+  const [healthDetailJson, setHealthDetailJson] = useState(null);
   const [checking, setChecking] = useState(false);
   const [testPrinting, setTestPrinting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -145,6 +147,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     setSaved(false);
     setProvider(next);
     setHealth(null);
+    setHealthDetailJson(null);
     applyLocalPrintProviderSelection(next);
     if (next === "agent") setAgentForm((prev) => ({ ...prev, enabled: true }));
   }
@@ -185,16 +188,54 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   async function handleTestConnection() {
     const result = await refreshHealth();
     if (result?.ok) {
+      const sumatraNote = result.sumatraAvailable
+        ? " SumatraPDF is ready."
+        : " SumatraPDF is not configured yet — run configure-sumatra.ps1 on the till PC.";
       notifySuccess(
-        result.defaultPrinter
-          ? `Connected. Printers available — default: ${result.defaultPrinter}`
-          : "Connected.",
+        (result.defaultPrinter
+          ? `Connected. Printers available — default: ${result.defaultPrinter}.`
+          : "Connected.") + sumatraNote,
       );
     } else {
       notifyError(
         result?.error ||
           "Print agent is not reachable. Install Centrix Print Agent on this PC and leave it running.",
       );
+    }
+  }
+
+  async function handleCheckHealth() {
+    setChecking(true);
+    setHealthDetailJson(null);
+    try {
+      const config = { ...agentForm, enabled: true };
+      const status = await checkPrintAgentHealth(config, { bypassCache: true });
+      if (!status) {
+        const offline = {
+          ok: false,
+          error: "Print agent is not running on this PC.",
+          url: printAgentHealthUrl(config),
+        };
+        setHealth({ ok: false, printers: [], error: offline.error });
+        setHealthDetailJson(JSON.stringify(offline, null, 2));
+        notifyError(offline.error);
+        return;
+      }
+
+      setHealth(status);
+      setHealthDetailJson(JSON.stringify(status.raw ?? status, null, 2));
+
+      if (status.sumatraAvailable) {
+        notifySuccess('Health OK — "sumatra_available" is true.');
+      } else if (status.ok) {
+        notifyError(
+          'Agent is running but "sumatra_available" is false. Copy Sumatra into the Print Agent folder (see setup guide) or run configure-sumatra.ps1 on the till PC.',
+        );
+      } else {
+        notifyError("Print agent returned an unhealthy status.");
+      }
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -359,8 +400,25 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           </Field>
           {!health?.printers?.length ? (
             <p className="theme-subtext text-xs">
-              Click <strong>Test connection</strong> after installing the Print Agent to load printers.
+              Click <strong>Test connection</strong> or <strong>Check health</strong> after installing the
+              Print Agent to load printers.
             </p>
+          ) : null}
+          {health?.ok && health.sumatraAvailable === false ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Print Agent is online but <strong>SumatraPDF is missing</strong>. Silent printing needs{" "}
+              <code className="text-[11px]">sumatra_available: true</code> — use{" "}
+              <strong>Check health</strong> after running <code className="text-[11px]">configure-sumatra.ps1</code>{" "}
+              on the till PC.
+            </p>
+          ) : null}
+          {healthDetailJson ? (
+            <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] px-3 py-2">
+              <p className="theme-heading text-xs font-medium">Health response</p>
+              <pre className="theme-subtext mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed">
+                {healthDetailJson}
+              </pre>
+            </div>
           ) : null}
           <p className="theme-subtext text-xs">
             The agent listens on <code className="text-[11px]">http://127.0.0.1:9247</code>. If it is offline,
@@ -486,16 +544,34 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                         </p>
                         Or manually copy <code className="text-[11px]">SumatraPDF.exe</code> into that{" "}
                         <code className="text-[11px]">tools\SumatraPDF\</code> path (create the folder if missing).
+                        <p className="mt-1.5">
+                          Usual install locations (copy from whichever exists on the till PC):
+                        </p>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-[11px]">
+                          <li>C:\Program Files\SumatraPDF\SumatraPDF.exe</li>
+                          <li>C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe</li>
+                          <li>
+                            C:\Users\&lt;your Windows user&gt;\AppData\Local\SumatraPDF\SumatraPDF.exe
+                          </li>
+                        </ul>
+                        <p className="mt-1">
+                          Portable zip: extract the zip and copy <code className="text-[11px]">SumatraPDF.exe</code>{" "}
+                          from the folder you unzipped. If unsure, search the PC for{" "}
+                          <code className="text-[11px]">SumatraPDF.exe</code> in File Explorer.
+                        </p>
                       </li>
                     </ul>
                   </li>
                   <li>
-                    Confirm health shows <code className="text-[11px]">&quot;sumatra_available&quot;: true</code> at{" "}
-                    <code className="text-[11px]">http://127.0.0.1:9247/v1/health</code>.
+                    Click <strong>Check health</strong> below on the till PC — the response should include{" "}
+                    <code className="text-[11px]">&quot;sumatra_available&quot;: true</code>. Or open{" "}
+                    <ExternalDownloadLink href={printAgentHealthUrl(agentForm)}>
+                      {printAgentHealthUrl(agentForm)}
+                    </ExternalDownloadLink>{" "}
+                    in a browser on that same PC.
                   </li>
                   <li>
-                    Back here: <strong>Test connection</strong> → pick preferred printer →{" "}
-                    <strong>Test print</strong> → <strong>Save settings</strong>.
+                    Pick preferred printer → <strong>Test print</strong> → <strong>Save settings</strong>.
                   </li>
                 </ol>
                 <p>
@@ -537,6 +613,14 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
               {checking ? "Checking…" : "Test connection"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleCheckHealth()}
+          disabled={checking}
+          className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {checking ? "Checking…" : "Check health"}
         </button>
         <button
           type="button"

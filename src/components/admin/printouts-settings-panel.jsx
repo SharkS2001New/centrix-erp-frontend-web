@@ -21,6 +21,7 @@ import {
   resolvePrintoutSections,
 } from "@/lib/printouts-settings";
 import { FooterLineEditor } from "@/components/admin/footer-line-editor";
+import { DocumentPrintPhonesFields } from "@/components/admin/document-print-phones-fields";
 import { PrintFontSettingsFields } from "@/components/admin/print-font-settings-fields";
 import { DocumentLogoSettingsFields } from "@/components/admin/document-logo-settings-fields";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
@@ -103,77 +104,6 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
         {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
       </span>
     </label>
-  );
-}
-
-/** Use company Tel 1/2, or set dedicated numbers for this document type. */
-function DocumentPrintPhonesFields({
-  form,
-  setForm,
-  useSameKey,
-  phonesKey,
-  organization = null,
-  title = "Phone numbers",
-  description = "Company Tel 1 and Tel 2 from Admin → Company are the primary numbers on thermal receipts.",
-}) {
-  const companyLine = formatPrintPhones({
-    tel1: organization?.primary_tel,
-    tel2: organization?.secondary_tel,
-  });
-  const useSame = form[useSameKey] !== false;
-  const phones = form[phonesKey] ?? { tel1: "", tel2: "" };
-
-  return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-      <SectionHeading title={title} description={description} />
-      {companyLine ? (
-        <p className="text-xs text-slate-500">
-          Company Tel 1 / Tel 2: <span className="font-medium text-slate-700">{companyLine}</span>
-        </p>
-      ) : (
-        <p className="text-xs text-amber-700">
-          Set Tel 1 / Tel 2 under Admin → Company — those primary numbers print on thermal receipts.
-        </p>
-      )}
-      <Toggle
-        label="Use same numbers as company Tel 1 & Tel 2"
-        checked={useSame}
-        onChange={(v) => setForm((f) => ({ ...f, [useSameKey]: v }))}
-        description="When off, set different phone numbers for this document type only."
-      />
-      {!useSame ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Tel 1">
-            <input
-              type="text"
-              className={inputClassName()}
-              value={phones.tel1 ?? ""}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  [phonesKey]: { ...(f[phonesKey] ?? {}), tel1: e.target.value },
-                }))
-              }
-              placeholder="Primary phone for this document"
-            />
-          </Field>
-          <Field label="Tel 2">
-            <input
-              type="text"
-              className={inputClassName()}
-              value={phones.tel2 ?? ""}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  [phonesKey]: { ...(f[phonesKey] ?? {}), tel2: e.target.value },
-                }))
-              }
-              placeholder="Secondary phone (optional)"
-            />
-          </Field>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -398,18 +328,6 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
           </p>
         </div>
       </div>
-
-      <div>
-        <DocumentPrintPhonesFields
-          form={form}
-          setForm={setForm}
-          useSameKey="use_same_print_phones_for_other"
-          phonesKey="other_print_phones"
-          organization={organization}
-          title="Other document phones"
-          description="Credit notes, GRNs, supplier returns, and similar branded A4 documents. Thermal and A4 tax invoices always use company Tel 1 & Tel 2."
-        />
-      </div>
     </div>
   );
 }
@@ -481,7 +399,8 @@ function ThermalReceiptsTab({ form, setForm, hasMobileSales, organization = null
                 tel2: organization?.secondary_tel,
               })}`
             : " (set them there if missing)"}.
-          Proforma, LPO, and other documents can use different numbers on their tabs.
+          Proforma and LPO can use different numbers on their Printouts tabs. Other branded documents
+          (credit notes, GRNs, supplier returns) use numbers under Admin → Company profile.
         </p>
       </div>
       <PrintFontSettingsFields

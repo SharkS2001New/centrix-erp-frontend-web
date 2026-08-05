@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError, uploadOrganizationLogo, apiBaseOrigin } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { DocumentPrintPhonesFields } from "@/components/admin/document-print-phones-fields";
 import {
   CatalogPageShell,
   Field,
@@ -13,9 +14,19 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
+import {
+  documentPrintPhonesFormFields,
+  documentPrintPhonesPayloadFields,
+  emptyPrintPhones,
+} from "@/lib/document-print-phones";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 import Link from "next/link";
+
+const EMPTY_DOCUMENT_PHONES_FORM = {
+  use_same_print_phones_for_other: true,
+  other_print_phones: emptyPrintPhones(),
+};
 
 const EMPTY_FORM = {
   org_name: "",
@@ -67,6 +78,7 @@ export function AdminCompanyScreen() {
   const fileInputRef = useRef(null);
   const [orgId, setOrgId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [documentPhonesForm, setDocumentPhonesForm] = useState(EMPTY_DOCUMENT_PHONES_FORM);
   const [hasLogo, setHasLogo] = useState(false);
   const [logoVersion, setLogoVersion] = useState(0);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
@@ -78,21 +90,50 @@ export function AdminCompanyScreen() {
     isSuperAdmin ||
     hasPermission?.("admin.license.view") ||
     hasPermission?.("admin.view");
+
+  const settingsGeneralPath = platformOrgId
+    ? `/admin/organizations/${platformOrgId}/settings/general`
+    : "/erp/settings/general";
+
+  const organizationForPhones = useMemo(
+    () => ({
+      primary_tel: form.primary_tel,
+      secondary_tel: form.secondary_tel,
+    }),
+    [form.primary_tel, form.secondary_tel],
+  );
+
   const load = useCallback(async () => {
     if (authLoading) return;
 
     setLoading(true);
     try {
-      const res = platformOrgId
-        ? await apiRequest(organizationPath(""))
-        : await apiRequest("/erp/organization/profile");
-      const org = organizationFromResponse(res);
+      const [profileResult, generalResult] = await Promise.allSettled([
+        platformOrgId
+          ? apiRequest(organizationPath(""))
+          : apiRequest("/erp/organization/profile"),
+        apiRequest(settingsGeneralPath),
+      ]);
+
+      if (profileResult.status !== "fulfilled") {
+        throw profileResult.reason;
+      }
+
+      const org = organizationFromResponse(profileResult.value);
       if (!org?.id) {
         throw new ApiError("Organization profile could not be loaded.", 422);
       }
       setOrgId(org.id);
       setHasLogo(Boolean(org.has_logo));
       setForm(mapOrganizationToForm(org));
+
+      if (generalResult.status === "fulfilled") {
+        const general = generalResult.value?.general ?? generalResult.value ?? {};
+        setDocumentPhonesForm({
+          ...EMPTY_DOCUMENT_PHONES_FORM,
+          ...documentPrintPhonesFormFields(general, { prefix: "other" }),
+        });
+      }
     } catch (e) {
       const seed = organizationProfile ?? authOrganization;
       if (seed?.id) {
@@ -104,7 +145,7 @@ export function AdminCompanyScreen() {
     } finally {
       setLoading(false);
     }
-  }, [authLoading, authOrganization, organizationPath, organizationProfile, platformOrgId]);
+  }, [authLoading, authOrganization, organizationPath, organizationProfile, platformOrgId, settingsGeneralPath]);
 
   useTabAwareDataLoad(load);
 
@@ -130,19 +171,25 @@ export function AdminCompanyScreen() {
     setSaving(true);
     try {
       const path = platformOrgId ? organizationPath("") : "/erp/organization/profile";
-      await apiRequest(path, {
-        method: "PATCH",
-        body: {
-          org_name: form.org_name.trim(),
-          primary_tel: form.primary_tel.trim(),
-          secondary_tel: form.secondary_tel.trim() || null,
-          addn_tel1: form.addn_tel1.trim() || null,
-          addn_tel2: form.addn_tel2.trim() || null,
-          org_address: form.org_address.trim(),
-          org_pin: form.org_pin.trim() || null,
-          vat_regno: form.vat_regno.trim() || null,
-        },
-      });
+      await Promise.all([
+        apiRequest(path, {
+          method: "PATCH",
+          body: {
+            org_name: form.org_name.trim(),
+            primary_tel: form.primary_tel.trim(),
+            secondary_tel: form.secondary_tel.trim() || null,
+            addn_tel1: form.addn_tel1.trim() || null,
+            addn_tel2: form.addn_tel2.trim() || null,
+            org_address: form.org_address.trim(),
+            org_pin: form.org_pin.trim() || null,
+            vat_regno: form.vat_regno.trim() || null,
+          },
+        }),
+        apiRequest(settingsGeneralPath, {
+          method: "PATCH",
+          body: documentPrintPhonesPayloadFields(documentPhonesForm, { prefix: "other" }),
+        }),
+      ]);
       notifySuccess("Company profile saved.");
       await load();
     } catch (e) {
@@ -296,6 +343,19 @@ export function AdminCompanyScreen() {
                 </Field>
               </div>
             </div>
+
+            <div className="mt-6">
+              <DocumentPrintPhonesFields
+                form={documentPhonesForm}
+                setForm={setDocumentPhonesForm}
+                useSameKey="use_same_print_phones_for_other"
+                phonesKey="other_print_phones"
+                organization={organizationForPhones}
+                title="Other document phones"
+                description="Credit notes, GRNs, supplier returns, and similar branded A4 documents. Thermal and A4 tax invoices always use company Tel 1 & Tel 2 above."
+              />
+            </div>
+
             <div className="mt-6 flex justify-end">
               <PrimaryButton type="submit" disabled={saving}>
                 {saving ? "Saving…" : "Save profile"}
