@@ -122,12 +122,6 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
   const routeOpts = { workspaceId };
 
   for (const section of sections) {
-    // Till operations (EOD / till locks) sit in the Backoffice sidebar for managers,
-    // but pos.* alone must not unlock Backoffice — cashiers stay on External POS only.
-    if (workspaceId === "backoffice" && section.id === "pos") {
-      continue;
-    }
-
     for (const item of section.items) {
       if (!canAccessRoute(item.href, ctx, routeOpts)) continue;
       if (workspaceId === "backoffice" && !backofficeNavItemUnlocksWorkspace(item, ctx)) {

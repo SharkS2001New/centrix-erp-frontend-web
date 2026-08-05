@@ -16,6 +16,10 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import { fetchHotelPosSettings } from "@/lib/hospitality-pos-api";
+import {
+  buildHospitalityCheckPrintOptions,
+  normalizeHospitalityCheckPrintSettings,
+} from "@/lib/hospitality-check-print-options";
 import { isPrintAgentEnabled, warmPrintAgentHealth } from "@/lib/print-agent";
 
 function formatMoney(value) {
@@ -46,7 +50,7 @@ function MetaRow({ label, children }) {
 export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {}) {
   const params = useParams();
   const router = useRouter();
-  const { organization } = useAuth();
+  const { organization, capabilities, user } = useAuth();
   const checkId = checkIdProp ?? params?.id;
 
   const [check, setCheck] = useState(null);
@@ -64,15 +68,7 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
       ]);
       setCheck(res?.check ?? null);
       if (settings) {
-        setPrintSettings({
-          check_receipt_copies: settings.check_receipt_copies ?? 1,
-          show_outlet_on_check_receipt: settings.show_outlet_on_check_receipt !== false,
-          show_organization_on_check_receipt: settings.show_organization_on_check_receipt !== false,
-          enable_check_guest_name: Boolean(settings.enable_check_guest_name),
-          check_receipt_footer: settings.check_receipt_footer ?? "Thank you",
-          use_same_print_phones_for_check: settings.use_same_print_phones_for_check !== false,
-          check_print_phones: settings.check_print_phones ?? { tel1: "", tel2: "" },
-        });
+        setPrintSettings(normalizeHospitalityCheckPrintSettings(settings));
       }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load order");
@@ -95,11 +91,16 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
     if (!check || printing) return;
     setPrinting(true);
     try {
-      const result = await printHospitalityCheckReceipt(check, {
-        title: "Order receipt",
-        organization,
-        printSettings,
-      });
+      const result = await printHospitalityCheckReceipt(
+        check,
+        buildHospitalityCheckPrintOptions({
+          checkPrintSettings: printSettings,
+          organization,
+          capabilities,
+          user,
+          title: "Order receipt",
+        }),
+      );
       if (result?.ok) {
         notifySuccess("Receipt sent to printer");
       }

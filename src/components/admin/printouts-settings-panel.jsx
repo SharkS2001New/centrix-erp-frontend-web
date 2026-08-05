@@ -148,10 +148,10 @@ function PrintoutsTabBar({ tabs, activeTab, onTabChange }) {
 function DocumentFooterField({ footerKey, form, setForm }) {
   const fieldKey = PRINT_FOOTER_FORM_KEYS[footerKey];
   const label = PRINT_FOOTER_LABELS[footerKey];
-  const isSalesFooter = footerKey === "receipt" || footerKey === "invoice";
-  const minRows = footerKey === "receipt" ? 3 : footerKey === "invoice" ? 4 : 2;
+  const isSalesFooter = footerKey === "receipt" || footerKey === "invoice" || footerKey === "hospitality_check";
+  const minRows = footerKey === "receipt" || footerKey === "hospitality_check" ? 3 : footerKey === "invoice" ? 4 : 2;
   const placeholder =
-    footerKey === "receipt"
+    footerKey === "receipt" || footerKey === "hospitality_check"
       ? "You were served by: {username}"
       : footerKey === "invoice"
         ? "You were served by: {username}"
@@ -173,7 +173,7 @@ function DocumentFooterField({ footerKey, form, setForm }) {
         showPlaceholdersHint={isSalesFooter}
         placeholdersHint={isSalesFooter ? SALES_FOOTER_PLACEHOLDER_HINT : ""}
       />
-      {footerKey === "receipt" ? (
+      {footerKey === "receipt" || footerKey === "hospitality_check" ? (
         <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
           Always printed (not editable):{" "}
           <span className="font-medium text-slate-800">{RECEIPT_POWERED_BY_LINE}</span>
@@ -854,7 +854,7 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
     <div className="space-y-3">
       <SectionHeading
         title="Hotel & Bar check receipts"
-        description="Independent from retail thermal / A4 sales printouts. Used when Hotel POS prints unpaid or paid checks."
+        description="80mm guest checks for Hotel POS — same thermal customization as retail (fonts, logo, footer, payment instructions), laid out like a hotel F&B bill."
       />
       <Field label="Receipt copies">
         <select
@@ -867,22 +867,66 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
           <option value="3">Triple receipt</option>
         </select>
       </Field>
+      <PrintFontSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="hospitality_check"
+        description="Font for Hotel / Bar thermal checks. Falls back to Thermal receipt fonts until you set these."
+      />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="hospitality_check"
+        description="Optional on narrow thermal printers. Off by default — turn on only if you want the company logo on guest checks."
+      />
       <Toggle
         label="Show organization name on check receipts"
         checked={form.show_organization_on_check_receipt !== false}
         onChange={(v) => setForm((f) => ({ ...f, show_organization_on_check_receipt: v }))}
       />
       <Toggle
+        label="Show address on check receipts"
+        checked={form.show_address_on_check_receipt !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_address_on_check_receipt: v }))}
+      />
+      <Toggle
+        label="Show tax PIN on check receipts"
+        checked={form.show_tax_pin_on_check_receipt !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_tax_pin_on_check_receipt: v }))}
+      />
+      <Toggle
         label="Show outlet / channel on check receipts"
-        description="Prints the Bar or Hotel outlet name tied to the check."
+        description="Prints the Bar or Restaurant outlet name tied to the check."
         checked={form.show_outlet_on_check_receipt !== false}
         onChange={(v) => setForm((f) => ({ ...f, show_outlet_on_check_receipt: v }))}
+      />
+      <Toggle
+        label="Show date & time on check receipts"
+        checked={form.show_datetime_on_check_receipt !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_datetime_on_check_receipt: v }))}
+      />
+      <Toggle
+        label="Show server / cashier on check receipts"
+        checked={form.show_cashier_on_check_receipt !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_cashier_on_check_receipt: v }))}
+      />
+      <Toggle
+        label="Show unit price column"
+        description="Hotel-style Item | Qty | Price | Amount. Turn off for a simpler Qty | Amount layout."
+        checked={form.show_unit_price_on_check_receipt !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_unit_price_on_check_receipt: v }))}
       />
       <Toggle
         label="Ask for guest / customer name on Hotel POS"
         description="Off by default (same as retail checkout). When on, cashiers can enter a name on the ticket and it prints on check receipts."
         checked={Boolean(form.enable_check_guest_name)}
         onChange={(v) => setForm((f) => ({ ...f, enable_check_guest_name: v }))}
+      />
+      <Toggle
+        label="Always show Cash / M-Pesa / Equity / KCB rows"
+        description="When off, only tenders that were used are printed."
+        checked={Boolean(form.check_receipt_show_all_payment_methods)}
+        onChange={(v) => setForm((f) => ({ ...f, check_receipt_show_all_payment_methods: v }))}
       />
       <DocumentPrintPhonesFields
         form={form}
@@ -893,10 +937,38 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
         title="Phone numbers on hotel checks"
         description="Defaults to company Tel 1 / Tel 2. Override for hotel front desk or bar numbers if needed."
       />
+      <Toggle
+        label="Show payment instructions on hotel checks"
+        checked={form.show_check_payment_details !== false}
+        onChange={(v) => setForm((f) => ({ ...f, show_check_payment_details: v }))}
+        description="Bank / Paybill / Till details under the bill totals — same style as retail thermal receipts."
+      />
+      {form.show_check_payment_details !== false ? (
+        <>
+          <Toggle
+            label="Use the same payment instructions as POS thermal receipts"
+            checked={form.use_same_payment_details_for_check !== false}
+            onChange={(v) => setForm((f) => ({ ...f, use_same_payment_details_for_check: v }))}
+            description="When off, set hotel-specific bank / M-Pesa details below."
+          />
+          {form.use_same_payment_details_for_check === false ? (
+            <ReceiptPaymentDetailsEditor
+              value={form.check_receipt_payment_details}
+              onChange={(value) => setForm((f) => ({ ...f, check_receipt_payment_details: value }))}
+              idPrefix="printouts-hotel-check-pay"
+            />
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+              Hotel checks will print the payment details configured under Thermal receipts
+              {organization?.org_name ? ` for ${organization.org_name}` : ""}.
+            </p>
+          )}
+        </>
+      ) : null}
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
           title="Check receipt footer"
-          description="Closing line on Hotel POS check receipts (separate from retail receipt footers)."
+          description={`Closing lines on Hotel POS checks. Placeholders: ${SALES_FOOTER_PLACEHOLDER_HINT}. Always ends with: ${RECEIPT_POWERED_BY_LINE}`}
         />
         <div className="mt-3">
           <DocumentFooterField footerKey="hospitality_check" form={form} setForm={setForm} />
@@ -946,7 +1018,8 @@ function previewTypeForTab(tabId, previewTypes = []) {
     tabId === "loading_sheet" ||
     tabId === "picking_list" ||
     tabId === "trip_chart" ||
-    tabId === "payroll_receipt"
+    tabId === "payroll_receipt" ||
+    tabId === "hospitality_check"
   ) {
     return tabId;
   }

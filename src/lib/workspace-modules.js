@@ -13,13 +13,13 @@ export const PROVISIONABLE_WORKSPACES = [
   {
     id: "pos",
     label: "External POS",
-    description: "External POS terminal, till sessions, and end of day. Turning this on also enables Backoffice.",
+    description: "External POS terminal and checkout. Till management and end of day are granted under Backoffice.",
     icon: "pos",
   },
   {
     id: "backoffice",
     label: "Backoffice",
-    description: "Sales, inventory, purchasing, and day-to-day operations.",
+    description: "Sales, inventory, purchasing, till operations, and day-to-day operations.",
     icon: "building",
   },
   {

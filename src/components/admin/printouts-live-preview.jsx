@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  buildHospitalityCheckReceiptHtml,
+  sampleHospitalityCheckPreviewData,
+} from "@/components/hospitality/hospitality-check-receipt-print";
 import { buildLoadingListHtml, sampleLoadingListPreviewData } from "@/components/fulfillment/loading-list-print";
 import {
   buildPickingListHtml,
@@ -28,7 +32,7 @@ import {
 import { resolveProformaValidDays } from "@/lib/proforma-print-settings";
 import { mergePreviewGeneralWithPrintFonts } from "@/lib/print-font-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
-import { resolvePrintoutSections } from "@/lib/printouts-settings";
+import { printoutsHospitalityPayloadFromForm, resolvePrintoutSections } from "@/lib/printouts-settings";
 import {
   SAMPLE_PREVIEW_BRANCH,
   SAMPLE_PREVIEW_CUSTOMER,
@@ -48,6 +52,7 @@ const PREVIEW_OPTION_LABELS = {
   receipt: "Thermal receipt",
   invoice: "Invoice receipt (A4)",
   proforma: "Proforma invoice",
+  hospitality_check: "Hotel check receipt",
   lpo: "LPO",
   loading_sheet: "Loading sheet",
   picking_list: "Picking list",
@@ -57,6 +62,7 @@ const PREVIEW_OPTION_LABELS = {
 
 const PREVIEW_TYPOGRAPHY_VARIANT = {
   receipt: "thermal",
+  hospitality_check: "thermal_check",
   invoice: "sale_invoice",
   proforma: "sale_invoice",
   lpo: "lpo",
@@ -250,6 +256,30 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       generalSettings: general,
       single: true,
       documentFooterText: resolvePrintFooter(general, "payroll_receipt"),
+    });
+  }
+
+  if (previewType === "hospitality_check") {
+    const hospitality = {
+      ...(moduleSettings?.hospitality ?? {}),
+      ...printoutsHospitalityPayloadFromForm(form),
+    };
+    const useSamePay = hospitality.use_same_payment_details_for_check !== false;
+    const paymentInstructions = receiptPaymentDetailsToPayload(
+      useSamePay
+        ? sales.pos_receipt_payment_details
+        : hospitality.check_receipt_payment_details ?? form.check_receipt_payment_details,
+    );
+    return buildHospitalityCheckReceiptHtml(sampleHospitalityCheckPreviewData(), {
+      title: "Paid receipt",
+      organization: organizationForPrint,
+      seller,
+      branding: brandingWithLogo,
+      generalSettings: general,
+      printSettings: hospitality,
+      paymentInstructions,
+      showPaymentInstructions: hospitality.show_check_payment_details !== false,
+      user: { full_name: "Preview Cashier" },
     });
   }
 

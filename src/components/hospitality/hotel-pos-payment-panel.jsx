@@ -88,6 +88,7 @@ export function HotelPosPaymentPanel({
   roomChargeEnabled = false,
   openFolios = [],
   preferRoomCharge = false,
+  initialFolioId = "",
 }) {
   const cfg = paymentConfig ?? {};
   const total = round2(billTotal);
@@ -122,10 +123,12 @@ export function HotelPosPaymentPanel({
     setCheque(0);
     setChequeNo("");
     setRoomCharge(preferRoomCharge && roomChargeEnabled && total > 0 ? total : 0);
-    setFolioId("");
+    setFolioId(
+      preferRoomCharge && initialFolioId ? String(initialFolioId) : "",
+    );
     setLocalError(null);
     setKeypad(null);
-  }, [open, total, preferRoomCharge, roomChargeEnabled]);
+  }, [open, total, preferRoomCharge, roomChargeEnabled, initialFolioId]);
 
   useEffect(() => {
     if (error) setLocalError(error);
@@ -136,7 +139,7 @@ export function HotelPosPaymentPanel({
     if (cfg.useBankSelect) bank = bankAmount;
     else bank = equity + kcb + otherBank;
     return round2(
-      cash +
+      (cfg.showCash !== false ? cash : 0) +
         (cfg.enableMpesaAmount ? mpesa : 0) +
         bank +
         (cfg.showCheque ? cheque : 0) +
@@ -153,6 +156,7 @@ export function HotelPosPaymentPanel({
     roomCharge,
     roomChargeEnabled,
     cfg.useBankSelect,
+    cfg.showCash,
     cfg.enableMpesaAmount,
     cfg.showCheque,
   ]);
@@ -162,7 +166,7 @@ export function HotelPosPaymentPanel({
 
   function amountExcluding(method) {
     const parts = {
-      cash,
+      cash: cfg.showCash !== false ? cash : 0,
       mpesa: cfg.enableMpesaAmount ? mpesa : 0,
       equity: !cfg.useBankSelect && cfg.showEquityBank ? equity : 0,
       kcb: !cfg.useBankSelect && cfg.showKcbBank ? kcb : 0,
@@ -268,7 +272,7 @@ export function HotelPosPaymentPanel({
     }
 
     const payments = [];
-    if (cash > 0) payments.push({ method_code: "CASH", amount: cash });
+    if (cfg.showCash !== false && cash > 0) payments.push({ method_code: "CASH", amount: cash });
     if (cfg.enableMpesaAmount && mpesa > 0) {
       payments.push({
         method_code: "MPESA",
@@ -286,7 +290,10 @@ export function HotelPosPaymentPanel({
       if (cfg.showEquityBank && equity > 0) payments.push({ method_code: "EQUITY", amount: equity });
       if (cfg.showKcbBank && kcb > 0) payments.push({ method_code: "KCB", amount: kcb });
       if (cfg.showOtherBank && otherBank > 0) {
-        payments.push({ method_code: "OTHER", amount: otherBank });
+        payments.push({
+          method_code: cfg.otherBankMethodCode || "OTHER",
+          amount: otherBank,
+        });
       }
     }
     if (cfg.showCheque && cheque > 0) {
@@ -347,13 +354,15 @@ export function HotelPosPaymentPanel({
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-            <HotelPosMethodBlock
-              {...methodBlockProps}
-              method="cash"
-              label="Cash"
-              value={cash}
-              balanceForMethod={amountExcluding("cash")}
-            />
+            {cfg.showCash !== false ? (
+              <HotelPosMethodBlock
+                {...methodBlockProps}
+                method="cash"
+                label="Cash"
+                value={cash}
+                balanceForMethod={amountExcluding("cash")}
+              />
+            ) : null}
 
             {cfg.enableMpesaAmount ? (
               <HotelPosMethodBlock
@@ -484,6 +493,19 @@ export function HotelPosPaymentPanel({
             {localError ? (
               <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-900">
                 {localError}
+              </p>
+            ) : null}
+
+            {cfg.showCash === false &&
+            !cfg.enableMpesaAmount &&
+            !cfg.showEquityBank &&
+            !cfg.showKcbBank &&
+            !cfg.showOtherBank &&
+            !cfg.showCheque &&
+            !roomChargeEnabled ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
+                No payment methods are enabled for this organization. Ask a platform admin to activate
+                Cash, M-Pesa, or other methods under Payment methods.
               </p>
             ) : null}
           </div>

@@ -42,6 +42,13 @@ export const DOCUMENT_LOGO_VARIANTS = {
     defaultSize: "small",
     positions: ["center", "left", "right"],
   },
+  hospitality_check: {
+    label: "Hotel check receipt",
+    defaultShow: false,
+    defaultPosition: "center",
+    defaultSize: "small",
+    positions: ["center", "left", "right"],
+  },
   invoice: {
     label: "A4 invoice",
     defaultShow: true,

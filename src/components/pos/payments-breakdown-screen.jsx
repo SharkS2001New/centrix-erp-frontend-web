@@ -103,9 +103,15 @@ function paymentMethodLabel(row, methodName, methods = []) {
   return methodName || "—";
 }
 
-function mapPaymentExportRow(row, methodName, methods = []) {
+function mapPaymentExportRow(row, methodName, methods = [], { orderHrefPrefix = "/sales/orders" } = {}) {
+  const orderLabel =
+    row.order_num == null
+      ? "—"
+      : typeof row.order_num === "string" && !/^\d+$/.test(row.order_num)
+        ? row.order_num
+        : `Order #${row.order_num}`;
   return {
-    order: row.order_num != null ? `Order #${row.order_num}` : "—",
+    order: orderLabel,
     customer_name: row.customer_name || "Walk-in",
     amount: formatAccountingAmount(row.amount),
     return_amount: formatAdjustmentCell(row.return_amount),
@@ -114,6 +120,7 @@ function mapPaymentExportRow(row, methodName, methods = []) {
     cashier: row.cashier_name || "—",
     session: rowSessionText(row),
     payment_method: paymentMethodLabel(row, methodName, methods),
+    _orderHrefPrefix: orderHrefPrefix,
   };
 }
 
@@ -174,7 +181,13 @@ function PaymentsMethodTabs({ methods, activeCode, onChange }) {
   );
 }
 
-export function PaymentsBreakdownScreen() {
+export function PaymentsBreakdownScreen({
+  apiPath = "/reports/payments-breakdown",
+  title = "Payments breakdown",
+  subtitle = "Paid orders by tender — Cash, M-Pesa, bank, and mixed payments",
+  orderColumnLabel = "Order",
+  hideSessionFilter = false,
+} = {}) {
   const { user, capabilities } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const initialRange = todayDashboardDateRange();
@@ -230,13 +243,13 @@ export function PaymentsBreakdownScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest("/reports/payments-breakdown", {
+      const res = await apiRequest(apiPath, {
         searchParams: {
           from_date: fromDate || undefined,
           to_date: toDate || undefined,
           branch_id: branchId || undefined,
           cashier_id: cashierId || undefined,
-          float_session_id: floatSessionId || undefined,
+          float_session_id: hideSessionFilter ? undefined : floatSessionId || undefined,
           method_code: methodCode || undefined,
           q: debouncedQ.trim() || undefined,
           page,
@@ -265,6 +278,8 @@ export function PaymentsBreakdownScreen() {
     debouncedQ,
     page,
     pageSize,
+    apiPath,
+    hideSessionFilter,
   ]);
 
   useEffect(() => {
@@ -485,8 +500,8 @@ export function PaymentsBreakdownScreen() {
 
   return (
     <CatalogPageShell
-      title="Payments breakdown"
-      subtitle="Paid orders by tender — edit refunds and top-ups show per payment method"
+      title={title}
+      subtitle={subtitle}
       action={
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
           <label className="flex items-center gap-2 text-xs font-medium text-[var(--theme-text-muted)]">
@@ -583,23 +598,25 @@ export function PaymentsBreakdownScreen() {
             ))}
           </select>
         </Field>
-        <Field label="Till session">
-          <select
-            value={floatSessionId}
-            onChange={(e) => {
-              setFloatSessionId(e.target.value);
-              setPage(1);
-            }}
-            className={`${FILTER_CONTROL_CLASS} min-w-[14rem]`}
-          >
-            <option value="">All sessions in range</option>
-            {sessionOptions.map((session) => (
-              <option key={session.id} value={session.id}>
-                {sessionLabel(session)}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {!hideSessionFilter ? (
+          <Field label="Till session">
+            <select
+              value={floatSessionId}
+              onChange={(e) => {
+                setFloatSessionId(e.target.value);
+                setPage(1);
+              }}
+              className={`${FILTER_CONTROL_CLASS} min-w-[14rem]`}
+            >
+              <option value="">All sessions in range</option>
+              {sessionOptions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {sessionLabel(session)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
         <Field label="Search">
           <SearchInput
             value={q}
@@ -677,29 +694,38 @@ export function PaymentsBreakdownScreen() {
             <table className="min-w-full divide-y divide-[var(--theme-border)] text-sm">
               <thead className="bg-[var(--theme-page-bg)] text-left text-xs font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
                 <tr>
-                  <th className="px-4 py-3">Order</th>
-                  <th className="px-4 py-3">Customer name</th>
+                  <th className="px-4 py-3">{orderColumnLabel}</th>
+                  <th className="px-4 py-3">{apiPath.includes("hospitality") ? "Guest / outlet" : "Customer name"}</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3 text-right">Return amount</th>
                   <th className="px-4 py-3 text-right">Top-up amount</th>
                   <th className="px-4 py-3">Paid at</th>
                   <th className="px-4 py-3">Cashier</th>
-                  <th className="px-4 py-3">Session</th>
+                  <th className="px-4 py-3">{hideSessionFilter ? "Outlet / status" : "Session"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--theme-border)]">
                 {rows.map((row) => {
                   const mixedText = mixedBadgeText(row, methods);
+                  const orderHrefPrefix = apiPath.includes("hospitality")
+                    ? "/hospitality/orders"
+                    : "/sales/orders";
+                  const orderLabel =
+                    row.order_num == null
+                      ? null
+                      : typeof row.order_num === "string" && !/^\d+$/.test(String(row.order_num))
+                        ? String(row.order_num)
+                        : `Order #${row.order_num}`;
                   return (
-                  <tr key={`${row.sale_id}-${row.method_code ?? methodCode}`}>
+                  <tr key={`${row.sale_id}-${row.payment_id ?? row.method_code ?? methodCode}`}>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                      {row.sale_id && row.order_num != null ? (
+                      {row.sale_id && orderLabel ? (
                         <Link
-                          href={`/sales/orders/${row.sale_id}`}
+                          href={`${orderHrefPrefix}/${row.sale_id}`}
                             className="font-medium text-[var(--theme-primary)] hover:underline"
                         >
-                          Order #{row.order_num}
+                          {orderLabel}
                         </Link>
                       ) : (
                           <span className="text-[var(--theme-text-muted)]">—</span>

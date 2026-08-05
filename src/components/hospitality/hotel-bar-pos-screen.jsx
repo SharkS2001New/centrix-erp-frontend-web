@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { useHotelPosOfflineSupport } from "@/hooks/use-hotel-pos-offline-support";
-import { ApiError } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import {
   addHotelCheckLine,
   assignHotelCheckGuest,
@@ -40,6 +40,7 @@ import { idbClearLocalCheck } from "@/lib/hotel-pos-offline-db";
 import {
   formatHotelMoney,
   normalizeHotelPosGridColumns,
+  resolveHotelPosPaymentConfig,
   resolveHotelPosSettings,
 } from "@/lib/hotel-pos-settings";
 import {
@@ -48,7 +49,6 @@ import {
 } from "@/lib/hotel-pos-theme-templates";
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
-import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
@@ -57,6 +57,10 @@ import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment
 import { HotelPosProductImage } from "@/components/hospitality/hotel-pos-product-image";
 import { HotelPosStatusFooter } from "@/components/hospitality/hotel-pos-status-footer";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
+import {
+  buildHospitalityCheckPrintOptions,
+  normalizeHospitalityCheckPrintSettings,
+} from "@/lib/hospitality-check-print-options";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { EntityPhotoDisplay, productPhotoFileUrl } from "@/components/media/entity-photo-display";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -75,9 +79,18 @@ const SERVICE_MODES = [
   { id: "take_away", label: "Take away", short: "Takeaway" },
 ];
 
-async function printCheckReceiptSafe(check, options) {
+async function printCheckReceiptSafe(check, { title, organization, capabilities, user, checkPrintSettings }) {
   try {
-    const result = await printHospitalityCheckReceipt(check, options);
+    const result = await printHospitalityCheckReceipt(
+      check,
+      buildHospitalityCheckPrintOptions({
+        checkPrintSettings,
+        organization,
+        capabilities,
+        user,
+        title,
+      }),
+    );
     if (result && result.ok === false) {
       notifyError("Receipt could not be printed. Check the Centrix Print Agent or allow pop-ups.");
     }
@@ -127,6 +140,7 @@ export function HotelBarPosScreen() {
   const [menuGroup, setMenuGroup] = useState("");
   const [serviceMode, setServiceMode] = useState("dine_in");
   const [chargeToRoom, setChargeToRoom] = useState(false);
+  const [selectedFolioId, setSelectedFolioId] = useState("");
   const [heldCount, setHeldCount] = useState(0);
   const [partialEnabled, setPartialEnabled] = useState(paymentWorkflow.partially_paid);
   const [floorTables, setFloorTables] = useState([]);
@@ -150,6 +164,7 @@ export function HotelBarPosScreen() {
     isHospitalityServiceEnabled(capabilities, "room_charge"),
   );
   const [openFolios, setOpenFolios] = useState([]);
+  const [activePaymentMethods, setActivePaymentMethods] = useState([]);
   const searchRef = useRef(null);
   const tableSelectRef = useRef(null);
   const catalogScrollRef = useRef(null);
@@ -161,12 +176,28 @@ export function HotelBarPosScreen() {
 
   const paymentConfig = useMemo(
     () =>
-      getCheckoutPaymentConfig(capabilities?.module_settings, {
-        checkoutContext: "pos",
+      resolveHotelPosPaymentConfig(capabilities?.module_settings, {
         capabilities,
+        activePaymentMethods,
       }),
-    [capabilities],
+    [capabilities, activePaymentMethods],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest("/payment-methods", {
+      searchParams: { per_page: 50, "filter[is_active]": 1 },
+    })
+      .then((res) => {
+        if (!cancelled) setActivePaymentMethods(res.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setActivePaymentMethods([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setGridColumns(hotelSettings.gridColumns);
@@ -195,8 +226,64 @@ export function HotelBarPosScreen() {
     }
     if (serviceMode === "take_away") {
       setChargeToRoom(false);
+      setSelectedFolioId("");
     }
   }, [serviceMode, roomChargeEnabled, collectPayment]);
+
+  useEffect(() => {
+    if (!roomChargeEnabled || offlineMode) {
+      setOpenFolios([]);
+      return;
+    }
+    let cancelled = false;
+    listOpenHotelFolios()
+      .then((foliosRes) => {
+        if (!cancelled) setOpenFolios(foliosRes?.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setOpenFolios([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomChargeEnabled, offlineMode]);
+
+  function applySelectedFolio(folioId) {
+    const id = String(folioId ?? "");
+    setSelectedFolioId(id);
+    if (!id) return;
+    setChargeToRoom(true);
+    const folio = openFolios.find((f) => String(f.id) === id);
+    if (folio?.guest_name) {
+      setGuestNameDraft(String(folio.guest_name));
+    } else if (folio?.room_number) {
+      setGuestNameDraft(`Rm ${folio.room_number}`);
+    }
+  }
+
+  function resetRoomChargeSelection({ keepChargePreference = false } = {}) {
+    setSelectedFolioId("");
+    if (!keepChargePreference) {
+      setChargeToRoom(false);
+    } else if (serviceMode === "room_service" && roomChargeEnabled && collectPayment) {
+      setChargeToRoom(true);
+    }
+  }
+
+  function syncFolioFromCheck(nextCheck) {
+    const folioId = nextCheck?.folio_id ?? nextCheck?.folio?.id;
+    if (folioId) {
+      setSelectedFolioId(String(folioId));
+      setChargeToRoom(true);
+      if (nextCheck?.folio?.guest_name) {
+        setGuestNameDraft(String(nextCheck.folio.guest_name));
+      } else if (nextCheck?.guest_name) {
+        setGuestNameDraft(String(nextCheck.guest_name));
+      }
+      return;
+    }
+    setSelectedFolioId("");
+  }
 
   useEffect(() => {
     if (!isPrintAgentEnabled()) return;
@@ -216,15 +303,7 @@ export function HotelBarPosScreen() {
           setThemeTemplate(normalizeHotelPosThemeTemplate(settings.hotel_pos_theme_template));
         }
         if (settings) {
-          setCheckPrintSettings({
-            check_receipt_copies: settings.check_receipt_copies ?? 1,
-            show_outlet_on_check_receipt: settings.show_outlet_on_check_receipt !== false,
-            show_organization_on_check_receipt: settings.show_organization_on_check_receipt !== false,
-            enable_check_guest_name: Boolean(settings.enable_check_guest_name),
-            check_receipt_footer: settings.check_receipt_footer ?? "Thank you",
-            use_same_print_phones_for_check: settings.use_same_print_phones_for_check !== false,
-            check_print_phones: settings.check_print_phones ?? { tel1: "", tel2: "" },
-          });
+          setCheckPrintSettings(normalizeHospitalityCheckPrintSettings(settings));
           setGuestNameEnabled(Boolean(settings.enable_check_guest_name));
         }
         if (settings?.table_pos_enabled != null) {
@@ -428,7 +507,9 @@ export function HotelBarPosScreen() {
       setCheck(opened);
       setSelectedLineId(null);
       setGuestNameDraft(opened.guest_name ? String(opened.guest_name) : "");
-      setChargeToRoom(false);
+      resetRoomChargeSelection({
+        keepChargePreference: serviceMode === "room_service",
+      });
       return opened;
     }
     const body = { branch_id: user?.branch_id ?? undefined };
@@ -442,7 +523,9 @@ export function HotelBarPosScreen() {
     setCheck(opened?.check ?? null);
     setSelectedLineId(null);
     setGuestNameDraft("");
-    setChargeToRoom(false);
+    resetRoomChargeSelection({
+      keepChargePreference: serviceMode === "room_service",
+    });
     return opened?.check ?? null;
   }
 
@@ -642,7 +725,9 @@ export function HotelBarPosScreen() {
       await printCheckReceiptSafe(res?.check ?? active, {
         title: "Unpaid order",
         organization,
-        printSettings: checkPrintSettings,
+        capabilities,
+        user,
+        checkPrintSettings,
       });
       notifySuccess(`Order ${check.check_number} saved unpaid.`);
       await startFreshCheck();
@@ -674,7 +759,9 @@ export function HotelBarPosScreen() {
       await printCheckReceiptSafe(res?.check ?? active, {
         title: "Unpaid order",
         organization,
-        printSettings: checkPrintSettings,
+        capabilities,
+        user,
+        checkPrintSettings,
       });
       notifySuccess(`Order ${check.check_number} saved unpaid — receipt printed.`);
       await startFreshCheck();
@@ -712,6 +799,7 @@ export function HotelBarPosScreen() {
       setCheck(next);
       if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
       setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
+      syncFolioFromCheck(next);
       setSelectedLineId(null);
       setQueueOpen(false);
       notifySuccess(`Opened ${row.check_number}`);
@@ -731,6 +819,7 @@ export function HotelBarPosScreen() {
       setCheck(next);
       if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
       setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
+      syncFolioFromCheck(next);
       setSelectedLineId(null);
       setQueueOpen(false);
       setPayError(null);
@@ -751,6 +840,21 @@ export function HotelBarPosScreen() {
         setPayOpen(true);
         return;
       }
+
+      // Room assigned on the ticket → collect via room charge and print (no extra popup).
+      if (chargeToRoom && roomChargeEnabled && selectedFolioId) {
+        const balance = Number(check.balance_due ?? check.total ?? 0);
+        if (!(balance > 0)) {
+          notifyError("Nothing to charge — balance is zero.");
+          return;
+        }
+        await handlePaymentComplete({
+          payments: [{ method_code: "ROOM", amount: balance }],
+          folio_id: Number(selectedFolioId),
+        });
+        return;
+      }
+
       if (roomChargeEnabled) {
         try {
           const foliosRes = await listOpenHotelFolios();
@@ -758,6 +862,9 @@ export function HotelBarPosScreen() {
         } catch {
           setOpenFolios([]);
         }
+      }
+      if (chargeToRoom && roomChargeEnabled && !selectedFolioId) {
+        notifyError("Select a room / folio before charging to room.");
       }
       setPayOpen(true);
       return;
@@ -799,7 +906,9 @@ export function HotelBarPosScreen() {
         await printCheckReceiptSafe(paid, {
           title: "Paid receipt",
           organization,
-          printSettings: checkPrintSettings,
+          capabilities,
+          user,
+          checkPrintSettings,
         });
         notifySuccess(
           `Paid ${paid?.check_number ?? ""} — ${formatHotelMoney(paid?.total)} (pending sync)`,
@@ -824,16 +933,32 @@ export function HotelBarPosScreen() {
         await printCheckReceiptSafe(next, {
           title: "Paid receipt",
           organization,
-          printSettings: checkPrintSettings,
+          capabilities,
+          user,
+          checkPrintSettings,
         });
-        notifySuccess(`Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`);
+        const roomLabel = next?.folio?.room_number
+          ? `Rm ${next.folio.room_number}`
+          : next?.folio?.folio_number
+            ? `Folio ${next.folio.folio_number}`
+            : null;
+        const roomPaid = (payments ?? []).some(
+          (p) => String(p.method_code ?? "").toUpperCase() === "ROOM",
+        );
+        notifySuccess(
+          roomPaid && roomLabel
+            ? `Charged to ${roomLabel} · ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)} (receipt printed)`
+            : `Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`,
+        );
         setPayOpen(false);
         await startFreshCheck();
       } else {
         await printCheckReceiptSafe(next, {
           title: "Partial payment",
           organization,
-          printSettings: checkPrintSettings,
+          capabilities,
+          user,
+          checkPrintSettings,
         });
         notifySuccess(
           `Partial payment on ${next?.check_number ?? ""} — balance ${formatHotelMoney(next?.balance_due)}`,
@@ -897,8 +1022,10 @@ export function HotelBarPosScreen() {
       : "Pay"
     : "Save";
   const emptyTicketHint =
-    serviceMode === "room_service"
-      ? "Enter room / guest, then tap a menu item"
+    serviceMode === "room_service" || (chargeToRoom && roomChargeEnabled)
+      ? selectedFolioId
+        ? "Tap a menu item — Charge to room will collect payment and print"
+        : "Assign a room / folio, then tap a menu item"
       : showTableField
         ? "Choose a table, then tap a menu item to add it here"
         : "Tap a menu item to add it here";
@@ -1163,6 +1290,35 @@ export function HotelBarPosScreen() {
                 </div>
               ) : null}
               {roomChargeEnabled ? (
+                <div className="sm:col-span-2">
+                  <label className="sr-only" htmlFor="hotel-pos-room-folio">
+                    Assign room / folio
+                  </label>
+                  <select
+                    id="hotel-pos-room-folio"
+                    className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
+                    value={selectedFolioId}
+                    onChange={(e) => applySelectedFolio(e.target.value)}
+                    disabled={!collectPayment || offlineMode}
+                  >
+                    <option value="">
+                      {offlineMode
+                        ? "Room charge unavailable offline"
+                        : openFolios.length
+                          ? "Assign room / folio…"
+                          : "No open guest folios"}
+                    </option>
+                    {openFolios.map((folio) => (
+                      <option key={folio.id} value={String(folio.id)}>
+                        {folio.room_number ? `Rm ${folio.room_number}` : "No room"}
+                        {folio.guest_name ? ` · ${folio.guest_name}` : ""}
+                        {folio.folio_number ? ` · ${folio.folio_number}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {roomChargeEnabled ? (
                 <div className={showTableField || showGuestField ? undefined : "sm:col-span-2"}>
                   <label className="sr-only" htmlFor="hotel-pos-order-type">
                     Order type
@@ -1171,7 +1327,11 @@ export function HotelBarPosScreen() {
                     id="hotel-pos-order-type"
                     className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
                     value={chargeToRoom ? "room" : "pay"}
-                    onChange={(e) => setChargeToRoom(e.target.value === "room")}
+                    onChange={(e) => {
+                      const toRoom = e.target.value === "room";
+                      setChargeToRoom(toRoom);
+                      if (!toRoom) setSelectedFolioId("");
+                    }}
                     disabled={!collectPayment}
                   >
                     <option value="pay">Collect payment</option>
@@ -1434,6 +1594,7 @@ export function HotelBarPosScreen() {
         roomChargeEnabled={roomChargeEnabled && !offlineMode}
         openFolios={openFolios}
         preferRoomCharge={chargeToRoom && roomChargeEnabled && !offlineMode}
+        initialFolioId={selectedFolioId}
         onComplete={handlePaymentComplete}
       />
     </div>

@@ -112,26 +112,37 @@ describe("resolveAccessibleWorkspaces terminal shells", () => {
     },
   };
 
-  /** Matches backend Cashier template — External POS only, no sales.orders.*. */
-  const cashierPermissions = [
+  /** External POS terminal only — no Backoffice Sales & Orders, no Till ops screens. */
+  const terminalOnlyPermissions = [
     P.pos.terminal.view,
     P.pos.checkout.create,
-    P.pos.till_management.view,
     P.pos.till_management.create,
-    P.pos.end_of_day.view,
     P.catalogue.products.view,
   ];
 
-  it("keeps External POS for a cashier with only pos.* permissions", () => {
-    const access = ctx(cashierPermissions, withPosAndBackoffice);
+  /** Backoffice Till operations sidebar (view + EOD) — unlocks Backoffice workspace. */
+  const tillOpsPermissions = [
+    P.pos.till_management.view,
+    P.pos.end_of_day.view,
+  ];
+
+  it("keeps External POS for a cashier with only terminal permissions", () => {
+    const access = ctx(terminalOnlyPermissions, withPosAndBackoffice);
     const ids = resolveAccessibleWorkspaces(access, withPosAndBackoffice).map((w) => w.id);
     expect(ids).toContain("pos");
   });
 
-  it("does not unlock Backoffice for a cashier without Sales & Orders permissions", () => {
-    const access = ctx(cashierPermissions, withPosAndBackoffice);
+  it("does not unlock Backoffice for terminal-only cashiers (no Sales & Orders, no Till ops)", () => {
+    const access = ctx(terminalOnlyPermissions, withPosAndBackoffice);
     const ids = resolveAccessibleWorkspaces(access, withPosAndBackoffice).map((w) => w.id);
     expect(ids).not.toContain("backoffice");
+  });
+
+  it("unlocks Backoffice when Till management / End of day permissions are granted", () => {
+    const access = ctx([...terminalOnlyPermissions, ...tillOpsPermissions], withPosAndBackoffice);
+    const ids = resolveAccessibleWorkspaces(access, withPosAndBackoffice).map((w) => w.id);
+    expect(ids).toContain("pos");
+    expect(ids).toContain("backoffice");
   });
 
   it("drops External POS when terminal view permission is missing", () => {

@@ -40,7 +40,8 @@ export const EMPTY_PRINTOUTS_FORM = {
   ...documentLogoFormDefaults(),
   print_footer_receipt: defaultReceiptBodyFooterForAdmin(),
   print_footer_a4_invoice: "",
-  print_footer_hospitality_check: "Thank you",
+  print_footer_hospitality_check:
+    "You were served by: {username}\nThank you for dining with us\nPlease check your bill carefully",
   print_footer_lpo: "",
   print_footer_loading_sheet: "",
   print_footer_picking_list: "",
@@ -53,8 +54,22 @@ export const EMPTY_PRINTOUTS_FORM = {
   show_outlet_on_check_receipt: true,
   show_organization_on_check_receipt: true,
   enable_check_guest_name: false,
+  show_address_on_check_receipt: true,
+  show_tax_pin_on_check_receipt: true,
+  show_unit_price_on_check_receipt: true,
+  show_cashier_on_check_receipt: true,
+  show_datetime_on_check_receipt: true,
+  show_check_payment_details: true,
+  use_same_payment_details_for_check: true,
+  check_receipt_show_all_payment_methods: false,
   use_same_print_phones_for_check: true,
   check_print_phones: emptyPrintPhones(),
+  check_receipt_payment_details: {
+    title: "Payment details",
+    blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+    lines: [{ label: "", value: "" }],
+    note: "",
+  },
   show_full_package_uom_on_documents: false,
   show_receipt_payment_details: true,
   show_invoice_payment_details: true,
@@ -301,12 +316,30 @@ export function printoutsFormFromApis({
 export function printoutsHospitalityFormFromApi(res = {}) {
   const h = res?.hospitality ?? res ?? {};
   const phones = h.check_print_phones ?? {};
+  const defaultFooter =
+    "You were served by: {username}\nThank you for dining with us\nPlease check your bill carefully";
   return {
     check_receipt_copies: String(h.check_receipt_copies ?? 1),
     show_outlet_on_check_receipt: h.show_outlet_on_check_receipt !== false,
     show_organization_on_check_receipt: h.show_organization_on_check_receipt !== false,
     enable_check_guest_name: Boolean(h.enable_check_guest_name),
-    print_footer_hospitality_check: String(h.check_receipt_footer ?? "Thank you"),
+    show_address_on_check_receipt: h.show_address_on_check_receipt !== false,
+    show_tax_pin_on_check_receipt: h.show_tax_pin_on_check_receipt !== false,
+    show_unit_price_on_check_receipt: h.show_unit_price_on_check_receipt !== false,
+    show_cashier_on_check_receipt: h.show_cashier_on_check_receipt !== false,
+    show_datetime_on_check_receipt: h.show_datetime_on_check_receipt !== false,
+    show_check_payment_details: h.show_check_payment_details !== false,
+    use_same_payment_details_for_check: h.use_same_payment_details_for_check !== false,
+    check_receipt_show_all_payment_methods: Boolean(h.check_receipt_show_all_payment_methods),
+    print_footer_hospitality_check: String(h.check_receipt_footer ?? defaultFooter),
+    check_receipt_payment_details: receiptPaymentDetailsFromApi(
+      h.check_receipt_payment_details ?? {
+        title: "Payment details",
+        blocks: [{ title: "", lines: [{ label: "", value: "" }] }],
+        lines: [{ label: "", value: "" }],
+        note: "",
+      },
+    ),
     use_same_print_phones_for_check: h.use_same_print_phones_for_check !== false,
     check_print_phones: {
       tel1: String(phones.tel1 ?? ""),
@@ -321,7 +354,22 @@ export function printoutsHospitalityPayloadFromForm(form) {
     show_outlet_on_check_receipt: Boolean(form.show_outlet_on_check_receipt),
     show_organization_on_check_receipt: Boolean(form.show_organization_on_check_receipt),
     enable_check_guest_name: Boolean(form.enable_check_guest_name),
+    show_address_on_check_receipt: Boolean(form.show_address_on_check_receipt),
+    show_tax_pin_on_check_receipt: Boolean(form.show_tax_pin_on_check_receipt),
+    show_unit_price_on_check_receipt: Boolean(form.show_unit_price_on_check_receipt),
+    show_cashier_on_check_receipt: Boolean(form.show_cashier_on_check_receipt),
+    show_datetime_on_check_receipt: Boolean(form.show_datetime_on_check_receipt),
+    show_check_payment_details: Boolean(form.show_check_payment_details),
+    use_same_payment_details_for_check: Boolean(form.use_same_payment_details_for_check),
+    check_receipt_show_all_payment_methods: Boolean(form.check_receipt_show_all_payment_methods),
     check_receipt_footer: String(form.print_footer_hospitality_check ?? "").trim(),
+    check_receipt_payment_details: receiptPaymentDetailsToPayload(
+      form.check_receipt_payment_details ?? {
+        title: "Payment details",
+        lines: DEFAULT_POS_RECEIPT_PAYMENT_LINES,
+        note: "",
+      },
+    ),
     use_same_print_phones_for_check: Boolean(form.use_same_print_phones_for_check),
     check_print_phones: {
       tel1: String(form.check_print_phones?.tel1 ?? "").trim(),

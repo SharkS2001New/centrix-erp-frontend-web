@@ -875,6 +875,15 @@ const NAV_SECTION_DEFINITIONS = [
           P.hospitality.settings.view,
         ],
       },
+      {
+        href: "/hospitality/payments-breakdown",
+        label: "Payments breakdown",
+        module: "hospitality.backend",
+        permissionAny: [
+          P.hospitality.reports.view,
+          P.hospitality.dashboard.view,
+        ],
+      },
     ],
   },
   {
