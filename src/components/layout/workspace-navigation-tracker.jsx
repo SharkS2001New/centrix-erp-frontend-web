@@ -5,10 +5,9 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { rememberWorkspacePath } from "@/lib/workspace-navigation";
+import { rememberWorkspacePath, resolveAccessibleWorkspaces } from "@/lib/workspace-navigation";
 import {
   resolveActiveWorkspace,
-  resolveAvailableWorkspaces,
 } from "@/lib/workspaces";
 
 /** Persists the current route against the active workspace while the user navigates. */
@@ -29,7 +28,7 @@ export function WorkspaceNavigationTracker() {
   );
 
   const workspaces = useMemo(
-    () => resolveAvailableWorkspaces(ctx, capabilities),
+    () => resolveAccessibleWorkspaces(ctx, capabilities),
     [capabilities, ctx],
   );
 

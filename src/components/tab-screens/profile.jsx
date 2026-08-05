@@ -13,8 +13,8 @@ import { resolveProfileExitPath } from "@/lib/post-auth-navigation";
 import { isPasswordExpiryForced } from "@/lib/security-settings";
 import {
   needsWorkspaceSelection,
-  resolveAvailableWorkspaces,
-} from "@/lib/workspaces";
+  resolveAccessibleWorkspaces,
+} from "@/lib/workspace-navigation";
 
 export function ProfileScreen() {
   const router = useRouter();
@@ -42,7 +42,7 @@ export function ProfileScreen() {
 
   const passwordLocked =
     Boolean(user?.must_change_password) || isPasswordExpiryForced(user, passwordExpiry);
-  const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
   const storedWorkspace = getStoredWorkspace();
   const workspaceSelectionRequired = needsWorkspaceSelection(capabilities, storedWorkspace, ctx);
   const exitPath = resolveProfileExitPath(ctx, capabilities);

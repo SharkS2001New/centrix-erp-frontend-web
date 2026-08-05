@@ -3,16 +3,14 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { recallWorkspaceLandingPath } from "@/lib/workspace-navigation";
+import { recallWorkspaceLandingPath, defaultWorkspaceId, needsWorkspaceSelection } from "@/lib/workspace-navigation";
 import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
-  defaultWorkspaceId,
   isPosWorkspace,
   isTerminalWorkspace,
-  needsWorkspaceSelection,
   pathBelongsToWorkspace,
   workspaceHomePath,
 } from "@/lib/workspaces";

@@ -21,7 +21,7 @@ import {
   flattenNavSearchEntries,
   searchNavEntries,
 } from "@/lib/workspace-nav";
-import { defaultWorkspaceId } from "@/lib/workspaces";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { canAskAiFromSearch } from "@/lib/ai-settings";
 import { requestAiAssist } from "@/lib/ai-assist-bridge";
 import { looksLikeSearchQuestion, searchAskAiPrompt } from "@/lib/search-ai-prompt";

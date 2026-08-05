@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/api";
 import { fetchReportBuilderTemplates } from "@/lib/report-builder-templates";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { defaultWorkspaceId } from "@/lib/workspaces";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import {
   WORKSPACE_REPORT_OVERVIEW_LABEL,
   WORKSPACE_REPORTS_LABEL,

@@ -106,6 +106,25 @@ export async function settleHotelCheck(checkId, { amount, payments, floor_table_
   });
 }
 
+/** Idempotent offline cash ticket replay (Hotel POS local sell → sync). */
+export async function syncOfflineHotelCheck(body) {
+  return apiRequest("/hospitality/pos/checks/offline-sync", {
+    method: "POST",
+    body,
+    loading: false,
+    reportIssues: false,
+  });
+}
+
+export async function reserveHotelCheckNumbers(count = 20) {
+  return apiRequest("/hospitality/pos/check-numbers/reserve", {
+    method: "POST",
+    body: { count },
+    loading: false,
+    reportIssues: false,
+  });
+}
+
 export async function listOpenHotelFolios() {
   return apiRequest("/hospitality/folios/open", { loading: false });
 }

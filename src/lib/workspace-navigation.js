@@ -7,6 +7,7 @@ import {
 import {
   filterNavSectionsForWorkspace,
   pathBelongsToWorkspace,
+  resolveAvailableWorkspaces,
   workspaceHomePath,
 } from "@/lib/workspaces";
 
@@ -101,6 +102,49 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
   }
 
   return null;
+}
+
+/**
+ * Workspaces the user can open — API list minus shells with no reachable sidebar route.
+ * @param {object} ctx
+ * @param {object} capabilities
+ */
+export function resolveAccessibleWorkspaces(ctx, capabilities) {
+  return resolveAvailableWorkspaces(ctx, capabilities, (workspaceId) =>
+    Boolean(firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx)),
+  );
+}
+
+/**
+ * @param {object} ctx
+ * @param {object} capabilities
+ */
+export function resolvePostLoginPath(ctx, capabilities) {
+  if (ctx?.platformShell) {
+    return "/platform";
+  }
+
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
+  if (workspaces.length === 0) {
+    return "/profile";
+  }
+  if (workspaces.length === 1) {
+    return workspaces[0].home_path;
+  }
+  return "/choose-workspace";
+}
+
+/** True when user must pick a workspace before using the app shell. */
+export function needsWorkspaceSelection(capabilities, storedWorkspaceId, ctx) {
+  if (ctx?.platformShell) return false;
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
+  if (workspaces.length <= 1) return false;
+  return !storedWorkspaceId || !workspaces.some((w) => w.id === storedWorkspaceId);
+}
+
+export function defaultWorkspaceId(capabilities, ctx) {
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
+  return workspaces[0]?.id ?? null;
 }
 
 function resolveBackofficeLandingPath(capabilities, ctx) {

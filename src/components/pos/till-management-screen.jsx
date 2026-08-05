@@ -11,7 +11,10 @@ import { filterByOrganization } from "@/lib/admin";
 import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import {
   CatalogPageShell,
+  Field,
+  FILTER_CONTROL_CLASS,
   FilterSelect,
+  FilterToolbar,
   IconButton,
   PaginationBar,
   PencilIcon,
@@ -50,8 +53,8 @@ import { useConfirm } from "@/lib/use-confirm";
 
 const TABS = [
   { id: "tills", label: "Current Open Sessions" },
-  { id: "locks", label: "Till locks" },
   { id: "history", label: "Session history" },
+  { id: "locks", label: "Till locks" },
 ];
 
 const HISTORY_PAGE_SIZE = 10;
@@ -930,35 +933,35 @@ export function TillManagementScreen() {
 
         {tab === "history" ? (
           <>
-            <div className="mb-4 flex flex-wrap gap-3">
-              <SearchInput
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-                placeholder="Search session, till, cashier…"
-                className="max-w-xl"
-              />
-              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                From
+            <FilterToolbar className="flex-wrap overflow-visible">
+              <div className="min-w-[14rem] flex-1 basis-[16rem] max-w-xl">
+                <SearchInput
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Search session, till, cashier…"
+                  className="w-full"
+                />
+              </div>
+              <Field label="From">
                 <input
                   type="date"
                   value={historyFromDraft}
                   onChange={(e) => {
                     setHistoryFromDraft(e.target.value);
                   }}
-                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700"
+                  className={FILTER_CONTROL_CLASS}
                 />
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                To
+              </Field>
+              <Field label="To">
                 <input
                   type="date"
                   value={historyToDraft}
                   onChange={(e) => {
                     setHistoryToDraft(e.target.value);
                   }}
-                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700"
+                  className={FILTER_CONTROL_CLASS}
                 />
-              </label>
+              </Field>
               <FilterSelect
                 value={historyStatus}
                 onChange={(e) => { setHistoryStatus(e.target.value); setHistoryPage(1); }}
@@ -968,10 +971,10 @@ export function TillManagementScreen() {
                   { value: "closed", label: "Closed" },
                 ]}
               />
-              <PrimaryButton type="button" onClick={() => applyHistoryDateRange()}>
-                Apply
+              <PrimaryButton type="button" showIcon={false} onClick={() => applyHistoryDateRange()}>
+                Filter
               </PrimaryButton>
-            </div>
+            </FilterToolbar>
             <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
               {historyLoading ? (
                 <p className="px-5 py-8 text-center text-sm text-slate-500">Loading sessions…</p>

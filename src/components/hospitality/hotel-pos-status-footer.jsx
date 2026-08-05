@@ -25,9 +25,18 @@ export function HotelPosStatusFooter({
   user,
   heldCount = 0,
   version = "1.0.0",
+  connectionStatus: connectionStatusProp = null,
+  pendingSync = 0,
+  syncing = false,
+  offlineMode = false,
+  onSync = null,
 }) {
   const [now, setNow] = useState(() => new Date());
-  const { status: connectionStatus } = useNetworkStatus({ reportOutages: false });
+  const network = useNetworkStatus({
+    enabled: connectionStatusProp == null,
+    reportOutages: false,
+  });
+  const connectionStatus = connectionStatusProp ?? network.status;
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -57,11 +66,26 @@ export function HotelPosStatusFooter({
             }`}
           >
             {connectionLabel}
+            {offlineMode ? " · LOCAL" : ""}
           </strong>
         </span>
         <span>
           <span className="hotel-pos-status-footer-label">HELD:</span>{" "}
           <strong className="hotel-pos-status-footer-value">{Number(heldCount) || 0}</strong>
+        </span>
+        <span>
+          <span className="hotel-pos-status-footer-label">PENDING SYNC:</span>{" "}
+          <strong className="hotel-pos-status-footer-value">{Number(pendingSync) || 0}</strong>
+          {typeof onSync === "function" ? (
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={() => void onSync()}
+              className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-accent)] underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              {syncing ? "Syncing…" : "Sync"}
+            </button>
+          ) : null}
         </span>
         <span>
           <span className="hotel-pos-status-footer-label">RUN DATE:</span>{" "}

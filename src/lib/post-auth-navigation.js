@@ -3,9 +3,11 @@ import { resolveHomePath } from "@/lib/access-control";
 import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import {
   needsWorkspaceSelection,
-  resolveActiveWorkspace,
-  resolveAvailableWorkspaces,
+  resolveAccessibleWorkspaces,
   resolvePostLoginPath,
+} from "@/lib/workspace-navigation";
+import {
+  resolveActiveWorkspace,
   workspaceLoginChannel,
 } from "@/lib/workspaces";
 
@@ -17,7 +19,7 @@ export function resolveProfileExitPath(ctx, capabilities) {
     return "/platform";
   }
 
-  const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
   const stored = getStoredWorkspace();
 
   if (workspaces.length > 1) {
@@ -41,7 +43,7 @@ export function resolveProfileExitPath(ctx, capabilities) {
 }
 
 function resolveDestinationPath(ctx, capabilities, { afterPasswordLock = false } = {}) {
-  const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
   const path = afterPasswordLock
     ? resolveProfileExitPath(ctx, capabilities)
     : resolvePostLoginPath(ctx, capabilities);

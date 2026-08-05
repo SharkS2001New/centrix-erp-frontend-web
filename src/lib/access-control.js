@@ -3,10 +3,12 @@ import { P } from "@/lib/permission-codes";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isPlatformShellUser } from "@/lib/platform-shell-access";
 import { canAccessRoute } from "@/lib/route-access";
-import { firstAccessibleRouteInWorkspace } from "@/lib/workspace-navigation";
 import {
   defaultWorkspaceId,
+  firstAccessibleRouteInWorkspace,
   resolvePostLoginPath,
+} from "@/lib/workspace-navigation";
+import {
   workspaceDefinition,
   workspaceHomePath,
 } from "@/lib/workspaces";

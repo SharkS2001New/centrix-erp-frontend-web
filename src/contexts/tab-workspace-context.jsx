@@ -31,10 +31,10 @@ import {
 import { finishNavigation } from "@/lib/app-loading";
 import { resolveScreen } from "@/lib/screen-registry";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
+import { resolveAccessibleWorkspaces } from "@/lib/workspace-navigation";
 import {
   pathBelongsToWorkspace,
   resolveActiveWorkspace,
-  resolveAvailableWorkspaces,
   workspaceHomePath,
 } from "@/lib/workspaces";
 
@@ -82,7 +82,7 @@ export function TabWorkspaceProvider({ children }) {
   );
 
   const workspaces = useMemo(
-    () => resolveAvailableWorkspaces(ctx, capabilities),
+    () => resolveAccessibleWorkspaces(ctx, capabilities),
     [capabilities, ctx],
   );
 

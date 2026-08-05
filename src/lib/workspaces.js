@@ -371,10 +371,13 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 /**
  * @param {object} ctx access context from buildAccessContext
  * @param {object} capabilities
+ * @param {(workspaceId: string) => boolean} [isAccessible] optional filter — hide shells with no reachable routes
  */
-export function resolveAvailableWorkspaces(ctx, capabilities) {
+export function resolveAvailableWorkspaces(ctx, capabilities, isAccessible) {
   if (ctx?.platformShell) return [];
-  return workspacesFromCapabilities(capabilities);
+  const workspaces = workspacesFromCapabilities(capabilities);
+  if (typeof isAccessible !== "function") return workspaces;
+  return workspaces.filter((workspace) => isAccessible(workspace.id));
 }
 
 /**
@@ -415,25 +418,6 @@ export function resolveActiveWorkspace(workspaces, storedId, pathname) {
 }
 
 /**
- * @param {object} ctx
- * @param {object} capabilities
- */
-export function resolvePostLoginPath(ctx, capabilities) {
-  if (ctx?.platformShell) {
-    return "/platform";
-  }
-
-  const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
-  if (workspaces.length === 0) {
-    return "/profile";
-  }
-  if (workspaces.length === 1) {
-    return workspaces[0].home_path;
-  }
-  return "/choose-workspace";
-}
-
-/**
  * Filter nav sections for the active workspace.
  * Pass `isItemVisible` from the caller (e.g. nav-config.isNavItemVisible) so this
  * module does not import nav-config and create a circular init cycle.
@@ -463,14 +447,6 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext,
     .sort((a, b) => (orderRank.get(a.id) ?? 999) - (orderRank.get(b.id) ?? 999));
 }
 
-/** True when user must pick a workspace before using the app shell. */
-export function needsWorkspaceSelection(capabilities, storedWorkspaceId, ctx) {
-  if (ctx?.platformShell) return false;
-  const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
-  if (workspaces.length <= 1) return false;
-  return !storedWorkspaceId || !workspaces.some((w) => w.id === storedWorkspaceId);
-}
-
 export function isPosWorkspace(workspaceId) {
   return workspaceId === "pos";
 }
@@ -480,6 +456,7 @@ export function isTerminalWorkspace(workspaceId) {
   return workspaceId === "pos" || workspaceId === "hotel_bar_pos";
 }
 
+/** @deprecated Use defaultWorkspaceId from @/lib/workspace-navigation (filters empty shells). */
 export function defaultWorkspaceId(capabilities, ctx) {
   const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
   return workspaces[0]?.id ?? null;

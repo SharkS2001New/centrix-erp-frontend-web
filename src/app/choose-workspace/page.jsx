@@ -7,9 +7,8 @@ import { AuthGuard } from "@/components/auth-guard";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
-import { persistWorkspaceRouteBeforeSwitch, recallWorkspaceLandingPath } from "@/lib/workspace-navigation";
+import { persistWorkspaceRouteBeforeSwitch, recallWorkspaceLandingPath, resolveAccessibleWorkspaces } from "@/lib/workspace-navigation";
 import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
-import { resolveAvailableWorkspaces } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 
@@ -27,7 +26,7 @@ function ChooseWorkspaceContent() {
     isSuperAdmin,
   });
 
-  const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
+  const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
 
   useEffect(() => {
     if (loading || workspaces.length !== 1 || switching) return;

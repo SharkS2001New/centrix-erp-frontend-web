@@ -12,7 +12,7 @@ import {
 } from "@/contexts/tab-pane-activity-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { defaultWorkspaceId } from "@/lib/workspaces";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";

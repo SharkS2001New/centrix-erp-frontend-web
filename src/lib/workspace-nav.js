@@ -15,7 +15,8 @@ import { formatNavLabel } from "@/lib/nav-label-format";
 import {
   canViewOrderQueue,
 } from "@/lib/order-queue-permissions";
-import { defaultWorkspaceId, filterNavSectionsForWorkspace } from "@/lib/workspaces";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
+import { filterNavSectionsForWorkspace } from "@/lib/workspaces";
 
 function mapSalesOrderNavItem(item) {
   return withNavItemIcon({

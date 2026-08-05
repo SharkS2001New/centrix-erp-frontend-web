@@ -14,7 +14,7 @@ import {
 } from "@/lib/ai-settings";
 import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
 import { AI_ASSISTANT_TITLE } from "@/lib/branding";
-import { defaultWorkspaceId } from "@/lib/workspaces";
+import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm } from "@/components/ai/ai-action-form";
 

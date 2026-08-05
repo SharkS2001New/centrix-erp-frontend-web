@@ -9,13 +9,13 @@ import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-contro
 import {
   persistWorkspaceRouteBeforeSwitch,
   recallWorkspaceLandingPath,
+  resolveAccessibleWorkspaces,
 } from "@/lib/workspace-navigation";
 import { isTabWorkspaceEnabled, seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
   pathBelongsToWorkspace,
   resolveActiveWorkspace,
-  resolveAvailableWorkspaces,
   workspaceIcon,
 } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
@@ -54,7 +54,7 @@ export function WorkspaceSwitcher({
   );
 
   const workspaces = useMemo(
-    () => resolveAvailableWorkspaces(ctx, capabilities),
+    () => resolveAccessibleWorkspaces(ctx, capabilities),
     [capabilities, ctx],
   );
 

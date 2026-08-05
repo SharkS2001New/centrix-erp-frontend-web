@@ -105,6 +105,7 @@ export function ExpensesScreen() {
   const [listLoading, setListLoading] = useState(false);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [groupFilter, setGroupFilter] = useState("all");
+  const [userFilter, setUserFilter] = useState("all");
   const [fromDate, setFromDate] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
   const [toDate, setToDate] = useState(hasUrlDateRange ? urlToDate : monthRange.to);
   const [statusFilter, setStatusFilter] = useState("active");
@@ -149,6 +150,7 @@ export function ExpensesScreen() {
     try {
       const filters = {};
       if (groupFilter !== "all") filters.expense_group_id = groupFilter;
+      if (userFilter !== "all") filters.recorded_by = userFilter;
 
       const extra = {
         status: statusFilter,
@@ -176,7 +178,7 @@ export function ExpensesScreen() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, groupFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
+  }, [page, pageSize, debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
   useTabAwareDataLoad(loadReferenceData);
 
@@ -222,7 +224,7 @@ export function ExpensesScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, groupFilter, fromDate, toDate, statusFilter, pageSize, sort, sortDir]);
+  }, [debouncedSearch, groupFilter, userFilter, fromDate, toDate, statusFilter, pageSize, sort, sortDir]);
 
   const activeSortLabel = sort
     ? `${EXPENSE_SORT_COLUMNS[sort] ?? sort} (${sortDir === "desc" ? "high to low" : "low to high"})`
@@ -399,11 +401,14 @@ export function ExpensesScreen() {
                 page: 1,
                 perPage: 200,
                 q: debouncedSearch,
+                filters: {
+                  ...(groupFilter !== "all" ? { expense_group_id: groupFilter } : {}),
+                  ...(userFilter !== "all" ? { recorded_by: userFilter } : {}),
+                },
                 extra: {
                   status: statusFilter,
                   from_date: hasUrlDateRange ? urlFromDate : fromDate,
                   to_date: hasUrlDateRange ? urlToDate : toDate,
-                  ...(groupFilter !== "all" ? { expense_group_id: groupFilter } : {}),
                 },
               })
             }
@@ -438,6 +443,24 @@ export function ExpensesScreen() {
           options={[
             { value: "all", label: "All groups" },
             ...groups.map((g) => ({ value: String(g.id), label: g.group_name })),
+          ]}
+        />
+        <FilterSelect
+          value={userFilter}
+          onChange={(e) => setUserFilter(e.target.value)}
+          options={[
+            { value: "all", label: "All users" },
+            ...users
+              .slice()
+              .sort((a, b) =>
+                String(a.full_name ?? a.username ?? "").localeCompare(
+                  String(b.full_name ?? b.username ?? ""),
+                ),
+              )
+              .map((u) => ({
+                value: String(u.id),
+                label: u.full_name ?? u.username ?? `User #${u.id}`,
+              })),
           ]}
         />
         <Field label="From">
