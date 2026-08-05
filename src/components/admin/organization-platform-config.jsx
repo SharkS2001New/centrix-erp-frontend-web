@@ -1341,7 +1341,7 @@ export function OrganizationModuleToggles({
       }
     >
       <div className="space-y-4">
-        {!isHotelProfile && typeof onSalesChange === "function" ? (
+        {typeof onSalesChange === "function" ? (
           <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-4">
             <ClassicPosThemePicker
               value={salesPlatform?.classic_pos_theme_template}
@@ -1358,7 +1358,11 @@ export function OrganizationModuleToggles({
                   classic_pos_theme_colors: next,
                 })
               }
-              description="Backoffice: sidebar + primary buttons only. Classic External POS: full palette. Organization admins can also change this under Centrix ERP Themes."
+              description={
+                isHotelProfile
+                  ? "Hotel Backoffice and Admin: sidebar + primary buttons. Organization admins can also change this under Centrix ERP Themes. Hotel POS desk colors are set under Hotel POS below."
+                  : "Backoffice: sidebar + primary buttons only. Classic External POS: full palette. Organization admins can also change this under Centrix ERP Themes."
+              }
             />
           </div>
         ) : null}
@@ -1459,7 +1463,8 @@ export function OrganizationModuleToggles({
                       })}
                     </div>
                     <p className="theme-subtext mt-2 text-xs">
-                      Applies only to Hotel &amp; Bar POS. Backoffice keeps the standard Centrix theme.
+                      Applies only to the Hotel &amp; Bar POS desk. Hotel Backoffice / Admin chrome
+                      uses Centrix ERP Themes (above).
                     </p>
                   </OrgRegisterField>
                   <OrgRegisterField label="Hotel POS product grid">

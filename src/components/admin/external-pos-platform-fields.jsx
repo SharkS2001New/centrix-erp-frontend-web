@@ -104,7 +104,7 @@ export function ClassicPosThemePicker({
   onChange,
   colors = {},
   onColorsChange,
-  description = "In backoffice and other modules, this changes the sidebar background and primary button colors only. Classic External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.",
+  description = "In backoffice modules (including Hotel Backoffice), this changes the sidebar background and primary button colors. Classic External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.",
 }) {
   const selectedId = normalizeClassicPosThemeTemplate(value);
   const overrides = normalizeClassicPosThemeColors(colors);
@@ -170,9 +170,9 @@ export function ClassicPosThemePicker({
             <div>
               <p className="text-sm font-medium text-slate-700">Custom colors</p>
               <p className="mt-0.5 text-xs text-slate-500">
-                Optional overrides on top of the selected template. Header tints the ERP sidebar;
-                button colors apply org-wide; workspace and footer apply on Classic External POS only.
-                Leave blank to use the template default.
+                Optional overrides on top of the selected template. Header tints the ERP sidebar
+                (Retail, Distribution, and Hotel Backoffice); button colors apply org-wide; workspace
+                and footer apply on Classic External POS only. Leave blank to use the template default.
               </p>
             </div>
             {hasCustomColors ? (
