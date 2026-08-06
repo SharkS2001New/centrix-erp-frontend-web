@@ -39,7 +39,10 @@ export const P = {
       delete: "pricing_tax.vat_rates.delete",
     },
     price_history: { view: "pricing_tax.price_history.view" },
-    kra_invoices: { view: "pricing_tax.kra_invoices.view" },
+    kra_invoices: {
+      view: "pricing_tax.kra_invoices.view",
+      credit: "pricing_tax.kra_invoices.credit",
+    },
   },
   customers: {
     customers: { view: "customers.customers.view" },

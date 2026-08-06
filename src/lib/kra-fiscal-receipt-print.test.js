@@ -79,4 +79,36 @@ describe("kra fiscal receipt print", () => {
     expect(html).toContain("KRA eTIMS FISCAL RECEIPT");
     expect(html).toContain("data:image/png;base64,abc");
   });
+
+  it("builds credit note print title and original CU", () => {
+    const enriched = enrichKraReportRow({
+      kra_response_id: 229,
+      order_no: 74,
+      channel: "pos",
+      invoice_number: "1786006999",
+      status: "success",
+      order_total: 5660,
+      total_vat: 780.69,
+      document_type: "credit_note",
+      relevant_invoice_number: "1786006888",
+      request_payload: {
+        plu_data: [{ item_Name: "BANJAB RICE 25KG", SaleQty: "25", SalePrice: "147.20" }],
+        sign_structure: { InvoiceType: "credit", relevantInvoiceNumber: "1786006888" },
+      },
+      response_payload: {
+        document_type: "credit_note",
+        relevant_invoice_number: "1786006888",
+        scu_id: "KRACU0300007379",
+      },
+    });
+
+    expect(enriched.isCreditNote).toBe(true);
+    expect(enriched.relevantInvoiceNumber).toBe("1786006888");
+
+    const html = buildKraFiscalReceiptHtml(enriched, { orgName: "Demo Store" });
+    expect(html).toContain("KRA FISCAL CREDIT NOTE");
+    expect(html).toContain("KRA eTIMS FISCAL CREDIT NOTE");
+    expect(html).toContain("Original CU");
+    expect(html).toContain("1786006888");
+  });
 });

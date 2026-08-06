@@ -23,9 +23,8 @@ function mapSalesOrderNavItem(item) {
     href: item.href,
     label: formatNavLabel(item.label),
     module: "sales.backend",
-    // Queue ACL is canViewOrderQueue (umbrella-aware via hasPermission). Do not set
-    // `permission` here — hasNavPermission ignores sales.orders.view / sales.view and
-    // hides order links after granting "all backoffice" / umbrella roles.
+    // Queue ACL is canViewOrderQueue (umbrella-aware). Do not set `permission` here —
+    // visibility is decided via orderQueueSlug + canViewOrderQueue below.
     orderQueueSlug: item.slug,
     exact: item.slug === "all",
     ordersNav: false,
@@ -72,18 +71,20 @@ export function buildWorkspaceNavSections({
     .map((section) => ({
       ...section,
       items: section.items.flatMap((item) => {
+        const queuePermission =
+          navContext.hasNavPermission ?? navContext.hasPermission;
         if (item.ordersNav) {
           return salesOrderNavItems.filter(
             (navItem) =>
               isNavItemVisible(navItem, navContext) &&
-              canViewOrderQueue(navItem.orderQueueSlug, navContext.hasPermission),
+              canViewOrderQueue(navItem.orderQueueSlug, queuePermission),
           );
         }
         if (item.mobileOrdersNav) {
           return mobileOrderNavItems.filter(
             (navItem) =>
               isNavItemVisible(navItem, navContext) &&
-              canViewOrderQueue(navItem.orderQueueSlug, navContext.hasPermission),
+              canViewOrderQueue(navItem.orderQueueSlug, queuePermission),
           );
         }
         if (!isNavItemVisible(item, navContext)) return [];

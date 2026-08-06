@@ -93,7 +93,7 @@ export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
     ...base,
     showCash: codes.has("CASH"),
     enableMpesaAmount: mpesaActive,
-    enableMpesaCode: mpesaActive && (base.enableMpesaCode || byCode.MPESA?.requiresReference),
+    enableMpesaCode: mpesaActive && base.enableMpesaCode,
     useBankSelect: false,
     showBankAmount: false,
     showEquityBank: showEquity,
@@ -102,7 +102,8 @@ export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
     otherBankLabel,
     otherBankMethodCode,
     showCheque,
-    showChequeNumber: showCheque && (base.showChequeNumber || byCode.CHEQUE?.requiresReference),
+    // Reference fields only when Sales (or Hotel F&B) toggles are on — not payment_methods.requires_reference.
+    showChequeNumber: showCheque && base.showChequeNumber,
     hasBankPayments: showEquity || showKcb || showOtherBank,
     bankOptions: [],
   };

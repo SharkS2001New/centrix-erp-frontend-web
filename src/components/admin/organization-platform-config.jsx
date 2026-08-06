@@ -353,6 +353,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     hotel_pos_theme_template: HOTEL_POS_THEME_DEFAULT,
     hospitality_services: { ...HOSPITALITY_SERVICE_DEFAULTS },
     hospitality_payment_workflow: { ...HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS },
+    enable_mpesa_code: false,
+    enable_cheque_number: false,
     enable_pos_cash_rounding: false,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
@@ -432,6 +434,8 @@ export function salesPlatformFromApi(apiPayload) {
     hospitality_payment_workflow: normalizeHospitalityPaymentWorkflow(
       apiPayload.hospitality_payment_workflow,
     ),
+    enable_mpesa_code: Boolean(apiPayload.enable_mpesa_code),
+    enable_cheque_number: Boolean(apiPayload.enable_cheque_number),
     enable_pos_cash_rounding: Object.prototype.hasOwnProperty.call(
       apiPayload,
       "enable_pos_cash_rounding",
@@ -1044,6 +1048,7 @@ function ActionStageChecklist({ title, hint, options, selected, onToggle }) {
 
 const MANAGE_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
+  { id: "hotel", label: "Hotel services" },
   { id: "sales", label: "Sales behaviour" },
   { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
@@ -1055,12 +1060,297 @@ const MANAGE_ORG_TABS = [
 
 const REGISTER_ORG_TABS = [
   { id: "profile", label: "Tenant profile" },
+  { id: "hotel", label: "Hotel services" },
   { id: "sales", label: "Sales behaviour" },
   { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "modules", label: "Applications" },
   { id: "admin", label: "Initial administrator" },
 ];
+
+function OrganizationHotelServicesPanel({
+  salesPlatform,
+  onSalesChange,
+  mode = "manage",
+  organizationId = null,
+}) {
+  const [seedingHotelDemo, setSeedingHotelDemo] = useState(false);
+  const services = normalizeHospitalityServices(salesPlatform?.hospitality_services);
+  const workflow = normalizeHospitalityPaymentWorkflow(
+    salesPlatform?.hospitality_payment_workflow,
+  );
+  const collectMode = salesPlatform?.hotel_pos_collect_payment !== false;
+
+  async function seedHotelDemoData() {
+    if (!organizationId || seedingHotelDemo) return;
+    setSeedingHotelDemo(true);
+    try {
+      const res = await apiRequest(
+        `/admin/organizations/${organizationId}/hospitality/seed-demo-data`,
+        { method: "POST" },
+      );
+      notifySuccess(
+        res?.message ??
+          `Seeded ${res?.products ?? 0} menu products and ${res?.tables ?? 0} tables.`,
+      );
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to seed Hotel POS demo data");
+    } finally {
+      setSeedingHotelDemo(false);
+    }
+  }
+
+  function patchSales(partial) {
+    onSalesChange({ ...(salesPlatform ?? {}), ...partial });
+  }
+
+  return (
+    <div className="space-y-6">
+      <PlatformFormSection
+        title="Hospitality services"
+        description="Platform controls which hotel features this tenant can use. Main outlet is always on. Most hotels only need Rooms + Front desk (pay at check-in). Enable Guest folios only for pay-later stays and Charge to room from POS."
+      >
+        <div className="space-y-2">
+          <label className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 opacity-80">
+            <input type="checkbox" className="mt-1 rounded" checked disabled readOnly />
+            <span className="min-w-0">
+              <span className="theme-heading block text-sm font-medium">Main outlet</span>
+              <span className="theme-subtext block text-xs">
+                Always available for Hotel &amp; Bar POS. Not a toggle.
+              </span>
+            </span>
+          </label>
+          {HOSPITALITY_SERVICE_CATALOG.map((svc) => (
+            <label
+              key={svc.key}
+              className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2"
+            >
+              <input
+                type="checkbox"
+                className="mt-1 rounded border-[var(--theme-border)]"
+                checked={Boolean(services[svc.key])}
+                onChange={(e) =>
+                  patchSales({
+                    hospitality_services: normalizeHospitalityServices({
+                      ...services,
+                      [svc.key]: e.target.checked,
+                      ...(svc.key === "table_pos" && e.target.checked
+                        ? { floor_tables: true }
+                        : {}),
+                      ...(svc.key === "room_charge" && e.target.checked
+                        ? { folios: true }
+                        : {}),
+                      ...(svc.key === "night_audit" && e.target.checked
+                        ? { folios: true }
+                        : {}),
+                      ...(svc.key === "folios" && !e.target.checked
+                        ? { room_charge: false, night_audit: false }
+                        : {}),
+                    }),
+                  })
+                }
+              />
+              <span className="min-w-0">
+                <span className="theme-heading block text-sm font-medium">{svc.label}</span>
+                <span className="theme-subtext block text-xs">{svc.description}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </PlatformFormSection>
+
+      <PlatformFormSection
+        title="Hotel POS checkout"
+        description="How cashiers settle F&B checks. Collect payment vs save unpaid are mutually exclusive."
+      >
+        <div className="space-y-4">
+          <OrgRegisterField label="Checkout mode">
+            <select
+              className={inputClass}
+              value={collectMode ? "collect" : "save"}
+              onChange={(e) => {
+                const collect = e.target.value === "collect";
+                patchSales({
+                  hotel_pos_collect_payment: collect,
+                  hospitality_payment_workflow: {
+                    ...workflow,
+                    unpaid: !collect,
+                    paid: true,
+                  },
+                });
+              }}
+            >
+              <option value="collect">Collect payment — buy and pay now</option>
+              <option value="save">Save order — print unpaid receipt, pay later</option>
+            </select>
+          </OrgRegisterField>
+          <div>
+            <p className="theme-heading text-sm font-semibold">Payment statuses</p>
+            <p className="theme-subtext mt-1 text-xs">
+              Unpaid is locked to match checkout mode above.
+            </p>
+            <div className="mt-2 space-y-2">
+              {HOSPITALITY_PAYMENT_WORKFLOW_CATALOG.map((step) => {
+                const locked =
+                  step.key === "paid" ||
+                  (step.key === "unpaid" && (collectMode || !collectMode));
+                return (
+                  <label
+                    key={step.key}
+                    className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 ${
+                      locked ? "opacity-80" : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 rounded border-[var(--theme-border)]"
+                      checked={
+                        step.key === "unpaid" ? !collectMode : Boolean(workflow[step.key])
+                      }
+                      disabled={locked}
+                      onChange={(e) =>
+                        patchSales({
+                          hospitality_payment_workflow: {
+                            ...workflow,
+                            [step.key]: e.target.checked,
+                            paid: true,
+                            unpaid:
+                              step.key === "unpaid" ? e.target.checked : workflow.unpaid,
+                          },
+                        })
+                      }
+                    />
+                    <span className="min-w-0">
+                      <span className="theme-heading block text-sm font-medium">{step.label}</span>
+                      <span className="theme-subtext block text-xs">{step.description}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </PlatformFormSection>
+
+      <PlatformFormSection
+        title="Payment reference fields"
+        description="M-Pesa code and cheque number stay hidden on Hotel POS unless you enable them here. Which tenders appear is still controlled under Payment methods."
+      >
+        <div className="space-y-2">
+          <label className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2">
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-[var(--theme-border)]"
+              checked={Boolean(salesPlatform?.enable_mpesa_code)}
+              onChange={(e) => patchSales({ enable_mpesa_code: e.target.checked })}
+            />
+            <span className="min-w-0">
+              <span className="theme-heading block text-sm font-medium">Require M-Pesa code</span>
+              <span className="theme-subtext block text-xs">
+                Cashiers must enter an M-Pesa confirmation code when paying with M-Pesa.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2">
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-[var(--theme-border)]"
+              checked={Boolean(salesPlatform?.enable_cheque_number)}
+              onChange={(e) => patchSales({ enable_cheque_number: e.target.checked })}
+            />
+            <span className="min-w-0">
+              <span className="theme-heading block text-sm font-medium">Require cheque number</span>
+              <span className="theme-subtext block text-xs">
+                Cashiers must enter a cheque number when paying by cheque.
+              </span>
+            </span>
+          </label>
+        </div>
+      </PlatformFormSection>
+
+      <PlatformFormSection
+        title="Hotel POS appearance"
+        description="Theme and catalog layout for the Hotel & Bar POS desk only."
+      >
+        <div className="space-y-4">
+          <OrgRegisterField label="Hotel POS theme template">
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {HOTEL_POS_THEME_TEMPLATES.map((theme) => {
+                const selected =
+                  normalizeHotelPosThemeTemplate(salesPlatform?.hotel_pos_theme_template) ===
+                  theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => patchSales({ hotel_pos_theme_template: theme.id })}
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                      selected
+                        ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-2 ring-[#185FA5]/40"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <span className="mb-2 flex gap-1">
+                      {(theme.preview ?? []).map((color) => (
+                        <span
+                          key={color}
+                          className="h-4 w-4 rounded-full border border-black/10"
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </span>
+                    <span className="block text-sm font-semibold text-slate-900">{theme.label}</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                      {theme.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </OrgRegisterField>
+          <OrgRegisterField label="Hotel POS product grid">
+            <select
+              className={inputClass}
+              value={Number(salesPlatform?.hotel_pos_grid_columns) === 5 ? 5 : 4}
+              onChange={(e) => patchSales({ hotel_pos_grid_columns: Number(e.target.value) })}
+            >
+              <option value={4}>4 columns</option>
+              <option value={5}>5 columns</option>
+            </select>
+          </OrgRegisterField>
+          <OrgRegisterField label="Menu items shown (before search)">
+            <select
+              className={inputClass}
+              value={Number(salesPlatform?.hotel_pos_catalog_limit) || 30}
+              onChange={(e) => patchSales({ hotel_pos_catalog_limit: Number(e.target.value) })}
+            >
+              <option value={20}>20</option>
+              <option value={30}>30</option>
+              <option value={40}>40</option>
+              <option value={50}>50</option>
+            </select>
+          </OrgRegisterField>
+        </div>
+      </PlatformFormSection>
+
+      {mode === "manage" && organizationId ? (
+        <PlatformFormSection
+          title="Hotel POS demo data"
+          description="Seed 20 menu products (Food + Drinks), floor tables, and the main outlet for Hotel POS testing. Safe to re-run — existing HTL-* codes are updated."
+        >
+          <button
+            type="button"
+            disabled={seedingHotelDemo}
+            onClick={() => void seedHotelDemoData()}
+            className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+          >
+            {seedingHotelDemo ? "Seeding…" : "Seed Hotel POS demo data"}
+          </button>
+        </PlatformFormSection>
+      ) : null}
+    </div>
+  );
+}
 
 function OrganizationConfigTabBar({ tabs, activeTab, onTabChange }) {
   return (
@@ -1116,47 +1406,31 @@ export function OrganizationConfigTabs({
 }) {
   const tabs = mode === "register" ? REGISTER_ORG_TABS : MANAGE_ORG_TABS;
   const [activeTab, setActiveTab] = useState("profile");
-  const [seedingHotelDemo, setSeedingHotelDemo] = useState(false);
   const isHospitality = industry === "hospitality" || deploymentProfile === "hotel_bar";
   const resolvedOrgId = organizationId ?? organization?.id;
-  const visibleTabs = isHospitality
-    ? tabs.filter(
-        (tab) =>
-          tab.id !== "sales" &&
-          tab.id !== "orders_list" &&
-          tab.id !== "workflow",
-      )
-    : tabs;
-
-  useEffect(() => {
+  const visibleTabs = tabs.filter((tab) => {
+    if (tab.id === "hotel") return isHospitality;
     if (
       isHospitality &&
-      (activeTab === "sales" ||
-        activeTab === "orders_list" ||
-        activeTab === "workflow")
+      (tab.id === "sales" || tab.id === "orders_list" || tab.id === "workflow")
     ) {
+      return false;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (!isHospitality && activeTab === "hotel") {
       setActiveTab("profile");
+      return;
+    }
+    if (
+      isHospitality &&
+      (activeTab === "sales" || activeTab === "orders_list" || activeTab === "workflow")
+    ) {
+      setActiveTab("hotel");
     }
   }, [isHospitality, activeTab]);
-
-  async function seedHotelDemoData() {
-    if (!resolvedOrgId || seedingHotelDemo) return;
-    setSeedingHotelDemo(true);
-    try {
-      const res = await apiRequest(
-        `/admin/organizations/${resolvedOrgId}/hospitality/seed-demo-data`,
-        { method: "POST" },
-      );
-      notifySuccess(
-        res?.message ??
-          `Seeded ${res?.products ?? 0} menu products and ${res?.tables ?? 0} tables.`,
-      );
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Failed to seed Hotel POS demo data");
-    } finally {
-      setSeedingHotelDemo(false);
-    }
-  }
 
   return (
     <div className="w-full min-w-0 space-y-4">
@@ -1175,6 +1449,15 @@ export function OrganizationConfigTabs({
           onProfileChange={onProfileChange}
           enableTabWorkspace={enableTabWorkspace}
           onEnableTabWorkspaceChange={onEnableTabWorkspaceChange}
+        />
+      ) : null}
+
+      {activeTab === "hotel" && isHospitality ? (
+        <OrganizationHotelServicesPanel
+          salesPlatform={salesPlatform}
+          onSalesChange={onSalesChange}
+          mode={mode}
+          organizationId={resolvedOrgId}
         />
       ) : null}
 
@@ -1212,34 +1495,17 @@ export function OrganizationConfigTabs({
       ) : null}
 
       {activeTab === "modules" ? (
-        <>
-          <OrganizationModuleToggles
-            moduleOptions={moduleOptions}
-            enabledModules={enabledModules}
-            onToggle={onToggleModule}
-            onSetModules={onSetModules}
-            mobileOrdersEnabled={mobileOrdersEnabled}
-            deploymentProfile={deploymentProfile}
-            profilePresets={profilePresets}
-            salesPlatform={salesPlatform}
-            onSalesChange={onSalesChange}
-          />
-          {mode === "manage" && isHospitality && resolvedOrgId ? (
-            <PlatformFormSection
-              title="Hotel POS demo data"
-              description="Seed 20 menu products (Food + Drinks), floor tables, and the main outlet for Hotel POS testing. Safe to re-run — existing HTL-* codes are updated."
-            >
-              <button
-                type="button"
-                disabled={seedingHotelDemo}
-                onClick={() => void seedHotelDemoData()}
-                className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
-              >
-                {seedingHotelDemo ? "Seeding…" : "Seed Hotel POS demo data"}
-              </button>
-            </PlatformFormSection>
-          ) : null}
-        </>
+        <OrganizationModuleToggles
+          moduleOptions={moduleOptions}
+          enabledModules={enabledModules}
+          onToggle={onToggleModule}
+          onSetModules={onSetModules}
+          mobileOrdersEnabled={mobileOrdersEnabled}
+          deploymentProfile={deploymentProfile}
+          profilePresets={profilePresets}
+          salesPlatform={salesPlatform}
+          onSalesChange={onSalesChange}
+        />
       ) : null}
 
       {activeTab === "users" && mode === "manage" ? (
@@ -1419,243 +1685,17 @@ export function OrganizationModuleToggles({
                   ) : null}
                 </span>
               </label>
-              {workspace.id === "hotel_bar_pos" && enabled && typeof onSalesChange === "function" ? (
-                <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
-                  <OrgRegisterField label="Hotel POS theme template">
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {HOTEL_POS_THEME_TEMPLATES.map((theme) => {
-                        const selected =
-                          normalizeHotelPosThemeTemplate(salesPlatform?.hotel_pos_theme_template) ===
-                          theme.id;
-                        return (
-                          <button
-                            key={theme.id}
-                            type="button"
-                            onClick={() =>
-                              onSalesChange({
-                                ...(salesPlatform ?? {}),
-                                hotel_pos_theme_template: theme.id,
-                              })
-                            }
-                            className={`rounded-xl border px-3 py-2.5 text-left transition ${
-                              selected
-                                ? "border-[#185FA5] bg-[#185FA5]/[0.06] ring-2 ring-[#185FA5]/40"
-                                : "border-slate-200 bg-white hover:border-slate-300"
-                            }`}
-                          >
-                            <span className="mb-2 flex gap-1">
-                              {(theme.preview ?? []).map((color) => (
-                                <span
-                                  key={color}
-                                  className="h-4 w-4 rounded-full border border-black/10"
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </span>
-                            <span className="block text-sm font-semibold text-slate-900">
-                              {theme.label}
-                            </span>
-                            <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
-                              {theme.description}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="theme-subtext mt-2 text-xs">
-                      Applies only to the Hotel &amp; Bar POS desk. Hotel Backoffice / Admin chrome
-                      uses Centrix ERP Themes (above).
-                    </p>
-                  </OrgRegisterField>
-                  <OrgRegisterField label="Hotel POS product grid">
-                    <select
-                      className={inputClass}
-                      value={Number(salesPlatform?.hotel_pos_grid_columns) === 5 ? 5 : 4}
-                      onChange={(e) =>
-                        onSalesChange({
-                          ...(salesPlatform ?? {}),
-                          hotel_pos_grid_columns: Number(e.target.value),
-                        })
-                      }
-                    >
-                      <option value={4}>4 columns</option>
-                      <option value={5}>5 columns</option>
-                    </select>
-                    <p className="theme-subtext mt-1 text-xs">
-                      How many product tiles across. Most-sold items stay on top.
-                    </p>
-                  </OrgRegisterField>
-                  <OrgRegisterField label="Menu items shown (before search)">
-                    <select
-                      className={inputClass}
-                      value={Number(salesPlatform?.hotel_pos_catalog_limit) || 30}
-                      onChange={(e) =>
-                        onSalesChange({
-                          ...(salesPlatform ?? {}),
-                          hotel_pos_catalog_limit: Number(e.target.value),
-                        })
-                      }
-                    >
-                      <option value={20}>20</option>
-                      <option value={30}>30</option>
-                      <option value={40}>40</option>
-                      <option value={50}>50</option>
-                    </select>
-                    <p className="theme-subtext mt-1 text-xs">
-                      Tap grid shows this many top sellers. Staff search for the rest.
-                    </p>
-                  </OrgRegisterField>
-                  <OrgRegisterField label="Checkout mode">
-                    <select
-                      className={inputClass}
-                      value={salesPlatform?.hotel_pos_collect_payment === false ? "save" : "collect"}
-                      onChange={(e) => {
-                        const collect = e.target.value === "collect";
-                        const workflow = normalizeHospitalityPaymentWorkflow(
-                          salesPlatform?.hospitality_payment_workflow,
-                        );
-                        onSalesChange({
-                          ...(salesPlatform ?? {}),
-                          hotel_pos_collect_payment: collect,
-                          // XOR: pay-now disables unpaid; save-later requires unpaid.
-                          hospitality_payment_workflow: {
-                            ...workflow,
-                            unpaid: !collect,
-                            paid: true,
-                          },
-                        });
-                      }}
-                    >
-                      <option value="collect">Collect payment — buy and pay now</option>
-                      <option value="save">Save order — print unpaid receipt, pay later</option>
-                    </select>
-                    <p className="theme-subtext mt-1 text-xs">
-                      These modes are mutually exclusive. Collect payment shows Pay only; Save order
-                      shows Save unpaid only (cashiers collect later from held / unpaid).
-                    </p>
-                  </OrgRegisterField>
-                  <div>
-                    <p className="theme-heading text-sm font-semibold">Payment statuses</p>
-                    <p className="theme-subtext mt-1 text-xs">
-                      Hospitality uses unpaid, partially paid, and paid. Unpaid is locked to match
-                      checkout mode above.
-                    </p>
-                    <div className="mt-2 space-y-2">
-                      {HOSPITALITY_PAYMENT_WORKFLOW_CATALOG.map((step) => {
-                        const workflow = normalizeHospitalityPaymentWorkflow(
-                          salesPlatform?.hospitality_payment_workflow,
-                        );
-                        const collectMode = salesPlatform?.hotel_pos_collect_payment !== false;
-                        const locked =
-                          step.key === "paid" ||
-                          (step.key === "unpaid" &&
-                            (collectMode || salesPlatform?.hotel_pos_collect_payment === false));
-                        return (
-                          <label
-                            key={step.key}
-                            className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 ${
-                              locked ? "opacity-80" : ""
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              className="mt-1 rounded border-[var(--theme-border)]"
-                              checked={
-                                step.key === "unpaid"
-                                  ? salesPlatform?.hotel_pos_collect_payment === false
-                                  : Boolean(workflow[step.key])
-                              }
-                              disabled={locked}
-                              onChange={(e) =>
-                                onSalesChange({
-                                  ...(salesPlatform ?? {}),
-                                  hospitality_payment_workflow: {
-                                    ...workflow,
-                                    [step.key]: e.target.checked,
-                                    paid: true,
-                                    unpaid:
-                                      step.key === "unpaid"
-                                        ? e.target.checked
-                                        : workflow.unpaid,
-                                  },
-                                })
-                              }
-                            />
-                            <span className="min-w-0">
-                              <span className="theme-heading block text-sm font-medium">{step.label}</span>
-                              <span className="theme-subtext block text-xs">{step.description}</span>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+              {workspace.id === "hotel_bar_pos" && enabled ? (
+                <p className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8 text-xs text-slate-600">
+                  Hotel POS theme, checkout mode, payment references, and services are configured on the{" "}
+                  <strong>Hotel services</strong> tab.
+                </p>
               ) : null}
-              {workspace.id === "hospitality_backoffice" && enabled && typeof onSalesChange === "function" ? (
-                <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
-                  <div>
-                    <p className="theme-heading text-sm font-semibold">Hospitality services</p>
-                    <p className="theme-subtext mt-1 text-xs">
-                      Main outlet is always on. Most hotels only need Rooms + Front desk (pay at check-in).
-                      Enable Guest folios only for pay-later stays and Charge to room from POS.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 opacity-80">
-                      <input type="checkbox" className="mt-1 rounded" checked disabled readOnly />
-                      <span className="min-w-0">
-                        <span className="theme-heading block text-sm font-medium">Main outlet</span>
-                        <span className="theme-subtext block text-xs">
-                          Always available for Hotel &amp; Bar POS. Not a toggle.
-                        </span>
-                      </span>
-                    </label>
-                    {HOSPITALITY_SERVICE_CATALOG.map((svc) => {
-                      const services = normalizeHospitalityServices(salesPlatform?.hospitality_services);
-                      return (
-                        <label
-                          key={svc.key}
-                          className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-1 rounded border-[var(--theme-border)]"
-                            checked={Boolean(services[svc.key])}
-                            onChange={(e) =>
-                              onSalesChange({
-                                ...(salesPlatform ?? {}),
-                                hospitality_services: normalizeHospitalityServices({
-                                  ...services,
-                                  [svc.key]: e.target.checked,
-                                  // Table POS implies floor tables management.
-                                  ...(svc.key === "table_pos" && e.target.checked
-                                    ? { floor_tables: true }
-                                    : {}),
-                                  // Room charge / night audit need guest folios.
-                                  ...(svc.key === "room_charge" && e.target.checked
-                                    ? { folios: true }
-                                    : {}),
-                                  ...(svc.key === "night_audit" && e.target.checked
-                                    ? { folios: true }
-                                    : {}),
-                                  // Turning off folios also turns off dependents.
-                                  ...(svc.key === "folios" && !e.target.checked
-                                    ? { room_charge: false, night_audit: false }
-                                    : {}),
-                                }),
-                              })
-                            }
-                          />
-                          <span className="min-w-0">
-                            <span className="theme-heading block text-sm font-medium">{svc.label}</span>
-                            <span className="theme-subtext block text-xs">{svc.description}</span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+              {workspace.id === "hospitality_backoffice" && enabled ? (
+                <p className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8 text-xs text-slate-600">
+                  Rooms, front desk, guest folios, housekeeping, and room charge are enabled on the{" "}
+                  <strong>Hotel services</strong> tab.
+                </p>
               ) : null}
             </div>
           );

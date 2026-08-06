@@ -1187,10 +1187,9 @@ export function isNavSectionVisible(section, navContext) {
 }
 
 export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavPermission, requireTillFloat, user, capabilities, isSuperAdmin, organization }) {
-  // Prefer the expanded role map so selecting "all" backoffice permissions (or manage
-  // packs) shows every granted sidebar link. hasNavPermission alone can stay false for
-  // sibling codes that capabilities.permissions already expands.
-  const checkPermission = hasPermission ?? hasNavPermission;
+  // Prefer role-assigned nav map so empty roles / org-admin Administration-only grants
+  // do not show every Backoffice link. Fall back to hasPermission when nav map is absent.
+  const checkPermission = hasNavPermission ?? hasPermission;
   if (item.superAdminOnly && !isSuperAdmin?.()) return false;
   if (
     shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin }) &&

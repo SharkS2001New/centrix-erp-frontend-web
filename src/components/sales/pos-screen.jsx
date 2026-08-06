@@ -6730,6 +6730,9 @@ export function PosScreen({ standalone = false }) {
           customer_num: body?.customer_num ?? checkoutCart.customer_num,
           customer_name_override:
             body?.customer_name_override ?? checkoutCart.customer_name_override,
+          ...(String(body?.customer_kra_pin ?? "").trim()
+            ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
+            : {}),
           held_order_num: checkoutCart.held_order_num ?? null,
           offline_client_sale_uuid: checkoutCart.offline_client_sale_uuid ?? null,
           offline_edit_snapshot: checkoutCart.offline_edit_snapshot ?? null,
@@ -6826,6 +6829,9 @@ export function PosScreen({ standalone = false }) {
             customer_num: body?.customer_num ?? checkoutCart.customer_num,
             customer_name_override:
               body?.customer_name_override ?? checkoutCart.customer_name_override,
+            ...(String(body?.customer_kra_pin ?? "").trim()
+              ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
+              : {}),
             held_order_num: checkoutCart.held_order_num ?? null,
             superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
             order_discount: Number(checkoutCart.order_discount ?? 0) || 0,

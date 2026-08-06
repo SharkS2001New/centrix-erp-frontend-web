@@ -52,4 +52,33 @@ describe("resolveHotelPosPaymentConfig", () => {
     expect(cfg.otherBankMethodCode).toBe("CARD");
     expect(cfg.otherBankLabel).toBe("Card");
   });
+
+  it("hides M-Pesa code and cheque number unless sales toggles are on", () => {
+    const off = resolveHotelPosPaymentConfig(
+      {},
+      {
+        capabilities: { platform_mpesa_stk_enabled: true, modules: {} },
+        activePaymentMethods: [
+          { method_code: "MPESA", requires_reference: true, is_active: true },
+          { method_code: "CHEQUE", requires_reference: true, is_active: true },
+        ],
+      },
+    );
+    expect(off.enableMpesaCode).toBe(false);
+    expect(off.showChequeNumber).toBe(false);
+
+    const on = resolveHotelPosPaymentConfig(
+      { sales: { enable_mpesa_code: true, enable_cheque: true, enable_cheque_number: true } },
+      {
+        capabilities: { platform_mpesa_stk_enabled: true, modules: {} },
+        activePaymentMethods: [
+          { method_code: "MPESA", requires_reference: false, is_active: true },
+          { method_code: "CHEQUE", requires_reference: false, is_active: true },
+        ],
+      },
+    );
+    expect(on.enableMpesaCode).toBe(true);
+    expect(on.showCheque).toBe(true);
+    expect(on.showChequeNumber).toBe(true);
+  });
 });

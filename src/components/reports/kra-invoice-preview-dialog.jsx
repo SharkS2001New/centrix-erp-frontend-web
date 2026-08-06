@@ -7,6 +7,7 @@ import {
   buildKraFiscalReceiptHtml,
   enrichKraReportRow,
   formatKraReceiptPreviewSummary,
+  kraDocumentTypeLabel,
   kraReportRowId,
   normalizeKraResponseRow,
   printKraFiscalReceipts,
@@ -155,10 +156,12 @@ export function KraResponseDetailDialog({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="kra-response-detail-title" className="theme-heading text-base font-semibold">
-              KRA response{responseId != null ? ` #${responseId}` : ""}
+              {enriched?.isCreditNote ? "KRA credit note" : "KRA response"}
+              {responseId != null ? ` #${responseId}` : ""}
             </h2>
             <p className="theme-subtext mt-1 text-sm">
-              Order {summary?.orderLabel ?? "—"} · {activeRow?.status ?? "—"}
+              Order {summary?.orderLabel ?? "—"} · {kraDocumentTypeLabel(activeRow)} ·{" "}
+              {activeRow?.status ?? "—"}
               {activeRow?.receipt_date ? ` · ${activeRow.receipt_date}` : null}
             </p>
           </div>
@@ -216,6 +219,10 @@ export function KraResponseDetailDialog({
                 <dd className="text-slate-900">{summary?.orderLabel ?? "—"}</dd>
               </div>
               <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">Type</dt>
+                <dd className="text-slate-900">{kraDocumentTypeLabel(activeRow)}</dd>
+              </div>
+              <div>
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Customer</dt>
                 <dd className="text-slate-900">{enriched?.customerName || activeRow?.customer_name || "—"}</dd>
               </div>
@@ -229,6 +236,12 @@ export function KraResponseDetailDialog({
                 <dt className="text-xs uppercase tracking-wide text-slate-500">CU number</dt>
                 <dd className="font-mono text-xs text-slate-900">{activeRow?.invoice_number || "—"}</dd>
               </div>
+              {enriched?.relevantInvoiceNumber ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Original CU</dt>
+                  <dd className="font-mono text-xs text-slate-900">{enriched.relevantInvoiceNumber}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-xs uppercase tracking-wide text-slate-500">SCU / serial</dt>
                 <dd className="font-mono text-xs text-slate-900">{activeRow?.serial_number || "—"}</dd>

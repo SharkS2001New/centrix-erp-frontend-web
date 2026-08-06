@@ -85,6 +85,22 @@ export const KRA_STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
 ];
 
+export const KRA_DOCUMENT_TYPE_OPTIONS = [
+  { value: "", label: "All document types" },
+  { value: "sale", label: "Invoice sale" },
+  { value: "credit_note", label: "Credit note" },
+];
+
+/** KRA eTIMS refund reason codes (rfdRsnCd). */
+export const KRA_REFUND_REASON_OPTIONS = [
+  { value: "06", label: "Refund" },
+  { value: "01", label: "Missing Quantity" },
+  { value: "02", label: "Missing Data" },
+  { value: "03", label: "Damaged / Wasted" },
+  { value: "04", label: "Raw Material" },
+  { value: "05", label: "Shortage" },
+];
+
 export const LATENESS_WAIVER_OPTIONS = [
   { value: "", label: "All (waived & open)" },
   { value: "false", label: "Not waived" },
@@ -218,12 +234,26 @@ export const REPORT_EXTRA_FILTERS = {
   ],
   "vat-collected": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
   "kra-receipts": [
+    { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
     { id: "status", label: "Status", type: "select", optionsKey: "kraStatuses" },
-    { id: "q", label: "Search", type: "text", placeholder: "Order # or CU number…" },
+    { id: "document_type", label: "Type", type: "select", optionsKey: "kraDocumentTypes" },
+    {
+      id: "q",
+      label: "Search",
+      type: "text",
+      placeholder: "Order #, CU #, customer, or amount…",
+    },
   ],
   "kra-invoices": [
+    { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
     { id: "status", label: "Status", type: "select", optionsKey: "kraStatuses" },
-    { id: "q", label: "Search", type: "text", placeholder: "Order # or CU number…" },
+    { id: "document_type", label: "Type", type: "select", optionsKey: "kraDocumentTypes" },
+    {
+      id: "q",
+      label: "Search",
+      type: "text",
+      placeholder: "Order #, CU #, customer, or amount…",
+    },
   ],
   "kra-compliance-summary": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },

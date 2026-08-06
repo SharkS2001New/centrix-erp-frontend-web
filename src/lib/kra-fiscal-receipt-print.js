@@ -119,6 +119,14 @@ export function enrichKraReportRow(row) {
   const linesTotal = lines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
   const orderTotal = Number(normalized.order_total ?? 0);
   const totalVat = Number(normalized.total_vat ?? 0);
+  const documentType = resolveKraDocumentType(normalized, requestPayload, responsePayload);
+  const relevantInvoiceNumber =
+    String(
+      normalized.relevant_invoice_number ??
+        responsePayload?.relevant_invoice_number ??
+        requestPayload?.sign_structure?.relevantInvoiceNumber ??
+        "",
+    ).trim() || null;
 
   return {
     row: normalized,
@@ -126,6 +134,9 @@ export function enrichKraReportRow(row) {
     requestPayload,
     responsePayload,
     lines,
+    documentType,
+    isCreditNote: documentType === "credit_note",
+    relevantInvoiceNumber,
     orderNo: formatKraReportOrderNo(normalized),
     customerName: extractCustomerNameFromRow(normalized),
     buyerPin: extractBuyerPinFromKraPayload(requestPayload),
@@ -141,6 +152,37 @@ export function enrichKraReportRow(row) {
     version: kra?.version ?? responsePayload?.version ?? null,
     errorMessage: normalized.error_message,
   };
+}
+
+export function resolveKraDocumentType(row, requestPayload = null, responsePayload = null) {
+  const request = requestPayload ?? parseJsonMaybe(row?.request_payload);
+  const response = responsePayload ?? parseJsonMaybe(row?.response_payload);
+  const fromRow = String(row?.document_type ?? "").trim().toLowerCase();
+  const fromResponse = String(response?.document_type ?? "").trim().toLowerCase();
+  const invoiceType = String(request?.sign_structure?.InvoiceType ?? "").trim().toLowerCase();
+  const raw = fromRow || fromResponse || invoiceType || "sale";
+  if (raw === "credit" || raw === "credit_note" || raw === "creditnote") return "credit_note";
+  return "sale";
+}
+
+export function kraDocumentTypeLabel(rowOrType) {
+  const type =
+    typeof rowOrType === "string" || rowOrType == null
+      ? resolveKraDocumentType({ document_type: rowOrType })
+      : resolveKraDocumentType(rowOrType);
+  return type === "credit_note" ? "Credit note" : "Invoice sale";
+}
+
+export function isKraCreditNoteRow(row) {
+  return resolveKraDocumentType(row) === "credit_note";
+}
+
+export function isKraOriginalInvoiceSaleRow(row) {
+  return (
+    String(row?.status ?? "").toLowerCase() === "success" &&
+    Boolean(row?.sale_id) &&
+    !isKraCreditNoteRow(row)
+  );
 }
 
 function buildLineItemsHtml(lines) {
@@ -173,12 +215,26 @@ function buildMetaRow(label, value) {
 export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName = DEFAULT_PRINT_ORG_NAME } = {}) {
   if (!enriched) return "";
 
-  const { kra, lines, orderNo, orderTotal, totalVat, receiptDate, branchName, channel, customerName, buyerPin } =
-    enriched;
+  const {
+    kra,
+    lines,
+    orderNo,
+    orderTotal,
+    totalVat,
+    receiptDate,
+    branchName,
+    channel,
+    customerName,
+    buyerPin,
+    isCreditNote,
+    relevantInvoiceNumber,
+  } = enriched;
+  const documentTitle = isCreditNote ? "KRA FISCAL CREDIT NOTE" : "KRA FISCAL TAX INVOICE";
+  const fiscalTitle = isCreditNote ? "KRA eTIMS FISCAL CREDIT NOTE" : "KRA eTIMS FISCAL RECEIPT";
   const fiscalBlock = buildKraFiscalBlockHtml(kra, {
     layout: "thermal",
     qrDataUrl,
-    title: "KRA eTIMS FISCAL RECEIPT",
+    title: fiscalTitle,
   });
 
   const netExVat = Math.max(0, (Number(orderTotal) || 0) - (Number(totalVat) || 0));
@@ -186,7 +242,7 @@ export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName 
   return `<section class="kra-fiscal-receipt" style="width:72mm;max-width:72mm;margin:0 auto;padding:8px 6px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
     <div style="text-align:center;margin-bottom:8px;">
       <div style="font-size:12px;font-weight:700;">${escapeKraHtml(orgName)}</div>
-      <div style="font-size:11px;font-weight:700;margin-top:4px;letter-spacing:0.04em;">KRA FISCAL TAX INVOICE</div>
+      <div style="font-size:11px;font-weight:700;margin-top:4px;letter-spacing:0.04em;">${escapeKraHtml(documentTitle)}</div>
       ${branchName ? `<div style="font-size:10px;margin-top:2px;">${escapeKraHtml(branchName)}</div>` : ""}
     </div>
 
@@ -196,6 +252,8 @@ export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName 
       ${buildMetaRow("Customer", customerName)}
       ${buyerPin ? buildMetaRow("Customer PIN", buyerPin) : ""}
       ${buildMetaRow("Channel", channel)}
+      ${buildMetaRow("Type", isCreditNote ? "Credit note" : "Invoice sale")}
+      ${relevantInvoiceNumber ? buildMetaRow("Original CU", relevantInvoiceNumber) : ""}
       ${buildMetaRow("CU invoice", kra?.invoiceNumber)}
       ${buildMetaRow("SCU ID", enriched.scuId)}
       ${buildMetaRow("SCU serial", kra?.serialNumber)}
@@ -219,7 +277,7 @@ export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName 
       ${buildMetaRow("Net (ex VAT)", `KES ${formatReceiptMoney(netExVat)}`)}
       ${buildMetaRow("VAT", `KES ${formatReceiptMoney(totalVat)}`)}
       <div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:700;margin-top:4px;">
-        <span>Total</span>
+        <span>${isCreditNote ? "Credit total" : "Total"}</span>
         <span>KES ${escapeKraHtml(formatReceiptMoney(orderTotal))}</span>
       </div>
     </div>

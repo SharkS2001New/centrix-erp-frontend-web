@@ -59,8 +59,8 @@ export function resolveHasPermission({ user, organization, capabilities, code, i
   return capabilities?.permissions?.[code] ?? false;
 }
 
-/** Nav/sidebar checks — prefer explicit role assignment when true; otherwise use the
- * expanded permissions map so "all backoffice" / manage packs still light up links. */
+/** Nav/sidebar checks — use role-assigned permissions when available so org-admin
+ * auto-grants (Administration only) and empty roles do not light up all Backoffice links. */
 export function resolveHasNavPermission({ user, organization, capabilities, code, isSuperAdmin }) {
   if (!code) return true;
 
@@ -92,8 +92,10 @@ export function resolveHasNavPermission({ user, organization, capabilities, code
     return false;
   }
 
-  const assigned = capabilities?.assigned_permissions?.[code];
-  if (assigned === true) return true;
+  const assigned = capabilities?.assigned_permissions;
+  if (assigned && typeof assigned === "object") {
+    return assigned[code] === true;
+  }
 
   return resolveHasPermission({ user, organization, capabilities, code, isSuperAdmin });
 }

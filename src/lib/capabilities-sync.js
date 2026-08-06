@@ -15,6 +15,40 @@ export function capabilitiesVersionChanged(previous, next) {
 }
 
 /**
+ * True when the cheap /erp/capabilities/version payload disagrees with the
+ * stored session (org generation bumped, or this user's role / admin flag changed).
+ */
+export function capabilitiesAccessStampChanged(storedCapabilities, storedUser, versionPayload) {
+  if (!versionPayload || typeof versionPayload !== "object") return false;
+
+  const storedVersion = readCapabilitiesVersion(storedCapabilities);
+  const nextVersion = readCapabilitiesVersion(versionPayload);
+  if (nextVersion != null && storedVersion != null && nextVersion !== storedVersion) {
+    return true;
+  }
+
+  const nextRoleId = versionPayload.role_id != null ? Number(versionPayload.role_id) : null;
+  const storedRoleId = storedUser?.role_id != null ? Number(storedUser.role_id) : null;
+  if (
+    Number.isFinite(nextRoleId) &&
+    Number.isFinite(storedRoleId) &&
+    nextRoleId !== storedRoleId
+  ) {
+    return true;
+  }
+
+  const nextAdmin = Boolean(versionPayload.is_admin);
+  const storedAdmin = Boolean(
+    storedCapabilities?.is_admin ?? storedUser?.is_admin,
+  );
+  if (nextAdmin !== storedAdmin) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * True when this document load was a browser reload (F5 / Ctrl+R / hard refresh).
  * External POS uses cached capabilities until reload (or an explicit Refresh).
  */

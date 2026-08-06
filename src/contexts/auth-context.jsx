@@ -43,6 +43,7 @@ import { useCookieAuth } from "@/lib/auth-config";
 import { invalidateReferenceDataCache } from "@/lib/reference-data-cache";
 import { invalidateReportBuilderTemplateCache } from "@/lib/report-builder-templates";
 import {
+  capabilitiesAccessStampChanged,
   capabilitiesVersionChanged,
   isBrowserReloadNavigation,
 } from "@/lib/capabilities-sync";
@@ -56,6 +57,8 @@ import { syncLocalPrintingFromCapabilities } from "@/lib/local-printing-settings
 const CLIENT_ID_KEY = "pos_erp_client_id";
 const CAPABILITIES_REFRESH_MS = 90_000;
 const POS_CAPABILITIES_REFRESH_MS = 15_000;
+/** Cheap version poll so demotions (Admin → Cashier) apply without waiting on the 90s TTL. */
+const CAPABILITIES_VERSION_POLL_MS = 15_000;
 
 function getClientId() {
   if (typeof window === "undefined") return "";
@@ -324,6 +327,49 @@ export function AuthProvider({ children }) {
 
     return () => window.clearInterval(interval);
   }, [refreshCapabilities, loginChannel]);
+
+  useEffect(() => {
+    if (!hasAuthSession()) return undefined;
+
+    const syncIfAccessChanged = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      try {
+        const stamp = await apiRequest("/erp/capabilities/version", {
+          loading: false,
+          reportIssues: false,
+        });
+        const storedCaps = getStoredCapabilities();
+        const storedUser = getStoredUser();
+        if (!capabilitiesAccessStampChanged(storedCaps, storedUser, stamp)) {
+          return;
+        }
+        await refreshCapabilities({ force: true });
+        const nextRoleId = stamp?.role_id != null ? Number(stamp.role_id) : null;
+        if (Number.isFinite(nextRoleId)) {
+          const userPatch = {
+            role_id: nextRoleId,
+            is_admin: Boolean(stamp?.is_admin),
+          };
+          patchStoredUser(userPatch);
+          setUser((prev) => (prev ? { ...prev, ...userPatch } : prev));
+        }
+      } catch {
+        /* network / 401 handled by api client */
+      }
+    };
+
+    const interval = window.setInterval(syncIfAccessChanged, CAPABILITIES_VERSION_POLL_MS);
+    window.addEventListener("focus", syncIfAccessChanged);
+    document.addEventListener("visibilitychange", syncIfAccessChanged);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", syncIfAccessChanged);
+      document.removeEventListener("visibilitychange", syncIfAccessChanged);
+    };
+  }, [refreshCapabilities]);
 
   const switchWorkspace = useCallback(async (workspaceId) => {
     const res = await applyWorkspaceSession(workspaceId);

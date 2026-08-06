@@ -145,7 +145,7 @@ function ProductSearchField({
 }
 
 export function HospitalitySettingsScreen() {
-  const { user, capabilities, hasPermission } = useAuth();
+  const { user, capabilities, hasPermission, refreshCapabilities } = useAuth();
   const canEdit = hasPermission?.(P.hospitality.settings.edit) ?? Boolean(user);
 
   const [loading, setLoading] = useState(true);
@@ -155,19 +155,29 @@ export function HospitalitySettingsScreen() {
   const [recipes, setRecipes] = useState([]);
   const [draft, setDraft] = useState(() => emptyRecipeDraft());
   const [editing, setEditing] = useState(false);
+  const [paymentRefs, setPaymentRefs] = useState({
+    enable_mpesa_code: false,
+    enable_cheque_number: false,
+  });
 
   const inventoryEnabled = Boolean(capabilities?.modules?.inventory);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsRes, recipesRes] = await Promise.all([
+      const [settingsRes, recipesRes, salesRes] = await Promise.all([
         apiRequest("/hospitality/settings"),
         apiRequest("/hospitality/recipes"),
+        apiRequest("/erp/settings/sales").catch(() => null),
       ]);
       setStockForm(hospitalityStockFormFromApi(settingsRes));
       setSetupGuide(settingsRes?.setup_guide ?? null);
       setRecipes(recipesRes?.data ?? []);
+      const sales = salesRes?.sales ?? salesRes;
+      setPaymentRefs({
+        enable_mpesa_code: Boolean(sales?.enable_mpesa_code),
+        enable_cheque_number: Boolean(sales?.enable_cheque_number),
+      });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not load hospitality settings");
     } finally {
@@ -192,6 +202,31 @@ export function HospitalitySettingsScreen() {
       notifySuccess("Hospitality settings saved");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not save settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function savePaymentRefs() {
+    if (!canEdit) return;
+    setSaving(true);
+    try {
+      const res = await apiRequest("/erp/settings/sales", {
+        method: "PATCH",
+        body: {
+          enable_mpesa_code: Boolean(paymentRefs.enable_mpesa_code),
+          enable_cheque_number: Boolean(paymentRefs.enable_cheque_number),
+        },
+      });
+      const sales = res?.sales ?? res;
+      setPaymentRefs({
+        enable_mpesa_code: Boolean(sales?.enable_mpesa_code),
+        enable_cheque_number: Boolean(sales?.enable_cheque_number),
+      });
+      await refreshCapabilities?.({ force: true }).catch(() => {});
+      notifySuccess("Hotel POS payment reference settings saved");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not save payment reference settings");
     } finally {
       setSaving(false);
     }
@@ -375,6 +410,44 @@ export function HospitalitySettingsScreen() {
               behaviour is unchanged.
             </p>
           )}
+        </section>
+
+        <section id="pos-payment-refs" className="space-y-3">
+          <h2 className="theme-heading text-base font-semibold">Hotel POS payment references</h2>
+          <p className="theme-subtext text-sm">
+            Which tenders appear on Collect payment is controlled under{" "}
+            <Link href="/admin/payment-methods" className="font-medium text-[var(--theme-primary)] hover:underline">
+              Payment methods
+            </Link>
+            . Reference fields (M-Pesa code / cheque number) stay off unless you enable them here.
+          </p>
+          <div className="space-y-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4">
+            <Toggle
+              disabled={!canEdit || saving}
+              checked={paymentRefs.enable_mpesa_code}
+              onChange={(v) => setPaymentRefs((f) => ({ ...f, enable_mpesa_code: v }))}
+              label="Require M-Pesa code on Hotel POS"
+              description="When on, cashiers must enter an M-Pesa confirmation code when paying with M-Pesa."
+            />
+            <Toggle
+              disabled={!canEdit || saving}
+              checked={paymentRefs.enable_cheque_number}
+              onChange={(v) => setPaymentRefs((f) => ({ ...f, enable_cheque_number: v }))}
+              label="Require cheque number on Hotel POS"
+              description="When on, cashiers must enter a cheque number when paying by cheque."
+            />
+            {canEdit ? (
+              <div className="pt-2">
+                <PrimaryButton
+                  showIcon={false}
+                  disabled={saving}
+                  onClick={() => void savePaymentRefs()}
+                >
+                  {saving ? "Saving…" : "Save payment references"}
+                </PrimaryButton>
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section id="stock-balancing" className="space-y-3">

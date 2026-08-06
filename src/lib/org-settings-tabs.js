@@ -56,7 +56,7 @@ function moduleEnabled(capabilities, moduleKey) {
 }
 
 /** @param {object} capabilities erp/capabilities payload */
-function isHospitalityIndustry(capabilities) {
+export function isHospitalityIndustry(capabilities) {
   return (
     capabilities?.industry === "hospitality" ||
     capabilities?.deployment_profile === "hotel_bar"

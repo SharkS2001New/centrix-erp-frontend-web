@@ -90,7 +90,7 @@ function userHasTwoFactor(row) {
 
 export function AdminUsersScreen() {
   const confirm = useConfirm();
-  const { user, capabilities, refreshCapabilities } = useAuth();
+  const { user, capabilities, refreshCapabilities, updateProfile } = useAuth();
   const { adminPath, organizationId: platformOrgId, isPlatformManaged, tenantCapabilities } = useAdminApi();
   const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
@@ -668,7 +668,7 @@ export function AdminUsersScreen() {
         body.must_change_password = form.must_change_password;
       }
       if (editing) {
-        await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
+        const updated = await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
         if (!editing.is_admin) {
           await apiRequest(adminPath(`/users/${editing.id}/permissions`), {
             method: "PUT",
@@ -677,8 +677,20 @@ export function AdminUsersScreen() {
               denied_permission_ids: [...deniedIds],
             },
           });
-          if (editing.id === user?.id) {
-            await refreshCapabilities();
+        }
+        // Role / admin demotion invalidates sessions server-side; refresh own caps immediately
+        // when editing yourself (before the 15s version poll).
+        if (editing.id === user?.id) {
+          try {
+            await refreshCapabilities({ force: true });
+            if (updated) {
+              updateProfile({
+                role_id: updated.role_id ?? user.role_id,
+                is_admin: Boolean(updated.is_admin),
+              });
+            }
+          } catch {
+            // Role demotion revokes sessions — next navigation will require sign-in.
           }
         }
       } else {
