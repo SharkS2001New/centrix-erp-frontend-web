@@ -126,10 +126,6 @@ import {
   rankPosProductSearchResults,
 } from "@/lib/pos-product-search-rank";
 import {
-  readPosRecentProducts,
-  rememberPosRecentProduct,
-} from "@/lib/pos-recent-products";
-import {
   applyCartMutationResponse,
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
@@ -1547,20 +1543,10 @@ export function PosScreen({ standalone = false }) {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
-  const [recentProducts, setRecentProducts] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selectedProductCode, setSelectedProductCode] = useState(null);
   const searchSeq = useRef(0);
   const searchAbortRef = useRef(null);
-
-  useEffect(() => {
-    setRecentProducts(
-      readPosRecentProducts({
-        organizationId,
-        branchId: user?.branch_id ?? null,
-      }),
-    );
-  }, [organizationId, user?.branch_id]);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [lineForm, setLineForm] = useState(EMPTY_LINE);
@@ -4546,39 +4532,6 @@ export function PosScreen({ standalone = false }) {
     if (classicLayout) {
       setSearchQuery(product.product_code ?? "");
     }
-    const recentScope = {
-      organizationId,
-      branchId: user?.branch_id ?? cart?.branch_id ?? null,
-    };
-    rememberPosRecentProduct(product, recentScope);
-    setRecentProducts(readPosRecentProducts(recentScope));
-  }
-
-  async function pickRecentProduct(row) {
-    const code = String(row?.product_code ?? "").trim();
-    if (!code || busy || lineBusy || posSearchSuspended) return;
-    let product =
-      productByCodeRef.current[code] ??
-      productByCode[code] ??
-      null;
-    if (!product && standalone) {
-      try {
-        const local = await getPosOfflineProduct(code);
-        if (local && isSellableCatalogProduct(local)) {
-          product = enrichProductForLpo(local, uomById, vatById);
-        }
-      } catch {
-        /* fall through */
-      }
-    }
-    if (!product) {
-      product = await resolveProductByCode(code);
-    }
-    if (!product) {
-      setStatusMessage(`Could not load recent product ${code}.`);
-      return;
-    }
-    await pickProduct(product);
   }
 
   function beginReplaceCartLine(lineId) {
@@ -10042,8 +9995,6 @@ export function PosScreen({ standalone = false }) {
                   barcodeEnabled={enableBarcodeScanner}
                   stockDisplayMode={stockDisplayMode}
                   posSalesConfig={posSalesConfig}
-                  recentProducts={recentProducts}
-                  onSelectRecent={(row) => void pickRecentProduct(row)}
                   disabled={busy || posSearchSuspended}
                 />
               )}
@@ -10549,8 +10500,6 @@ export function PosScreen({ standalone = false }) {
                     barcodeEnabled={enableBarcodeScanner}
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
-                    recentProducts={recentProducts}
-                    onSelectRecent={(row) => void pickRecentProduct(row)}
                     disabled={busy || posSearchSuspended}
                   />
                 }

@@ -95,10 +95,16 @@ function ModuleCheckbox({ selection, moduleIds, groupLabel, onToggleMany }) {
   );
 }
 
+/** Dashboard analytics links are independent — no module-level select-all. */
+function allowsModuleSelectAll(group) {
+  return group?.module !== "dashboard";
+}
+
 export function PermissionModuleTable({ group, assignedIds, onToggle, onToggleMany }) {
   const [expanded, setExpanded] = useState(true);
   const selection = moduleSelectionState(group, assignedIds);
   const moduleIds = modulePermissionIds(group);
+  const showModuleSelectAll = allowsModuleSelectAll(group);
 
   return (
     <div className="theme-panel rounded-lg border">
@@ -108,15 +114,23 @@ export function PermissionModuleTable({ group, assignedIds, onToggle, onToggleMa
           onToggle={() => setExpanded((value) => !value)}
           label={group.label}
         />
-        <ModuleCheckbox
-          selection={selection}
-          moduleIds={moduleIds}
-          groupLabel={group.label}
-          onToggleMany={onToggleMany}
-        />
+        {showModuleSelectAll ? (
+          <ModuleCheckbox
+            selection={selection}
+            moduleIds={moduleIds}
+            groupLabel={group.label}
+            onToggleMany={onToggleMany}
+          />
+        ) : (
+          <span className="mt-0.5 inline-block w-4 shrink-0" aria-hidden />
+        )}
         <div className="min-w-0 flex-1 pt-0.5">
           <p className="theme-heading text-sm font-semibold">{group.label}</p>
-          <p className="theme-subtext mt-0.5 text-xs">Module — expand to manage linked features</p>
+          <p className="theme-subtext mt-0.5 text-xs">
+            {showModuleSelectAll
+              ? "Module — expand to manage linked features"
+              : "Grant Business summary, Sales analytics, and Inventory analytics separately"}
+          </p>
         </div>
       </div>
 

@@ -34,6 +34,23 @@ describe("pos-product-search-rank", () => {
     expect(explainPosSearchMatch(product, "sugr")).toBe("fuzzy");
   });
 
+  it("does not fuzzy-match a shorter name against a longer query (marai ≠ Mara)", () => {
+    const marai = { product_code: "M1", product_name: "Marai Cooking Fat" };
+    const mara = { product_code: "M2", product_name: "Mara Cooking Fat" };
+    expect(productMatchesPosSearch(marai, "marai")).toBe(true);
+    expect(productMatchesPosSearch(mara, "marai")).toBe(false);
+    expect(productMatchesPosSearch(mara, "mara")).toBe(true);
+    const ranked = rankPosProductSearchResults([marai, mara], "marai");
+    expect(ranked.map((p) => p.product_code)).toEqual(["M1"]);
+  });
+
+  it("hides fuzzy near-misses when a solid name match exists", () => {
+    const exact = { product_code: "E1", product_name: "Cooking Oil" };
+    const typoOnly = { product_code: "T1", product_name: "Cookin" };
+    const ranked = rankPosProductSearchResults([typoOnly, exact], "cooking");
+    expect(ranked.map((p) => p.product_code)).toEqual(["E1"]);
+  });
+
   it("ranks in-stock products above zero stock for the same text score", () => {
     const inStock = { product_code: "A", product_name: "Sugar" };
     const out = { product_code: "B", product_name: "Sugar" };

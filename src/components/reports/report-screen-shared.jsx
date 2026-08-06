@@ -187,16 +187,21 @@ function renderReportDataCells(columns, row) {
   return columns.map((col) => {
     const badge = col.badge?.(row);
     const raw = col.accessor(row);
+    const content = col.cell
+      ? col.cell(row, raw)
+      : badge
+        ? (
+            <ReportBadge label={badge.label} tone={badge.tone} />
+          )
+        : (
+            <ReportCellLink columnKey={col.key} row={row} value={raw} link={col.link} />
+          );
     return (
       <td
         key={col.key}
-        className={`whitespace-nowrap px-4 py-2.5 theme-text-muted ${col.align === "right" ? "text-right" : "text-left"}`}
+        className={`${col.wrap ? "max-w-[16rem] whitespace-normal" : "whitespace-nowrap"} px-4 py-2.5 theme-text-muted ${col.align === "right" ? "text-right" : "text-left"}`}
       >
-        {badge ? (
-          <ReportBadge label={badge.label} tone={badge.tone} />
-        ) : (
-          <ReportCellLink columnKey={col.key} row={row} value={raw} link={col.link} />
-        )}
+        {content}
       </td>
     );
   });

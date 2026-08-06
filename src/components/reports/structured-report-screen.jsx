@@ -37,6 +37,8 @@ import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options"
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
 import { KraReceiptsReportScreen } from "@/components/reports/kra-receipts-report-screen";
+import { KraFailureReasonDialog } from "@/components/reports/kra-failure-reason-dialog";
+import { snippetKraErrorReason } from "@/lib/kra-device-errors";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
@@ -134,6 +136,7 @@ function StandardReportScreen({ definition }) {
     cacheMatchesDefinition ? cachedBundle.queryFilters ?? {} : {},
   );
   const [aiOpen, setAiOpen] = useState(false);
+  const [failureReasonRow, setFailureReasonRow] = useState(null);
   const [applied, setApplied] = useState(() =>
     cacheMatchesDefinition && cachedBundle.applied
       ? cachedBundle.applied
@@ -284,8 +287,43 @@ function StandardReportScreen({ definition }) {
   }, [rows, reportSummary, definition.kpis]);
 
   const columns = useMemo(() => {
-    return filterStructuredReportColumns(definition.columns ?? [], { multiBranch });
-  }, [definition.columns, multiBranch]);
+    const base = filterStructuredReportColumns(definition.columns ?? [], { multiBranch });
+    if (definition.key !== "kra-unfiscalized-sales") return base;
+
+    return base.map((col) => {
+      if (col.key !== "last_kra_error") return col;
+      return {
+        ...col,
+        wrap: true,
+        cell: (row) => {
+          const full = String(row.last_kra_error ?? "").trim();
+          if (!full) return "—";
+          const snippet = snippetKraErrorReason(full, 4);
+          return (
+            <div className="flex flex-col items-start gap-1 text-left">
+              <span className="text-sm leading-snug text-slate-800" title={full}>
+                {snippet}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setFailureReasonRow({
+                    ...row,
+                    error_message: full,
+                    kra_response_id: row.last_kra_response_id,
+                    id: row.last_kra_response_id,
+                  })
+                }
+                className="font-medium text-red-700 hover:underline"
+              >
+                View full reason
+              </button>
+            </div>
+          );
+        },
+      };
+    });
+  }, [definition.columns, definition.key, multiBranch]);
 
   const footerTotals = useMemo(() => {
     if (!definition.footerTotals || !columns.length) return {};
@@ -511,6 +549,11 @@ function StandardReportScreen({ definition }) {
         }}
         rows={rows}
         summary={reportSummary}
+      />
+      <KraFailureReasonDialog
+        open={Boolean(failureReasonRow)}
+        row={failureReasonRow}
+        onClose={() => setFailureReasonRow(null)}
       />
     </>
   );

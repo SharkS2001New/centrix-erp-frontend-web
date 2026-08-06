@@ -56,6 +56,39 @@ export const WORKSPACE_DASHBOARD_SCOPES = {
   },
 };
 
+const SALES_ANALYTICS_KPIS = new Set(["total_sales", "gross_profit"]);
+const SALES_ANALYTICS_CHARTS = new Set(["sales_trend", "top_products", "sales_by_channel"]);
+const INVENTORY_ANALYTICS_KPIS = new Set(["inventory_value"]);
+
+/**
+ * Business summary (backoffice scope) must not surface Sales / Inventory analytics
+ * unless those permissions are granted — each dashboard link is independent.
+ *
+ * @param {string} workspaceScope
+ * @param {(code: string) => boolean} [hasPermission]
+ */
+export function resolveDashboardAnalyticsScope(workspaceScope, hasPermission) {
+  const base = WORKSPACE_DASHBOARD_SCOPES[workspaceScope] ?? WORKSPACE_DASHBOARD_SCOPES.backoffice;
+  if (workspaceScope !== "backoffice" || typeof hasPermission !== "function") {
+    return base;
+  }
+
+  const canSales = hasPermission("dashboard.sales.view");
+  const canInventory = hasPermission("dashboard.inventory.view");
+
+  return {
+    kpis: base.kpis.filter((id) => {
+      if (SALES_ANALYTICS_KPIS.has(id)) return canSales;
+      if (INVENTORY_ANALYTICS_KPIS.has(id)) return canInventory;
+      return true;
+    }),
+    charts: base.charts.filter((id) => {
+      if (SALES_ANALYTICS_CHARTS.has(id)) return canSales;
+      return true;
+    }),
+  };
+}
+
 export const WORKSPACE_REPORTS_LABEL = {
   backoffice: "Sales, finance & operations reports",
   accounting: "Accounting reports",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildKraFiscalReceiptHtml,
   enrichKraReportRow,
+  matchKraFailureLineIndexes,
   parseKraPluLines,
 } from "@/lib/kra-fiscal-receipt-print";
 
@@ -12,6 +13,7 @@ describe("kra fiscal receipt print", () => {
       plu_data: [
         {
           item_Name: "BANJAB RICE 25KG",
+          Barcode: "RICE25",
           SaleQty: "25",
           SalePrice: "147.20",
           SaleAmount: "3680.00",
@@ -22,9 +24,25 @@ describe("kra fiscal receipt print", () => {
 
     expect(lines).toHaveLength(1);
     expect(lines[0].name).toBe("BANJAB RICE 25KG");
+    expect(lines[0].barcode).toBe("RICE25");
     expect(lines[0].qty).toBe(25);
     expect(lines[0].unitPrice).toBe(147.2);
     expect(lines[0].amount).toBe(3680);
+  });
+
+  it("matches the PLU line named in a device failure message", () => {
+    const payload = {
+      plu_data: [
+        { item_Name: "Sugar 1kg", Barcode: "SUGAR1", SaleQty: "1", SalePrice: "100", SaleAmount: "100" },
+        { item_Name: "Milk 500ml", Barcode: "ABC123", SaleQty: "2", SalePrice: "50", SaleAmount: "100" },
+      ],
+    };
+    const { culpritIndexes } = matchKraFailureLineIndexes(
+      "NO FIND PLU DATA for item ABC123",
+      payload,
+      null,
+    );
+    expect(culpritIndexes).toEqual([1]);
   });
 
   it("builds printable html with fiscal metadata and line items", () => {

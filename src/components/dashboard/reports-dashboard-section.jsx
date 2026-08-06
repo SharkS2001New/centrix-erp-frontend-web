@@ -19,7 +19,7 @@ import {
   DashboardPanel,
   DashboardRefreshButton,
 } from "@/components/dashboard/dashboard-shared";
-import { WORKSPACE_DASHBOARD_SCOPES } from "@/lib/workspace-reports";
+import { resolveDashboardAnalyticsScope } from "@/lib/workspace-reports";
 import { P } from "@/lib/permission-codes";
 
 export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true }) {
@@ -72,7 +72,10 @@ export function ReportsDashboardSection({
 }) {
   const { user, isOrgWide, hasPermission } = useAuth();
   const canViewReports = hasPermission(P.reports.hub.view);
-  const enabled = enabledProp ?? canViewReports;
+  const scope = resolveDashboardAnalyticsScope(workspaceScope, hasPermission);
+  const hasScopedAnalytics = Boolean(scope.kpis.length || scope.charts.length);
+  // Business summary alone must not load sales analytics payloads.
+  const enabled = enabledProp ?? (canViewReports && hasScopedAnalytics);
   const defaults = defaultDashboardDateRange();
   const branchInitialized = useRef(false);
   const [fromDate, setFromDate] = useState(controlledFrom ?? defaults.from);
@@ -133,8 +136,6 @@ export function ReportsDashboardSection({
       })),
     [dashboard],
   );
-
-  const scope = WORKSPACE_DASHBOARD_SCOPES[workspaceScope] ?? WORKSPACE_DASHBOARD_SCOPES.backoffice;
 
   const kpiItems = [
     {

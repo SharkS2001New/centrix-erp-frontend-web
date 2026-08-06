@@ -82,9 +82,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   disabled = false,
   placeholder = "Search by product name or code…",
   inputRef = null,
-  /** Recent picks shown when the query is idle (classic dropdown / modern panel). */
-  recentProducts = [],
-  onSelectRecent = null,
   /** "classic" = embedded column dropdown (no label, Light Stores columns). */
   variant = "modern",
 },
@@ -101,7 +98,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const classic = variant === "classic";
   const enablePosCashRounding = Boolean(posSalesConfig?.enablePosCashRounding);
   const idleQuery = !String(query ?? "").trim();
-  const showRecents = idleQuery && recentProducts.length > 0 && !disabled;
 
   useImperativeHandle(ref, () => ({
     closeDropdown() {
@@ -225,19 +221,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (product) pick(product);
   }
 
-  function pickRecent(row) {
-    if (typeof onSelectRecent === "function") {
-      onSelectRecent(row);
-    } else {
-      onSelect?.({
-        product_code: row.product_code,
-        product_name: row.product_name,
-      });
-    }
-    setOpen(false);
-    setHighlight(-1);
-  }
-
   function moveHighlight(delta) {
     if (!results.length) return;
     setHighlight((i) => {
@@ -278,7 +261,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         pickHighlighted();
         return;
       }
-      if (query.trim() || showRecents) setOpen(true);
+      if (query.trim()) setOpen(true);
       return;
     }
     if (e.key === "Escape") {
@@ -310,42 +293,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const showStoreStock = stockDisplayMode === "both" || stockDisplayMode === "store";
   const modernColSpan = 2 + stockColCountFix(showShopStock, showStoreStock);
 
-  function renderRecentBlock(compact = false) {
-    if (!showRecents) return null;
-    return (
-      <div className={compact ? "classic-pos-recent" : "border-b border-[var(--theme-border)] px-2 py-2"}>
-        <p
-          className={
-            compact
-              ? "classic-pos-recent-label"
-              : "mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
-          }
-        >
-          Recent
-        </p>
-        <ul className={compact ? "classic-pos-recent-list" : "space-y-0.5"}>
-          {recentProducts.slice(0, 8).map((row) => (
-            <li key={row.product_code}>
-              <button
-                type="button"
-                className={
-                  compact
-                    ? "classic-pos-recent-item"
-                    : "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--theme-hover)]"
-                }
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pickRecent(row)}
-              >
-                <span className="truncate font-medium">{row.product_name}</span>
-                <span className="shrink-0 font-mono text-[10px] opacity-70">{row.product_code}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
   const classicDropdown =
     classic && showDropdown && menuBox && typeof document !== "undefined"
       ? createPortal(
@@ -363,7 +310,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
               zIndex: 10000,
             }}
           >
-            {renderRecentBlock(true)}
             <table className="classic-pos-find-table w-full">
               <thead>
                 <tr>
@@ -383,7 +329,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                 ) : idleQuery ? (
                   <tr>
                     <td colSpan={4} className="classic-pos-find-empty">
-                      {showRecents ? "Type to search, or pick a recent item" : "Type a code or name"}
+                      Type a code or name
                     </td>
                   </tr>
                 ) : results.length === 0 ? (
@@ -478,7 +424,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         }}
         onFocus={() => {
           if (disabled) return;
-          if (query.trim() || recentProducts.length) setOpen(true);
+          if (query.trim()) setOpen(true);
         }}
         onKeyDown={handleInputKeyDown}
       />
@@ -492,7 +438,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           role="listbox"
           className="theme-panel absolute left-0 right-0 z-[100] mt-1 max-h-[min(50vh,320px)] overflow-auto rounded-lg border shadow-lg"
         >
-          {renderRecentBlock(false)}
           <table className="theme-table w-full border-collapse text-[11px]">
             <thead className="theme-table-head sticky top-0 z-10">
               <tr className="theme-table-head-row text-left font-bold">
@@ -516,9 +461,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
               ) : idleQuery ? (
                 <tr>
                   <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
-                    {showRecents
-                      ? "Type to search, or pick a recent item"
-                      : emptySearchGuidance("", barcodeEnabled)}
+                    {emptySearchGuidance("", barcodeEnabled)}
                   </td>
                 </tr>
               ) : results.length === 0 ? (

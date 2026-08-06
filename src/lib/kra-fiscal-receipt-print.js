@@ -59,15 +59,109 @@ export function parseKraPluLines(requestPayload) {
         : Number.isFinite(qty) && Number.isFinite(unitPrice)
           ? qty * unitPrice
           : 0;
+    const barcode = String(
+      line?.Barcode ?? line?.barcode ?? line?.product_code ?? line?.itemCd ?? "",
+    ).trim();
 
     return {
       name: String(line?.item_Name ?? line?.ItemName ?? line?.product_name ?? "Item").trim() || "Item",
+      barcode: barcode || null,
       qty: Number.isFinite(qty) ? qty : 0,
       unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
       amount: Number.isFinite(amount) ? amount : 0,
       levy: Number(line?.Levy ?? 0) || 0,
     };
   });
+}
+
+/**
+ * Collect text that may name a failing PLU (user message + device payloads).
+ * @param {unknown} errorMessage
+ * @param {unknown} requestPayload
+ * @param {unknown} responsePayload
+ */
+function kraFailureMatchHaystack(errorMessage, requestPayload, responsePayload) {
+  const response = parseJsonMaybe(responsePayload) ?? responsePayload;
+  const parts = [
+    errorMessage,
+    typeof response === "object" && response
+      ? [
+          response.message,
+          response.Message,
+          response.error,
+          response.Error,
+          response.resultMsg,
+          response.technical_message,
+          JSON.stringify(response),
+        ].join(" ")
+      : response,
+  ];
+  return parts
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Tokens from device copy that often identify a specific PLU / barcode. */
+function extractKraFailureItemTokens(haystack) {
+  const text = String(haystack ?? "");
+  const tokens = new Set();
+  const patterns = [
+    /NO\s+FIND\s+PLU\s+DATA\s+for\s+item\s+([A-Za-z0-9#._/-]+)/gi,
+    /(?:for\s+item|item|barcode|plu)\s*[:#]?\s*([A-Za-z0-9#._/-]{2,})/gi,
+    /product(?:\s+code)?\s*[:#]?\s*([A-Za-z0-9#._/-]{2,})/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const token = String(match[1] ?? "").trim();
+      if (token && !/^(code|error|data|name|qty|price)$/i.test(token)) {
+        tokens.add(token.toLowerCase());
+      }
+    }
+  }
+  return [...tokens];
+}
+
+/**
+ * Indexes of PLU lines implicated by a failed KRA response (empty when unknown).
+ * @returns {{ lines: ReturnType<typeof parseKraPluLines>, culpritIndexes: number[] }}
+ */
+export function matchKraFailureLineIndexes(errorMessage, requestPayload, responsePayload) {
+  const lines = parseKraPluLines(requestPayload);
+  if (!lines.length) {
+    return { lines, culpritIndexes: [] };
+  }
+
+  const haystack = kraFailureMatchHaystack(errorMessage, requestPayload, responsePayload);
+  if (!haystack) {
+    return { lines, culpritIndexes: [] };
+  }
+
+  const haystackLower = haystack.toLowerCase();
+  const explicitTokens = extractKraFailureItemTokens(haystack);
+  const culpritIndexes = [];
+
+  lines.forEach((line, index) => {
+    const barcode = String(line.barcode ?? "").trim().toLowerCase();
+    const name = String(line.name ?? "").trim().toLowerCase();
+    const matchedExplicit =
+      explicitTokens.length > 0 &&
+      explicitTokens.some(
+        (token) =>
+          (barcode && (barcode === token || barcode.includes(token) || token.includes(barcode))) ||
+          (name && (name === token || name.includes(token))),
+      );
+    const matchedLoose =
+      explicitTokens.length === 0 &&
+      ((barcode && barcode.length >= 2 && haystackLower.includes(barcode)) ||
+        (name && name.length >= 4 && haystackLower.includes(name)));
+
+    if (matchedExplicit || matchedLoose) {
+      culpritIndexes.push(index);
+    }
+  });
+
+  return { lines, culpritIndexes };
 }
 
 function extractBuyerPinFromKraPayload(requestPayload) {

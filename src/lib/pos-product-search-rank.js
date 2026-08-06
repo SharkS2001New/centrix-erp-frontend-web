@@ -101,7 +101,9 @@ function tokenMatchKind(token, hay) {
   if (hay.code === token) return "exact_code";
   if (hay.code.startsWith(token)) return "code_prefix";
   if (hay.name === token) return "exact_name";
+  if (hay.words.includes(token)) return "exact_word";
   if (hay.name.startsWith(token)) return "name_prefix";
+  if (hay.words.some((word) => word.startsWith(token))) return "word_prefix";
   if (hay.code.includes(token)) return "code_contains";
   if (hay.name.includes(token)) return "name_contains";
   if (hay.sku && hay.sku.includes(token)) return "sku_contains";
@@ -113,11 +115,19 @@ function tokenMatchKind(token, hay) {
   const maxDist = maxFuzzyDistance(token);
   if (maxDist <= 0) return null;
 
-  if (hay.code.length >= 3 && Math.abs(hay.code.length - token.length) <= 2) {
-    if (levenshteinDistance(token, hay.code) <= maxDist) return "fuzzy_code";
+  // Fuzzy is for typos / short abbreviations of a product token — never match a
+  // shorter catalog word against a longer query ("marai" must not hit "Mara").
+  if (
+    hay.code.length >= 3 &&
+    token.length <= hay.code.length &&
+    Math.abs(hay.code.length - token.length) <= 2 &&
+    levenshteinDistance(token, hay.code) <= maxDist
+  ) {
+    return "fuzzy_code";
   }
   for (const word of hay.words) {
     if (word.length < 3) continue;
+    if (token.length > word.length) continue;
     if (Math.abs(word.length - token.length) > 2) continue;
     if (levenshteinDistance(token, word) <= maxDist) return "fuzzy_name";
   }
@@ -128,8 +138,10 @@ const KIND_SCORE = {
   exact_code: 100,
   code_prefix: 82,
   exact_name: 74,
+  exact_word: 72,
   exact_price: 70,
   name_prefix: 64,
+  word_prefix: 60,
   code_contains: 52,
   name_contains: 44,
   sku_contains: 36,
@@ -137,6 +149,31 @@ const KIND_SCORE = {
   fuzzy_code: 28,
   fuzzy_name: 24,
 };
+
+/** Soft matches only — drop these when any solid hit exists for the same query. */
+function isFuzzyOnlyKinds(kinds) {
+  return kinds.length > 0 && kinds.every((kind) => kind.startsWith("fuzzy"));
+}
+
+/**
+ * @param {object} product
+ * @param {string} query
+ * @returns {string[]}
+ */
+function matchKindsForQuery(product, query) {
+  const raw = String(query ?? "").trim();
+  const fullAmount = parseAmountSearchTerm(raw);
+  const tokens = fullAmount != null ? [raw.toLowerCase()] : tokenizeSearchQuery(query);
+  if (!tokens.length) return [];
+  const hay = productSearchHaystack(product);
+  const kinds = [];
+  for (const token of tokens) {
+    const kind = tokenMatchKind(token, hay);
+    if (!kind) return [];
+    kinds.push(kind);
+  }
+  return kinds;
+}
 
 /**
  * @param {object} product
@@ -232,13 +269,24 @@ export function explainPosSearchMatch(product, query) {
 export function rankPosProductSearchResults(products, query, options = {}) {
   const limit = options.limit ?? 40;
   const getQty = options.getAvailableQty;
-  const scored = [];
+  let scored = [];
   for (const product of products ?? []) {
     if (!product?.product_code) continue;
     const availableQty = getQty ? getQty(product) : null;
+    const kinds = matchKindsForQuery(product, query);
+    if (!kinds.length) continue;
     const score = scorePosProductSearch(product, query, { availableQty });
     if (score <= 0) continue;
-    scored.push({ product, score, availableQty: availableQty ?? null });
+    scored.push({
+      product,
+      score,
+      availableQty: availableQty ?? null,
+      fuzzyOnly: isFuzzyOnlyKinds(kinds),
+    });
+  }
+  // If anything matches solidly (prefix / word / contains), hide fuzzy near-misses.
+  if (scored.some((row) => !row.fuzzyOnly)) {
+    scored = scored.filter((row) => !row.fuzzyOnly);
   }
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
