@@ -4,6 +4,7 @@ import {
   isSellableCatalogProduct,
   stripProductStockFields,
 } from "@/lib/catalog-cache";
+import { rankPosProductSearchResults } from "@/lib/pos-product-search-rank";
 import {
   idbAppendOrderNumbers,
   idbAppendOrderSlots,
@@ -50,23 +51,7 @@ export const POS_OFFLINE_CATALOG_TTL_MS = 30 * 60 * 1000;
 export const POS_OFFLINE_TARGET_OUTAGE_MS = 30 * 60 * 1000;
 
 function sortCatalog(products, query) {
-  const q = String(query ?? "").trim().toLowerCase();
-  if (!q) return products;
-  return [...products].sort((a, b) => {
-    const ac = String(a.product_code ?? "").toLowerCase();
-    const bc = String(b.product_code ?? "").toLowerCase();
-    const an = String(a.product_name ?? "").toLowerCase();
-    const bn = String(b.product_name ?? "").toLowerCase();
-    const score = (code, name) => {
-      if (code === q) return 100;
-      if (code.startsWith(q)) return 80;
-      if (name.startsWith(q)) return 60;
-      if (code.includes(q)) return 50;
-      if (name.includes(q)) return 40;
-      return 0;
-    };
-    return score(bc, bn) - score(ac, an);
-  });
+  return rankPosProductSearchResults(products, query, { limit: products.length });
 }
 
 /** Warm lean product catalog into IndexedDB for offline search. */

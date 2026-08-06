@@ -3201,8 +3201,8 @@ html[data-theme="dark"] .classic-pos-order-nav-hint {
 }
 
 .classic-pos-cart-table col.classic-pos-col-scan {
-  width: 18%;
-  min-width: 7.5rem;
+  width: 19%;
+  min-width: 8rem;
 }
 
 .classic-pos-cart-table col.classic-pos-col-desc {
@@ -3424,7 +3424,7 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
 }
 
 .classic-pos-cart-scan-input {
-  min-width: 8rem;
+  min-width: 8.5rem;
 }
 
 .classic-pos-cart-qty-input {
@@ -3564,6 +3564,69 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 .classic-pos-scan-dropdown .classic-pos-find-row--active td {
   background: var(--classic-select, var(--classic-header)) !important;
   color: var(--classic-select-fg, var(--classic-header-fg, #ffffff)) !important;
+}
+
+.classic-pos-match-reason {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--classic-header, #185fa5) 14%, transparent);
+  color: var(--classic-muted, #5c5340);
+}
+
+.classic-pos-find-row--active .classic-pos-match-reason {
+  background: color-mix(in srgb, #fff 22%, transparent);
+  color: inherit;
+}
+
+.classic-pos-recent {
+  border-bottom: 1px solid var(--classic-td-border, #d0d0d0);
+  padding: 0.45rem 0.55rem 0.35rem;
+  background: var(--classic-row-entry, #faf7f0);
+}
+
+.classic-pos-recent-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--classic-muted, #5c5340);
+}
+
+.classic-pos-recent-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.classic-pos-recent-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  padding: 0.28rem 0.35rem;
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--classic-text, #1a1a1a);
+  cursor: pointer;
+}
+
+.classic-pos-recent-item:hover {
+  background: var(--classic-row-selected, #fff4c8);
 }
 
 /* ── Hotel & Bar POS theme templates (scoped under .hotel-pos-root) ── */

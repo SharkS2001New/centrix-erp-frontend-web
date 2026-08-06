@@ -117,8 +117,18 @@ import {
   posStockDisplayMode,
   posStockInsufficientMessage,
   posStockLocationLabel,
+  productCartStockDisplayMode,
   productCartStockLabel,
+  productStockAtLocation,
 } from "@/lib/pos-stock";
+import {
+  mergePosSearchResults,
+  rankPosProductSearchResults,
+} from "@/lib/pos-product-search-rank";
+import {
+  readPosRecentProducts,
+  rememberPosRecentProduct,
+} from "@/lib/pos-recent-products";
 import {
   applyCartMutationResponse,
   applyOptimisticCartMutation,
@@ -145,7 +155,6 @@ import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosPendingSyncOverlay } from "./pos-pending-sync-overlay";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
-import { PosOfflineSyncControls } from "./pos-offline-sync-controls";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
 import { PosKraProductUploadDialog } from "@/components/pos/pos-kra-product-upload-dialog";
@@ -195,6 +204,7 @@ import {
   peekIssuedPosTicketMax,
   peekLocalPosTicketNext,
   ensurePosOfflineOrderNumbers,
+  getPosOfflineProduct,
   purgeReservedPosTicketsUpTo,
   seedLocalPosTicketSeqFromSale,
   resolvePosTicketForCheckout,
@@ -880,6 +890,15 @@ function sellableSearchResults(products) {
   return (products ?? []).filter(isSellableCatalogProduct);
 }
 
+function posSearchAvailableQty(product, sellFromShop, posSalesConfig, sellWholesale) {
+  const mode = productCartStockDisplayMode(product, posSalesConfig, sellWholesale);
+  const shop = productStockAtLocation(product, "shop");
+  const store = productStockAtLocation(product, "store");
+  if (mode === "shop") return shop;
+  if (mode === "store") return store;
+  return sellFromShop ? shop : store;
+}
+
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -948,8 +967,8 @@ export function PosScreen({ standalone = false }) {
       );
       setStatusMessage(
         orderNum != null
-          ? `Sale #${orderNum} saved locally — ${syncingLabel}. Use Sync or Pending sync.`
-          : `Sale saved locally — ${syncingLabel}. Use Sync or Pending sync.`,
+          ? `Sale #${orderNum} saved locally — ${syncingLabel}.`
+          : `Sale saved locally — ${syncingLabel}.`,
       );
       return false;
     };
@@ -1085,6 +1104,21 @@ export function PosScreen({ standalone = false }) {
   const classicCartTableScrollRef = useRef(null);
   const prevCartLineCountRef = useRef(0);
   const focusSearchAfterAdd = useRef(false);
+  /**
+   * Focus Scan code. Select-all is for barcode overwrite after a completed action.
+   * Never select-all when the field is already focused — that wipes in-progress typing
+   * (next keystroke replaces the whole query).
+   */
+  function focusPosScanInput({ selectAll = false, forceSelectAll = false } = {}) {
+    const el = searchInputRef.current;
+    if (!el) return;
+    const alreadyFocused =
+      typeof document !== "undefined" && document.activeElement === el;
+    el.focus({ preventScroll: true });
+    if (!selectAll && !forceSelectAll) return;
+    if (alreadyFocused && !forceSelectAll) return;
+    el.select?.();
+  }
   const appliedRouteMarkupRef = useRef(0);
   const [sellFromShop, setSellFromShop] = useState(true);
   const [sellWholesale, setSellWholesale] = useState(false);
@@ -1281,8 +1315,7 @@ export function PosScreen({ standalone = false }) {
       setFloatModalOpen(false);
       defaultScanFocusDoneRef.current = false;
       window.requestAnimationFrame(() => {
-        searchInputRef.current?.focus({ preventScroll: true });
-        searchInputRef.current?.select?.();
+        focusPosScanInput({ selectAll: true });
       });
     } catch {
       /* sessionError set in context */
@@ -1514,10 +1547,20 @@ export function PosScreen({ standalone = false }) {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [recentProducts, setRecentProducts] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selectedProductCode, setSelectedProductCode] = useState(null);
   const searchSeq = useRef(0);
   const searchAbortRef = useRef(null);
+
+  useEffect(() => {
+    setRecentProducts(
+      readPosRecentProducts({
+        organizationId,
+        branchId: user?.branch_id ?? null,
+      }),
+    );
+  }, [organizationId, user?.branch_id]);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [lineForm, setLineForm] = useState(EMPTY_LINE);
@@ -1658,6 +1701,16 @@ export function PosScreen({ standalone = false }) {
 
   function isServerCartConsumed(cartId) {
     return isServerPosCartId(cartId) && consumedServerCartIdsRef.current.has(Number(cartId));
+  }
+
+  /**
+   * After F8 / checkout abandons a TemporaryCart, ignore late line POST/PATCH
+   * responses so they cannot repaint the cleared workspace (felt like needing F8 twice).
+   */
+  function shouldApplyServerCartMutation(fromCartId) {
+    if (fromCartId != null && isServerCartConsumed(fromCartId)) return false;
+    if (isFreshWorkspacePlaceholder(cartRef.current)) return false;
+    return true;
   }
 
   /** Drop workspace to a blank new-order shell without waiting on the network. */
@@ -2195,15 +2248,20 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!standalone) return;
-    if (pendingSync <= 0) {
+    if (failedSyncOrders.length <= 0) {
       // Mid-flush progress can briefly under-count; keep the popup stable until flush ends.
       if (offlineSyncing) return;
-      pendingSyncAlertRef.current = false;
-      setPendingSyncOpen(false);
+      if (pendingSync <= 0) {
+        pendingSyncAlertRef.current = false;
+        setPendingSyncOpen(false);
+      }
       return;
     }
-    // Do not auto-open the pending-sync modal — cashiers keep selling; use the header
-    // button or Sync when ready. Failed rows stay in the queue until Sync or Remove.
+    // Auto-open only when sync failed — waiting orders sync silently in the background.
+    if (!pendingSyncAlertRef.current) {
+      pendingSyncAlertRef.current = true;
+      setPendingSyncOpen(true);
+    }
   }, [standalone, pendingSync, offlineSyncing, failedSyncOrders.length]);
 
   /** Keep the order # box ahead of tickets already saved in pending/failed outbox rows. */
@@ -2561,8 +2619,7 @@ export function PosScreen({ standalone = false }) {
     if (cartActionPending || posSearchSuspended || !focusSearchAfterAdd.current) return;
     focusSearchAfterAdd.current = false;
     const frame = window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-      searchInputRef.current?.select?.();
+      focusPosScanInput({ selectAll: true });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [cartActionPending, posSearchSuspended]);
@@ -2617,8 +2674,7 @@ export function PosScreen({ standalone = false }) {
 
     defaultScanFocusDoneRef.current = true;
     const frame = window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-      searchInputRef.current?.select?.();
+      focusPosScanInput({ selectAll: true });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [
@@ -3270,17 +3326,16 @@ export function PosScreen({ standalone = false }) {
     productSearchRef.current?.closeDropdown?.();
   }
 
-  function focusClassicProductSearch() {
+  function focusClassicProductSearch({ forceSelectAll = false } = {}) {
     closeProductSearchDropdown();
     window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-      searchInputRef.current?.select?.();
+      focusPosScanInput({ selectAll: true, forceSelectAll });
     });
   }
 
   /** Focus Scan code only — used after Esc closes overlays without clearing the entry row. */
   function focusScanCode() {
-    focusClassicProductSearch();
+    focusClassicProductSearch({ forceSelectAll: true });
   }
 
   /** After a line is added: return keyboard to Scan code for the next item. */
@@ -3291,8 +3346,7 @@ export function PosScreen({ standalone = false }) {
       window.requestAnimationFrame(() => {
         if (!focusSearchAfterAdd.current) return;
         focusSearchAfterAdd.current = false;
-        searchInputRef.current?.focus({ preventScroll: true });
-        searchInputRef.current?.select?.();
+        focusPosScanInput({ selectAll: true });
       });
     });
   }
@@ -3399,6 +3453,25 @@ export function PosScreen({ standalone = false }) {
       const abort = new AbortController();
       searchAbortRef.current = abort;
 
+      const rankOpts = {
+        limit: 40,
+        getAvailableQty: (product) =>
+          posSearchAvailableQty(product, sellFromShop, posSalesConfig, sellWholesale),
+      };
+
+      const seedRetailAndIndex = (list) => {
+        for (const p of list) {
+          const code = p?.product_code;
+          if (!code || retailByCodeRef.current[code] != null) continue;
+          if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
+        }
+        setProductByCode((prev) => {
+          const next = { ...prev };
+          for (const p of list) next[p.product_code] = p;
+          return next;
+        });
+      };
+
       if (!trimmed) {
         setSearchResults([]);
         setSearching(false);
@@ -3411,17 +3484,18 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       setSearching(true);
+      let localPaint = [];
       try {
         if (standalone && offlineMode) {
-          const list = sellableSearchResults(
-            (await searchOffline(trimmed, 40)).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+          const list = rankPosProductSearchResults(
+            sellableSearchResults(
+              (await searchOffline(trimmed, 80)).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+            ),
+            trimmed,
+            rankOpts,
           );
           if (seq !== searchSeq.current) return;
-          for (const p of list) {
-            const code = p?.product_code;
-            if (!code || retailByCodeRef.current[code] != null) continue;
-            if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
-          }
+          seedRetailAndIndex(list);
           const missingOffline = list
             .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
             .map((p) => p.product_code);
@@ -3431,31 +3505,22 @@ export function PosScreen({ standalone = false }) {
           }
           setRetailByCode({ ...retailByCodeRef.current });
           setSearchResults(list);
-          setProductByCode((prev) => {
-            const next = { ...prev };
-            for (const p of list) next[p.product_code] = p;
-            return next;
-          });
           return;
         }
 
-        // Classic: paint warmed IndexedDB catalog immediately, then refresh from API.
-        if (standalone && classicLayout) {
+        // Classic / standalone: paint warmed IndexedDB catalog immediately, then merge API.
+        if (standalone) {
           try {
-            const local = await searchOffline(trimmed, 40);
+            const local = await searchOffline(trimmed, 80);
             if (seq === searchSeq.current && local.length) {
-              const list = sellableSearchResults(
-                local.map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+              localPaint = rankPosProductSearchResults(
+                sellableSearchResults(local.map((p) => enrichProductForLpo(p, uomMap, vatMap))),
+                trimmed,
+                rankOpts,
               );
-              if (!list.length) {
-                /* stale offline rows only — wait for API */
-              } else {
-                for (const p of list) {
-                  const code = p?.product_code;
-                  if (!code || retailByCodeRef.current[code] != null) continue;
-                  if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
-                }
-                const missingLocal = list
+              if (localPaint.length) {
+                seedRetailAndIndex(localPaint);
+                const missingLocal = localPaint
                   .filter(
                     (p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined,
                   )
@@ -3465,13 +3530,8 @@ export function PosScreen({ standalone = false }) {
                   if (seq !== searchSeq.current) return;
                 }
                 setRetailByCode({ ...retailByCodeRef.current });
-                setSearchResults(list);
+                setSearchResults(localPaint);
                 setSearching(false);
-                setProductByCode((prev) => {
-                  const next = { ...prev };
-                  for (const p of list) next[p.product_code] = p;
-                  return next;
-                });
               }
             }
           } catch {
@@ -3481,7 +3541,7 @@ export function PosScreen({ standalone = false }) {
 
         const res = await apiRequest("/products", {
           searchParams: {
-            per_page: 40,
+            per_page: 50,
             q: trimmed,
             fields: "lean",
             status: "active",
@@ -3492,16 +3552,12 @@ export function PosScreen({ standalone = false }) {
           reportIssues: false,
         });
         if (seq !== searchSeq.current || abort.signal.aborted) return;
-        const list = sellableSearchResults(
+        const remote = sellableSearchResults(
           (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
         );
-        setProductByCode((prev) => {
-          const next = { ...prev };
-          for (const p of list) next[p.product_code] = p;
-          return next;
-        });
+        const list = mergePosSearchResults(localPaint, remote, trimmed, rankOpts);
+        seedRetailAndIndex(list);
 
-        // Lean list already embeds retail_package — seed cache to avoid a second round-trip.
         for (const p of list) {
           const code = p?.product_code;
           if (!code || retailByCodeRef.current[code] != null) continue;
@@ -3518,25 +3574,30 @@ export function PosScreen({ standalone = false }) {
           if (seq !== searchSeq.current || abort.signal.aborted) return;
         }
         setRetailByCode({ ...retailByCodeRef.current });
-        // Paint results only after markup packages are ready — no wholesale→markup flash.
-        setSearchResults(list.slice(0, 40));
+        // Keep local fuzzy-only hits; prefer API stock/price via merge.
+        setSearchResults(list);
       } catch (err) {
         if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
-        // Network drop mid-search: fall back to offline catalog when available.
+        // Network drop mid-search: keep local paint or fall back to offline catalog.
         if (standalone) {
           try {
-            const list = sellableSearchResults(
-              (await searchOffline(trimmed, 40)).map((p) =>
-                enrichProductForLpo(p, uomMap, vatMap),
+            if (localPaint.length) {
+              setSearchResults(localPaint);
+              setStatusMessage("Offline catalog — prices from last sync.");
+              return;
+            }
+            const list = rankPosProductSearchResults(
+              sellableSearchResults(
+                (await searchOffline(trimmed, 80)).map((p) =>
+                  enrichProductForLpo(p, uomMap, vatMap),
+                ),
               ),
+              trimmed,
+              rankOpts,
             );
-        if (seq !== searchSeq.current) return;
+            if (seq !== searchSeq.current) return;
+            seedRetailAndIndex(list);
             setSearchResults(list);
-            setProductByCode((prev) => {
-              const next = { ...prev };
-              for (const p of list) next[p.product_code] = p;
-              return next;
-            });
             if (list.length) {
               setStatusMessage("Offline catalog — prices from last sync.");
               return;
@@ -3564,6 +3625,9 @@ export function PosScreen({ standalone = false }) {
       classicLayout,
       offlineMode,
       searchOffline,
+      sellFromShop,
+      posSalesConfig,
+      sellWholesale,
     ],
   );
 
@@ -3984,8 +4048,10 @@ export function PosScreen({ standalone = false }) {
             ...POS_CART_REQUEST,
           });
           cartState = applyCartMutationResponse(cartRef.current ?? activeCart, added);
-          cartRef.current = cartState;
-          setCart(cartState);
+          if (shouldApplyServerCartMutation(activeCart.id)) {
+            cartRef.current = cartState;
+            setCart(cartState);
+          }
           const newLine = [...(added.lines ?? [])]
             .reverse()
             .find((line) => line.product_code === product.product_code);
@@ -4002,8 +4068,10 @@ export function PosScreen({ standalone = false }) {
           cartState = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
             targetLineRef: lineRef,
           });
-          cartRef.current = cartState;
-          setCart(cartState);
+          if (shouldApplyServerCartMutation(activeCart.id)) {
+            cartRef.current = cartState;
+            setCart(cartState);
+          }
         }
         if (!lineRef) {
           setStatusMessage("Could not resolve cart line for discount request.");
@@ -4109,8 +4177,10 @@ export function PosScreen({ standalone = false }) {
         const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
           targetLineRef,
         });
-        cartRef.current = nextCart;
-        setCart(nextCart);
+        if (shouldApplyServerCartMutation(activeCart.id)) {
+          cartRef.current = nextCart;
+          setCart(nextCart);
+        }
       } else {
         const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
           method: "POST",
@@ -4118,8 +4188,10 @@ export function PosScreen({ standalone = false }) {
           ...POS_CART_REQUEST,
         });
         const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated);
-        cartRef.current = nextCart;
-        setCart(nextCart);
+        if (shouldApplyServerCartMutation(activeCart.id)) {
+          cartRef.current = nextCart;
+          setCart(nextCart);
+        }
       }
       setCartLineSaveFailed(false);
     } catch (error) {
@@ -4145,8 +4217,10 @@ export function PosScreen({ standalone = false }) {
               const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
                 targetLineRef,
               });
-              cartRef.current = nextCart;
-              setCart(nextCart);
+              if (shouldApplyServerCartMutation(fresh.id)) {
+                cartRef.current = nextCart;
+                setCart(nextCart);
+              }
             } else {
               const updated = await apiRequest(`/sales/carts/${fresh.id}/lines`, {
                 method: "POST",
@@ -4154,8 +4228,10 @@ export function PosScreen({ standalone = false }) {
                 ...POS_CART_REQUEST,
               });
               const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated);
-              cartRef.current = nextCart;
-              setCart(nextCart);
+              if (shouldApplyServerCartMutation(fresh.id)) {
+                cartRef.current = nextCart;
+                setCart(nextCart);
+              }
             }
             setCartLineSaveFailed(false);
             if (successMessage) setStatusMessage(successMessage);
@@ -4470,6 +4546,39 @@ export function PosScreen({ standalone = false }) {
     if (classicLayout) {
       setSearchQuery(product.product_code ?? "");
     }
+    const recentScope = {
+      organizationId,
+      branchId: user?.branch_id ?? cart?.branch_id ?? null,
+    };
+    rememberPosRecentProduct(product, recentScope);
+    setRecentProducts(readPosRecentProducts(recentScope));
+  }
+
+  async function pickRecentProduct(row) {
+    const code = String(row?.product_code ?? "").trim();
+    if (!code || busy || lineBusy || posSearchSuspended) return;
+    let product =
+      productByCodeRef.current[code] ??
+      productByCode[code] ??
+      null;
+    if (!product && standalone) {
+      try {
+        const local = await getPosOfflineProduct(code);
+        if (local && isSellableCatalogProduct(local)) {
+          product = enrichProductForLpo(local, uomById, vatById);
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    if (!product) {
+      product = await resolveProductByCode(code);
+    }
+    if (!product) {
+      setStatusMessage(`Could not load recent product ${code}.`);
+      return;
+    }
+    await pickProduct(product);
   }
 
   function beginReplaceCartLine(lineId) {
@@ -4568,8 +4677,7 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     if (!classicLayout || !replacingLineId || swapDraft) return;
     const frame = window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus({ preventScroll: true });
-      searchInputRef.current?.select?.();
+      focusPosScanInput({ selectAll: true });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [classicLayout, replacingLineId, swapDraft]);
@@ -5354,7 +5462,10 @@ export function PosScreen({ standalone = false }) {
         const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${lineRef}`, {
           method: "DELETE",
         });
-        setCart(updated);
+        if (shouldApplyServerCartMutation(activeCart.id)) {
+          cartRef.current = updated;
+          setCart(updated);
+        }
         if (sameLineId(editingLineId, line.id)) clearLineEntry();
         if (sameLineId(selectedLineId, line.id)) setSelectedLineId(null);
         return;
@@ -5676,8 +5787,10 @@ export function PosScreen({ standalone = false }) {
           method: "DELETE",
         });
       }
-      cartRef.current = nextCart;
-      setCart(nextCart);
+      if (shouldApplyServerCartMutation(cart.id)) {
+        cartRef.current = nextCart;
+        setCart(nextCart);
+      }
       if (clearsEditing) clearLineEntry();
       clearClassicLineSelection();
     } catch (e) {
@@ -6269,6 +6382,8 @@ export function PosScreen({ standalone = false }) {
   const prepareNextOrderInFlightRef = useRef(null);
   /** Guards overlapping F8 clears so a stale background cart load cannot overwrite a newer session. */
   const freshWorkspaceGenerationRef = useRef(0);
+  /** Prevents a second F8 while confirm / bootstrap from the first press is still running. */
+  const freshWorkspaceInFlightRef = useRef(false);
   /** Shared TemporaryCart create after optimistic F8 clear (first scan reuses this). */
   const freshCartBootstrapRef = useRef(null);
 
@@ -7618,9 +7733,28 @@ export function PosScreen({ standalone = false }) {
       if (standalone) notifyError(message);
       return;
     }
-    if (lineBusy) return;
+    if (freshWorkspaceInFlightRef.current || preparingNextOpen) return;
+    freshWorkspaceInFlightRef.current = true;
+    try {
+    // Finish in-flight line saves first (same as F10). A silent return while lineBusy
+    // made F8 look like it needed two presses right after a scan.
+    if (lineBusyRef.current) {
+      try {
+        await runBlockingTask(waitForCartLineSavesToFinish, {
+          message: "Saving cart changes…",
+          detail: "Please wait while the current line finishes saving.",
+        });
+      } catch {
+        return;
+      }
+    }
     // Background outbox sync must not block F8 — pending rows stay in the queue.
-    if (busy && !editAutosaveInFlightRef.current && !offlineSyncing) return;
+    if (busy && !editAutosaveInFlightRef.current && !offlineSyncing) {
+      const message = "POS is busy — try New order (F8) again in a moment.";
+      setStatusMessage(message);
+      if (standalone) notifyError(message);
+      return;
+    }
     if (editAutosaveTimerRef.current) {
       window.clearTimeout(editAutosaveTimerRef.current);
       editAutosaveTimerRef.current = null;
@@ -7783,6 +7917,8 @@ export function PosScreen({ standalone = false }) {
     const abandonCart =
       editingQueuedOfflineSale && activeCart?.offline_edit_snapshot ? activeCart : null;
     const clearOfflineCart = Boolean(activeCart?.offline && !editingQueuedOfflineSale);
+    // Mark abandoned before placeholder/bootstrap so late line saves cannot repaint it.
+    if (deleteCartId) markServerCartConsumed(deleteCartId);
     const immediateNextPos = resolveFreshWorkspacePosNum(
       activeCart,
       sessionPosOrders,
@@ -7822,8 +7958,14 @@ export function PosScreen({ standalone = false }) {
         : await loadCashierCart({ skipEditDraftRestore: true });
       if (generation !== freshWorkspaceGenerationRef.current) return next;
       const live = cartRef.current;
+      const liveIsAbandoned =
+        (deleteCartId != null && Number(live?.id) === Number(deleteCartId)) ||
+        (isServerPosCartId(live?.id) && isServerCartConsumed(live.id));
+      // Cashier already scanned into the *next* cart while bootstrap ran — keep their work.
+      // Never restore the TemporaryCart F8 just abandoned (same race as post-checkout prepare).
       if (
         live &&
+        !liveIsAbandoned &&
         isServerPosCartId(live.id) &&
         (live.lines?.length ?? 0) > 0 &&
         !live?.held_order_num &&
@@ -8010,7 +8152,10 @@ export function PosScreen({ standalone = false }) {
       }
     })();
     freshCartBootstrapRef.current = bootstrap;
-    void bootstrap;
+    await bootstrap;
+    } finally {
+      freshWorkspaceInFlightRef.current = false;
+    }
   }
 
   async function handleNewOrder() {
@@ -9396,19 +9541,19 @@ export function PosScreen({ standalone = false }) {
                     </span>
                   ) : null}
                 </button>
-                {standalone && pendingSync > 0 ? (
+                {standalone && failedSyncOrders.length > 0 ? (
                   <button
                     type="button"
                     disabled={busy}
-                    title={`${pendingSync} offline order(s) waiting to sync`}
+                    title={`${failedSyncOrders.length} offline order(s) failed to sync — open to retry`}
                     onClick={() => setPendingSyncOpen(true)}
                     className={posHeaderBtnClassName}
                   >
-                    <span className="pos-header-btn-label" data-short="Pending">
-                      Pending sync
+                    <span className="pos-header-btn-label" data-short="Failed">
+                      Sync failed
                     </span>
                     <span className="pos-header-action-badge bg-amber-500">
-                      {pendingSync > 99 ? "99+" : pendingSync}
+                      {failedSyncOrders.length > 99 ? "99+" : failedSyncOrders.length}
                     </span>
                   </button>
                 ) : null}
@@ -9532,45 +9677,6 @@ export function PosScreen({ standalone = false }) {
                       ? ` #${formatPosBrowseLabel(failedSyncOrders[0])}`
                       : ""}
                   </button>
-                ) : null}
-                {!pendingSyncOpen ? (
-                <button
-                  type="button"
-                  disabled={busy || offlineSyncing || !canFlushOutbox || pendingSync <= 0}
-                  title={
-                    !canFlushOutbox
-                      ? "Reconnect to sync offline orders"
-                      : offlineSyncing
-                        ? syncProgress?.message || "Syncing offline orders…"
-                        : pendingSync > 0
-                          ? `Sync ${pendingSync} pending offline order(s)`
-                          : "No offline orders waiting to sync"
-                  }
-                  onClick={() => void syncOfflineOrders()}
-                  className={posHeaderBtnClassName}
-                  aria-busy={offlineSyncing}
-                >
-                  <span
-                    className="pos-header-btn-label"
-                    data-short={
-                      offlineSyncing
-                        ? syncProgress?.total > 0
-                          ? `${syncProgress.done + syncProgress.failed}/${syncProgress.total}`
-                          : "Syncing…"
-                        : pendingSync > 0
-                          ? `Sync (${pendingSync})`
-                          : "Sync"
-                    }
-                  >
-                    {offlineSyncing
-                      ? syncProgress?.total > 0
-                        ? `Syncing ${syncProgress.done + syncProgress.failed}/${syncProgress.total}…`
-                        : "Syncing offline…"
-                      : pendingSync > 0
-                        ? `Sync offline (${pendingSync})`
-                        : "Sync offline orders"}
-                  </span>
-                </button>
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -9759,50 +9865,35 @@ export function PosScreen({ standalone = false }) {
                 {cartBridgeStatus}
               </p>
             ) : null}
-            {standalone && (offlineMode || pendingSync > 0 || offlineSyncing || failedSyncOrders.length > 0) ? (
+            {standalone && (offlineMode || failedSyncOrders.length > 0) ? (
               <div
                 className={`mt-2 rounded-md border px-2.5 py-2 text-xs font-medium ${
                   offlineMode
                     ? "border-amber-200 bg-amber-50 text-amber-950"
-                    : failedSyncOrders.length > 0
-                      ? "border-amber-200 bg-amber-50 text-amber-950"
-                      : "border-sky-200 bg-sky-50 text-sky-950"
+                    : "border-amber-200 bg-amber-50 text-amber-950"
                 }`}
               >
                 {offlineMode ? (
-                  <p className="mb-1.5">
+                  <p>
                     {networkStatus === "slow"
                       ? "Slow connection — selling from local cache (cash only)."
                       : "Connection dropped — selling from local cache (cash only)."}{" "}
-                    Order # left: {orderNumbersLeft}. Pending sync: {pendingSync}.
+                    Order # left: {orderNumbersLeft}.
                   </p>
-                ) : failedSyncOrders.length > 0 ? (
-                  <p className="mb-1.5">
+                ) : (
+                  <p>
                     Sync failed for {failedSyncOrders.length} offline order
-                    {failedSyncOrders.length === 1 ? "" : "s"}. You can reprint the local receipt
-                    below while retrying sync.
+                    {failedSyncOrders.length === 1 ? "" : "s"}. Open{" "}
+                    <button
+                      type="button"
+                      className="font-semibold underline"
+                      onClick={() => setPendingSyncOpen(true)}
+                    >
+                      Pending sync
+                    </button>{" "}
+                    to retry or reprint.
                   </p>
-                ) : null}
-                {!pendingSyncOpen ? (
-                <PosOfflineSyncControls
-                  pendingSync={pendingSync}
-                  syncing={offlineSyncing}
-                  canFlush={canFlushOutbox}
-                  syncProgress={syncProgress}
-                  failedSyncOrders={failedSyncOrders}
-                  onPrintFailed={handlePrintFailedOfflineReceipt}
-                  lastSyncMessage={
-                    offlineMode
-                      ? null
-                      : syncProgress?.message ||
-                        lastSyncMessage ||
-                        (pendingSync > 0
-                          ? `${pendingSync} sale(s) waiting to sync.`
-                          : null)
-                  }
-                  onSync={syncOfflineOrders}
-                />
-                ) : null}
+                )}
               </div>
             ) : null}
             {!standalone && statusMessage ? (
@@ -9951,6 +10042,8 @@ export function PosScreen({ standalone = false }) {
                   barcodeEnabled={enableBarcodeScanner}
                   stockDisplayMode={stockDisplayMode}
                   posSalesConfig={posSalesConfig}
+                  recentProducts={recentProducts}
+                  onSelectRecent={(row) => void pickRecentProduct(row)}
                   disabled={busy || posSearchSuspended}
                 />
               )}
@@ -10456,6 +10549,8 @@ export function PosScreen({ standalone = false }) {
                     barcodeEnabled={enableBarcodeScanner}
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
+                    recentProducts={recentProducts}
+                    onSelectRecent={(row) => void pickRecentProduct(row)}
                     disabled={busy || posSearchSuspended}
                   />
                 }
@@ -11156,28 +11251,24 @@ export function PosScreen({ standalone = false }) {
       {standalone ? (
         classicLayout ? (
           <>
-            {pendingSync > 0 || offlineSyncing || failedSyncOrders.length > 0 ? (
+            {offlineSyncing || failedSyncOrders.length > 0 ? (
               <div className="classic-pos-offline-sync-strip shrink-0 border-t border-[var(--theme-border)] bg-sky-50 px-3 py-1.5 text-sky-950">
-                {!pendingSyncOpen ? (
-                <PosOfflineSyncControls
-                  pendingSync={pendingSync}
-                  syncing={offlineSyncing}
-                  canFlush={canFlushOutbox}
-                  syncProgress={syncProgress}
-                  failedSyncOrders={failedSyncOrders}
-                  onPrintFailed={handlePrintFailedOfflineReceipt}
-                  lastSyncMessage={
-                    syncProgress?.message ||
-                    lastSyncMessage ||
-                    (pendingSync > 0
-                      ? `${pendingSync} offline order(s) waiting to sync`
-                      : null)
-                  }
-                  onSync={syncOfflineOrders}
-                />
+                {failedSyncOrders.length > 0 ? (
+                  <p className="text-xs font-medium text-amber-950">
+                    {failedSyncOrders.length} offline order
+                    {failedSyncOrders.length === 1 ? "" : "s"} failed to sync.{" "}
+                    <button
+                      type="button"
+                      className="font-semibold underline"
+                      onClick={() => setPendingSyncOpen(true)}
+                    >
+                      Open Pending sync
+                    </button>{" "}
+                    to retry.
+                  </p>
                 ) : (
                   <p className="text-xs font-medium text-sky-950">
-                    Sync offline orders in the Pending sync window.
+                    {syncProgress?.message || "Syncing offline orders…"}
                   </p>
                 )}
               </div>

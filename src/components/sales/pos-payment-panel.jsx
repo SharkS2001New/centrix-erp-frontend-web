@@ -250,6 +250,8 @@ export function PosPaymentPanel({
   const kcbAmountRef = useRef(null);
   const bankAmountRef = useRef(null);
   const creditTriggerRef = useRef(null);
+  const creditSelectRef = useRef(null);
+  const receiptCustomerSelectRef = useRef(null);
   const enterActionRef = useRef(() => {});
   const prevOpenRef = useRef(false);
   const stkPollRef = useRef(null);
@@ -749,8 +751,7 @@ export function PosPaymentPanel({
     setChequeAmount("0");
     setLocalError(null);
     window.requestAnimationFrame(() => {
-      creditTriggerRef.current?.focus();
-      creditTriggerRef.current?.click();
+      creditSelectRef.current?.openAndFocus?.();
     });
   }
 
@@ -1290,9 +1291,16 @@ export function PosPaymentPanel({
 
   useEffect(() => {
     if (!open || step !== "customerName") return;
-    const t = window.setTimeout(() => walkInNameRef.current?.focus(), 0);
+    const t = window.setTimeout(() => {
+      if (customerNameMode === "existing") {
+        receiptCustomerSelectRef.current?.openAndFocus?.();
+        return;
+      }
+      walkInNameRef.current?.focus();
+      walkInNameRef.current?.select?.();
+    }, 0);
     return () => window.clearTimeout(t);
-  }, [open, step]);
+  }, [open, step, customerNameMode]);
 
   useEffect(() => {
     if (!open || step !== "complete") return;
@@ -1310,6 +1318,14 @@ export function PosPaymentPanel({
         return;
       }
       if (step === "customerName") {
+        // Let PosSearchableSelect handle Enter while picking from search results.
+        const active = document.activeElement;
+        if (
+          active?.closest?.(".pos-search-select-panel") ||
+          active?.classList?.contains("pos-search-select-search")
+        ) {
+          return;
+        }
         e.preventDefault();
         handleCustomerNameContinue();
         return;
@@ -1475,6 +1491,9 @@ export function PosPaymentPanel({
             onClick={() => {
               setCustomerNameMode("existing");
               setLocalError(null);
+              window.requestAnimationFrame(() => {
+                receiptCustomerSelectRef.current?.openAndFocus?.();
+              });
             }}
             className={`rounded-lg border px-3 py-2 text-xs font-bold uppercase ${
               customerNameMode === "existing"
@@ -1516,6 +1535,7 @@ export function PosPaymentPanel({
             </p>
             <PosField label="Existing customer">
               <PosSearchableSelect
+                ref={receiptCustomerSelectRef}
                 value={receiptCustomerNum}
                 onChange={(nextValue, option) => {
                   setReceiptCustomerNum(nextValue);
@@ -2187,6 +2207,7 @@ export function PosPaymentPanel({
         <div className="mt-3">
           <PosField label="Credit / invoice customer (I)">
             <PosSearchableSelect
+              ref={creditSelectRef}
               triggerRef={creditTriggerRef}
               value={customerNum}
               onChange={handleCreditCustomerChange}

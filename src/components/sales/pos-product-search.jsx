@@ -10,10 +10,18 @@ import {
   productStockAtLocation,
 } from "@/lib/pos-stock";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
+import { explainPosSearchMatch } from "@/lib/pos-product-search-rank";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 
 const fieldInput = INPUT_CLASS;
+
+const MATCH_REASON_LABEL = {
+  code: "Code",
+  name: "Name",
+  shelf: "Shelf",
+  fuzzy: "Close",
+};
 
 function formatStockQty(baseQty, product) {
   const { text } = formatMixedStockDisplay(
@@ -31,6 +39,16 @@ function availableQty(product, sellFromShop, posSalesConfig, sellWholesale) {
   if (mode === "shop") return shop;
   if (mode === "store") return store;
   return sellFromShop ? shop : store;
+}
+
+function emptySearchGuidance(query, barcodeEnabled) {
+  const q = String(query ?? "").trim();
+  if (!q) {
+    return barcodeEnabled
+      ? "Scan a barcode or type a product name"
+      : "Type a product name or code";
+  }
+  return `No products found for “${q}”. Try fewer letters, check spelling, or scan a barcode.`;
 }
 
 /** Assign a value to a React ref object or callback without touching component props. */
@@ -64,6 +82,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   disabled = false,
   placeholder = "Search by product name or code…",
   inputRef = null,
+  /** Recent picks shown when the query is idle (classic dropdown / modern panel). */
+  recentProducts = [],
+  onSelectRecent = null,
   /** "classic" = embedded column dropdown (no label, Light Stores columns). */
   variant = "modern",
 },
@@ -79,6 +100,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const [menuBox, setMenuBox] = useState(null);
   const classic = variant === "classic";
   const enablePosCashRounding = Boolean(posSalesConfig?.enablePosCashRounding);
+  const idleQuery = !String(query ?? "").trim();
+  const showRecents = idleQuery && recentProducts.length > 0 && !disabled;
 
   useImperativeHandle(ref, () => ({
     closeDropdown() {
@@ -116,12 +139,18 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     results.some((product) => isExactProductCodeQuery(query, product.product_code));
 
   useEffect(() => {
+    // New query → highlight best (index 0) once results arrive; clear while empty.
     setHighlight(-1);
   }, [query]);
 
   useEffect(() => {
-    setHighlight((i) => (results.length === 0 ? -1 : Math.min(i, results.length - 1)));
-  }, [results.length]);
+    setHighlight((i) => {
+      if (results.length === 0) return -1;
+      // Auto-highlight the top-ranked row when results first appear.
+      if (i < 0) return 0;
+      return Math.min(i, results.length - 1);
+    });
+  }, [results]);
 
   useEffect(() => {
     if (!open || highlight < 0 || !results.length) return;
@@ -137,7 +166,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       const el = localInputRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const width = Math.max(rect.width, Math.min(560, window.innerWidth - 24));
+      // Much wider than the scan input so name / stock columns stay readable.
+      const preferred = Math.max(rect.width * 2.6, rect.width + 280);
+      const width = Math.min(Math.max(preferred, 520), window.innerWidth - 24);
       const spaceBelow = window.innerHeight - rect.bottom - 16;
       const spaceAbove = rect.top - 16;
       const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
@@ -194,6 +225,19 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (product) pick(product);
   }
 
+  function pickRecent(row) {
+    if (typeof onSelectRecent === "function") {
+      onSelectRecent(row);
+    } else {
+      onSelect?.({
+        product_code: row.product_code,
+        product_name: row.product_name,
+      });
+    }
+    setOpen(false);
+    setHighlight(-1);
+  }
+
   function moveHighlight(delta) {
     if (!results.length) return;
     setHighlight((i) => {
@@ -234,7 +278,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         pickHighlighted();
         return;
       }
-      if (query.trim()) setOpen(true);
+      if (query.trim() || showRecents) setOpen(true);
       return;
     }
     if (e.key === "Escape") {
@@ -264,8 +308,43 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   const showShopStock = stockDisplayMode === "both" || stockDisplayMode === "shop";
   const showStoreStock = stockDisplayMode === "both" || stockDisplayMode === "store";
-  const stockColCount = (showShopStock ? 1 : 0) + (showStoreStock ? 1 : 0);
-  const modernColSpan = 2 + stockColCount;
+  const modernColSpan = 2 + stockColCountFix(showShopStock, showStoreStock);
+
+  function renderRecentBlock(compact = false) {
+    if (!showRecents) return null;
+    return (
+      <div className={compact ? "classic-pos-recent" : "border-b border-[var(--theme-border)] px-2 py-2"}>
+        <p
+          className={
+            compact
+              ? "classic-pos-recent-label"
+              : "mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
+          }
+        >
+          Recent
+        </p>
+        <ul className={compact ? "classic-pos-recent-list" : "space-y-0.5"}>
+          {recentProducts.slice(0, 8).map((row) => (
+            <li key={row.product_code}>
+              <button
+                type="button"
+                className={
+                  compact
+                    ? "classic-pos-recent-item"
+                    : "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--theme-hover)]"
+                }
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pickRecent(row)}
+              >
+                <span className="truncate font-medium">{row.product_name}</span>
+                <span className="shrink-0 font-mono text-[10px] opacity-70">{row.product_code}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
   const classicDropdown =
     classic && showDropdown && menuBox && typeof document !== "undefined"
@@ -284,6 +363,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
               zIndex: 10000,
             }}
           >
+            {renderRecentBlock(true)}
             <table className="classic-pos-find-table w-full">
               <thead>
                 <tr>
@@ -294,22 +374,22 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                 </tr>
               </thead>
               <tbody>
-                {searching ? (
+                {searching && !results.length ? (
                   <tr>
                     <td colSpan={4} className="classic-pos-find-empty">
                       Searching…
                     </td>
                   </tr>
-                ) : !query.trim() ? (
+                ) : idleQuery ? (
                   <tr>
                     <td colSpan={4} className="classic-pos-find-empty">
-                      Type a code or name
+                      {showRecents ? "Type to search, or pick a recent item" : "Type a code or name"}
                     </td>
                   </tr>
                 ) : results.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="classic-pos-find-empty">
-                      No products found
+                      {emptySearchGuidance(query, barcodeEnabled)}
                     </td>
                   </tr>
                 ) : (
@@ -324,6 +404,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     );
                     const qty = availableQty(product, sellFromShop, posSalesConfig, sellWholesale);
                     const negative = Number(qty) < 0;
+                    const reason = explainPosSearchMatch(product, query);
                     return (
                       <tr
                         key={product.product_code}
@@ -340,7 +421,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         }`}
                       >
                         <td>{product.product_code}</td>
-                        <td>{product.product_name}</td>
+                        <td>
+                          <span className="classic-pos-find-name">{product.product_name}</span>
+                          {reason ? (
+                            <span className="classic-pos-match-reason" title="How this matched">
+                              {MATCH_REASON_LABEL[reason] ?? reason}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="classic-pos-find-num classic-pos-find-price">
                           {Number(price).toLocaleString()}
                         </td>
@@ -376,6 +464,10 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         aria-expanded={showDropdown}
         aria-controls={listId}
         aria-autocomplete="list"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         className={classic ? "classic-pos-cart-scan-input" : fieldInput}
         value={query}
         disabled={disabled}
@@ -386,7 +478,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         }}
         onFocus={() => {
           if (disabled) return;
-          if (query.trim()) setOpen(true);
+          if (query.trim() || recentProducts.length) setOpen(true);
         }}
         onKeyDown={handleInputKeyDown}
       />
@@ -400,6 +492,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           role="listbox"
           className="theme-panel absolute left-0 right-0 z-[100] mt-1 max-h-[min(50vh,320px)] overflow-auto rounded-lg border shadow-lg"
         >
+          {renderRecentBlock(false)}
           <table className="theme-table w-full border-collapse text-[11px]">
             <thead className="theme-table-head sticky top-0 z-10">
               <tr className="theme-table-head-row text-left font-bold">
@@ -414,22 +507,24 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
               </tr>
             </thead>
             <tbody>
-              {searching ? (
+              {searching && !results.length ? (
                 <tr>
                   <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
                     Searching…
                   </td>
                 </tr>
-              ) : !query.trim() ? (
+              ) : idleQuery ? (
                 <tr>
                   <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
-                    {barcodeEnabled ? "Scan a barcode or type a product name" : "Type a product name or code"}
+                    {showRecents
+                      ? "Type to search, or pick a recent item"
+                      : emptySearchGuidance("", barcodeEnabled)}
                   </td>
                 </tr>
               ) : results.length === 0 ? (
                 <tr>
                   <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
-                    No products found
+                    {emptySearchGuidance(query, barcodeEnabled)}
                   </td>
                 </tr>
               ) : (
@@ -443,6 +538,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     routeMarkupPerUnit,
                     enablePosCashRounding,
                   );
+                  const reason = explainPosSearchMatch(product, query);
                   return (
                     <tr
                       key={product.product_code}
@@ -464,8 +560,13 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     >
                       <td className="px-2 py-1.5 font-medium text-slate-900">
                         {product.product_name}
-                        <span className="mt-0.5 block font-mono text-[10px] font-normal text-slate-500">
+                        <span className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] font-normal text-slate-500">
                           {product.product_code}
+                          {reason ? (
+                            <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600">
+                              {MATCH_REASON_LABEL[reason] ?? reason}
+                            </span>
+                          ) : null}
                         </span>
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums font-bold">
@@ -496,3 +597,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     </div>
   );
 });
+
+function stockColCountFix(showShopStock, showStoreStock) {
+  return (showShopStock ? 1 : 0) + (showStoreStock ? 1 : 0);
+}

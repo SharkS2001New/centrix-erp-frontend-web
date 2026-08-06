@@ -2,7 +2,8 @@
 
 /**
  * Manual offline-order sync control with a progress bar.
- * Use from External POS header / status banner when local outbox may be ahead of the server.
+ * Hidden when the outbox is empty and idle so sync stays silent until
+ * something is waiting, failing, or actively syncing.
  */
 export function PosOfflineSyncControls({
   pendingSync = 0,
@@ -24,16 +25,6 @@ export function PosOfflineSyncControls({
   const showBar =
     syncing && total > 0 && (phase === "start" || phase === "syncing" || phase === "item_done");
   const pct = total > 0 ? Math.min(100, Math.round(((done + failed) / total) * 100)) : 0;
-  const label =
-    syncProgress?.message ||
-    (syncing
-      ? total > 0
-        ? `Syncing ${Math.max(current, done + failed)} of ${total}…`
-        : "Syncing offline orders…"
-      : lastSyncMessage ||
-        (pendingSync > 0
-          ? `${pendingSync} offline order(s) waiting to sync`
-          : "Sync local offline orders to the server"));
 
   const hasPending = pendingSync > 0;
   const failedOrders = Array.isArray(failedSyncOrders) ? failedSyncOrders : [];
@@ -43,15 +34,35 @@ export function PosOfflineSyncControls({
     latestFailed?.order_num ??
     null;
   const showPrintFailed = failedOrders.length > 0 && !syncing && typeof onPrintFailed === "function";
+  const showSyncButton = syncing || hasPending || failedOrders.length > 0;
 
-  const disabled = syncing || !canFlush || !hasPending;
+  if (!showSyncButton && !showPrintFailed && !showBar) {
+    return null;
+  }
+
+  const label =
+    syncProgress?.message ||
+    (syncing
+      ? total > 0
+        ? `Syncing ${Math.max(current, done + failed)} of ${total}…`
+        : "Syncing offline orders…"
+      : lastSyncMessage ||
+        (failedOrders.length > 0
+          ? `${failedOrders.length} offline order(s) need a manual sync retry`
+          : hasPending
+            ? `${pendingSync} offline order(s) waiting to sync`
+            : null));
+
+  const disabled = syncing || !canFlush || (!hasPending && failedOrders.length === 0);
   const title = !canFlush
     ? "Reconnect to sync offline orders"
     : syncing
       ? "Sync in progress…"
       : hasPending
         ? `Sync ${pendingSync} pending offline order(s)`
-        : "No offline orders waiting to sync";
+        : failedOrders.length > 0
+          ? `Retry sync for ${failedOrders.length} failed offline order(s)`
+          : "No offline orders waiting to sync";
 
   return (
     <div
@@ -60,7 +71,7 @@ export function PosOfflineSyncControls({
       aria-live="polite"
     >
       <div className={`flex flex-wrap items-center gap-2 ${compact ? "" : "justify-between"}`}>
-        {!compact ? (
+        {!compact && label ? (
           <p className="min-w-0 flex-1 text-xs font-medium leading-snug">{label}</p>
         ) : null}
         {showPrintFailed ? (
@@ -84,30 +95,34 @@ export function PosOfflineSyncControls({
               : "Print failed receipt"}
           </button>
         ) : null}
-        <button
-          type="button"
-          disabled={disabled}
-          title={title}
-          onClick={() => void onSync?.()}
-          className={
-            compact
-              ? "pos-header-action-btn inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold disabled:opacity-50"
-              : "shrink-0 rounded-md border border-sky-400 bg-white px-2.5 py-1 text-xs font-semibold text-sky-950 shadow-sm hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-          }
-          aria-busy={syncing}
-        >
-          <span className="pos-header-btn-label" data-short={syncing ? "Syncing…" : "Sync"}>
-            {syncing
-              ? total > 0
-                ? `Syncing ${done + failed}/${total}`
-                : "Syncing…"
-              : hasPending
-                ? `Sync offline (${pendingSync})`
-                : "Sync offline orders"}
-          </span>
-        </button>
+        {showSyncButton ? (
+          <button
+            type="button"
+            disabled={disabled}
+            title={title}
+            onClick={() => void onSync?.()}
+            className={
+              compact
+                ? "pos-header-action-btn inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold disabled:opacity-50"
+                : "shrink-0 rounded-md border border-sky-400 bg-white px-2.5 py-1 text-xs font-semibold text-sky-950 shadow-sm hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+            }
+            aria-busy={syncing}
+          >
+            <span className="pos-header-btn-label" data-short={syncing ? "Syncing…" : "Sync"}>
+              {syncing
+                ? total > 0
+                  ? `Syncing ${done + failed}/${total}`
+                  : "Syncing…"
+                : hasPending
+                  ? `Sync offline (${pendingSync})`
+                  : failedOrders.length > 0
+                    ? `Retry sync (${failedOrders.length})`
+                    : "Sync offline"}
+            </span>
+          </button>
+        ) : null}
       </div>
-      {compact && (syncing || pendingSync > 0 || lastSyncMessage || showPrintFailed) ? (
+      {compact && label && (syncing || pendingSync > 0 || showPrintFailed) ? (
         <p className="max-w-[14rem] truncate text-[10px] font-medium text-[var(--theme-text-muted)]">
           {label}
         </p>

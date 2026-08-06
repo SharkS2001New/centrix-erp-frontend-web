@@ -6,6 +6,11 @@ import {
   mergeProductWithLiveStock,
   mergeProductsWithLiveStock,
 } from "@/lib/stock-cache";
+import {
+  productMatchesPosSearch,
+  rankPosProductSearchResults,
+  scorePosProductSearch,
+} from "@/lib/pos-product-search-rank";
 
 export {
   fetchStockLevelsMap,
@@ -50,31 +55,20 @@ function resolveOrgId(organizationId) {
   return organizationId ?? getStoredOrganization()?.id ?? null;
 }
 
+/** @deprecated Prefer scorePosProductSearch — kept for callers expecting the old ladder. */
 function catalogSearchScore(product, query) {
-  const q = String(query ?? "").trim().toLowerCase();
-  if (!q) return 0;
-  const name = String(product?.product_name ?? "").toLowerCase();
-  const code = String(product?.product_code ?? "").toLowerCase();
-  const sku = String(product?.sku ?? product?.barcode ?? "").toLowerCase();
-  if (code === q) return 100;
-  if (code.startsWith(q)) return 80;
-  if (name === q) return 70;
-  if (name.startsWith(q)) return 60;
-  if (code.includes(q)) return 50;
-  if (name.includes(q)) return 40;
-  if (sku.includes(q)) return 30;
-  return 0;
+  return scorePosProductSearch(product, query);
 }
 
 export function productMatchesCatalogQuery(product, query) {
   if (!isSellableCatalogProduct(product)) return false;
-  return catalogSearchScore(product, query) > 0;
+  return productMatchesPosSearch(product, query);
 }
 
 function sortCatalogSearchResults(products, query) {
   const q = String(query ?? "").trim();
   if (!q) return products;
-  return [...products].sort((a, b) => catalogSearchScore(b, q) - catalogSearchScore(a, q));
+  return rankPosProductSearchResults(products, q, { limit: products.length });
 }
 
 function filterProductCatalogRows(rows, options = {}) {

@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 /** Avoid importing catalog-shared (circular with FilterSelect → this module). */
@@ -14,32 +23,44 @@ const PANEL_MAX_HEIGHT = LIST_MAX_HEIGHT + SEARCH_HEADER_HEIGHT;
 const MIN_PANEL_WIDTH = 224; // 14rem — room for names; trigger can be narrower in toolbars
 const VIEWPORT_EDGE_PADDING = 8;
 
+function isSelectableOption(option) {
+  return Boolean(option) && !option.isHeader && !option.groupHeader;
+}
+
 /**
  * Select-style dropdown with an in-panel search field (credit customers, etc.).
  * Pass `loadOptions` for server-side search; otherwise filters `options` locally.
+ *
+ * Keyboard: ArrowUp/ArrowDown move highlight, Enter selects and closes, Escape closes.
+ * Imperative API: `openAndFocus()` opens the panel and focuses the search field.
  */
-export function PosSearchableSelect({
-  value,
-  onChange,
-  options = [],
-  placeholder = "— Select —",
-  searchPlaceholder = "Search…",
-  required = false,
-  disabled = false,
-  loading = false,
-  emptyLabel = "No matches",
-  idleSearchLabel = "Type to search…",
-  minSearchLength = 1,
-  loadOptions,
-  searchError = null,
-  inputClassName = defaultInputCls,
-  triggerRef,
-  onTriggerKeyDown,
-}) {
+export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
+  {
+    value,
+    onChange,
+    options = [],
+    placeholder = "— Select —",
+    searchPlaceholder = "Search…",
+    required = false,
+    disabled = false,
+    loading = false,
+    emptyLabel = "No matches",
+    idleSearchLabel = "Type to search…",
+    minSearchLength = 1,
+    loadOptions,
+    searchError = null,
+    inputClassName = defaultInputCls,
+    triggerRef,
+    onTriggerKeyDown,
+  },
+  ref,
+) {
   const listId = useId();
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const searchRef = useRef(null);
+  const listRef = useRef(null);
+  const internalTriggerRef = useRef(null);
   const searchSeq = useRef(0);
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -48,8 +69,21 @@ export function PosSearchableSelect({
   const [asyncOptions, setAsyncOptions] = useState([]);
   const [asyncLoading, setAsyncLoading] = useState(false);
   const [asyncError, setAsyncError] = useState(null);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
 
   const asyncSearch = typeof loadOptions === "function";
+
+  const setTriggerRef = useCallback(
+    (node) => {
+      internalTriggerRef.current = node;
+      if (typeof triggerRef === "function") {
+        triggerRef(node);
+      } else if (triggerRef) {
+        triggerRef.current = node;
+      }
+    },
+    [triggerRef],
+  );
 
   const selected = useMemo(
     () => options.find((o) => String(o.value) === String(value)),
@@ -79,6 +113,14 @@ export function PosSearchableSelect({
     }
     return result;
   }, [asyncOptions, asyncSearch, options, query]);
+
+  const selectableIndexes = useMemo(() => {
+    const indexes = [];
+    filtered.forEach((option, index) => {
+      if (isSelectableOption(option)) indexes.push(index);
+    });
+    return indexes;
+  }, [filtered]);
 
   const runSearch = useCallback(
     async (term) => {
@@ -117,9 +159,13 @@ export function PosSearchableSelect({
       setAsyncOptions([]);
       setAsyncLoading(false);
       setAsyncError(null);
+      setHighlightIndex(-1);
       return;
     }
-    const t = window.setTimeout(() => searchRef.current?.focus(), 0);
+    const t = window.setTimeout(() => {
+      searchRef.current?.focus();
+      searchRef.current?.select?.();
+    }, 0);
     return () => window.clearTimeout(t);
   }, [open]);
 
@@ -130,6 +176,24 @@ export function PosSearchableSelect({
     }, 280);
     return () => window.clearTimeout(t);
   }, [asyncSearch, open, query, runSearch]);
+
+  // Keep highlight on a selectable row when results change; prefer first match.
+  useEffect(() => {
+    if (!open) return;
+    if (selectableIndexes.length === 0) {
+      setHighlightIndex(-1);
+      return;
+    }
+    setHighlightIndex((prev) =>
+      selectableIndexes.includes(prev) ? prev : selectableIndexes[0],
+    );
+  }, [open, selectableIndexes]);
+
+  useEffect(() => {
+    if (!open || highlightIndex < 0 || !listRef.current) return;
+    const optionEl = listRef.current.querySelector(`[data-option-index="${highlightIndex}"]`);
+    optionEl?.scrollIntoView({ block: "nearest" });
+  }, [highlightIndex, open]);
 
   useEffect(() => {
     if (!open || !rootRef.current) {
@@ -194,8 +258,10 @@ export function PosSearchableSelect({
   }, []);
 
   function pick(option) {
+    if (!isSelectableOption(option)) return;
     onChange(String(option.value), option);
     setOpen(false);
+    window.requestAnimationFrame(() => internalTriggerRef.current?.focus());
   }
 
   function clearSelection(e) {
@@ -208,6 +274,71 @@ export function PosSearchableSelect({
     if (disabled) return;
     setOpen((prev) => !prev);
   }
+
+  function moveHighlight(direction) {
+    if (selectableIndexes.length === 0) return;
+    setHighlightIndex((prev) => {
+      const currentPos = selectableIndexes.indexOf(prev);
+      if (currentPos < 0) {
+        return direction > 0 ? selectableIndexes[0] : selectableIndexes[selectableIndexes.length - 1];
+      }
+      const nextPos =
+        (currentPos + direction + selectableIndexes.length) % selectableIndexes.length;
+      return selectableIndexes[nextPos];
+    });
+  }
+
+  function handleSearchKeyDown(e) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      window.requestAnimationFrame(() => internalTriggerRef.current?.focus());
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      e.stopPropagation();
+      moveHighlight(1);
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      e.stopPropagation();
+      moveHighlight(-1);
+      return;
+    }
+
+    if (e.key === "Enter") {
+      const option =
+        highlightIndex >= 0 && isSelectableOption(filtered[highlightIndex])
+          ? filtered[highlightIndex]
+          : filtered.find(isSelectableOption);
+      if (!option) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pick(option);
+    }
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openAndFocus() {
+        if (disabled || loading) return;
+        setOpen(true);
+      },
+      focus() {
+        internalTriggerRef.current?.focus();
+      },
+      close() {
+        setOpen(false);
+      },
+    }),
+    [disabled, loading],
+  );
 
   const listBusy = loading || asyncLoading;
   const listError = searchError || asyncError;
@@ -222,6 +353,11 @@ export function PosSearchableSelect({
   const triggerLabel = loading
     ? "Loading…"
     : selected?.label ?? placeholder;
+
+  const activeOptionId =
+    highlightIndex >= 0 && filtered[highlightIndex]
+      ? `${listId}-opt-${highlightIndex}`
+      : undefined;
 
   const panel =
     open && !disabled && menuStyle ? (
@@ -244,17 +380,16 @@ export function PosSearchableSelect({
             type="search"
             value={query}
             placeholder={searchPlaceholder}
+            aria-controls={listId}
+            aria-activedescendant={activeOptionId}
+            aria-autocomplete="list"
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setOpen(false);
-              }
-            }}
+            onKeyDown={handleSearchKeyDown}
             className={`${defaultInputCls} pos-search-select-search`}
           />
         </div>
         <ul
+          ref={listRef}
           id={listId}
           role="listbox"
           style={{ maxHeight: menuStyle.listHeight }}
@@ -265,7 +400,7 @@ export function PosSearchableSelect({
               {listMessage}
             </li>
           ) : (
-            filtered.map((o) =>
+            filtered.map((o, index) =>
               o.isHeader || o.groupHeader ? (
                 <li
                   key={`hdr-${o.label}`}
@@ -277,11 +412,16 @@ export function PosSearchableSelect({
                 <li key={o.value}>
                   <button
                     type="button"
+                    id={`${listId}-opt-${index}`}
+                    data-option-index={index}
                     role="option"
-                    aria-selected={String(o.value) === String(value)}
+                    aria-selected={index === highlightIndex || String(o.value) === String(value)}
+                    onMouseEnter={() => setHighlightIndex(index)}
                     onClick={() => pick(o)}
                     className={`pos-search-select-option block w-full px-3 py-2 text-left text-sm ${
-                      String(o.value) === String(value) ? "pos-search-select-option-active" : ""
+                      index === highlightIndex || String(o.value) === String(value)
+                        ? "pos-search-select-option-active"
+                        : ""
                     }`}
                   >
                     {o.label}
@@ -297,14 +437,23 @@ export function PosSearchableSelect({
   return (
     <div ref={rootRef} className="relative">
       <button
-        ref={triggerRef}
+        ref={setTriggerRef}
         type="button"
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
         disabled={disabled || loading}
         onClick={toggleOpen}
-        onKeyDown={onTriggerKeyDown}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+            if (!open && !disabled && !loading) {
+              e.preventDefault();
+              setOpen(true);
+              return;
+            }
+          }
+          onTriggerKeyDown?.(e);
+        }}
         className={`${inputClassName} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60`}
       >
         <span
@@ -339,4 +488,4 @@ export function PosSearchableSelect({
       {mounted && panel ? createPortal(panel, document.body) : null}
     </div>
   );
-}
+});
