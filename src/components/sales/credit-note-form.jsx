@@ -67,11 +67,14 @@ export function CreditNoteForm({
   const [saleId, setSaleId] = useState("");
   const [customerNum, setCustomerNum] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [invoiceBalance, setInvoiceBalance] = useState(null);
   const [creditDate, setCreditDate] = useState(new Date().toISOString().slice(0, 10));
   const [refundMethod, setRefundMethod] = useState("CASH");
-  const [reasonPreset, setReasonPreset] = useState(CREDIT_NOTE_REASONS[0]);
+  const [reasonPreset, setReasonPreset] = useState("Price adjustment");
   const [reasonOther, setReasonOther] = useState("");
   const [notes, setNotes] = useState("");
+  const [itemizeProducts, setItemizeProducts] = useState(false);
+  const [totalAmount, setTotalAmount] = useState("");
   const [lines, setLines] = useState([]);
   const [loadingSale, setLoadingSale] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -80,8 +83,12 @@ export function CreditNoteForm({
   const [productPick, setProductPick] = useState("");
   const [pickedProduct, setPickedProduct] = useState(null);
 
-  const totalCredit = useMemo(() => totalCreditAmount(lines), [lines]);
-  const canSubmit = Boolean(saleId) && lines.some((line) => Number(line.credit_amount) > 0);
+  const lineCreditTotal = useMemo(() => totalCreditAmount(lines), [lines]);
+  const amountOnlyTotal = Number(totalAmount) > 0 ? Number(totalAmount) : 0;
+  const displayTotal = itemizeProducts ? lineCreditTotal : amountOnlyTotal;
+  const canSubmit =
+    Boolean(saleId) &&
+    (itemizeProducts ? lines.some((line) => Number(line.credit_amount) > 0) : amountOnlyTotal > 0);
 
   useEffect(() => {
     const q = invoiceQuery.trim();
@@ -111,14 +118,21 @@ export function CreditNoteForm({
       setCustomerNum(sale.customer_num ? String(sale.customer_num) : "");
       setCustomerName(sale.customer_name_override ?? res.customer?.customer_name ?? "");
       setInvoiceQuery(displayQuery ?? formatReceiptNumber(sale));
+      const balance = Number(sale.order_total ?? sale.balance ?? 0);
+      setInvoiceBalance(Number.isFinite(balance) ? balance : null);
       const nextLines = (res.lines ?? sale.items ?? []).map((item) =>
         emptyCreditLineFromSaleItem(item),
       );
       setLines(nextLines);
-      setInvoiceHint(`Loaded ${nextLines.length} item(s) from invoice.`);
+      setInvoiceHint(
+        nextLines.length
+          ? `Loaded ${nextLines.length} item(s) from invoice.`
+          : "Invoice loaded. Enter a credit amount for the price difference.",
+      );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load invoice");
       setLines([]);
+      setInvoiceBalance(null);
     } finally {
       setLoadingSale(false);
     }
@@ -236,9 +250,8 @@ export function CreditNoteForm({
       setError("Your user profile has no branch assigned.");
       return;
     }
-    const payloadLines = lines.filter((line) => Number(line.credit_amount) > 0);
-    if (!payloadLines.length) {
-      setError("Enter a credit amount for at least one product.");
+    if (!saleId) {
+      setError("Load an invoice first.");
       return;
     }
     if (!isCreditReasonValid(reasonPreset, reasonOther)) {
@@ -246,6 +259,28 @@ export function CreditNoteForm({
       return;
     }
     const resolvedReason = resolveReturnReason(reasonPreset, reasonOther);
+
+    const payloadLines = itemizeProducts
+      ? lines
+          .filter((line) => Number(line.credit_amount) > 0)
+          .map((line) => ({
+            sale_item_id: line.sale_item_id,
+            product_code: line.product_code,
+            product_name: line.product_name,
+            uom: line.uom ?? null,
+            amount: line.credit_amount,
+            line_no: line.line_no,
+          }))
+      : [];
+
+    if (itemizeProducts && payloadLines.length === 0) {
+      setError("Enter a credit amount for at least one product.");
+      return;
+    }
+    if (!itemizeProducts && amountOnlyTotal <= 0) {
+      setError("Enter the credit amount for the price difference.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -259,14 +294,9 @@ export function CreditNoteForm({
         refund_method: refundMethod,
         reason: resolvedReason,
         notes: notes.trim() || null,
-        lines: payloadLines.map((line) => ({
-          sale_item_id: line.sale_item_id,
-          product_code: line.product_code,
-          product_name: line.product_name,
-          uom: line.uom ?? null,
-          amount: line.credit_amount,
-          line_no: line.line_no,
-        })),
+        ...(itemizeProducts
+          ? { lines: payloadLines }
+          : { total_amount: amountOnlyTotal, lines: [] }),
       };
 
       await apiRequest("/credit-notes", { method: "POST", body });
@@ -282,14 +312,14 @@ export function CreditNoteForm({
     }
   }
 
-
   return (
     <form onSubmit={handleSubmit} className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Create credit note</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Issue a credit for billing errors or price adjustments without returning stock.
+            Issue a credit for billing errors or price adjustments without returning stock. Product
+            lines are optional when the customer underpaid due to a price difference.
           </p>
         </div>
         <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:underline">
@@ -329,6 +359,11 @@ export function CreditNoteForm({
             </button>
           </div>
           {invoiceHint ? <p className="mt-1 text-xs text-emerald-700">{invoiceHint}</p> : null}
+          {invoiceBalance != null ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Invoice balance: {formatSaleKes(invoiceBalance)}
+            </p>
+          ) : null}
         </Field>
 
         <Field label="Customer">
@@ -393,96 +428,142 @@ export function CreditNoteForm({
           className={inputClassName()}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Optional internal notes"
+          placeholder="e.g. Customer paid less due to agreed price difference on invoice"
         />
       </Field>
 
-      <div className="mt-4 rounded-lg border border-dashed border-slate-200 p-4">
-        <p className="mb-2 text-sm font-medium text-slate-800">Add product manually</p>
-        <p className="mb-3 text-xs text-slate-500">
-          Search the catalogue to add products that are not on the invoice, or to credit without loading an invoice line first.
-        </p>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-[240px] flex-1">
-            <ProductSearchSelect
-              value={productPick}
-              onChange={setProductPick}
-              onProductSelect={(product) => {
-                setProductPick(product.product_code);
-                setPickedProduct(product);
-              }}
-              excludeCodes={lines.map((line) => line.product_code)}
-              placeholder="Search product name or code…"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={addManualProductLine}
-            disabled={!pickedProduct}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Add product
-          </button>
-        </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={itemizeProducts}
+            onChange={(e) => setItemizeProducts(e.target.checked)}
+          />
+          Itemize credit by product
+        </label>
+        <span className="text-xs text-slate-500">
+          Leave unchecked for a single amount (price difference / underpayment).
+        </span>
       </div>
 
-      {lines.length > 0 ? (
-        <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Product</th>
-                <th className="px-3 py-2 text-right">Line total</th>
-                <th className="px-3 py-2 text-right">Credit amount</th>
-                <th className="px-3 py-2 w-12" />
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, index) => (
-                <tr key={`${line.sale_item_id}-${line.product_code}`} className="border-t border-slate-100">
-                  <td className="px-3 py-2">
-                    <div className="font-medium text-slate-900">{line.product_name}</div>
-                    <div className="text-xs text-slate-500">{line.product_code}</div>
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-700">
-                    {line.line_total != null ? formatSaleKes(line.line_total) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      max={line.max_credit_amount ?? undefined}
-                      className={`${inputClassName()} w-32 text-right`}
-                      value={line.credit_amount || ""}
-                      onChange={(e) => updateCreditAmount(index, e.target.value)}
-                      placeholder="0.00"
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => removeLine(index)}
-                      className="text-xs text-red-600 hover:underline"
+      {!itemizeProducts ? (
+        <Field label="Credit amount (KES)" className="mt-4" required>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            max={invoiceBalance != null && invoiceBalance > 0 ? invoiceBalance : undefined}
+            className={`${inputClassName()} max-w-xs`}
+            value={totalAmount}
+            onChange={(e) => setTotalAmount(e.target.value)}
+            required
+            placeholder="0.00"
+            disabled={!saleId}
+          />
+          {!saleId ? (
+            <p className="mt-1 text-xs text-slate-500">Load an invoice before entering the amount.</p>
+          ) : null}
+        </Field>
+      ) : (
+        <>
+          <div className="mt-4 rounded-lg border border-dashed border-slate-200 p-4">
+            <p className="mb-2 text-sm font-medium text-slate-800">Add product manually</p>
+            <p className="mb-3 text-xs text-slate-500">
+              Search the catalogue to add products that are not on the invoice, or to credit without
+              loading an invoice line first.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[240px] flex-1">
+                <ProductSearchSelect
+                  value={productPick}
+                  onChange={setProductPick}
+                  onProductSelect={(product) => {
+                    setProductPick(product.product_code);
+                    setPickedProduct(product);
+                  }}
+                  excludeCodes={lines.map((line) => line.product_code)}
+                  placeholder="Search product name or code…"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={addManualProductLine}
+                disabled={!pickedProduct}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Add product
+              </button>
+            </div>
+          </div>
+
+          {lines.length > 0 ? (
+            <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Product</th>
+                    <th className="px-3 py-2 text-right">Line total</th>
+                    <th className="px-3 py-2 text-right">Credit amount</th>
+                    <th className="px-3 py-2 w-12" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line, index) => (
+                    <tr
+                      key={`${line.sale_item_id}-${line.product_code}`}
+                      className="border-t border-slate-100"
                     >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-slate-200 bg-slate-50">
-                <td colSpan={3} className="px-3 py-2 text-right font-medium text-slate-700">
-                  Total credit
-                </td>
-                <td className="px-3 py-2 text-right font-semibold text-slate-900">
-                  {formatSaleKes(totalCredit)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-slate-900">{line.product_name}</div>
+                        <div className="text-xs text-slate-500">{line.product_code}</div>
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-700">
+                        {line.line_total != null ? formatSaleKes(line.line_total) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          max={line.max_credit_amount ?? undefined}
+                          className={`${inputClassName()} w-32 text-right`}
+                          value={line.credit_amount || ""}
+                          onChange={(e) => updateCreditAmount(index, e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => removeLine(index)}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-slate-200 bg-slate-50">
+                    <td colSpan={3} className="px-3 py-2 text-right font-medium text-slate-700">
+                      Total credit
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                      {formatSaleKes(displayTotal)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : null}
+        </>
+      )}
+
+      {!itemizeProducts && displayTotal > 0 ? (
+        <p className="mt-3 text-sm font-medium text-slate-700">
+          Total credit: {formatSaleKes(displayTotal)}
+        </p>
       ) : null}
 
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}

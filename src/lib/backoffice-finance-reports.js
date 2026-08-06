@@ -11,6 +11,7 @@ export const BACKOFFICE_FINANCE_REPORT_SLUGS = [
   "ar-aging",
   "invoice-payments",
   "kra-receipts",
+  "kra-invoices",
   "kra-compliance-summary",
   "kra-unfiscalized-sales",
 ];

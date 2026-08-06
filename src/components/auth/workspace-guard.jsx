@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { recallWorkspaceLandingPath, defaultWorkspaceId, needsWorkspaceSelection } from "@/lib/workspace-navigation";
@@ -21,6 +21,7 @@ export function WorkspaceGuard({ children }) {
   const router = useRouter();
   const { user, organization, capabilities, loading, isSuperAdmin, loginChannel, switchWorkspace } =
     useAuth();
+  const [channelReady, setChannelReady] = useState(true);
 
   const ctx = buildAccessContext({
     user,
@@ -70,15 +71,41 @@ export function WorkspaceGuard({ children }) {
 
   // Visiting /pos switches the Sanctum token to the POS channel. Switch back when
   // returning to backoffice/platform so Applications and other admin APIs work.
+  // Hold the shell until the channel matches — otherwise screens race ahead and 403.
   useEffect(() => {
-    if (loading || platformUser) return;
-    if (loginChannel !== POS_LOGIN_CHANNEL) return;
+    if (loading || platformUser) {
+      setChannelReady(true);
+      return;
+    }
+    if (loginChannel !== POS_LOGIN_CHANNEL) {
+      setChannelReady(true);
+      return;
+    }
     const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
-    if (!workspaceId || isPosWorkspace(workspaceId)) return;
-    switchWorkspace(workspaceId).catch((err) => {
-      console.error("Failed to restore backoffice session channel", err);
-    });
+    if (!workspaceId || isPosWorkspace(workspaceId)) {
+      setChannelReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    setChannelReady(false);
+    switchWorkspace(workspaceId)
+      .then(() => {
+        if (!cancelled) setChannelReady(true);
+      })
+      .catch((err) => {
+        console.error("Failed to restore backoffice session channel", err);
+        if (!cancelled) setChannelReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [capabilities, ctx, loading, loginChannel, platformUser, storedWorkspace, switchWorkspace]);
+
+  if (!channelReady) {
+    return null;
+  }
 
   return <>{children}</>;
 }
