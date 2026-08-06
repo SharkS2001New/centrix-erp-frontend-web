@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { humanizeKraDeviceErrorMessage } from "./kra-device-errors";
+import {
+  humanizeKraDeviceErrorMessage,
+  isKraProductNotRegisteredError,
+} from "./kra-device-errors";
 
 describe("humanizeKraDeviceErrorMessage", () => {
   it("maps 519 communication failures", () => {
@@ -16,5 +19,24 @@ describe("humanizeKraDeviceErrorMessage", () => {
 
   it("leaves unrelated messages alone", () => {
     expect(humanizeKraDeviceErrorMessage("Cart is empty")).toBeNull();
+  });
+
+  it("maps unregistered PLU errors", () => {
+    expect(humanizeKraDeviceErrorMessage("337 error code")).toMatch(/not on the KRA device/i);
+  });
+});
+
+describe("isKraProductNotRegisteredError", () => {
+  it("detects code 337 and registration copy", () => {
+    expect(isKraProductNotRegisteredError("337 error code")).toBe(true);
+    expect(
+      isKraProductNotRegisteredError(
+        "One or more products were not found on the KRA device.",
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores unrelated checkout errors", () => {
+    expect(isKraProductNotRegisteredError("Cart is empty")).toBe(false);
   });
 });

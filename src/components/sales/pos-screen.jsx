@@ -148,6 +148,7 @@ import { PosOrderEditBar } from "./pos-order-edit-bar";
 import { PosOfflineSyncControls } from "./pos-offline-sync-controls";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
+import { PosKraProductUploadDialog } from "@/components/pos/pos-kra-product-upload-dialog";
 import { PosActionButton } from "./pos-action-button";
 import { CloseSessionModal, XReportModal, ZReportModal } from "@/components/pos/pos-session-modals";
 import { FloatBreakdownModal, OpenSessionModal, RecordSessionExpenseModal } from "@/components/pos/till-session-ui";
@@ -218,6 +219,11 @@ import {
 } from "@/lib/pos-keyboard-shortcuts";
 import { newClientSaleUuid, todayPosOrderDate } from "@/lib/pos-offline-db";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import { isKraProductNotRegisteredError } from "@/lib/kra-device-errors";
+import {
+  productCodesFromCartLines,
+  registerProductsOnKraDevice,
+} from "@/lib/kra-product-registration";
 import { applyTheme, getTheme } from "@/lib/theme";
 import {
   PosPriceCheckerModal,
@@ -1589,6 +1595,10 @@ export function PosScreen({ standalone = false }) {
   const [orderDialogMode, setOrderDialogMode] = useState("save");
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
+  const [kraUploadPrompt, setKraUploadPrompt] = useState(null);
+  const [kraUploadBusy, setKraUploadBusy] = useState(false);
+  const [kraUploadError, setKraUploadError] = useState(null);
+  const kraCheckoutRetryRef = useRef(null);
   const [completedSale, setCompletedSale] = useState(null);
   const completedSaleRef = useRef(null);
   /** Sale loaded for POS order edit — used for Reprint receipt while revising. */
@@ -6551,6 +6561,35 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  async function handlePosKraProductUpload() {
+    if (!kraUploadPrompt?.productCodes?.length) return;
+    setKraUploadBusy(true);
+    setKraUploadError(null);
+    try {
+      await registerProductsOnKraDevice({
+        productCodes: kraUploadPrompt.productCodes,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+      });
+      const retry = kraCheckoutRetryRef.current;
+      setKraUploadPrompt(null);
+      kraCheckoutRetryRef.current = null;
+      setPaymentError(null);
+      notifySuccess("Products uploaded to KRA — completing sale…");
+      if (retry?.body) {
+        await handleCheckout(retry.body, retry.options ?? {});
+      }
+    } catch (e) {
+      setKraUploadError(
+        e instanceof ApiError
+          ? e.message
+          : "KRA upload failed. Try again or contact a supervisor.",
+      );
+    } finally {
+      setKraUploadBusy(false);
+    }
+  }
+
   async function handleCheckout(body, options = {}) {
     const activeCart = cartRef.current ?? cart;
     const summary = cartSummaryRef.current ?? cartSummary;
@@ -6961,6 +7000,29 @@ export function PosScreen({ standalone = false }) {
       setPaymentError(message);
       if (standalone) {
         notifyError(message);
+      }
+      if (
+        isKraProductNotRegisteredError(message) &&
+        isKraDeviceConfigured(capabilities?.module_settings, capabilities)
+      ) {
+        const liveCart = cartRef.current ?? activeCart;
+        const productCodes = productCodesFromCartLines(liveCart);
+        if (productCodes.length) {
+          kraCheckoutRetryRef.current = { body, options };
+          const productLabels = [
+            ...new Set(
+              (liveCart?.lines ?? [])
+                .filter((line) => line?.product_code)
+                .map((line) => {
+                  const code = String(line.product_code);
+                  const name = String(line.product_name ?? "").trim();
+                  return name ? `${code} — ${name}` : code;
+                }),
+            ),
+          ];
+          setKraUploadPrompt({ productCodes, productLabels });
+          setKraUploadError(null);
+        }
       }
       if (
         requireTillFloat &&
@@ -10753,11 +10815,29 @@ export function PosScreen({ standalone = false }) {
         }}
       />
 
+      <PosKraProductUploadDialog
+        open={Boolean(kraUploadPrompt)}
+        productCodes={kraUploadPrompt?.productCodes ?? []}
+        productLabels={kraUploadPrompt?.productLabels ?? []}
+        busy={kraUploadBusy || busy}
+        error={kraUploadError}
+        onUpload={() => void handlePosKraProductUpload()}
+        onClose={() => {
+          if (kraUploadBusy) return;
+          setKraUploadPrompt(null);
+          setKraUploadError(null);
+          kraCheckoutRetryRef.current = null;
+        }}
+      />
+
       <PosPaymentPanel
         open={paymentOpen}
         onClose={() => {
           setPaymentOpen(false);
           setReceiptPrintStatus(null);
+          setKraUploadPrompt(null);
+          setKraUploadError(null);
+          kraCheckoutRetryRef.current = null;
         }}
         billTotal={paymentPanelBillTotal}
         previousOrderEditAdjustment={null}
