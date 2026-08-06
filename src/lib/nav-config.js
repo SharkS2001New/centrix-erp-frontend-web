@@ -183,6 +183,13 @@ const NAV_SECTION_DEFINITIONS = [
         requireKraDevice: true,
         reportKey: "kra-invoices",
       },
+      {
+        href: "/admin/kra-responses",
+        label: "KRA device log",
+        module: null,
+        permission: P.pricing_tax.kra_device_log.view,
+        requireKraDevice: true,
+      },
     ],
   },
   {
@@ -1144,8 +1151,8 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/vats",
         label: "VAT / tax rates",
-        module: null,
-        permission: P.pricing_tax.vat_rates.view,
+        module: "admin",
+        permission: P.admin.vat_rates.view,
         orgAdminOnly: true,
       },
       {

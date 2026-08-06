@@ -45,8 +45,12 @@ const EMPTY_FORM = {
 
 export function VatsScreen() {
   const { adminPath, isPlatformManaged } = useAdminApi();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const confirm = useConfirm();
+  const canCreateVat =
+    isPlatformManaged ||
+    hasPermission?.(P.pricing_tax.vat_rates.create) ||
+    hasPermission?.(P.admin.vat_rates.create);
   const [vats, setVats] = useState([]);
   const [productCountByVatId, setProductCountByVatId] = useState(() => ({}));
   const [users, setUsers] = useState([]);
@@ -242,12 +246,9 @@ export function VatsScreen() {
             getSearchParams={() => ({ per_page: 200 })}
             disabled={loading}
           />
-          <PrimaryButton
-            onClick={openCreateDrawer}
-            permission={isPlatformManaged ? null : P.pricing_tax.vat_rates.create}
-          >
-            Add VAT rate
-          </PrimaryButton>
+          {canCreateVat ? (
+            <PrimaryButton onClick={openCreateDrawer}>Add VAT rate</PrimaryButton>
+          ) : null}
         </div>
       }
     >

@@ -34,6 +34,7 @@ describe("kra fiscal receipt print", () => {
       pos_order_num: 74,
       channel: "pos",
       customer_name: "Acme Ltd",
+      cashier_name: "Jane Wanjiku",
       invoice_number: "1786006888",
       serial_number: "DEJA02220240050",
       signature_link: "https://etims.example/verify/1980",
@@ -75,6 +76,7 @@ describe("kra fiscal receipt print", () => {
     expect(html).toContain("0090876");
     expect(html).toContain("Acme Ltd");
     expect(html).toContain("P051234567X");
+    expect(html).toContain("Served by: Jane Wanjiku");
     expect(html).toContain("74");
     expect(html).toContain("KRA eTIMS FISCAL RECEIPT");
     expect(html).toContain("data:image/png;base64,abc");

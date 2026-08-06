@@ -43,6 +43,7 @@ export const P = {
       view: "pricing_tax.kra_invoices.view",
       credit: "pricing_tax.kra_invoices.credit",
     },
+    kra_device_log: { view: "pricing_tax.kra_device_log.view" },
   },
   customers: {
     customers: { view: "customers.customers.view" },
@@ -306,6 +307,12 @@ export const P = {
     users: { view: "admin.users.view" },
     roles: { view: "admin.roles.view", edit: "admin.roles.edit" },
     audit: { view: "admin.audit.view" },
+    vat_rates: {
+      view: "admin.vat_rates.view",
+      create: "admin.vat_rates.create",
+      edit: "admin.vat_rates.edit",
+      delete: "admin.vat_rates.delete",
+    },
     kra_responses: { view: "admin.kra_responses.view" },
     till_printing: { view: "admin.till_printing.view", edit: "admin.till_printing.edit" },
     payment_methods: {

@@ -232,6 +232,12 @@ export function KraResponseDetailDialog({
                   <dd className="font-mono text-xs text-slate-900">{enriched.buyerPin}</dd>
                 </div>
               ) : null}
+              {enriched?.servedBy ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Served by</dt>
+                  <dd className="text-slate-900">{enriched.servedBy}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-xs uppercase tracking-wide text-slate-500">CU number</dt>
                 <dd className="font-mono text-xs text-slate-900">{activeRow?.invoice_number || "—"}</dd>

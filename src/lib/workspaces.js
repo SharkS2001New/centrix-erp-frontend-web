@@ -222,6 +222,14 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     return item.href?.startsWith("/admin") || item.href === "/vats";
   }
 
+  // Backoffice Pricing & tax may deep-link the shared KRA device log screen.
+  if (
+    item.href === "/admin/kra-responses" ||
+    item.href?.startsWith("/admin/kra-responses/")
+  ) {
+    return workspaceId === "backoffice" || workspaceId === "admin";
+  }
+
   if (item.href?.startsWith("/reports") || item.reportKey) {
     if (item.href === "/reports" && item.exact && WORKSPACE_HIDE_REPORTS_HUB.has(workspaceId)) {
       return false;
@@ -327,6 +335,13 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
       return true;
     }
     return false;
+  }
+
+  if (
+    workspaceId === "backoffice" &&
+    (pathname === "/admin/kra-responses" || pathname.startsWith("/admin/kra-responses/"))
+  ) {
+    return true;
   }
 
   const prefixes = WORKSPACE_PATH_PREFIXES[workspaceId] ?? [];

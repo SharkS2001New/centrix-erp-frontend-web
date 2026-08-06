@@ -6482,6 +6482,12 @@ export function PosScreen({ standalone = false }) {
       setReceiptPrintStatus("pending");
       const documentType =
         resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt";
+      const skipKraQr =
+        Boolean(sale?._skip_kra_qr) ||
+        Boolean(sale?.kra_skipped) ||
+        ["failed", "skipped"].includes(
+          String(sale?.kra_response?.status ?? sale?.kraResponse?.status ?? "").toLowerCase(),
+        );
       void printSaleOrder(
         sale,
         fastPosPrintOptions(sale, {
@@ -6494,7 +6500,10 @@ export function PosScreen({ standalone = false }) {
         preparedBy: user?.full_name ?? user?.username ?? null,
         documentType,
           // Checkout returns kra_response for immediate thermal QR print.
-          kraReceipt: sale.kra_response ?? sale.kraResponse ?? null,
+          // Soft-failed KRA sales print a normal receipt without waiting for QR.
+          kraReceipt: skipKraQr ? null : (sale.kra_response ?? sale.kraResponse ?? null),
+          requireQrWhenFiscalized: skipKraQr ? false : undefined,
+          allowKraNetwork: skipKraQr ? false : undefined,
         }),
       )
         .then((result) => {
@@ -7012,6 +7021,26 @@ export function PosScreen({ standalone = false }) {
         receiptTenders,
         cashTendered,
       );
+
+      // KRA soft-fail: sale is saved; print without fiscal QR and warn the cashier.
+      const kraRow = sale?.kra_response ?? sale?.kraResponse;
+      const kraStatus = String(kraRow?.status ?? "").toLowerCase();
+      const kraSoftFailed =
+        Boolean(sale?.kra_skipped) ||
+        Boolean(sale?.kra_warning) ||
+        kraStatus === "failed" ||
+        kraStatus === "skipped";
+      if (kraSoftFailed) {
+        sale = { ...sale, _skip_kra_qr: true };
+        const kraMsg =
+          sale.kra_warning ||
+          (kraStatus === "skipped"
+            ? "Sale created without KRA (skipped)."
+            : "Sale created without KRA due to an error with KRA device.");
+        setStatusMessage(kraMsg);
+        notifyError(kraMsg);
+      }
+
       if (sale?.fulfillment_meta?.same_day_customer_append) {
         const label = formatPosBrowseLabel(sale);
         setStatusMessage(`Items added to customer order #${label}.`);
@@ -7030,7 +7059,9 @@ export function PosScreen({ standalone = false }) {
       clearPosUiDraft();
       clearLineEntry();
       void clearPreviousOrderEditDraft().catch(() => {});
-      setStatusMessage(`Order #${sale.order_num} completed.`);
+      if (!kraSoftFailed) {
+        setStatusMessage(`Order #${sale.order_num} completed.`);
+      }
       if (liveCart?.held_order_num) {
         setEditSourceSale(null);
       }

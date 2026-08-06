@@ -1380,7 +1380,7 @@ export const REPORT_DEFINITIONS = {
       { key: "sale_status", label: "Sale status", accessor: (r) => r.sale_status },
       { key: "payment_status", label: "Payment", accessor: (r) => r.payment_status },
       { key: "last_kra_status", label: "Last KRA status", accessor: (r) => r.last_kra_status || "None" },
-      { key: "last_kra_error", label: "Last error", accessor: (r) => r.last_kra_error || "—" },
+      { key: "last_kra_error", label: "Skip / error reason", accessor: (r) => r.last_kra_error || "—" },
       { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
       { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],

@@ -86,6 +86,20 @@ function extractCustomerNameFromRow(row) {
   return saleCustomerLabel(row);
 }
 
+function extractServedByFromRow(row) {
+  if (!row) return null;
+  const fromRow = String(row.cashier_name ?? row.served_by ?? "").trim();
+  if (fromRow) return fromRow;
+  const nested = row.sale?.cashier;
+  if (nested && typeof nested === "object") {
+    const fullName = String(nested.full_name ?? "").trim();
+    if (fullName) return fullName;
+    const username = String(nested.username ?? "").trim();
+    if (username) return username;
+  }
+  return null;
+}
+
 export function kraReportRowId(row) {
   return row?.kra_response_id ?? row?.id ?? null;
 }
@@ -139,6 +153,7 @@ export function enrichKraReportRow(row) {
     relevantInvoiceNumber,
     orderNo: formatKraReportOrderNo(normalized),
     customerName: extractCustomerNameFromRow(normalized),
+    servedBy: extractServedByFromRow(normalized),
     buyerPin: extractBuyerPinFromKraPayload(requestPayload),
     orderTotal: Number.isFinite(orderTotal) ? orderTotal : linesTotal,
     totalVat: Number.isFinite(totalVat) ? totalVat : lines.reduce((sum, line) => sum + line.levy, 0),
@@ -226,6 +241,7 @@ export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName 
     channel,
     customerName,
     buyerPin,
+    servedBy,
     isCreditNote,
     relevantInvoiceNumber,
   } = enriched;
@@ -281,6 +297,8 @@ export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName 
         <span>KES ${escapeKraHtml(formatReceiptMoney(orderTotal))}</span>
       </div>
     </div>
+
+    ${servedBy ? `<div style="margin:6px 0 4px;font-size:10px;text-align:center;">Served by: ${escapeKraHtml(servedBy)}</div>` : ""}
 
     ${fiscalBlock}
 
