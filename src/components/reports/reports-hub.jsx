@@ -79,8 +79,18 @@ const CATEGORY_ICONS = {
 };
 
 export function ReportsHub() {
-  const { hasPermission, capabilities } = useAuth();
-  const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
+  const { hasPermission, hasNavPermission, isModuleEnabled, isSuperAdmin, user, organization, capabilities } =
+    useAuth();
+  const workspaceId =
+    getStoredWorkspace() ??
+    defaultWorkspaceId(capabilities, {
+      user,
+      organization,
+      isSuperAdmin,
+      hasPermission,
+      hasNavPermission,
+      isModuleEnabled,
+    });
   const workspaceLabel = WORKSPACE_REPORTS_LABEL[workspaceId] ?? "Reports";
   const [catalog, setCatalog] = useState(null);
   const [customTemplates, setCustomTemplates] = useState([]);

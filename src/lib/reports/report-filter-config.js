@@ -1,6 +1,7 @@
 /** Reports with no date range UI or params. */
 import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
 import { resolveSalesChannelsFromCapabilities } from "@/lib/sales-channels";
+import { getReportsDefaultDateRangeDays } from "@/lib/sales-settings";
 
 export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "price-list",
@@ -325,8 +326,13 @@ export function reportShowsDateRange(reportKey) {
   return !REPORTS_WITHOUT_DATE_FILTER.has(reportKey);
 }
 
-export function reportDefaultDateRangeDays(reportKey) {
-  return REPORT_DEFAULT_DATE_RANGE_DAYS[reportKey] ?? 29;
+export function reportDefaultDateRangeDays(reportKey, moduleSettings = null) {
+  if (Object.prototype.hasOwnProperty.call(REPORT_DEFAULT_DATE_RANGE_DAYS, reportKey)) {
+    return REPORT_DEFAULT_DATE_RANGE_DAYS[reportKey];
+  }
+  // Org setting is inclusive calendar days; report helper uses offset from today.
+  const inclusive = getReportsDefaultDateRangeDays(moduleSettings);
+  return Math.max(0, inclusive - 1);
 }
 
 export function reportDateColumn(reportKey) {

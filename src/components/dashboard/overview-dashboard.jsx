@@ -44,6 +44,9 @@ export function OverviewDashboard() {
   const quickLinks = useMemo(
     () =>
       MODULE_LINKS.filter((link) => {
+        if (typeof isModuleEnabled !== "function" || typeof hasPermission !== "function") {
+          return false;
+        }
         if (link.moduleAny?.length) {
           if (!link.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;
         } else if (link.key && !isModuleEnabled(link.key)) {

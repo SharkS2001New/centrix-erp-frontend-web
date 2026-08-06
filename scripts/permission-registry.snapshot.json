@@ -251,7 +251,6 @@
     "pos.till_management.create",
     "pos.till_management.edit",
     "pos.till_management.view",
-    "pricing_tax.kra_device_log.view",
     "pricing_tax.kra_invoices.credit",
     "pricing_tax.kra_invoices.view",
     "pricing_tax.price_history.view",

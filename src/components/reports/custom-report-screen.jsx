@@ -30,9 +30,19 @@ import { useListPageSize } from "@/lib/use-list-page-controls";
 const DEFAULT_PAGE_SIZE = 25;
 
 export function CustomReportScreen({ templateId }) {
-  const { user, capabilities } = useAuth();
+  const { user, organization, capabilities, hasPermission, hasNavPermission, isModuleEnabled, isSuperAdmin } =
+    useAuth();
   const { paneHref } = useTabPaneActive();
-  const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
+  const workspaceId =
+    getStoredWorkspace() ??
+    defaultWorkspaceId(capabilities, {
+      user,
+      organization,
+      isSuperAdmin,
+      hasPermission,
+      hasNavPermission,
+      isModuleEnabled,
+    });
   const multiBranch = isMultiBranchCatalog(capabilities);
   const [definition, setDefinition] = useState(null);
   const [rows, setRows] = useState([]);

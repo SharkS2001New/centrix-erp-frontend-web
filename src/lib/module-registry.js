@@ -104,6 +104,7 @@ export function reportModuleForSlug(slug) {
  */
 export function isModuleEnabledForNav(moduleKey, isModuleEnabled) {
   if (!moduleKey) return true;
+  if (typeof isModuleEnabled !== "function") return false;
   if (isModuleEnabled(moduleKey)) return true;
 
   // Parent domain on (e.g. sales) unlocks dashboard / reports / backend child nav

@@ -63,7 +63,10 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const { user, isOrgWide, capabilities } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const defaultRange = useMemo(() => defaultReportDateRange(reportDefaultDateRangeDays(reportKey)), [reportKey]);
+  const defaultRange = useMemo(
+    () => defaultReportDateRange(reportDefaultDateRangeDays(reportKey, capabilities?.module_settings)),
+    [reportKey, capabilities?.module_settings],
+  );
   const branchInitialized = useRef(false);
   const filterOptions = useReportFilterOptions(reportKey);
   const [rows, setRows] = useState([]);

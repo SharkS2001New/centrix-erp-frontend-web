@@ -32,13 +32,15 @@ function payloadNeedsFetch(row) {
 }
 
 /**
- * KRA response detail — invoice preview by default, optional device payload view.
+ * KRA response detail — invoice preview by default.
+ * Device payload tabs are for Admin KRA device log only (`showDevicePayload`).
  */
 export function KraResponseDetailDialog({
   open,
   row,
   onClose,
   apiBasePath = "/kra-responses",
+  showDevicePayload = false,
 }) {
   const { organization } = useAuth();
   const [detailRow, setDetailRow] = useState(null);
@@ -54,6 +56,7 @@ export function KraResponseDetailDialog({
       return undefined;
     }
 
+    setViewMode("preview");
     const normalized = normalizeKraResponseRow(row);
     setDetailRow(normalized);
 
@@ -81,12 +84,14 @@ export function KraResponseDetailDialog({
     };
   }, [open, row, apiBasePath]);
 
+  const effectiveViewMode = showDevicePayload ? viewMode : "preview";
+
   const activeRow = detailRow ?? normalizeKraResponseRow(row);
   const enriched = useMemo(() => enrichKraReportRow(activeRow), [activeRow]);
   const summary = useMemo(() => formatKraReceiptPreviewSummary(enriched), [enriched]);
 
   useEffect(() => {
-    if (!open || viewMode !== "preview" || !enriched?.kra?.signatureLink) {
+    if (!open || effectiveViewMode !== "preview" || !enriched?.kra?.signatureLink) {
       setQrDataUrl(null);
       return undefined;
     }
@@ -97,7 +102,7 @@ export function KraResponseDetailDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, viewMode, enriched?.kra?.signatureLink]);
+  }, [open, effectiveViewMode, enriched?.kra?.signatureLink]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -166,7 +171,7 @@ export function KraResponseDetailDialog({
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
-            {viewMode === "preview" ? (
+            {effectiveViewMode === "preview" ? (
               <button
                 type="button"
                 disabled={printing || String(activeRow?.status ?? "").toLowerCase() !== "success"}
@@ -186,32 +191,34 @@ export function KraResponseDetailDialog({
           </div>
         </div>
 
-        <div className="mt-4 flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-          <button
-            type="button"
-            onClick={() => setViewMode("preview")}
-            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium ${
-              viewMode === "preview"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Invoice preview
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("payload")}
-            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium ${
-              viewMode === "payload"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Device payload
-          </button>
-        </div>
+        {showDevicePayload ? (
+          <div className="mt-4 flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("preview")}
+              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium ${
+                effectiveViewMode === "preview"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Invoice preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("payload")}
+              className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium ${
+                effectiveViewMode === "payload"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Device payload
+            </button>
+          </div>
+        ) : null}
 
-        {viewMode === "preview" ? (
+        {effectiveViewMode === "preview" ? (
           <>
             <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
               <div>

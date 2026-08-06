@@ -8,6 +8,7 @@ import {
   ORDERS_LIST_SORT_OPTIONS,
   normalizeOrdersListVisibleColumns,
   normalizeOrdersListVisibleColumnsByQueue,
+  normalizeReportsDefaultDateRangeDays,
 } from "@/lib/sales-settings";
 import { orderListColumnQueueOptionsForWorkflow } from "@/lib/order-workflow";
 
@@ -52,6 +53,9 @@ export function OrdersListDefaultsFields({
   useSettingsSubTab(activeTab, setActiveTab, ORDERS_LIST_SUB_TABS);
 
   const days = value?.orders_list_default_days ?? "14";
+  const reportsDays = String(
+    normalizeReportsDefaultDateRangeDays(value?.reports_default_date_range_days ?? 30),
+  );
   const searchDays = value?.orders_list_search_days ?? "30";
   const sort = value?.orders_list_sort ?? "-created_at";
   const visibleColumns = normalizeOrdersListVisibleColumns(value?.orders_list_visible_columns);
@@ -128,6 +132,22 @@ export function OrdersListDefaultsFields({
               How many calendar days of orders to show when staff open Sales → Orders (including today).
               Default for wholesale/retail is 14 (2 weeks). Distribution orgs often use 30+. Staff can
               still narrow or widen the range with the date filters.
+            </p>
+          </Field>
+          <Field label="Reports default date filter (days)">
+            <input
+              id={`${idPrefix}-reports-days`}
+              type="number"
+              min={1}
+              max={90}
+              className={`${inputClassName()} w-32`}
+              value={reportsDays}
+              onChange={(e) => patch({ reports_default_date_range_days: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Default From/To window for reports (KRA invoices, compliance, sales reports, and others),
+              including today. Example: 2 = yesterday + today. Staff can still change the range on each
+              report.
             </p>
           </Field>
           <Field label="Search window (days)">

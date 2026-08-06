@@ -45,10 +45,27 @@ function MinimizeIcon({ className }) {
 
 export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const pathname = usePathname();
-  const { hasPermission, capabilities, user, organization, isSuperAdmin } = useAuth();
+  const {
+    hasPermission,
+    hasNavPermission,
+    isModuleEnabled,
+    capabilities,
+    user,
+    organization,
+    isSuperAdmin,
+  } = useAuth();
   const workspaceId = useMemo(
-    () => getStoredWorkspace() ?? defaultWorkspaceId(capabilities, { user, organization, isSuperAdmin }),
-    [capabilities, organization, user, isSuperAdmin],
+    () =>
+      getStoredWorkspace() ??
+      defaultWorkspaceId(capabilities, {
+        user,
+        organization,
+        isSuperAdmin,
+        hasPermission,
+        hasNavPermission,
+        isModuleEnabled,
+      }),
+    [capabilities, hasNavPermission, hasPermission, isModuleEnabled, isSuperAdmin, organization, user],
   );
   const workspaceLabel = useMemo(
     () => aiWorkspaceLabel(workspaceId, capabilities),

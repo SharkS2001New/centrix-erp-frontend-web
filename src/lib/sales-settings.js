@@ -118,6 +118,7 @@ const SALES_DEFAULTS = {
     backend: "order_completed",
   },
   orders_list_default_days: 14,
+  reports_default_date_range_days: 30,
   orders_list_search_days: 30,
   orders_list_sort: "-created_at",
   orders_list_visible_columns: [
@@ -216,6 +217,24 @@ export function normalizeOrdersListDefaultDays(value) {
   const days = Number(value);
   if (!Number.isFinite(days)) return SALES_DEFAULTS.orders_list_default_days;
   return Math.min(90, Math.max(1, Math.round(days)));
+}
+
+/** Inclusive calendar days for report From/To defaults (1 = today only). */
+export function normalizeReportsDefaultDateRangeDays(value) {
+  const days = Number(value);
+  if (!Number.isFinite(days)) return SALES_DEFAULTS.reports_default_date_range_days;
+  return Math.min(90, Math.max(1, Math.round(days)));
+}
+
+/** Default From/To for structured reports (KRA, sales, compliance, etc.). */
+export function getReportsDefaultDateRange(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return defaultDateRange(normalizeReportsDefaultDateRangeDays(sales.reports_default_date_range_days));
+}
+
+export function getReportsDefaultDateRangeDays(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return normalizeReportsDefaultDateRangeDays(sales.reports_default_date_range_days);
 }
 
 export function normalizeOrdersListVisibleColumns(value) {
@@ -614,6 +633,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   stock_deduct_on: "order_created",
   orders_list_default_days: "14",
+  reports_default_date_range_days: "30",
   orders_list_search_days: "30",
   orders_list_sort: "-created_at",
 };
@@ -692,6 +712,9 @@ export function salesOrganizationFormFromApi(res) {
     ...proformaPrintFormFromApi(sales),
     stock_deduct_on: sales.stock_deduct_on || "order_created",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(sales.orders_list_default_days)),
+    reports_default_date_range_days: String(
+      normalizeReportsDefaultDateRangeDays(sales.reports_default_date_range_days),
+    ),
     orders_list_search_days: String(
       normalizeOrdersListSearchDays(
         sales.orders_list_search_days,
@@ -807,6 +830,9 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     points_earn_per_kes: Number(withDiscountApproval.points_earn_per_kes) || 0,
     orders_list_default_days: normalizeOrdersListDefaultDays(
       withDiscountApproval.orders_list_default_days,
+    ),
+    reports_default_date_range_days: normalizeReportsDefaultDateRangeDays(
+      withDiscountApproval.reports_default_date_range_days,
     ),
     orders_list_search_days: normalizeOrdersListSearchDays(
       withDiscountApproval.orders_list_search_days,

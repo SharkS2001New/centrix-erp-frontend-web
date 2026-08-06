@@ -43,7 +43,6 @@ export const P = {
       view: "pricing_tax.kra_invoices.view",
       credit: "pricing_tax.kra_invoices.credit",
     },
-    kra_device_log: { view: "pricing_tax.kra_device_log.view" },
   },
   customers: {
     customers: { view: "customers.customers.view" },
@@ -445,6 +444,7 @@ function canViewHrReport(reportKey, hasPermission) {
 
 /** @param {(code: string) => boolean} hasPermission */
 export function canViewReport(reportKey, hasPermission) {
+  if (typeof hasPermission !== "function") return false;
   if (reportKey === "stock-on-hand") {
     return canViewReport("items-currently-in-stock", hasPermission);
   }

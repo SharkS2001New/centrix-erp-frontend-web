@@ -211,6 +211,7 @@ export function entitySearchConfigsForWorkspace(workspaceId) {
 }
 
 export function filterEntityConfigsByAccess(configs, hasPermission) {
+  if (typeof hasPermission !== "function") return [];
   return configs.filter((config) => !config.permission || hasPermission(config.permission));
 }
 

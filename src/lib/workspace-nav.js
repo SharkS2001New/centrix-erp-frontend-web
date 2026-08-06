@@ -67,7 +67,7 @@ export function buildWorkspaceNavSections({
     : [];
 
   const withOrders = navSections
-    .filter((section) => !section.superAdminOnly || isSuperAdmin?.())
+    .filter((section) => !section.superAdminOnly || (typeof isSuperAdmin === "function" && isSuperAdmin()))
     .map((section) => ({
       ...section,
       items: section.items.flatMap((item) => {

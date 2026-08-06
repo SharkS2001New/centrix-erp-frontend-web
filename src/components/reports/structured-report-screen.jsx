@@ -25,7 +25,14 @@ import {
 import { AiInsightPanel } from "@/components/ai/ai-insight-panel";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
-import { buildReportQueryParams, reportHidesBranchFilter, reportShowsDateRange, defaultReportExtraFilterValues } from "@/lib/reports/report-filter-config";
+import {
+  buildReportQueryParams,
+  reportHidesBranchFilter,
+  reportShowsDateRange,
+  defaultReportExtraFilterValues,
+  reportDefaultDateRangeDays,
+  REPORT_DEFAULT_DATE_RANGE_DAYS,
+} from "@/lib/reports/report-filter-config";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
@@ -35,6 +42,7 @@ import { filterStructuredReportColumns } from "@/lib/reports/report-column-visib
 import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
 import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
 import { useListPageSize } from "@/lib/use-list-page-controls";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 
 const DEFAULT_PAGE_SIZE = 20;
 const CACHE_SLOT = "structured-report";
@@ -61,12 +69,26 @@ function StandardReportScreen({ definition }) {
     capabilitiesRef.current = capabilities;
   }, [capabilities]);
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const defaultRange = useMemo(() => {
+  const resolveDefaultRange = useCallback(() => {
     if (definition.emptyDateRange) {
       return { from: "", to: "" };
     }
-    return defaultReportDateRange(definition.defaultDateRangeDays ?? 29);
-  }, [definition.defaultDateRangeDays, definition.emptyDateRange]);
+    if (definition.defaultDateRangeDays != null) {
+      return defaultReportDateRange(definition.defaultDateRangeDays);
+    }
+    if (Object.prototype.hasOwnProperty.call(REPORT_DEFAULT_DATE_RANGE_DAYS, definition.key)) {
+      return defaultReportDateRange(
+        reportDefaultDateRangeDays(definition.key, capabilities?.module_settings),
+      );
+    }
+    return getReportsDefaultDateRange(capabilities?.module_settings);
+  }, [
+    definition.defaultDateRangeDays,
+    definition.emptyDateRange,
+    definition.key,
+    capabilities?.module_settings,
+  ]);
+  const defaultRange = useMemo(() => resolveDefaultRange(), [resolveDefaultRange]);
   const branchInitialized = useRef(false);
 
   const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
@@ -297,7 +319,7 @@ function StandardReportScreen({ definition }) {
   }
 
   function resetFilters() {
-    const range = defaultReportDateRange(definition.defaultDateRangeDays ?? 29);
+    const range = resolveDefaultRange();
     const nextBranchId = defaultReportBranchId(user, isOrgWide);
     const nextExtraFilters = defaultReportExtraFilterValues(definition.key, definition.extraFilters);
     setFromDate(range.from);

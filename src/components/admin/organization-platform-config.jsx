@@ -25,6 +25,7 @@ import {
   normalizeOrdersListSearchDays,
   normalizeOrdersListSort,
   normalizeOrderActionStatuses,
+  normalizeReportsDefaultDateRangeDays,
   defaultBackofficeCheckoutOnCreate,
 } from "@/lib/sales-settings";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
@@ -364,6 +365,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
     orders_list_default_days: "14",
+    reports_default_date_range_days: "30",
     orders_list_search_days: "30",
     orders_list_sort: "-created_at",
     orders_list_visible_columns: getOrdersListVisibleColumns(null),
@@ -453,6 +455,9 @@ export function salesPlatformFromApi(apiPayload) {
         ? String(Math.min(15, Math.max(0, Number(apiPayload.cart_reservation_ttl_minutes) || 0)))
         : "15",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(apiPayload.orders_list_default_days)),
+    reports_default_date_range_days: String(
+      normalizeReportsDefaultDateRangeDays(apiPayload.reports_default_date_range_days),
+    ),
     orders_list_search_days: String(
       normalizeOrdersListSearchDays(
         apiPayload.orders_list_search_days,
@@ -671,8 +676,8 @@ export function OrganizationOrdersListSettings({
 
   return (
     <PlatformFormSection
-      title="Orders list"
-      description="Platform defaults for Sales → Orders date filter, search scope, and visible columns. Distribution orgs typically need a wider window than wholesale/retail — adjust per organization."
+      title="Orders list & reports"
+      description="Platform defaults for Sales → Orders date filter, search scope, visible columns, and the default From/To window for all reports."
     >
       {!salesEnabled ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">

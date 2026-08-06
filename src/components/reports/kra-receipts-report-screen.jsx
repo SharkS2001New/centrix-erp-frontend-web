@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
@@ -13,6 +14,7 @@ import {
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import {
   PaginationBar,
+  SECONDARY_BTN_CLASS,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
@@ -27,7 +29,7 @@ import {
   ReportPageShell,
 } from "@/components/reports/report-screen-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
-import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
+import { defaultReportBranchId } from "@/lib/reports/report-filters";
 import { KraResponseDetailDialog } from "@/components/reports/kra-invoice-preview-dialog";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { formatKraReportOrderNo } from "@/lib/sales";
@@ -41,10 +43,59 @@ import {
 } from "@/lib/kra-fiscal-receipt-print";
 import { KRA_REFUND_REASON_OPTIONS } from "@/lib/reports/report-filter-config";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { isKraFiscalizationActive } from "@/lib/finance-settings";
+import { isKraDeviceConfigured } from "@/lib/finance-settings";
+import { getReportsDefaultDateRange } from "@/lib/sales-settings";
 import { P } from "@/lib/permission-codes";
 
 const DEFAULT_PAGE_SIZE = 25;
+const KRA_INVOICE_COLUMNS_STORAGE_KEY = "centrix-erp-kra-invoices-visible-columns";
+
+/** Optional columns for KRA invoices — hidden by default; enable via Columns picker. */
+const KRA_INVOICE_OPTIONAL_COLUMNS = [
+  { id: "customer_name", label: "Customer" },
+  { id: "serial_number", label: "SCU / serial" },
+  { id: "status", label: "Status" },
+  { id: "channel", label: "Channel" },
+];
+
+function defaultOptionalColumnIds() {
+  return [];
+}
+
+function normalizeOptionalColumnIds(ids) {
+  const valid = new Set(KRA_INVOICE_OPTIONAL_COLUMNS.map((c) => c.id));
+  const normalized = (Array.isArray(ids) ? ids : []).filter((id) => valid.has(id));
+  return KRA_INVOICE_OPTIONAL_COLUMNS.filter((c) => normalized.includes(c.id)).map((c) => c.id);
+}
+
+function readStoredOptionalColumnIds() {
+  if (typeof window === "undefined") return defaultOptionalColumnIds();
+  try {
+    const raw = localStorage.getItem(KRA_INVOICE_COLUMNS_STORAGE_KEY);
+    if (!raw) return defaultOptionalColumnIds();
+    return normalizeOptionalColumnIds(JSON.parse(raw));
+  } catch {
+    return defaultOptionalColumnIds();
+  }
+}
+
+function CreditSaleIcon({ className = "h-3.5 w-3.5" }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </svg>
+  );
+}
 
 function statusBadge(row) {
   const status = String(row.status ?? "").toLowerCase();
@@ -70,7 +121,10 @@ export function KraReceiptsReportScreen({ definition }) {
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const queryFilterOptions = useReportFilterOptions(definition.key);
-  const defaultRange = useMemo(() => defaultReportDateRange(29), []);
+  const defaultRange = useMemo(
+    () => getReportsDefaultDateRange(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
   const defaultBranch = useMemo(() => defaultReportBranchId(user, isOrgWide), [user, isOrgWide]);
   const canCreditKraSale =
     isInvoicesView &&
@@ -99,6 +153,9 @@ export function KraReceiptsReportScreen({ definition }) {
   const [creditRow, setCreditRow] = useState(null);
   const [creditReasonCode, setCreditReasonCode] = useState("06");
   const [crediting, setCrediting] = useState(false);
+  const [creditProgress, setCreditProgress] = useState(0);
+  const [optionalColumnIds, setOptionalColumnIds] = useState(defaultOptionalColumnIds);
+  const [columnsOpen, setColumnsOpen] = useState(false);
   const [applied, setApplied] = useState({
     fromDate: defaultRange.from,
     toDate: defaultRange.to,
@@ -115,10 +172,41 @@ export function KraReceiptsReportScreen({ definition }) {
     isSomeOnPageSelected,
   } = usePageRowSelection();
 
-  const kraFiscalizationActive = isKraFiscalizationActive(
+  const kraDeviceReady = isKraDeviceConfigured(
     capabilities?.module_settings,
     capabilities,
   );
+
+  useEffect(() => {
+    if (!isInvoicesView) return;
+    setOptionalColumnIds(readStoredOptionalColumnIds());
+  }, [isInvoicesView]);
+
+  useEffect(() => {
+    if (!isInvoicesView) return;
+    localStorage.setItem(KRA_INVOICE_COLUMNS_STORAGE_KEY, JSON.stringify(optionalColumnIds));
+  }, [isInvoicesView, optionalColumnIds]);
+
+  const showOptionalColumn = useCallback(
+    (id) => {
+      if (!isInvoicesView) {
+        return id !== "customer_name";
+      }
+      return optionalColumnIds.includes(id);
+    },
+    [isInvoicesView, optionalColumnIds],
+  );
+
+  function toggleOptionalColumn(id) {
+    setOptionalColumnIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return normalizeOptionalColumnIds([...prev, id]);
+    });
+  }
+
+  function resetOptionalColumns() {
+    setOptionalColumnIds(defaultOptionalColumnIds());
+  }
 
   useEffect(() => {
     fetchBranchesCached()
@@ -218,6 +306,10 @@ export function KraReceiptsReportScreen({ definition }) {
   async function handleRetryRow(row) {
     const responseId = kraReportRowId(row);
     if (!responseId || !row?.sale_id) return;
+    if (!kraDeviceReady) {
+      notifyError("Enable the KRA device in Finance settings before retrying.");
+      return;
+    }
     setRetryingId(responseId);
     try {
       const res = await apiRequest(`/kra-responses/${responseId}/retry`, { method: "POST" });
@@ -231,15 +323,49 @@ export function KraReceiptsReportScreen({ definition }) {
     }
   }
 
+  function openCreditSaleDialog(row) {
+    if (!isKraOriginalInvoiceSaleRow(row)) {
+      notifyError("Only successful original KRA invoice sales can be credited.");
+      return;
+    }
+    if (!row?.sale_id || !kraReportRowId(row)) {
+      notifyError("This invoice is missing a linked sale or KRA response id.");
+      return;
+    }
+    if (!kraDeviceReady) {
+      notifyError("Enable the KRA device in Finance settings before crediting a sale.");
+      return;
+    }
+    setCreditReasonCode("06");
+    setCreditProgress(0);
+    setCreditRow(row);
+  }
+
   async function handleCreditSale() {
     const responseId = kraReportRowId(creditRow);
-    if (!responseId || !creditRow?.sale_id) return;
+    if (!responseId || !creditRow?.sale_id) {
+      notifyError("This invoice is missing a linked sale or KRA response id.");
+      return;
+    }
+    if (!kraDeviceReady) {
+      notifyError("Enable the KRA device in Finance settings before crediting a sale.");
+      return;
+    }
+
     setCrediting(true);
+    setCreditProgress(12);
+    let progressTimer = null;
     try {
+      progressTimer = window.setInterval(() => {
+        setCreditProgress((prev) => (prev >= 88 ? prev : prev + 8));
+      }, 400);
+
       const res = await apiRequest(`/kra-responses/${responseId}/credit`, {
         method: "POST",
         body: { refund_reason_code: creditReasonCode || "06" },
+        loading: false,
       });
+      setCreditProgress(100);
       notifySuccess(res.message ?? "KRA credit note submitted. Centrix sale was not changed.");
       setCreditRow(null);
       await loadReport();
@@ -247,7 +373,9 @@ export function KraReceiptsReportScreen({ definition }) {
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "KRA credit failed");
     } finally {
+      if (progressTimer != null) window.clearInterval(progressTimer);
       setCrediting(false);
+      setCreditProgress(0);
     }
   }
 
@@ -255,23 +383,35 @@ export function KraReceiptsReportScreen({ definition }) {
     () => [
       { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
       { key: "order_no", label: "Order #", accessor: (r) => formatKraReportOrderNo(r) },
-      ...(isInvoicesView
+      ...(showOptionalColumn("customer_name")
         ? [{ key: "customer_name", label: "Customer", accessor: (r) => r.customer_name ?? "—" }]
         : []),
       { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number || "—" },
-      { key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number || "—" },
+      ...(showOptionalColumn("serial_number")
+        ? [{ key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number || "—" }]
+        : []),
       {
         key: "document_type",
         label: "Type",
         accessor: (r) => kraDocumentTypeLabel(r),
       },
-      { key: "status", label: "Status", accessor: (r) => r.status },
+      ...(showOptionalColumn("status")
+        ? [{ key: "status", label: "Status", accessor: (r) => r.status }]
+        : []),
       ...(multiBranch ? [{ key: "branch_name", label: "Branch", accessor: (r) => r.branch_name }] : []),
-      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) || r.channel },
+      ...(showOptionalColumn("channel")
+        ? [
+            {
+              key: "channel",
+              label: "Channel",
+              accessor: (r) => salesChannelLabel(r.channel) || r.channel,
+            },
+          ]
+        : []),
       { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
       { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],
-    [multiBranch, isInvoicesView],
+    [multiBranch, showOptionalColumn],
   );
 
   const kpis = useMemo(() => {
@@ -308,7 +448,17 @@ export function KraReceiptsReportScreen({ definition }) {
     branches.find((b) => String(b.id) === applied.branchId)?.branch_name ??
     (applied.branchId ? "" : "All branches");
 
-  const typeColSpan = 8 + (isInvoicesView ? 1 : 0) + (multiBranch ? 1 : 0);
+  const typeColSpan =
+    1 + // checkbox
+    1 + // date
+    1 + // order #
+    (showOptionalColumn("customer_name") ? 1 : 0) +
+    1 + // CU
+    (showOptionalColumn("serial_number") ? 1 : 0) +
+    1 + // type
+    (showOptionalColumn("status") ? 1 : 0) +
+    (multiBranch ? 1 : 0) +
+    (showOptionalColumn("channel") ? 1 : 0);
 
   return (
     <>
@@ -383,7 +533,7 @@ export function KraReceiptsReportScreen({ definition }) {
           }}
           onRefresh={() => void refreshReport()}
           onReset={() => {
-            const range = defaultReportDateRange(29);
+            const range = getReportsDefaultDateRange(capabilities?.module_settings);
             const bid = defaultReportBranchId(user, isOrgWide);
             setFromDate(range.from);
             setToDate(range.to);
@@ -402,6 +552,19 @@ export function KraReceiptsReportScreen({ definition }) {
         />
 
         {!loading && !isInvoicesView ? <ReportKpiGrid items={kpis} /> : null}
+
+        {isInvoicesView ? (
+          <div className="mb-3 flex justify-end">
+            <ColumnPicker
+              open={columnsOpen}
+              onToggle={() => setColumnsOpen((v) => !v)}
+              onClose={() => setColumnsOpen(false)}
+              visibleColumnIds={optionalColumnIds}
+              onToggleColumn={toggleOptionalColumn}
+              onReset={resetOptionalColumns}
+            />
+          </div>
+        ) : null}
 
         {loading ? (
           <p className="text-sm text-slate-500">Loading report…</p>
@@ -428,20 +591,25 @@ export function KraReceiptsReportScreen({ definition }) {
                       </th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">Date</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">Order #</th>
-                      {isInvoicesView ? (
+                      {showOptionalColumn("customer_name") ? (
                         <th className="whitespace-nowrap px-4 py-3 text-left">Customer</th>
                       ) : null}
                       <th className="whitespace-nowrap px-4 py-3 text-left">CU number</th>
-                      <th className="whitespace-nowrap px-4 py-3 text-left">SCU / serial</th>
+                      {showOptionalColumn("serial_number") ? (
+                        <th className="whitespace-nowrap px-4 py-3 text-left">SCU / serial</th>
+                      ) : null}
                       <th className="whitespace-nowrap px-4 py-3 text-left">Type</th>
-                      <th className="whitespace-nowrap px-4 py-3 text-left">Status</th>
+                      {showOptionalColumn("status") ? (
+                        <th className="whitespace-nowrap px-4 py-3 text-left">Status</th>
+                      ) : null}
                       {multiBranch ? (
                         <th className="whitespace-nowrap px-4 py-3 text-left">Branch</th>
                       ) : null}
-                      <th className="whitespace-nowrap px-4 py-3 text-left">Channel</th>
+                      {showOptionalColumn("channel") ? (
+                        <th className="whitespace-nowrap px-4 py-3 text-left">Channel</th>
+                      ) : null}
                       <th className="whitespace-nowrap px-4 py-3 text-right">Order total</th>
                       <th className="whitespace-nowrap px-4 py-3 text-right">VAT</th>
-                      <th className="whitespace-nowrap px-4 py-3 text-left">Error</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">Actions</th>
                     </tr>
                   </thead>
@@ -469,7 +637,7 @@ export function KraReceiptsReportScreen({ definition }) {
                           <td className="whitespace-nowrap px-4 py-2.5">
                             {formatReportCell("order_no", formatKraReportOrderNo(row))}
                           </td>
-                          {isInvoicesView ? (
+                          {showOptionalColumn("customer_name") ? (
                             <td className="max-w-[12rem] truncate px-4 py-2.5" title={row.customer_name ?? ""}>
                               {row.customer_name || "—"}
                             </td>
@@ -477,32 +645,32 @@ export function KraReceiptsReportScreen({ definition }) {
                           <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs">
                             {row.invoice_number || "—"}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs">
-                            {row.serial_number || "—"}
-                          </td>
+                          {showOptionalColumn("serial_number") ? (
+                            <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs">
+                              {row.serial_number || "—"}
+                            </td>
+                          ) : null}
                           <td className="whitespace-nowrap px-4 py-2.5">
                             <ReportBadge label={typeBadge.label} tone={typeBadge.tone} />
                           </td>
-                          <td className="whitespace-nowrap px-4 py-2.5">
-                            {badge ? <ReportBadge label={badge.label} tone={badge.tone} /> : "—"}
-                          </td>
+                          {showOptionalColumn("status") ? (
+                            <td className="whitespace-nowrap px-4 py-2.5">
+                              {badge ? <ReportBadge label={badge.label} tone={badge.tone} /> : "—"}
+                            </td>
+                          ) : null}
                           {multiBranch ? (
                             <td className="whitespace-nowrap px-4 py-2.5">{row.branch_name || "—"}</td>
                           ) : null}
-                          <td className="whitespace-nowrap px-4 py-2.5">
-                            {salesChannelLabel(row.channel) || row.channel || "—"}
-                          </td>
+                          {showOptionalColumn("channel") ? (
+                            <td className="whitespace-nowrap px-4 py-2.5">
+                              {salesChannelLabel(row.channel) || row.channel || "—"}
+                            </td>
+                          ) : null}
                           <td className="whitespace-nowrap px-4 py-2.5 text-right">
                             {formatReportCell("order_total", row.order_total)}
                           </td>
                           <td className="whitespace-nowrap px-4 py-2.5 text-right">
                             {formatReportCell("total_vat", row.total_vat)}
-                          </td>
-                          <td
-                            className="max-w-xs truncate px-4 py-2.5 text-xs text-red-600"
-                            title={row.error_message ?? ""}
-                          >
-                            {row.error_message || "—"}
                           </td>
                           <td className="whitespace-nowrap px-4 py-2.5">
                             <div className="flex flex-wrap items-center gap-2">
@@ -516,7 +684,7 @@ export function KraReceiptsReportScreen({ definition }) {
                               {!printable && row.sale_id ? (
                                 <button
                                   type="button"
-                                  disabled={retryingId === rowId || !kraFiscalizationActive}
+                                  disabled={retryingId === rowId}
                                   onClick={() => void handleRetryRow(row)}
                                   className="font-medium text-amber-800 hover:underline disabled:opacity-50"
                                 >
@@ -526,15 +694,13 @@ export function KraReceiptsReportScreen({ definition }) {
                               {canCreditRow ? (
                                 <button
                                   type="button"
-                                  disabled={!kraFiscalizationActive || crediting}
-                                  onClick={() => {
-                                    setCreditReasonCode("06");
-                                    setCreditRow(row);
-                                  }}
-                                  className="font-medium text-rose-700 hover:underline disabled:opacity-50"
+                                  disabled={crediting}
+                                  onClick={() => openCreditSaleDialog(row)}
+                                  className="theme-secondary-btn inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50"
                                   title="Credits this sale on the KRA device only. Centrix order is unchanged."
                                 >
-                                  Credit This Sale
+                                  <CreditSaleIcon />
+                                  Credit Sale
                                 </button>
                               ) : null}
                             </div>
@@ -550,7 +716,6 @@ export function KraReceiptsReportScreen({ definition }) {
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-right">{footerTotals.order_total}</td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-right">{footerTotals.total_vat}</td>
-                      <td className="px-4 py-2.5" />
                       <td className="px-4 py-2.5" />
                     </tr>
                   </tfoot>
@@ -590,7 +755,7 @@ export function KraReceiptsReportScreen({ definition }) {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 id="kra-credit-sale-title" className="theme-heading text-base font-semibold">
-              Credit This Sale on KRA?
+              Credit Sale on KRA?
             </h2>
             <p className="theme-subtext mt-2 text-sm">
               This submits a KRA credit note for order {formatKraReportOrderNo(creditRow)} (CU{" "}
@@ -612,6 +777,20 @@ export function KraReceiptsReportScreen({ definition }) {
                 ))}
               </select>
             </label>
+            {crediting ? (
+              <div className="mt-4 space-y-2" aria-live="polite">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-600">
+                  <span>Submitting credit to KRA device…</span>
+                  <span>{Math.min(100, Math.round(creditProgress))}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-[#185FA5] transition-[width] duration-300 ease-out"
+                    style={{ width: `${Math.min(100, Math.max(8, creditProgress))}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -623,11 +802,12 @@ export function KraReceiptsReportScreen({ definition }) {
               </button>
               <button
                 type="button"
-                disabled={crediting || !kraFiscalizationActive}
+                disabled={crediting}
                 onClick={() => void handleCreditSale()}
-                className="rounded-lg bg-rose-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-800 disabled:opacity-50"
+                className="theme-primary-btn inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
               >
-                {crediting ? "Crediting…" : "Credit on KRA"}
+                <CreditSaleIcon />
+                {crediting ? "Crediting…" : "Credit Sale"}
               </button>
             </div>
           </div>
@@ -652,5 +832,95 @@ export function KraReceiptsReportScreen({ definition }) {
         </button>
       </BatchActionBar>
     </>
+  );
+}
+
+function ColumnPicker({ open, onToggle, onClose, visibleColumnIds, onToggleColumn, onReset }) {
+  const buttonRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState(null);
+
+  useEffect(() => {
+    if (!open || !buttonRef.current) {
+      setMenuStyle(null);
+      return;
+    }
+    const rect = buttonRef.current.getBoundingClientRect();
+    setMenuStyle({
+      position: "fixed",
+      top: rect.bottom + 8,
+      right: Math.max(8, window.innerWidth - rect.right),
+      zIndex: 80,
+    });
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={onToggle}
+        className={`${SECONDARY_BTN_CLASS} gap-2 px-3 py-2.5`}
+      >
+        <ColumnsIcon />
+        Columns
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-[70] cursor-default"
+                aria-label="Close column picker"
+                onClick={onClose}
+              />
+              <div
+                style={menuStyle ?? undefined}
+                className="theme-panel fixed z-[80] w-56 rounded-xl border p-3 shadow-lg"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="theme-subtext text-xs font-semibold uppercase tracking-wide">
+                    Show columns
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <ul className="max-h-72 space-y-1 overflow-y-auto">
+                  {KRA_INVOICE_OPTIONAL_COLUMNS.map((col) => {
+                    const checked = visibleColumnIds.includes(col.id);
+                    return (
+                      <li key={col.id}>
+                        <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => onToggleColumn(col.id)}
+                            className="rounded border-slate-300"
+                          />
+                          {col.label}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+function ColumnsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="7" height="18" rx="1" />
+      <rect x="14" y="3" width="7" height="18" rx="1" />
+    </svg>
   );
 }

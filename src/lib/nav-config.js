@@ -183,13 +183,6 @@ const NAV_SECTION_DEFINITIONS = [
         requireKraDevice: true,
         reportKey: "kra-invoices",
       },
-      {
-        href: "/admin/kra-responses",
-        label: "KRA device log",
-        module: null,
-        permission: P.pricing_tax.kra_device_log.view,
-        requireKraDevice: true,
-      },
     ],
   },
   {
@@ -1196,17 +1189,26 @@ export function isNavSectionVisible(section, navContext) {
 export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavPermission, requireTillFloat, user, capabilities, isSuperAdmin, organization }) {
   // Prefer role-assigned nav map so empty roles / org-admin Administration-only grants
   // do not show every Backoffice link. Fall back to hasPermission when nav map is absent.
-  const checkPermission = hasNavPermission ?? hasPermission;
-  if (item.superAdminOnly && !isSuperAdmin?.()) return false;
+  const checkPermission =
+    typeof hasNavPermission === "function"
+      ? hasNavPermission
+      : typeof hasPermission === "function"
+        ? hasPermission
+        : () => false;
+  const moduleEnabled =
+    typeof isModuleEnabled === "function" ? isModuleEnabled : () => false;
+  const superAdmin =
+    typeof isSuperAdmin === "function" ? isSuperAdmin : () => false;
+  if (item.superAdminOnly && !superAdmin()) return false;
   if (
-    shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin }) &&
+    shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin: superAdmin }) &&
     !item.superAdminOnly
   ) {
     return false;
   }
   if (
     item.orgAdminOnly &&
-    shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin })
+    shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin: superAdmin })
   ) {
     return false;
   }
@@ -1236,8 +1238,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;
   if (item.moduleAny?.length) {
-    if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;
-  } else if (item.module && !isModuleEnabledForNav(item.module, isModuleEnabled)) return false;
+    if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, moduleEnabled))) return false;
+  } else if (item.module && !isModuleEnabledForNav(item.module, moduleEnabled)) return false;
   if (item.reportKey && !canViewReport(item.reportKey, checkPermission)) return false;
   if (item.permissionAny?.length) {
     if (!item.permissionAny.some((code) => checkPermission(code))) return false;

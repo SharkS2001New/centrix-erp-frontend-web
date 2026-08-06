@@ -305,6 +305,7 @@ export function AdminKraResponsesScreen() {
           open={Boolean(selected)}
           row={selected}
           apiBasePath={adminPath("/kra-responses")}
+          showDevicePayload
           onClose={() => setSelected(null)}
         />
       ) : null}
