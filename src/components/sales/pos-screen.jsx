@@ -7026,7 +7026,7 @@ export function PosScreen({ standalone = false }) {
         sales_workspace: salesWorkspace,
         ...(submitKra ? { submit_kra: true } : {}),
         ...(liveCart?.held_order_num ? { order_num: liveCart.held_order_num } : {}),
-        ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
+        ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
         ...(onlinePosFields.pos_order_num != null
           ? { pos_order_num: onlinePosFields.pos_order_num }
           : {}),
@@ -7575,7 +7575,7 @@ export function PosScreen({ standalone = false }) {
         ...body,
         sales_workspace: salesWorkspace,
         ...(activeCart?.held_order_num ? { order_num: activeCart.held_order_num } : {}),
-        ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
+        ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
       });
       if (!checkoutBody) {
         setSaveOrderError("Enter a discount reason to save this order for manager approval.");

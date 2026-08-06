@@ -489,7 +489,7 @@ function TillsCheckoutSettingsTab({
         <h3 className="theme-heading text-sm font-medium">Cash tills</h3>
         <Toggle
           label="Require till float on backoffice create order"
-          description="When on, staff using Sales → Create order must open a till session and declare operating float before checkout — same X/Z cash reconciliation as external POS. When off (default), backoffice orders never require a till session."
+          description="When on, staff using Sales → Create order must open a till session and declare operating float before checkout. When off (default), backoffice checkout still works without a till — but if the cashier already has an open POS session, that sale is counted on the same X / Z / End of Day report until the session is closed."
           checked={salesForm.require_backoffice_till_float}
           onChange={(v) => setSalesForm((f) => ({ ...f, require_backoffice_till_float: v }))}
         />
