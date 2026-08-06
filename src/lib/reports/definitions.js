@@ -8,6 +8,8 @@ import {
 } from "@/lib/inventory-qty-display";
 import { formatDisplayQty } from "@/lib/stock-uom";
 import { lpoRowDisplayNumber } from "@/lib/lpo-display";
+import { formatKraReportOrderNo } from "@/lib/sales";
+import { formatKraReportOrderNo } from "@/lib/sales";
 
 /** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean, sumFromRow?: (row: object) => number, footerCompute?: (rows: object[]) => number }} ReportColumn */
 
@@ -1204,11 +1206,34 @@ export const REPORT_DEFINITIONS = {
     variant: "kra-receipts",
     columns: [
       { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
-      { key: "order_no", label: "Order #", accessor: (r) => r.order_no },
+      { key: "order_no", label: "Order #", accessor: (r) => formatKraReportOrderNo(r) },
+      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name ?? "—" },
       { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number },
       { key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number },
       { key: "status", label: "Status", accessor: (r) => r.status },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
+      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+    ],
+    footerTotals: ["order_total", "total_vat"],
+  },
+
+  "kra-invoices": {
+    title: "KRA invoices",
+    section: "Pricing & tax",
+    apiPath: "/reports/kra-receipts",
+    dateColumn: "receipt_date",
+    showDateRange: true,
+    variant: "kra-invoices",
+    columns: [
+      { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
+      { key: "order_no", label: "Order #", accessor: (r) => formatKraReportOrderNo(r) },
+      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name ?? "—" },
+      { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number },
+      { key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number },
+      { key: "status", label: "Status", accessor: (r) => r.status },
+      { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) || r.channel },
       { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
       { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],

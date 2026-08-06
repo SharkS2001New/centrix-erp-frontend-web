@@ -212,6 +212,20 @@ export function KraResponseDetailDialog({
           <>
             <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
               <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">Order #</dt>
+                <dd className="text-slate-900">{summary?.orderLabel ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-500">Customer</dt>
+                <dd className="text-slate-900">{enriched?.customerName || activeRow?.customer_name || "—"}</dd>
+              </div>
+              {enriched?.buyerPin ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Customer PIN</dt>
+                  <dd className="font-mono text-xs text-slate-900">{enriched.buyerPin}</dd>
+                </div>
+              ) : null}
+              <div>
                 <dt className="text-xs uppercase tracking-wide text-slate-500">CU number</dt>
                 <dd className="font-mono text-xs text-slate-900">{activeRow?.invoice_number || "—"}</dd>
               </div>

@@ -17,7 +17,7 @@ import {
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
-import { usePageRowSelection, TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
+import { usePageRowSelection, TABLE_ROW_CHECKBOX_CLASS, BatchActionBar } from "@/components/catalog/table-row-selection";
 import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import {
@@ -31,6 +31,7 @@ import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/rep
 import { KraResponseDetailDialog } from "@/components/reports/kra-invoice-preview-dialog";
 import { KraDeviceStatusBanner } from "@/components/reports/kra-device-status-banner";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
+import { formatKraReportOrderNo } from "@/lib/sales";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { kraReportRowId, printKraFiscalReceipts } from "@/lib/kra-fiscal-receipt-print";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -51,6 +52,7 @@ function isPrintableKraRow(row) {
 }
 
 export function KraReceiptsReportScreen({ definition }) {
+  const isInvoicesView = definition.variant === "kra-invoices";
   const { user, isOrgWide, capabilities, organization } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
@@ -125,9 +127,13 @@ export function KraReceiptsReportScreen({ definition }) {
       if (applied.queryFilters?.q) searchParams.q = applied.queryFilters.q;
       const [res, statusRes] = await Promise.all([
         apiRequest(definition.apiPath, { searchParams, loading: false }),
-        apiRequest("/kra/device-status", { loading: false, reportIssues: false }).catch(() => null),
+        isInvoicesView
+          ? Promise.resolve(null)
+          : apiRequest("/kra/device-status", { loading: false, reportIssues: false }).catch(() => null),
       ]);
-      setDeviceStatus(statusRes);
+      if (!isInvoicesView) {
+        setDeviceStatus(statusRes);
+      }
       setRows(normalizeReportRows(res));
       setReportMeta(normalizeReportMeta(res, page, pageSize));
       setReportSummary(normalizeReportSummary(res));
@@ -141,7 +147,7 @@ export function KraReceiptsReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath, depsKey, page, pageSize, paneHref, clearSelection]);
+  }, [applied, definition.apiPath, depsKey, isInvoicesView, page, pageSize, paneHref, clearSelection]);
 
   const hasData = rows.length > 0 || reportMeta != null;
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
@@ -159,6 +165,11 @@ export function KraReceiptsReportScreen({ definition }) {
   const selectedRows = useMemo(
     () => rows.filter((row) => selectedIds.has(String(kraReportRowId(row)))),
     [rows, selectedIds],
+  );
+
+  const selectedPrintableRows = useMemo(
+    () => selectedRows.filter(isPrintableKraRow),
+    [selectedRows],
   );
 
   const printableOnPage = useMemo(() => rows.filter(isPrintableKraRow), [rows]);
@@ -206,7 +217,10 @@ export function KraReceiptsReportScreen({ definition }) {
   const exportColumns = useMemo(
     () => [
       { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
-      { key: "order_no", label: "Order #", accessor: (r) => r.order_no ?? r.sale_order_num ?? r.sale_id },
+      { key: "order_no", label: "Order #", accessor: (r) => formatKraReportOrderNo(r) },
+      ...(isInvoicesView
+        ? [{ key: "customer_name", label: "Customer", accessor: (r) => r.customer_name ?? "—" }]
+        : []),
       { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number || "—" },
       { key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number || "—" },
       { key: "status", label: "Status", accessor: (r) => r.status },
@@ -215,7 +229,7 @@ export function KraReceiptsReportScreen({ definition }) {
       { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
       { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],
-    [multiBranch],
+    [multiBranch, isInvoicesView],
   );
 
   const kpis = useMemo(() => {
@@ -257,7 +271,7 @@ export function KraReceiptsReportScreen({ definition }) {
       <ReportPageShell
         section={definition.section}
         title={definition.title}
-        subtitle={definition.subtitle}
+        subtitle={isInvoicesView ? undefined : definition.subtitle}
         exportConfig={{
           filename: definition.key ?? "kra-receipts",
           columns: exportColumns.map((col) => ({
@@ -290,9 +304,11 @@ export function KraReceiptsReportScreen({ definition }) {
           </p>
         ) : null}
 
-        <div className="mb-4">
-          <KraDeviceStatusBanner capabilities={capabilities} deviceStatus={deviceStatus} />
-        </div>
+        {!isInvoicesView ? (
+          <div className="mb-4">
+            <KraDeviceStatusBanner capabilities={capabilities} deviceStatus={deviceStatus} />
+          </div>
+        ) : null}
 
         <ReportFilterBar
           reportKey={definition.key}
@@ -341,9 +357,9 @@ export function KraReceiptsReportScreen({ definition }) {
           showBranchFilter={multiBranch}
         />
 
-        {!loading ? <ReportKpiGrid items={kpis} /> : null}
+        {!loading && !isInvoicesView ? <ReportKpiGrid items={kpis} /> : null}
 
-        {!loading && rows.length > 0 ? (
+        {!loading && !isInvoicesView && rows.length > 0 ? (
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -400,6 +416,9 @@ export function KraReceiptsReportScreen({ definition }) {
                       </th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">Date</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">Order #</th>
+                      {isInvoicesView ? (
+                        <th className="whitespace-nowrap px-4 py-3 text-left">Customer</th>
+                      ) : null}
                       <th className="whitespace-nowrap px-4 py-3 text-left">CU number</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">SCU / serial</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left">Status</th>
@@ -433,8 +452,13 @@ export function KraReceiptsReportScreen({ definition }) {
                             {formatReportCell("receipt_date", row.receipt_date)}
                           </td>
                           <td className="whitespace-nowrap px-4 py-2.5">
-                            {formatReportCell("order_no", row.order_no ?? row.sale_order_num ?? row.sale_id)}
+                            {formatReportCell("order_no", formatKraReportOrderNo(row))}
                           </td>
+                          {isInvoicesView ? (
+                            <td className="max-w-[12rem] truncate px-4 py-2.5" title={row.customer_name ?? ""}>
+                              {row.customer_name || "—"}
+                            </td>
+                          ) : null}
                           <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs">
                             {row.invoice_number || "—"}
                           </td>
@@ -471,12 +495,24 @@ export function KraReceiptsReportScreen({ definition }) {
                               >
                                 Details
                               </button>
-                              {printable ? (
+                              {!isInvoicesView && printable ? (
                                 <button
                                   type="button"
                                   disabled={printing}
                                   onClick={() =>
-                                    void handlePrintRows([row], `KRA receipt #${row.order_no ?? rowId}`)
+                                    void handlePrintRows([row], `KRA receipt #${formatKraReportOrderNo(row)}`)
+                                  }
+                                  className="font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                                >
+                                  Print
+                                </button>
+                              ) : null}
+                              {isInvoicesView && printable ? (
+                                <button
+                                  type="button"
+                                  disabled={printing}
+                                  onClick={() =>
+                                    void handlePrintRows([row], `KRA invoice #${formatKraReportOrderNo(row)}`)
                                   }
                                   className="font-medium text-[#185FA5] hover:underline disabled:opacity-50"
                                 >
@@ -501,7 +537,7 @@ export function KraReceiptsReportScreen({ definition }) {
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-slate-200 bg-slate-50 font-medium">
-                      <td className="px-4 py-2.5" colSpan={multiBranch ? 10 : 9}>
+                      <td className="px-4 py-2.5" colSpan={(multiBranch ? 10 : 9) + (isInvoicesView ? 1 : 0)}>
                         Page total
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-right">{footerTotals.order_total}</td>
@@ -529,6 +565,24 @@ export function KraReceiptsReportScreen({ definition }) {
         row={previewRow}
         onClose={() => setPreviewRow(null)}
       />
+
+      {isInvoicesView ? (
+        <BatchActionBar count={selectedIds.size} onClear={clearSelection}>
+          <button
+            type="button"
+            disabled={printing || selectedPrintableRows.length === 0}
+            onClick={() =>
+              void handlePrintRows(
+                selectedPrintableRows,
+                `KRA invoices (${selectedPrintableRows.length})`,
+              )
+            }
+            className="theme-primary-btn rounded-full px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+          >
+            {printing ? "Printing…" : "Print"}
+          </button>
+        </BatchActionBar>
+      ) : null}
     </>
   );
 }

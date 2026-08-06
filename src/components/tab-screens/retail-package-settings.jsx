@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   fetchCategoriesCached,
@@ -207,7 +208,12 @@ export function RetailPackageSettingsScreen() {
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
   const rowById = useMemo(() => new Map(enriched.map((r) => [String(r.id), r])), [enriched]);
-  const tableLoading = loading || (listLoading && settings.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: settings.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -457,6 +463,7 @@ export function RetailPackageSettingsScreen() {
         {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading package settings…</p>
         ) : (
+          <div className={listRefresh.contentClassName}>
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] border-collapse text-sm">
@@ -534,6 +541,7 @@ export function RetailPackageSettingsScreen() {
               onPageSizeChange={handlePageSizeChange}
             />
           </>
+        </div>
         )}
       </div>
 

@@ -200,6 +200,41 @@ export async function purgeReservedPosTicketsUpTo(posOrderNum, posOrderDate = nu
   );
 }
 
+/**
+ * Highest Cash Sales # already issued on-device today (local seq + pending/failed outbox).
+ * Does not consume the next number.
+ */
+export async function peekIssuedPosTicketMax(posOrderDate = null) {
+  const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
+  const key = `pos_ticket_seq_${today}`;
+  let maxIssued = Number((await idbGetMeta(key)) ?? 0);
+
+  try {
+    const pending = await idbListPendingOutbox({ includeErrors: true });
+    for (const row of pending ?? []) {
+      const num = Number(
+        row?.sale_payload?.pos_order_num ?? row?.checkout_body?.pos_order_num ?? 0,
+      );
+      const date =
+        normalizePosOrderDate(row?.sale_payload?.pos_order_date) ??
+        normalizePosOrderDate(row?.checkout_body?.pos_order_date);
+      if (num > maxIssued && (!date || date === today)) {
+        maxIssued = num;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return maxIssued > 0 ? maxIssued : null;
+}
+
+/** Next Cash Sales # for a blank workspace (respects pending/failed outbox tickets). */
+export async function peekNextPosTicketNumber(posOrderDate = null) {
+  const max = await peekIssuedPosTicketMax(posOrderDate);
+  return max != null ? max + 1 : null;
+}
+
 /** Put a consumed reserved slot back when checkout fails before the sale is stored. */
 export async function returnPosOfflineOrderSlot(slot) {
   if (!slot?.order_num) return;
@@ -244,7 +279,8 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
     // Abandoned shells from a completed/failed sale must not hijack the next ticket.
     if (!hasLines && !isQueuedEdit && !isPreviousOrderEdit && existing.held_order_num) {
       await idbClearLocalCart("active");
-    } else if (hasLines || isQueuedEdit || isPreviousOrderEdit || existing.offline) {
+    } else if (hasLines || isQueuedEdit || isPreviousOrderEdit) {
+      // Keep lines / active edit sessions. Empty offline shells alone must not hijack F8.
       // Keep lines, but refresh till/session from the open float after a new day.
       const nextTill = seed.till_id ?? existing.till_id ?? null;
       const nextSession = seed.float_session_id ?? existing.float_session_id ?? null;
@@ -892,6 +928,10 @@ export async function completeOfflineCashSale({
     String(existingOutbox?.sale_payload?.customer_name_override ?? "").trim() ||
     String(existingOutbox?.checkout_body?.customer_name_override ?? "").trim() ||
     null;
+  const customerKraPin =
+    String(cart.customer_kra_pin ?? "").trim() ||
+    String(existingOutbox?.checkout_body?.customer_kra_pin ?? "").trim() ||
+    null;
 
   const saleItems = [];
   for (const [index, line] of (cart.lines ?? []).entries()) {
@@ -1029,6 +1069,7 @@ export async function completeOfflineCashSale({
       float_session_id: sale.float_session_id,
       customer_num: customerNum,
       customer_name_override: customerNameOverride,
+      ...(customerKraPin ? { customer_kra_pin: customerKraPin } : {}),
       total_vat: sale.total_vat,
       sales_workspace: "pos",
       ...(Array.isArray(cart.payment_adjustments) && cart.payment_adjustments.length
@@ -1461,6 +1502,13 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   }
   if (customerNameOverride) {
     body.customer_name_override = customerNameOverride;
+  }
+  const customerKraPin =
+    String(extras.customer_kra_pin ?? "").trim() ||
+    String(row.checkout_body?.customer_kra_pin ?? "").trim() ||
+    "";
+  if (customerKraPin) {
+    body.customer_kra_pin = customerKraPin;
   }
   return body;
 }

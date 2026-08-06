@@ -37,6 +37,7 @@ export const P = {
       delete: "catalogue.vat_rates.delete",
     },
     price_history: { view: "catalogue.price_history.view" },
+    kra_invoices: { view: "catalogue.kra_invoices.view" },
   },
   customers: {
     customers: { view: "customers.customers.view" },
@@ -374,6 +375,7 @@ export function reportPermissionCode(reportKey) {
     "customer-statement": P.reports.customer_statement.view,
     "audit-trail": P.admin.audit.view,
     "kra-receipts": P.reports.kra_receipts.view,
+    "kra-invoices": P.catalogue.kra_invoices.view,
     "kra-compliance-summary": P.reports.kra_compliance_summary.view,
     "kra-unfiscalized-sales": P.reports.kra_unfiscalized_sales.view,
     "mobile-route-sales": P.reports.mobile_route_sales.view,

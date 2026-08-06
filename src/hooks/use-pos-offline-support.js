@@ -8,6 +8,7 @@ import {
   ensurePosOfflineOrderNumbers,
   getPosOfflineAutoRetryCount,
   getPosOfflinePendingCount,
+  peekNextPosTicketNumber,
   preparePosOfflineReady,
   searchPosOfflineCatalog,
   syncPosOfflineOutbox,
@@ -86,14 +87,18 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     try {
       const { peekPosOfflineOrderNumberCount } = await import("@/lib/pos-offline");
       const { listFailedOutboxSales } = await import("@/lib/pos-offline");
-      const [left, pending, failedRows] = await Promise.all([
+      const [left, pending, failedRows, nextTicket] = await Promise.all([
         peekPosOfflineOrderNumberCount(),
         getPosOfflinePendingCount(),
         listFailedOutboxSales(),
+        peekNextPosTicketNumber(),
       ]);
       setOrderNumbersLeft(left);
       setPendingSync(pending);
       setFailedSyncOrders(failedRows);
+      if (nextTicket != null) {
+        setNextPosOrderNum(Number(nextTicket));
+      }
       // Drop stale "complete + failed" progress once the outbox no longer has errors
       // (e.g. after Remove) so UI does not keep treating sync as failed.
       if (failedRows.length === 0) {

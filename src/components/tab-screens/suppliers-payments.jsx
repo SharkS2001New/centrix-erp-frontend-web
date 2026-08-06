@@ -1,6 +1,7 @@
 "use client";
 
 import { notifyError } from "@/lib/notify";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
@@ -95,7 +96,12 @@ export function SuppliersPaymentsScreen() {
   }, [debouncedSearch, supplierFilter, fromDate, toDate]);
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && payments.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: payments.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -195,7 +201,7 @@ export function SuppliersPaymentsScreen() {
         </div>
       }
     >
-      {!tableLoading && (
+      {!listRefresh.showInitialLoading && (
         <p className="mb-4 text-sm text-slate-600">
           Showing {total} payment{total === 1 ? "" : "s"}
           {payments.length > 0 ? (
@@ -212,6 +218,7 @@ export function SuppliersPaymentsScreen() {
         {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading payments…</p>
         ) : (
+          <div className={listRefresh.contentClassName}>
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-sm">
@@ -291,6 +298,7 @@ export function SuppliersPaymentsScreen() {
               onPageSizeChange={handlePageSizeChange}
             />
           </>
+        </div>
         )}
       </div>
 

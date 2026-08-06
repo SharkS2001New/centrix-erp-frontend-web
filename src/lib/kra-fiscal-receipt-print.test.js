@@ -30,7 +30,10 @@ describe("kra fiscal receipt print", () => {
   it("builds printable html with fiscal metadata and line items", () => {
     const enriched = enrichKraReportRow({
       kra_response_id: 228,
-      order_no: 1980,
+      order_no: 74,
+      pos_order_num: 74,
+      channel: "pos",
+      customer_name: "Acme Ltd",
       invoice_number: "1786006888",
       serial_number: "DEJA02220240050",
       signature_link: "https://etims.example/verify/1980",
@@ -48,6 +51,9 @@ describe("kra fiscal receipt print", () => {
             SaleAmount: "3680.00",
           },
         ],
+        sign_structure: {
+          pinOfBuyer: "P051234567X",
+        },
       },
       response_payload: {
         scu_id: "KRACU0300007379",
@@ -67,6 +73,9 @@ describe("kra fiscal receipt print", () => {
     expect(html).toContain("1786006888");
     expect(html).toContain("KRACU0300007379");
     expect(html).toContain("0090876");
+    expect(html).toContain("Acme Ltd");
+    expect(html).toContain("P051234567X");
+    expect(html).toContain("74");
     expect(html).toContain("KRA eTIMS FISCAL RECEIPT");
     expect(html).toContain("data:image/png;base64,abc");
   });

@@ -601,10 +601,14 @@ export function PosPaymentPanel({
     if (creditCustomer) {
       body.customer_num = creditCustomer.customer_num;
       body.customer_name_override = creditCustomer.customer_name;
+      const creditPin = String(creditCustomer.kra_pin ?? "").trim();
+      if (creditPin) body.customer_kra_pin = creditPin;
     } else if (linkedReceiptCustomer) {
       // Paid sale linked to a registered customer (receipt / KRA PIN) — not credit A/R.
       body.customer_num = linkedReceiptCustomer.customer_num;
       body.customer_name_override = linkedReceiptCustomer.customer_name;
+      const receiptPin = String(linkedReceiptCustomer.kra_pin ?? "").trim();
+      if (receiptPin) body.customer_kra_pin = receiptPin;
     } else {
       const mpesaName = String(mpesaPayerName || walkInCustomerName || "").trim();
       if (mpesaName) {

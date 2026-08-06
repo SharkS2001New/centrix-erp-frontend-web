@@ -200,6 +200,7 @@ export function buildSaleReceiptHtml(
     ? `<div class="meta-full"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(cashSalesNo)}</div>`
     : `<div class="meta-full"><span class="meta-label">Order #:</span> ${escapeHtml(orderNo)}</div>`;
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
+  const customerKraPin = String(customer?.kra_pin ?? sale?.customer?.kra_pin ?? "").trim();
   const customerPhone =
     sale.customer_phone ?? sale.customer_mobile ?? customer?.phone_number ?? customer?.additional_phone ?? "";
   const rawDate = resolveSaleReceiptTimestamp(sale);
@@ -459,6 +460,7 @@ export function buildSaleReceiptHtml(
       <div class="meta-full"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
       ${saleNumberMeta}
       ${customerNameEnabled && customerName ? `<div class="meta-full"><span class="meta-label">Customer Name:</span> ${escapeHtml(String(customerName).toUpperCase())}</div>` : ""}
+      ${customerKraPin ? `<div class="meta-full"><span class="meta-label">Customer PIN:</span> ${escapeHtml(customerKraPin)}</div>` : ""}
       ${customerPhone ? `<div class="meta-full"><span class="meta-label">Phone:</span> ${escapeHtml(customerPhone)}</div>` : ""}
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
     </div>

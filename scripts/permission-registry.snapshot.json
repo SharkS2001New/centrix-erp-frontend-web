@@ -62,6 +62,7 @@
     "catalogue.categories.edit",
     "catalogue.categories.view",
     "catalogue.price_history.view",
+    "catalogue.kra_invoices.view",
     "catalogue.products.create",
     "catalogue.products.delete",
     "catalogue.products.edit",

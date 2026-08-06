@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -94,7 +95,12 @@ export function FulfillmentPodRecordsScreen() {
   }, [debouncedSearch, fromDate, toDate, statusFilter]);
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && records.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: records.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -172,10 +178,12 @@ export function FulfillmentPodRecordsScreen() {
           />
           Loading POD records…
         </div>
-      ) : records.length === 0 ? (
-        <p className="text-sm text-slate-500">No proof-of-delivery records in this period.</p>
       ) : (
-        <>
+        <div className={listRefresh.contentClassName}>
+          {records.length === 0 ? (
+            <p className="text-sm text-slate-500">No proof-of-delivery records in this period.</p>
+          ) : (
+            <>
           <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -223,7 +231,9 @@ export function FulfillmentPodRecordsScreen() {
             onChange={setPage}
             onPageSizeChange={handlePageSizeChange}
           />
-        </>
+            </>
+          )}
+        </div>
       )}
     </CatalogPageShell>
   );

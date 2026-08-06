@@ -175,6 +175,14 @@ const NAV_SECTION_DEFINITIONS = [
         module: null,
         permission: P.catalogue.price_history.view,
       },
+      {
+        href: "/reports/kra-invoices",
+        label: "KRA invoices",
+        module: null,
+        permission: P.catalogue.kra_invoices.view,
+        requireKraDevice: true,
+        reportKey: "kra-invoices",
+      },
     ],
   },
   {

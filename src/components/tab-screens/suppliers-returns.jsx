@@ -1,6 +1,7 @@
 "use client";
 
 import { notifyError } from "@/lib/notify";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -435,7 +436,12 @@ export function SuppliersReturnsScreen() {
   }, [debouncedSearch, supplierFilter, typeFilter, statusFilter, dateFrom, dateTo]);
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && rows.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -671,7 +677,7 @@ export function SuppliersReturnsScreen() {
         </div>
       }
     >
-      {!tableLoading && (
+      {!listRefresh.showInitialLoading && (
         <p className="mb-4 text-sm text-slate-600">
           Showing {total} return{total === 1 ? "" : "s"}
           {pendingCount > 0 ? ` · ${pendingCount} awaiting approval on this page` : ""}
@@ -696,15 +702,17 @@ export function SuppliersReturnsScreen() {
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading returns…</p>
-        ) : rows.length === 0 ? (
-          <p className="px-4 py-12 text-center text-sm text-slate-500">
-            No supplier returns found.{" "}
-            <Link href="/suppliers/returns/new" className="text-[#185FA5] hover:underline">
-              Record one
-            </Link>
-          </p>
         ) : (
-          <>
+          <div className={listRefresh.contentClassName}>
+            {rows.length === 0 ? (
+              <p className="px-4 py-12 text-center text-sm text-slate-500">
+                No supplier returns found.{" "}
+                <Link href="/suppliers/returns/new" className="text-[#185FA5] hover:underline">
+                  Record one
+                </Link>
+              </p>
+            ) : (
+              <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
                 <thead className="theme-table-head-row text-left text-xs font-medium">
@@ -845,7 +853,9 @@ export function SuppliersReturnsScreen() {
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}
             />
-          </>
+              </>
+            )}
+          </div>
         )}
       </div>
     </CatalogPageShell>

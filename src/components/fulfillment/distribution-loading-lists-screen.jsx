@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -131,7 +132,12 @@ export function DistributionLoadingListsScreen() {
   }, [debouncedSearch, fromDate, toDate]);
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && trips.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: trips.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -378,6 +384,7 @@ export function DistributionLoadingListsScreen() {
                     </td>
                   </tr>
                 ) : (
+          <div className={listRefresh.contentClassName}>
                   trips.map((trip) => {
                     const active = selectedTripId === trip.id;
                     return (

@@ -207,6 +207,19 @@ export function formatCashSalesNumber(sale) {
   return formatOrderNumber(sale);
 }
 
+/** Order # column for KRA invoices/receipts reports — POS ticket when available. */
+export function formatKraReportOrderNo(row) {
+  if (row == null) return "—";
+  const pos = formatPosOrderNumber(row);
+  if (pos !== "—") return pos;
+  if (row.order_no != null && row.order_no !== "") return String(row.order_no);
+  if (row.sale_order_num != null && row.sale_order_num !== "") {
+    return formatOrderNumber(row.sale_order_num);
+  }
+  if (row.sale_id != null) return String(row.sale_id);
+  return "—";
+}
+
 /**
  * Daily POS ticket # only — never org order_num (S00xx). Use for session lists,
  * next-ticket sequencing, and dedupe while pending sync is flushing.

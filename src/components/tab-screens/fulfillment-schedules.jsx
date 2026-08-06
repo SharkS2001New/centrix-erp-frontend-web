@@ -1,6 +1,7 @@
 "use client";
 
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -154,7 +155,12 @@ export function FulfillmentSchedulesScreen() {
   }, [schedules, routes]);
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && schedules.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: schedules.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -311,6 +317,7 @@ export function FulfillmentSchedulesScreen() {
       ) : grouped.length === 0 ? (
         <p className="text-sm text-slate-500">No schedules yet. Add one to auto-suggest drivers when creating trips.</p>
       ) : (
+          <div className={listRefresh.contentClassName}>
         <>
           <div className="space-y-6">
             {grouped.map(([routeName, items]) => (

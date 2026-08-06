@@ -1,6 +1,7 @@
 "use client";
 
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -94,7 +95,12 @@ export function SalesLoyaltyCardsScreen() {
   }, [debouncedSearch]);
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && rows.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -287,6 +293,7 @@ export function SalesLoyaltyCardsScreen() {
         {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading loyalty cards…</p>
         ) : (
+          <div className={listRefresh.contentClassName}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead>

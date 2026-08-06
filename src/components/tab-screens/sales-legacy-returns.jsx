@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -84,7 +85,12 @@ function LegacyReturnsContent() {
   }
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && rows.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -200,8 +206,8 @@ function LegacyReturnsContent() {
               <th className="px-3 py-2" />
             </tr>
           </thead>
-          <tbody>
-            {tableLoading ? (
+          <tbody className={listRefresh.contentClassName}>
+              {tableLoading ? (
               <tr>
                 <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                   Loading…
@@ -214,7 +220,7 @@ function LegacyReturnsContent() {
                 </td>
               </tr>
             ) : (
-              rows.map((row) => {
+                rows.map((row) => {
                 const creditNote = row.credit_note ?? row.creditNote;
                 return (
                   <tr key={row.id} className="border-t">

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -171,7 +172,12 @@ export function FulfillmentTripsScreen() {
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && trips.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: trips.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -276,6 +282,7 @@ export function FulfillmentTripsScreen() {
       ) : trips.length === 0 ? (
         <p className="text-sm text-slate-500">No trips in this date range. Create one manually or from the dispatch board.</p>
       ) : (
+          <div className={listRefresh.contentClassName}>
         <>
           <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
             <table className="min-w-full text-sm">

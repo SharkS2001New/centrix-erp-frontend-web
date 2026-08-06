@@ -240,7 +240,7 @@ export function PosPendingSyncOverlay({
                 ) : null}
               </div>
               <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs text-amber-100">
-                Local sales waiting to upload. Sync here, or remove a stuck order to free the till.
+                Local sales waiting to upload. Sync or remove a stuck order here — you can keep selling; new orders use the next Cash Sales #.
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">

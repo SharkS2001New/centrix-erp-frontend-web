@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -123,7 +124,12 @@ export function FulfillmentVehiclesScreen() {
   const vehicleById = useMemo(() => new Map(vehicles.map((v) => [String(v.id), v])), [vehicles]);
   const selectAllRef = useRef(null);
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && vehicles.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: vehicles.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -313,12 +319,14 @@ export function FulfillmentVehiclesScreen() {
     >
       {tableLoading ? (
         <p className="text-sm text-slate-500">Loading vehicles…</p>
-      ) : vehicles.length === 0 ? (
-        <p className="theme-panel rounded-xl border p-12 text-center text-sm text-slate-500">
-          No vehicles found.
-        </p>
       ) : (
-        <>
+        <div className={listRefresh.contentClassName}>
+          {vehicles.length === 0 ? (
+            <p className="theme-panel rounded-xl border p-12 text-center text-sm text-slate-500">
+              No vehicles found.
+            </p>
+          ) : (
+            <>
           <div className="mb-4 flex items-center gap-2">
             <input
               ref={selectAllRef}
@@ -377,7 +385,9 @@ export function FulfillmentVehiclesScreen() {
             onChange={setPage}
             onPageSizeChange={handlePageSizeChange}
           />
-        </>
+            </>
+          )}
+        </div>
       )}
 
       <FormDrawer

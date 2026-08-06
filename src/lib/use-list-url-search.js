@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -67,4 +67,36 @@ export function useListUrlSearch({ param = "q", debounceMs = 350 } = {}) {
     debouncedSearch,
     urlQuery: urlQ,
   };
+}
+
+/**
+ * When filters/search change, fetch page 1 immediately even if React page state
+ * has not caught up yet (avoids a stale-page flash after router.replace drops ?page).
+ */
+export function useListQueryPage(page, setPage, filterKey) {
+  const lastFilterKeyRef = useRef(null);
+
+  const queryPage = useMemo(() => {
+    if (lastFilterKeyRef.current === null) {
+      lastFilterKeyRef.current = filterKey;
+      return page;
+    }
+    if (lastFilterKeyRef.current !== filterKey) {
+      return 1;
+    }
+    return page;
+  }, [filterKey, page]);
+
+  useEffect(() => {
+    if (lastFilterKeyRef.current === null) {
+      lastFilterKeyRef.current = filterKey;
+      return;
+    }
+    if (lastFilterKeyRef.current !== filterKey) {
+      lastFilterKeyRef.current = filterKey;
+      if (page !== 1) setPage(1);
+    }
+  }, [filterKey, page, setPage]);
+
+  return queryPage;
 }

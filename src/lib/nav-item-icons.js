@@ -167,6 +167,7 @@ export const NAV_HREF_ICONS = {
   "/reports/invoice-payments": "tag",
   "/reports/ar-aging": "calendar",
   "/reports/kra-receipts": "book",
+  "/reports/kra-invoices": "receipt",
   "/reports/kra-compliance-summary": "shield",
   "/reports/kra-unfiscalized-sales": "alert",
   "/reports/leave-balance": "clipboard",

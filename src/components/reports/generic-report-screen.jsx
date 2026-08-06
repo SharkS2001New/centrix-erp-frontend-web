@@ -337,7 +337,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           ))}
         </div>
       ) : null}
-      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+      <div className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${loading && rows.length > 0 ? "opacity-60 transition-opacity duration-150" : ""}`.trim()}>
         {!loading && rows.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">No rows for this filter.</p>
         ) : (

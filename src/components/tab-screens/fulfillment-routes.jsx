@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -149,7 +150,12 @@ export function FulfillmentRoutesScreen() {
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
   const routeById = useMemo(() => new Map(routes.map((r) => [String(r.id), r])), [routes]);
-  const tableLoading = loading || (listLoading && routes.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: routes.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -364,7 +370,7 @@ export function FulfillmentRoutesScreen() {
         </div>
       }
       banner={
-        !tableLoading ? (
+        !listRefresh.showInitialLoading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Total routes" value={total.toLocaleString()} />
           </div>
@@ -400,6 +406,7 @@ export function FulfillmentRoutesScreen() {
         {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading routes…</p>
         ) : (
+          <div className={listRefresh.contentClassName}>
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[820px] border-collapse text-sm">
@@ -500,6 +507,7 @@ export function FulfillmentRoutesScreen() {
               onPageSizeChange={handlePageSizeChange}
             />
           </>
+        </div>
         )}
       </div>
 

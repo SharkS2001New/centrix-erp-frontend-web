@@ -191,6 +191,8 @@ import {
   peekPosOfflineOrderNumberCount,
   posTicketFieldsFromCart,
   peekNextPosOfflineOrderSlot,
+  peekNextPosTicketNumber,
+  peekIssuedPosTicketMax,
   peekLocalPosTicketNext,
   ensurePosOfflineOrderNumbers,
   purgeReservedPosTicketsUpTo,
@@ -384,8 +386,13 @@ function isFreshWorkspacePlaceholder(cart) {
 /** True when the cashier is actively editing a queued offline sale or previous-order session. */
 function isActiveOfflineEditSession(cart) {
   if (!cart) return false;
-  if (cart.offline_client_sale_uuid) return true;
   if (cart.held_order_num && cart.superseded_sale_id) return true;
+  if (
+    cart.offline_client_sale_uuid &&
+    (cart.offline_edit_snapshot || (cart.lines?.length ?? 0) > 0)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -614,9 +621,17 @@ function mergeFreshWorkspaceCart(next, preservedPosNum) {
   };
 }
 
-function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = null) {
+function resolveFreshWorkspacePosNum(
+  activeCart,
+  sessionOrders,
+  pendingSale = null,
+  issuedPosMax = null,
+) {
   const serverNext = resolvePosNextBrowseNumber(activeCart);
   let maxPos = 0;
+  if (issuedPosMax != null && Number(issuedPosMax) > 0) {
+    maxPos = Number(issuedPosMax);
+  }
   const rows = [...(sessionOrders ?? [])];
   if (pendingSale) rows.unshift(pendingSale);
   for (const row of rows) {
@@ -661,7 +676,12 @@ async function resolveNextPosTicketForWorkspace(
     }
   }
 
-  const sessionNext = resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale);
+  const sessionNext = resolveFreshWorkspacePosNum(
+    activeCart,
+    sessionOrders,
+    pendingSale,
+    await peekIssuedPosTicketMax().catch(() => null),
+  );
   const emptyFresh =
     !(activeCart?.lines?.length > 0) &&
     !(activeCart?.held_order_num && activeCart?.superseded_sale_id) &&
@@ -2182,12 +2202,31 @@ export function PosScreen({ standalone = false }) {
       setPendingSyncOpen(false);
       return;
     }
-    // Only real failed outbox rows — do not use syncProgress.failed (stays set after Remove).
-    if (failedSyncOrders.length > 0 && !pendingSyncAlertRef.current) {
-      pendingSyncAlertRef.current = true;
-      setPendingSyncOpen(true);
-    }
+    // Do not auto-open the pending-sync modal — cashiers keep selling; use the header
+    // button or Sync when ready. Failed rows stay in the queue until Sync or Remove.
   }, [standalone, pendingSync, offlineSyncing, failedSyncOrders.length]);
+
+  /** Keep the order # box ahead of tickets already saved in pending/failed outbox rows. */
+  useEffect(() => {
+    if (!standalone) return undefined;
+    let cancelled = false;
+    void (async () => {
+      const nextTicket = await peekNextPosTicketNumber().catch(() => null);
+      if (cancelled || nextTicket == null) return;
+      const live = cartRef.current;
+      const hasLines = (live?.lines?.length ?? 0) > 0;
+      const editingPrevious = Boolean(live?.held_order_num && live?.superseded_sale_id);
+      const editingQueued = isActiveOfflineEditSession(live) && Boolean(live?.offline_client_sale_uuid);
+      if (hasLines || editingPrevious || editingQueued) return;
+      const showing = Number(resolvePosNextBrowseNumber(live) ?? editOrderNo ?? 0);
+      if (showing > 0 && showing < Number(nextTicket)) {
+        applyFreshWorkspacePlaceholder(live, Number(nextTicket));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [standalone, pendingSync, failedSyncOrders.length, editOrderNo]);
 
   /** After a failed sync, drop stale offline/edit markers so a new ticket cannot reattach to the old order. */
   useEffect(() => {
@@ -6349,7 +6388,7 @@ export function PosScreen({ standalone = false }) {
           }
 
           const merged = mergeFreshWorkspaceCart(
-            stripPreviousOrderEditSession(next),
+            stripOfflineSaleMarkers(stripPreviousOrderEditSession(next)),
             peekNextPos,
           );
           cartRef.current = merged;
@@ -6382,7 +6421,7 @@ export function PosScreen({ standalone = false }) {
               const recovered = await recoverMissingServerCart();
               if (generation === freshWorkspaceGenerationRef.current && recovered) {
                 const merged = mergeFreshWorkspaceCart(
-                  stripPreviousOrderEditSession(recovered),
+                  stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
                   peekNextPos,
                 );
                 cartRef.current = merged;
@@ -7543,25 +7582,36 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     if (lineBusy) return;
-    if (busy && !editAutosaveInFlightRef.current) return;
+    // Background outbox sync must not block F8 — pending rows stay in the queue.
+    if (busy && !editAutosaveInFlightRef.current && !offlineSyncing) return;
     if (editAutosaveTimerRef.current) {
       window.clearTimeout(editAutosaveTimerRef.current);
       editAutosaveTimerRef.current = null;
     }
     skipEditAutosaveRef.current = true;
+    setPendingSyncOpen(false);
 
     const hasLines = (cartRef.current?.lines?.length ?? cart?.lines?.length ?? 0) > 0;
     const activeCart = cartRef.current ?? cart;
     const editingPrevious = Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id);
-    const isOfflineCart = Boolean(activeCart?.offline || activeCart?.offline_client_sale_uuid);
-    // Queued offline NEW sale mid-edit (not a previous-order edit session).
+    const activeOfflineEdit = isActiveOfflineEditSession(activeCart);
     const editingQueuedOfflineSale = Boolean(
-      isOfflineCart && activeCart?.offline_client_sale_uuid && !activeCart?.superseded_sale_id,
+      activeOfflineEdit &&
+        activeCart?.offline_client_sale_uuid &&
+        !activeCart?.superseded_sale_id,
     );
+    const issuedPosMax = await peekIssuedPosTicketMax().catch(() => null);
+    const hasPendingOutbox = pendingSync > 0 || failedSyncOrders.length > 0;
 
     // Already on a blank new order at last+1 (e.g. after F10) — F8 must not bump again.
-    if (!hasLines && !editingPrevious && !isOfflineCart) {
-      const expectedNext = resolveFreshWorkspacePosNum(activeCart, sessionPosOrders);
+    // When outbox still holds a ticket, always run bootstrap so the # advances past it.
+    if (!hasLines && !editingPrevious && !activeOfflineEdit && !hasPendingOutbox) {
+      const expectedNext = resolveFreshWorkspacePosNum(
+        activeCart,
+        sessionPosOrders,
+        null,
+        issuedPosMax,
+      );
       const showing =
         resolvePosNextBrowseNumber(activeCart) ?? resolvePosBrowseNumber(activeCart);
       if (
@@ -7577,7 +7627,7 @@ export function PosScreen({ standalone = false }) {
       }
     }
 
-    if (hasLines || editingPrevious || isOfflineCart) {
+    if (hasLines || editingPrevious || activeOfflineEdit) {
       const editSummary = summarizeLocalPosCart(activeCart);
       const kraFiscalize = editingPrevious
         ? shouldSubmitKraOnCheckout(
@@ -7589,7 +7639,7 @@ export function PosScreen({ standalone = false }) {
       const leaveMsgs = editingPrevious
         ? previousOrderEditModeMessages(activeCart.held_order_num, {
             kraFiscalize,
-            offline: isOfflineCart,
+            offline: activeOfflineEdit,
           })
         : null;
       const ok = await confirm({
@@ -7597,7 +7647,9 @@ export function PosScreen({ standalone = false }) {
         message: editingPrevious
           ? leaveMsgs?.leaveConfirm ??
             "Clear this order from the workspace and start a new order? Queued saves keep syncing in the background."
-          : "Clear this workspace and start a new order?",
+          : hasPendingOutbox
+            ? "Clear this workspace and start a new order? The pending sync stays in the queue — use Sync when ready."
+            : "Clear this workspace and start a new order?",
         confirmLabel: "Start New Order",
         cancelLabel: "Cancel",
         destructive: true,
@@ -7633,7 +7685,7 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        if (!isOfflineCart) {
+        if (!activeOfflineEdit) {
           // skipEditAutosaveRef is already true — queue outbox directly so F8 leave
           // still syncs (and background-fiscalizes) without blocking on the KRA device.
           const cartForQueue = cartRef.current ?? activeCart;
@@ -7691,9 +7743,15 @@ export function PosScreen({ standalone = false }) {
       (hasLines || activeCart?.held_order_num)
         ? Number(activeCart.id)
         : null;
-    const abandonCart = editingQueuedOfflineSale ? activeCart : null;
-    const clearOfflineCart = Boolean(isOfflineCart && !editingQueuedOfflineSale);
-    const immediateNextPos = resolveFreshWorkspacePosNum(activeCart, sessionPosOrders);
+    const abandonCart =
+      editingQueuedOfflineSale && activeCart?.offline_edit_snapshot ? activeCart : null;
+    const clearOfflineCart = Boolean(activeCart?.offline && !editingQueuedOfflineSale);
+    const immediateNextPos = resolveFreshWorkspacePosNum(
+      activeCart,
+      sessionPosOrders,
+      null,
+      issuedPosMax,
+    );
 
     const completeFreshWorkspaceBootstrap = async ({
       generation,
@@ -7746,7 +7804,7 @@ export function PosScreen({ standalone = false }) {
         }
       }
       const merged = mergeFreshWorkspaceCart(
-        stripPreviousOrderEditSession(next),
+        stripOfflineSaleMarkers(stripPreviousOrderEditSession(next)),
         peekNextPos,
       );
       cartRef.current = merged;
@@ -7833,7 +7891,7 @@ export function PosScreen({ standalone = false }) {
                       sessionPosOrders,
                     );
                     const merged = mergeFreshWorkspaceCart(
-                      stripPreviousOrderEditSession(recovered),
+                      stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
                       peekNextPos,
                     );
                     cartRef.current = merged;
@@ -7895,7 +7953,7 @@ export function PosScreen({ standalone = false }) {
             const recovered = await recoverMissingServerCart();
             if (generation === freshWorkspaceGenerationRef.current && recovered) {
               const merged = mergeFreshWorkspaceCart(
-                stripPreviousOrderEditSession(recovered),
+                stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
                 peekNextPos,
               );
               cartRef.current = merged;

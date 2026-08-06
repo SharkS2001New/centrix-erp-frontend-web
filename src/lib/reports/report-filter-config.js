@@ -152,6 +152,7 @@ export const REPORT_DATE_COLUMNS = {
   "invoice-payments": "date_paid",
   "ar-aging": "invoice_date",
   "kra-receipts": "receipt_date",
+  "kra-invoices": "receipt_date",
   "kra-compliance-summary": "receipt_date",
   "kra-unfiscalized-sales": "sale_date",
   "till-sessions": "session_date",
@@ -217,6 +218,10 @@ export const REPORT_EXTRA_FILTERS = {
   ],
   "vat-collected": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
   "kra-receipts": [
+    { id: "status", label: "Status", type: "select", optionsKey: "kraStatuses" },
+    { id: "q", label: "Search", type: "text", placeholder: "Order # or CU number…" },
+  ],
+  "kra-invoices": [
     { id: "status", label: "Status", type: "select", optionsKey: "kraStatuses" },
     { id: "q", label: "Search", type: "text", placeholder: "Order # or CU number…" },
   ],

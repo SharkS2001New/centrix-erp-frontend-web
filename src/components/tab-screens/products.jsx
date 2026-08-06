@@ -300,6 +300,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const [stockBranchId, setStockBranchId] = useState("");
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState(null);
   const [referenceWarning, setReferenceWarning] = useState(null);
 
@@ -313,6 +314,8 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const listStateRestored = useRef(false);
   const listStateReady = useRef(false);
   const pendingRestoredSearch = useRef(null);
+  const loadSeqRef = useRef(0);
+  const lastFilterKeyRef = useRef(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -511,12 +514,44 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     }
   }, [effectiveStockBranchId]);
 
+  const filterKey = useMemo(
+    () =>
+      JSON.stringify({
+        debouncedSearch,
+        categoryFilter,
+        subCategoryFilter,
+        stockFilter,
+        pricingFilter,
+        deletedMode,
+        effectiveStockBranchId,
+        pageSize,
+        sort,
+        sortDir,
+      }),
+    [
+      debouncedSearch,
+      categoryFilter,
+      subCategoryFilter,
+      stockFilter,
+      pricingFilter,
+      deletedMode,
+      effectiveStockBranchId,
+      pageSize,
+      sort,
+      sortDir,
+    ],
+  );
+
+  const queryPage =
+    lastFilterKeyRef.current !== null && lastFilterKeyRef.current !== filterKey ? 1 : page;
+
   const loadProducts = useCallback(async () => {
+    const requestId = ++loadSeqRef.current;
     setListLoading(true);
     setError(null);
     try {
       const searchParams = buildPageParams({
-        page,
+        page: queryPage,
         perPage: pageSize,
         q: debouncedSearch,
         sort,
@@ -534,6 +569,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
         },
       });
       const prodRes = await apiRequest("/products", { searchParams });
+      if (requestId !== loadSeqRef.current) return;
       const parsed = parsePaginator(prodRes);
       // Product API already overlays live branch stock with reservations deducted
       // (stock_available_*). Do not merge stock-on-hand — that report's on-hand
@@ -541,11 +577,13 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       setProducts(parsed.items);
       setTotalProducts(parsed.total);
       setTotalPages(parsed.totalPages);
+      setHasLoadedOnce(true);
 
       const codes = parsed.items.map((p) => p.product_code).filter(Boolean);
       if (codes.length && !hotelCatalogue) {
         void fetchRetailPackagesForProductCodes(codes)
           .then((rows) => {
+            if (requestId !== loadSeqRef.current) return;
             setRetailPackages((prev) => {
               const map = new Map(prev.map((r) => [r.product_code, r]));
               for (const row of rows) map.set(row.product_code, row);
@@ -557,12 +595,15 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
         setRetailPackages([]);
       }
     } catch (e) {
+      if (requestId !== loadSeqRef.current) return;
       setError(e instanceof Error ? e.message : "Failed to load products");
     } finally {
-      setListLoading(false);
+      if (requestId === loadSeqRef.current) {
+        setListLoading(false);
+      }
     }
   }, [
-    page,
+    queryPage,
     pageSize,
     debouncedSearch,
     categoryFilter,
@@ -588,9 +629,12 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   useTabAwareDataLoad(loadReferenceData);
 
   useEffect(() => {
-    loadProducts();
-    loadCatalogStats();
-  }, [loadProducts, loadCatalogStats]);
+    void loadProducts();
+  }, [loadProducts]);
+
+  useEffect(() => {
+    void loadCatalogStats();
+  }, [loadCatalogStats]);
 
   function openDeleteDialog(product) {
     setDeletingProduct(product);
@@ -716,7 +760,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   ]);
 
   const stats = useMemo(() => {
-    const total = catalogStats?.total ?? totalProducts;
+    const total = catalogStats?.total ?? 0;
     const active = catalogStats?.active ?? total;
     return {
       total,
@@ -725,7 +769,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       lowStock: catalogStats?.low_stock ?? 0,
       outOfStock: catalogStats?.out_of_stock ?? 0,
     };
-  }, [catalogStats, totalProducts]);
+  }, [catalogStats]);
 
   const safePage = Math.min(page, totalPages);
   const pageSlice = enriched;
@@ -734,7 +778,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const pageRowIds = useMemo(() => pageSlice.map((p) => p.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const tableLoading = loading || (listLoading && products.length === 0);
+  const showInitialLoading = !hasLoadedOnce && (loading || listLoading);
 
   const subCategoryOptions = useMemo(() => {
     if (categoryFilter === "all") return subCategories;
@@ -786,8 +830,15 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       }
       return;
     }
-    setPage(1);
-  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, deletedMode, effectiveStockBranchId, pageSize, sort, sortDir]);
+    if (lastFilterKeyRef.current === null) {
+      lastFilterKeyRef.current = filterKey;
+      return;
+    }
+    if (lastFilterKeyRef.current !== filterKey) {
+      lastFilterKeyRef.current = filterKey;
+      setPage(1);
+    }
+  }, [debouncedSearch, filterKey]);
 
   const activeSortLabel = useMemo(() => {
     if (!sort) return null;
@@ -1093,7 +1144,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
         </p>
       ) : null}
 
-      {tableLoading && !error ? (
+      {showInitialLoading && !error ? (
         <p className="theme-subtext mt-8 text-sm">Loading products…</p>
       ) : null}
       {error && (
@@ -1102,8 +1153,8 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
         </p>
       )}
 
-      {!tableLoading && !error && (
-        <div className={`mt-6 ${TABLE_SHELL_CLASS}`}>
+      {!showInitialLoading && !error && (
+        <div className={`mt-6 ${TABLE_SHELL_CLASS} ${listLoading ? "opacity-60" : ""}`}>
           {sortActive ? (
             <div className="px-4 pt-3">
               <ActiveSortChip label={activeSortLabel} onClear={() => { clearSort(); setPage(1); }} />

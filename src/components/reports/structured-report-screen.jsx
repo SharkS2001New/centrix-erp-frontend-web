@@ -12,6 +12,7 @@ import {
 } from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
+import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 import { formatReportCell } from "@/lib/reports/format";
 import { isInventoryQtyField, isLpoPackQtyField } from "@/lib/inventory-qty-display";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
@@ -45,7 +46,7 @@ export function StructuredReportScreen({ definition }) {
   if (definition.variant === "expenses") {
     return <ExpensesReportScreen definition={definition} />;
   }
-  if (definition.variant === "kra-receipts") {
+  if (definition.variant === "kra-receipts" || definition.variant === "kra-invoices") {
     return <KraReceiptsReportScreen definition={definition} />;
   }
 
@@ -245,6 +246,7 @@ function StandardReportScreen({ definition }) {
   const totalPages = reportMeta?.last_page ?? 1;
   const displayRows = useMemo(() => rows, [rows]);
   const chartRows = useMemo(() => rows, [rows]);
+  const reportRefresh = useReportRefreshUi({ loading, hasRows: rows.length > 0 });
 
   const kpis = useMemo(() => {
     if (!definition.kpis) return [];
@@ -411,9 +413,15 @@ function StandardReportScreen({ definition }) {
         showBranchFilter={multiBranch && !reportHidesBranchFilter(definition.key)}
       />
 
-      {!loading ? <ReportKpiGrid items={kpis} /> : null}
+      {reportRefresh.showInitialLoading ? (
+        <p className="theme-subtext py-8 text-center text-sm">Loading report…</p>
+      ) : null}
 
-      {!loading && definition.charts?.length ? (
+      {!reportRefresh.showInitialLoading ? (
+        <div className={reportRefresh.contentClassName}>
+          <ReportKpiGrid items={kpis} />
+
+          {definition.charts?.length ? (
         <div className="mb-6 grid gap-4 lg:grid-cols-2">
           {definition.charts.map((chart) => {
             if (chart.type === "bar") {
@@ -448,8 +456,6 @@ function StandardReportScreen({ definition }) {
         </div>
       ) : null}
 
-      {loading ? null : (
-        <>
           <ReportTable
             columns={columns}
             rows={displayRows}
@@ -465,8 +471,8 @@ function StandardReportScreen({ definition }) {
             onPageSizeChange={handlePageSizeChange}
             pageSizeOptions={[10, 20, 25, 50, 100]}
           />
-        </>
-      )}
+        </div>
+      ) : null}
     </ReportPageShell>
       <AiInsightPanel
         open={aiOpen}

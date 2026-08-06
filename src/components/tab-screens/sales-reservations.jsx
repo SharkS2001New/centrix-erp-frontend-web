@@ -1,6 +1,7 @@
 "use client";
 
 import { notifyError } from "@/lib/notify";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
@@ -61,7 +62,12 @@ export function SalesReservationsScreen() {
   }, [debouncedSearch]);
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && rows.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -125,6 +131,7 @@ export function SalesReservationsScreen() {
         {tableLoading ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">Loading reservations…</p>
         ) : (
+          <div className={listRefresh.contentClassName}>
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="theme-table-head-row text-left text-xs font-medium">
@@ -186,6 +193,7 @@ export function SalesReservationsScreen() {
               )}
             </tbody>
           </table>
+        </div>
         )}
         <PaginationBar
           page={safePage}

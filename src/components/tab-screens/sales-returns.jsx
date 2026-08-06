@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -104,7 +105,12 @@ export function SalesReturnsScreen() {
   }
 
   const safePage = Math.min(page, totalPages);
-  const tableLoading = loading || (listLoading && rows.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: rows.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -303,7 +309,7 @@ export function SalesReturnsScreen() {
                 <th className="w-36 px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={listRefresh.contentClassName}>
               {tableLoading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-slate-500">

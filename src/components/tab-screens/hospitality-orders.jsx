@@ -17,6 +17,7 @@ import {
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
+import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 
 function formatMoney(value) {
   return Number(value ?? 0).toLocaleString(undefined, {
@@ -169,6 +170,7 @@ export function HospitalityOrdersScreen() {
     () => rows.length > 0 && rows.every((row) => expandedIds.has(row.id)),
     [rows, expandedIds],
   );
+  const listRefresh = useReportRefreshUi({ loading, hasRows: rows.length > 0 });
 
   function toggleExpanded(id) {
     setExpandedIds((prev) => {
@@ -277,10 +279,10 @@ export function HospitalityOrdersScreen() {
         </button>
       </div>
 
-      {loading && !rows.length ? (
+      {listRefresh.showInitialLoading ? (
         <p className="theme-subtext text-sm">Loading orders…</p>
       ) : (
-        <div className={TABLE_SHELL_CLASS}>
+        <div className={`${TABLE_SHELL_CLASS} ${listRefresh.contentClassName}`.trim()}>
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className={TABLE_HEAD_ROW_CLASS}>

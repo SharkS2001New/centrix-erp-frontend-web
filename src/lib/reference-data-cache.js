@@ -44,7 +44,7 @@ export function fetchCategoriesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "categories");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/categories", {
+    const res = await apiRequest("/reference/categories", {
       searchParams: { per_page: 200 },
       loading: false,
     });
@@ -56,7 +56,7 @@ export function fetchSubCategoriesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "sub-categories");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/sub-categories", {
+    const res = await apiRequest("/reference/sub-categories", {
       searchParams: { per_page: 500 },
       loading: false,
     });
@@ -68,7 +68,7 @@ export function fetchVatsCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "vats");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/vats", {
+    const res = await apiRequest("/reference/vats", {
       searchParams: { per_page: 50 },
       loading: false,
     });
@@ -80,7 +80,7 @@ export function fetchSuppliersCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "suppliers");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/suppliers", {
+    const res = await apiRequest("/reference/suppliers", {
       searchParams: { per_page: 200 },
       loading: false,
     });
@@ -92,7 +92,7 @@ export function fetchUomsCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "uoms");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/uoms", {
+    const res = await apiRequest("/reference/uoms", {
       searchParams: { per_page: 500 },
       loading: false,
     });
@@ -172,9 +172,9 @@ export async function fetchRetailPackagesForProductCodes(productCodes) {
   return res.data ?? [];
 }
 
-export function fetchUsersCached(organizationId, { path = "/users" } = {}) {
+export function fetchUsersCached(organizationId, { path = "/reference/users" } = {}) {
   const orgId = resolveOrgId(organizationId);
-  const key = orgCacheKey(orgId, "users", path === "/users" ? "" : path);
+  const key = orgCacheKey(orgId, "users", path === "/reference/users" ? "" : path);
   return fetchOrgCached(key, async () => {
     const res = await apiRequest(path, {
       searchParams: { per_page: 200 },

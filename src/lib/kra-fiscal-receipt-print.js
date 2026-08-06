@@ -8,6 +8,7 @@ import {
 import { openBlankPrintWindow, PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
 import { formatReportKes } from "@/lib/reports/format";
+import { formatKraReportOrderNo, saleCustomerLabel } from "@/lib/sales";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 
 function parseJsonMaybe(value) {
@@ -69,6 +70,22 @@ export function parseKraPluLines(requestPayload) {
   });
 }
 
+function extractBuyerPinFromKraPayload(requestPayload) {
+  const payload = parseJsonMaybe(requestPayload);
+  if (!payload) return null;
+  const sign = payload.sign_structure ?? payload.SignStructure ?? null;
+  const pin = sign?.pinOfBuyer ?? sign?.PinOfBuyer ?? payload.pinOfBuyer ?? null;
+  const trimmed = String(pin ?? "").trim();
+  return trimmed || null;
+}
+
+function extractCustomerNameFromRow(row) {
+  if (!row) return null;
+  const fromRow = String(row.customer_name ?? "").trim();
+  if (fromRow) return fromRow;
+  return saleCustomerLabel(row);
+}
+
 export function kraReportRowId(row) {
   return row?.kra_response_id ?? row?.id ?? null;
 }
@@ -109,7 +126,9 @@ export function enrichKraReportRow(row) {
     requestPayload,
     responsePayload,
     lines,
-    orderNo: normalized.order_no ?? normalized.sale_order_num ?? normalized.sale_id,
+    orderNo: formatKraReportOrderNo(normalized),
+    customerName: extractCustomerNameFromRow(normalized),
+    buyerPin: extractBuyerPinFromKraPayload(requestPayload),
     orderTotal: Number.isFinite(orderTotal) ? orderTotal : linesTotal,
     totalVat: Number.isFinite(totalVat) ? totalVat : lines.reduce((sum, line) => sum + line.levy, 0),
     receiptDate: normalized.kra_timestamp ?? normalized.receipt_at ?? normalized.receipt_date,
@@ -154,7 +173,8 @@ function buildMetaRow(label, value) {
 export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName = DEFAULT_PRINT_ORG_NAME } = {}) {
   if (!enriched) return "";
 
-  const { kra, lines, orderNo, orderTotal, totalVat, receiptDate, branchName, channel } = enriched;
+  const { kra, lines, orderNo, orderTotal, totalVat, receiptDate, branchName, channel, customerName, buyerPin } =
+    enriched;
   const fiscalBlock = buildKraFiscalBlockHtml(kra, {
     layout: "thermal",
     qrDataUrl,
@@ -173,6 +193,8 @@ export function buildKraFiscalReceiptHtml(enriched, { qrDataUrl = null, orgName 
     <div style="border-top:1px dashed #94a3b8;border-bottom:1px dashed #94a3b8;padding:6px 0;margin-bottom:8px;">
       ${buildMetaRow("Date", formatReceiptDate(receiptDate))}
       ${buildMetaRow("Order #", orderNo != null ? String(orderNo) : null)}
+      ${buildMetaRow("Customer", customerName)}
+      ${buyerPin ? buildMetaRow("Customer PIN", buyerPin) : ""}
       ${buildMetaRow("Channel", channel)}
       ${buildMetaRow("CU invoice", kra?.invoiceNumber)}
       ${buildMetaRow("SCU ID", enriched.scuId)}

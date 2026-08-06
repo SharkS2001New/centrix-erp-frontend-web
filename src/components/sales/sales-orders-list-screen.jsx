@@ -662,7 +662,7 @@ export default function SalesOrdersListScreen({
       queueConfig?.dateRangeDays || ORDERS_HOT_WINDOW_DAYS,
     );
   const showArchiveLoading =
-    (loading || listLoading) && (loadingFromArchive || Boolean(debouncedSearch.trim()));
+    (loading || listLoading) && loadingFromArchive;
   const showTableLoading = loading || (listLoading && rows.length === 0);
   const showRefreshOverlay = listLoading && !loading && rows.length > 0 && !showArchiveLoading;
 

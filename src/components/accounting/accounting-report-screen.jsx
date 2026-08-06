@@ -16,6 +16,7 @@ import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-
 import { normalizeReportRows } from "@/lib/reports/api-response";
 import { parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useReportRefreshUi } from "@/lib/list-refresh-ui";
 import {
   CatalogPageShell,
   Field,
@@ -180,6 +181,8 @@ export function AccountingReportScreen({
     );
   }, [rows, multiBranch]);
 
+  const reportRefresh = useReportRefreshUi({ loading, hasRows: rows.length > 0 });
+
   const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
     ?? (branchId ? "" : "All branches");
 
@@ -339,8 +342,8 @@ export function AccountingReportScreen({
         </div>
       ) : null}
 
-      <div className="theme-panel overflow-hidden rounded-xl border shadow-sm">
-        {loading ? (
+      <div className={`theme-panel overflow-hidden rounded-xl border shadow-sm ${reportRefresh.contentClassName}`.trim()}>
+        {reportRefresh.showInitialLoading ? (
           <p className="theme-subtext px-5 py-8 text-center text-sm">Loading report…</p>
         ) : rows.length === 0 ? (
           <p className="theme-subtext px-5 py-8 text-center text-sm">{emptyLabel}</p>

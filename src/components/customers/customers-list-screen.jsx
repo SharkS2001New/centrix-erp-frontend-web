@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -441,7 +442,12 @@ export function CustomersListScreen() {
   const pageRowIds = useMemo(() => pageSlice.map((c) => c.customer_num), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const tableLoading = loading || (listLoading && customers.length === 0);
+  const listRefresh = useListRefreshUi({
+    loading,
+    listLoading,
+    hasRows: customers.length > 0,
+  });
+  const tableLoading = listRefresh.showInitialLoading;
 
   useEffect(() => {
     setPage(1);
@@ -587,7 +593,7 @@ export function CustomersListScreen() {
         </div>
       }
       banner={
-        !tableLoading ? (
+        !listRefresh.showInitialLoading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Active customers" value={stats.active.toLocaleString()} />
             <StatCard label="New this month" value={stats.newThisMonth.toLocaleString()} />
@@ -630,6 +636,7 @@ export function CustomersListScreen() {
         {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading customers…</p>
         ) : (
+          <div className={listRefresh.contentClassName}>
           <>
             {sortActive ? <ActiveSortChip label={activeSortLabel} onClear={() => { clearSort(); setPage(1); }} /> : null}
             <div className="overflow-x-auto">
@@ -710,6 +717,7 @@ export function CustomersListScreen() {
               <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Updating…</p>
             ) : null}
           </>
+        </div>
         )}
       </div>
 
