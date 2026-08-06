@@ -395,6 +395,7 @@ export function SalesVouchersScreen() {
               </tbody>
             </table>
           </div>
+          </div>
         )}
         <PaginationBar
           page={safePage}

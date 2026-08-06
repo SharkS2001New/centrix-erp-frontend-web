@@ -9,7 +9,6 @@ import {
 import { formatDisplayQty } from "@/lib/stock-uom";
 import { lpoRowDisplayNumber } from "@/lib/lpo-display";
 import { formatKraReportOrderNo } from "@/lib/sales";
-import { formatKraReportOrderNo } from "@/lib/sales";
 
 /** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean, sumFromRow?: (row: object) => number, footerCompute?: (rows: object[]) => number }} ReportColumn */
 

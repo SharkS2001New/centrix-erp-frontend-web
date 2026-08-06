@@ -368,6 +368,7 @@ export function SalesLoyaltyCardsScreen() {
               </tbody>
             </table>
           </div>
+          </div>
         )}
         <PaginationBar
           page={safePage}

@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useAppRouter } from "@/lib/use-app-router";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useListUrlSearch } from "@/lib/use-list-url-search";
+import { useListUrlSearch, useListQueryPage } from "@/lib/use-list-url-search";
 import { readProductsListState, writeProductsListState } from "@/lib/products-list-state";
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { ProductImportExport } from "@/components/products/product-import-export";
@@ -313,9 +313,8 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   const searchParams = useSearchParams();
   const listStateRestored = useRef(false);
   const listStateReady = useRef(false);
-  const pendingRestoredSearch = useRef(null);
+  const [pendingRestoredQ, setPendingRestoredQ] = useState(null);
   const loadSeqRef = useRef(0);
-  const lastFilterKeyRef = useRef(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -377,7 +376,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       return;
     }
 
-    pendingRestoredSearch.current = saved.q ?? "";
+    setPendingRestoredQ(saved.q ?? "");
 
     const urlQ = (searchParams.get("q") ?? "").trim();
     if (!urlQ && saved.q) {
@@ -385,7 +384,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       params.set("q", saved.q);
       router.replace(`/products?${params.toString()}`, { scroll: false });
     } else if (urlQ) {
-      pendingRestoredSearch.current = null;
+      setPendingRestoredQ(null);
     }
 
     if (saved.categoryFilter) setCategoryFilter(saved.categoryFilter);
@@ -542,8 +541,9 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     ],
   );
 
-  const queryPage =
-    lastFilterKeyRef.current !== null && lastFilterKeyRef.current !== filterKey ? 1 : page;
+  const queryPage = useListQueryPage(page, setPage, filterKey, {
+    pause: pendingRestoredQ !== null,
+  });
 
   const loadProducts = useCallback(async () => {
     const requestId = ++loadSeqRef.current;
@@ -824,21 +824,11 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
   }, [subCategoryOptions, categoryFilter, categories]);
 
   useEffect(() => {
-    if (pendingRestoredSearch.current !== null) {
-      if (debouncedSearch.trim() === pendingRestoredSearch.current.trim()) {
-        pendingRestoredSearch.current = null;
-      }
-      return;
+    if (pendingRestoredQ === null) return;
+    if (debouncedSearch.trim() === pendingRestoredQ.trim()) {
+      setPendingRestoredQ(null);
     }
-    if (lastFilterKeyRef.current === null) {
-      lastFilterKeyRef.current = filterKey;
-      return;
-    }
-    if (lastFilterKeyRef.current !== filterKey) {
-      lastFilterKeyRef.current = filterKey;
-      setPage(1);
-    }
-  }, [debouncedSearch, filterKey]);
+  }, [debouncedSearch, pendingRestoredQ]);
 
   const activeSortLabel = useMemo(() => {
     if (!sort) return null;

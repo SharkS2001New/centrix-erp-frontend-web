@@ -389,6 +389,7 @@ export function FulfillmentTripsScreen() {
             onPageSizeChange={handlePageSizeChange}
           />
         </>
+          </div>
       )}
 
       <BatchActionBar count={selectedCount} onClear={clearSelection}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -72,31 +72,25 @@ export function useListUrlSearch({ param = "q", debounceMs = 350 } = {}) {
 /**
  * When filters/search change, fetch page 1 immediately even if React page state
  * has not caught up yet (avoids a stale-page flash after router.replace drops ?page).
+ *
+ * Pass `pause: true` while restoring persisted list state so a delayed search
+ * debounce does not wipe the restored page number.
  */
-export function useListQueryPage(page, setPage, filterKey) {
-  const lastFilterKeyRef = useRef(null);
+export function useListQueryPage(page, setPage, filterKey, { pause = false } = {}) {
+  const [appliedFilterKey, setAppliedFilterKey] = useState(filterKey);
+  const [wasPaused, setWasPaused] = useState(pause);
 
-  const queryPage = useMemo(() => {
-    if (lastFilterKeyRef.current === null) {
-      lastFilterKeyRef.current = filterKey;
-      return page;
+  if (pause !== wasPaused) {
+    setWasPaused(pause);
+    if (!pause) {
+      // Leaving restore — adopt the current filter key without resetting page.
+      setAppliedFilterKey(filterKey);
     }
-    if (lastFilterKeyRef.current !== filterKey) {
-      return 1;
-    }
-    return page;
-  }, [filterKey, page]);
+  } else if (!pause && filterKey !== appliedFilterKey) {
+    setAppliedFilterKey(filterKey);
+    if (page !== 1) setPage(1);
+  }
 
-  useEffect(() => {
-    if (lastFilterKeyRef.current === null) {
-      lastFilterKeyRef.current = filterKey;
-      return;
-    }
-    if (lastFilterKeyRef.current !== filterKey) {
-      lastFilterKeyRef.current = filterKey;
-      if (page !== 1) setPage(1);
-    }
-  }, [filterKey, page, setPage]);
-
-  return queryPage;
+  if (pause) return page;
+  return filterKey !== appliedFilterKey ? 1 : page;
 }

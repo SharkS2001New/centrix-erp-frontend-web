@@ -382,6 +382,7 @@ export function FulfillmentSchedulesScreen() {
             onPageSizeChange={handlePageSizeChange}
           />
         </>
+          </div>
       )}
 
       <FormDrawer

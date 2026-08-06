@@ -359,7 +359,7 @@ export function DistributionLoadingListsScreen() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <div>
-          <div className="theme-table-shell overflow-x-auto">
+          <div className={`theme-table-shell overflow-x-auto ${listRefresh.contentClassName}`.trim()}>
             <table className="theme-table w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="theme-table-head-row">
@@ -384,7 +384,6 @@ export function DistributionLoadingListsScreen() {
                     </td>
                   </tr>
                 ) : (
-          <div className={listRefresh.contentClassName}>
                   trips.map((trip) => {
                     const active = selectedTripId === trip.id;
                     return (
