@@ -10,18 +10,10 @@ import {
   productStockAtLocation,
 } from "@/lib/pos-stock";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
-import { explainPosSearchMatch } from "@/lib/pos-product-search-rank";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 
 const fieldInput = INPUT_CLASS;
-
-const MATCH_REASON_LABEL = {
-  code: "Code",
-  name: "Name",
-  shelf: "Shelf",
-  fuzzy: "Close",
-};
 
 function formatStockQty(baseQty, product) {
   const { text } = formatMixedStockDisplay(
@@ -48,7 +40,7 @@ function emptySearchGuidance(query, barcodeEnabled) {
       ? "Scan a barcode or type a product name"
       : "Type a product name or code";
   }
-  return `No products found for “${q}”. Try fewer letters, check spelling, or scan a barcode.`;
+  return "No products found";
 }
 
 /** Assign a value to a React ref object or callback without touching component props. */
@@ -94,6 +86,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const optionRefs = useRef(new Map());
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
+  const highlightCodeRef = useRef(null);
   const [menuBox, setMenuBox] = useState(null);
   const classic = variant === "classic";
   const enablePosCashRounding = Boolean(posSalesConfig?.enablePosCashRounding);
@@ -135,23 +128,47 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     results.some((product) => isExactProductCodeQuery(query, product.product_code));
 
   useEffect(() => {
-    // New query → highlight best (index 0) once results arrive; clear while empty.
-    setHighlight(-1);
+    // Keep sticky highlight across typing when the product is still in the list.
+    // Only clear when the query is emptied.
+    if (!String(query ?? "").trim()) {
+      highlightCodeRef.current = null;
+      setHighlight(-1);
+    }
   }, [query]);
 
   useEffect(() => {
-    setHighlight((i) => {
-      if (results.length === 0) return -1;
-      // Auto-highlight the top-ranked row when results first appear.
-      if (i < 0) return 0;
-      return Math.min(i, results.length - 1);
-    });
+    if (results.length === 0) {
+      setHighlight(-1);
+      return;
+    }
+    const sticky = highlightCodeRef.current;
+    if (sticky) {
+      const idx = results.findIndex((p) => String(p.product_code) === String(sticky));
+      if (idx >= 0) {
+        setHighlight(idx);
+        return;
+      }
+    }
+    // Auto-highlight the top-ranked row when results first appear / sticky lost.
+    setHighlight(0);
+    highlightCodeRef.current = results[0]?.product_code ?? null;
   }, [results]);
 
   useEffect(() => {
     if (!open || highlight < 0 || !results.length) return;
     optionRefs.current.get(highlight)?.scrollIntoView({ block: "nearest" });
   }, [highlight, open, results.length]);
+
+  function setHighlightAt(index) {
+    if (!results.length) {
+      setHighlight(-1);
+      highlightCodeRef.current = null;
+      return;
+    }
+    const next = Math.max(0, Math.min(index, results.length - 1));
+    setHighlight(next);
+    highlightCodeRef.current = results[next]?.product_code ?? null;
+  }
 
   useLayoutEffect(() => {
     if (!classic || !open || disabled) {
@@ -204,10 +221,11 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   function pick(product) {
     onSelect?.(product);
-    // Classic: parent parks the product on the entry row and sets the scan field to item code.
+    // Classic: never rewrite the cashier's typed query — parent parks the product on the row.
     if (classic) {
       setOpen(false);
       setHighlight(-1);
+      highlightCodeRef.current = null;
       return;
     }
     onQueryChange(product.product_name ?? "");
@@ -223,10 +241,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   function moveHighlight(delta) {
     if (!results.length) return;
-    setHighlight((i) => {
-      const next = (i < 0 ? -1 : i) + delta;
-      return Math.max(0, Math.min(next, results.length - 1));
-    });
+    const base = highlight < 0 ? -1 : highlight;
+    setHighlightAt(base + delta);
   }
 
   async function handleInputKeyDown(e) {
@@ -257,7 +273,9 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           return;
         }
       }
-      if (open && results.length && !searching) {
+      // Allow picking as soon as rows exist — do not block on in-flight API refresh.
+      if (results.length) {
+        setOpen(true);
         pickHighlighted();
         return;
       }
@@ -270,6 +288,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       if (open) {
         setOpen(false);
         setHighlight(-1);
+        highlightCodeRef.current = null;
       } else if (onEscapeKey) {
         onEscapeKey();
       }
@@ -350,7 +369,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     );
                     const qty = availableQty(product, sellFromShop, posSalesConfig, sellWholesale);
                     const negative = Number(qty) < 0;
-                    const reason = explainPosSearchMatch(product, query);
                     return (
                       <tr
                         key={product.product_code}
@@ -360,7 +378,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         }}
                         role="option"
                         aria-selected={keyboardActive}
-                        onMouseEnter={() => setHighlight(index)}
+                        onMouseEnter={() => setHighlightAt(index)}
                         onClick={() => pick(product)}
                         className={`${negative ? "classic-pos-find-row--negative" : ""} ${
                           keyboardActive ? "classic-pos-find-row--active" : ""
@@ -369,11 +387,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                         <td>{product.product_code}</td>
                         <td>
                           <span className="classic-pos-find-name">{product.product_name}</span>
-                          {reason ? (
-                            <span className="classic-pos-match-reason" title="How this matched">
-                              {MATCH_REASON_LABEL[reason] ?? reason}
-                            </span>
-                          ) : null}
                         </td>
                         <td className="classic-pos-find-num classic-pos-find-price">
                           {Number(price).toLocaleString()}
@@ -481,7 +494,6 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     routeMarkupPerUnit,
                     enablePosCashRounding,
                   );
-                  const reason = explainPosSearchMatch(product, query);
                   return (
                     <tr
                       key={product.product_code}
@@ -491,7 +503,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                       }}
                       role="option"
                       aria-selected={keyboardActive || selected}
-                      onMouseEnter={() => setHighlight(index)}
+                      onMouseEnter={() => setHighlightAt(index)}
                       onClick={() => pick(product)}
                       className={`theme-table-row cursor-pointer border-b border-[var(--theme-border)] ${
                         keyboardActive
@@ -503,13 +515,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
                     >
                       <td className="px-2 py-1.5 font-medium text-slate-900">
                         {product.product_name}
-                        <span className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] font-normal text-slate-500">
+                        <span className="mt-0.5 block font-mono text-[10px] font-normal text-slate-500">
                           {product.product_code}
-                          {reason ? (
-                            <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600">
-                              {MATCH_REASON_LABEL[reason] ?? reason}
-                            </span>
-                          ) : null}
                         </span>
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums font-bold">

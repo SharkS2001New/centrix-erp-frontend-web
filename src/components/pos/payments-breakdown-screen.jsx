@@ -51,6 +51,38 @@ function formatAdjustmentCell(value) {
   return formatAccountingAmount(amount);
 }
 
+/** Small tender labels under return / top-up amounts (e.g. "Cash", "M-Pesa"). */
+function adjustmentMethodHint(methods) {
+  if (!Array.isArray(methods) || methods.length === 0) return null;
+  const names = methods
+    .map((m) => {
+      const name = String(m?.method_name ?? "").replace(/\s+alone$/i, "").trim();
+      if (name) return name;
+      return tenderDisplayName(m?.method_code, []);
+    })
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  return names.join(", ");
+}
+
+function AdjustmentAmountCell({ amount, methods }) {
+  const formatted = formatAdjustmentCell(amount);
+  const hint = adjustmentMethodHint(methods);
+  if (formatted === "—") {
+    return <span className="text-[var(--theme-text-muted)]">—</span>;
+  }
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <span className="font-medium text-[var(--theme-text)]">{formatted}</span>
+      {hint ? (
+        <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
+          {hint}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function formatPaidAt(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -114,8 +146,16 @@ function mapPaymentExportRow(row, methodName, methods = [], { orderHrefPrefix = 
     order: orderLabel,
     customer_name: row.customer_name || "Walk-in",
     amount: formatAccountingAmount(row.amount),
-    return_amount: formatAdjustmentCell(row.return_amount),
-    topup_amount: formatAdjustmentCell(row.topup_amount),
+    return_amount: (() => {
+      const base = formatAdjustmentCell(row.return_amount);
+      const hint = adjustmentMethodHint(row.return_methods);
+      return hint && base !== "—" ? `${base} (${hint})` : base;
+    })(),
+    topup_amount: (() => {
+      const base = formatAdjustmentCell(row.topup_amount);
+      const hint = adjustmentMethodHint(row.topup_methods);
+      return hint && base !== "—" ? `${base} (${hint})` : base;
+    })(),
     paid_at: formatPaidAt(row.paid_at),
     cashier: row.cashier_name || "—",
     session: rowSessionText(row),
@@ -747,11 +787,17 @@ export function PaymentsBreakdownScreen({
                     <td className="px-4 py-3 text-right font-medium text-[var(--theme-text)]">
                       {formatAccountingAmount(row.amount)}
                     </td>
-                    <td className="px-4 py-3 text-right text-[var(--theme-text-muted)]">
-                      {formatAdjustmentCell(row.return_amount)}
+                    <td className="px-4 py-3 text-right">
+                      <AdjustmentAmountCell
+                        amount={row.return_amount}
+                        methods={row.return_methods}
+                      />
                     </td>
-                    <td className="px-4 py-3 text-right text-[var(--theme-text-muted)]">
-                      {formatAdjustmentCell(row.topup_amount)}
+                    <td className="px-4 py-3 text-right">
+                      <AdjustmentAmountCell
+                        amount={row.topup_amount}
+                        methods={row.topup_methods}
+                      />
                     </td>
                     <td className="px-4 py-3 text-[var(--theme-text-muted)]">
                       {formatPaidAt(row.paid_at)}

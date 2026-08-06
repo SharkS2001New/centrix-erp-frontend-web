@@ -133,6 +133,12 @@ export function ClassicPosCartTable({
   orderNo = "",
   onOrderNoChange,
   onOrderNoSubmit,
+  orderNameResults = null,
+  orderNameLoading = false,
+  orderNameHighlight = 0,
+  onOrderNameHighlightChange = null,
+  onOrderNameSelect = null,
+  onOrderNameDismiss = null,
   orderNavError = null,
   showRetailModeHint = false,
   sellAtRetail = false,
@@ -235,30 +241,145 @@ export function ClassicPosCartTable({
             >
               ←
             </button>
-            <input
-              type="text"
-              className="classic-pos-cart-order-input"
-              value={orderNo}
-              disabled={busy || orderNavLocked}
-              placeholder="Order #"
-              inputMode="numeric"
-              autoComplete="off"
-              aria-label="POS Cash Sales number"
-              title={
-                orderNavLocked
-                  ? orderNavHint || "Order editing is disabled"
-                  : "Shows next Cash Sales #. Type a POS ticket number and press Enter, or use ← for the latest completed order."
-              }
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => onOrderNoChange?.(e.target.value)}
-              onKeyDown={(e) => {
-                if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  onOrderNoSubmit?.();
+            <div className="classic-pos-cart-order-lookup">
+              <input
+                type="text"
+                className={`classic-pos-cart-order-input${
+                  Array.isArray(orderNameResults) || orderNameLoading
+                    ? " classic-pos-cart-order-input--name"
+                    : ""
+                }`}
+                value={orderNo}
+                disabled={busy || orderNavLocked}
+                placeholder="Order # / name"
+                autoComplete="off"
+                aria-label="POS Cash Sales number or customer name"
+                aria-autocomplete="list"
+                aria-expanded={Array.isArray(orderNameResults)}
+                title={
+                  orderNavLocked
+                    ? orderNavHint || "Order editing is disabled"
+                    : "Type a POS ticket # and press Enter or Find, or type a customer name to find matching receipts."
                 }
-              }}
-            />
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => onOrderNoChange?.(e.target.value)}
+                onBlur={() => {
+                  // Allow click on a result before dismissing.
+                  window.setTimeout(() => onOrderNameDismiss?.(), 150);
+                }}
+                onKeyDown={(e) => {
+                  if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
+                  const results = Array.isArray(orderNameResults) ? orderNameResults : null;
+                  if (results && results.length > 0) {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      const next = Math.min(
+                        (Number(orderNameHighlight) || 0) + 1,
+                        results.length - 1,
+                      );
+                      onOrderNameHighlightChange?.(next);
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const next = Math.max((Number(orderNameHighlight) || 0) - 1, 0);
+                      onOrderNameHighlightChange?.(next);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      onOrderNameDismiss?.();
+                      return;
+                    }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const pick =
+                        results[Number(orderNameHighlight) || 0] ?? results[0] ?? null;
+                      if (pick) onOrderNameSelect?.(pick);
+                      return;
+                    }
+                  }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onOrderNoSubmit?.();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="classic-pos-cart-find-btn"
+                disabled={busy || orderNavLocked}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onOrderNoSubmit?.()}
+                title={
+                  orderNavLocked
+                    ? orderNavHint || "Order editing is disabled"
+                    : "Find order by number or customer name"
+                }
+                aria-label="Find order"
+              >
+                <svg
+                  className="classic-pos-cart-find-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  aria-hidden
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <span>Find</span>
+              </button>
+              {orderNameLoading || Array.isArray(orderNameResults) ? (
+                <div
+                  className="classic-pos-order-name-dropdown"
+                  role="listbox"
+                  aria-label="Matching POS orders"
+                >
+                  {orderNameLoading && (!orderNameResults || orderNameResults.length === 0) ? (
+                    <div className="classic-pos-order-name-empty">Searching…</div>
+                  ) : null}
+                  {!orderNameLoading &&
+                  Array.isArray(orderNameResults) &&
+                  orderNameResults.length === 0 ? (
+                    <div className="classic-pos-order-name-empty">No matching orders</div>
+                  ) : null}
+                  {Array.isArray(orderNameResults)
+                    ? orderNameResults.map((row, index) => {
+                        const active = index === (Number(orderNameHighlight) || 0);
+                        return (
+                          <button
+                            key={row.id ?? `${row.order_num}-${index}`}
+                            type="button"
+                            role="option"
+                            aria-selected={active}
+                            className={`classic-pos-order-name-row${
+                              active ? " classic-pos-order-name-row--active" : ""
+                            }`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onMouseEnter={() => onOrderNameHighlightChange?.(index)}
+                            onClick={() => onOrderNameSelect?.(row)}
+                          >
+                            <span className="classic-pos-order-name-ticket">
+                              {row.ticket_label ?? row.pos_order_num ?? row.order_num ?? "—"}
+                            </span>
+                            <span className="classic-pos-order-name-customer">
+                              {row.customer_label ?? "Walk-in"}
+                            </span>
+                            <span className="classic-pos-order-name-meta">
+                              {row.amount_label ?? ""}
+                              {row.when_label ? ` · ${row.when_label}` : ""}
+                            </span>
+                          </button>
+                        );
+                      })
+                    : null}
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className="classic-pos-cart-caption-nav"

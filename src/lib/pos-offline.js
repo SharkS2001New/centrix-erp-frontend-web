@@ -4,6 +4,11 @@ import {
   isSellableCatalogProduct,
   stripProductStockFields,
 } from "@/lib/catalog-cache";
+import {
+  hasPosSearchCatalog,
+  searchPosCatalogIndex,
+  setPosSearchCatalog,
+} from "@/lib/pos-product-search-index";
 import { rankPosProductSearchResults } from "@/lib/pos-product-search-rank";
 import {
   idbAppendOrderNumbers,
@@ -58,7 +63,11 @@ function sortCatalog(products, query) {
 export async function warmPosOfflineCatalog({ force = false } = {}) {
   const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
   if (!force && last && Date.now() - last < POS_OFFLINE_CATALOG_TTL_MS) {
-    return { skipped: true, count: (await idbGetAllCatalog()).length };
+    const existing = await idbGetAllCatalog();
+    if (existing.length && !hasPosSearchCatalog()) {
+      setPosSearchCatalog(existing);
+    }
+    return { skipped: true, count: existing.length };
   }
 
   const products = [];
@@ -89,12 +98,23 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
   await idbPutCatalogProducts(products);
   await idbSetMeta("catalog_warmed_at", Date.now());
   await idbSetMeta("catalog_count", products.length);
+  setPosSearchCatalog(products);
   return { skipped: false, count: products.length };
 }
 
 export async function searchPosOfflineCatalog(query, { limit = 50 } = {}) {
   const trimmed = String(query ?? "").trim();
   if (!trimmed) return [];
+
+  // Prefer in-memory index (precomputed normalized fields) — target <50ms.
+  if (!hasPosSearchCatalog()) {
+    const all = await idbGetAllCatalog();
+    if (all.length) setPosSearchCatalog(all);
+  }
+  if (hasPosSearchCatalog()) {
+    return searchPosCatalogIndex(trimmed, { limit });
+  }
+
   const all = await idbGetAllCatalog();
   const matched = all.filter((p) => productMatchesCatalogQuery(p, trimmed));
   return sortCatalog(matched, trimmed).slice(0, limit);
