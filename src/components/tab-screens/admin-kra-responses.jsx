@@ -34,6 +34,7 @@ const STATUS_OPTIONS = [
   { value: "success", label: "Success" },
   { value: "failed", label: "Failed" },
   { value: "pending", label: "Pending" },
+  { value: "skipped", label: "Skipped" },
 ];
 
 export function AdminKraResponsesScreen() {

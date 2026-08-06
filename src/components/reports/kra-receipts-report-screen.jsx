@@ -102,6 +102,7 @@ function statusBadge(row) {
   const status = String(row.status ?? "").toLowerCase();
   if (status === "success") return { label: "Success", tone: "success" };
   if (status === "failed") return { label: "Failed", tone: "danger" };
+  if (status === "skipped") return { label: "Skipped", tone: "warning" };
   if (status === "pending") return { label: "Pending", tone: "warning" };
   return status ? { label: status, tone: "neutral" } : null;
 }
