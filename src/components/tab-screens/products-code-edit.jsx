@@ -23,6 +23,7 @@ import {
   productToForm,
   saveRetailPackageSetting,
   useProductFormResources,
+  validateProductVatId,
   validateRetailPackage,
 } from "@/components/products/product-form";
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
@@ -193,6 +194,11 @@ export function ProductsCodeEditScreen() {
     }
     if (!form.unit_id) {
       setFormError("Select a unit of measure.");
+      return;
+    }
+    const vatError = validateProductVatId(form);
+    if (vatError) {
+      setFormError(vatError);
       return;
     }
     const retailError = validateRetailPackage(form, { hotelCatalogue });

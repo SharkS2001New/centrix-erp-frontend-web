@@ -1,15 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useOrgFormat } from "@/lib/org-format";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
-import { isKraDeviceConfigured, isKraFiscalizationActive } from "@/lib/finance-settings";
-import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
+import { isKraFiscalizationActive } from "@/lib/finance-settings";
 import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 import {
   CatalogPageShell,
@@ -23,11 +21,13 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { KRA_RESPONSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { KraResponseDetailDialog } from "@/components/reports/kra-invoice-preview-dialog";
+import { KraDeviceStatusBanner } from "@/components/reports/kra-device-status-banner";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { todayCalendarDate } from "@/lib/datetime";
-
+import { salesChannelLabel } from "@/lib/user-facing-labels";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -58,7 +58,6 @@ export function AdminKraResponsesScreen() {
 
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
-  const kraConfigured = isKraDeviceConfigured(effectiveCapabilities?.module_settings, effectiveCapabilities);
   const kraFiscalizationActive = isKraFiscalizationActive(
     effectiveCapabilities?.module_settings,
     effectiveCapabilities,
@@ -101,7 +100,7 @@ export function AdminKraResponsesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [adminPath, page, search, fromDate, toDate, statusFilter]);
+  }, [adminPath, page, pageSize, search, fromDate, toDate, statusFilter]);
 
   useTabAwareDataLoad(load);
 
@@ -148,7 +147,7 @@ export function AdminKraResponsesScreen() {
       }
       action={
         <CatalogListExport
-          title="KRA responses"
+          title="KRA device log"
           filename="kra-responses"
           apiPath={adminPath("/kra-responses")}
           columns={KRA_RESPONSE_EXPORT_COLUMNS}
@@ -174,51 +173,11 @@ export function AdminKraResponsesScreen() {
       ) : null}
 
       <div className="mb-4 space-y-2">
-        {kraConfigured ? (
-          <p
-            className={`rounded-lg border px-3 py-2 text-sm ${
-              !kraFiscalizationActive
-                ? "border-slate-200 bg-slate-50 text-slate-800"
-                : deviceStatus?.reachable
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                  : "border-amber-200 bg-amber-50 text-amber-900"
-            }`}
-          >
-            KRA device is <strong>configured</strong>
-            {deviceStatus?.device_ip ? ` (${deviceStatus.device_ip})` : ""}.
-            {kraFiscalizationActive ? (
-              <>
-                {" "}
-                Sales fiscalization is <strong>on</strong>.
-              </>
-            ) : (
-              <>
-                {" "}
-                Sales fiscalization is <strong>off</strong> — new sales will not call the device.
-              </>
-            )}
-            {deviceStatus?.bypass_above_amount ? (
-              <>
-                {" "}
-                Orders at or above KES {Number(deviceStatus.bypass_above_amount).toLocaleString()} bypass KRA.
-              </>
-            ) : null}
-            {deviceStatus?.message ? ` ${deviceStatus.message}` : ""}
-            {deviceStatus?.test_mode ? " Test mode is on." : ""}
-          </p>
-        ) : (
-          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            KRA device is <strong>not configured</strong>. Set it up under{" "}
-            {settingsHref ? (
-              <Link href={settingsHref} className="font-medium text-[#185FA5] hover:underline">
-                Organization settings → Finance
-              </Link>
-            ) : (
-              <OrgSettingsPlatformHint area="Organization settings → Finance" />
-            )}{" "}
-            (device IP, serial, PIN) before checkout can submit fiscal receipts.
-          </p>
-        )}
+        <KraDeviceStatusBanner
+          capabilities={effectiveCapabilities}
+          deviceStatus={deviceStatus}
+          settingsHref={settingsHref}
+        />
       </div>
 
       <FilterToolbar className="mb-4">
@@ -264,6 +223,7 @@ export function AdminKraResponsesScreen() {
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Order</th>
+              <th className="px-4 py-3">Channel</th>
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Serial</th>
@@ -275,13 +235,13 @@ export function AdminKraResponsesScreen() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   {showingTodayOnly ? "No KRA device logs for today yet." : "No KRA device logs in this date range."}
                 </td>
               </tr>
@@ -289,6 +249,9 @@ export function AdminKraResponsesScreen() {
               rows.map((r) => (
                 <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50/50">
                   <td className="px-4 py-3">{r.order_no ?? r.sale_id ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    {salesChannelLabel(r.channel) || r.channel || "—"}
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs">{r.invoice_number ?? "—"}</td>
                   <td className="px-4 py-3 capitalize">{r.status ?? "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs">{r.serial_number ?? "—"}</td>
@@ -332,51 +295,18 @@ export function AdminKraResponsesScreen() {
             total={total}
             pageSize={pageSize}
             onChange={setPage}
-              onPageSizeChange={handlePageSizeChange}
-            />
+            onPageSizeChange={handlePageSizeChange}
+          />
         ) : null}
       </div>
 
       {selected ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setSelected(null)}>
-          <div
-            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-medium text-slate-900">KRA response #{selected.id}</h3>
-                <p className="text-sm text-slate-500">
-                  Order {selected.order_no ?? selected.sale_id} · {selected.status}
-                </p>
-              </div>
-              <button type="button" onClick={() => setSelected(null)} className="text-slate-500 hover:text-slate-800">
-                Close
-              </button>
-            </div>
-            {selected.signature_link ? (
-              <p className="mt-3 text-sm">
-                <a href={selected.signature_link} target="_blank" rel="noreferrer" className="text-[#185FA5] underline">
-                  Open signature link
-                </a>
-              </p>
-            ) : null}
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 text-sm">
-              <div>
-                <p className="text-xs font-medium uppercase text-slate-500">Request payload</p>
-                <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-slate-50 p-3 text-xs">
-                  {JSON.stringify(selected.request_payload ?? {}, null, 2)}
-                </pre>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase text-slate-500">Response payload</p>
-                <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-slate-50 p-3 text-xs">
-                  {JSON.stringify(selected.response_payload ?? {}, null, 2)}
-                </pre>
-              </div>
-            </div>
-          </div>
-        </div>
+        <KraResponseDetailDialog
+          open={Boolean(selected)}
+          row={selected}
+          apiBasePath={adminPath("/kra-responses")}
+          onClose={() => setSelected(null)}
+        />
       ) : null}
     </CatalogPageShell>
   );

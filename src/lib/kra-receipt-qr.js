@@ -59,6 +59,15 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     payload?.serial_number,
   );
   const timestamp = firstNonEmpty(kra.kra_timestamp, payload?.timestamp);
+  const scuId = firstNonEmpty(kra.scu_id, payload?.scu_id);
+  const cuInvNo = firstNonEmpty(
+    kra.cu_inv_no,
+    kra.kra_cu_inv_no,
+    payload?.cu_inv_no,
+    payload?.["cu-inv-no"],
+  );
+  const internalData = firstNonEmpty(kra.internal_data, payload?.internal_data);
+  const version = firstNonEmpty(kra.version, payload?.version);
 
   if (!signatureLink && !receiptSignature && !invoiceNumber) return null;
 
@@ -68,6 +77,10 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     receiptSignature,
     serialNumber,
     timestamp,
+    scuId,
+    cuInvNo,
+    internalData,
+    version,
     status: firstNonEmpty(kra.status, payload?.status),
   };
 }
@@ -185,8 +198,9 @@ function saleLooksFiscalized(sale, kraData) {
  * Load KRA fiscal data for a sale (checkout relation, embedded payload, or API lookup).
  *
  * Prefer GET /sales/{id} — cashiers can view their orders and the sale includes kra_response.
- * Do NOT rely on /kra-responses: that list is admin-module gated (admin.view), so non-admin
- * cashiers like till users never get a QR when the checkout payload was dropped on refresh.
+ * Do NOT rely on /kra-responses for POS: that list requires admin.kra_responses.view or
+ * reports.kra_receipts.view, so till users without those permissions never get a QR when the
+ * checkout payload was dropped on refresh.
  */
 export async function resolveKraReceiptDataForSale(sale, kraReceipt = null) {
   const inline = extractKraReceiptData(sale, kraReceipt);

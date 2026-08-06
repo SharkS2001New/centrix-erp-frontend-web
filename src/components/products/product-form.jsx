@@ -181,7 +181,7 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     sell_on_retail: hotelCatalogue ? false : Boolean(form.sell_on_retail),
     sell_on_bar: Boolean(form.sell_on_bar),
     sell_on_hotel: Boolean(form.sell_on_hotel),
-    vat_id: form.vat_id ? Number(form.vat_id) : undefined,
+    vat_id: Number(form.vat_id),
     reorder_point: reorderBaseFromForm(form, uom),
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
@@ -276,6 +276,13 @@ export async function saveRetailPackageSetting(form, productCode, { hotelCatalog
   }
 
   await apiRequest("/retail-package-settings", { method: "POST", body });
+}
+
+export function validateProductVatId(form) {
+  if (!form?.vat_id || !String(form.vat_id).trim()) {
+    return "Select a VAT rate.";
+  }
+  return null;
 }
 
 export function validateRetailPackage(form, { hotelCatalogue = false } = {}) {

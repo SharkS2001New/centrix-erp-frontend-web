@@ -356,6 +356,7 @@ export const STOCK_RESERVATION_EXPORT_COLUMNS = [
 export const KRA_RESPONSE_EXPORT_COLUMNS = [
   { key: "created_at", label: "Submitted" },
   { key: "order_no", label: "Order #" },
+  { key: "channel", label: "Channel" },
   { key: "invoice_number", label: "Invoice #" },
   { key: "status", label: "Status" },
   { key: "error_message", label: "Error" },

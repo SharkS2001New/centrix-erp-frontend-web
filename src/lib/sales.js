@@ -208,12 +208,10 @@ export function formatCashSalesNumber(sale) {
 }
 
 /**
- * Number shown in classic POS ← / → box and previous-order captions.
- * Prefers daily POS ticket; falls back to org order_num digits for edit sessions only.
- * Never uses next_order_num here — callers that need “next ticket” must use
- * {@link resolvePosNextBrowseNumber} so External POS does not flash the org S00xx digit.
+ * Daily POS ticket # only — never org order_num (S00xx). Use for session lists,
+ * next-ticket sequencing, and dedupe while pending sync is flushing.
  */
-export function resolvePosBrowseNumber(saleOrCart) {
+export function resolvePosSessionTicketNumber(saleOrCart) {
   if (saleOrCart == null || saleOrCart === "") return null;
   if (typeof saleOrCart !== "object") {
     const n = Number(saleOrCart);
@@ -223,18 +221,39 @@ export function resolvePosBrowseNumber(saleOrCart) {
     const n = Number(saleOrCart.pos_order_num);
     if (Number.isFinite(n) && n > 0) return n;
   }
-  if (saleOrCart.held_order_num != null && saleOrCart.held_order_num !== "") {
-    // Edit sessions may only have org order_num on held_order_num until sale is loaded.
+  return null;
+}
+
+/**
+ * Number shown in classic POS ← / → box and previous-order captions.
+ * Prefers daily POS ticket; falls back to held_order_num only on active edit sessions.
+ * Never uses org order_num or next_order_num — callers that need “next ticket” must use
+ * {@link resolvePosNextBrowseNumber} so External POS does not flash the org S00xx digit.
+ */
+export function resolvePosBrowseNumber(saleOrCart) {
+  if (saleOrCart == null || saleOrCart === "") return null;
+  if (typeof saleOrCart !== "object") {
+    const n = Number(saleOrCart);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  const posTicket = resolvePosSessionTicketNumber(saleOrCart);
+  if (posTicket != null) return posTicket;
+  const isPosEditSession =
+    saleOrCart.superseded_sale_id != null ||
+    saleOrCart.offline_client_sale_uuid != null ||
+    saleOrCart.offline_pending_sync;
+  if (
+    isPosEditSession &&
+    saleOrCart.held_order_num != null &&
+    saleOrCart.held_order_num !== ""
+  ) {
+    // Legacy edit rows before pos_order_num was hydrated — last resort only.
     const n = Number(saleOrCart.held_order_num);
     if (Number.isFinite(n) && n > 0 && n < 9_000_000) return n;
   }
   if (saleOrCart.next_pos_order_num != null && saleOrCart.next_pos_order_num !== "") {
     const n = Number(saleOrCart.next_pos_order_num);
     if (Number.isFinite(n) && n > 0) return n;
-  }
-  if (saleOrCart.order_num != null && saleOrCart.order_num !== "") {
-    const n = Number(saleOrCart.order_num);
-    if (Number.isFinite(n) && n > 0 && n < 9_000_000) return n;
   }
   return null;
 }

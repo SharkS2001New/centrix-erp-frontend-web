@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -11,20 +11,30 @@ import {
   useTabPaneActive,
 } from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { PaginationBar } from "@/components/catalog/catalog-shared";
+import {
+  PaginationBar,
+  TABLE_BODY_ROW_CLASS,
+  TABLE_HEAD_ROW_CLASS,
+  TABLE_SHELL_CLASS,
+} from "@/components/catalog/catalog-shared";
+import { usePageRowSelection, TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import {
+  ReportBadge,
   ReportFilterBar,
   ReportKpiGrid,
   ReportPageShell,
-  ReportTable,
 } from "@/components/reports/report-screen-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
-import { KraInvoicePreviewDialog } from "@/components/reports/kra-invoice-preview-dialog";
+import { KraResponseDetailDialog } from "@/components/reports/kra-invoice-preview-dialog";
+import { KraDeviceStatusBanner } from "@/components/reports/kra-device-status-banner";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
+import { kraReportRowId, printKraFiscalReceipts } from "@/lib/kra-fiscal-receipt-print";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { isKraFiscalizationActive } from "@/lib/finance-settings";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -36,8 +46,12 @@ function statusBadge(row) {
   return status ? { label: status, tone: "neutral" } : null;
 }
 
+function isPrintableKraRow(row) {
+  return String(row?.status ?? "").toLowerCase() === "success";
+}
+
 export function KraReceiptsReportScreen({ definition }) {
-  const { user, isOrgWide, capabilities } = useAuth();
+  const { user, isOrgWide, capabilities, organization } = useAuth();
   const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const queryFilterOptions = useReportFilterOptions(definition.key);
@@ -57,12 +71,29 @@ export function KraReceiptsReportScreen({ definition }) {
   const [queryFilters, setQueryFilters] = useState({ status: "", q: "" });
   const [branches, setBranches] = useState([]);
   const [previewRow, setPreviewRow] = useState(null);
+  const [printing, setPrinting] = useState(false);
+  const [retryingId, setRetryingId] = useState(null);
+  const [deviceStatus, setDeviceStatus] = useState(null);
   const [applied, setApplied] = useState({
     fromDate: defaultRange.from,
     toDate: defaultRange.to,
     branchId: defaultBranch,
     queryFilters: { status: "", q: "" },
   });
+
+  const {
+    selectedIds,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
+
+  const kraFiscalizationActive = isKraFiscalizationActive(
+    capabilities?.module_settings,
+    capabilities,
+  );
 
   useEffect(() => {
     fetchBranchesCached()
@@ -92,11 +123,16 @@ export function KraReceiptsReportScreen({ definition }) {
       if (applied.branchId) searchParams.branch_id = applied.branchId;
       if (applied.queryFilters?.status) searchParams.status = applied.queryFilters.status;
       if (applied.queryFilters?.q) searchParams.q = applied.queryFilters.q;
-      const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
+      const [res, statusRes] = await Promise.all([
+        apiRequest(definition.apiPath, { searchParams, loading: false }),
+        apiRequest("/kra/device-status", { loading: false, reportIssues: false }).catch(() => null),
+      ]);
+      setDeviceStatus(statusRes);
       setRows(normalizeReportRows(res));
       setReportMeta(normalizeReportMeta(res, page, pageSize));
       setReportSummary(normalizeReportSummary(res));
       markTabAwareDataLoaded(paneHref, depsKey);
+      clearSelection();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load KRA receipts");
       setRows([]);
@@ -105,7 +141,7 @@ export function KraReceiptsReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath, depsKey, page, pageSize, paneHref]);
+  }, [applied, definition.apiPath, depsKey, page, pageSize, paneHref, clearSelection]);
 
   const hasData = rows.length > 0 || reportMeta != null;
   useTabAwareDataLoad(loadReport, { depsKey, hasData });
@@ -115,65 +151,69 @@ export function KraReceiptsReportScreen({ definition }) {
     void loadReport();
   }
 
-  const columns = useMemo(
+  const pageRowIds = useMemo(
+    () => rows.map((row) => kraReportRowId(row)).filter((id) => id != null),
+    [rows],
+  );
+
+  const selectedRows = useMemo(
+    () => rows.filter((row) => selectedIds.has(String(kraReportRowId(row)))),
+    [rows, selectedIds],
+  );
+
+  const printableOnPage = useMemo(() => rows.filter(isPrintableKraRow), [rows]);
+
+  async function handlePrintRows(targetRows, label) {
+    const printable = targetRows.filter(isPrintableKraRow);
+    if (!printable.length) {
+      notifyError("No successful KRA receipts to print.");
+      return;
+    }
+    setPrinting(true);
+    try {
+      await printKraFiscalReceipts(printable, {
+        orgName: organization?.org_name,
+        title: label,
+      });
+      notifySuccess(
+        printable.length === 1
+          ? "KRA receipt sent to printer."
+          : `${printable.length} KRA receipts sent to printer.`,
+      );
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Failed to print KRA receipts");
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  async function handleRetryRow(row) {
+    const responseId = kraReportRowId(row);
+    if (!responseId || !row?.sale_id) return;
+    setRetryingId(responseId);
+    try {
+      const res = await apiRequest(`/kra-responses/${responseId}/retry`, { method: "POST" });
+      notifySuccess(res.message ?? "Retry succeeded.");
+      await loadReport();
+      if (res.kra_response) setPreviewRow(res.kra_response);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Retry failed");
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
+  const exportColumns = useMemo(
     () => [
       { key: "receipt_date", label: "Date", accessor: (r) => r.receipt_date },
-      {
-        key: "order_no",
-        label: "Order #",
-        accessor: (r) => r.order_no ?? r.sale_order_num ?? r.sale_id,
-      },
-      {
-        key: "invoice_number",
-        label: "CU number",
-        accessor: (r) => r.invoice_number || "—",
-      },
-      {
-        key: "serial_number",
-        label: "SCU / serial",
-        accessor: (r) => r.serial_number || "—",
-      },
-      {
-        key: "status",
-        label: "Status",
-        accessor: (r) => r.status,
-        badge: statusBadge,
-      },
-      ...(multiBranch
-        ? [{ key: "branch_name", label: "Branch", accessor: (r) => r.branch_name }]
-        : []),
-      {
-        key: "channel",
-        label: "Channel",
-        accessor: (r) => salesChannelLabel(r.channel) || r.channel,
-      },
-      {
-        key: "order_total",
-        label: "Order total",
-        accessor: (r) => r.order_total,
-        align: "right",
-        total: true,
-      },
-      {
-        key: "total_vat",
-        label: "VAT",
-        accessor: (r) => r.total_vat,
-        align: "right",
-        total: true,
-      },
-      {
-        key: "preview",
-        label: "KRA invoice",
-        accessor: (r) => (
-          <button
-            type="button"
-            onClick={() => setPreviewRow(r)}
-            className="font-medium text-[#185FA5] hover:underline"
-          >
-            Preview
-          </button>
-        ),
-      },
+      { key: "order_no", label: "Order #", accessor: (r) => r.order_no ?? r.sale_order_num ?? r.sale_id },
+      { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number || "—" },
+      { key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number || "—" },
+      { key: "status", label: "Status", accessor: (r) => r.status },
+      ...(multiBranch ? [{ key: "branch_name", label: "Branch", accessor: (r) => r.branch_name }] : []),
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) || r.channel },
+      { key: "order_total", label: "Order total", accessor: (r) => r.order_total, align: "right", total: true },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
     ],
     [multiBranch],
   );
@@ -220,12 +260,10 @@ export function KraReceiptsReportScreen({ definition }) {
         subtitle={definition.subtitle}
         exportConfig={{
           filename: definition.key ?? "kra-receipts",
-          columns: columns
-            .filter((c) => c.key !== "preview")
-            .map((col) => ({
-              ...col,
-              accessor: (row) => formatReportCell(col.key, col.accessor(row)),
-            })),
+          columns: exportColumns.map((col) => ({
+            ...col,
+            accessor: (row) => formatReportCell(col.key, col.accessor(row)),
+          })),
           exportSource: {
             path: definition.apiPath,
             searchParams: {
@@ -251,6 +289,10 @@ export function KraReceiptsReportScreen({ definition }) {
             {error}
           </p>
         ) : null}
+
+        <div className="mb-4">
+          <KraDeviceStatusBanner capabilities={capabilities} deviceStatus={deviceStatus} />
+        </div>
 
         <ReportFilterBar
           reportKey={definition.key}
@@ -301,11 +343,175 @@ export function KraReceiptsReportScreen({ definition }) {
 
         {!loading ? <ReportKpiGrid items={kpis} /> : null}
 
+        {!loading && rows.length > 0 ? (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={printing || selectedRows.filter(isPrintableKraRow).length === 0}
+              onClick={() =>
+                void handlePrintRows(selectedRows, `KRA receipts (${selectedRows.length})`)
+              }
+              className="theme-primary-btn rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+            >
+              {printing ? "Printing…" : `Print selected (${selectedRows.filter(isPrintableKraRow).length})`}
+            </button>
+            <button
+              type="button"
+              disabled={printing || printableOnPage.length === 0}
+              onClick={() => void handlePrintRows(printableOnPage, `KRA receipts page ${page}`)}
+              className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+            >
+              Print page ({printableOnPage.length})
+            </button>
+            {selectedIds.size > 0 ? (
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-sm font-medium text-[#185FA5] hover:underline"
+              >
+                Clear selection
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         {loading ? (
           <p className="text-sm text-slate-500">Loading report…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-slate-500">No rows for this filter.</p>
         ) : (
           <>
-            <ReportTable columns={columns} rows={rows} footerTotals={footerTotals} />
+            <div className={TABLE_SHELL_CLASS}>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-max border-collapse text-sm">
+                  <thead>
+                    <tr className={`${TABLE_HEAD_ROW_CLASS} font-semibold`}>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          className={TABLE_ROW_CHECKBOX_CLASS}
+                          checked={isAllOnPageSelected(pageRowIds)}
+                          ref={(el) => {
+                            if (el) el.indeterminate = isSomeOnPageSelected(pageRowIds);
+                          }}
+                          onChange={(e) => toggleAllOnPage(e.target.checked, pageRowIds)}
+                          aria-label="Select all receipts on this page"
+                        />
+                      </th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">Date</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">Order #</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">CU number</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">SCU / serial</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">Status</th>
+                      {multiBranch ? (
+                        <th className="whitespace-nowrap px-4 py-3 text-left">Branch</th>
+                      ) : null}
+                      <th className="whitespace-nowrap px-4 py-3 text-left">Channel</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right">Order total</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right">VAT</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">Error</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-left">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, idx) => {
+                      const rowId = kraReportRowId(row);
+                      const badge = statusBadge(row);
+                      const printable = isPrintableKraRow(row);
+                      return (
+                        <tr key={rowId ?? idx} className={`${TABLE_BODY_ROW_CLASS} theme-text-muted`}>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            <input
+                              type="checkbox"
+                              className={TABLE_ROW_CHECKBOX_CLASS}
+                              checked={selectedIds.has(String(rowId))}
+                              onChange={() => toggleOne(rowId)}
+                              aria-label={`Select receipt ${row.order_no ?? rowId}`}
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            {formatReportCell("receipt_date", row.receipt_date)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            {formatReportCell("order_no", row.order_no ?? row.sale_order_num ?? row.sale_id)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs">
+                            {row.invoice_number || "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs">
+                            {row.serial_number || "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            {badge ? <ReportBadge label={badge.label} tone={badge.tone} /> : "—"}
+                          </td>
+                          {multiBranch ? (
+                            <td className="whitespace-nowrap px-4 py-2.5">{row.branch_name || "—"}</td>
+                          ) : null}
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            {salesChannelLabel(row.channel) || row.channel || "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                            {formatReportCell("order_total", row.order_total)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5 text-right">
+                            {formatReportCell("total_vat", row.total_vat)}
+                          </td>
+                          <td
+                            className="max-w-xs truncate px-4 py-2.5 text-xs text-red-600"
+                            title={row.error_message ?? ""}
+                          >
+                            {row.error_message || "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setPreviewRow(row)}
+                                className="font-medium text-[#185FA5] hover:underline"
+                              >
+                                Details
+                              </button>
+                              {printable ? (
+                                <button
+                                  type="button"
+                                  disabled={printing}
+                                  onClick={() =>
+                                    void handlePrintRows([row], `KRA receipt #${row.order_no ?? rowId}`)
+                                  }
+                                  className="font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                                >
+                                  Print
+                                </button>
+                              ) : null}
+                              {!printable && row.sale_id ? (
+                                <button
+                                  type="button"
+                                  disabled={retryingId === rowId || !kraFiscalizationActive}
+                                  onClick={() => void handleRetryRow(row)}
+                                  className="font-medium text-amber-800 hover:underline disabled:opacity-50"
+                                >
+                                  {retryingId === rowId ? "Retrying…" : "Retry"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-slate-50 font-medium">
+                      <td className="px-4 py-2.5" colSpan={multiBranch ? 10 : 9}>
+                        Page total
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right">{footerTotals.order_total}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right">{footerTotals.total_vat}</td>
+                      <td className="px-4 py-2.5" />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
             <PaginationBar
               page={page}
               totalPages={reportMeta?.last_page ?? 1}
@@ -318,7 +524,7 @@ export function KraReceiptsReportScreen({ definition }) {
         )}
       </ReportPageShell>
 
-      <KraInvoicePreviewDialog
+      <KraResponseDetailDialog
         open={Boolean(previewRow)}
         row={previewRow}
         onClose={() => setPreviewRow(null)}

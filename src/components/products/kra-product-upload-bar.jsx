@@ -1,7 +1,11 @@
 "use client";
 
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
-import { apiRequest } from "@/lib/api";
+export {
+  productCodesFromCartLines,
+  registerProductsOnKraDevice,
+  submitKraProductRegistration,
+} from "@/lib/kra-product-registration";
 
 export function KraProductUploadToolbar({
   enabled,
@@ -33,12 +37,4 @@ export function KraProductUploadToolbar({
       </p>
     </div>
   );
-}
-
-/** Submit KRA registration (returns 202 + task_id when queued). */
-export async function submitKraProductRegistration({ productCodes, all = false }) {
-  return apiRequest("/kra/register-products", {
-    method: "POST",
-    body: all ? { all: true } : { product_codes: productCodes },
-  });
 }

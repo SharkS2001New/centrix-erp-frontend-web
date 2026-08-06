@@ -31,7 +31,7 @@ const LABEL_OVERRIDES = {
   "purchases-by-supplier": "Purchases summary",
   "sales-by-user": "Sales by user",
   "kra-compliance-summary": "KRA compliance",
-  "kra-receipts": "KRA receipts",
+  "kra-receipts": "KRA responses",
   "kra-unfiscalized-sales": "Unfiscalized sales",
   "vat-collected": "VAT collected",
   "audit-trail": "Audit trail",

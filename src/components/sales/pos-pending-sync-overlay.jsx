@@ -11,6 +11,7 @@ import {
 } from "@/lib/sale-line-items";
 import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
 import { OrderExpandIcon } from "@/components/sales/sales-orders-shared";
+import { PosOfflineSyncControls } from "@/components/sales/pos-offline-sync-controls";
 import { useConfirm } from "@/lib/use-confirm";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
@@ -41,6 +42,12 @@ export function PosPendingSyncOverlay({
   onCountChange,
   onDiscarded,
   embedded = false,
+  syncing = false,
+  canFlush = false,
+  syncProgress = null,
+  lastSyncMessage = null,
+  onSyncAll,
+  onSyncOrder,
 }) {
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -55,6 +62,7 @@ export function PosPendingSyncOverlay({
   const [uomById, setUomById] = useState(() => new Map());
   const onCountChangeRef = useRef(onCountChange);
   const loadedOnceRef = useRef(false);
+  const wasSyncingRef = useRef(false);
 
   useEffect(() => {
     onCountChangeRef.current = onCountChange;
@@ -97,6 +105,13 @@ export function PosPendingSyncOverlay({
   }, []);
 
   useEffect(() => {
+    if (wasSyncingRef.current && !syncing && open) {
+      void loadPendingSales({ refresh: true });
+    }
+    wasSyncingRef.current = syncing;
+  }, [syncing, open, loadPendingSales]);
+
+  useEffect(() => {
     if (!open) {
       loadedOnceRef.current = false;
       setSearch("");
@@ -124,6 +139,27 @@ export function PosPendingSyncOverlay({
       return receipt.includes(q) || customer.includes(q) || orderNum.includes(q) || err.includes(q);
     });
   }, [rows, search]);
+
+  async function handleSyncOrder(order) {
+    const uuid = order?.client_sale_uuid;
+    if (!uuid || !onSyncOrder) return;
+    const key = orderKey(order);
+    setBusyKey(key);
+    setActionError(null);
+    try {
+      const results = await onSyncOrder(uuid);
+      const failed = (results ?? []).find((row) => !row.ok);
+      if (failed?.error) {
+        setActionError(failed.error);
+      }
+      await loadPendingSales({ refresh: true });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to sync offline order");
+      await loadPendingSales({ refresh: true }).catch(() => {});
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   async function handleDiscard(order) {
     const uuid = order?.client_sale_uuid;
@@ -204,7 +240,7 @@ export function PosPendingSyncOverlay({
                 ) : null}
               </div>
               <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs text-amber-100">
-                Local sales waiting to upload. Remove a stuck order to free the till for a new sale.
+                Local sales waiting to upload. Sync here, or remove a stuck order to free the till.
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -226,6 +262,17 @@ export function PosPendingSyncOverlay({
             </div>
           </div>
         </header>
+
+        <div className="shrink-0 border-b border-sky-200 bg-sky-50 px-4 py-2.5">
+          <PosOfflineSyncControls
+            pendingSync={rows.length}
+            syncing={syncing}
+            canFlush={canFlush}
+            syncProgress={syncProgress}
+            lastSyncMessage={lastSyncMessage}
+            onSync={() => void onSyncAll?.()}
+          />
+        </div>
 
         <div className="shrink-0 theme-table-head-row border-b px-4 py-2.5">
           <input
@@ -338,14 +385,25 @@ export function PosPendingSyncOverlay({
                       <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-3 py-2">
                         <button
                           type="button"
-                          disabled={Boolean(busyKey)}
+                          disabled={Boolean(busyKey) || syncing || !canFlush || !onSyncOrder}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            void handleSyncOrder(order);
+                          }}
+                          className="rounded-md border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                        >
+                          {isBusy ? "Syncing…" : "Sync order"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(busyKey) || syncing}
                           onClick={(e) => {
                             e.preventDefault();
                             void handleDiscard(order);
                           }}
                           className="rounded-md border border-red-200 bg-red-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100 disabled:opacity-50"
                         >
-                          {isBusy ? "…" : "Remove"}
+                          {isBusy && !syncing ? "…" : "Remove"}
                         </button>
                       </div>
                     </details>

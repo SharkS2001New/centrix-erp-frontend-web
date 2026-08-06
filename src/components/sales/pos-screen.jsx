@@ -55,7 +55,13 @@ import {
   productHasConfiguredDiscount,
 } from "@/lib/product-discount";
 import { lineProductVat } from "@/lib/sales-vat";
-import { formatPosBrowseLabel, formatSaleKes, resolvePosBrowseNumber, resolvePosNextBrowseNumber } from "@/lib/sales";
+import {
+  formatPosBrowseLabel,
+  formatSaleKes,
+  resolvePosBrowseNumber,
+  resolvePosNextBrowseNumber,
+  resolvePosSessionTicketNumber,
+} from "@/lib/sales";
 import { annotateSaleWithReceiptTenders } from "@/lib/checkout-payment-splits";
 import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
 import {
@@ -553,7 +559,7 @@ function isOfflinePendingSaleId(saleId) {
 
 /** Newest POS ticket # first — used for classic ← / → sequential browse. */
 function posBrowseSortKey(row) {
-  return Number(resolvePosBrowseNumber(row) ?? 0);
+  return Number(resolvePosSessionTicketNumber(row) ?? 0);
 }
 
 function sortPosOrdersByNumberDesc(orders) {
@@ -580,9 +586,10 @@ function findNewerPosOrder(orders, currentBrowseNum) {
 }
 
 function sessionOrderMatchesBrowseNum(row, trimmed) {
+  const ticket = resolvePosSessionTicketNumber(row);
+  if (ticket != null && String(ticket) === String(trimmed)) return true;
   const browse = resolvePosBrowseNumber(row);
   if (browse != null && String(browse) === String(trimmed)) return true;
-  if (row?.order_num != null && String(row.order_num) === String(trimmed)) return true;
   return false;
 }
 
@@ -607,7 +614,7 @@ function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = nu
   const rows = [...(sessionOrders ?? [])];
   if (pendingSale) rows.unshift(pendingSale);
   for (const row of rows) {
-    const n = Number(resolvePosBrowseNumber(row) ?? 0);
+    const n = Number(resolvePosSessionTicketNumber(row) ?? 0);
     if (n > maxPos) maxPos = n;
   }
   // Only count the active cart when it is an in-progress sale. A blank workspace
@@ -618,7 +625,8 @@ function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = nu
     Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id) ||
     Boolean(activeCart?.offline_client_sale_uuid);
   if (inProgress) {
-    const activePos = resolvePosBrowseNumber(activeCart);
+    const activePos =
+      resolvePosSessionTicketNumber(activeCart) ?? resolvePosNextBrowseNumber(activeCart);
     if (activePos != null && activePos > maxPos) maxPos = activePos;
   }
   const sessionNext = maxPos > 0 ? maxPos + 1 : null;
@@ -629,12 +637,22 @@ function resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale = nu
 }
 
 /** Prefer local/server Cash Sales seq (includes cancelled) over a stale session peek. */
-async function resolveNextPosTicketForWorkspace(activeCart, sessionOrders, pendingSale = null) {
+async function resolveNextPosTicketForWorkspace(
+  activeCart,
+  sessionOrders,
+  pendingSale = null,
+  { skipServerReseed = false } = {},
+) {
   // Ctrl+R / new order: reseed from server so cancelled Cash Sales #s are skipped (274→275).
-  try {
-    await ensurePosOfflineOrderNumbers({ force: false });
-  } catch {
-    /* offline — use local seq / session */
+  // Post-checkout prepare uses session/local peek only — server reseed runs in background.
+  if (skipServerReseed) {
+    void ensurePosOfflineOrderNumbers({ force: false }).catch(() => {});
+  } else {
+    try {
+      await ensurePosOfflineOrderNumbers({ force: false });
+    } catch {
+      /* offline — use local seq / session */
+    }
   }
 
   const sessionNext = resolveFreshWorkspacePosNum(activeCart, sessionOrders, pendingSale);
@@ -870,6 +888,7 @@ export function PosScreen({ standalone = false }) {
     flushOutboxNow,
     flushOutboxAfterSale,
     syncOfflineOrders,
+    syncSingleOfflineOrder,
   } = usePosOfflineSupport({ enabled: standalone });
 
   /** Push queued outbox sales to the server (await when caller must block). */
@@ -1809,10 +1828,12 @@ export function PosScreen({ standalone = false }) {
       setEditOrderNo(String(nextBrowse));
       return;
     }
+    // F8 / post-checkout placeholder owns editOrderNo — never derive from session list here.
+    if (isFreshWorkspacePlaceholder(cart)) return;
     if (sessionPosOrders.length > 0) {
       let maxPos = 0;
       for (const row of sessionPosOrders) {
-        const n = Number(resolvePosBrowseNumber(row) ?? 0);
+        const n = Number(resolvePosSessionTicketNumber(row) ?? 0);
         if (n > maxPos) maxPos = n;
       }
       if (maxPos > 0) {
@@ -1822,6 +1843,7 @@ export function PosScreen({ standalone = false }) {
   }, [
     standalone,
     isCartEditSession,
+    cart?.id,
     cart?.held_order_num,
     cart?.pos_order_num,
     cart?.next_pos_order_num,
@@ -2041,7 +2063,10 @@ export function PosScreen({ standalone = false }) {
       }
 
       const offlineBrowseKeys = new Set(
-        offlineOrders.map((row) => String(resolvePosBrowseNumber(row) ?? row.order_num)),
+        offlineOrders
+          .map((row) => resolvePosSessionTicketNumber(row))
+          .filter((n) => n != null)
+          .map(String),
       );
       const orders = sortPosOrdersByNumberDesc([
         ...offlineOrders.map((row) => ({
@@ -2052,9 +2077,10 @@ export function PosScreen({ standalone = false }) {
           status: row.status,
           offline_pending_sync: true,
         })),
-        ...serverOrders.filter(
-          (row) => !offlineBrowseKeys.has(String(resolvePosBrowseNumber(row) ?? row.order_num)),
-        ),
+        ...serverOrders.filter((row) => {
+          const ticket = resolvePosSessionTicketNumber(row);
+          return ticket == null || !offlineBrowseKeys.has(String(ticket));
+        }),
       ]).slice(0, 15);
 
       setSessionPosOrders(orders);
@@ -2071,9 +2097,16 @@ export function PosScreen({ standalone = false }) {
         }
       }
       setEditOrderNo((current) => {
-        if (String(current ?? "").trim()) return current;
         const live = cartRef.current;
-        if (isFreshWorkspacePlaceholder(live) || (!live?.held_order_num && !live?.superseded_sale_id)) {
+        const editingPrevious = Boolean(live?.held_order_num && live?.superseded_sale_id);
+        const onFreshNewOrder =
+          isFreshWorkspacePlaceholder(live) ||
+          (!editingPrevious && !live?.offline_client_sale_uuid);
+        if (onFreshNewOrder) {
+          const next = resolvePosNextBrowseNumber(live);
+          if (next != null) return String(next);
+          if (String(current ?? "").trim()) return current;
+        } else if (String(current ?? "").trim()) {
           return current;
         }
         const browse = resolvePosBrowseNumber(orders[0]);
@@ -2450,26 +2483,40 @@ export function PosScreen({ standalone = false }) {
     previousOrderLoadingDepthRef.current += 1;
     setPreviousOrderLoadingMessage(message);
     setPreviousOrderLoading(true);
+    closeProductSearchDropdown();
+    searchInputRef.current?.blur?.();
+    defaultScanFocusDoneRef.current = false;
   }, []);
 
   const endPreviousOrderLoading = useCallback(() => {
     previousOrderLoadingDepthRef.current = Math.max(0, previousOrderLoadingDepthRef.current - 1);
     if (previousOrderLoadingDepthRef.current === 0) {
       setPreviousOrderLoading(false);
+      defaultScanFocusDoneRef.current = false;
     }
   }, []);
+
+  const posSearchSuspended = previousOrderLoading || preparingNextOpen || autoHeldBusy;
 
   const orderEditBusy = busy || previousOrderLoading;
 
   useEffect(() => {
-    if (cartActionPending || !focusSearchAfterAdd.current) return;
+    if (!posSearchSuspended) return undefined;
+    closeProductSearchDropdown();
+    searchInputRef.current?.blur?.();
+    defaultScanFocusDoneRef.current = false;
+    return undefined;
+  }, [posSearchSuspended]);
+
+  useEffect(() => {
+    if (cartActionPending || posSearchSuspended || !focusSearchAfterAdd.current) return;
     focusSearchAfterAdd.current = false;
     const frame = window.requestAnimationFrame(() => {
       searchInputRef.current?.focus({ preventScroll: true });
       searchInputRef.current?.select?.();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [cartActionPending]);
+  }, [cartActionPending, posSearchSuspended]);
 
   const posShellReady = !sessionLoading && uomById.size > 0;
   usePageNavigationReady(posShellReady);
@@ -2492,7 +2539,9 @@ export function PosScreen({ standalone = false }) {
       closeSessionOpen ||
       Boolean(autoHeldPrompt) ||
       Boolean(editAdjustmentDialog) ||
-      preparingNextOpen;
+      preparingNextOpen ||
+      previousOrderLoading ||
+      autoHeldBusy;
 
     if (blockingOverlay) {
       // Re-focus scan after till float / other overlays close.
@@ -2540,6 +2589,8 @@ export function PosScreen({ standalone = false }) {
     autoHeldPrompt,
     editAdjustmentDialog,
     preparingNextOpen,
+    previousOrderLoading,
+    autoHeldBusy,
   ]);
 
   const loadPosReferenceData = useCallback(async () => {
@@ -5802,6 +5853,8 @@ export function PosScreen({ standalone = false }) {
   async function handleAutoHeldRestore() {
     if (!autoHeldPrompt?.localHeldId && !autoHeldPrompt?.saleId) return;
     setAutoHeldBusy(true);
+    closeProductSearchDropdown();
+    searchInputRef.current?.blur?.();
     try {
       if (autoHeldPrompt.localHeldId && isLocalHeldId(autoHeldPrompt.localHeldId)) {
         const { cart: localCart, park } = await restoreLocalHeldOrder(autoHeldPrompt.localHeldId, {
@@ -5813,8 +5866,8 @@ export function PosScreen({ standalone = false }) {
           const saved = await saveLocalPosCart({ ...localCart, offline: true });
           applyRestoredHeldCart(presentLocalOfflineCart(saved), park);
         } else {
-          applyRestoredHeldCart(localCart, park);
           beginPreviousOrderLoading("Preparing held order for checkout…");
+          applyRestoredHeldCart(localCart, park);
           try {
             const serverCart = await materializeOfflineCartOnServer({
               ...localCart,
@@ -6191,6 +6244,8 @@ export function PosScreen({ standalone = false }) {
       }
       preparingNextOrderRef.current = true;
       report(8);
+      closeProductSearchDropdown();
+      searchInputRef.current?.blur?.();
       if (!keepPaymentOpen) {
         setPaymentOpen(false);
         // Don't clear receiptPrintStatus here — print may still be in flight.
@@ -6232,10 +6287,14 @@ export function PosScreen({ standalone = false }) {
         void clearLocalPosCart().catch(() => {});
       }
 
+      const generation = ++freshWorkspaceGenerationRef.current;
+      const cartPromise = loadCashierCart({ skipEditDraftRestore: true });
+
       const peekNextPos = await resolveNextPosTicketForWorkspace(
         cartRef.current,
         sessionPosOrders,
         saleForPeek,
+        { skipServerReseed: true },
       );
       if (
         peekNextPos != null &&
@@ -6244,13 +6303,12 @@ export function PosScreen({ standalone = false }) {
         applyFreshWorkspacePlaceholder(cartRef.current, peekNextPos);
       }
       report(45);
-      const generation = ++freshWorkspaceGenerationRef.current;
 
       const task = (async () => {
         try {
           if (generation !== freshWorkspaceGenerationRef.current) return cartRef.current;
 
-          const next = await loadCashierCart({ skipEditDraftRestore: true });
+          const next = await cartPromise;
           report(78);
           if (generation !== freshWorkspaceGenerationRef.current) return next;
 
@@ -6432,6 +6490,8 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function runPrepareNextOrderOverlay(task) {
+    closeProductSearchDropdown();
+    searchInputRef.current?.blur?.();
     setPreparingNextProgress(0);
     setPreparingNextOpen(true);
     await new Promise((r) => window.requestAnimationFrame(() => r()));
@@ -7577,25 +7637,22 @@ export function PosScreen({ standalone = false }) {
       generation,
       peekNextPos,
       report = () => {},
+      cartPromise = null,
     }) => {
-      await clearPreviousOrderEditDraft();
+      void clearPreviousOrderEditDraft().catch(() => {});
       report(42);
-      await clearLocalPosCart().catch(() => {});
+      void clearLocalPosCart().catch(() => {});
       if (abandonCart) {
         await abandonOfflineSaleEdit(abandonCart);
       } else if (clearOfflineCart) {
         await clearLocalPosCart();
       } else if (deleteCartId) {
         markServerCartConsumed(deleteCartId);
-        try {
-          await apiRequest(`/sales/carts/${deleteCartId}/lines`, {
-            method: "DELETE",
-            loading: false,
-            reportIssues: false,
-          });
-        } catch (e) {
-          if (!isMissingTemporaryCartError(e)) throw e;
-        }
+        void apiRequest(`/sales/carts/${deleteCartId}/lines`, {
+          method: "DELETE",
+          loading: false,
+          reportIssues: false,
+        }).catch(() => {});
       }
       report(58);
       if (standalone) void flushOutboxNow();
@@ -7603,7 +7660,9 @@ export function PosScreen({ standalone = false }) {
       if (generation !== freshWorkspaceGenerationRef.current) return cartRef.current;
 
       report(72);
-      const next = await loadCashierCart({ skipEditDraftRestore: true });
+      const next = cartPromise
+        ? await cartPromise
+        : await loadCashierCart({ skipEditDraftRestore: true });
       if (generation !== freshWorkspaceGenerationRef.current) return next;
       const live = cartRef.current;
       if (
@@ -7646,6 +7705,8 @@ export function PosScreen({ standalone = false }) {
       report(8);
       const generation = ++freshWorkspaceGenerationRef.current;
 
+      closeProductSearchDropdown();
+      searchInputRef.current?.blur?.();
       setPaymentOpen(false);
       setPaymentError(null);
       // Keep completedSale / last receipt — clearing workspace must not disable Reprint.
@@ -7667,11 +7728,22 @@ export function PosScreen({ standalone = false }) {
       applyFreshWorkspacePlaceholder(activeCart, immediateNextPos);
 
       report(18);
-      const peekNextPos = await resolveNextPosTicketForWorkspace(activeCart, sessionPosOrders);
+      const cartPromise = loadCashierCart({ skipEditDraftRestore: true });
+      const peekNextPos = await resolveNextPosTicketForWorkspace(
+        activeCart,
+        sessionPosOrders,
+        null,
+        { skipServerReseed: true },
+      );
       applyFreshWorkspacePlaceholder(activeCart, peekNextPos);
       report(32);
 
-      return completeFreshWorkspaceBootstrap({ generation, peekNextPos, report });
+      return completeFreshWorkspaceBootstrap({
+        generation,
+        peekNextPos,
+        report,
+        cartPromise,
+      });
     };
 
     if (standalone) {
@@ -8749,6 +8821,8 @@ export function PosScreen({ standalone = false }) {
     autoHeldPrompt: Boolean(autoHeldPrompt),
     discountReasonDialogOpen,
     preparingNextOpen,
+    previousOrderLoading,
+    autoHeldBusy: Boolean(autoHeldBusy),
     editAdjustmentDialogOpen: Boolean(editAdjustmentDialog),
     replacingLineId,
     selectedLineId,
@@ -8819,6 +8893,8 @@ export function PosScreen({ standalone = false }) {
         || state.autoHeldPrompt
         || state.discountReasonDialogOpen
         || state.preparingNextOpen
+        || state.previousOrderLoading
+        || state.autoHeldBusy
         || state.editAdjustmentDialogOpen
         || isConfirmDialogOpen()
       );
@@ -8838,6 +8914,8 @@ export function PosScreen({ standalone = false }) {
       if (state.autoHeldPrompt) return "auto-held order";
       if (state.discountReasonDialogOpen) return "discount reason";
       if (state.preparingNextOpen) return "preparing next order";
+      if (state.previousOrderLoading) return "loading order";
+      if (state.autoHeldBusy) return "auto-held order";
       if (state.editAdjustmentDialogOpen) return "payment breakdown";
       if (isConfirmDialogOpen()) return "confirmation";
       return null;
@@ -9298,6 +9376,7 @@ export function PosScreen({ standalone = false }) {
                       : ""}
                   </button>
                 ) : null}
+                {!pendingSyncOpen ? (
                 <button
                   type="button"
                   disabled={busy || offlineSyncing || !canFlushOutbox || pendingSync <= 0}
@@ -9335,6 +9414,7 @@ export function PosScreen({ standalone = false }) {
                         : "Sync offline orders"}
                   </span>
                 </button>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceSwitcher
@@ -9546,6 +9626,7 @@ export function PosScreen({ standalone = false }) {
                     below while retrying sync.
                   </p>
                 ) : null}
+                {!pendingSyncOpen ? (
                 <PosOfflineSyncControls
                   pendingSync={pendingSync}
                   syncing={offlineSyncing}
@@ -9564,6 +9645,7 @@ export function PosScreen({ standalone = false }) {
                   }
                   onSync={syncOfflineOrders}
                 />
+                ) : null}
               </div>
             ) : null}
             {!standalone && statusMessage ? (
@@ -9712,7 +9794,7 @@ export function PosScreen({ standalone = false }) {
                   barcodeEnabled={enableBarcodeScanner}
                   stockDisplayMode={stockDisplayMode}
                   posSalesConfig={posSalesConfig}
-                  disabled={busy}
+                  disabled={busy || posSearchSuspended}
                 />
               )}
               <div className="space-y-1">
@@ -10217,7 +10299,7 @@ export function PosScreen({ standalone = false }) {
                     barcodeEnabled={enableBarcodeScanner}
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
-                    disabled={busy}
+                    disabled={busy || posSearchSuspended}
                   />
                 }
                 qtyRef={qtyInputRef}
@@ -10763,9 +10845,8 @@ export function PosScreen({ standalone = false }) {
               const saved = await saveLocalPosCart({ ...restoredCart, offline: true });
               applyRestoredHeldCart(presentLocalOfflineCart(saved), sourceSale);
             } else {
-              // Paint workspace immediately from the local park — do not wait on the server.
-              applyRestoredHeldCart(restoredCart, sourceSale);
               beginPreviousOrderLoading("Preparing held order for checkout…");
+              applyRestoredHeldCart(restoredCart, sourceSale);
               try {
                 const serverCart = await materializeOfflineCartOnServer({
                   ...restoredCart,
@@ -10822,6 +10903,12 @@ export function PosScreen({ standalone = false }) {
         open={pendingSyncOpen}
         onClose={closePendingSyncOverlay}
         onCountChange={handlePendingSyncCountChange}
+        syncing={offlineSyncing}
+        canFlush={canFlushOutbox}
+        syncProgress={syncProgress}
+        lastSyncMessage={lastSyncMessage}
+        onSyncAll={syncOfflineOrders}
+        onSyncOrder={syncSingleOfflineOrder}
         onDiscarded={() => {
           void refreshOfflineCounts();
           const current = cartRef.current;
@@ -10896,6 +10983,7 @@ export function PosScreen({ standalone = false }) {
           <>
             {pendingSync > 0 || offlineSyncing || failedSyncOrders.length > 0 ? (
               <div className="classic-pos-offline-sync-strip shrink-0 border-t border-[var(--theme-border)] bg-sky-50 px-3 py-1.5 text-sky-950">
+                {!pendingSyncOpen ? (
                 <PosOfflineSyncControls
                   pendingSync={pendingSync}
                   syncing={offlineSyncing}
@@ -10912,6 +11000,11 @@ export function PosScreen({ standalone = false }) {
                   }
                   onSync={syncOfflineOrders}
                 />
+                ) : (
+                  <p className="text-xs font-medium text-sky-950">
+                    Sync offline orders in the Pending sync window.
+                  </p>
+                )}
               </div>
             ) : null}
             <ClassicPosStatusFooter

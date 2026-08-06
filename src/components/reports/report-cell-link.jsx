@@ -1,5 +1,6 @@
 "use client";
 
+import { isValidElement } from "react";
 import Link from "next/link";
 import { formatReportCell } from "@/lib/reports/format";
 import { reportCellHref } from "@/lib/reports/report-entity-links";
@@ -13,6 +14,10 @@ import { reportCellHref } from "@/lib/reports/report-entity-links";
  * }} props
  */
 export function ReportCellLink({ columnKey, row, value, link }) {
+  if (isValidElement(value)) {
+    return value;
+  }
+
   const href = reportCellHref(columnKey, row, link);
   const display = formatReportCell(columnKey, value, undefined, row);
 

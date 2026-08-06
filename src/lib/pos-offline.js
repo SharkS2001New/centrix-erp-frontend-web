@@ -1582,15 +1582,25 @@ export async function listOfflinePendingSalesForEdit() {
   return pending
     .map((row) => {
       const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
+      const posOrderNum =
+        sale.pos_order_num != null && Number(sale.pos_order_num) > 0
+          ? Number(sale.pos_order_num)
+          : null;
       return {
         ...sale,
         id: `offline:${row.client_sale_uuid}`,
         order_num: row.order_num,
+        pos_order_num: posOrderNum,
+        pos_order_date: sale.pos_order_date ?? null,
         status: sale.status ?? "completed",
         offline_pending_sync: true,
       };
     })
-    .sort((a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0));
+    .sort(
+      (a, b) =>
+        Number(b.pos_order_num ?? 0) - Number(a.pos_order_num ?? 0) ||
+        Number(b.order_num ?? 0) - Number(a.order_num ?? 0),
+    );
 }
 
 /**
@@ -1629,6 +1639,10 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
     offline: true,
     channel: "pos",
     held_order_num: Number(row.order_num),
+    ...(sale.pos_order_num != null && Number(sale.pos_order_num) > 0
+      ? { pos_order_num: Number(sale.pos_order_num) }
+      : {}),
+    ...(sale.pos_order_date ? { pos_order_date: sale.pos_order_date } : {}),
     superseded_sale_id:
       row.sync_kind === "previous_order_edit"
         ? Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null
@@ -2010,15 +2024,24 @@ function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
  * Never creates a second server sale for the same POS ticket / client uuid — recovers
  * the existing row when checkout would duplicate.
  *
- * @param {{ onProgress?: Function, includeErrors?: boolean }} [options]
+ * @param {{ onProgress?: Function, includeErrors?: boolean, clientSaleUuid?: string }} [options]
  *   includeErrors — when false, skip rows already marked sync_status=error so a stuck
  *   previous_order_edit cannot restore-to-cart / reload the order in a background loop.
  *   Manual Sync and reconnect should pass true (default).
+ *   clientSaleUuid — when set, sync only that outbox row (Pending sync popup per-order).
  */
-export async function syncPosOfflineOutbox({ onProgress, includeErrors = true } = {}) {
+export async function syncPosOfflineOutbox({
+  onProgress,
+  includeErrors = true,
+  clientSaleUuid = null,
+} = {}) {
   return withPosOfflineExclusiveLock(async () => {
     await idbReclaimStuckSyncingOutbox({ olderThanMs: 60_000 });
-    const pending = await idbListPendingOutbox({ includeErrors });
+    let pending = await idbListPendingOutbox({ includeErrors });
+    const onlyUuid = String(clientSaleUuid ?? "").trim();
+    if (onlyUuid) {
+      pending = pending.filter((row) => String(row.client_sale_uuid) === onlyUuid);
+    }
     const total = pending.length;
     const results = [];
     let done = 0;

@@ -1142,11 +1142,11 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/admin/kra-responses",
-        label: "KRA responses",
+        label: "KRA device log",
         module: "admin",
         permission: P.admin.kra_responses.view,
-        orgAdminOnly: true,
         requireKraDevice: true,
+        orgAdminOnly: true,
       },
     ],
   },

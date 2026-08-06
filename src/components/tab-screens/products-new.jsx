@@ -14,8 +14,12 @@ import {
   ProductFormPageShell,
   saveRetailPackageSetting,
   useProductFormResources,
+  validateProductVatId,
   validateRetailPackage,
 } from "@/components/products/product-form";
+import { registerProductsOnKraDevice } from "@/lib/kra-product-registration";
+import { isKraDeviceConfigured } from "@/lib/finance-settings";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { resolveOpeningStockBranchId } from "@/components/products/product-inventory-fields";
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
 import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
@@ -62,7 +66,7 @@ export function ProductsNewScreen() {
   const isBaseline = useCallback((value) => {
     const keys = Object.keys(EMPTY_PRODUCT_FORM);
     return keys.every((key) => {
-      if (key === "unit_id" || key === "vat_id") return true;
+      if (key === "unit_id") return true;
       const left = value?.[key];
       const right = EMPTY_PRODUCT_FORM[key];
       return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
@@ -78,16 +82,14 @@ export function ProductsNewScreen() {
   });
 
   useEffect(() => {
-    const defaultVat = vats[0]?.id ? String(vats[0].id) : "";
     const defaultUnit =
       uoms.find((u) => Number(u.conversion_factor ?? 1) === 1)?.id ?? uoms[0]?.id;
-    if (!defaultVat && !defaultUnit) return;
+    if (!defaultUnit) return;
     setForm((prev) => ({
       ...prev,
       unit_id: prev.unit_id || (defaultUnit ? String(defaultUnit) : ""),
-      vat_id: prev.vat_id || defaultVat,
     }));
-  }, [uoms, vats]);
+  }, [uoms]);
 
   useEffect(() => {
     return () => {
@@ -149,6 +151,11 @@ export function ProductsNewScreen() {
       setFormError("Select a unit of measure.");
       return;
     }
+    const vatError = validateProductVatId(form);
+    if (vatError) {
+      setFormError(vatError);
+      return;
+    }
     const retailError = validateRetailPackage(form, { hotelCatalogue });
     if (retailError) {
       setFormError(retailError);
@@ -176,6 +183,22 @@ export function ProductsNewScreen() {
         await uploadProductImage(code, imageFile);
       }
       await saveRetailPackageSetting(form, code, { hotelCatalogue });
+      if (isKraDeviceConfigured(capabilities?.module_settings, capabilities)) {
+        try {
+          await registerProductsOnKraDevice({
+            productCodes: [code],
+            moduleSettings: capabilities?.module_settings,
+            capabilities,
+          });
+          notifySuccess(`Product saved and uploaded to the KRA device.`);
+        } catch (kraErr) {
+          notifyError(
+            kraErr instanceof ApiError
+              ? `Product saved, but KRA upload failed: ${kraErr.message}`
+              : "Product saved, but KRA upload failed.",
+          );
+        }
+      }
       setIsDirty(false);
       clearDraft();
       exitTo(`/products/${encodeURIComponent(code)}`);

@@ -1276,7 +1276,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "admin-kra-responses",
-    title: "Kra Responses",
+    title: "KRA device log",
     route: "/admin/kra-responses",
     match: match_admin_kra_responses,
   },

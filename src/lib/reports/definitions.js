@@ -1194,8 +1194,9 @@ export const REPORT_DEFINITIONS = {
   },
 
   "kra-receipts": {
-    title: "KRA receipts",
-    subtitle: "One row per fiscal receipt — order number, CU number, date, VAT, and invoice preview",
+    title: "KRA responses",
+    subtitle:
+      "Fiscal receipt submissions from checkout and credit notes — preview, print, retry failed receipts, and inspect device payloads",
     section: "Compliance",
     apiPath: "/reports/kra-receipts",
     dateColumn: "receipt_date",

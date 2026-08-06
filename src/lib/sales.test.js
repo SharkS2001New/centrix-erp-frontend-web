@@ -6,6 +6,7 @@ import {
   resolvePaymentMethodByCode,
   resolvePosBrowseNumber,
   resolvePosNextBrowseNumber,
+  resolvePosSessionTicketNumber,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
@@ -433,6 +434,13 @@ describe("formatCashSalesNumber", () => {
   });
 });
 
+describe("resolvePosSessionTicketNumber", () => {
+  it("returns only the daily POS ticket", () => {
+    expect(resolvePosSessionTicketNumber({ pos_order_num: 4, order_num: 7801 })).toBe(4);
+    expect(resolvePosSessionTicketNumber({ order_num: 7801 })).toBeNull();
+  });
+});
+
 describe("resolvePosNextBrowseNumber", () => {
   it("returns only the daily POS next ticket", () => {
     expect(
@@ -451,5 +459,10 @@ describe("resolvePosBrowseNumber", () => {
     expect(
       resolvePosBrowseNumber({ next_pos_order_num: 8, next_order_num: 36 }),
     ).toBe(8);
+  });
+
+  it("does not fall back to org order_num on session rows", () => {
+    expect(resolvePosBrowseNumber({ order_num: 7801, channel: "pos" })).toBeNull();
+    expect(resolvePosBrowseNumber({ pos_order_num: 5, order_num: 7801 })).toBe(5);
   });
 });

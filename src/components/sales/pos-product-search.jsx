@@ -88,6 +88,13 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }));
 
   useEffect(() => {
+    if (disabled) {
+      setOpen(false);
+      setHighlight(-1);
+    }
+  }, [disabled]);
+
+  useEffect(() => {
     if (!classic) return undefined;
     function onFunctionKey(e) {
       if (!isPosFunctionKeyEvent(e)) return;
@@ -378,7 +385,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           setOpen(true);
         }}
         onFocus={() => {
-          if (!disabled) setOpen(true);
+          if (disabled) return;
+          if (query.trim()) setOpen(true);
         }}
         onKeyDown={handleInputKeyDown}
       />

@@ -14,7 +14,20 @@ const CODE_MESSAGES = {
   520: "The KRA fiscal device closed the connection. Check that the device is online and try again.",
   96: "Could not reach the KRA device. Check that it is powered on and on the same network.",
   90: "The KRA device has no internet connection. Connect the device to the internet and try again.",
+  337: "One or more products are not on the KRA device. Upload them to the device, then retry the sale.",
+  13: "A product on this sale is not registered on the KRA device. Register it first, then retry.",
+  321: "A product tax type on the KRA device does not match this sale. Re-upload the product with the correct VAT, then retry.",
 };
+
+const KRA_PRODUCT_NOT_REGISTERED_PATTERNS = [
+  /\b337\b/,
+  /\b13\b/,
+  /not found on the kra device/i,
+  /not registered on the kra device/i,
+  /no\s+find\s+plu\s+data/i,
+  /upload products to the device/i,
+  /register the product first/i,
+];
 
 /**
  * @param {unknown} raw
@@ -44,4 +57,22 @@ export function humanizeKraDeviceErrorMessage(raw) {
   }
 
   return null;
+}
+
+/** True when the KRA device rejected the sale because a PLU/product is missing. */
+export function isKraProductNotRegisteredError(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return false;
+
+  const codeMatch =
+    text.match(/\b(\d{3})\s+error\s*code\b/i) ||
+    text.match(/\berror\s*code\s*[,:]?\s*(\d{3})\b/i) ||
+    text.match(/\(Code\s+(\d+)\)/i) ||
+    text.match(/\bCode\s+(\d+)\b/i) ||
+    text.match(/\bE(\d{3})\b/i);
+  if (codeMatch && ["337", "13", "321"].includes(codeMatch[1])) {
+    return true;
+  }
+
+  return KRA_PRODUCT_NOT_REGISTERED_PATTERNS.some((pattern) => pattern.test(text));
 }

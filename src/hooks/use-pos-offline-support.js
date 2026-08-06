@@ -138,9 +138,10 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
    * Safe to call fire-and-forget after every local save.
    * Runs whenever the API is reachable (including slow).
    *
-   * @param {{ manual?: boolean, includeErrors?: boolean }} [options]
+   * @param {{ manual?: boolean, includeErrors?: boolean, clientSaleUuid?: string }} [options]
    *   includeErrors defaults true. Background retries pass false so a failed
    *   previous_order_edit cannot restore-to-cart / reload the order in a loop.
+   *   clientSaleUuid — sync one queued sale (Pending sync popup).
    */
   const flushOutboxNow = useCallback((options = {}) => {
     if (!enabled) return Promise.resolve([]);
@@ -148,6 +149,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     const manual = Boolean(options.manual);
     const includeErrors =
       options.includeErrors != null ? Boolean(options.includeErrors) : true;
+    const clientSaleUuid = options.clientSaleUuid ?? null;
     if (manual) manualFlushRef.current = true;
 
     const generation = ++flushGenerationRef.current;
@@ -171,6 +173,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       try {
         const results = await syncPosOfflineOutbox({
           includeErrors,
+          clientSaleUuid,
           onProgress: (progress) => {
             setSyncProgress({
               phase: progress.phase ?? "syncing",
@@ -381,30 +384,53 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     };
   }, [enabled, flushOutboxNow, probeCanFlushOutbox, refreshCounts, refreshNetwork]);
 
-  /** Manual Sync button — same flush path, with progress + toast feedback. */
-  const syncOfflineOrders = useCallback(async () => {
-    if (!enabled) return [];
-    await refreshCounts();
-    const canFlush = await probeCanFlushOutbox();
-    if (!canFlush) {
-      const message = "Cannot sync while offline. Reconnect, then try again.";
-      setLastSyncMessage(message);
+  const beginManualOutboxSync = useCallback(
+    async ({ clientSaleUuid = null, startMessage = "Checking local offline orders…" } = {}) => {
+      if (!enabled) return [];
+      await refreshCounts();
+      const canFlush = await probeCanFlushOutbox();
+      if (!canFlush) {
+        const message = "Cannot sync while offline. Reconnect, then try again.";
+        setLastSyncMessage(message);
+        setSyncProgress({
+          ...EMPTY_SYNC_PROGRESS,
+          phase: "blocked",
+          message,
+        });
+        notifyError(message);
+        return [];
+      }
       setSyncProgress({
         ...EMPTY_SYNC_PROGRESS,
-        phase: "blocked",
-        message,
+        phase: "start",
+        message: startMessage,
       });
-      notifyError(message);
-      return [];
-    }
-    setSyncProgress({
-      ...EMPTY_SYNC_PROGRESS,
-      phase: "start",
-      message: "Checking local offline orders…",
-    });
-    setLastSyncMessage("Checking local offline orders…");
-    return flushOutboxNow({ manual: true });
-  }, [enabled, flushOutboxNow, probeCanFlushOutbox, refreshCounts]);
+      setLastSyncMessage(startMessage);
+      return flushOutboxNow({
+        manual: true,
+        ...(clientSaleUuid ? { clientSaleUuid } : {}),
+      });
+    },
+    [enabled, flushOutboxNow, probeCanFlushOutbox, refreshCounts],
+  );
+
+  /** Manual Sync button — same flush path, with progress + toast feedback. */
+  const syncOfflineOrders = useCallback(async () => {
+    return beginManualOutboxSync();
+  }, [beginManualOutboxSync]);
+
+  /** Sync one queued offline sale from the Pending sync popup. */
+  const syncSingleOfflineOrder = useCallback(
+    async (clientSaleUuid) => {
+      const uuid = String(clientSaleUuid ?? "").trim();
+      if (!uuid) return [];
+      return beginManualOutboxSync({
+        clientSaleUuid: uuid,
+        startMessage: "Syncing offline order…",
+      });
+    },
+    [beginManualOutboxSync],
+  );
 
   /** @deprecated prefer flushOutboxNow — kept for reconnect callers */
   const flushOutbox = flushOutboxNow;
@@ -488,6 +514,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     flushOutboxNow,
     flushOutboxAfterSale,
     syncOfflineOrders,
+    syncSingleOfflineOrder,
     refreshCounts,
     refreshNetwork,
     searchOffline,

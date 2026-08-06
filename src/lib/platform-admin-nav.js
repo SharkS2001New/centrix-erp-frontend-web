@@ -8,7 +8,7 @@ export const PLATFORM_ADMIN_LINKS = [
   { href: "payment-methods", label: "Payment methods", description: "Cash, M-Pesa, bank, and other tender types." },
   { href: "company", label: "Company profile & logo", description: "Legal identity and branding shown on documents." },
   { href: "vats", label: "VAT rates", description: "Tax codes and percentages used on products." },
-  { href: "kra-responses", label: "KRA device log", description: "Fiscal receipt submissions and retry status." },
+  { href: "kra-responses", label: "KRA device log", description: "Fiscal submissions, invoice preview, retry, and device payloads." },
   { href: "audit", label: "Audit log", description: "Who changed what across this organization." },
   {
     href: "legacy-archive",
