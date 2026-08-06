@@ -227,7 +227,6 @@ export function AdminKraResponsesScreen() {
               <th className="px-4 py-3">Channel</th>
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Serial</th>
               <th className="px-4 py-3">Logged at</th>
               <th className="px-4 py-3">Error</th>
               <th className="px-4 py-3" />
@@ -236,13 +235,13 @@ export function AdminKraResponsesScreen() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   {showingTodayOnly ? "No KRA device logs for today yet." : "No KRA device logs in this date range."}
                 </td>
               </tr>
@@ -255,7 +254,6 @@ export function AdminKraResponsesScreen() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{r.invoice_number ?? "—"}</td>
                   <td className="px-4 py-3 capitalize">{r.status ?? "—"}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{r.serial_number ?? "—"}</td>
                   <td className="px-4 py-3">
                     {r.created_at ? dateTime(r.created_at) : r.kra_timestamp ? dateTime(r.kra_timestamp) : "—"}
                   </td>

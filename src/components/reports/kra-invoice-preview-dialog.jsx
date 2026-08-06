@@ -256,10 +256,6 @@ export function KraResponseDetailDialog({
                 </div>
               ) : null}
               <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-500">SCU / serial</dt>
-                <dd className="font-mono text-xs text-slate-900">{activeRow?.serial_number || "—"}</dd>
-              </div>
-              <div>
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Status</dt>
                 <dd className="capitalize text-slate-900">{activeRow?.status || "—"}</dd>
               </div>

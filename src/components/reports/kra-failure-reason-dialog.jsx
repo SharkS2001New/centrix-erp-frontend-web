@@ -55,10 +55,12 @@ export function KraFailureReasonDialog({
 }) {
   const [detailRow, setDetailRow] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [itemsExpanded, setItemsExpanded] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setDetailRow(null);
+      setItemsExpanded(false);
       return undefined;
     }
 
@@ -182,57 +184,89 @@ export function KraFailureReasonDialog({
         ) : null}
 
         <div className="mt-5">
-          <h3 className="theme-heading text-sm font-semibold">Order items</h3>
           {detailLoading && lines.length === 0 ? (
-            <p className="theme-subtext mt-2 text-sm">Loading items…</p>
-          ) : lines.length === 0 ? (
-            <p className="theme-subtext mt-2 text-sm">
-              No line items were stored on this KRA request payload.
-            </p>
-          ) : (
-            <ul className="mt-2 space-y-2">
-              {lines.map((line, index) => {
-                const isCulprit = culpritSet.has(index);
-                return (
-                  <li
-                    key={`${line.barcode ?? line.name}-${index}`}
-                    className={`rounded-lg border px-3 py-2.5 text-sm ${
-                      isCulprit
-                        ? "border-red-500 bg-red-50/80 shadow-[0_0_0_1px_rgba(239,68,68,0.35)]"
-                        : "border-slate-200 bg-white"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900">{line.name}</p>
-                        {line.barcode ? (
-                          <p className="mt-0.5 font-mono text-xs text-slate-500">{line.barcode}</p>
-                        ) : null}
-                        {isCulprit ? (
-                          <p className="mt-1 text-xs font-medium text-red-700">
-                            Likely cause of this failure
+            <p className="theme-subtext text-sm">Loading items…</p>
+          ) : lines.length === 0 ? null : culpritIndexes.length > 0 ? (
+            <>
+              <h3 className="theme-heading text-sm font-semibold">Order items</h3>
+              <ul className="mt-2 space-y-2">
+                {lines.map((line, index) => {
+                  const isCulprit = culpritSet.has(index);
+                  return (
+                    <li
+                      key={`${line.barcode ?? line.name}-${index}`}
+                      className={`rounded-lg border px-3 py-2.5 text-sm ${
+                        isCulprit
+                          ? "border-red-500 bg-red-50/80 shadow-[0_0_0_1px_rgba(239,68,68,0.35)]"
+                          : "border-slate-200 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-900">{line.name}</p>
+                          {line.barcode ? (
+                            <p className="mt-0.5 font-mono text-xs text-slate-500">{line.barcode}</p>
+                          ) : null}
+                          {isCulprit ? (
+                            <p className="mt-1 text-xs font-medium text-red-700">
+                              Likely cause of this failure
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="shrink-0 text-right text-xs text-slate-600">
+                          <p>
+                            {line.qty} × {formatReportKes(line.unitPrice)}
                           </p>
-                        ) : null}
+                          <p className="mt-0.5 font-medium text-slate-900">
+                            {formatReportKes(line.amount)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-right text-xs text-slate-600">
-                        <p>
-                          {line.qty} × {formatReportKes(line.unitPrice)}
-                        </p>
-                        <p className="mt-0.5 font-medium text-slate-900">
-                          {formatReportKes(line.amount)}
-                        </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : (
+            <div>
+              <button
+                type="button"
+                onClick={() => setItemsExpanded((openItems) => !openItems)}
+                className="font-medium text-[#185FA5] hover:underline text-sm"
+              >
+                {itemsExpanded
+                  ? "Hide items in this order"
+                  : `View items in this order (${lines.length})`}
+              </button>
+              {itemsExpanded ? (
+                <ul className="mt-2 space-y-2">
+                  {lines.map((line, index) => (
+                    <li
+                      key={`${line.barcode ?? line.name}-${index}`}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-900">{line.name}</p>
+                          {line.barcode ? (
+                            <p className="mt-0.5 font-mono text-xs text-slate-500">{line.barcode}</p>
+                          ) : null}
+                        </div>
+                        <div className="shrink-0 text-right text-xs text-slate-600">
+                          <p>
+                            {line.qty} × {formatReportKes(line.unitPrice)}
+                          </p>
+                          <p className="mt-0.5 font-medium text-slate-900">
+                            {formatReportKes(line.amount)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           )}
-          {lines.length > 0 && culpritIndexes.length === 0 ? (
-            <p className="theme-subtext mt-2 text-xs">
-              No specific item was identified in the device error — check the reason and fix hint above.
-            </p>
-          ) : null}
         </div>
       </div>
     </div>,

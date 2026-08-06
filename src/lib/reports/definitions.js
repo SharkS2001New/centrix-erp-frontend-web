@@ -1208,7 +1208,6 @@ export const REPORT_DEFINITIONS = {
       { key: "order_no", label: "Order #", accessor: (r) => formatKraReportOrderNo(r) },
       { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name ?? "—" },
       { key: "invoice_number", label: "CU number", accessor: (r) => r.invoice_number },
-      { key: "serial_number", label: "SCU / serial", accessor: (r) => r.serial_number },
       { key: "document_type", label: "Type", accessor: (r) => r.document_type ?? "sale" },
       { key: "status", label: "Status", accessor: (r) => r.status },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
