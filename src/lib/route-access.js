@@ -188,15 +188,21 @@ export function canAccessRoute(pathname, ctx, options = {}) {
 
   const salesOrderQueueMatch = pathname.match(/^\/sales\/orders\/queues\/([^/]+)$/);
   if (salesOrderQueueMatch) {
-    return canViewOrderQueue(salesOrderQueueMatch[1], ctx.hasPermission);
+    const check =
+      typeof ctx.hasNavPermission === "function" ? ctx.hasNavPermission : ctx.hasPermission;
+    return canViewOrderQueue(salesOrderQueueMatch[1], check);
   }
 
   if (pathname === "/sales/orders") {
-    return canViewOrderQueue("all", ctx.hasPermission);
+    const check =
+      typeof ctx.hasNavPermission === "function" ? ctx.hasNavPermission : ctx.hasPermission;
+    return canViewOrderQueue("all", check);
   }
 
   if (/^\/sales\/orders\/[^/]+$/.test(pathname)) {
-    return canViewAnySalesOrderQueue(ctx.hasPermission);
+    const check =
+      typeof ctx.hasNavPermission === "function" ? ctx.hasNavPermission : ctx.hasPermission;
+    return canViewAnySalesOrderQueue(check);
   }
 
   if (

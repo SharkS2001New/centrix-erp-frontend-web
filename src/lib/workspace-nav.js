@@ -14,6 +14,7 @@ import { withNavItemIcon } from "@/lib/nav-item-icons";
 import { formatNavLabel } from "@/lib/nav-label-format";
 import {
   canViewOrderQueue,
+  orderQueuePermissionCode,
 } from "@/lib/order-queue-permissions";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { filterNavSectionsForWorkspace } from "@/lib/workspaces";
@@ -23,8 +24,7 @@ function mapSalesOrderNavItem(item) {
     href: item.href,
     label: formatNavLabel(item.label),
     module: "sales.backend",
-    // Queue ACL is canViewOrderQueue (umbrella-aware). Do not set `permission` here —
-    // visibility is decided via orderQueueSlug + canViewOrderQueue below.
+    permission: orderQueuePermissionCode(item.slug),
     orderQueueSlug: item.slug,
     exact: item.slug === "all",
     ordersNav: false,
@@ -60,6 +60,7 @@ export function buildWorkspaceNavSections({
           href: "/sales/orders/queues/mobile",
           label: "Mobile Orders",
           module: "sales.backend",
+          permission: orderQueuePermissionCode("mobile"),
           orderQueueSlug: "mobile",
           ordersNav: false,
         }),
@@ -71,8 +72,12 @@ export function buildWorkspaceNavSections({
     .map((section) => ({
       ...section,
       items: section.items.flatMap((item) => {
+        // Always prefer role-assigned nav map — never fall back to expanded API permissions
+        // (manager bundles / sales.view aliases can over-grant sales.order_queue_* there).
         const queuePermission =
-          navContext.hasNavPermission ?? navContext.hasPermission;
+          typeof navContext.hasNavPermission === "function"
+            ? navContext.hasNavPermission
+            : () => false;
         if (item.ordersNav) {
           return salesOrderNavItems.filter(
             (navItem) =>
