@@ -6280,14 +6280,11 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     // Backoffice POS lives inside AppShell — never block sidebar, topbar, or workspace switching.
     if (!standalone) return undefined;
-    if ((!cartHasReservedItems && !offlineSyncing) || leaveGuardOpen) return undefined;
+    // Background outbox sync must not trap the cashier on POS. Only warn when leaving with
+    // reserved cart lines that are not yet queued.
+    if (!cartHasReservedItems || leaveGuardOpen) return undefined;
 
     function onBeforeUnload(e) {
-      if (offlineSyncing) {
-        e.preventDefault();
-        e.returnValue = "";
-        return;
-      }
       e.preventDefault();
       e.returnValue = "";
     }
@@ -6316,24 +6313,6 @@ export function PosScreen({ standalone = false }) {
     }
 
     function onDocumentClick(e) {
-      if (offlineSyncing) {
-        if (shouldIgnoreLeaveIntercept(e.target)) return;
-        const anchor = e.target.closest("a[href]");
-        if (!anchor || anchor.dataset.posLeaveIgnore === "true") return;
-        if (shouldIgnoreLeaveIntercept(anchor)) return;
-        let pathname = anchor.getAttribute("href") ?? "";
-        try {
-          pathname = new URL(pathname, window.location.href).pathname;
-        } catch {
-          return;
-        }
-        if (isPosRoute(pathname)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        notifyError("Offline sync in progress. Wait for sync to finish before leaving POS.");
-        return;
-      }
-
       if (shouldIgnoreLeaveIntercept(e.target)) return;
 
       const anchor = e.target.closest("a[href]");
@@ -6364,7 +6343,7 @@ export function PosScreen({ standalone = false }) {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onDocumentClick, true);
     };
-  }, [standalone, cartHasReservedItems, leaveGuardOpen, offlineSyncing]);
+  }, [standalone, cartHasReservedItems, leaveGuardOpen]);
 
   async function handleEditSelectedLine(lineId = selectedLineId) {
     if (!lineId || !cart?.lines?.length || busy) return;
@@ -7410,9 +7389,138 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * Previous-order edits: debounce outbox upsert (~30s after last change), then flush
-   * in the background. Never await the upload here — cashiers must keep scanning / F8
-   * to the next order while KRA + server sync continue.
+   * Write the current previous-order edit into the local outbox (awaited).
+   * Does not wait for network upload — callers flush in the background.
+   * @returns {Promise<number|null>} held order num when queued
+   */
+  async function queuePreviousOrderEditOutboxNow() {
+    if (!standalone) return null;
+    if (skipEditAutosaveRef.current) return null;
+    const cartNow = cartRef.current;
+    if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return null;
+    if (isFreshWorkspacePlaceholder(cartNow)) return null;
+    if (cartNow.offline || cartNow.offline_client_sale_uuid) return null;
+    if (!editedOrderHasLocalDraftChanges(cartNow)) return null;
+    const lines = (cartNow.lines ?? []).filter(
+      (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
+    );
+    const allowEmptyRevision =
+      Boolean(cartNow._editDraftDirty) && (cartNow.lines?.length ?? 0) === 0;
+    if (!lines.length && !allowEmptyRevision) return null;
+
+    let cartForSync = cartNow;
+    cartForSync = await ensurePreviousOrderPaymentAdjustment(cartNow);
+
+    const local = {
+      ...cartForSync,
+      id: isServerPosCartId(cartForSync.id) ? cartForSync.id : cartForSync.id,
+      lines: (cartForSync.lines ?? [])
+        .filter((l) => Number(l.quantity ?? 0) > 0 && l.product_code)
+        .map((l) => ({
+          ...l,
+          client_line_id: l.client_line_id ?? l.id,
+        })),
+      branch_id: cartForSync.branch_id ?? user?.branch_id,
+      till_id: cartForSync.till_id ?? tillId,
+      float_session_id: floatSessionId ?? cartForSync.float_session_id,
+      order_discount: Number(cartForSync.order_discount ?? 0) || 0,
+      customer_num:
+        cartForSync.customer_num ??
+        editSourceSale?.customer_num ??
+        editSourceSale?.customer?.customer_num ??
+        null,
+      customer_name_override:
+        String(
+          cartForSync.customer_name_override ??
+            editSourceSale?.customer_name_override ??
+            editSourceSale?.customer?.customer_name ??
+            "",
+        ).trim() || null,
+      payment_method_code:
+        cartForSync.payment_method_code ??
+        editSourceSale?.payment_method_code ??
+        null,
+    };
+    await upsertPreviousOrderEditOutbox({
+      cart: local,
+      user,
+      organization,
+      floatSessionId,
+      cashAmount: summarizeLocalPosCart(local).amountDue,
+    });
+    {
+      const live = cartRef.current;
+      if (live && isServerPosCartId(live.id)) {
+        const detached = detachPreviousOrderEditCartId(live);
+        cartRef.current = detached;
+        setCart(detached);
+        void savePreviousOrderEditDraft(detached).catch(() => {});
+      }
+    }
+    void refreshOfflineCounts();
+    return cartNow.held_order_num;
+  }
+
+  /**
+   * Background outbox flush + optional cart refresh if still on the same edit.
+   */
+  function flushPreviousOrderEditOutboxInBackground(queuedHeldOrderNum, workspaceGeneration) {
+    if (queuedHeldOrderNum == null) return;
+    void (async () => {
+      try {
+        const { results } = await flushOutboxAfterSale();
+        for (const row of results ?? []) {
+          if (skipEditAutosaveRef.current) break;
+          if (
+            workspaceGeneration != null &&
+            freshWorkspaceGenerationRef.current !== workspaceGeneration
+          ) {
+            break;
+          }
+          if (
+            row?.ok &&
+            row.sync_kind === "previous_order_edit" &&
+            Number(row.order_num) === Number(queuedHeldOrderNum) &&
+            row.sale?.id
+          ) {
+            await refreshPreviousOrderEditCartAfterSync(row.sale, { workspaceGeneration });
+          }
+        }
+        const afterCart = cartRef.current;
+        if (
+          skipEditAutosaveRef.current ||
+          (workspaceGeneration != null &&
+            freshWorkspaceGenerationRef.current !== workspaceGeneration) ||
+          isFreshWorkspacePlaceholder(afterCart)
+        ) {
+          return;
+        }
+        if (
+          afterCart?.held_order_num != null &&
+          Number(afterCart.held_order_num) === Number(queuedHeldOrderNum) &&
+          !editedOrderHasLocalDraftChanges(afterCart)
+        ) {
+          const syncedMsg = previousOrderEditModeMessages(queuedHeldOrderNum, {
+            kraFiscalize: shouldSubmitKraOnCheckout(
+              capabilities?.module_settings,
+              capabilities,
+              summarizeLocalPosCart(afterCart)?.total ??
+                summarizeLocalPosCart(afterCart)?.amountDue,
+            ),
+          }).synced;
+          if (syncedMsg) {
+            posSnackbar(syncedMsg);
+          }
+        }
+      } catch (e) {
+        console.warn("Previous-order edit background sync failed", e);
+      }
+    })();
+  }
+
+  /**
+   * Previous-order edits: debounce local outbox upsert (~30s after last change), then
+   * flush in the background. Never blocks the till on network/KRA upload.
    */
   function scheduleEditedOrderAutosave({ immediate = false } = {}) {
     if (!standalone) return;
@@ -7444,97 +7552,30 @@ export function PosScreen({ standalone = false }) {
       void (async () => {
         const workspaceGeneration = freshWorkspaceGenerationRef.current;
         if (skipEditAutosaveRef.current) return;
-        const cartNow = cartRef.current;
-        if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return;
-        if (isFreshWorkspacePlaceholder(cartNow)) return;
-        if (!editedOrderHasLocalDraftChanges(cartNow)) return;
-        const lines = (cartNow.lines ?? []).filter(
-          (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
-        );
-        const allowEmptyRevision =
-          Boolean(cartNow._editDraftDirty) &&
-          (cartNow.lines?.length ?? 0) === 0;
-        if (!lines.length && !allowEmptyRevision) return;
 
         editAutosaveInFlightRef.current = true;
         setEditAutosaveBusy(true);
         let queuedHeldOrderNum = null;
         try {
-          let cartForSync = cartNow;
-          try {
-            cartForSync = await ensurePreviousOrderPaymentAdjustment(cartNow);
-          } catch (e) {
-            setStatusMessage(
-              e instanceof Error ? e.message : "Payment adjustment is required to save this edit.",
+          queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow();
+          if (queuedHeldOrderNum != null) {
+            const cartLabel = formatPosBrowseLabel(
+              cartRef.current ?? { held_order_num: queuedHeldOrderNum },
             );
-            return;
+            setStatusMessage(
+              `Cash Sales #${cartLabel} queued — syncing in background (Alt+P to reprint)`,
+            );
           }
-          const local = {
-            ...cartForSync,
-            id: isServerPosCartId(cartForSync.id) ? cartForSync.id : cartForSync.id,
-            lines: (cartForSync.lines ?? []).filter(
-              (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
-            ).map((l) => ({
-              ...l,
-              client_line_id: l.client_line_id ?? l.id,
-            })),
-            branch_id: cartForSync.branch_id ?? user?.branch_id,
-            till_id: cartForSync.till_id ?? tillId,
-            float_session_id: floatSessionId ?? cartForSync.float_session_id,
-            order_discount: Number(cartForSync.order_discount ?? 0) || 0,
-            customer_num:
-              cartForSync.customer_num ??
-              editSourceSale?.customer_num ??
-              editSourceSale?.customer?.customer_num ??
-              null,
-            customer_name_override:
-              String(
-                cartForSync.customer_name_override ??
-                  editSourceSale?.customer_name_override ??
-                  editSourceSale?.customer?.customer_name ??
-                  "",
-              ).trim() || null,
-            payment_method_code:
-              cartForSync.payment_method_code ??
-              editSourceSale?.payment_method_code ??
-              null,
-          };
-          await upsertPreviousOrderEditOutbox({
-            cart: local,
-            user,
-            organization,
-            floatSessionId,
-            cashAmount: summarizeLocalPosCart(local).amountDue,
-          });
-          queuedHeldOrderNum = cartNow.held_order_num;
-          // Sync checkouts (and deletes) the TemporaryCart — stop using its id in the UI
-          // so concurrent line/refresh calls cannot hit a deleted cart.
-          {
-            const live = cartRef.current;
-            if (live && isServerPosCartId(live.id)) {
-              const detached = detachPreviousOrderEditCartId(live);
-              cartRef.current = detached;
-              setCart(detached);
-              void savePreviousOrderEditDraft(detached).catch(() => {});
-            }
-          }
-          setStatusMessage(
-            (cartNow.lines?.length ?? 0) === 0
-              ? `Cash Sales #${formatPosBrowseLabel(cartNow)} cancelling — syncing in background…`
-              : `Cash Sales #${formatPosBrowseLabel(cartNow)} queued — syncing in background (Alt+P to reprint)`,
-          );
-          void refreshOfflineCounts();
         } catch (e) {
-          console.warn("Previous-order edit autosave failed", e);
-          setStatusMessage(
-            e?.message
-              ? `Could not queue order sync: ${e.message}`
-              : "Could not queue order sync.",
-          );
-          return;
+          if (!(e instanceof Error && /cancel/i.test(e.message))) {
+            console.warn("Previous-order edit autosave failed", e);
+            setStatusMessage(
+              e?.message
+                ? `Could not queue order sync: ${e.message}`
+                : "Could not queue order sync.",
+            );
+          }
         } finally {
-          // Release the till immediately after the local queue write — do not hold
-          // editAutosaveBusy / inFlight across the network flush.
           editAutosaveInFlightRef.current = false;
           setEditAutosaveBusy(false);
           const rerun = editAutosaveRerunRef.current;
@@ -7544,52 +7585,7 @@ export function PosScreen({ standalone = false }) {
           }
         }
 
-        // Background upload — never blocks F8 / new order / workspace switch.
-        if (queuedHeldOrderNum == null) return;
-        void (async () => {
-          try {
-            const { results } = await flushOutboxAfterSale();
-            for (const row of results ?? []) {
-              if (skipEditAutosaveRef.current) break;
-              if (freshWorkspaceGenerationRef.current !== workspaceGeneration) break;
-              if (
-                row?.ok &&
-                row.sync_kind === "previous_order_edit" &&
-                Number(row.order_num) === Number(queuedHeldOrderNum) &&
-                row.sale?.id
-              ) {
-                await refreshPreviousOrderEditCartAfterSync(row.sale, { workspaceGeneration });
-              }
-            }
-            const afterCart = cartRef.current;
-            if (
-              skipEditAutosaveRef.current ||
-              freshWorkspaceGenerationRef.current !== workspaceGeneration ||
-              isFreshWorkspacePlaceholder(afterCart)
-            ) {
-              return;
-            }
-            if (
-              afterCart?.held_order_num != null &&
-              Number(afterCart.held_order_num) === Number(queuedHeldOrderNum) &&
-              !editedOrderHasLocalDraftChanges(afterCart)
-            ) {
-              const syncedMsg = previousOrderEditModeMessages(queuedHeldOrderNum, {
-                kraFiscalize: shouldSubmitKraOnCheckout(
-                  capabilities?.module_settings,
-                  capabilities,
-                  summarizeLocalPosCart(afterCart)?.total ??
-                    summarizeLocalPosCart(afterCart)?.amountDue,
-                ),
-              }).synced;
-              if (syncedMsg) {
-                posSnackbar(syncedMsg);
-              }
-            }
-          } catch (e) {
-            console.warn("Previous-order edit background sync failed", e);
-          }
-        })();
+        flushPreviousOrderEditOutboxInBackground(queuedHeldOrderNum, workspaceGeneration);
       })();
     };
 
@@ -8545,7 +8541,10 @@ export function PosScreen({ standalone = false }) {
   async function handlePrintReceipt() {
     // Finishing a previous-order edit: prep → payment breakdown → print (no KRA wait).
     // With KRA on, fiscalization / credit-note balancing runs on background outbox sync.
-    if (isCartEditSession && cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id) {
+    const finishingPreviousOrderEdit = Boolean(
+      isCartEditSession && cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id,
+    );
+    if (finishingPreviousOrderEdit) {
       const editSummary = summarizeLocalPosCart(cartRef.current);
       const kraFiscalize = shouldSubmitKraOnCheckout(
         capabilities?.module_settings,
@@ -8579,8 +8578,20 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      // Persist payment breakdown + queue sync before the draft reprint.
-      scheduleEditedOrderAutosave({ immediate: true });
+      // Await local outbox write only — network/KRA upload continues in the background.
+      const workspaceGeneration = freshWorkspaceGenerationRef.current;
+      try {
+        const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow();
+        flushPreviousOrderEditOutboxInBackground(queuedHeldOrderNum, workspaceGeneration);
+      } catch (e) {
+        if (e instanceof Error && /cancel/i.test(e.message)) return;
+        notifyError(
+          e instanceof Error
+            ? e.message
+            : "Could not queue this order for background sync.",
+        );
+        return;
+      }
     }
 
     const editSnapshot =
@@ -8647,13 +8658,21 @@ export function PosScreen({ standalone = false }) {
       }
       setReceiptPrintStatus("printed");
       const message = orderLabel
-        ? skipKraQr && kraEditBackgroundFiscalize
-          ? `Receipt ${orderLabel} sent to printer. KRA syncs in the background.`
-          : `Receipt ${orderLabel} sent to printer.`
+        ? finishingPreviousOrderEdit
+          ? skipKraQr && kraEditBackgroundFiscalize
+            ? `Receipt ${orderLabel} printed. Ready for next order — sync continues in the background.`
+            : `Receipt ${orderLabel} printed. Ready for next order — updates sync in the background.`
+          : skipKraQr && kraEditBackgroundFiscalize
+            ? `Receipt ${orderLabel} sent to printer. KRA syncs in the background.`
+            : `Receipt ${orderLabel} sent to printer.`
         : "Receipt sent to printer.";
       toast.success(message, { id: loadingToastId });
       if (!standalone) setStatusMessage(message);
-      if (classicLayout) {
+
+      // Leave previous-order edit immediately — do not wait for outbox/KRA upload.
+      if (finishingPreviousOrderEdit && standalone) {
+        await clearWorkspaceAfterPreviousOrderPrint();
+      } else if (classicLayout) {
         focusClassicProductSearch();
       }
     } catch (e) {
@@ -10060,8 +10079,8 @@ export function PosScreen({ standalone = false }) {
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceSwitcher
-                  switchBlocked={offlineSyncing}
-                  switchBlockedMessage="Offline sync in progress. Wait for sync to finish before switching workspace."
+                  switchBlocked={false}
+                  switchBlockedMessage="Offline sync continues in the background — you can switch workspaces."
                 />
                 {classicLayout ? null : (
                   <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
