@@ -244,7 +244,7 @@ export function VatsScreen() {
           />
           <PrimaryButton
             onClick={openCreateDrawer}
-            permission={isPlatformManaged ? null : P.catalogue.vat_rates.create}
+            permission={isPlatformManaged ? null : P.pricing_tax.vat_rates.create}
           >
             Add VAT rate
           </PrimaryButton>
