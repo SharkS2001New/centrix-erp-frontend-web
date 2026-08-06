@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest } from "@/lib/api";
 import {
-  formatKraReportOrderNo,
   kraReportRowId,
   matchKraFailureLineIndexes,
   normalizeKraResponseRow,
 } from "@/lib/kra-fiscal-receipt-print";
+import { formatKraReportOrderNo } from "@/lib/sales";
 import { formatReportKes } from "@/lib/reports/format";
 import {
   humanizeKraDeviceErrorMessage,

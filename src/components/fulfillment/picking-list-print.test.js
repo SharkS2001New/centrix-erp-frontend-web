@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPickingListHtml,
+  formatRouteNamesPhrase,
   isSalesPickingLayout,
   samplePickingListPreviewData,
 } from "./picking-list-print";
+
+describe("formatRouteNamesPhrase", () => {
+  it("joins two and three-plus route names naturally", () => {
+    expect(formatRouteNamesPhrase(["Route A"])).toBe("Route A");
+    expect(formatRouteNamesPhrase(["Route A", "Route B"])).toBe("Route A and Route B");
+    expect(formatRouteNamesPhrase(["Route 1", "2", "C"])).toBe("Route 1, 2 and C");
+  });
+});
 
 describe("isSalesPickingLayout", () => {
   it("uses sales layout from picking list payload", () => {
@@ -100,5 +109,34 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toContain("Shortage");
     expect(html).toContain("Total shortage");
     expect(html).not.toContain("Totals Value of Order");
+  });
+
+  it("titles combined lists with natural-language route names", () => {
+    const html = buildPickingListHtml({
+      pickingList: {
+        layout: "sales",
+        combined: true,
+        list_number: "PK-COMB",
+        list_date: "2026-08-06",
+        route_names: ["Route A", "Route B"],
+        route_names_phrase: "Route A and Route B",
+        order_total_value: 1000,
+        lines: [
+          {
+            product_name: "SUGAR",
+            quantity_label: "2 Bag",
+            line_total: 1000,
+            wholesale_unit_prices: [500],
+            wholesale_pack_label: "Bag",
+          },
+        ],
+      },
+      layout: "sales",
+      includeShelfLocation: false,
+    });
+
+    expect(html).toContain("Picking List for Route A and Route B");
+    expect(html).not.toContain(">Route: ");
+    expect(html).toContain("Totals Value of Order");
   });
 });

@@ -193,14 +193,25 @@ export function sortPickingLinesByPackageCount(lines) {
 }
 
 function resolveRouteHeader({ pickingList, trip }) {
-  const routeNames =
-    (Array.isArray(pickingList?.trip?.route_names) && pickingList.trip.route_names.length
-      ? pickingList.trip.route_names.join(" · ")
-      : null) ??
-    pickingList?.route?.route_name ??
-    trip?.route?.route_name ??
-    (Array.isArray(trip?.route_names) && trip.route_names.length ? trip.route_names.join(" · ") : null) ??
-    "—";
+  const fromList =
+    Array.isArray(pickingList?.route_names) && pickingList.route_names.length
+      ? pickingList.route_names
+      : Array.isArray(pickingList?.trip?.route_names) && pickingList.trip.route_names.length
+        ? pickingList.trip.route_names
+        : null;
+  const fromTrip =
+    Array.isArray(trip?.route_names) && trip.route_names.length ? trip.route_names : null;
+  const names =
+    fromList ??
+    (pickingList?.route?.route_name ? [pickingList.route.route_name] : null) ??
+    (trip?.route?.route_name ? [trip.route.route_name] : null) ??
+    fromTrip ??
+    [];
+
+  const routeNamesPhrase =
+    String(pickingList?.route_names_phrase ?? "").trim() ||
+    formatRouteNamesPhrase(names);
+  const routeNames = routeNamesPhrase || "—";
 
   const tripCode = trip?.trip_code ?? pickingList?.trip?.trip_code ?? null;
   const vehicle =
@@ -209,8 +220,18 @@ function resolveRouteHeader({ pickingList, trip }) {
     pickingList?.trip?.vehicle?.plate_number ??
     null;
   const driver = trip?.driver?.full_name ?? pickingList?.trip?.driver?.full_name ?? null;
+  const combined = Boolean(pickingList?.combined) || names.length > 1;
 
-  return { routeNames, tripCode, vehicle, driver };
+  return { routeNames, routeNamesPhrase, tripCode, vehicle, driver, combined, routeNameList: names };
+}
+
+/** "Route A and Route B" / "Route 1, 2 and C". */
+export function formatRouteNamesPhrase(names) {
+  const cleaned = [...new Set((names ?? []).map((n) => String(n ?? "").trim()).filter(Boolean))];
+  if (cleaned.length === 0) return "";
+  if (cleaned.length === 1) return cleaned[0];
+  if (cleaned.length === 2) return `${cleaned[0]} and ${cleaned[1]}`;
+  return `${cleaned.slice(0, -1).join(", ")} and ${cleaned[cleaned.length - 1]}`;
 }
 
 function buildPickingListHeaderHtml({ branding }) {
@@ -417,6 +438,10 @@ export function buildPickingListHtml({
   const dateLabel = formatPrintDisplayDate(listDate, { emptyLabel: "—" });
   const listNumber = pickingList?.list_number ?? "—";
   const pickerName = pickingList?.picker_name ?? "";
+  const docTitle = meta.combined
+    ? `Picking List for ${meta.routeNamesPhrase || meta.routeNames}`
+    : `Picking List #${listNumber}`;
+  const showRouteMetaLine = !meta.combined;
 
   let columnCount;
   let tableHead;
@@ -480,7 +505,7 @@ export function buildPickingListHtml({
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Picking List ${escapeHtml(listNumber)}</title>
+  <title>${escapeHtml(docTitle)}</title>
   <style>${pickingListPrintStyles(generalSettings, { salesLayout, includeShelfLocation })}</style>
 </head>
 <body class="has-doc-print-edge-footer">
@@ -488,10 +513,10 @@ export function buildPickingListHtml({
     <div class="sheet">
       ${orgHeader}
       <div class="title-block">
-        <p class="doc-title">Picking List #${escapeHtml(listNumber)}</p>
+        <p class="doc-title">${escapeHtml(docTitle)}</p>
         <p class="meta-line">Date: ${escapeHtml(dateLabel)}</p>
-        ${meta.tripCode ? `<p class="meta-line">Trip chart: ${escapeHtml(meta.tripCode)}</p>` : ""}
-        <p class="meta-line">Route: ${escapeHtml(meta.routeNames)}</p>
+        ${meta.tripCode && !meta.combined ? `<p class="meta-line">Trip chart: ${escapeHtml(meta.tripCode)}</p>` : ""}
+        ${showRouteMetaLine ? `<p class="meta-line">Route: ${escapeHtml(meta.routeNames)}</p>` : ""}
         ${meta.vehicle ? `<p class="meta-line">Vehicle: ${escapeHtml(meta.vehicle)}</p>` : ""}
         ${meta.driver ? `<p class="meta-line">Driver: ${escapeHtml(meta.driver)}</p>` : ""}
       </div>
