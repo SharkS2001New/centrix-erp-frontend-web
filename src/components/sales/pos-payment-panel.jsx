@@ -1413,7 +1413,7 @@ export function PosPaymentPanel({
           </div>
         }
       >
-        <p className="text-sm">
+        <p className="text-base">
           {confirmSummary
             ? buildConfirmPaymentMessage(confirmSummary)
             : buildConfirmPaymentMessage({
@@ -1424,7 +1424,7 @@ export function PosPaymentPanel({
               })}
         </p>
         {confirmSummary && confirmSummary.balanceDue > 0.01 ? (
-          <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+          <p className="mt-2 text-base font-semibold text-amber-600 dark:text-amber-400">
             Balance due: {formatSaleKes(confirmSummary.balanceDue)}
             {confirmSummary.isCredit
               ? " — recorded as debtor for the selected customer."
@@ -1434,7 +1434,7 @@ export function PosPaymentPanel({
           </p>
         ) : null}
         {confirmSummary && confirmSummary.changeDue > 0 ? (
-          <p className="theme-text-muted mt-2 text-sm">
+          <p className="mt-2 text-lg font-bold tabular-nums tracking-tight">
             Change: {formatSaleKes(confirmSummary.changeDue)}
           </p>
         ) : null}
@@ -1958,9 +1958,9 @@ export function PosPaymentPanel({
           </p>
         </div>
       ) : null}
-      <dl className="mb-4 space-y-1 text-xs">
-        <div className="flex justify-between">
-          <dt>
+      <dl className="mb-4 space-y-2 text-base leading-snug">
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="theme-subtext font-medium">
             {adjustmentMode
               ? isReturnAdjustment
                 ? "Return amount"
@@ -1969,34 +1969,44 @@ export function PosPaymentPanel({
                   : "Adjustment"
               : "Bill Total"}
           </dt>
-          <dd className="font-bold">
+          <dd className="text-lg font-bold tabular-nums tracking-tight">
             {isReturnAdjustment ? `−${formatSaleKes(checkoutTotal)}` : formatSaleKes(checkoutTotal)}
           </dd>
         </div>
         {mpesaFieldsLocked && parseDecimalInput(mpesaAmount) > 0 ? (
-          <div className="flex justify-between text-emerald-800">
-            <dt>M-Pesa applied</dt>
-            <dd className="font-bold">{formatSaleKes(parseDecimalInput(mpesaAmount))}</dd>
+          <div className="flex items-baseline justify-between gap-3 text-emerald-800 dark:text-emerald-400">
+            <dt className="font-medium">M-Pesa applied</dt>
+            <dd className="text-lg font-bold tabular-nums tracking-tight">
+              {formatSaleKes(parseDecimalInput(mpesaAmount))}
+            </dd>
           </div>
         ) : null}
-        <div className="flex justify-between">
-          <dt>Amount Paid</dt>
-          <dd className="font-bold">{formatSaleKes(amountPaid)}</dd>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="theme-subtext font-medium">Amount Paid</dt>
+          <dd className="text-xl font-bold tabular-nums tracking-tight">
+            {formatSaleKes(amountPaid)}
+          </dd>
         </div>
-        <div className="flex justify-between">
-          <dt>Balance Due</dt>
-          <dd className="font-bold">{formatSaleKes(balanceDue)}</dd>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="theme-subtext font-medium">Balance Due</dt>
+          <dd className="text-xl font-bold tabular-nums tracking-tight">
+            {formatSaleKes(balanceDue)}
+          </dd>
         </div>
         {!adjustmentMode ? (
-        <div className="flex justify-between">
-          <dt>Change Due</dt>
-          <dd className={`font-bold${changeExcessive ? " text-amber-700 dark:text-amber-400" : ""}`}>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="theme-subtext font-medium">Change Due</dt>
+          <dd
+            className={`text-xl font-bold tabular-nums tracking-tight${
+              changeExcessive ? " text-amber-700 dark:text-amber-400" : ""
+            }`}
+          >
             {formatSaleKes(changeDue)}
           </dd>
         </div>
         ) : null}
         {changeExcessive ? (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-sm font-medium text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
             Overpay — change of {formatSaleKes(changeDue)} is too high. Max change is{" "}
             {formatSaleKes(MAX_POS_CASH_CHANGE)}. Enter a realistic tender amount.
           </p>

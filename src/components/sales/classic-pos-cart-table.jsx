@@ -57,6 +57,8 @@ function ClassicLineQtyCell({
             skipBlurCommitRef.current = false;
             return;
           }
+          // Push edited qty when focus leaves (click Scan, mouse away). Unchanged
+          // values no-op so accidental focus/blur does not re-PATCH or steal focus.
           commit({ force: swapQtyCommit });
         }}
         onKeyDown={(e) => {
@@ -172,9 +174,12 @@ export function ClassicPosCartTable({
   entryReady,
   onEntryQtyChange,
   onEntryQtyKeyDown,
+  onEntryQtyCommit = null,
   onEmptyDoubleClick = null,
   tableScrollRef = null,
 }) {
+  const skipEntryQtyBlurCommitRef = useRef(false);
+
   function handleWrapDoubleClick(e) {
     if (typeof onEmptyDoubleClick !== "function") return;
     const t = e.target;
@@ -262,13 +267,16 @@ export function ClassicPosCartTable({
                 }
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => onOrderNoChange?.(e.target.value)}
-                onBlur={() => {
-                  // Allow click on a result before dismissing.
-                  window.setTimeout(() => onOrderNameDismiss?.(), 150);
-                }}
                 onKeyDown={(e) => {
                   if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
                   const results = Array.isArray(orderNameResults) ? orderNameResults : null;
+                  const namePanelOpen = orderNameLoading || Array.isArray(orderNameResults);
+                  if (namePanelOpen && e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onOrderNameDismiss?.();
+                    return;
+                  }
                   if (results && results.length > 0) {
                     if (e.key === "ArrowDown") {
                       e.preventDefault();
@@ -283,11 +291,6 @@ export function ClassicPosCartTable({
                       e.preventDefault();
                       const next = Math.max((Number(orderNameHighlight) || 0) - 1, 0);
                       onOrderNameHighlightChange?.(next);
-                      return;
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      onOrderNameDismiss?.();
                       return;
                     }
                     if (e.key === "Enter") {
@@ -590,7 +593,30 @@ export function ClassicPosCartTable({
                     disabled={busy}
                     aria-label={entryQtyUnit ? `Quantity (${entryQtyUnit})` : "Quantity"}
                     onChange={(e) => onEntryQtyChange?.(e.target.value)}
-                    onKeyDown={onEntryQtyKeyDown}
+                    onBlur={() => {
+                      if (skipEntryQtyBlurCommitRef.current) {
+                        skipEntryQtyBlurCommitRef.current = false;
+                        return;
+                      }
+                      // Mouse away / click Scan code — same commit as Enter.
+                      onEntryQtyCommit?.();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        // Escape cancels and moves focus — skip the blur commit.
+                        skipEntryQtyBlurCommitRef.current = true;
+                        onEntryQtyKeyDown?.(e);
+                        return;
+                      }
+                      if (e.key === "Enter") {
+                        // Enter commits once; blur that follows must not commit again.
+                        skipEntryQtyBlurCommitRef.current = true;
+                        onEntryQtyKeyDown?.(e);
+                        e.currentTarget.blur();
+                        return;
+                      }
+                      onEntryQtyKeyDown?.(e);
+                    }}
                   />
                   {entryQtyUnit ? (
                     <span className="classic-pos-qty-unit" title={entryQtyUnit}>

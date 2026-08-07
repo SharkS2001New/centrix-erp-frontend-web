@@ -34,6 +34,43 @@ describe("kra receipt QR", () => {
     expect(kra?.invoiceNumber).toBe("CU-1");
   });
 
+  it("extracts buyer PIN from KRA request payload", () => {
+    const kra = extractKraReceiptData({
+      kra_response: {
+        status: "success",
+        invoice_number: "CU-2",
+        signature_link: "https://etims.example/verify/2",
+        request_payload: {
+          sign_structure: { pinOfBuyer: "P052177271G" },
+        },
+      },
+    });
+    expect(kra?.buyerPin).toBe("P052177271G");
+  });
+
+  it("prints customer KRA PIN after the thermal QR", () => {
+    const kraData = {
+      signatureLink: "https://etims.example/verify/3",
+      invoiceNumber: "CU-3",
+      buyerPin: "P051234567X",
+    };
+    const html = buildKraThermalQrHtml(kraData, "data:image/png;base64,abc", {
+      buyerPin: "P051234567X",
+    });
+    expect(html).toContain("<img");
+    expect(html).toContain("Customer KRA PIN: P051234567X");
+    expect(html.indexOf("<img")).toBeLessThan(html.indexOf("Customer KRA PIN"));
+  });
+
+  it("falls back to CU invoice after QR when buyer PIN is missing", () => {
+    const html = buildKraThermalQrHtml(
+      { signatureLink: "https://etims.example/verify/4", invoiceNumber: "CU-4" },
+      "data:image/png;base64,abc",
+    );
+    expect(html).toContain("CU Invoice: CU-4");
+    expect(html).not.toContain("Customer KRA PIN");
+  });
+
   it("requires a QR data URL when KRA fiscalization is active", async () => {
     const sale = {
       id: 9,

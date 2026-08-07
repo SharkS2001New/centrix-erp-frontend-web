@@ -100,13 +100,14 @@ export function ExternalPosSettingsPanel({
               classic_pos_theme_colors: normalizeClassicPosThemeColors(
                 platformForm.classic_pos_theme_colors,
               ),
-              show_checkout_on_create_order: platformForm.show_pos_checkout_on_create !== false,
+              show_checkout_on_create_order: Boolean(platformForm.show_pos_checkout_on_create),
               require_pos_till_float: Boolean(platformForm.require_pos_till_float),
               enable_pos_cash_rounding: Boolean(platformForm.enable_pos_cash_rounding),
-              receipt_show_all_payment_methods:
-                platformForm.receipt_show_all_payment_methods !== false,
+              receipt_show_all_payment_methods: Boolean(
+                platformForm.receipt_show_all_payment_methods,
+              ),
               enable_pos_order_edit: Boolean(platformForm.enable_pos_order_edit),
-              pos_combine_identical_lines: platformForm.pos_combine_identical_lines !== false,
+              pos_combine_identical_lines: Boolean(platformForm.pos_combine_identical_lines),
             }
           : {}),
       };

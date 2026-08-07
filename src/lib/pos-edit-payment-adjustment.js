@@ -174,6 +174,142 @@ export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
 }
 
 /**
+ * Scale tender method amounts so they sum to the revised order total
+ * (mirrors backend CheckoutController::normalizeTenderMapToTotal).
+ *
+ * @param {{ cash?: number, mpesa?: number, equity?: number, kcb?: number }} tenders
+ * @param {number} targetTotal
+ */
+export function normalizePreviousOrderEditTenders(tenders, targetTotal) {
+  const target = Math.round(Math.max(0, Number(targetTotal) || 0) * 100) / 100;
+  const next = {
+    cash: Math.round(Math.max(0, Number(tenders?.cash) || 0) * 100) / 100,
+    mpesa: Math.round(Math.max(0, Number(tenders?.mpesa) || 0) * 100) / 100,
+    equity: Math.round(Math.max(0, Number(tenders?.equity) || 0) * 100) / 100,
+    kcb: Math.round(Math.max(0, Number(tenders?.kcb) || 0) * 100) / 100,
+  };
+  if (target <= 0.009) {
+    return { cash: 0, mpesa: 0, equity: 0, kcb: 0 };
+  }
+  const sum = Math.round((next.cash + next.mpesa + next.equity + next.kcb) * 100) / 100;
+  if (sum <= 0.009) {
+    return next;
+  }
+  if (Math.abs(sum - target) < 0.02) {
+    return next;
+  }
+  const factor = target / sum;
+  const scaled = {
+    cash: Math.round(next.cash * factor * 100) / 100,
+    mpesa: Math.round(next.mpesa * factor * 100) / 100,
+    equity: Math.round(next.equity * factor * 100) / 100,
+    kcb: Math.round(next.kcb * factor * 100) / 100,
+  };
+  const scaledSum =
+    Math.round((scaled.cash + scaled.mpesa + scaled.equity + scaled.kcb) * 100) / 100;
+  const drift = Math.round((target - scaledSum) * 100) / 100;
+  if (Math.abs(drift) >= 0.01) {
+    const keys = ["cash", "mpesa", "equity", "kcb"];
+    let largest = "cash";
+    for (const key of keys) {
+      if (scaled[key] >= scaled[largest]) largest = key;
+    }
+    scaled[largest] = Math.round((scaled[largest] + drift) * 100) / 100;
+  }
+  return scaled;
+}
+
+/**
+ * Rebuild Cash/M-Pesa/Equity/KCB from the prior sale ± payment_adjustments, then
+ * clamp the mix to the revised order total so receipts never show prior+top-up doubles.
+ *
+ * @param {object|null|undefined} sourceSale
+ * @param {Array<{ adjustment_type?: string, method_code?: string, amount?: number }>} adjustments
+ * @param {number} revisedTotal
+ */
+export function rebuildPreviousOrderEditTenders(sourceSale, adjustments, revisedTotal) {
+  const rows = Array.isArray(adjustments)
+    ? adjustments.filter((row) => Number(row?.amount) > 0)
+    : [];
+  const returnGiven =
+    Math.round(
+      rows
+        .filter((row) => row.adjustment_type === "return")
+        .reduce((sum, row) => sum + (Number(row.amount) || 0), 0) * 100,
+    ) / 100;
+  const topupAmount =
+    Math.round(
+      rows
+        .filter((row) => row.adjustment_type === "topup")
+        .reduce((sum, row) => sum + (Number(row.amount) || 0), 0) * 100,
+    ) / 100;
+
+  const sourceCash = Number(sourceSale?.cash ?? 0);
+  const sourceMpesa = Number(sourceSale?.mpesa_amount ?? 0);
+  const sourceEquity = Number(sourceSale?.equity_amount ?? 0);
+  const sourceKcb = Number(sourceSale?.kcb_amount ?? 0);
+  const hasSourcePayments =
+    sourceCash > 0 || sourceMpesa > 0 || sourceEquity > 0 || sourceKcb > 0;
+
+  let cash = hasSourcePayments ? sourceCash : 0;
+  let mpesa = hasSourcePayments ? sourceMpesa : 0;
+  let equity = hasSourcePayments ? sourceEquity : 0;
+  let kcb = hasSourcePayments ? sourceKcb : 0;
+
+  for (const row of rows) {
+    if (row.adjustment_type !== "topup") continue;
+    const code = String(row.method_code ?? "CASH").toUpperCase();
+    const amt = Number(row.amount) || 0;
+    if (code.includes("MPESA")) mpesa += amt;
+    else if (code.includes("EQUITY")) equity += amt;
+    else if (code.includes("KCB")) kcb += amt;
+    else cash += amt;
+  }
+
+  if (returnGiven > 0.0001) {
+    let remaining = returnGiven;
+    const reduce = (current) => {
+      const take = Math.min(Math.max(0, current), remaining);
+      remaining = Math.round((remaining - take) * 100) / 100;
+      return Math.round((current - take) * 100) / 100;
+    };
+    cash = reduce(cash);
+    mpesa = reduce(mpesa);
+    equity = reduce(equity);
+    kcb = reduce(kcb);
+  }
+
+  const target = Math.round(Math.max(0, Number(revisedTotal) || 0) * 100) / 100;
+  if (!hasSourcePayments && topupAmount <= 0 && returnGiven <= 0) {
+    return {
+      cash: 0,
+      mpesa: 0,
+      equity: 0,
+      kcb: 0,
+      returnGiven,
+      topupAmount,
+      amountPaid: target,
+    };
+  }
+
+  const normalized = normalizePreviousOrderEditTenders(
+    { cash, mpesa, equity, kcb },
+    target,
+  );
+  const amountPaid =
+    Math.round(
+      (normalized.cash + normalized.mpesa + normalized.equity + normalized.kcb) * 100,
+    ) / 100;
+
+  return {
+    ...normalized,
+    returnGiven,
+    topupAmount,
+    amountPaid,
+  };
+}
+
+/**
  * @param {Array<{ adjustment_type?: string, amount?: number }>|null|undefined} adjustments
  * @param {{ amount: number, type: string|null }} delta
  */

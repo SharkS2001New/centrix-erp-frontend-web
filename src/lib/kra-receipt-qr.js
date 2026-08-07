@@ -17,6 +17,32 @@ function sleep(ms) {
   });
 }
 
+/** Buyer PIN from a KRA device request payload (sign_structure.pinOfBuyer). */
+export function extractBuyerPinFromKraRequest(requestPayload) {
+  const payload =
+    requestPayload && typeof requestPayload === "object" ? requestPayload : null;
+  if (!payload) return null;
+  const sign = payload.sign_structure ?? payload.SignStructure ?? null;
+  return firstNonEmpty(
+    sign?.pinOfBuyer,
+    sign?.PinOfBuyer,
+    payload.pinOfBuyer,
+    payload.PinOfBuyer,
+  );
+}
+
+/**
+ * Resolve the buyer's KRA PIN for receipt print (customer record or fiscal payload).
+ */
+export function resolveBuyerKraPinForReceipt({ sale = null, customer = null, kraData = null } = {}) {
+  return firstNonEmpty(
+    customer?.kra_pin,
+    sale?.customer?.kra_pin,
+    sale?.customer_kra_pin,
+    kraData?.buyerPin,
+  );
+}
+
 /** Normalize KRA fiscal payload from checkout response, sale relation, or credit note. */
 export function extractKraReceiptData(sale, kraReceipt = null) {
   const kra = kraReceipt ?? sale?.kra_response ?? sale?.kraResponse ?? null;
@@ -25,6 +51,10 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
   const payload =
     kra.response_payload && typeof kra.response_payload === "object"
       ? kra.response_payload
+      : null;
+  const requestPayload =
+    kra.request_payload && typeof kra.request_payload === "object"
+      ? kra.request_payload
       : null;
 
   const signatureLink = firstNonEmpty(
@@ -68,6 +98,7 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
   );
   const internalData = firstNonEmpty(kra.internal_data, payload?.internal_data);
   const version = firstNonEmpty(kra.version, payload?.version);
+  const buyerPin = extractBuyerPinFromKraRequest(requestPayload);
 
   if (!signatureLink && !receiptSignature && !invoiceNumber) return null;
 
@@ -81,6 +112,7 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     cuInvNo,
     internalData,
     version,
+    buyerPin,
     status: firstNonEmpty(kra.status, payload?.status),
   };
 }
@@ -109,16 +141,38 @@ export function escapeKraHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function buildKraBuyerDetailHtml(
+  kra,
+  { buyerPin = null, layout = "thermal", includeInvoiceFallback = true } = {},
+) {
+  const pin = firstNonEmpty(buyerPin, kra?.buyerPin);
+  const invoice = firstNonEmpty(kra?.invoiceNumber, kra?.cuInvNo);
+  if (!pin && !(includeInvoiceFallback && invoice)) return "";
+
+  const isThermal = layout === "thermal";
+  const fontSize = isThermal ? "9px" : "10px";
+  if (pin) {
+    return `<div class="kra-buyer-pin" style="font-size:${fontSize};font-weight:700;margin-top:4px;line-height:1.35;">Customer KRA PIN: ${escapeKraHtml(pin)}</div>`;
+  }
+  return `<div class="kra-buyer-detail" style="font-size:${fontSize};font-weight:700;margin-top:4px;line-height:1.35;">CU Invoice: ${escapeKraHtml(invoice)}</div>`;
+}
+
 /** KRA fiscal block with optional QR scan area for thermal or A4 documents. */
 export function buildKraFiscalBlockHtml(
   kra,
-  { layout = "thermal", qrDataUrl = null, title = "KRA FISCAL RECEIPT" } = {},
+  { layout = "thermal", qrDataUrl = null, title = "KRA FISCAL RECEIPT", buyerPin = null } = {},
 ) {
   if (!kra) return "";
 
   const isThermal = layout === "thermal";
   const qrSize = isThermal ? 100 : 130;
   const border = isThermal ? "1px dashed #475569" : "1px solid #cbd5e1";
+  // CU invoice is already listed above the QR in this block — only append buyer PIN after QR.
+  const buyerDetailHtml = buildKraBuyerDetailHtml(kra, {
+    buyerPin,
+    layout,
+    includeInvoiceFallback: false,
+  });
 
   let html = `<div class="kra-block" style="margin-top:12px;padding-top:10px;border-top:${border};text-align:center;line-height:1.45;">`;
   html += `<div style="font-weight:700;font-size:${isThermal ? "10px" : "11px"};letter-spacing:0.06em;margin-bottom:6px;">${escapeKraHtml(title)}</div>`;
@@ -134,9 +188,13 @@ export function buildKraFiscalBlockHtml(
     html += `<div style="margin:10px 0 6px;">
       <img src="${qrDataUrl}" alt="KRA verification QR code" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
       <div style="font-size:${isThermal ? "9px" : "9px"};margin-top:4px;color:#000;font-weight:700;line-height:1.35;">Scan to verify on KRA eTIMS</div>
+      ${buyerDetailHtml}
     </div>`;
   } else if (kra.signatureLink) {
     html += `<div style="font-size:8px;word-break:break-all;margin-top:6px;">${escapeKraHtml(kra.signatureLink)}</div>`;
+    html += buyerDetailHtml;
+  } else {
+    html += buyerDetailHtml;
   }
 
   if (kra.receiptSignature) {
@@ -154,7 +212,7 @@ export function buildKraFiscalBlockHtml(
 export function buildKraDocumentQrHtml(
   kra,
   qrDataUrl,
-  { size = 100, layout = "thermal" } = {},
+  { size = 100, layout = "thermal", buyerPin = null } = {},
 ) {
   if (!kra?.signatureLink || !qrDataUrl) return "";
 
@@ -167,18 +225,24 @@ export function buildKraDocumentQrHtml(
   const captionStyle = isThermal
     ? ""
     : `margin-top:8px;font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.35;`;
+  const buyerDetailHtml = buildKraBuyerDetailHtml(kra, {
+    buyerPin,
+    layout,
+    includeInvoiceFallback: true,
+  });
 
   return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:none;text-align:center;page-break-inside:avoid;max-width:100%;overflow:hidden;box-sizing:border-box;">
       <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;max-width:100%;" />
       <div class="${captionClass}" style="${captionStyle}${isThermal ? "max-width:100%;padding:0 1px;overflow-wrap:anywhere;word-break:break-word;" : ""}">
         Scan to verify this invoice on KRA eTIMS platform
       </div>
+      ${buyerDetailHtml}
     </div>`;
 }
 
 /** Centered KRA eTIMS QR for thermal receipts. */
-export function buildKraThermalQrHtml(kra, qrDataUrl) {
-  return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 100, layout: "thermal" });
+export function buildKraThermalQrHtml(kra, qrDataUrl, options = {}) {
+  return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 100, layout: "thermal", ...options });
 }
 
 function saleLooksFiscalized(sale, kraData) {

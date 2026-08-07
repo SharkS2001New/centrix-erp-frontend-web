@@ -61,24 +61,29 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md", e
 export function PosPreviousOrderLoadingOverlay({
   open,
   message = "Loading previous order…",
+  detail = "Restoring lines and payment details…",
+  soft = false,
 }) {
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[175] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[175] flex items-center justify-center p-4 pointer-events-auto"
       aria-live="polite"
       aria-busy="true"
       role="status"
     >
-      <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-[1px]" aria-hidden="true" />
+      <div
+        className={`absolute inset-0 ${soft ? "bg-slate-900/10" : "bg-slate-900/25 backdrop-blur-[1px]"}`}
+        aria-hidden="true"
+      />
       <div className="relative w-full max-w-sm theme-panel rounded-xl border px-6 py-7 text-center shadow-2xl ring-1 ring-slate-900/5">
         <div
           className="mx-auto h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--theme-border)] border-t-[var(--theme-primary)]"
           aria-hidden="true"
         />
         <p className="theme-heading mt-4 text-sm font-semibold">{message}</p>
-        <p className="theme-subtext mt-1 text-sm">Restoring lines and payment details…</p>
+        <p className="theme-subtext mt-1 text-sm">{detail}</p>
       </div>
     </div>,
     document.body,

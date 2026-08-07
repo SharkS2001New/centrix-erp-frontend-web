@@ -1,5 +1,9 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { buildKraFiscalBlockHtml, buildKraThermalQrHtml } from "@/lib/kra-receipt-qr";
+import {
+  buildKraFiscalBlockHtml,
+  buildKraThermalQrHtml,
+  resolveBuyerKraPinForReceipt,
+} from "@/lib/kra-receipt-qr";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
 import { RECEIPT_POWERED_BY_LINE } from "@/lib/print-footer-settings";
 import {
@@ -207,7 +211,8 @@ export function buildSaleReceiptHtml(
     ? `<div class="meta-full"><span class="meta-label">Cash Sales #:</span> ${escapeHtml(cashSalesNo)}</div>`
     : `<div class="meta-full"><span class="meta-label">Order #:</span> ${escapeHtml(orderNo)}</div>`;
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
-  const customerKraPin = String(customer?.kra_pin ?? sale?.customer?.kra_pin ?? "").trim();
+  const customerKraPin =
+    resolveBuyerKraPinForReceipt({ sale, customer, kraData }) ?? "";
   const customerPhone =
     sale.customer_phone ?? sale.customer_mobile ?? customer?.phone_number ?? customer?.additional_phone ?? "";
   const rawDate = resolveSaleReceiptTimestamp(sale);
@@ -305,12 +310,14 @@ export function buildSaleReceiptHtml(
     DOCUMENT_LOGO_THERMAL_SIZE_PX.small;
 
   // Fiscal thermal receipts: QR below Designed & Developed. Fall back to CU text if QR image failed.
+  // After the QR, show the buyer's KRA PIN (or CU invoice when PIN is missing).
   const kraQrHtml = kraData
-    ? buildKraThermalQrHtml(kraData, kraQrDataUrl) ||
+    ? buildKraThermalQrHtml(kraData, kraQrDataUrl, { buyerPin: customerKraPin }) ||
       buildKraFiscalBlockHtml(kraData, {
         layout: "thermal",
         qrDataUrl: kraQrDataUrl,
         title: "KRA eTIMS",
+        buyerPin: customerKraPin,
       })
     : "";
 
@@ -453,6 +460,7 @@ export function buildSaleReceiptHtml(
       .footer-text { font-size: ${fpx(8, true)}; }
       .footer-powered-by { font-size: ${fpx(7, true)}; }
       .kra-etims-caption { font-size: ${px(8, true)}; padding: 0 1px; overflow-wrap: anywhere; word-break: break-word; }
+      .kra-buyer-pin, .kra-buyer-detail { font-size: ${px(9, true)}; font-weight: 700; }
     }
   </style>
 </head>

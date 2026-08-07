@@ -23,7 +23,10 @@ export function PosOfflineSyncControls({
   const failed = Number(syncProgress?.failed ?? 0);
   const phase = syncProgress?.phase ?? "idle";
   const showBar =
-    syncing && total > 0 && (phase === "start" || phase === "syncing" || phase === "item_done");
+    syncing &&
+    pendingSync > 0 &&
+    total > 0 &&
+    (phase === "start" || phase === "syncing" || phase === "item_done");
   const pct = total > 0 ? Math.min(100, Math.round(((done + failed) / total) * 100)) : 0;
 
   const hasPending = pendingSync > 0;
@@ -34,24 +37,27 @@ export function PosOfflineSyncControls({
     latestFailed?.order_num ??
     null;
   const showPrintFailed = failedOrders.length > 0 && !syncing && typeof onPrintFailed === "function";
-  const showSyncButton = syncing || hasPending || failedOrders.length > 0;
+  // Never show Sync chrome when the queue is empty — even if syncing flag is sticky.
+  const activelySyncingQueue = syncing && hasPending;
+  const showSyncButton = hasPending || failedOrders.length > 0;
 
   if (!showSyncButton && !showPrintFailed && !showBar) {
     return null;
   }
 
   const label =
-    syncProgress?.message ||
-    (syncing
-      ? total > 0
-        ? `Syncing ${Math.max(current, done + failed)} of ${total}…`
-        : "Syncing offline orders…"
-      : lastSyncMessage ||
-        (failedOrders.length > 0
+    activelySyncingQueue
+      ? syncProgress?.message ||
+        (total > 0
+          ? `Syncing ${Math.max(current, done + failed)} of ${total}…`
+          : "Syncing offline orders…")
+      : lastSyncMessage && (hasPending || failedOrders.length > 0)
+        ? lastSyncMessage
+        : failedOrders.length > 0
           ? `${failedOrders.length} offline order(s) need a manual sync retry`
           : hasPending
             ? `${pendingSync} offline order(s) waiting to sync`
-            : null));
+            : null;
 
   const disabled = syncing || !canFlush || (!hasPending && failedOrders.length === 0);
   const title = !canFlush
@@ -108,8 +114,8 @@ export function PosOfflineSyncControls({
             }
             aria-busy={syncing}
           >
-            <span className="pos-header-btn-label" data-short={syncing ? "Syncing…" : "Sync"}>
-              {syncing
+            <span className="pos-header-btn-label" data-short={activelySyncingQueue ? "Syncing…" : "Sync"}>
+              {activelySyncingQueue
                 ? total > 0
                   ? `Syncing ${done + failed}/${total}`
                   : "Syncing…"
@@ -122,7 +128,7 @@ export function PosOfflineSyncControls({
           </button>
         ) : null}
       </div>
-      {compact && label && (syncing || pendingSync > 0 || showPrintFailed) ? (
+      {compact && label && (activelySyncingQueue || pendingSync > 0 || showPrintFailed) ? (
         <p className="max-w-[14rem] truncate text-[10px] font-medium text-[var(--theme-text-muted)]">
           {label}
         </p>

@@ -41,6 +41,36 @@ function customerLabelFromParkInput({ customer = null, walkIn = false, walkInNam
   return "Walk-in";
 }
 
+/** Sum of tender already applied on an open cart / held park (M-Pesa, voucher, points). */
+export function heldAmountPaid(source) {
+  if (!source) return 0;
+  const parts =
+    Math.max(0, Number(source.mpesa_payment_amount ?? 0)) +
+    Math.max(0, Number(source.voucher_payment_amount ?? 0)) +
+    Math.max(0, Number(source.points_payment_amount ?? 0));
+  if (parts > 0.009) return Math.round(parts * 100) / 100;
+  const explicit = Math.max(0, Number(source.amount_paid ?? 0));
+  return Math.round(explicit * 100) / 100;
+}
+
+export function heldBalanceDue(source, orderTotal = null) {
+  const total =
+    orderTotal != null && Number.isFinite(Number(orderTotal))
+      ? Math.max(0, Number(orderTotal))
+      : Math.max(0, Number(source?.order_total ?? 0));
+  return Math.round(Math.max(0, total - heldAmountPaid(source)) * 100) / 100;
+}
+
+function paymentSnapshotFromCart(cart) {
+  return {
+    mpesa_payment_amount: Math.max(0, Number(cart?.mpesa_payment_amount ?? 0)) || 0,
+    mpesa_transaction_code: cart?.mpesa_transaction_code ?? null,
+    mpesa_phone: cart?.mpesa_phone ?? null,
+    voucher_payment_amount: Math.max(0, Number(cart?.voucher_payment_amount ?? 0)) || 0,
+    points_payment_amount: Math.max(0, Number(cart?.points_payment_amount ?? 0)) || 0,
+  };
+}
+
 /**
  * Snapshot an open cart into a local held park (no server sale / order_num).
  *
@@ -74,6 +104,9 @@ export async function parkCartLocally(cart, options = {}) {
     order_discount: Number(cart?.order_discount ?? 0) || 0,
   };
   const summary = summarizeLocalPosCart(draftCart);
+  const payments = paymentSnapshotFromCart(cart);
+  const amountPaid = heldAmountPaid({ ...payments, amount_paid: cart?.amount_paid });
+  const balanceDue = Math.round(Math.max(0, summary.total - amountPaid) * 100) / 100;
 
   const park = {
     id,
@@ -94,6 +127,9 @@ export async function parkCartLocally(cart, options = {}) {
     customer_name_override: customerName,
     order_total: summary.total,
     total_vat: summary.vat,
+    amount_paid: amountPaid,
+    balance_due: balanceDue,
+    ...payments,
     items: lines.map((line, index) => ({
       ...line,
       line_no: index + 1,
@@ -108,6 +144,8 @@ export async function parkCartLocally(cart, options = {}) {
       float_session_id: draftCart.float_session_id,
       order_discount: draftCart.order_discount,
       channel: "pos",
+      ...payments,
+      amount_paid: amountPaid,
     },
   };
 
@@ -146,6 +184,18 @@ export function localCartFromHeldPark(park, seed = {}) {
     throw new Error("Held order has no items.");
   }
   const snap = park.cart_snapshot ?? {};
+  const payments = paymentSnapshotFromCart({
+    mpesa_payment_amount: park.mpesa_payment_amount ?? snap.mpesa_payment_amount,
+    mpesa_transaction_code: park.mpesa_transaction_code ?? snap.mpesa_transaction_code,
+    mpesa_phone: park.mpesa_phone ?? snap.mpesa_phone,
+    voucher_payment_amount: park.voucher_payment_amount ?? snap.voucher_payment_amount,
+    points_payment_amount: park.points_payment_amount ?? snap.points_payment_amount,
+  });
+  const amountPaid = heldAmountPaid({
+    ...payments,
+    amount_paid: park.amount_paid ?? snap.amount_paid,
+  });
+
   return {
     id: "active",
     offline: false,
@@ -157,6 +207,8 @@ export function localCartFromHeldPark(park, seed = {}) {
     customer_num: park.customer_num ?? null,
     customer_name_override: park.customer_name_override ?? park.customer_name ?? "Walk-in",
     order_discount: Number(snap.order_discount ?? 0) || 0,
+    ...payments,
+    amount_paid: amountPaid,
     // Restored park is a new in-progress sale — never previous-order edit.
     held_order_num: null,
     superseded_sale_id: null,

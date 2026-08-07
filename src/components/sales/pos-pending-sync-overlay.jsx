@@ -263,16 +263,18 @@ export function PosPendingSyncOverlay({
           </div>
         </header>
 
-        <div className="shrink-0 border-b border-sky-200 bg-sky-50 px-4 py-2.5">
-          <PosOfflineSyncControls
-            pendingSync={rows.length}
-            syncing={syncing}
-            canFlush={canFlush}
-            syncProgress={syncProgress}
-            lastSyncMessage={lastSyncMessage}
-            onSync={() => void onSyncAll?.()}
-          />
-        </div>
+        {rows.length > 0 ? (
+          <div className="shrink-0 border-b border-sky-200 bg-sky-50 px-4 py-2.5">
+            <PosOfflineSyncControls
+              pendingSync={rows.length}
+              syncing={syncing}
+              canFlush={canFlush}
+              syncProgress={syncProgress}
+              lastSyncMessage={lastSyncMessage}
+              onSync={() => void onSyncAll?.()}
+            />
+          </div>
+        ) : null}
 
         <div className="shrink-0 theme-table-head-row border-b px-4 py-2.5">
           <input

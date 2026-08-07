@@ -125,6 +125,35 @@ describe("computePreviousOrderEditPaymentDelta", () => {
   });
 });
 
+describe("normalizePreviousOrderEditTenders / rebuildPreviousOrderEditTenders", () => {
+  it("scales prior+topup doubles down to the revised order total", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      { cash: 0, mpesa_amount: 13160, equity_amount: 0, kcb_amount: 0 },
+      [{ adjustment_type: "topup", method_code: "MPESA", amount: 13160 }],
+      13160,
+    );
+    expect(tenders.mpesa).toBe(13160);
+    expect(tenders.amountPaid).toBe(13160);
+    expect(tenders.cash + tenders.mpesa + tenders.equity + tenders.kcb).toBe(13160);
+  });
+
+  it("adds a real top-up onto prior tenders without inventing change", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      { cash: 0, mpesa_amount: 10000, equity_amount: 0, kcb_amount: 0 },
+      [{ adjustment_type: "topup", method_code: "MPESA", amount: 3160 }],
+      13160,
+    );
+    expect(tenders.mpesa).toBe(13160);
+    expect(tenders.returnGiven).toBe(0);
+  });
+});
+
 describe("computePreviousOrderEditSignedDelta", () => {
   it("returns negative signed delta for refunds", () => {
     const cart = {

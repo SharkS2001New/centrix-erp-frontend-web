@@ -19,6 +19,8 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   deleteLocalHeldOrder,
   getLocalHeldOrder,
+  heldAmountPaid,
+  heldBalanceDue,
   isLocalHeldId,
   listLocalHeldOrders,
   restoreLocalHeldOrder,
@@ -41,12 +43,42 @@ function heldCustomerName(order) {
     order?.customer_name ||
     order?.customer_name_override ||
     order?.customer?.customer_name ||
+    order?.customer_display_name ||
     "Walk-in"
   );
 }
 
 function heldOrderTitle(order) {
   return `${heldOrderLabel(order)} - ${heldCustomerName(order)}`;
+}
+
+function heldOrderPaidAmount(order) {
+  return heldAmountPaid(order);
+}
+
+function heldOrderBalanceRemaining(order) {
+  const total = Math.max(0, Number(order?.order_total ?? 0));
+  return heldBalanceDue(order, total);
+}
+
+function heldOrderSearchHaystack(order) {
+  const parts = [
+    heldCustomerName(order),
+    heldOrderLabel(order),
+    formatReceiptNumber(order),
+    order?.order_num,
+    order?.hold_label,
+    order?.customer_name_override,
+    order?.customer_name,
+    order?.customer?.customer_name,
+    order?.customer_display_name,
+    order?.customer?.phone,
+    order?.customer_phone,
+  ];
+  return parts
+    .filter((v) => v != null && String(v).trim() !== "")
+    .map((v) => String(v).toLowerCase())
+    .join(" ");
 }
 
 export function PosHeldOrdersOverlay({
@@ -188,19 +220,13 @@ export function PosHeldOrdersOverlay({
   }
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim().toLowerCase().replace(/\s+/g, " ");
     if (!q) return rows;
+    const tokens = q.split(" ").filter(Boolean);
     return rows.filter((s) => {
-      const title = heldOrderTitle(s).toLowerCase();
-      const receipt = formatReceiptNumber(s).toLowerCase();
-      const customer = saleCustomerLabel(s).toLowerCase();
-      const orderNum = String(s.order_num ?? s.hold_label ?? "");
-      return (
-        title.includes(q) ||
-        receipt.includes(q) ||
-        customer.includes(q) ||
-        orderNum.toLowerCase().includes(q)
-      );
+      const haystack = heldOrderSearchHaystack(s);
+      // Every token must match (supports "john kai" style customer searches).
+      return tokens.every((token) => haystack.includes(token));
     });
   }, [rows, search]);
 
@@ -431,12 +457,16 @@ export function PosHeldOrdersOverlay({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search HOLD-#, customer…"
+            placeholder="Search by customer name or HOLD #…"
+            autoFocus
+            aria-label="Search held orders by customer name"
             className={INPUT_CLASS}
           />
           {selectedOrder ? (
             <p className="mt-1.5 truncate text-xs text-slate-600">
-              Selected: <span className="font-semibold text-slate-800">{heldOrderTitle(selectedOrder)}</span>
+              Selected:{" "}
+              <span className="font-semibold text-slate-800">{heldCustomerName(selectedOrder)}</span>
+              <span className="text-slate-500"> · {heldOrderLabel(selectedOrder)}</span>
             </p>
           ) : filtered.length > 0 ? (
             <p className="mt-1.5 text-xs text-slate-500">
@@ -468,9 +498,13 @@ export function PosHeldOrdersOverlay({
             </p>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-              <p className="text-sm font-medium text-slate-700">No held orders</p>
+              <p className="text-sm font-medium text-slate-700">
+                {search.trim() ? "No matching held orders" : "No held orders"}
+              </p>
               <p className="mt-1 text-sm text-slate-500">
-                Use Hold on the cart to park a sale for later.
+                {search.trim()
+                  ? `Nothing matches “${search.trim()}”. Try another customer name or HOLD #.`
+                  : "Use Hold on the cart to park a sale for later."}
               </p>
             </div>
           ) : (
@@ -517,25 +551,28 @@ export function PosHeldOrdersOverlay({
                         onClick={(e) => toggleExpand(order, e)}
                         label={isExpanded ? "Hide line items" : "Show line items"}
                       />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-900">
-                            {heldOrderLabel(order)}
-                          </span>
+                      <span className="min-w-0 flex-1 text-center">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {heldOrderLabel(order)}
                         </span>
-                        <span className="mt-0.5 block text-sm font-medium text-slate-800">
+                        <span className="mt-0.5 block text-sm font-semibold text-slate-900">
                           {heldCustomerName(order)}
                         </span>
-                        <span className="block text-xs text-slate-500">
-                          {formatShortDate(order.created_at)}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                          Amount
-                        </span>
-                        <span className="block text-sm font-semibold tabular-nums text-[var(--theme-accent-text)]">
+                        {heldOrderPaidAmount(order) > 0.009 ? (
+                          <>
+                            <span className="mt-1 block text-sm font-semibold tabular-nums text-emerald-800 dark:text-emerald-400">
+                              Amount paid {formatSaleKes(heldOrderPaidAmount(order))}
+                            </span>
+                            <span className="block text-sm font-semibold tabular-nums text-amber-800 dark:text-amber-300">
+                              Balance remaining {formatSaleKes(heldOrderBalanceRemaining(order))}
+                            </span>
+                          </>
+                        ) : null}
+                        <span className="mt-1 block text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
                           {formatSaleKes(order.order_total)}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500">
+                          {order.created_at ? formatShortDate(order.created_at) : ""}
                         </span>
                       </span>
                     </div>

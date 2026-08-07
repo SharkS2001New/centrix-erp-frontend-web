@@ -509,42 +509,41 @@ function TillsCheckoutSettingsTab({
           {!posCheckoutEnabled ? (
             <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               External POS is configured for <strong>save order</strong> (no checkout on create).
-              Checkout options below apply when checkout-on-create is enabled by the platform.
+              Checkout payment options below apply when checkout-on-create is enabled by the platform.
             </p>
-          ) : (
-            <>
+          ) : null}
+          <Toggle
+            label="Enable barcode scanner"
+            description="Scan SKU/barcode to add qty 1 directly to the cart on POS."
+            checked={salesForm.enable_barcode_scanner}
+            onChange={(v) => setSalesForm((f) => ({ ...f, enable_barcode_scanner: v }))}
+          />
+          <Toggle
+            label="Request customer name on POS save / hold / checkout"
+            description="When enabled, External POS prompts for a walk-in name or existing customer on Save order, Hold, and checkout. Backoffice Create order always prompts on Save. When off, External POS saves as Walk-in."
+            checked={salesForm.enable_checkout_customer_name}
+            onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
+          />
+          {posCheckoutEnabled ? (
+            !hasCustomers ? (
+              <p className="text-xs text-slate-500">
+                Enable the Customers module to show a credit customer search field at POS checkout.
+              </p>
+            ) : (
               <Toggle
-                label="Enable barcode scanner"
-                description="Scan SKU/barcode to add qty 1 directly to the cart on POS."
-                checked={salesForm.enable_barcode_scanner}
-                onChange={(v) => setSalesForm((f) => ({ ...f, enable_barcode_scanner: v }))}
+                label="Credit customer field at POS checkout"
+                description="Shows a searchable credit customer field at checkout. Unpaid balance posts to the customer's account."
+                checked={salesForm.enable_credit_payment}
+                onChange={(v) =>
+                  setSalesForm((f) => ({
+                    ...f,
+                    enable_credit_payment: v,
+                    allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
+                  }))
+                }
               />
-              <Toggle
-                label="Request customer name on checkout"
-                description="When enabled, POS prompts for a customer on save order, hold order, and checkout. Default is walk-in name; staff can switch to Existing customer."
-                checked={salesForm.enable_checkout_customer_name}
-                onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
-              />
-              {!hasCustomers ? (
-                <p className="text-xs text-slate-500">
-                  Enable the Customers module to show a credit customer search field at POS checkout.
-                </p>
-              ) : (
-                <Toggle
-                  label="Credit customer field at POS checkout"
-                  description="Shows a searchable credit customer field at checkout. Unpaid balance posts to the customer's account."
-                  checked={salesForm.enable_credit_payment}
-                  onChange={(v) =>
-                    setSalesForm((f) => ({
-                      ...f,
-                      enable_credit_payment: v,
-                      allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
-                    }))
-                  }
-                />
-              )}
-            </>
-          )}
+            )
+          ) : null}
         </div>
       ) : null}
     </div>

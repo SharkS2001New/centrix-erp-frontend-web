@@ -50,6 +50,7 @@ import {
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
+import { rebuildPreviousOrderEditTenders } from "@/lib/pos-edit-payment-adjustment";
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
@@ -1084,6 +1085,19 @@ export async function completeOfflineCashSale({
     });
   }
 
+  const editAdjustments = Array.isArray(cart.payment_adjustments)
+    ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
+    : [];
+  const editSourceSale =
+    cart.offline_edit_snapshot && typeof cart.offline_edit_snapshot === "object"
+      ? cart.offline_edit_snapshot
+      : existingOutbox?.sale_payload && existingOutbox?.sync_kind === "previous_order_edit"
+        ? existingOutbox.sale_payload
+        : null;
+  const editTenders = isPreviousOrderEdit
+    ? rebuildPreviousOrderEditTenders(editSourceSale, editAdjustments, summary.total)
+    : null;
+
   const sale = {
     id: `offline:${clientSaleUuid}`,
     client_sale_uuid: clientSaleUuid,
@@ -1105,8 +1119,19 @@ export async function completeOfflineCashSale({
     is_credit_sale: false,
     order_total: summary.total,
     total_vat: summary.vat,
-    amount_paid: payNow,
-    cash: paymentMethodCode === "CASH" ? payNow : 0,
+    amount_paid: editTenders ? editTenders.amountPaid : payNow,
+    cash: editTenders
+      ? editTenders.cash
+      : paymentMethodCode === "CASH"
+        ? payNow
+        : 0,
+    mpesa_amount: editTenders
+      ? editTenders.mpesa
+      : paymentMethodCode === "MPESA"
+        ? payNow
+        : 0,
+    equity_amount: editTenders ? editTenders.equity : 0,
+    kcb_amount: editTenders ? editTenders.kcb : 0,
     completed_at: soldAtIso,
     created_at: soldAtIso,
     created_at_ms: soldAtMs,
@@ -1114,12 +1139,16 @@ export async function completeOfflineCashSale({
     customer_name_override: customerNameOverride,
     offline_pending_sync: true,
     superseded_sale_id: supersededSaleId,
+    ...(editAdjustments.length ? { payment_adjustments: editAdjustments } : {}),
+    ...(editTenders?.returnGiven > 0.0001
+      ? { _change_given: editTenders.returnGiven, order_change: editTenders.returnGiven }
+      : {}),
     items: saleItems,
     payments: [
       {
         id: 1,
         payment_method_code: paymentMethodCode,
-        amount: payNow,
+        amount: editTenders ? editTenders.amountPaid : payNow,
         payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
       },
     ],
@@ -1161,7 +1190,7 @@ export async function completeOfflineCashSale({
       ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
       ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
       payment_method_code: paymentMethodCode,
-      pay_now: payNow,
+      pay_now: isPreviousOrderEdit ? 0 : payNow,
       is_credit_sale: false,
       submit_kra: false,
       offline_order: true,
@@ -1270,7 +1299,6 @@ export function buildPreviousOrderEditPrintSale(
   const posOrderDate =
     cart.pos_order_date ??
     (sourceSale?.pos_order_date ? String(sourceSale.pos_order_date).slice(0, 10) : null);
-  const payNow = summary.amountDue;
   const items = (cart.lines ?? [])
     .filter((line) => Number(line.quantity ?? 0) > 0 && line.product_code)
     .map((line, index) => {
@@ -1302,68 +1330,17 @@ export function buildPreviousOrderEditPrintSale(
   const adjustments = Array.isArray(cart.payment_adjustments)
     ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
     : [];
-  const returnGiven = Math.round(
-    adjustments
-      .filter((row) => row.adjustment_type === "return")
-      .reduce((sum, row) => sum + (Number(row.amount) || 0), 0) * 100,
-  ) / 100;
+  const returnGivenPreview = adjustments
+    .filter((row) => row.adjustment_type === "return")
+    .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
   // Empty cart is a cancel print only when the full return was recorded.
-  if (!items.length && !(returnGiven > 0.0001)) return null;
+  if (!items.length && !(returnGivenPreview > 0.0001)) return null;
 
-  const topupAmount = Math.round(
-    adjustments
-      .filter((row) => row.adjustment_type === "topup")
-      .reduce((sum, row) => sum + (Number(row.amount) || 0), 0) * 100,
-  ) / 100;
-
-  const sourceCash = Number(sourceSale?.cash ?? 0);
-  const sourceMpesa = Number(sourceSale?.mpesa_amount ?? 0);
-  const sourceEquity = Number(sourceSale?.equity_amount ?? 0);
-  const sourceKcb = Number(sourceSale?.kcb_amount ?? 0);
-  const hasSourcePayments =
-    sourceCash > 0 || sourceMpesa > 0 || sourceEquity > 0 || sourceKcb > 0;
-
-  let cash = hasSourcePayments ? sourceCash : 0;
-  let mpesaAmount = hasSourcePayments ? sourceMpesa : 0;
-  let equityAmount = hasSourcePayments ? sourceEquity : 0;
-  let kcbAmount = hasSourcePayments ? sourceKcb : 0;
-
-  for (const row of adjustments) {
-    if (row.adjustment_type !== "topup") continue;
-    const code = String(row.method_code ?? "CASH").toUpperCase();
-    const amt = Number(row.amount) || 0;
-    if (code.includes("MPESA")) mpesaAmount += amt;
-    else if (code.includes("EQUITY")) equityAmount += amt;
-    else if (code.includes("KCB")) kcbAmount += amt;
-    else cash += amt;
-  }
-
-  // Apply returns against tenders so Cash/M-Pesa rows match the revised total;
-  // "Change Given" on the receipt comes from payment_adjustments (exact return).
-  if (returnGiven > 0.0001) {
-    let remaining = returnGiven;
-    const reduce = (current) => {
-      const take = Math.min(Math.max(0, current), remaining);
-      remaining = Math.round((remaining - take) * 100) / 100;
-      return Math.round((current - take) * 100) / 100;
-    };
-    cash = reduce(cash);
-    mpesaAmount = reduce(mpesaAmount);
-    equityAmount = reduce(equityAmount);
-    kcbAmount = reduce(kcbAmount);
-  }
-
-  if (!hasSourcePayments && topupAmount <= 0 && returnGiven <= 0) {
-    const paymentMethodCode = String(
-      cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
-    )
-      .trim()
-      .toUpperCase() || "CASH";
-    if (paymentMethodCode.includes("MPESA")) mpesaAmount = payNow;
-    else if (paymentMethodCode.includes("EQUITY")) equityAmount = payNow;
-    else if (paymentMethodCode.includes("KCB")) kcbAmount = payNow;
-    else cash = payNow;
-  }
+  const isEmptyCancel = !items.length && returnGivenPreview > 0.0001;
+  const revisedTotal = isEmptyCancel ? 0 : summary.total;
+  const tenders = rebuildPreviousOrderEditTenders(sourceSale, adjustments, revisedTotal);
+  const { cash, mpesa: mpesaAmount, equity: equityAmount, kcb: kcbAmount, returnGiven } =
+    tenders;
 
   const paymentMethodCode = String(
     cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
@@ -1390,7 +1367,7 @@ export function buildPreviousOrderEditPrintSale(
       (Number.isFinite(parsedReceiptAt) ? parsedReceiptAt : Date.now()),
   );
 
-  const isEmptyCancel = !items.length && returnGiven > 0.0001;
+  const amountPaid = isEmptyCancel ? 0 : tenders.amountPaid;
 
   return {
     id: cart.server_sale_id ?? sourceSale?.id ?? `edit:${orderNum}`,
@@ -1407,9 +1384,9 @@ export function buildPreviousOrderEditPrintSale(
     status: isEmptyCancel ? "cancelled" : "completed",
     payment_status: isEmptyCancel ? "refunded" : "paid",
     payment_method_code: paymentMethodCode,
-    order_total: isEmptyCancel ? 0 : summary.total,
+    order_total: revisedTotal,
     total_vat: isEmptyCancel ? 0 : summary.vat,
-    amount_paid: isEmptyCancel ? 0 : Math.max(0, payNow + returnGiven),
+    amount_paid: amountPaid,
     cash,
     mpesa_amount: mpesaAmount,
     equity_amount: equityAmount,
@@ -1419,7 +1396,7 @@ export function buildPreviousOrderEditPrintSale(
       cart.customer_name_override ?? sourceSale?.customer_name_override ?? null,
     superseded_sale_id: cart.superseded_sale_id ?? null,
     payment_adjustments: adjustments,
-    ...(returnGiven > 0.0001 ? { _change_given: returnGiven } : {}),
+    ...(returnGiven > 0.0001 ? { _change_given: returnGiven, order_change: returnGiven } : {}),
     // Draft reprint — never block on / wait for eTIMS QR; KRA balances on outbox sync.
     _skip_kra_qr: true,
     items,
@@ -1427,7 +1404,7 @@ export function buildPreviousOrderEditPrintSale(
       {
         id: 1,
         payment_method_code: paymentMethodCode,
-        amount: Math.max(cash + mpesaAmount + equityAmount + kcbAmount, payNow),
+        amount: Math.max(amountPaid, 0),
         payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
       },
     ],

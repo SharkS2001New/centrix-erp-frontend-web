@@ -109,10 +109,41 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
           return prev;
         });
       }
+      // Queue empty — clear sticky syncing chrome immediately.
+      if (pending <= 0 && failedRows.length === 0) {
+        setSyncing(false);
+        setLastSyncMessage(null);
+        setSyncProgress({ ...EMPTY_SYNC_PROGRESS });
+        pendingFlushRef.current = false;
+      }
     } catch {
       /* ignore */
     }
   }, [enabled]);
+
+  /**
+   * Optimistic outbox count from Pending sync UI (e.g. after Remove).
+   * When the queue hits zero, hide Sync / Pending sync chrome without waiting on IDB recount.
+   */
+  const applyPendingOutboxCount = useCallback(
+    (count) => {
+      if (count == null || Number.isNaN(Number(count))) {
+        void refreshCounts();
+        return;
+      }
+      const n = Math.max(0, Number(count));
+      setPendingSync(n);
+      if (n <= 0) {
+        setFailedSyncOrders([]);
+        setLastSyncMessage(null);
+        setSyncProgress({ ...EMPTY_SYNC_PROGRESS });
+        setSyncing(false);
+        pendingFlushRef.current = false;
+      }
+      void refreshCounts();
+    },
+    [refreshCounts],
+  );
 
   const notifySyncProblem = useCallback((message) => {
     const key = String(message ?? "");
@@ -521,6 +552,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
     syncOfflineOrders,
     syncSingleOfflineOrder,
     refreshCounts,
+    applyPendingOutboxCount,
     refreshNetwork,
     searchOffline,
   };

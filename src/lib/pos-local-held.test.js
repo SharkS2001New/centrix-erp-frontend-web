@@ -153,4 +153,46 @@ describe("pos-local-held", () => {
     expect(cart.held_order_num).toBeNull();
     expect(cart.restored_from_hold_label).toBe("HOLD-3");
   });
+
+  it("parks and restores partial amount paid on the cart", async () => {
+    const park = await parkCartLocally(
+      {
+        lines: [
+          {
+            product_code: "RICE",
+            quantity: 1,
+            unit_price: 10000,
+            amount: 10000,
+          },
+        ],
+        mpesa_payment_amount: 2000,
+        mpesa_transaction_code: "ABC123",
+        mpesa_phone: "0712345678",
+      },
+      { walkIn: true, walkInName: "Jane Doe" },
+    );
+
+    expect(park.customer_name).toBe("Jane Doe");
+    expect(park.order_total).toBe(10000);
+    expect(park.amount_paid).toBe(2000);
+    expect(park.balance_due).toBe(8000);
+    expect(park.mpesa_payment_amount).toBe(2000);
+
+    const { cart } = await restoreLocalHeldOrder(park.id);
+    expect(cart.customer_name_override).toBe("Jane Doe");
+    expect(cart.mpesa_payment_amount).toBe(2000);
+    expect(cart.mpesa_transaction_code).toBe("ABC123");
+    expect(cart.amount_paid).toBe(2000);
+  });
+
+  it("omits amount paid when nothing was tendered before hold", async () => {
+    const park = await parkCartLocally(
+      {
+        lines: [{ product_code: "TEA", quantity: 1, unit_price: 50 }],
+      },
+      { walkIn: true },
+    );
+    expect(park.amount_paid).toBe(0);
+    expect(park.balance_due).toBe(50);
+  });
 });

@@ -296,6 +296,7 @@ import {
 import {
   buildPaymentAdjustmentsFromCheckoutBody,
   computePreviousOrderEditPaymentDelta,
+  computePreviousOrderEditSignedDelta,
   previousOrderAdjustmentsMatchDelta,
 } from "@/lib/pos-edit-payment-adjustment";
 
@@ -533,7 +534,12 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
   }
 
   const items = Array.isArray(sourceSale?.items) ? sourceSale.items : [];
-  if (!items.length || !withPosTicket.held_order_num) return withPosTicket;
+  if (
+    !items.length ||
+    (withPosTicket.held_order_num == null && withPosTicket.superseded_sale_id == null)
+  ) {
+    return withPosTicket;
+  }
 
   const lines = items.map((item, index) => ({
     id: item.id ?? item.line_id ?? `restore-${index}`,
@@ -576,6 +582,31 @@ function resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId) {
   }
   if (fromRestore?.id) return fromRestore;
   return { id: saleId, order_num: restoredRaw?.held_order_num ?? null };
+}
+
+/** Paint sale lines immediately while restore-to-cart (KRA void + stock) finishes. */
+function buildOptimisticPreviousOrderCart(saleId, sourceSale, existingCart) {
+  const items = Array.isArray(sourceSale?.items) ? sourceSale.items : [];
+  if (!items.length) return null;
+
+  const skeleton = {
+    id: existingCart?.id ?? `optimistic-${saleId}`,
+    channel: existingCart?.channel ?? "pos",
+    order_source: existingCart?.order_source ?? "pos",
+    branch_id: existingCart?.branch_id ?? sourceSale?.branch_id ?? null,
+    held_order_num: sourceSale?.order_num ?? null,
+    superseded_sale_id: Number(saleId),
+    pos_order_num: sourceSale?.pos_order_num ?? null,
+    pos_order_date: sourceSale?.pos_order_date ?? null,
+    customer_num: sourceSale?.customer_num ?? sourceSale?.customer?.customer_num ?? null,
+    customer_name_override:
+      sourceSale?.customer_name_override ?? sourceSale?.customer_display_name ?? null,
+    order_discount: Number(sourceSale?.order_discount ?? 0),
+    lines: [],
+    _optimistic_restore: true,
+  };
+
+  return presentRestoredEditCart(skeleton, sourceSale);
 }
 
 function sameLineId(a, b) {
@@ -1025,6 +1056,7 @@ export function PosScreen({ standalone = false }) {
     failedSyncOrders,
     searchOffline,
     refreshCounts: refreshOfflineCounts,
+    applyPendingOutboxCount,
     flushOutboxNow,
     flushOutboxAfterSale,
     syncOfflineOrders,
@@ -1102,9 +1134,12 @@ export function PosScreen({ standalone = false }) {
     void pushOutboxAfterSale(orderNum, { background: true });
   }
 
-  const handlePendingSyncCountChange = useCallback(() => {
-    void refreshOfflineCounts();
-  }, [refreshOfflineCounts]);
+  const handlePendingSyncCountChange = useCallback(
+    (count) => {
+      applyPendingOutboxCount(count);
+    },
+    [applyPendingOutboxCount],
+  );
 
   /** External POS: transient snackbar only — no header notification bell. */
   function posSnackbar(message, { error = false } = {}) {
@@ -1750,6 +1785,10 @@ export function PosScreen({ standalone = false }) {
   const [previousOrderLoadingMessage, setPreviousOrderLoadingMessage] = useState(
     "Loading previous order…",
   );
+  const [previousOrderLoadingDetail, setPreviousOrderLoadingDetail] = useState(
+    "Restoring lines and payment details…",
+  );
+  const [previousOrderLoadingSoft, setPreviousOrderLoadingSoft] = useState(false);
   const previousOrderLoadingDepthRef = useRef(0);
   const [preparingNextOpen, setPreparingNextOpen] = useState(false);
   const [preparingNextProgress, setPreparingNextProgress] = useState(0);
@@ -1804,6 +1843,10 @@ export function PosScreen({ standalone = false }) {
   const cartRef = useRef(null);
   /** Server TemporaryCart ids checkout/delete already consumed — never reuse for line adds. */
   const consumedServerCartIdsRef = useRef(new Set());
+  /** Coalesce concurrent TemporaryCart materialize (held restore + first scan). */
+  const materializeInflightRef = useRef(null);
+  /** Drop stale held-restore materialize when cashier starts another sale. */
+  const heldRestoreGenerationRef = useRef(0);
   const cartSummaryRef = useRef(null);
   const lineBusyRef = useRef(false);
   const productByCodeRef = useRef({});
@@ -1831,6 +1874,7 @@ export function PosScreen({ standalone = false }) {
 
   /** Drop workspace to a blank new-order shell without waiting on the network. */
   function applyFreshWorkspacePlaceholder(activeCart, peekNextPos) {
+    heldRestoreGenerationRef.current += 1;
     const placeholder = {
       id: "pending-fresh",
       channel,
@@ -1960,17 +2004,22 @@ export function PosScreen({ standalone = false }) {
   const hasSessionOrders = sessionPosOrders.length > 0;
 
   const prefilledEditCustomerName = useMemo(() => {
+    const fromCart = String(cart?.customer_name_override ?? "").trim();
+    if (fromCart) return fromCart;
     const orderNum = resolvePosBrowseNumber(cart) ?? cart?.held_order_num;
     if (!orderNum) return "";
     return getPosOrderCustomerName(orderNum);
-  }, [cart?.held_order_num, cart?.pos_order_num]);
+  }, [cart?.customer_name_override, cart?.held_order_num, cart?.pos_order_num]);
 
   const prefilledEditCustomerNum = useMemo(() => {
+    if (cart?.customer_num != null && Number(cart.customer_num) > 0) {
+      return String(cart.customer_num);
+    }
     const orderNum = resolvePosBrowseNumber(cart) ?? cart?.held_order_num;
     if (!orderNum) return "";
     const { customerNum } = getPosOrderCustomer(orderNum);
     return customerNum != null ? String(customerNum) : "";
-  }, [cart?.held_order_num, cart?.pos_order_num]);
+  }, [cart?.customer_num, cart?.held_order_num, cart?.pos_order_num]);
 
   /** True only while revising a previous booked/completed receipt (not a restored held park). */
   const isCartEditSession = Boolean(cart?.held_order_num && cart?.superseded_sale_id);
@@ -2407,9 +2456,9 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!debouncedOrderNameQuery) {
-      setOrderNameResults(null);
+      // Do not clear results here — keep the dropdown open while typing/pausing
+      // until Esc, selection, empty field, or order-# lookup.
       setOrderNameLoading(false);
-      setOrderNameHighlight(0);
       return;
     }
 
@@ -2707,6 +2756,15 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   const paymentPanelBillTotal = useMemo(() => cartSummary.amountDue, [cartSummary.amountDue]);
+
+  const previousOrderEditAdjustment = useMemo(() => {
+    if (!isCartEditSession) return null;
+    const delta = computePreviousOrderEditSignedDelta(editSourceSale, cart);
+    return {
+      ...delta,
+      orderNum: resolvePosBrowseNumber(cart) ?? cart?.held_order_num ?? null,
+    };
+  }, [isCartEditSession, editSourceSale, cart]);
   const previousOrderEditReadyToPrint = useMemo(() => {
     if (!instantAutoEditSync || !isCartEditSession) return false;
     if (offlineSyncing || editAutosaveBusy) return false;
@@ -2819,19 +2877,31 @@ export function PosScreen({ standalone = false }) {
 
   const cartActionPending = busy || lineBusy;
 
-  const beginPreviousOrderLoading = useCallback((message = "Loading previous order…") => {
+  const beginPreviousOrderLoading = useCallback((
+    message = "Loading previous order…",
+    { detail = "Restoring lines and payment details…", soft = false } = {},
+  ) => {
     previousOrderLoadingDepthRef.current += 1;
     setPreviousOrderLoadingMessage(message);
+    setPreviousOrderLoadingDetail(detail);
+    setPreviousOrderLoadingSoft(Boolean(soft));
     setPreviousOrderLoading(true);
     closeProductSearchDropdown();
     searchInputRef.current?.blur?.();
     defaultScanFocusDoneRef.current = false;
   }, []);
 
+  const markPreviousOrderLoadingConfirming = useCallback(() => {
+    setPreviousOrderLoadingMessage("Confirming previous order…");
+    setPreviousOrderLoadingDetail("Voiding on KRA device and updating stock…");
+    setPreviousOrderLoadingSoft(true);
+  }, []);
+
   const endPreviousOrderLoading = useCallback(() => {
     previousOrderLoadingDepthRef.current = Math.max(0, previousOrderLoadingDepthRef.current - 1);
     if (previousOrderLoadingDepthRef.current === 0) {
       setPreviousOrderLoading(false);
+      setPreviousOrderLoadingSoft(false);
       defaultScanFocusDoneRef.current = false;
     }
   }, []);
@@ -3188,83 +3258,128 @@ export function PosScreen({ standalone = false }) {
 
   /** After reconnect, push a local offline cart onto a fresh server cart so lines survive. */
   const materializeOfflineCartOnServer = useCallback(
-    async (localCart) => {
+    async (localCart, options = {}) => {
+      const applyToWorkspace = options.applyToWorkspace !== false;
       if (!user?.branch_id || !localCart?.lines?.length) {
         return loadCashierCart();
       }
-      const body = {
-        channel: "pos",
-        order_source: "pos",
-        branch_id: localCart.branch_id ?? user.branch_id,
-      };
-      if (localCart.till_id ?? tillId) body.till_id = localCart.till_id ?? tillId;
-      let serverCart = await apiRequest("/sales/carts", {
-        method: "POST",
-        body,
-        ...POS_CART_REQUEST,
-      });
-
-      const linePayload = (localCart.lines ?? [])
-        .filter((line) => line?.product_code && Number(line.quantity) > 0)
-        .map((line) => {
-          const qty = Number(line.quantity);
-          const unitPrice = Number(line.unit_price ?? 0);
-          return {
-            product_code: line.product_code,
-            quantity: qty,
-            unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
-            display_unit_price:
-              line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
-            uom: line.uom ?? undefined,
-            on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
-            discount_given: Number(line.discount_given ?? 0) || 0,
-            product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
-            amount: line.amount != null ? Number(line.amount) : undefined,
-          };
-        });
-
-      if (linePayload.length) {
-        serverCart = await apiRequest(`/sales/carts/${serverCart.id}/lines`, {
-          method: "PUT",
-          body: {
-            lines: linePayload,
-            order_discount: Number(localCart.order_discount ?? 0) || 0,
-          },
-          ...POS_CART_REQUEST,
-        });
+      if (materializeInflightRef.current) {
+        const inflight = await materializeInflightRef.current;
+        if (applyToWorkspace && inflight && isServerPosCartId(inflight.id)) {
+          const live = cartRef.current;
+          if (!isServerPosCartId(live?.id)) {
+            cartRef.current = inflight;
+            setCart(inflight);
+          }
+        }
+        return inflight;
       }
 
-      if (localCart.customer_num != null || localCart.customer_name_override) {
-        try {
-          serverCart = await apiRequest(`/sales/carts/${serverCart.id}`, {
-            method: "PATCH",
+      const task = (async () => {
+        const body = {
+          channel: "pos",
+          order_source: "pos",
+          branch_id: localCart.branch_id ?? user.branch_id,
+        };
+        if (localCart.till_id ?? tillId) body.till_id = localCart.till_id ?? tillId;
+        let serverCart = await apiRequest("/sales/carts", {
+          method: "POST",
+          body,
+          ...POS_CART_REQUEST,
+        });
+
+        const linePayload = (localCart.lines ?? [])
+          .filter((line) => line?.product_code && Number(line.quantity) > 0)
+          .map((line) => {
+            const qty = Number(line.quantity);
+            const unitPrice = Number(line.unit_price ?? 0);
+            return {
+              product_code: line.product_code,
+              quantity: qty,
+              unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
+              display_unit_price:
+                line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+              uom: line.uom ?? undefined,
+              on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
+              discount_given: Number(line.discount_given ?? 0) || 0,
+              product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+              amount: line.amount != null ? Number(line.amount) : undefined,
+            };
+          });
+
+        if (linePayload.length) {
+          serverCart = await apiRequest(`/sales/carts/${serverCart.id}/lines`, {
+            method: "PUT",
             body: {
-              ...(localCart.customer_num != null
-                ? { customer_num: localCart.customer_num }
-                : {}),
-              ...(localCart.customer_name_override
-                ? { customer_name_override: localCart.customer_name_override }
-                : {}),
+              lines: linePayload,
+              order_discount: Number(localCart.order_discount ?? 0) || 0,
             },
             ...POS_CART_REQUEST,
           });
-        } catch {
-          /* customer optional */
+        }
+
+        const customerPatch = {
+          ...(localCart.customer_num != null ? { customer_num: localCart.customer_num } : {}),
+          ...(localCart.customer_name_override
+            ? { customer_name_override: localCart.customer_name_override }
+            : {}),
+        };
+        if (Object.keys(customerPatch).length > 0) {
+          serverCart = { ...serverCart, ...customerPatch };
+          void apiRequest(`/sales/carts/${serverCart.id}`, {
+            method: "PATCH",
+            body: customerPatch,
+            ...POS_CART_REQUEST,
+          }).catch(() => {
+            /* customer optional */
+          });
+        }
+
+        if (localCart.held_order_num && !localCart.offline_client_sale_uuid) {
+          serverCart = {
+            ...serverCart,
+            held_order_num: localCart.held_order_num,
+          };
+        }
+
+        void clearLocalPosCart().catch(() => {});
+
+        const payFields = [
+          "mpesa_payment_amount",
+          "mpesa_transaction_code",
+          "mpesa_phone",
+          "voucher_payment_amount",
+          "points_payment_amount",
+          "amount_paid",
+        ];
+        const withLocalMeta = { ...(normalizeCartResponse(serverCart) ?? serverCart) };
+        for (const key of payFields) {
+          if (localCart?.[key] != null && localCart[key] !== "") {
+            withLocalMeta[key] = localCart[key];
+          }
+        }
+        if (localCart.restored_from_local_held_id) {
+          withLocalMeta.restored_from_local_held_id = localCart.restored_from_local_held_id;
+        }
+        if (localCart.restored_from_hold_label) {
+          withLocalMeta.restored_from_hold_label = localCart.restored_from_hold_label;
+        }
+
+        if (applyToWorkspace) {
+          cartRef.current = withLocalMeta;
+          setCart(withLocalMeta);
+        }
+        return withLocalMeta;
+      })();
+
+      materializeInflightRef.current = task;
+      try {
+        return await task;
+      } finally {
+        if (materializeInflightRef.current === task) {
+          materializeInflightRef.current = null;
         }
       }
-
-      if (localCart.held_order_num && !localCart.offline_client_sale_uuid) {
-        serverCart = {
-          ...serverCart,
-          held_order_num: localCart.held_order_num,
-        };
-      }
-
-      await clearLocalPosCart();
-      const normalized = normalizeCartResponse(serverCart) ?? serverCart;
-      cartRef.current = normalized;
-      setCart(normalized);
-      return normalized;
     },
     [user?.branch_id, tillId, loadCashierCart],
   );
@@ -6229,8 +6344,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * After a local hold: clear modal flags, release server cart lines if any,
-   * and leave an empty workspace ready for the next sale.
+   * After a local hold: unlock the till immediately with an empty workspace,
+   * then clear the old TemporaryCart / bootstrap the next cart in the background
+   * (same pattern as F10 / post-checkout).
    */
   async function clearWorkspaceAfterLocalHold(activeCart) {
     setSaveOrderOpen(false);
@@ -6246,41 +6362,72 @@ export function PosScreen({ standalone = false }) {
     clearClassicLineSelection();
     void clearPreviousOrderEditDraft().catch(() => {});
 
+    // Holding parks IndexedDB only — invalidate any in-flight held restore materialize.
+    // (applyFreshWorkspacePlaceholder also bumps this.)
     const serverId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
-    if (serverId) {
-      try {
-        await apiRequest(`/sales/carts/${serverId}/lines`, {
-          method: "DELETE",
-          loading: false,
-          reportIssues: false,
-        });
-      } catch {
-        /* offline or already cleared — local park still saved */
-      }
-    }
-
-    await clearLocalPosCart().catch(() => {});
-    cartRef.current = null;
-    setCart(null);
-
-    try {
-      await loadCashierCart();
-    } catch {
-      const empty = await loadOrCreateLocalPosCart({
-        branch_id: activeCart?.branch_id ?? user?.branch_id ?? null,
-        till_id: activeCart?.till_id ?? null,
-        float_session_id: activeCart?.float_session_id ?? floatSessionId ?? null,
-      });
-      const presented = presentLocalOfflineCart(empty);
-      cartRef.current = presented;
-      setCart(presented);
-    }
+    const quickPeek = resolveFreshWorkspacePosNum(activeCart, sessionPosOrders);
+    applyFreshWorkspacePlaceholder(activeCart, quickPeek);
 
     if (classicLayout) {
       focusClassicProductSearch();
     } else {
       window.requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
     }
+
+    if (serverId) {
+      markServerCartConsumed(serverId);
+      void apiRequest(`/sales/carts/${serverId}/lines`, {
+        method: "DELETE",
+        loading: false,
+        reportIssues: false,
+      }).catch(() => {});
+    }
+
+    void clearLocalPosCart().catch(() => {});
+
+    const generation = ++freshWorkspaceGenerationRef.current;
+    void (async () => {
+      try {
+        const next = await loadCashierCart({ skipEditDraftRestore: true });
+        if (generation !== freshWorkspaceGenerationRef.current) return;
+        const live = cartRef.current;
+        if (
+          !isFreshWorkspacePlaceholder(live) &&
+          ((live?.lines?.length ?? 0) > 0 || live?.held_order_num || live?.offline_client_sale_uuid)
+        ) {
+          return;
+        }
+        if (next && isServerPosCartId(next.id) && !isServerCartConsumed(next.id)) {
+          cartRef.current = next;
+          setCart(next);
+          if (next.next_pos_order_num != null) {
+            setEditOrderNo(String(next.next_pos_order_num));
+          }
+        }
+      } catch {
+        if (generation !== freshWorkspaceGenerationRef.current) return;
+        const live = cartRef.current;
+        if (
+          !isFreshWorkspacePlaceholder(live) &&
+          ((live?.lines?.length ?? 0) > 0 || live?.held_order_num)
+        ) {
+          return;
+        }
+        try {
+          const empty = await loadOrCreateLocalPosCart({
+            branch_id: activeCart?.branch_id ?? user?.branch_id ?? null,
+            till_id: activeCart?.till_id ?? null,
+            float_session_id: activeCart?.float_session_id ?? floatSessionId ?? null,
+          });
+          if (generation !== freshWorkspaceGenerationRef.current) return;
+          const presented = presentLocalOfflineCart(empty);
+          cartRef.current = presented;
+          setCart(presented);
+        } catch {
+          /* placeholder remains — next scan will ensureCart */
+        }
+      }
+    })();
   }
 
   /** Classic: hold open sale automatically when leaving POS (Light Stores AutomaticHold). */
@@ -6333,32 +6480,8 @@ export function PosScreen({ standalone = false }) {
           const saved = await saveLocalPosCart({ ...localCart, offline: true });
           applyRestoredHeldCart(presentLocalOfflineCart(saved), park);
         } else {
-          beginPreviousOrderLoading("Preparing held order for checkout…");
           applyRestoredHeldCart(localCart, park);
-          try {
-            const serverCart = await materializeOfflineCartOnServer({
-              ...localCart,
-              offline: false,
-            });
-            applyRestoredHeldCart(
-              {
-                ...serverCart,
-                customer_num: localCart.customer_num ?? null,
-                customer_name_override: localCart.customer_name_override ?? "Walk-in",
-                restored_from_hold_label: localCart.restored_from_hold_label ?? null,
-                restored_from_local_held_id: localCart.restored_from_local_held_id ?? park.id,
-              },
-              park,
-            );
-          } catch {
-            const saved = await saveLocalPosCart({ ...localCart, offline: false });
-            applyRestoredHeldCart(
-              { ...presentLocalOfflineCart(saved), offline: false },
-              park,
-            );
-          } finally {
-            endPreviousOrderLoading();
-          }
+          scheduleLocalHeldMaterialize(localCart, park);
         }
         setHeldOrdersOpen(false);
         notifySuccess("Held sale restored — complete when ready.");
@@ -7075,7 +7198,25 @@ export function PosScreen({ standalone = false }) {
 
     if (isPreviousOrderCashEdit) {
       try {
-        await ensurePreviousOrderPaymentAdjustment(activeCart);
+        // F10 payment panel already collected the delta as tenders — convert to
+        // payment_adjustments and skip the separate breakdown dialog.
+        if (body?.__previous_order_edit_adjustment) {
+          const delta = computePreviousOrderEditPaymentDelta(editSourceSale, activeCart);
+          if (delta.type && Number(delta.amount) > 0) {
+            const adjustments = buildPaymentAdjustmentsFromCheckoutBody(body, delta);
+            if (adjustments.length) {
+              const next = withEditDraftDirty({
+                ...activeCart,
+                payment_adjustments: adjustments,
+              });
+              cartRef.current = next;
+              setCart(next);
+              void savePreviousOrderEditDraft(next).catch(() => {});
+            }
+          }
+        } else {
+          await ensurePreviousOrderPaymentAdjustment(activeCart);
+        }
       } catch (e) {
         setPaymentError(
           e instanceof Error
@@ -7147,7 +7288,8 @@ export function PosScreen({ standalone = false }) {
             : {}),
           held_order_num: checkoutCart.held_order_num ?? null,
           offline_client_sale_uuid: checkoutCart.offline_client_sale_uuid ?? null,
-          offline_edit_snapshot: checkoutCart.offline_edit_snapshot ?? null,
+          offline_edit_snapshot:
+            checkoutCart.offline_edit_snapshot ?? editSourceSale ?? null,
           superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
           order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
           payment_method_code:
@@ -7174,8 +7316,8 @@ export function PosScreen({ standalone = false }) {
                 checkoutCartFields,
               )
             : mergeSaleWithCheckoutPosTicket(offlineSale, activeCart, checkoutCartFields),
-          body?.__receipt_tenders,
-          offlineCashTendered,
+          isPreviousOrderCashEdit ? null : body?.__receipt_tenders,
+          isPreviousOrderCashEdit ? 0 : offlineCashTendered,
         );
         markSaleForReprint(sale);
         if (!(standalone && !options.skipAutoNextOrder)) {
@@ -7246,6 +7388,8 @@ export function PosScreen({ standalone = false }) {
               : {}),
             held_order_num: checkoutCart.held_order_num ?? null,
             superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
+            offline_edit_snapshot:
+              checkoutCart.offline_edit_snapshot ?? editSourceSale ?? null,
             order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
             payment_method_code:
               checkoutCart.payment_method_code ??
@@ -7265,8 +7409,8 @@ export function PosScreen({ standalone = false }) {
           });
           const sale = annotateSaleWithReceiptTenders(
             mergeSaleWithCheckoutPosTicket(localSale, activeCart, checkoutCartFields),
-            body?.__receipt_tenders,
-            cashTendered,
+            isPreviousOrderCashEdit ? null : body?.__receipt_tenders,
+            isPreviousOrderCashEdit ? 0 : cashTendered,
           );
           // New sales: release online cart line reservations. Previous-order edits keep
           // the edit cart so sync can PUT lines + checkout under the same order #.
@@ -7968,8 +8112,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    // Classic POS enqueues line saves — wait so hold/create does not checkout an empty server cart.
-    await waitForCartLineSavesToFinish();
+    // Hold parks IndexedDB from the live workspace — do not wait on line POSTs
+    // (that only matters for server checkout / save-order).
+    if (!hold) {
+      await waitForCartLineSavesToFinish();
+    }
 
     setBusy(true);
     setSaveOrderError(null);
@@ -7996,6 +8143,8 @@ export function PosScreen({ standalone = false }) {
           tillId: activeCart.till_id ?? null,
           floatSessionId: activeCart.float_session_id ?? floatSessionId ?? null,
         });
+        // Unlock till immediately — server DELETE / next cart bootstrap run in background.
+        setBusy(false);
         await clearWorkspaceAfterLocalHold(activeCart);
         const who = walkIn
           ? walkInName?.trim() || "Walk-in"
@@ -8115,8 +8264,9 @@ export function PosScreen({ standalone = false }) {
     // Drop Alt grace immediately — openSaveOrderDialog is reached via Alt+H and the
     // next keystrokes are often the walk-in name (H/P must not re-fire shortcuts).
     clearPosAltLatch();
-    // Org setting off → hold/save immediately as Walk-in (no customer prompt).
-    if (!posSalesConfig.enableCheckoutCustomerName) {
+    // External POS only: org setting off → hold/save immediately as Walk-in.
+    // Backoffice Create order always prompts for walk-in name or existing customer.
+    if (standalone && !posSalesConfig.enableCheckoutCustomerName) {
       void handleSaveOrder({
         walkIn: true,
         walkInName: "Walk-in",
@@ -8863,6 +9013,29 @@ export function PosScreen({ standalone = false }) {
       }
       cartData = next;
     }
+    if (cartData) {
+      // Keep partial tenders from the held park (M-Pesa / voucher / points) after restore.
+      const paySource = restoredCart ?? sourceSale ?? enrichedSource;
+      const payFields = [
+        "mpesa_payment_amount",
+        "mpesa_transaction_code",
+        "mpesa_phone",
+        "voucher_payment_amount",
+        "points_payment_amount",
+        "amount_paid",
+      ];
+      const withPay = { ...cartData };
+      for (const key of payFields) {
+        if (
+          (withPay[key] == null || withPay[key] === "" || Number(withPay[key]) === 0) &&
+          paySource?.[key] != null &&
+          paySource[key] !== ""
+        ) {
+          withPay[key] = paySource[key];
+        }
+      }
+      cartData = withPay;
+    }
     cartRef.current = cartData;
     setCart(cartData);
     setEditSourceSale(null);
@@ -8896,6 +9069,68 @@ export function PosScreen({ standalone = false }) {
       cartData?.restored_from_local_held_id ??
       (isLocalHeldId(sourceSale?.id) ? sourceSale.id : null);
     void forgetRestoredHeldFromMemory({ localHeldId });
+  }
+
+  /**
+   * Paint held lines immediately, then push onto TemporaryCart in the background.
+   * First scan/checkout awaits the shared materialize promise via ensureCart.
+   */
+  function scheduleLocalHeldMaterialize(localCart, sourceSale) {
+    const generation = ++heldRestoreGenerationRef.current;
+    const heldId = localCart?.restored_from_local_held_id ?? sourceSale?.id ?? null;
+    void (async () => {
+      try {
+        const serverCart = await materializeOfflineCartOnServer(
+          { ...localCart, offline: false },
+          { applyToWorkspace: false },
+        );
+        if (generation !== heldRestoreGenerationRef.current) return;
+        const live = cartRef.current;
+        const stillOnRestore =
+          live &&
+          (live.restored_from_local_held_id === heldId ||
+            (!isServerPosCartId(live.id) &&
+              (live.lines?.length ?? 0) > 0 &&
+              !isFreshWorkspacePlaceholder(live)));
+        if (!stillOnRestore) return;
+        const pendingOptimistic = (live.lines ?? []).filter((line) => line?._optimistic);
+        const enriched = {
+          ...serverCart,
+          customer_num: localCart.customer_num ?? serverCart.customer_num ?? null,
+          customer_name_override:
+            localCart.customer_name_override ??
+            serverCart.customer_name_override ??
+            "Walk-in",
+          mpesa_payment_amount: localCart.mpesa_payment_amount ?? 0,
+          mpesa_transaction_code: localCart.mpesa_transaction_code ?? null,
+          mpesa_phone: localCart.mpesa_phone ?? null,
+          voucher_payment_amount: localCart.voucher_payment_amount ?? 0,
+          points_payment_amount: localCart.points_payment_amount ?? 0,
+          amount_paid: localCart.amount_paid ?? 0,
+          restored_from_hold_label: localCart.restored_from_hold_label ?? null,
+          restored_from_local_held_id: heldId,
+        };
+        if (pendingOptimistic.length) {
+          enriched.lines = mergePreservedOptimisticLines(
+            enriched.lines,
+            pendingOptimistic,
+          );
+        }
+        applyRestoredHeldCart(enriched, sourceSale);
+      } catch {
+        if (generation !== heldRestoreGenerationRef.current) return;
+        try {
+          const saved = await saveLocalPosCart({ ...localCart, offline: false });
+          if (generation !== heldRestoreGenerationRef.current) return;
+          applyRestoredHeldCart(
+            { ...presentLocalOfflineCart(saved), offline: false },
+            sourceSale,
+          );
+        } catch {
+          /* keep painted local cart */
+        }
+      }
+    })();
   }
 
   /** Resume a parked held sale into the till as a new in-progress order. */
@@ -9063,6 +9298,28 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
+    // Already editing this sale on the till — skip KRA/network round-trip.
+    const liveCart = cartRef.current ?? cart;
+    const alreadyEditingSameSale =
+      Number(liveCart?.superseded_sale_id) === Number(saleId) &&
+      (liveCart?.lines?.length ?? 0) > 0 &&
+      !liveCart?._optimistic_restore;
+    if (alreadyEditingSameSale) {
+      const sourceSale = saleSnapshot?.id ? saleSnapshot : editSourceSale;
+      if (sourceSale) setEditSourceSale(sourceSale);
+      const browseNum = resolvePosBrowseNumber(liveCart);
+      const label = browseNum ?? liveCart?.held_order_num ?? saleId;
+      const kraFiscalize = shouldSubmitKraOnCheckout(
+        capabilities?.module_settings,
+        capabilities,
+        summarizeLocalPosCart(liveCart)?.total,
+      );
+      const editHint = previousOrderEditWorkspaceHint({ kraFiscalize });
+      setOrderEditError(null);
+      setStatusMessage(`Order #${label} already open for editing — ${editHint}`);
+      return;
+    }
+
     const hasOpenLines = (cart?.lines?.length ?? 0) > 0;
     if (hasOpenLines && !replace) {
       const ok = await confirm({
@@ -9078,15 +9335,62 @@ export function PosScreen({ standalone = false }) {
     }
 
     setBusy(true);
-    beginPreviousOrderLoading();
+    beginPreviousOrderLoading("Loading previous order…", {
+      detail: "Preparing cart — confirming with KRA and stock…",
+    });
     setOrderEditError(null);
+
+    const previousCartSnapshot = cartRef.current;
+    const previousEditSource = editSourceSale;
+    let paintedOptimistic = false;
+    let restoreActive = true;
+    let handoffToReplaceRetry = false;
+
+    const paintOptimisticFromSale = (source) => {
+      if (!restoreActive) return false;
+      const optimistic = buildOptimisticPreviousOrderCart(saleId, source, cartRef.current);
+      if (!optimistic || (optimistic.lines?.length ?? 0) === 0) return false;
+      cartRef.current = optimistic;
+      setCart(optimistic);
+      setEditSourceSale(source);
+      setSelectedLineId(null);
+      setEditingLineId(null);
+      setEditingLineRef(null);
+      setReplacingLineId(null);
+      setPaymentOpen(false);
+      orderNoUserEditedRef.current = false;
+      const browseNum = resolvePosBrowseNumber(optimistic);
+      if (browseNum != null) setEditOrderNo(String(browseNum));
+      paintedOptimistic = true;
+      markPreviousOrderLoadingConfirming();
+      return true;
+    };
+
     try {
-      // Single round-trip: restore-to-cart now returns restored_from_sale metadata.
-      // Skip GET /sales/{id} — lines come from the cart; customer/ticket from snapshot or payload.
+      if (saleSnapshot?.items?.length) {
+        paintOptimisticFromSale(saleSnapshot);
+      } else {
+        // Fetch line items in parallel with restore so the till can paint sooner.
+        void apiRequest(`/sales/${saleId}`)
+          .then((sale) => {
+            if (!restoreActive) return;
+            if (paintedOptimistic) {
+              if (sale) setEditSourceSale((prev) => ({ ...(prev ?? {}), ...sale }));
+              return;
+            }
+            paintOptimisticFromSale(sale);
+          })
+          .catch(() => {
+            /* restore-to-cart still provides the authoritative cart */
+          });
+      }
+
+      // Single round-trip: restore-to-cart returns restored_from_sale metadata.
       const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
         method: "POST",
         body: { replace },
       });
+      restoreActive = false;
       const sourceSale = resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId);
       const restoredCart = presentRestoredEditCart(restoredRaw, sourceSale);
       cartRef.current = restoredCart;
@@ -9139,6 +9443,12 @@ export function PosScreen({ standalone = false }) {
         notifySuccess(editMsgs.loaded);
       }
     } catch (e) {
+      restoreActive = false;
+      if (paintedOptimistic) {
+        cartRef.current = previousCartSnapshot;
+        setCart(previousCartSnapshot);
+        setEditSourceSale(previousEditSource);
+      }
       let message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (
         !replace &&
@@ -9155,7 +9465,7 @@ export function PosScreen({ standalone = false }) {
           destructive: true,
         });
         if (ok) {
-          setBusy(false);
+          handoffToReplaceRetry = true;
           return restoreOrderForEdit(saleId, { replace: true, saleSnapshot });
         }
         return;
@@ -9170,8 +9480,13 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(message);
       if (standalone) notifyError(message);
     } finally {
-      setBusy(false);
-      endPreviousOrderLoading();
+      if (handoffToReplaceRetry) {
+        // Balance this attempt's begin*; the retry owns busy/loading.
+        endPreviousOrderLoading();
+      } else {
+        setBusy(false);
+        endPreviousOrderLoading();
+      }
     }
   }
 
@@ -9726,6 +10041,7 @@ export function PosScreen({ standalone = false }) {
     previousOrderLoading,
     autoHeldBusy: Boolean(autoHeldBusy),
     editAdjustmentDialogOpen: Boolean(editAdjustmentDialog),
+    orderNameDropdownOpen: orderNameLoading || Array.isArray(orderNameResults),
     replacingLineId,
     selectedLineId,
     selectedLineCount,
@@ -10947,10 +11263,12 @@ export function PosScreen({ standalone = false }) {
                       background — KRA credit notes balance when the order syncs online.{" "}
                       <strong>Alt+P</strong> (or Reprint): payment breakdown, then print without
                       the fiscal QR. F10 is not required.
-                      {offlineSyncing || editAutosaveBusy || pendingSync > 0
+                      {editAutosaveBusy || pendingSync > 0
                         ? syncProgress?.message
                           ? ` ${syncProgress.message}`
-                          : " Syncing in background…"
+                          : pendingSync > 0
+                            ? " Syncing in background…"
+                            : " Saving…"
                         : null}
                     </>
                   ) : (
@@ -10958,10 +11276,12 @@ export function PosScreen({ standalone = false }) {
                       Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edits save instantly —{" "}
                       <strong>F10 is not required</strong>. When finished, print with Alt+P or
                       Reprint.
-                      {offlineSyncing || editAutosaveBusy || pendingSync > 0
+                      {editAutosaveBusy || pendingSync > 0
                         ? syncProgress?.message
                           ? ` ${syncProgress.message}`
-                          : " Syncing in background…"
+                          : pendingSync > 0
+                            ? " Syncing in background…"
+                            : " Saving…"
                         : null}
                     </>
                   )}
@@ -11201,6 +11521,9 @@ export function PosScreen({ standalone = false }) {
                 onEntryQtyChange={(value) =>
                   setLineForm((p) => ({ ...p, quantity: value }))
                 }
+                onEntryQtyCommit={() => {
+                  handleQuantityEnter();
+                }}
                 onEntryQtyKeyDown={(e) => {
                   if (isPosFunctionKeyEvent(e)) return;
                   if (e.key === "Escape") {
@@ -11661,7 +11984,7 @@ export function PosScreen({ standalone = false }) {
           kraCheckoutRetryRef.current = null;
         }}
         billTotal={paymentPanelBillTotal}
-        previousOrderEditAdjustment={null}
+        previousOrderEditAdjustment={previousOrderEditAdjustment}
         channel={channel}
         workflow={channelWorkflow}
         paymentConfig={checkoutPaymentConfig}
@@ -11735,60 +12058,34 @@ export function PosScreen({ standalone = false }) {
             isServerPosCartId(prior?.id) &&
             isServerPosCartId(restoredCart?.id) &&
             String(prior.id) === String(restoredCart.id);
-          if (
-            !meta?.local &&
-            !restoredSameCart &&
-            isServerPosCartId(prior?.id) &&
-            (prior?.lines?.length ?? 0) > 0
-          ) {
-            try {
-              await apiRequest(`/sales/carts/${prior.id}/lines`, {
-                method: "DELETE",
-                loading: false,
-                reportIssues: false,
-              });
-            } catch {
-              /* offline — local restore still proceeds */
+          const clearPriorWorkspace = () => {
+            if (
+              restoredSameCart ||
+              !isServerPosCartId(prior?.id) ||
+              (prior?.lines?.length ?? 0) === 0
+            ) {
+              return;
             }
-          }
+            markServerCartConsumed(prior.id);
+            void apiRequest(`/sales/carts/${prior.id}/lines`, {
+              method: "DELETE",
+              loading: false,
+              reportIssues: false,
+            }).catch(() => {});
+          };
 
           if (meta?.local || restoredCart?.offline || isLocalHeldId(sourceSale?.id)) {
             if (offlineMode) {
               const saved = await saveLocalPosCart({ ...restoredCart, offline: true });
               applyRestoredHeldCart(presentLocalOfflineCart(saved), sourceSale);
             } else {
-              beginPreviousOrderLoading("Preparing held order for checkout…");
+              // Paint held lines immediately; TemporaryCart create runs in background.
               applyRestoredHeldCart(restoredCart, sourceSale);
-              try {
-                const serverCart = await materializeOfflineCartOnServer({
-                  ...restoredCart,
-                  offline: false,
-                });
-                applyRestoredHeldCart(
-                  {
-                    ...serverCart,
-                    customer_num: restoredCart.customer_num ?? serverCart.customer_num ?? null,
-                    customer_name_override:
-                      restoredCart.customer_name_override ??
-                      serverCart.customer_name_override ??
-                      "Walk-in",
-                    restored_from_hold_label: restoredCart.restored_from_hold_label ?? null,
-                    restored_from_local_held_id:
-                      restoredCart.restored_from_local_held_id ?? sourceSale?.id ?? null,
-                  },
-                  sourceSale,
-                );
-              } catch {
-                const saved = await saveLocalPosCart({ ...restoredCart, offline: false });
-                applyRestoredHeldCart(
-                  { ...presentLocalOfflineCart(saved), offline: false },
-                  sourceSale,
-                );
-              } finally {
-                endPreviousOrderLoading();
-              }
+              clearPriorWorkspace();
+              scheduleLocalHeldMaterialize(restoredCart, sourceSale);
             }
           } else {
+            clearPriorWorkspace();
             const enrichedSource = resolveRestoredSourceSale(
               restoredCart,
               sourceSale,
@@ -11822,6 +12119,7 @@ export function PosScreen({ standalone = false }) {
         onSyncAll={syncOfflineOrders}
         onSyncOrder={syncSingleOfflineOrder}
         onDiscarded={() => {
+          // Count already applied via onCountChange; refresh in case ticket seq changed.
           void refreshOfflineCounts();
           const current = cartRef.current;
           if (
@@ -11884,6 +12182,8 @@ export function PosScreen({ standalone = false }) {
       <PosPreviousOrderLoadingOverlay
         open={previousOrderLoading}
         message={previousOrderLoadingMessage}
+        detail={previousOrderLoadingDetail}
+        soft={previousOrderLoadingSoft}
       />
       <PosPrepareNextOrderOverlay
         open={preparingNextOpen}
@@ -11893,7 +12193,7 @@ export function PosScreen({ standalone = false }) {
       {standalone ? (
         classicLayout ? (
           <>
-            {offlineSyncing || failedSyncOrders.length > 0 ? (
+            {(offlineSyncing && pendingSync > 0) || failedSyncOrders.length > 0 ? (
               <div className="classic-pos-offline-sync-strip shrink-0 border-t border-[var(--theme-border)] bg-sky-50 px-3 py-1.5 text-sky-950">
                 {failedSyncOrders.length > 0 ? (
                   <p className="text-xs font-medium text-amber-950">
@@ -11922,7 +12222,7 @@ export function PosScreen({ standalone = false }) {
               version="1.0.0"
               currencySettings={classicCurrencySettings}
               statusMessage={
-                offlineSyncing && syncProgress?.message
+                offlineSyncing && pendingSync > 0 && syncProgress?.message
                   ? syncProgress.message
                   : cartBridgeStatus || statusMessage
               }

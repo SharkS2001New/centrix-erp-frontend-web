@@ -979,6 +979,9 @@ export function ClassicBackofficeOrderEditModal({
               entryAmount={entryComputed ? entryComputed.lineAmount : ""}
               entryReady={entryReady}
               onEntryQtyChange={setEntryQty}
+              onEntryQtyCommit={() => {
+                commitEntryLine();
+              }}
               onEntryQtyKeyDown={(e) => {
                 if (isPosFunctionKeyEvent(e)) return;
                 if (e.key === "Enter") {
