@@ -208,6 +208,7 @@ import {
   peekLocalPosTicketNext,
   ensurePosOfflineOrderNumbers,
   getPosOfflineProduct,
+  getPosOfflinePendingCount,
   purgeReservedPosTicketsUpTo,
   seedLocalPosTicketSeqFromSale,
   resolvePosTicketForCheckout,
@@ -1067,8 +1068,30 @@ export function PosScreen({ standalone = false }) {
     return run();
   }
 
-  /** Fire-and-forget outbox sync after checkout — receipt prints without waiting. */
+  /** Fire-and-forget outbox sync after checkout — receipt prints without waiting.
+   * While offline/slow, only queue the sale; reconnect flushes 1, 2, 3… when online. */
   function queueOutboxAfterSale(orderNum) {
+    if (offlineMode || !canFlushOutbox) {
+      void (async () => {
+        await refreshOfflineCounts();
+        let pending = 0;
+        try {
+          pending = await getPosOfflinePendingCount();
+        } catch {
+          pending = Number(pendingSync ?? 0);
+        }
+        const waiting =
+          pending > 0
+            ? `${pending} order${pending === 1 ? "" : "s"} waiting to sync`
+            : "will sync when online";
+        setStatusMessage(
+          orderNum != null
+            ? `Sale #${orderNum} saved — ${waiting}.`
+            : `Sale saved — ${waiting}.`,
+        );
+      })();
+      return;
+    }
     void pushOutboxAfterSale(orderNum, { background: true });
   }
 
@@ -1152,11 +1175,16 @@ export function PosScreen({ standalone = false }) {
   const enableMpesaOnPos =
     mpesaStkPlatformEnabled && Boolean(posSalesConfig.payment?.enableMpesaAmount);
   const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings, capabilities);
-  const showCartPaymentPrompts = posCartPaymentPromptsEnabled({
-    enableVouchers,
-    enablePoints: enableRedeemablePoints,
-    enableMpesa: enableMpesaOnPos,
-  });
+  /** Local-first workspace (offline/slow or mid-sale outage cart): no network payments / STK. */
+  const posNetworkPaymentsBlocked =
+    standalone && (offlineMode || Boolean(cart?.offline) || Boolean(cart?.offline_client_sale_uuid));
+  const showCartPaymentPrompts =
+    !posNetworkPaymentsBlocked &&
+    posCartPaymentPromptsEnabled({
+      enableVouchers,
+      enablePoints: enableRedeemablePoints,
+      enableMpesa: enableMpesaOnPos,
+    });
   const checkoutPaymentConfig = useMemo(() => {
     if (mpesaStkPlatformEnabled) return posSalesConfig.payment;
     return {
@@ -7080,9 +7108,9 @@ export function PosScreen({ standalone = false }) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
       const offlineCashTendered = Number(body?.__cash_tendered ?? 0);
-      if (method && method !== "CASH") {
+        if (method && method !== "CASH") {
         setPaymentError(
-          "Offline mode supports cash payments only. Reconnect for M-Pesa or other methods.",
+          "Offline — enter the cash amount manually. M-Pesa prompt and other network payments are disabled until you are back online.",
         );
         return null;
       }
@@ -7856,6 +7884,13 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleMpesaOrderComplete(updatedCart, options = {}) {
+    if (standalone && (offlineMode || cartRef.current?.offline)) {
+      flashPosShortcutMessage(
+        "M-Pesa prompt is unavailable offline. Enter cash amount manually to complete the sale.",
+      );
+      setPaymentOpen(true);
+      return null;
+    }
     const payNow = Number(updatedCart?.mpesa_payment_amount ?? cartRef.current?.mpesa_payment_amount ?? 0);
     if (payNow <= 0) return null;
 
@@ -11562,7 +11597,7 @@ export function PosScreen({ standalone = false }) {
         prefillWalkInCustomerName={prefilledEditCustomerName}
         lockMpesaFields={Number(cart?.mpesa_payment_amount ?? 0) > 0}
         cartId={cart?.id ?? null}
-        enableStkPush={enableStkPushOnPos}
+        enableStkPush={enableStkPushOnPos && !posNetworkPaymentsBlocked}
         onCartUpdated={(nextCart) => {
           if (!nextCart) return;
           cartRef.current = nextCart;
@@ -11576,7 +11611,7 @@ export function PosScreen({ standalone = false }) {
         receiptPrintStatus={receiptPrintStatus}
         onReprintReceipt={() => void handlePrintReceipt()}
         embedded={!standalone}
-        cashOnlyOffline={standalone && offlineMode}
+        cashOnlyOffline={posNetworkPaymentsBlocked}
       />
 
       <PosSaveOrderDialog

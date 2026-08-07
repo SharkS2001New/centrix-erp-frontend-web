@@ -1257,7 +1257,7 @@ export function PosPaymentPanel({
           (cfg.allowPartialPayment && amountPaid > 0));
 
   /** Credit customer field is shown whenever credit payment is enabled in admin settings. */
-  const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode;
+  const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode && !cashOnlyOffline;
 
   useEffect(() => {
     if (!open || step !== "payment") return;
@@ -2019,7 +2019,7 @@ export function PosPaymentPanel({
           <PosField label="Cash amount (C)">
             {cashOnlyOffline ? (
               <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
-                Offline — cash only. Sale will sync when the connection returns.
+                Offline — enter cash amount manually. M-Pesa prompt and KRA are skipped; receipt prints now and orders sync when online.
               </p>
             ) : null}
             <input
@@ -2068,7 +2068,7 @@ export function PosPaymentPanel({
               ) : null}
             </div>
           ) : null}
-          {cfg.enableMpesaAmount && cfg.enableMpesaCode ? (
+          {cfg.enableMpesaAmount && cfg.enableMpesaCode && !cashOnlyOffline ? (
             <PosField label="M-Pesa code">
               <input
                 className={`${inputCls} ${mpesaFieldsLocked ? "theme-input-readonly cursor-not-allowed" : ""}`}
@@ -2082,7 +2082,7 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
 
-          {cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
+          {!cashOnlyOffline && cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
             <>
               <PosField label="Bank type">
                 <SearchableSelect
@@ -2121,7 +2121,7 @@ export function PosPaymentPanel({
             </>
           ) : null}
 
-          {!cfg.useBankSelect && cfg.showEquityBank ? (
+          {!cashOnlyOffline && !cfg.useBankSelect && cfg.showEquityBank ? (
             <PosField label="Equity Bank amount (E)">
               <input
                 ref={equityAmountRef}
@@ -2136,7 +2136,7 @@ export function PosPaymentPanel({
               />
             </PosField>
           ) : null}
-          {!cfg.useBankSelect && cfg.showKcbBank ? (
+          {!cashOnlyOffline && !cfg.useBankSelect && cfg.showKcbBank ? (
             <PosField label="KCB amount (K)">
               <input
                 ref={kcbAmountRef}
@@ -2151,7 +2151,7 @@ export function PosPaymentPanel({
               />
             </PosField>
           ) : null}
-          {!cfg.useBankSelect && cfg.showOtherBank ? (
+          {!cashOnlyOffline && !cfg.useBankSelect && cfg.showOtherBank ? (
             <PosField label={`${cfg.otherBankLabel ?? "Other bank"} amount`}>
               <input
                 type="number"
@@ -2168,7 +2168,7 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
 
-          {cfg.showCheque ? (
+          {!cashOnlyOffline && cfg.showCheque ? (
             <>
               <PosField label="Cheque amount">
                 <input
