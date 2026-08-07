@@ -170,6 +170,34 @@ export function isBrowserDevToolsShortcut(e) {
 }
 
 /**
+ * Browser reload / refresh shortcuts (Ctrl/Cmd+R, F5, hard refresh).
+ * External POS blocks these while offline so in-memory + IndexedDB sell state is not wiped.
+ */
+export function isBrowserReloadShortcut(e) {
+  if (!e) return false;
+  const key = String(e.key ?? "");
+  const code = String(e.code ?? "");
+  const keyCode = Number(e.keyCode || e.which || 0);
+  const lower = key.toLowerCase();
+  const ctrlOrMeta = Boolean(e.ctrlKey || e.metaKey);
+
+  // F5 / Ctrl+F5 / Shift+F5 / Cmd+Shift+R
+  if (key === "F5" || code === "F5" || keyCode === 116) {
+    return true;
+  }
+  // Ctrl/Cmd+R — Reload (with or without Shift for hard reload). Ignore Alt chords.
+  if (
+    ctrlOrMeta
+    && !e.altKey
+    && (lower === "r" || code === "KeyR" || keyCode === 82)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Capture listeners that block DevTools shortcuts + the browser context menu
  * for the standalone External POS PWA only. Returns cleanup.
  *
@@ -212,6 +240,41 @@ export function installPosDevToolsLockdown() {
       target.removeEventListener("keydown", onKeyDown, opts);
     }
     document.removeEventListener("contextmenu", onContextMenu, opts);
+  };
+}
+
+/**
+ * While External POS is offline / slow-offline, block Ctrl+R / F5 so a browser
+ * reload cannot drop the live cart or break local-first selling.
+ * @param {{ getShouldBlock: () => boolean, onBlocked?: () => void }} options
+ */
+export function installPosOfflineReloadGuard({ getShouldBlock, onBlocked } = {}) {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return () => {};
+  }
+
+  const opts = { capture: true, passive: false };
+
+  function onKeyDown(e) {
+    if (!isBrowserReloadShortcut(e)) return;
+    if (typeof getShouldBlock === "function" && !getShouldBlock()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") {
+      e.stopImmediatePropagation();
+    }
+    onBlocked?.();
+  }
+
+  const targets = [document.documentElement, window, document];
+  for (const target of targets) {
+    target.addEventListener("keydown", onKeyDown, opts);
+  }
+
+  return () => {
+    for (const target of targets) {
+      target.removeEventListener("keydown", onKeyDown, opts);
+    }
   };
 }
 

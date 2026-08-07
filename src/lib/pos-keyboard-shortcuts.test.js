@@ -4,6 +4,7 @@ import {
   claimPosFunctionKeyEvent,
   clearPosAltLatch,
   isBrowserDevToolsShortcut,
+  isBrowserReloadShortcut,
   isPosAltLatched,
   isPosAltLetterShortcut,
   isPosClassicAltShortcut,
@@ -78,6 +79,31 @@ describe("claimPosFunctionKeyEvent", () => {
   it("recognizes POS function shortcut keys", () => {
     expect(isPosFunctionShortcutKey("F10")).toBe(true);
     expect(isPosFunctionShortcutKey("Enter")).toBe(false);
+  });
+});
+
+describe("isBrowserReloadShortcut", () => {
+  it("detects F5 and Ctrl/Cmd+R reload chords", () => {
+    expect(isBrowserReloadShortcut(fakeEvent({ key: "F5", code: "F5", keyCode: 116 }))).toBe(true);
+    expect(
+      isBrowserReloadShortcut(fakeEvent({ key: "r", code: "KeyR", ctrlKey: true })),
+    ).toBe(true);
+    expect(
+      isBrowserReloadShortcut(fakeEvent({ key: "R", code: "KeyR", metaKey: true, shiftKey: true })),
+    ).toBe(true);
+    expect(
+      isBrowserReloadShortcut(fakeEvent({ key: "F5", code: "F5", keyCode: 116, ctrlKey: true })),
+    ).toBe(true);
+  });
+
+  it("ignores plain R and unrelated chords", () => {
+    expect(isBrowserReloadShortcut(fakeEvent({ key: "r", code: "KeyR" }))).toBe(false);
+    expect(
+      isBrowserReloadShortcut(fakeEvent({ key: "r", code: "KeyR", ctrlKey: true, altKey: true })),
+    ).toBe(false);
+    expect(isBrowserReloadShortcut(fakeEvent({ key: "F12", code: "F12", keyCode: 123 }))).toBe(
+      false,
+    );
   });
 });
 

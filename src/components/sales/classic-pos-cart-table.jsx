@@ -52,7 +52,6 @@ function ClassicLineQtyCell({
           setDraft(e.target.value);
           onDraftQtyChange?.(line, e.target.value);
         }}
-        onFocus={(e) => e.target.select()}
         onBlur={() => {
           if (skipBlurCommitRef.current) {
             skipBlurCommitRef.current = false;

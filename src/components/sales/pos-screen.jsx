@@ -224,6 +224,7 @@ import {
   claimPosFunctionKeyEvent,
   clearPosAltLatch,
   installPosDevToolsLockdown,
+  installPosOfflineReloadGuard,
   isPosAltKeyEvent,
   isPosFunctionKeyEvent,
   isPosFunctionShortcutKey,
@@ -6317,9 +6318,13 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     // Backoffice POS lives inside AppShell — never block sidebar, topbar, or workspace switching.
     if (!standalone) return undefined;
-    // Background outbox sync must not trap the cashier on POS. Only warn when leaving with
-    // reserved cart lines that are not yet queued.
-    if (!cartHasReservedItems || leaveGuardOpen) return undefined;
+    // Warn on leave when there are reserved lines, or whenever offline/slow
+    // (toolbar reload / close would risk losing sell capability).
+    const networkDown =
+      offlineMode || networkStatus === "offline" || networkStatus === "slow";
+    const blockUnload =
+      (cartHasReservedItems || networkDown) && !leaveGuardOpen;
+    if (!blockUnload) return undefined;
 
     function onBeforeUnload(e) {
       e.preventDefault();
@@ -6380,7 +6385,7 @@ export function PosScreen({ standalone = false }) {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onDocumentClick, true);
     };
-  }, [standalone, cartHasReservedItems, leaveGuardOpen]);
+  }, [standalone, cartHasReservedItems, leaveGuardOpen, offlineMode, networkStatus]);
 
   async function handleEditSelectedLine(lineId = selectedLineId) {
     if (!lineId || !cart?.lines?.length || busy) return;
@@ -9601,6 +9606,29 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     if (!standalone) return undefined;
     return installPosDevToolsLockdown();
+  }, [standalone]);
+
+  // Offline External POS: refuse Ctrl+R / F5 so a reload cannot wipe the live cart
+  // or break local-first selling until the connection returns.
+  const offlineModeRef = useRef(offlineMode);
+  const networkStatusRef = useRef(networkStatus);
+  offlineModeRef.current = offlineMode;
+  networkStatusRef.current = networkStatus;
+
+  useEffect(() => {
+    if (!standalone) return undefined;
+    return installPosOfflineReloadGuard({
+      getShouldBlock: () => {
+        const status = networkStatusRef.current;
+        return status === "offline" || status === "slow" || Boolean(offlineModeRef.current);
+      },
+      onBlocked: () => {
+        const message =
+          "Reload is blocked while offline. Keep selling — sync when the connection returns.";
+        flashPosShortcutMessage(message);
+        setStatusMessage(message);
+      },
+    });
   }, [standalone]);
 
   useEffect(() => {

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { searchProductCatalogCached } from "@/lib/catalog-cache";
 import { fetchRetailPackagesForProductCodes } from "@/lib/reference-data-cache";
 import { formatOrderNumber, formatSaleKes, isBackofficeSale } from "@/lib/sales";
 import { computePosLine, defaultPosEntryQty, productHasRetailTiers } from "@/lib/pos-line";
@@ -13,7 +14,6 @@ import {
 } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
-import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { InlineActionError } from "@/components/shared/inline-action-error";
 import {
@@ -28,6 +28,7 @@ import {
   searchCreditCustomers,
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import { PosProductSearch } from "@/components/sales/pos-product-search";
 import { ClassicPosCartTable } from "@/components/sales/classic-pos-cart-table";
 import {
   buildEditLine,
@@ -45,10 +46,14 @@ import {
   swapLineWithProduct,
 } from "@/lib/backoffice-order-edit";
 import {
+  applyClassicPosDocumentTheme,
+  applyOrgErpSidebarTheme,
+  clearClassicPosDocumentTheme,
   classicPosThemeBridgeVars,
   resolveClassicPosThemeColors,
   resolveClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
+import { getTheme } from "@/lib/theme";
 import { uomCompactPackageLabel } from "@/lib/uom-packaging";
 import {
   isPosFunctionKeyEvent,
@@ -66,13 +71,16 @@ export function ClassicBackofficeOrderEditModal({
   onSaved,
   capabilities = null,
 }) {
-  const { hasPermission } = useAuth();
+  const { hasPermission, capabilities: authCapabilities, user } = useAuth();
+  const effectiveCapabilities = capabilities ?? authCapabilities;
   const [lines, setLines] = useState([]);
   const [removedIds, setRemovedIds] = useState([]);
   const [baselineDraft, setBaselineDraft] = useState([]);
   const [baselineRemovedIds, setBaselineRemovedIds] = useState([]);
   const [retailByCode, setRetailByCode] = useState({});
-  const [addProductCode, setAddProductCode] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [sellAtRetail, setSellAtRetail] = useState(false);
   const [routeMarkupPerUnit, setRouteMarkupPerUnit] = useState(0);
   const [routeMarkupLabel, setRouteMarkupLabel] = useState("");
@@ -90,14 +98,40 @@ export function ClassicBackofficeOrderEditModal({
   const [swapDraft, setSwapDraft] = useState(null);
   const swapLineQtyRef = useRef(null);
   const entryQtyRef = useRef(null);
+  const searchInputRef = useRef(null);
   const [entryProduct, setEntryProduct] = useState(null);
   const [entryQty, setEntryQty] = useState("");
 
-  const themeStyle = useMemo(() => {
-    const template = resolveClassicPosThemeTemplate(capabilities);
-    const colors = resolveClassicPosThemeColors(capabilities);
-    return classicPosThemeBridgeVars(template, colors);
-  }, [capabilities]);
+  const classicThemeTemplate = useMemo(
+    () => resolveClassicPosThemeTemplate(effectiveCapabilities),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_template],
+  );
+  const classicThemeColorsKey = JSON.stringify(
+    effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {},
+  );
+  const classicThemeColors = useMemo(
+    () => resolveClassicPosThemeColors(effectiveCapabilities),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [classicThemeColorsKey],
+  );
+  const themeStyle = useMemo(
+    () => classicPosThemeBridgeVars(classicThemeTemplate, classicThemeColors),
+    [classicThemeTemplate, classicThemeColors],
+  );
+
+  // Match Classic External POS: apply the ERP-selected classic theme on document
+  // so portaled scan dropdowns / buttons inherit the palette.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
+    return () => {
+      clearClassicPosDocumentTheme();
+      applyOrgErpSidebarTheme(classicThemeTemplate, classicThemeColors, {
+        mode: getTheme(),
+      });
+    };
+  }, [open, classicThemeTemplate, classicThemeColors]);
 
   const currentCustomerLabel = useMemo(() => {
     const fromSale =
@@ -114,8 +148,8 @@ export function ClassicBackofficeOrderEditModal({
   }, [sale]);
 
   const posSalesConfig = useMemo(
-    () => getPosSalesConfig(capabilities?.module_settings),
-    [capabilities?.module_settings],
+    () => getPosSalesConfig(effectiveCapabilities?.module_settings),
+    [effectiveCapabilities?.module_settings],
   );
   const enablePosCashRounding = Boolean(posSalesConfig.enablePosCashRounding);
   const retailPricingEnabled = Boolean(posSalesConfig.enableRetailPricing);
@@ -130,12 +164,44 @@ export function ClassicBackofficeOrderEditModal({
     return rows;
   }, []);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const trimmed = String(searchQuery ?? "").trim();
+    if (trimmed.length < 1) {
+      setSearchResults([]);
+      setSearching(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const list = await searchProductCatalogCached(user?.organization_id, trimmed, {
+            limit: 50,
+            status: "all",
+          });
+          if (!cancelled) setSearchResults(Array.isArray(list) ? list : []);
+        } catch {
+          if (!cancelled) setSearchResults([]);
+        } finally {
+          if (!cancelled) setSearching(false);
+        }
+      })();
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, searchQuery, user?.organization_id]);
+
   const resetTransient = useCallback(() => {
     setReplacingLineKey(null);
     setSwapDraft(null);
     setEntryProduct(null);
     setEntryQty("");
-    setAddProductCode("");
+    setSearchQuery("");
+    setSearchResults([]);
   }, []);
 
   const loadItems = useCallback(async () => {
@@ -153,8 +219,8 @@ export function ClassicBackofficeOrderEditModal({
     try {
       const detail = await apiRequest(`/sales/${sale.id}`);
       const saleForPricing = { ...sale, ...detail };
-      const applyMarkup = saleAppliesRouteMarkupPricing(saleForPricing, capabilities?.module_settings, {
-        standalone: !isBackofficeSale(saleForPricing, capabilities),
+      const applyMarkup = saleAppliesRouteMarkupPricing(saleForPricing, effectiveCapabilities?.module_settings, {
+        standalone: !isBackofficeSale(saleForPricing, effectiveCapabilities),
       });
       const routeId = saleForPricing.route_id ?? saleForPricing.route?.id ?? null;
       const routeRes =
@@ -220,7 +286,7 @@ export function ClassicBackofficeOrderEditModal({
     } finally {
       setLoading(false);
     }
-  }, [sale, uomById, capabilities, resetTransient]);
+  }, [sale, uomById, effectiveCapabilities, resetTransient]);
 
   useEffect(() => {
     if (!open || !sale?.id) {
@@ -248,11 +314,11 @@ export function ClassicBackofficeOrderEditModal({
 
   const discountEditEnabled = useMemo(
     () =>
-      showBackofficeLineDiscountEdit(capabilities?.module_settings, {
+      showBackofficeLineDiscountEdit(effectiveCapabilities?.module_settings, {
         hasPermission,
         sale,
       }),
-    [capabilities?.module_settings, hasPermission, sale],
+    [effectiveCapabilities?.module_settings, hasPermission, sale],
   );
 
   const customerDirty = String(customerNum ?? "") !== String(baselineCustomerNum ?? "");
@@ -384,7 +450,8 @@ export function ClassicBackofficeOrderEditModal({
     setSelectedLineKey(lineKey(line));
     setEntryProduct(null);
     setEntryQty("");
-    setAddProductCode("");
+    setSearchQuery("");
+    setSearchResults([]);
     setStatusMessage(
       `Swap ${lineLabel(line)}: search or scan the replacement product. Esc cancels.`,
     );
@@ -396,7 +463,8 @@ export function ClassicBackofficeOrderEditModal({
     setSwapDraft(null);
     setEntryProduct(null);
     setEntryQty("");
-    setAddProductCode("");
+    setSearchQuery("");
+    setSearchResults([]);
     setStatusMessage("Swap cancelled.");
   }
 
@@ -434,7 +502,8 @@ export function ClassicBackofficeOrderEditModal({
     setSelectedLineKey(result.focusKey);
     setReplacingLineKey(null);
     setSwapDraft(null);
-    setAddProductCode("");
+    setSearchQuery("");
+    setSearchResults([]);
     setError(null);
     setStatusMessage(`Swapped to ${draft.product.product_code}.`);
   }
@@ -462,7 +531,8 @@ export function ClassicBackofficeOrderEditModal({
         product: productWithUom(product, uomById),
         quantity: String(defaultQty),
       });
-      setAddProductCode("");
+      setSearchQuery("");
+      setSearchResults([]);
       setStatusMessage(
         `Replacement ${product.product_code} ready — edit qty and press Enter to commit.`,
       );
@@ -474,6 +544,19 @@ export function ClassicBackofficeOrderEditModal({
     }
 
     const code = String(product.product_code);
+    // Same product already parked on the entry row — keep code, just refocus qty.
+    if (
+      entryProduct &&
+      String(entryProduct.product_code) === code &&
+      String(searchQuery).trim() !== ""
+    ) {
+      requestAnimationFrame(() => {
+        entryQtyRef.current?.focus?.();
+        entryQtyRef.current?.select?.();
+      });
+      return;
+    }
+
     const existing = lines.find(
       (line) => String(line.product_code) === code && isRetailLine(line) === asRetail,
     );
@@ -486,7 +569,8 @@ export function ClassicBackofficeOrderEditModal({
         ),
       );
       setSelectedLineKey(focusKey);
-      setAddProductCode("");
+      setSearchQuery("");
+      setSearchResults([]);
       setEntryProduct(null);
       setEntryQty("");
       setStatusMessage(`Increased qty for ${code}.`);
@@ -500,7 +584,9 @@ export function ClassicBackofficeOrderEditModal({
       packages[code] ?? null,
     );
     setEntryQty(String(defaultQty));
-    setAddProductCode("");
+    // Keep product code in scan field while qty is edited (same as Classic POS).
+    setSearchQuery(code);
+    setSearchResults([]);
     requestAnimationFrame(() => {
       entryQtyRef.current?.focus?.();
       entryQtyRef.current?.select?.();
@@ -527,7 +613,8 @@ export function ClassicBackofficeOrderEditModal({
     setSelectedLineKey(lineKey(newLine));
     setEntryProduct(null);
     setEntryQty("");
-    setAddProductCode("");
+    setSearchQuery("");
+    setSearchResults([]);
     setError(null);
     setStatusMessage(`Added ${entryProduct.product_code}.`);
   }
@@ -683,10 +770,27 @@ export function ClassicBackofficeOrderEditModal({
 
   const selectedLine = lines.find((line) => lineKey(line) === selectedLineKey) ?? null;
   const productSearch = (
-    <ProductSearchSelect
-      value={addProductCode}
-      onChange={setAddProductCode}
-      onProductSelect={(product) => void handleProductPicked(product)}
+    <PosProductSearch
+      variant="classic"
+      inputRef={searchInputRef}
+      query={searchQuery}
+      onQueryChange={(value) => {
+        if (entryProduct) {
+          setEntryProduct(null);
+          setEntryQty("");
+        }
+        setSearchQuery(value);
+      }}
+      results={searchResults}
+      searching={searching}
+      selectedCode={entryProduct?.product_code ?? swapDraft?.product?.product_code ?? null}
+      sellWholesale={!sellAtRetail}
+      retailByCode={retailByCode}
+      routeMarkupPerUnit={routeMarkupPerUnit}
+      onSelect={(product) => void handleProductPicked(product)}
+      onEscapeKey={replacingLineKey || swapDraft ? cancelReplaceCartLine : null}
+      barcodeEnabled={false}
+      posSalesConfig={posSalesConfig}
       disabled={saving || loading}
       placeholder={replacingLineKey ? "Scan / search replacement…" : "Scan / search product…"}
     />
@@ -700,15 +804,16 @@ export function ClassicBackofficeOrderEditModal({
       <div
         className={posModalPanelClass(
           false,
-          "pos-workspace-classic relative flex w-[min(98vw,1100px)] flex-col overflow-hidden rounded-md border shadow-2xl",
+          "pos-workspace-classic relative flex h-[min(94vh,920px)] max-h-[94vh] w-[min(98vw,1320px)] flex-col overflow-hidden rounded-md border shadow-2xl",
         )}
         data-pos-layout="classic"
+        data-classic-pos-theme={classicThemeTemplate}
         style={themeStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="classic-backoffice-order-edit-title"
       >
-        <div className="classic-pos-cart-caption flex items-center justify-between gap-3 border-b px-3 py-2">
+        <div className="classic-pos-cart-caption flex shrink-0 items-center justify-between gap-3 border-b px-3 py-2">
           <div className="min-w-0">
             <h2
               id="classic-backoffice-order-edit-title"
@@ -745,9 +850,9 @@ export function ClassicBackofficeOrderEditModal({
           </div>
         ) : null}
 
-        <div className="flex max-h-[min(72vh,640px)] flex-col gap-2 overflow-auto px-3 py-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 py-2">
           <div
-            className="rounded border px-3 py-2"
+            className="shrink-0 rounded border px-3 py-2"
             style={{
               background: "var(--classic-panel, #f7f1e4)",
               borderColor: "var(--classic-border, #8a7a55)",
@@ -785,7 +890,7 @@ export function ClassicBackofficeOrderEditModal({
           </div>
 
           {canApplyAdvisedDiscounts ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2">
               <p className="text-sm text-amber-900">Manager advised per-item discounts on this order.</p>
               <button
                 type="button"
@@ -803,6 +908,7 @@ export function ClassicBackofficeOrderEditModal({
               Loading order lines…
             </p>
           ) : (
+            <div className="classic-backoffice-edit-cart flex min-h-[min(52vh,460px)] flex-1 flex-col overflow-hidden">
             <ClassicPosCartTable
               lines={cartLines}
               selectedLineId={selectedLineKey}
@@ -883,12 +989,19 @@ export function ClassicBackofficeOrderEditModal({
                   e.preventDefault();
                   setEntryProduct(null);
                   setEntryQty("");
+                  setSearchQuery("");
+                  setSearchResults([]);
+                  requestAnimationFrame(() => {
+                    searchInputRef.current?.focus?.();
+                    searchInputRef.current?.select?.();
+                  });
                 }
               }}
             />
+            </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--classic-muted)" }}>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs" style={{ color: "var(--classic-muted)" }}>
             <button
               type="button"
               disabled={saving || loading || !selectedLine || lines.length <= 1}
@@ -918,7 +1031,7 @@ export function ClassicBackofficeOrderEditModal({
         </div>
 
         <div
-          className="flex items-center justify-between gap-3 border-t px-3 py-3"
+          className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-3"
           style={{
             background: "var(--classic-footer, #fafafa)",
             borderColor: "var(--classic-border, #8a7a55)",

@@ -56,7 +56,7 @@ import {
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
-import { ClassicPosThemePicker } from "@/components/admin/external-pos-platform-fields";
+import { ExternalPosPlatformFields } from "@/components/admin/external-pos-platform-fields";
 import {
   HOTEL_POS_THEME_DEFAULT,
   HOTEL_POS_THEME_TEMPLATES,
@@ -694,33 +694,6 @@ export function OrganizationPlatformSalesSettings({
             checked={Boolean(salesPlatform?.append_same_day_customer_orders)}
             onChange={(v) => patch({ append_same_day_customer_orders: v })}
           />
-          <Toggle
-            label="Allow editing orders from Sales"
-            description="When on, staff can Edit order from the Sales orders list for any source (Point of sale, Mobile, or Backoffice). Change customer, add/remove lines, adjust quantities and discounts; totals and stock update on save."
-            checked={salesPlatform?.enable_backoffice_order_edit !== false}
-            onChange={(v) => patch({ enable_backoffice_order_edit: v })}
-          />
-          {salesPlatform?.enable_backoffice_order_edit !== false ? (
-            <div className="ml-6 space-y-1 border-l border-slate-200 pl-4">
-              <label className="block text-sm font-medium text-slate-900">Edit Orders mode</label>
-              <SearchableSelect
-                value={salesPlatform?.backoffice_order_edit_layout === "classic" ? "classic" : "modern"}
-                onChange={(next) => patch({ backoffice_order_edit_layout: next })}
-                options={[
-                  { value: "modern", label: "Modern — current Centrix Edit order popup" },
-                  {
-                    value: "classic",
-                    label: "Classic — POS-style cart, item swap, retail/wholesale mode",
-                  },
-                ]}
-              />
-              <p className="text-xs text-slate-500">
-                Same idea as External POS layout. Classic uses the Classic POS look and interactions
-                inside the Edit order popup (swap, F12 retail/wholesale) while keeping the same
-                pricing and route markups.
-              </p>
-            </div>
-          ) : null}
           <Toggle
             label="Enable M-Pesa STK Push"
             description="When off, this organization cannot configure M-Pesa and STK Push is hidden on POS checkout."
@@ -1745,31 +1718,6 @@ export function OrganizationModuleToggles({
       }
     >
       <div className="space-y-4">
-        {typeof onSalesChange === "function" ? (
-          <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-4">
-            <ClassicPosThemePicker
-              value={salesPlatform?.classic_pos_theme_template}
-              onChange={(id) =>
-                onSalesChange({
-                  ...(salesPlatform ?? {}),
-                  classic_pos_theme_template: id,
-                })
-              }
-              colors={salesPlatform?.classic_pos_theme_colors}
-              onColorsChange={(next) =>
-                onSalesChange({
-                  ...(salesPlatform ?? {}),
-                  classic_pos_theme_colors: next,
-                })
-              }
-              description={
-                isHotelProfile
-                  ? "Hotel Backoffice and Admin: sidebar + primary buttons. Organization admins can also change this under Centrix ERP Themes. Hotel POS desk colors are set under Hotel POS below."
-                  : "Backoffice: sidebar + primary buttons only. Classic External POS: full palette. Organization admins can also change this under Centrix ERP Themes."
-              }
-            />
-          </div>
-        ) : null}
         {workspaces.length === 0 ? (
           <p className="theme-subtext text-sm">No applications available for this deployment profile.</p>
         ) : null}
@@ -1803,7 +1751,7 @@ export function OrganizationModuleToggles({
                   <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                   {workspace.id === "pos" && enabled ? (
                     <span className="theme-subtext mt-1 block text-xs">
-                      Color theme is above. POS layout and cashier behaviour are under Administration
+                      Centrix ERP theme colors are configured by the organization under Administration
                       → Centrix ERP Themes. Till close, barcode, and customer prompts are under
                       Organization settings → Sales → Tills.
                     </span>
@@ -1823,6 +1771,63 @@ export function OrganizationModuleToggles({
                   ) : null}
                 </span>
               </label>
+              {workspace.id === "pos" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <ExternalPosPlatformFields
+                    value={salesPlatform ?? {}}
+                    onChange={onSalesChange}
+                    posEnabled
+                    showTheme={false}
+                    showLayout
+                    showBehaviourToggles
+                  />
+                </div>
+              ) : null}
+              {workspace.id === "backoffice" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <Toggle
+                    label="Allow editing orders from Sales"
+                    description="When on, staff can Edit order from the Sales orders list for any source (Point of sale, Mobile, or Backoffice). Change customer, add/remove lines, adjust quantities and discounts; totals and stock update on save."
+                    checked={salesPlatform?.enable_backoffice_order_edit !== false}
+                    onChange={(v) =>
+                      onSalesChange({
+                        ...(salesPlatform ?? {}),
+                        enable_backoffice_order_edit: v,
+                      })
+                    }
+                  />
+                  {salesPlatform?.enable_backoffice_order_edit !== false ? (
+                    <div className="ml-6 space-y-1 border-l border-slate-200 pl-4">
+                      <label className="block text-sm font-medium text-slate-900">Edit Orders mode</label>
+                      <SearchableSelect
+                        value={
+                          salesPlatform?.backoffice_order_edit_layout === "classic"
+                            ? "classic"
+                            : "modern"
+                        }
+                        onChange={(next) =>
+                          onSalesChange({
+                            ...(salesPlatform ?? {}),
+                            backoffice_order_edit_layout: next,
+                          })
+                        }
+                        options={[
+                          { value: "modern", label: "Modern — current Centrix Edit order popup" },
+                          {
+                            value: "classic",
+                            label: "Classic — POS-style cart, item swap, retail/wholesale mode",
+                          },
+                        ]}
+                      />
+                      <p className="text-xs text-slate-500">
+                        Same idea as External POS layout. Classic uses the Classic POS look and
+                        interactions inside the Edit order popup (swap, F12 retail/wholesale) while
+                        keeping the same pricing and route markups.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {workspace.id === "hotel_bar_pos" && enabled ? (
                 <p className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8 text-xs text-slate-600">
                   Hotel POS theme, checkout mode, payment references, and services are configured on the{" "}

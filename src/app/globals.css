@@ -3001,6 +3001,15 @@ html[data-theme="dark"] .pos-workspace-classic {
   color: var(--classic-text, #1a1a1a);
 }
 
+/* Classic backoffice Edit order: tall cart so scan search results have room */
+.classic-backoffice-edit-cart {
+  min-height: min(52vh, 460px);
+}
+
+.classic-backoffice-edit-cart .classic-pos-cart-table-wrap {
+  height: 100%;
+}
+
 .classic-pos-cart-table-scroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -3544,6 +3553,7 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   border: 1px solid transparent;
   outline: none;
   box-shadow: none;
+  caret-color: var(--classic-text, #1a1a1a);
   --classic-cell-focus-border: color-mix(in srgb, var(--classic-border, #8a7a55) 38%, #fff);
 }
 
@@ -3591,12 +3601,19 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   padding: 0.15rem 0.25rem;
   font-size: 0.82rem;
   height: 1.45rem;
-  border-color: transparent;
+  /* Saved cart lines: look like plain text until the cashier edits */
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: text;
 }
 
-/* Saved line qty — borderless until focused (Edit / click in cell) */
-.classic-pos-line-qty-input:focus {
-  border-color: var(--classic-cell-focus-border);
+/* Border only while editing — keep caret visible (do not rely on select-all) */
+.classic-pos-line-qty-input:focus,
+.classic-pos-line-qty-input:focus-visible {
+  border: 1px solid var(--classic-cell-focus-border) !important;
+  background: var(--classic-input-bg, #fff) !important;
+  caret-color: var(--classic-text, #1a1a1a);
 }
 
 .classic-pos-qty-adjust {
