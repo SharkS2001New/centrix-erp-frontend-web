@@ -1023,13 +1023,6 @@ export default function SalesOrdersListScreen({
   async function printOrder(sale, documentType = null, { batch = false, printCache = null } = {}) {
     if (!sale?.id) return false;
 
-    if (!isPrintInvoiceVisible(sale, capabilities)) {
-      setActionMessage(
-        "Cannot print this order — it is not in a printable stage, or stock is not available for one or more items.",
-      );
-      return false;
-    }
-
     const cachedType =
       documentType ?? defaultOrderListPrintDocumentType(capabilities?.module_settings, capabilities);
     // When Centrix Print Agent is configured, do not pre-open a browser window for
@@ -1052,13 +1045,6 @@ export default function SalesOrdersListScreen({
         setActionMessage("Could not load order details for print.");
         return false;
       }
-      if (!isPrintInvoiceVisible(detail, capabilities)) {
-        disposePrintWindow(printWindow);
-        setActionMessage(
-          "Cannot print invoice — stock is not available for one or more items on this order. Restock or enable Allow negative stock in inventory settings.",
-        );
-        return false;
-      }
       const printed = await printSaleOrder(detail, {
         organization,
         organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
@@ -1071,6 +1057,7 @@ export default function SalesOrdersListScreen({
         skipSaleRefresh: saleHasPrintableItems(detail),
         skipSettingsRefresh: batch,
         skipOrganizationRefresh: batch,
+        skipStockPrintGate: true,
         ...(documentType ? { documentType } : {}),
       });
       if (!printed) {
@@ -1111,6 +1098,7 @@ export default function SalesOrdersListScreen({
       user,
       skipSettingsRefresh: true,
       skipOrganizationRefresh: true,
+      skipStockPrintGate: true,
       ...(documentType ? { documentType } : {}),
     };
 

@@ -141,14 +141,20 @@ describe("order action stage gates", () => {
     expect(isOrderEditActionVisible(bookedBackoffice, null, caps)).toBe(true);
   });
 
-  it("allows print on all stages when print list is empty/null", () => {
+  it("allows print on all stages including unpaid and cancelled", () => {
     expect(isPrintInvoiceVisible({ status: "unpaid" })).toBe(true);
     expect(
       isPrintInvoiceVisible(
         { status: "unpaid" },
         { module_settings: { sales: { print_invoice_statuses: ["paid"] } } },
       ),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      isPrintInvoiceVisible(
+        { status: "cancelled" },
+        { module_settings: { sales: { print_invoice_statuses: ["paid"] } } },
+      ),
+    ).toBe(true);
     expect(
       isPrintInvoiceVisible(
         { status: "paid" },

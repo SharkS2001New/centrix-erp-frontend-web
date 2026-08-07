@@ -37,9 +37,10 @@ describe("order actions by stage (platform config)", () => {
     expect(isOrderEditVisible(sale("paid"), null, PLATFORM_CAPS)).toBe(false);
   });
 
-  it("print only on Paid, Processed, Delivered, Completed", () => {
-    expect(isPrintInvoiceVisible(sale("booked"), PLATFORM_CAPS)).toBe(false);
-    expect(isPrintInvoiceVisible(sale("unpaid"), PLATFORM_CAPS)).toBe(false);
+  it("print is always available for any order stage when staff request it", () => {
+    expect(isPrintInvoiceVisible(sale("booked"), PLATFORM_CAPS)).toBe(true);
+    expect(isPrintInvoiceVisible(sale("unpaid"), PLATFORM_CAPS)).toBe(true);
+    expect(isPrintInvoiceVisible(sale("cancelled"), PLATFORM_CAPS)).toBe(true);
     expect(isPrintInvoiceVisible(sale("paid"), PLATFORM_CAPS)).toBe(true);
     expect(isPrintInvoiceVisible(sale("processed"), PLATFORM_CAPS)).toBe(true);
     expect(isPrintInvoiceVisible(sale("delivered"), PLATFORM_CAPS)).toBe(true);

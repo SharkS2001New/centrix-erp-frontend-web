@@ -1291,16 +1291,13 @@ export function canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities = n
     : canConvertToPaid(sale, capabilities);
 }
 
-/** Whether Print invoice / receipt is allowed for this order stage. */
-export function isPrintInvoiceVisible(sale, capabilities = null) {
-  if (!sale) return false;
-  const status = String(sale.status ?? "").toLowerCase();
-  if (status === "cancelled" || status === "expired" || status === "draft") return false;
-  if (typeof sale.can_print_invoice === "boolean") return sale.can_print_invoice;
-
-  const allowed = resolvePrintInvoiceStatuses(salesSettingsFromCapabilities(capabilities));
-  if (allowed == null) return true;
-  return saleMatchesConfiguredActionStages(sale, allowed);
+/**
+ * Whether Print invoice / receipt is offered for this order.
+ * Explicit print is always allowed (unpaid, cancelled, any stage) — staff reprint
+ * must not be blocked by workflow stage or stock gates.
+ */
+export function isPrintInvoiceVisible(sale, _capabilities = null) {
+  return Boolean(sale);
 }
 
 /**

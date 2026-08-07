@@ -357,19 +357,8 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       sale,
     );
 
-    // Tax invoice / thermal receipt require fulfillable stock (proforma is exempt).
-    if (
-      documentType !== "proforma" &&
-      !options.skipStockPrintGate &&
-      loadedSale?.can_print_invoice === false
-    ) {
-      disposePrintWindow(printWindow);
-      return {
-        ok: false,
-        error:
-          "Cannot print invoice — stock is not available for one or more items on this order. Restock or enable Allow negative stock in inventory settings.",
-      };
-    }
+    // Explicit print is never blocked by stock / workflow can_print_invoice flags.
+    // (POS checkout still passes skipStockPrintGate for the fast path.)
 
     const saleForPrint = enrichSaleLinesForQtyPrint(loadedSale, {
       productByCode: options.productByCode ?? null,
