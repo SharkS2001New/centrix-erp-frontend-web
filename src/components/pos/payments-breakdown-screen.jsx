@@ -23,6 +23,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
+import { formatPaymentsBreakdownOrderLabel } from "@/lib/sales";
 
 const TENDER_LABELS = {
   CASH: "Cash",
@@ -137,12 +138,7 @@ function paymentMethodLabel(row, methodName, methods = []) {
 }
 
 function mapPaymentExportRow(row, methodName, methods = [], { orderHrefPrefix = "/sales/orders" } = {}) {
-  const orderLabel =
-    row.order_num == null
-      ? "—"
-      : typeof row.order_num === "string" && !/^\d+$/.test(row.order_num)
-        ? row.order_num
-        : `Order #${row.order_num}`;
+  const orderLabel = formatPaymentsBreakdownOrderLabel(row) || "—";
   return {
     order: orderLabel,
     customer_name: row.customer_name || "Walk-in",
@@ -665,7 +661,7 @@ export function PaymentsBreakdownScreen({
               setQ(e.target.value);
               setPage(1);
             }}
-            placeholder={activeIsMpesa ? "Order # or M-Pesa code…" : "Order # or reference…"}
+            placeholder={activeIsMpesa ? "Order #, Cash Sales #, or M-Pesa code…" : "Order #, Cash Sales #, or reference…"}
             className="w-56 shrink-0 sm:w-64"
           />
         </Field>
@@ -755,12 +751,7 @@ export function PaymentsBreakdownScreen({
                   const orderHrefPrefix = apiPath.includes("hospitality")
                     ? "/hospitality/orders"
                     : "/sales/orders";
-                  const orderLabel =
-                    row.order_num == null
-                      ? null
-                      : typeof row.order_num === "string" && !/^\d+$/.test(String(row.order_num))
-                        ? String(row.order_num)
-                        : `Order #${row.order_num}`;
+                  const orderLabel = formatPaymentsBreakdownOrderLabel(row);
                   return (
                   <tr key={`${row.sale_id}-${row.payment_id ?? row.method_code ?? methodCode}`}>
                     <td className="px-4 py-3">

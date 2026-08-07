@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   platformWhatsappFormFromApi,
   platformWhatsappPayloadFromForm,
@@ -390,44 +390,40 @@ function WhatsappTestPanel() {
       <div className="mt-4 grid gap-4 lg:grid-cols-2 lg:items-start">
         <div className="min-w-0 space-y-3">
           <Field label="Organization">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={organizationId}
-              onChange={(e) => setOrganizationId(e.target.value)}
-            >
-              <option value="">— Select tenant —</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.org_name} ({org.company_code})
-                </option>
-              ))}
-            </select>
+              onChange={setOrganizationId}
+              options={organizations.map((org) => ({
+                value: String(org.id),
+                label: `${org.org_name} (${org.company_code})`,
+              }))}
+            />
           </Field>
 
           <Field label="Customer (as the WhatsApp shopper)">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={customerNum}
-              onChange={(e) => {
-                setCustomerNum(e.target.value);
+              onChange={(next) => {
+                setCustomerNum(next);
                 setTranscript([]);
                 setSessionId(null);
                 setCatalog(null);
               }}
               disabled={!context}
-            >
-              <option value="">— Unknown / unregistered phone —</option>
-              {(context?.customers || []).map((c) => (
-                <option key={c.customer_num} value={c.customer_num}>
-                  {c.customer_name} (#{c.customer_num}
-                  {typeof c.orders_count === "number"
-                    ? ` · ${c.orders_count} order${c.orders_count === 1 ? "" : "s"}`
-                    : ""}
-                  )
-                  {c.phone ? ` · ${c.phone}` : ""}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "— Unknown / unregistered phone —" },
+                ...(context?.customers || []).map((c) => ({
+                  value: String(c.customer_num),
+                  label: `${c.customer_name} (#${c.customer_num}${
+                    typeof c.orders_count === "number"
+                      ? ` · ${c.orders_count} order${c.orders_count === 1 ? "" : "s"}`
+                      : ""
+                  })${c.phone ? ` · ${c.phone}` : ""}`,
+                })),
+              ]}
+            />
             <p className="mt-1 text-xs theme-subtext">
               Used for cart pricing and Repeat last order. Customers with existing orders are listed
               first.
@@ -435,25 +431,25 @@ function WhatsappTestPanel() {
           </Field>
 
           <Field label="Act as bot user (for live orders)">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={botUserId}
-              onChange={(e) => {
-                setBotUserId(e.target.value);
+              onChange={(next) => {
+                setBotUserId(next);
                 setTranscript([]);
                 setSessionId(null);
               }}
               disabled={!context || !(context?.org_users || []).length}
-            >
-              <option value="">— Select org user —</option>
-              {(context?.org_users || []).map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name || u.username}
-                  {u.username ? ` (@${u.username})` : ""}
-                  {u.is_admin ? " · admin" : ""}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "— Select org user —" },
+                ...(context?.org_users || []).map((u) => ({
+                  value: String(u.id),
+                  label: `${u.full_name || u.username}${
+                    u.username ? ` (@${u.username})` : ""
+                  }${u.is_admin ? " · admin" : ""}`,
+                })),
+              ]}
+            />
             <p className="mt-1 text-xs theme-subtext">
               Used as the ordering user when “Place real orders” is enabled. Dry run still uses the
               configured WhatsApp bot / platform admin stand-in.

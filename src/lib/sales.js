@@ -231,6 +231,26 @@ export function formatKraReportOrderNo(row) {
 }
 
 /**
+ * Payments breakdown order label: system order → POS Cash Sales # for receipt lookup.
+ * Example: "S0033 → 6". Falls back to system order only when POS ticket is missing.
+ */
+export function formatPaymentsBreakdownOrderLabel(row) {
+  if (row == null) return null;
+  if (typeof row.order_num === "string" && row.order_num !== "" && !/^\d+$/.test(row.order_num)) {
+    return row.order_num;
+  }
+  const system =
+    row.order_num != null && row.order_num !== ""
+      ? formatOrderNumber(row.order_num)
+      : null;
+  const pos = formatPosOrderNumber(row);
+  if (system && pos !== "—") return `${system} → ${pos}`;
+  if (system) return system;
+  if (pos !== "—") return `Cash Sales #${pos}`;
+  return null;
+}
+
+/**
  * Daily POS ticket # only — never org order_num (S00xx). Use for session lists,
  * next-ticket sequencing, and dedupe while pending sync is flushing.
  */

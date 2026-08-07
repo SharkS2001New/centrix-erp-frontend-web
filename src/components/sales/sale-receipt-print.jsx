@@ -37,6 +37,8 @@ import {
   THERMAL_PAPER_WIDTH_MM,
 } from "@/lib/thermal-receipt-layout";
 import { resolveSaleReceiptChangeGiven } from "@/lib/checkout-payment-splits";
+import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
+import { mergeSalesSettings } from "@/lib/sales-settings";
 
 function tendersFromSalePayments(sale) {
   const payments = Array.isArray(sale?.payments) ? sale.payments : [];
@@ -192,7 +194,12 @@ export function buildSaleReceiptHtml(
   const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, "thermal");
 
-  const items = sale.items ?? [];
+  const rawItems = sale.items ?? [];
+  const mergedSales = mergeSalesSettings(moduleSettings ?? { sales: salesSettings ?? {} });
+  const items =
+    mergedSales.pos_combine_identical_lines === false
+      ? combineIdenticalSaleItemsForPrint(rawItems)
+      : rawItems;
   const isPosSale = isPosChannelSale(sale);
   const cashSalesNo = formatCashSalesNumber(sale);
   const orderNo = formatOrderNumber(sale);

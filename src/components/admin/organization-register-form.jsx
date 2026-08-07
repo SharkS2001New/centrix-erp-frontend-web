@@ -51,6 +51,9 @@ export {
   PlatformFormSection,
   defaultSalesPlatformState,
   salesPlatformFromApi,
+  defaultPayrollPlatformState,
+  payrollPlatformFromApi,
+  payrollPlatformToApi,
 } from "@/components/admin/organization-platform-config";
 
 export function InitialAdministratorFields({ values, onChange }) {

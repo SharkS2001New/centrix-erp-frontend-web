@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled, kraDeviceOpsPayloadFromForm } from "@/lib/finance-settings";
-import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { notifySuccess } from "@/lib/notify";
@@ -378,14 +378,13 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
 
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Environment">
-                <select
-                  className={inputClassName()}
-                  value={mpesa.env ?? "sandbox"}
-                  onChange={(e) => setMpesa("env", e.target.value)}
-                >
-                  <option value="sandbox">Sandbox</option>
-                  <option value="live">Live</option>
-                </select>
+                <SearchableSelect
+  className={inputClassName()}
+  value={mpesa.env ?? "sandbox"}
+  nativeEvent
+  onChange={((e) => setMpesa("env", e.target.value))}
+  options={[{ value: 'sandbox', label: 'Sandbox' }, { value: 'live', label: 'Live' }]}
+/>
               </Field>
               <Field label="Consumer key">
                 <input

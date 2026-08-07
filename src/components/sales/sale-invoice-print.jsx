@@ -1,3 +1,5 @@
+import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
+import { mergeSalesSettings } from "@/lib/sales-settings";
 import { buildKraDocumentQrHtml } from "@/lib/kra-receipt-qr";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
@@ -193,7 +195,12 @@ function buildClassicTaxInvoiceHtml(sale, options) {
   const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, "sale_invoice");
 
-  const items = sale.items ?? [];
+  const rawItems = sale.items ?? [];
+  const mergedSales = mergeSalesSettings(moduleSettings ?? { sales: salesSettings ?? {} });
+  const items =
+    mergedSales.pos_combine_identical_lines === false
+      ? combineIdenticalSaleItemsForPrint(rawItems)
+      : rawItems;
   const invoiceNo = formatOrderNumber(sale);
   const createdOn = sale.completed_at ?? sale.created_at;
   const validUntil = addDays(createdOn, invoiceValidDays);
@@ -470,7 +477,12 @@ function buildProformaInvoiceHtml(sale, options) {
     organization = null,
   } = options;
 
-  const items = sale.items ?? [];
+  const rawItems = sale.items ?? [];
+  const mergedSales = mergeSalesSettings(moduleSettings ?? { sales: salesSettings ?? {} });
+  const items =
+    mergedSales.pos_combine_identical_lines === false
+      ? combineIdenticalSaleItemsForPrint(rawItems)
+      : rawItems;
   const invoiceNo = formatOrderNumber(sale);
   const createdOn = sale.completed_at ?? sale.created_at;
   const validUntil = addDays(createdOn, invoiceValidDays);

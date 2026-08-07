@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { printFontFormKeys, PRINT_FONT_VARIANTS } from "@/lib/print-font-settings";
 import {
   ORG_PRINT_FONT_FAMILIES,
@@ -26,22 +26,22 @@ function SectionTypographyFields({
       {hint ? <p className="mt-0.5 text-xs text-slate-500">{hint}</p> : null}
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <Field label="Size">
-          <select className={inputClassName()} value={scale} onChange={onScaleChange}>
-            {ORG_PRINT_FONT_SCALES.map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.label}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+  className={inputClassName()}
+  value={scale}
+  nativeEvent
+  onChange={(onScaleChange)}
+  options={ORG_PRINT_FONT_SCALES.map((row) => ({ value: row.id, label: row.label }))}
+/>
         </Field>
         <Field label="Boldness">
-          <select className={inputClassName()} value={weight} onChange={onWeightChange}>
-            {ORG_PRINT_FONT_WEIGHTS.map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.label}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+  className={inputClassName()}
+  value={weight}
+  nativeEvent
+  onChange={(onWeightChange)}
+  options={ORG_PRINT_FONT_WEIGHTS.map((row) => ({ value: row.id, label: row.label }))}
+/>
         </Field>
       </div>
       {scale === "custom" ? (
@@ -86,22 +86,18 @@ export function PrintFontSettingsFields({
         {description ? <p className="mt-0.5 text-xs text-slate-500">{description}</p> : null}
       </div>
       <Field label="Font type (all sections)">
-        <select
+        <SearchableSelect
           className={inputClassName()}
           value={form?.[keys.family] ?? config.defaultFamily}
+          nativeEvent
           onChange={(e) =>
             setForm((current) => ({
               ...current,
               [keys.family]: e.target.value,
             }))
           }
-        >
-          {ORG_PRINT_FONT_FAMILIES.map((font) => (
-            <option key={font.id} value={font.id}>
-              {font.label}
-            </option>
-          ))}
-        </select>
+          options={ORG_PRINT_FONT_FAMILIES.map((font) => ({ value: font.id, label: font.label }))}
+        />
       </Field>
 
       <SectionTypographyFields

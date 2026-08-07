@@ -8,7 +8,9 @@ export function findMergeableCartLine(
   sellWholesale,
   excludeLineId = null,
   product = null,
+  { combineIdenticalLines = true } = {},
 ) {
+  if (combineIdenticalLines === false) return null;
   if (!cartLines?.length || !productCode || !computed) return null;
   const excludedId = excludeLineId != null ? String(excludeLineId) : null;
   const nextOnWholesaleRetail = posLineWholesaleRetailFlag(

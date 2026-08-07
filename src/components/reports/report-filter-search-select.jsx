@@ -176,20 +176,6 @@ export function ReportBranchSearchSelect({ value, onChange, branches, controlCla
     [branches],
   );
 
-  if (branches.length <= 6) {
-    return (
-      <ReportSearchFieldWrap>
-        <select className={searchControlClass} value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
-          {options.map((option) => (
-            <option key={option.value || "all"} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </ReportSearchFieldWrap>
-    );
-  }
-
   return (
     <ReportSearchFieldWrap>
       <HrSearchableSelect

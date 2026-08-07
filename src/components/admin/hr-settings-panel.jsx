@@ -7,7 +7,7 @@ import { OrganizationLeaveSettingsEditor } from "@/components/hr/organization-le
 import { AttendanceClockDevicesSettings } from "@/components/hr/attendance-clock-devices-settings";
 import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-devices-panel";
 import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
@@ -107,13 +107,13 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   <>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       <Field label="Pay frequency">
-                        <select
-                          className={inputClassName()}
-                          value={form.pay_frequency}
-                          onChange={(e) => setForm((f) => ({ ...f, pay_frequency: e.target.value }))}
-                        >
-                          <option value="monthly">Monthly (Kenya standard)</option>
-                        </select>
+                        <SearchableSelect
+  className={inputClassName()}
+  value={form.pay_frequency}
+  nativeEvent
+  onChange={((e) => setForm((f) => ({ ...f, pay_frequency: e.target.value })))}
+  options={[{ value: 'monthly', label: 'Monthly (Kenya standard)' }]}
+/>
                       </Field>
                       <Field label="Grace days after month end">
                         <input
@@ -193,16 +193,18 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                       <h3 className="text-sm font-medium text-slate-900">How staff clock in</h3>
                       <div className="mt-4 space-y-4">
                         <Field label="Attendance method">
-                          <select
+                          <SearchableSelect
                             className={inputClassName()}
                             value={form.attendance_capture_mode}
+                            nativeEvent
                             onChange={(e) =>
                               setForm((f) => ({ ...f, attendance_capture_mode: e.target.value }))
                             }
-                          >
-                            <option value="clock_device">Clock device (fingerprint terminals)</option>
-                            <option value="company_mobile">Company mobile (shared phone)</option>
-                          </select>
+                            options={[
+                              { value: "clock_device", label: "Clock device (fingerprint terminals)" },
+                              { value: "company_mobile", label: "Company mobile (shared phone)" },
+                            ]}
+                          />
                           <p className="mt-1 text-xs text-slate-500">
                             Choose one method for your organization. Configure devices on the Clock-in
                             devices tab after saving.
@@ -211,20 +213,22 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                         {form.attendance_capture_mode === "company_mobile" ? (
                           <div className="grid gap-4 sm:grid-cols-2">
                             <Field label="Phone verification">
-                              <select
+                              <SearchableSelect
                                 className={inputClassName()}
                                 value={form.company_mobile_verification_method}
+                                nativeEvent
                                 onChange={(e) =>
                                   setForm((f) => ({
                                     ...f,
                                     company_mobile_verification_method: e.target.value,
                                   }))
                                 }
-                              >
-                                <option value="face_or_fingerprint">Face scan or fingerprint</option>
-                                <option value="face">Face scan only</option>
-                                <option value="fingerprint">Fingerprint only</option>
-                              </select>
+                                options={[
+                                  { value: "face_or_fingerprint", label: "Face scan or fingerprint" },
+                                  { value: "face", label: "Face scan only" },
+                                  { value: "fingerprint", label: "Fingerprint only" },
+                                ]}
+                              />
                             </Field>
                             <Field label="Geofence radius (metres)">
                               <input

@@ -17,15 +17,7 @@ import { normalizeReportRows } from "@/lib/reports/api-response";
 import { parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useReportRefreshUi } from "@/lib/list-refresh-ui";
-import {
-  CatalogPageShell,
-  Field,
-  PaginationBar,
-  PrimaryButton,
-  SearchInput,
-  formatShortDate,
-  inputClassName,
-} from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, PaginationBar, PrimaryButton, SearchInput, formatShortDate, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { defaultReportDateRange } from "@/lib/reports/report-filters";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
@@ -277,40 +269,30 @@ export function AccountingReportScreen({
           </Field>
           {multiBranch ? (
             <Field label="Branch">
-              <select
-                className={inputClassName()}
-                value={branchId}
-                onChange={(e) => {
+              <SearchableSelect
+  className={inputClassName()}
+  value={branchId}
+  nativeEvent
+  onChange={((e) => {
                   setPage(1);
                   setBranchId(e.target.value);
-                }}
-              >
-                <option value="">All branches</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.branch_name}
-                  </option>
-                ))}
-              </select>
+                })}
+  options={branches.map((b) => ({ value: b.id, label: b.branch_name }))}
+/>
             </Field>
           ) : null}
           {showAccountFilter ? (
             <Field label="Account">
-              <select
-                className={inputClassName()}
-                value={accountId}
-                onChange={(e) => {
+              <SearchableSelect
+  className={inputClassName()}
+  value={accountId}
+  nativeEvent
+  onChange={((e) => {
                   setPage(1);
                   setAccountId(e.target.value);
-                }}
-              >
-                <option value="">All accounts</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {accountOptionLabel(a)}
-                  </option>
-                ))}
-              </select>
+                })}
+  options={accounts.map((a) => ({ value: a.id, label: accountOptionLabel(a) }))}
+/>
             </Field>
           ) : null}
           <PrimaryButton type="button" showIcon={false} onClick={() => void refreshReport()}>

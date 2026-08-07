@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatCashSalesNumber,
+  formatPaymentsBreakdownOrderLabel,
   isOrderEditActionVisible,
   isOrderEditVisible,
   resolvePaymentMethodByCode,
@@ -440,6 +441,18 @@ describe("formatCashSalesNumber", () => {
 
   it("does not fall back to S00xx for POS channel", () => {
     expect(formatCashSalesNumber({ channel: "pos", order_num: 33 })).toBe("—");
+  });
+});
+
+describe("formatPaymentsBreakdownOrderLabel", () => {
+  it("shows system order then POS cash sales number", () => {
+    expect(
+      formatPaymentsBreakdownOrderLabel({ order_num: 33, pos_order_num: 6 }),
+    ).toBe("S0033 → 6");
+  });
+
+  it("falls back to system order when POS ticket is missing", () => {
+    expect(formatPaymentsBreakdownOrderLabel({ order_num: 33 })).toBe("S0033");
   });
 });
 

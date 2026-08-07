@@ -5,7 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
 import { AccountCodesPanel } from "@/components/admin/account-codes-panel";
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import {
   accountingSettingsFromApi,
@@ -94,9 +94,10 @@ export function PlatformAccountingSettingsPanel({
 
         <div className="mt-5 space-y-4">
           <Field label="Accounting source">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={financeForm.accounting_mode ?? "native"}
+              nativeEvent
               onChange={(e) =>
                 setFinanceForm((f) => ({
                   ...f,
@@ -104,31 +105,38 @@ export function PlatformAccountingSettingsPanel({
                   accounting_provider: e.target.value === "external" ? f.accounting_provider || "quickbooks" : "",
                 }))
               }
-            >
-              <option value="native">Built-in ledger (this system)</option>
-              <option value="external">External accounting system</option>
-            </select>
+              options={[
+                { value: "native", label: "Built-in ledger (this system)" },
+                { value: "external", label: "External accounting system" },
+              ]}
+            />
           </Field>
 
           {financeForm.accounting_mode === "external" ? (
             <>
               <Field label="External provider">
-                <select className={inputClassName()} value="quickbooks" disabled onChange={() => {}}>
-                  <option value="quickbooks">QuickBooks Online</option>
-                </select>
+                <SearchableSelect
+                  className={inputClassName()}
+                  value="quickbooks"
+                  disabled
+                  onChange={() => {}}
+                  options={[{ value: "quickbooks", label: "QuickBooks Online" }]}
+                />
               </Field>
               <Field label="Sync direction">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={financeForm.accounting_sync_direction ?? "export"}
+                  nativeEvent
                   onChange={(e) =>
                     setFinanceForm((f) => ({ ...f, accounting_sync_direction: e.target.value }))
                   }
-                >
-                  <option value="export">Export journals from POS → external system</option>
-                  <option value="import">Import chart of accounts from external system</option>
-                  <option value="bidirectional">Two-way sync (planned)</option>
-                </select>
+                  options={[
+                    { value: "export", label: "Export journals from POS → external system" },
+                    { value: "import", label: "Import chart of accounts from external system" },
+                    { value: "bidirectional", label: "Two-way sync (planned)" },
+                  ]}
+                />
               </Field>
               {financeForm.accounting_provider === "quickbooks" ? (
                 <div className="space-y-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-4">
@@ -181,19 +189,21 @@ export function PlatformAccountingSettingsPanel({
                       />
                     </Field>
                     <Field label="Environment">
-                      <select
+                      <SearchableSelect
                         className={inputClassName()}
                         value={financeForm.quickbooks?.environment ?? "sandbox"}
+                        nativeEvent
                         onChange={(e) =>
                           setFinanceForm((f) => ({
                             ...f,
                             quickbooks: { ...f.quickbooks, environment: e.target.value },
                           }))
                         }
-                      >
-                        <option value="sandbox">Sandbox (testing)</option>
-                        <option value="production">Production (live books)</option>
-                      </select>
+                        options={[
+                          { value: "sandbox", label: "Sandbox (testing)" },
+                          { value: "production", label: "Production (live books)" },
+                        ]}
+                      />
                     </Field>
                     <Field label="Redirect URI">
                       <input

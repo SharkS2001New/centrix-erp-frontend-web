@@ -1,5 +1,6 @@
 "use client";
 
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   CLASSIC_POS_COLOR_OVERRIDE_FIELDS,
   CLASSIC_POS_THEME_TEMPLATES,
@@ -243,14 +244,17 @@ export function ExternalPosPlatformFields({
       {posEnabled && showLayout ? (
         <div className="space-y-4">
           <Field label="POS layout">
-            <select
-              className={inputClass}
+            <SearchableSelect
               value={layout}
-              onChange={(e) => patch({ external_pos_layout: e.target.value })}
-            >
-              <option value="modern">Modern — current Centrix POS</option>
-              <option value="classic">Classic — cart on top, Find window, themeable colors</option>
-            </select>
+              onChange={(next) => patch({ external_pos_layout: next })}
+              options={[
+                { value: "modern", label: "Modern — current Centrix POS" },
+                {
+                  value: "classic",
+                  label: "Classic — cart on top, Find window, themeable colors",
+                },
+              ]}
+            />
             <p className="mt-1 text-xs text-slate-500">
               Only affects the external POS workspace (/pos). Organization sidebar color for the rest of
               the ERP is under Administration → Centrix ERP Themes.
@@ -285,6 +289,12 @@ export function ExternalPosPlatformFields({
             description="When on, all payment method rows (Cash, M-Pesa, Equity, KCB) are printed even when their amount is zero."
             checked={value?.receipt_show_all_payment_methods !== false}
             onChange={(v) => patch({ receipt_show_all_payment_methods: v })}
+          />
+          <Toggle
+            label="Combine identical products on POS cart"
+            description="When on (default), adding the same product again increases the existing line and recalculates price for the combined quantity. When off, each add stays as its own line so quantity-based markups (e.g. Sugar 10kg vs Sugar 2kg) are preserved; the receipt still prints one combined line with summed amounts."
+            checked={value?.pos_combine_identical_lines !== false}
+            onChange={(v) => patch({ pos_combine_identical_lines: v })}
           />
           <Toggle
             label="Allow editing completed POS orders"

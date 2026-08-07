@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { fcmPushFormFromApi, fcmPushPayloadFromForm } from "@/lib/fcm-push-settings";
 import {
   PlatformFcmSetupGuideModal,
@@ -260,14 +260,13 @@ export function PlatformPushScreen() {
             />
           </Field>
           <Field label="App channel">
-            <select
-              className={inputClassName()}
-              value={form.test_app}
-              onChange={(e) => setForm((f) => ({ ...f, test_app: e.target.value }))}
-            >
-              <option value="manager">Centrix Manager</option>
-              <option value="mobile_sales">Centrix Mobile (sales)</option>
-            </select>
+            <SearchableSelect
+  className={inputClassName()}
+  value={form.test_app}
+  nativeEvent
+  onChange={((e) => setForm((f) => ({ ...f, test_app: e.target.value })))}
+  options={[{ value: 'manager', label: 'Centrix Manager' }, { value: 'mobile_sales', label: 'Centrix Mobile (sales)' }]}
+/>
           </Field>
         </div>
         <div className="mt-4">

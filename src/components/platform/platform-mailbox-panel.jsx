@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { PrimaryButton, SECONDARY_BTN_CLASS, TrashIcon } from "@/components/catalog/catalog-shared";
+import { PrimaryButton, SECONDARY_BTN_CLASS, TrashIcon, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { useConfirm } from "@/lib/use-confirm";
@@ -919,35 +919,44 @@ export function PlatformMailboxPanel() {
           ))}
         </div>
         {folder === "sent" ? (
-          <select
+          <SearchableSelect
             className={`${inputClass} max-w-[14rem]`}
             value={kindFilter}
-            onChange={(e) => {
-              setKindFilter(e.target.value);
+            onChange={(next) => {
+              setKindFilter(next);
               setSelectedId(null);
               setSelected(null);
             }}
-          >
-            <option value="">All sent types</option>
-            <option value="subscription_renewal_reminder">
-              Renewal reminders
-              {mailStats?.renewal_reminders?.all_time != null
-                ? ` (${mailStats.renewal_reminders.all_time})`
-                : ""}
-            </option>
-            <option value="two_factor">
-              2FA codes
-              {mailStats?.two_factor?.all_time != null ? ` (${mailStats.two_factor.all_time})` : ""}
-            </option>
-            <option value="email_verification">
-              Email verification
-              {mailStats?.email_verification?.all_time != null
-                ? ` (${mailStats.email_verification.all_time})`
-                : ""}
-            </option>
-            <option value="subscription_renewal_reminder_test">Renewal tests</option>
-            <option value="test">SMTP tests</option>
-          </select>
+            options={[
+              { value: "", label: "All sent types" },
+              {
+                value: "subscription_renewal_reminder",
+                label: `Renewal reminders${
+                  mailStats?.renewal_reminders?.all_time != null
+                    ? ` (${mailStats.renewal_reminders.all_time})`
+                    : ""
+                }`,
+              },
+              {
+                value: "two_factor",
+                label: `2FA codes${
+                  mailStats?.two_factor?.all_time != null
+                    ? ` (${mailStats.two_factor.all_time})`
+                    : ""
+                }`,
+              },
+              {
+                value: "email_verification",
+                label: `Email verification${
+                  mailStats?.email_verification?.all_time != null
+                    ? ` (${mailStats.email_verification.all_time})`
+                    : ""
+                }`,
+              },
+              { value: "subscription_renewal_reminder_test", label: "Renewal tests" },
+              { value: "test", label: "SMTP tests" },
+            ]}
+          />
         ) : null}
         <div className="relative w-72 flex-1 max-w-xl sm:w-96">
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden>
@@ -1179,45 +1188,55 @@ export function PlatformMailboxPanel() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Organization</span>
-                  <select
+                  <SearchableSelect
                     className={inputClass}
                     value={compose.organization_id}
-                    onChange={(e) => applyOrganization(e.target.value)}
-                  >
-                    <option value="">— Optional —</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.org_name}
-                        {org.company_code ? ` (${org.company_code})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => applyOrganization(next)}
+                    placeholder="— Optional —"
+                    options={[
+                      { value: "", label: "— Optional —" },
+                      ...organizations.map((org) => ({
+                        value: String(org.id),
+                        label: `${org.org_name}${org.company_code ? ` (${org.company_code})` : ""}`,
+                      })),
+                    ]}
+                  />
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">
                     Invoice to attach
                   </span>
-                  <select
+                  <SearchableSelect
                     className={inputClass}
                     value={compose.invoice_id}
+                    onChange={(next) => applyInvoice(next)}
                     disabled={!compose.organization_id || loadingOrgInvoices}
-                    onChange={(e) => applyInvoice(e.target.value)}
-                  >
-                    <option value="">
-                      {!compose.organization_id
+                    placeholder={
+                      !compose.organization_id
                         ? "Select organization first"
                         : loadingOrgInvoices
                           ? "Loading invoices…"
                           : orgInvoices.length === 0
                             ? "No invoices for this org"
-                            : "— None —"}
-                    </option>
-                    {orgInvoices.map((inv) => (
-                      <option key={inv.id} value={inv.id}>
-                        {invoiceOptionLabel(inv)}
-                      </option>
-                    ))}
-                  </select>
+                            : "— None —"
+                    }
+                    options={[
+                      {
+                        value: "",
+                        label: !compose.organization_id
+                          ? "Select organization first"
+                          : loadingOrgInvoices
+                            ? "Loading invoices…"
+                            : orgInvoices.length === 0
+                              ? "No invoices for this org"
+                              : "— None —",
+                      },
+                      ...orgInvoices.map((inv) => ({
+                        value: String(inv.id),
+                        label: invoiceOptionLabel(inv),
+                      })),
+                    ]}
+                  />
                 </label>
               </div>
               {compose.invoice_id ? (
@@ -1228,22 +1247,21 @@ export function PlatformMailboxPanel() {
               <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <label className="min-w-[12rem] flex-1 block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Load saved template</span>
-                  <select
+                  <SearchableSelect
                     className={inputClass}
                     value={selectedTemplateId}
-                    onChange={(e) => {
-                      const id = e.target.value;
+                    onChange={(id) => {
                       setSelectedTemplateId(id);
                       if (id) applyTemplateLiterally(id);
                     }}
-                  >
-                    <option value="">— Select template —</option>
-                    {composeTemplates.map((tpl) => (
-                      <option key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "", label: "— Select template —" },
+                      ...composeTemplates.map((tpl) => ({
+                        value: String(tpl.id),
+                        label: tpl.name,
+                      })),
+                    ]}
+                  />
                 </label>
                 <button
                   type="button"

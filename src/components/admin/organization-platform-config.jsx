@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -239,18 +240,13 @@ export function OrganizationTenantProfile({
         </OrgRegisterField>
         {industryOptions.length > 0 ? (
           <OrgRegisterField label="Industry *" className="sm:col-span-2 sm:max-w-md">
-            <select
-              className={inputClass}
-              value={industry ?? ""}
-              onChange={(e) => onIndustryChange?.(e.target.value)}
-              required
-            >
-              {industryOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={industry ?? ""}
+  nativeEvent
+  onChange={((e) => onIndustryChange?.(e.target.value))}
+  options={industryOptions.map((item) => ({ value: item.id, label: item.label }))}
+/>
             <p className="mt-1 text-xs text-slate-500">
               {industryOptions.find((item) => item.id === industry)?.description ||
                 "Applications, roles, and permissions follow the selected industry."}
@@ -259,18 +255,13 @@ export function OrganizationTenantProfile({
         ) : null}
         {setupProfiles.length > 0 ? (
           <OrgRegisterField label="Setup type *" className="sm:col-span-2 sm:max-w-md">
-            <select
-              className={inputClass}
-              value={deploymentProfile}
-              onChange={(e) => onProfileChange?.(e.target.value)}
-              required
-            >
-              {setupProfiles.map((profile) => (
-                <option key={profile.key} value={profile.key}>
-                  {profile.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={deploymentProfile}
+  nativeEvent
+  onChange={((e) => onProfileChange?.(e.target.value))}
+  options={setupProfiles.map((profile) => ({ value: profile.key, label: profile.label }))}
+/>
             <p className="mt-1 text-xs text-slate-500">
               {industry === "hospitality"
                 ? "Hotel & Hospitality setup. Applications tab shows Hotel POS and Hotel Backoffice only."
@@ -359,6 +350,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_pos_cash_rounding: false,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
+    pos_combine_identical_lines: true,
     append_same_day_customer_orders: false,
     enable_backoffice_order_edit: true,
     backoffice_order_edit_layout: "modern",
@@ -447,6 +439,7 @@ export function salesPlatformFromApi(apiPayload) {
       : apiPayload.external_pos_layout === "classic",
     receipt_show_all_payment_methods: apiPayload.receipt_show_all_payment_methods !== false,
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
+    pos_combine_identical_lines: apiPayload.pos_combine_identical_lines !== false,
     append_same_day_customer_orders: Boolean(apiPayload.append_same_day_customer_orders ?? false),
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     backoffice_order_edit_layout:
@@ -607,18 +600,17 @@ export function OrganizationPlatformSalesSettings({
           {salesPlatform?.enable_backoffice_order_edit !== false ? (
             <div className="ml-6 space-y-1 border-l border-slate-200 pl-4">
               <label className="block text-sm font-medium text-slate-900">Edit Orders mode</label>
-              <select
-                className={inputClass}
-                value={
-                  salesPlatform?.backoffice_order_edit_layout === "classic" ? "classic" : "modern"
-                }
-                onChange={(e) => patch({ backoffice_order_edit_layout: e.target.value })}
-              >
-                <option value="modern">Modern — current Centrix Edit order popup</option>
-                <option value="classic">
-                  Classic — POS-style cart, item swap, retail/wholesale mode
-                </option>
-              </select>
+              <SearchableSelect
+                value={salesPlatform?.backoffice_order_edit_layout === "classic" ? "classic" : "modern"}
+                onChange={(next) => patch({ backoffice_order_edit_layout: next })}
+                options={[
+                  { value: "modern", label: "Modern — current Centrix Edit order popup" },
+                  {
+                    value: "classic",
+                    label: "Classic — POS-style cart, item swap, retail/wholesale mode",
+                  },
+                ]}
+              />
               <p className="text-xs text-slate-500">
                 Same idea as External POS layout. Classic uses the Classic POS look and interactions
                 inside the Edit order popup (swap, F12 retail/wholesale) while keeping the same
@@ -831,17 +823,13 @@ export function OrganizationOrderWorkflowSettings({
                     />
                   </OrgRegisterField>
                   <OrgRegisterField label="Still in pipeline before">
-                    <select
-                      className={inputClass}
-                      value={salesPlatform?.order_expiry_before_status ?? "processed"}
-                      onChange={(e) => patch({ order_expiry_before_status: e.target.value })}
-                    >
-                      {expiryPipelineSteps.map((step) => (
-                        <option key={step.key} value={step.key}>
-                          {step.label}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+  className={inputClass}
+  value={salesPlatform?.order_expiry_before_status ?? "processed"}
+  nativeEvent
+  onChange={((e) => patch({ order_expiry_before_status: e.target.value }))}
+  options={expiryPipelineSteps.map((step) => ({ value: step.key, label: step.label }))}
+/>
                     <p className="mt-1 text-xs text-slate-500">
                       Orders in earlier stages (e.g. booked, pending) are expired once the day limit passes.
                     </p>
@@ -1195,10 +1183,11 @@ function OrganizationHotelServicesPanel({
       >
         <div className="space-y-4">
           <OrgRegisterField label="Checkout mode">
-            <select
-              className={inputClass}
-              value={collectMode ? "collect" : "save"}
-              onChange={(e) => {
+            <SearchableSelect
+  className={inputClass}
+  value={collectMode ? "collect" : "save"}
+  nativeEvent
+  onChange={((e) => {
                 const collect = e.target.value === "collect";
                 patchSales({
                   hotel_pos_collect_payment: collect,
@@ -1208,11 +1197,9 @@ function OrganizationHotelServicesPanel({
                     paid: true,
                   },
                 });
-              }}
-            >
-              <option value="collect">Collect payment — buy and pay now</option>
-              <option value="save">Save order — print unpaid receipt, pay later</option>
-            </select>
+              })}
+  options={[{ value: 'collect', label: 'Collect payment — buy and pay now' }, { value: 'save', label: 'Save order — print unpaid receipt, pay later' }]}
+/>
           </OrgRegisterField>
           <div>
             <p className="theme-heading text-sm font-semibold">Payment statuses</p>
@@ -1339,26 +1326,22 @@ function OrganizationHotelServicesPanel({
             </div>
           </OrgRegisterField>
           <OrgRegisterField label="Hotel POS product grid">
-            <select
-              className={inputClass}
-              value={Number(salesPlatform?.hotel_pos_grid_columns) === 5 ? 5 : 4}
-              onChange={(e) => patchSales({ hotel_pos_grid_columns: Number(e.target.value) })}
-            >
-              <option value={4}>4 columns</option>
-              <option value={5}>5 columns</option>
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={Number(salesPlatform?.hotel_pos_grid_columns) === 5 ? 5 : 4}
+  nativeEvent
+  onChange={((e) => patchSales({ hotel_pos_grid_columns: Number(e.target.value) }))}
+  options={[{ value: 4, label: '4 columns' }, { value: 5, label: '5 columns' }]}
+/>
           </OrgRegisterField>
           <OrgRegisterField label="Menu items shown (before search)">
-            <select
-              className={inputClass}
-              value={Number(salesPlatform?.hotel_pos_catalog_limit) || 30}
-              onChange={(e) => patchSales({ hotel_pos_catalog_limit: Number(e.target.value) })}
-            >
-              <option value={20}>20</option>
-              <option value={30}>30</option>
-              <option value={40}>40</option>
-              <option value={50}>50</option>
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={Number(salesPlatform?.hotel_pos_catalog_limit) || 30}
+  nativeEvent
+  onChange={((e) => patchSales({ hotel_pos_catalog_limit: Number(e.target.value) }))}
+  options={[{ value: 20, label: '20' }, { value: 30, label: '30' }, { value: 40, label: '40' }, { value: 50, label: '50' }]}
+/>
           </OrgRegisterField>
         </div>
       </PlatformFormSection>
@@ -1983,33 +1966,23 @@ export function OrganizationUsersPanel({
                   />
                 </OrgRegisterField>
                 <OrgRegisterField label="Branch *">
-                  <select
-                    className={inputClass}
-                    value={branchId}
-                    onChange={(e) => setBranchId(e.target.value)}
-                  >
-                    <option value="">Select branch</option>
-                    {branches.map((branch) => (
-                      <option key={branch.id} value={String(branch.id)}>
-                        {branch.branch_name}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+  className={inputClass}
+  value={branchId}
+  nativeEvent
+  onChange={((e) => setBranchId(e.target.value))}
+  options={branches.map((branch) => ({ value: String(branch.id), label: branch.branch_name }))}
+/>
                 </OrgRegisterField>
                 <OrgRegisterField label="Role *">
-                  <select
-                    className={inputClass}
-                    value={roleId}
-                    onChange={(e) => setRoleId(e.target.value)}
-                    disabled={isAdmin}
-                  >
-                    <option value="">Select role</option>
-                    {roles.map((role) => (
-                      <option key={role.id} value={String(role.id)}>
-                        {role.role_name}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+  className={inputClass}
+  value={roleId}
+  nativeEvent
+  onChange={((e) => setRoleId(e.target.value))}
+  disabled={isAdmin}
+  options={roles.map((role) => ({ value: String(role.id), label: role.role_name }))}
+/>
                 </OrgRegisterField>
               </div>
 

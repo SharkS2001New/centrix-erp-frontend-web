@@ -87,6 +87,12 @@ const SALES_DEFAULTS = {
   require_backoffice_till_float: false,
   blind_till_close: false,
   enable_pos_order_edit: false,
+  /**
+   * When true (default), POS merges the same product into one cart line and re-prices
+   * for the combined qty. When false, each add stays separate (preserves qty markups);
+   * receipts/invoices still print one combined line with summed amounts.
+   */
+  pos_combine_identical_lines: true,
   append_same_day_customer_orders: false,
   enable_backoffice_order_edit: true,
   /** Sales → Edit order popup: modern (default) or classic POS-style. */
@@ -1597,6 +1603,8 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     /** @deprecated Use requirePosTillFloat or requireBackofficeTillFloat for the active workspace. */
     requireTillFloat: Boolean(sales.require_pos_till_float),
     enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings, options.capabilities ?? null),
+    /** When false, POS keeps identical SKUs as separate cart lines (receipt still combines). */
+    combineIdenticalLines: sales.pos_combine_identical_lines !== false,
     /** When on, new mobile sales for a registered customer append to their open mobile order from today. */
     appendSameDayCustomerOrders: Boolean(sales.append_same_day_customer_orders),
     /** External POS (/pos) only — use with `standalone`. Classic + modern share this flag. */

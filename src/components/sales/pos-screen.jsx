@@ -4537,6 +4537,7 @@ export function PosScreen({ standalone = false }) {
           sellWholesale,
           null,
           product,
+          { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
         );
         try {
           await commitCartLine({
@@ -4562,6 +4563,7 @@ export function PosScreen({ standalone = false }) {
       sellWholesale,
       null,
       product,
+      { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
     );
 
     setLineBusy(true);
@@ -5067,6 +5069,7 @@ export function PosScreen({ standalone = false }) {
           sellWholesale,
           null,
           product,
+          { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
         );
     const stockBaseQty =
       mergeTarget && !editingLineId
@@ -5402,6 +5405,7 @@ export function PosScreen({ standalone = false }) {
           sellWholesale,
           null,
           selectedProduct,
+          { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
         );
 
     const wasEditing = editingLineId;

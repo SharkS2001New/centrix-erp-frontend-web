@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   DEFAULT_ORDER_WORKFLOW,
   ORDER_STATUS_OPTIONS,
@@ -292,18 +292,13 @@ export function OrderWorkflowSettingsEditor({
         {availableToAdd.length > 0 ? (
           <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
             <Field label="Insert stage" className="min-w-[10rem] flex-1">
-              <select
-                className={inputClassName()}
-                value={stepToAdd}
-                onChange={(e) => setStepToAdd(e.target.value)}
-              >
-                <option value="">— Choose stage —</option>
-                {availableToAdd.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+  className={inputClassName()}
+  value={stepToAdd}
+  nativeEvent
+  onChange={((e) => setStepToAdd(e.target.value))}
+  options={availableToAdd.map((o) => ({ value: o.value, label: o.label }))}
+/>
             </Field>
             <button
               type="button"
@@ -330,21 +325,20 @@ export function OrderWorkflowSettingsEditor({
           <div className={`mt-3 grid gap-3 ${channels.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
             {channels.map((ch) => (
               <Field key={ch.id} label={ch.label}>
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={wf.save_status?.[ch.id] ?? "unpaid"}
+                  nativeEvent
                   onChange={(e) =>
                     patch({
                       save_status: { ...wf.save_status, [ch.id]: e.target.value },
                     })
                   }
-                >
-                  {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {stepLabel(wf, o.value)}
-                    </option>
-                  ))}
-                </select>
+                  options={CONFIGURABLE_STATUS_OPTIONS.map((o) => ({
+                    value: o.value,
+                    label: stepLabel(wf, o.value),
+                  }))}
+                />
               </Field>
             ))}
           </div>
@@ -367,17 +361,13 @@ export function OrderWorkflowSettingsEditor({
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Field label="Status when partially paid">
-            <select
-              className={inputClassName()}
-              value={wf.checkout?.partial ?? "pending_payment"}
-              onChange={(e) => patch({ checkout: { ...wf.checkout, partial: e.target.value } })}
-            >
-              {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {stepLabel(wf, o.value)}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+  className={inputClassName()}
+  value={wf.checkout?.partial ?? "pending_payment"}
+  nativeEvent
+  onChange={((e) => patch({ checkout: { ...wf.checkout, partial: e.target.value } }))}
+  options={CONFIGURABLE_STATUS_OPTIONS.map((o) => ({ value: o.value, label: stepLabel(wf, o.value) }))}
+/>
           </Field>
         </div>
 
@@ -388,9 +378,10 @@ export function OrderWorkflowSettingsEditor({
           <div className="grid gap-3 sm:grid-cols-3">
             {CHANNELS.map((ch) => (
               <Field key={ch.id} label={ch.label}>
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={wf.checkout?.full_paid?.[ch.id] ?? "paid"}
+                  nativeEvent
                   onChange={(e) =>
                     patch({
                       checkout: {
@@ -399,13 +390,11 @@ export function OrderWorkflowSettingsEditor({
                       },
                     })
                   }
-                >
-                  {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {stepLabel(wf, o.value)}
-                    </option>
-                  ))}
-                </select>
+                  options={CONFIGURABLE_STATUS_OPTIONS.map((o) => ({
+                    value: o.value,
+                    label: stepLabel(wf, o.value),
+                  }))}
+                />
               </Field>
             ))}
           </div>
@@ -418,9 +407,10 @@ export function OrderWorkflowSettingsEditor({
           <div className="grid gap-3 sm:grid-cols-3">
             {CHANNELS.map((ch) => (
               <Field key={ch.id} label={ch.label}>
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={wf.checkout?.unpaid?.[ch.id] ?? "unpaid"}
+                  nativeEvent
                   onChange={(e) =>
                     patch({
                       checkout: {
@@ -429,13 +419,11 @@ export function OrderWorkflowSettingsEditor({
                       },
                     })
                   }
-                >
-                  {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {stepLabel(wf, o.value)}
-                    </option>
-                  ))}
-                </select>
+                  options={CONFIGURABLE_STATUS_OPTIONS.map((o) => ({
+                    value: o.value,
+                    label: stepLabel(wf, o.value),
+                  }))}
+                />
               </Field>
             ))}
           </div>
@@ -459,18 +447,14 @@ export function OrderWorkflowSettingsEditor({
         <div className={`mt-3 grid gap-3 ${channels.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
           {channels.map((ch) => (
             <Field key={ch.id} label={channelLabel(channels, ch.id)}>
-              <select
-                className={inputClassName()}
-                value={reserveStockOn[ch.id] ?? "unpaid"}
-                disabled={ch.id === "pos" && posCheckoutMode}
-                onChange={(e) => patchChannelStockStatus("reserve_stock_on", ch.id, e.target.value)}
-              >
-                {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {stepLabel(wf, o.value)}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+  className={inputClassName()}
+  value={reserveStockOn[ch.id] ?? "unpaid"}
+  nativeEvent
+  onChange={((e) => patchChannelStockStatus("reserve_stock_on", ch.id, e.target.value))}
+  disabled={ch.id === "pos" && posCheckoutMode}
+  options={CONFIGURABLE_STATUS_OPTIONS.map((o) => ({ value: o.value, label: stepLabel(wf, o.value) }))}
+/>
             </Field>
           ))}
         </div>
@@ -499,18 +483,14 @@ export function OrderWorkflowSettingsEditor({
                 </p>
                 <div className="mt-3 space-y-3">
                   <Field label="Deduct stock when">
-                    <select
-                      className={inputClassName()}
-                      value={posLocked ? "order_created" : timing}
-                      disabled={posLocked}
-                      onChange={(e) => patchStockTiming(ch.id, e.target.value)}
-                    >
-                      {timingOptions.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+  className={inputClassName()}
+  value={posLocked ? "order_created" : timing}
+  nativeEvent
+  onChange={((e) => patchStockTiming(ch.id, e.target.value))}
+  disabled={posLocked}
+  options={timingOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
+/>
                   </Field>
                   {posLocked ? (
                     <p className="theme-subtext text-xs">
@@ -523,17 +503,13 @@ export function OrderWorkflowSettingsEditor({
                     </p>
                   ) : timing === "order_completed" ? (
                     <Field label="Deduct at order status">
-                      <select
-                        className={inputClassName()}
-                        value={deductStockOn[ch.id] ?? "completed"}
-                        onChange={(e) => patchChannelStockStatus("deduct_stock_on", ch.id, e.target.value)}
-                      >
-                        {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {stepLabel(wf, o.value)}
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+  className={inputClassName()}
+  value={deductStockOn[ch.id] ?? "completed"}
+  nativeEvent
+  onChange={((e) => patchChannelStockStatus("deduct_stock_on", ch.id, e.target.value))}
+  options={CONFIGURABLE_STATUS_OPTIONS.map((o) => ({ value: o.value, label: stepLabel(wf, o.value) }))}
+/>
                       <p className="theme-subtext mt-1 text-xs">
                         Inventory is reduced when the order reaches this status (at checkout if already
                         there, otherwise on workflow transition).

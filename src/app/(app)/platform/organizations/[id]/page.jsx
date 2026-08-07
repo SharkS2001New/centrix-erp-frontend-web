@@ -10,6 +10,9 @@ import {
   modulesForProfile,
   salesPlatformFromApi,
   defaultSalesPlatformState,
+  defaultPayrollPlatformState,
+  payrollPlatformFromApi,
+  payrollPlatformToApi,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { buildDomainChildrenMap, normalizeDomainModules, patchEnabledModules } from "@/lib/module-registry";
@@ -39,6 +42,7 @@ export default function ManageOrganizationPage() {
   const [deploymentProfile, setDeploymentProfile] = useState("wholesale_retail");
   const [enabledModules, setEnabledModules] = useState({});
   const [salesPlatform, setSalesPlatform] = useState(null);
+  const [payrollPlatform, setPayrollPlatform] = useState(null);
   const [orgActive, setOrgActive] = useState(true);
 
   const [orgName, setOrgName] = useState("");
@@ -94,6 +98,7 @@ export default function ManageOrganizationPage() {
       setAdministrationEnabled(Boolean(orgRes.effective_modules?.admin));
       setEnableTabWorkspace(orgRes.capabilities?.platform_tab_workspace_enabled !== false);
       setSalesPlatform(salesPlatformFromApi(orgRes.sales_platform));
+      setPayrollPlatform(payrollPlatformFromApi(orgRes.payroll_platform));
       setOrgActive(org.is_active !== false);
       setOrgName(org.org_name ?? "");
       setOrgEmail(org.org_email ?? "");
@@ -179,6 +184,7 @@ export default function ManageOrganizationPage() {
           deployment_profile: deploymentProfile,
           applications: applicationsFromEnabledModules(enabledModules),
           sales_platform: salesPlatform,
+          payroll_platform: payrollPlatformToApi(payrollPlatform ?? defaultPayrollPlatformState()),
           is_active: orgActive,
         },
       });
@@ -193,6 +199,7 @@ export default function ManageOrganizationPage() {
       setAdministrationEnabled(Boolean(res.effective_modules?.admin));
       setEnableTabWorkspace(enableTabWorkspace);
       setSalesPlatform(salesPlatformFromApi(res.sales_platform));
+      setPayrollPlatform(payrollPlatformFromApi(res.payroll_platform));
       setOrgActive(org?.is_active !== false);
       setOrgName(org?.org_name ?? orgName);
       setOrgEmail(org?.org_email ?? orgEmail);
@@ -297,6 +304,8 @@ export default function ManageOrganizationPage() {
               onEnableTabWorkspaceChange={setEnableTabWorkspace}
               salesPlatform={salesPlatform ?? defaultSalesPlatformState()}
               onSalesChange={setSalesPlatform}
+              payrollPlatform={payrollPlatform ?? defaultPayrollPlatformState()}
+              onPayrollChange={setPayrollPlatform}
               enabledModules={enabledModules}
               moduleOptions={moduleOptions}
               onToggleModule={toggleModule}

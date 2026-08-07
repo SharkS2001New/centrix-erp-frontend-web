@@ -10,6 +10,8 @@ import {
   InitialAdministratorFields,
   modulesForProfile,
   defaultSalesPlatformState,
+  defaultPayrollPlatformState,
+  payrollPlatformToApi,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { buildDomainChildrenMap, patchEnabledModules } from "@/lib/module-registry";
@@ -51,6 +53,7 @@ export default function RegisterOrganizationPage() {
   const [profilePresets, setProfilePresets] = useState([]);
   const [enabledModules, setEnabledModules] = useState({});
   const [salesPlatform, setSalesPlatform] = useState(() => defaultSalesPlatformState());
+  const [payrollPlatform, setPayrollPlatform] = useState(() => defaultPayrollPlatformState());
   const [managerUsername, setManagerUsername] = useState("admin");
   const [managerEmail, setManagerEmail] = useState("");
   const [managerPassword, setManagerPassword] = useState("");
@@ -335,6 +338,7 @@ export default function RegisterOrganizationPage() {
           deployment_profile: deploymentProfile,
           applications: applicationsFromEnabledModules(enabledModules),
           sales_platform: salesPlatform,
+          payroll_platform: payrollPlatformToApi(payrollPlatform),
           admin_username: managerUsername,
           admin_email: managerEmail,
           admin_password: managerPassword,
@@ -544,6 +548,8 @@ export default function RegisterOrganizationPage() {
                 onProfileChange={onProfileChange}
                 salesPlatform={salesPlatform}
                 onSalesChange={setSalesPlatform}
+                payrollPlatform={payrollPlatform}
+                onPayrollChange={setPayrollPlatform}
                 enabledModules={enabledModules}
                 moduleOptions={moduleOptions}
                 onToggleModule={toggleModule}

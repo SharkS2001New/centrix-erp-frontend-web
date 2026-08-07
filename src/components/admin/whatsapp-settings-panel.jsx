@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { whatsappFormFromApi, whatsappPayloadFromForm } from "@/lib/whatsapp-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -218,18 +218,13 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
                     </Field>
 
                     <Field label="Order service account *">
-                      <select
-                        className={inputClassName()}
-                        value={form.bot_user_id}
-                        onChange={(e) => setForm((f) => ({ ...f, bot_user_id: e.target.value }))}
-                      >
-                        <option value="">Select ERP user</option>
-                        {users.map((user) => (
-                          <option key={user.id} value={String(user.id)}>
-                            {user.full_name} ({user.username})
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+  className={inputClassName()}
+  value={form.bot_user_id}
+  nativeEvent
+  onChange={((e) => setForm((f) => ({ ...f, bot_user_id: e.target.value })))}
+  options={users.map((user) => ({ value: String(user.id), label: '{user.full_name} ({user.username})' }))}
+/>
                       <p className="mt-1 text-xs text-slate-500">
                         A normal Centrix user in your organization — not a separate Meta bot. WhatsApp orders are
                         created in the ERP as if this user placed them (audit trail, permissions, branch). Create
@@ -238,18 +233,13 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
                     </Field>
 
                     <Field label="Default branch (optional)">
-                      <select
-                        className={inputClassName()}
-                        value={form.branch_id}
-                        onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value }))}
-                      >
-                        <option value="">Bot user&apos;s branch</option>
-                        {branches.map((branch) => (
-                          <option key={branch.id} value={String(branch.id)}>
-                            {branch.branch_name}
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+  className={inputClassName()}
+  value={form.branch_id}
+  nativeEvent
+  onChange={((e) => setForm((f) => ({ ...f, branch_id: e.target.value })))}
+  options={branches.map((branch) => ({ value: String(branch.id), label: branch.branch_name }))}
+/>
                     </Field>
 
                     <div className="sm:col-span-2">

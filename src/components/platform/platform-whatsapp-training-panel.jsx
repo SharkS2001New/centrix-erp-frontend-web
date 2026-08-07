@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
+import { PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -192,15 +192,14 @@ export function WhatsappTrainingPanel() {
           </label>
           <label className="flex items-center gap-2 text-sm">
             <span className="text-xs font-medium text-slate-600">Match mode</span>
-            <select
-              className={inputClassName()}
-              value={form.match_mode}
-              onChange={(e) => setForm((f) => ({ ...f, match_mode: e.target.value }))}
-              disabled={saving}
-            >
-              <option value="any">Any keyword</option>
-              <option value="all">All keywords</option>
-            </select>
+            <SearchableSelect
+  className={inputClassName()}
+  value={form.match_mode}
+  nativeEvent
+  onChange={((e) => setForm((f) => ({ ...f, match_mode: e.target.value })))}
+  disabled={saving}
+  options={[{ value: 'any', label: 'Any keyword' }, { value: 'all', label: 'All keywords' }]}
+/>
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input

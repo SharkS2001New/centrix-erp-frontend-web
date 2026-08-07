@@ -17,6 +17,8 @@ export const HR_PAYROLL_DEFAULTS = {
   lunch_break_is_paid: true,
   enable_cash_advance_deductions: true,
   deduct_cash_advances_on_payroll: true,
+  payroll_month_days_basis: "calendar",
+  shif_minimum_monthly: null,
   attendance_capture_mode: "clock_device",
   company_premises_latitude: null,
   company_premises_longitude: null,

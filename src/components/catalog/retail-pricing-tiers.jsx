@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   linePriceForTier,
   retailMarkupChunkSize,
@@ -160,14 +160,14 @@ export function RetailPricingTiersEditor({
               className="grid gap-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 sm:grid-cols-2 lg:grid-cols-6"
             >
               <Field label="Price type">
-                <select
-                  className={inputClassName()}
+                <SearchableSelect
                   value={priceMode}
-                  onChange={(e) => updateTier(index, { price_mode: e.target.value })}
-                >
-                  <option value="retail">Retail</option>
-                  <option value="wholesale">Wholesale</option>
-                </select>
+                  onChange={(next) => updateTier(index, { price_mode: next })}
+                  options={[
+                    { value: "retail", label: "Retail" },
+                    { value: "wholesale", label: "Wholesale" },
+                  ]}
+                />
               </Field>
               <Field label="From">
                 <input
@@ -191,18 +191,15 @@ export function RetailPricingTiersEditor({
                 />
               </Field>
               <Field label="Measured as">
-                <select
-                  className={inputClassName()}
+                <SearchableSelect
                   value={tier.measure_level || "small"}
-                  onChange={(e) => updateTier(index, { measure_level: e.target.value })}
+                  onChange={(next) => updateTier(index, { measure_level: next })}
                   disabled={!productUom}
-                >
-                  {levels.map((l) => (
-                    <option key={l.level} value={l.level}>
-                      {l.label}
-                    </option>
-                  ))}
-                </select>
+                  options={levels.map((l) => ({
+                    value: l.level,
+                    label: l.label,
+                  }))}
+                />
               </Field>
               <Field label={markupFieldLabel(tier, productUom, smallLabel)}>
                 <input
