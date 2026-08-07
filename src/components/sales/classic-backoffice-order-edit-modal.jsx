@@ -52,7 +52,7 @@ import {
 import { uomCompactPackageLabel } from "@/lib/uom-packaging";
 import {
   isPosFunctionKeyEvent,
-  resolvePosFunctionKey,
+  resolvePosShortcutKey,
 } from "@/lib/pos-keyboard-shortcuts";
 
 /**
@@ -605,7 +605,7 @@ export function ClassicBackofficeOrderEditModal({
     if (!open) return undefined;
     function onKeyDown(e) {
       if (leavePromptOpen) return;
-      if (isPosFunctionKeyEvent(e) && resolvePosFunctionKey(e) === "F12" && retailPricingEnabled) {
+      if (isPosFunctionKeyEvent(e) && resolvePosShortcutKey(e) === "F12" && retailPricingEnabled) {
         e.preventDefault();
         e.stopPropagation();
         setSellAtRetail((prev) => {
