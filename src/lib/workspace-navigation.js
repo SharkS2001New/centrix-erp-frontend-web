@@ -16,7 +16,7 @@ const STORAGE_PREFIX = "pos_erp_workspace_routes";
 
 const SKIP_PATHS = new Set(["/choose-workspace", "/login", "/change-password"]);
 
-/** Backoffice opens on Business summary when the user can view it. */
+/** Backoffice first-visit landing when overview permission is granted. */
 export const BACKOFFICE_DEFAULT_LANDING_PATH = "/dashboard";
 
 function storageKey(userId, organizationId) {
@@ -217,6 +217,8 @@ function resolveWorkspaceFallbackPath(workspaceId, capabilities, ctx) {
 
 /**
  * Resume path when re-opening a workspace — prefers tab workspace state, then last route, then home.
+ * Business summary (`/dashboard`) is only the first-visit fallback for Backoffice (when permitted),
+ * not forced on every module switch.
  */
 export function recallWorkspaceLandingPath(
   userId,
@@ -225,10 +227,6 @@ export function recallWorkspaceLandingPath(
   capabilities,
   ctx = null,
 ) {
-  if (workspaceId === "backoffice") {
-    return resolveBackofficeLandingPath(capabilities, ctx);
-  }
-
   if (isTabWorkspaceEnabled(capabilities)) {
     const tabPath = recallWorkspaceTabLandingPath(organizationId, workspaceId);
     if (tabPath && pathBelongsToWorkspace(tabPath, workspaceId)) {

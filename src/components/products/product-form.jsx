@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { isProductCodeInCatalogCached } from "@/lib/catalog-cache";
 import { getStoredOrganization } from "@/lib/auth-storage";
@@ -37,7 +37,11 @@ import {
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import {
   fetchBranchesCached,
-  fetchCatalogReferenceDataCached,
+  fetchCategoriesCached,
+  fetchSubCategoriesCached,
+  fetchSuppliersCached,
+  fetchUomsCached,
+  fetchVatsCached,
 } from "@/lib/reference-data-cache";
 import { useTabAwareInitialLoad, useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 
@@ -311,24 +315,34 @@ export function useProductFormResources() {
     if (abortSignal?.aborted) return;
     setError(null);
     setLoading(true);
+    const orgId = user?.organization_id;
     try {
-      // Critical dropdown data only — do not wait on system-settings for first paint.
-      const [{ categories, subCategories, suppliers, uoms, vats }, branches] =
-        await Promise.all([
-          fetchCatalogReferenceDataCached(user?.organization_id),
-          fetchBranchesCached(user?.organization_id),
-        ]);
+      // Critical for Save: category, unit, VAT. Unlock the form before suppliers/branches.
+      const [categories, subCategories, uoms, vats] = await Promise.all([
+        fetchCategoriesCached(orgId),
+        fetchSubCategoriesCached(orgId),
+        fetchUomsCached(orgId),
+        fetchVatsCached(orgId),
+      ]);
       if (abortSignal?.aborted) return;
       setCategories(categories);
       setSubCategories(subCategories);
-      setSuppliers(suppliers);
       setUoms(uoms);
       setVats(vats ?? []);
-      setBranches(branches ?? []);
+      if (!abortSignal?.aborted) setLoading(false);
+
+      // Deferred pickers — fill in without blocking Save.
+      void Promise.all([
+        fetchSuppliersCached(orgId).catch(() => []),
+        fetchBranchesCached(orgId).catch(() => []),
+      ]).then(([suppliers, branches]) => {
+        if (abortSignal?.aborted) return;
+        setSuppliers(suppliers ?? []);
+        setBranches(branches ?? []);
+      });
     } catch (e) {
       if (e?.name === "AbortError" || abortSignal?.aborted) return;
       setError(e instanceof Error ? e.message : "Failed to load form data");
-    } finally {
       if (!abortSignal?.aborted) setLoading(false);
     }
 
@@ -433,7 +447,7 @@ function RetailPackageFields({ form, onChange, productUom }) {
   );
 }
 
-export function ProductFormFields({
+export const ProductFormFields = memo(function ProductFormFields({
   form,
   onChange,
   mode = "create",
@@ -712,22 +726,6 @@ export function ProductFormFields({
         </p>
       </div>
 
-      <Field label={`Cost price per ${packLabel} (KES)`}>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.last_cost_price}
-          onChange={(e) => onChange("last_cost_price", e.target.value)}
-          className={inputClassName()}
-          placeholder="0.00"
-        />
-        <p className="mt-1 text-xs text-slate-500">
-          {hotelCatalogue
-            ? `What you pay per ${packLabel} (ingredient or purchase cost).`
-            : `What you pay suppliers per ${packLabel}.`}
-        </p>
-      </Field>
-
       <Field label={`Selling price per ${packLabel} (KES)`} required>
         <input
           type="text"
@@ -742,6 +740,22 @@ export function ProductFormFields({
           {hotelCatalogue
             ? `Menu price charged per ${packLabel} on Hotel POS.`
             : `Wholesale price charged per ${packLabel}.`}
+        </p>
+      </Field>
+
+      <Field label={`Cost price per ${packLabel} (KES)`}>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={form.last_cost_price}
+          onChange={(e) => onChange("last_cost_price", e.target.value)}
+          className={inputClassName()}
+          placeholder="0.00"
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          {hotelCatalogue
+            ? `What you pay per ${packLabel} (ingredient or purchase cost).`
+            : `What you pay suppliers per ${packLabel}.`}
         </p>
       </Field>
 
@@ -946,7 +960,7 @@ export function ProductFormFields({
       ) : null}
     </div>
   );
-}
+});
 
 export function ProductFormPageShell(props) {
   return <CustomerFormPageShell {...props} />;

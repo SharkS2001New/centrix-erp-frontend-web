@@ -51,6 +51,7 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { loadReferenceDataPhased } from "@/lib/paginated-fetch";
 import {
   fetchBranchesCached,
+  fetchCatalogReferenceDataCached,
   fetchCategoriesCached,
   fetchSubCategoriesCached,
   fetchSuppliersCached,
@@ -500,6 +501,16 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     } finally {
       setLoading(false);
     }
+  }, [user?.organization_id]);
+
+  // Warm the same org-cache keys the product create/edit form uses so Add/Edit open fast.
+  // Shares in-flight promises with loadReferenceData — no duplicate network when both run.
+  useEffect(() => {
+    const orgId = user?.organization_id;
+    void Promise.all([
+      fetchCatalogReferenceDataCached(orgId),
+      fetchBranchesCached(orgId),
+    ]).catch(() => {});
   }, [user?.organization_id]);
 
   const loadCatalogStats = useCallback(async () => {

@@ -14,7 +14,7 @@ import {
   supplierToForm,
 } from "@/components/suppliers/supplier-form";
 import { formDraftKey } from "@/stores/form-drafts";
-import { useFormDraft } from "@/hooks/use-form-draft";
+import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 
 export function SuppliersIdEditScreen() {
   const params = useParams();
@@ -31,7 +31,7 @@ export function SuppliersIdEditScreen() {
   const isBaseline = useCallback(
     (value) => {
       if (!serverForm || !value) return true;
-      return JSON.stringify(value) === JSON.stringify(serverForm);
+      return isFormValuesEqual(value, serverForm);
     },
     [serverForm],
   );
@@ -41,6 +41,7 @@ export function SuppliersIdEditScreen() {
     value: form,
     setValue: setForm,
     enabled: !loading && form != null && serverForm != null,
+    debounceMs: 800,
     isBaseline,
   });
 

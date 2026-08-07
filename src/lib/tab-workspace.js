@@ -228,7 +228,8 @@ export function recallWorkspaceTabLandingPath(organizationId, workspaceId) {
 
 /**
  * Seed the target workspace tab row when switching applications so the landing
- * route is active (backoffice opens on Business summary, not a stale Create order tab).
+ * route is active. Preserves other open tabs and promotes the landing href
+ * (first Backoffice visit → Business summary; later visits → resumed tab/route).
  * @returns {TabWorkspaceStore}
  */
 export function seedWorkspaceTabLanding(organizationId, workspaceId, landingHref, options = {}) {
@@ -259,13 +260,10 @@ export function seedWorkspaceTabLanding(organizationId, workspaceId, landingHref
     lastActiveAt: now,
   };
 
-  const nextTabs =
-    workspaceId === "backoffice"
-      ? [landingTab]
-      : [
-          landingTab,
-          ...current.tabs.filter((tab) => pathOnlyFromHref(tab.href) !== pathKey),
-        ];
+  const nextTabs = [
+    landingTab,
+    ...current.tabs.filter((tab) => pathOnlyFromHref(tab.href) !== pathKey),
+  ];
 
   const nextStore = {
     ...store,

@@ -5,6 +5,38 @@ import { useAuth } from "@/contexts/auth-context";
 import { clearFormDraft, getFormDraftStore } from "@/stores/form-drafts";
 
 /**
+ * Cheap structural equality for form drafts — avoids JSON.stringify on every keystroke.
+ * Compares primitives by value (with string coercion for number/string mixes) and
+ * walks plain objects/arrays recursively.
+ *
+ * @param {unknown} a
+ * @param {unknown} b
+ * @param {{ ignoreKeys?: string[] }} [options]
+ */
+export function isFormValuesEqual(a, b, { ignoreKeys = [] } = {}) {
+  if (a === b) return true;
+  if (a == null || b == null) return a == b;
+  if (typeof a !== "object" || typeof b !== "object") {
+    return a === b || String(a ?? "") === String(b ?? "");
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!isFormValuesEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const ignore = ignoreKeys.length ? new Set(ignoreKeys) : null;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (ignore?.has(key)) continue;
+    if (!isFormValuesEqual(a[key], b[key])) return false;
+  }
+  return true;
+}
+
+/**
  * Persist a form's JSON state across route/tab switches and browser refresh.
  *
  * Works with existing useState forms (no React Hook Form required for Phase A).

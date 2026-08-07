@@ -1330,6 +1330,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         sale={sale}
         uomById={uomById}
         onClose={() => setEditOrderOpen(false)}
+        capabilities={capabilities}
         onSaved={(updated) => {
           setEditOrderOpen(false);
           if (updated?.id) {

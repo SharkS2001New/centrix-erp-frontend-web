@@ -32,7 +32,7 @@ describe("seedWorkspaceTabLanding", () => {
     installSessionStorageMock().clear();
   });
 
-  it("resets backoffice tabs to Business summary on module switch", () => {
+  it("keeps backoffice tabs and promotes Business summary on module switch", () => {
     const orgId = 42;
     global.sessionStorage.setItem(
       tabStorageKey(orgId),
@@ -51,8 +51,10 @@ describe("seedWorkspaceTabLanding", () => {
 
     const store = readTabWorkspaceStore(orgId);
     expect(store.backoffice.activeHref).toBe("/dashboard");
-    expect(store.backoffice.tabs).toHaveLength(1);
-    expect(store.backoffice.tabs[0].href).toBe("/dashboard");
+    expect(store.backoffice.tabs.map((tab) => tab.href)).toEqual([
+      "/dashboard",
+      "/sales/pos",
+    ]);
     expect(store.backoffice.tabs[0].title).toBe("Business summary");
   });
 

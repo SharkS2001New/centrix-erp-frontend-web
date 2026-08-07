@@ -27,7 +27,7 @@ import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { formDraftKey } from "@/stores/form-drafts";
-import { useFormDraft } from "@/hooks/use-form-draft";
+import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 
 export function ProductsNewScreen() {
@@ -63,21 +63,17 @@ export function ProductsNewScreen() {
 
   useTabFormDirty(isDirty);
 
-  const isBaseline = useCallback((value) => {
-    const keys = Object.keys(EMPTY_PRODUCT_FORM);
-    return keys.every((key) => {
-      if (key === "unit_id") return true;
-      const left = value?.[key];
-      const right = EMPTY_PRODUCT_FORM[key];
-      return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
-    });
-  }, []);
+  const isBaseline = useCallback(
+    (value) => isFormValuesEqual(value, EMPTY_PRODUCT_FORM, { ignoreKeys: ["unit_id"] }),
+    [],
+  );
 
   const { clearDraft } = useFormDraft({
     draftKey: formDraftKey("product", "new"),
     value: form,
     setValue: setForm,
     enabled: true,
+    debounceMs: 800,
     isBaseline,
   });
 
@@ -99,39 +95,47 @@ export function ProductsNewScreen() {
     };
   }, [imagePreview]);
 
-  function updateField(key, value) {
+  const updateField = useCallback((key, value) => {
     setIsDirty(true);
     setFormError(null);
     setForm((prev) => ({ ...prev, [key]: value }));
-  }
+  }, []);
 
-  function onImageSelect(file) {
+  const onImageSelect = useCallback((file) => {
     setIsDirty(true);
-    if (imagePreview?.startsWith("blob:")) {
-      URL.revokeObjectURL(imagePreview);
-    }
+    setImagePreview((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
     setImageFile(file || null);
-    setImagePreview(file ? URL.createObjectURL(file) : null);
-  }
+  }, []);
 
-  async function onGenerateSku() {
+  const onGenerateSku = useCallback(async () => {
     setGeneratingSku(true);
     setFormError(null);
     try {
       const code = await generateProductSku();
-      if (code) updateField("product_code", code);
+      if (code) {
+        setIsDirty(true);
+        setForm((prev) => ({ ...prev, product_code: code }));
+      }
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Could not generate SKU");
     } finally {
       setGeneratingSku(false);
     }
-  }
+  }, []);
 
-  function handleSubcategoryCreated(sub) {
-    setSubCategories((prev) => [...prev, sub]);
-    reload();
-    updateField("subcategory_id", String(sub.id));
-  }
+  const handleSubcategoryCreated = useCallback(
+    (sub) => {
+      setSubCategories((prev) => [...prev, sub]);
+      reload();
+      updateField("subcategory_id", String(sub.id));
+    },
+    [reload, setSubCategories, updateField],
+  );
+
+  const openSubcategoryModal = useCallback(() => setSubcategoryModalOpen(true), []);
 
   async function saveProduct(e) {
     e.preventDefault();
@@ -263,7 +267,7 @@ export function ProductsNewScreen() {
               globalReorderLevel={globalReorderLevel}
               imagePreview={imagePreview}
               onImageSelect={onImageSelect}
-              onOpenSubcategoryModal={() => setSubcategoryModalOpen(true)}
+              onOpenSubcategoryModal={openSubcategoryModal}
               generatingSku={generatingSku}
               onGenerateSku={onGenerateSku}
               allowDiscounts={allowDiscounts}

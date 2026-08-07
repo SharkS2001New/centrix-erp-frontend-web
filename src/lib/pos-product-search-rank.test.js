@@ -11,6 +11,9 @@ import {
 import {
   sameSearchResultList,
   searchPosCatalogIndex,
+  serializePosSearchIndex,
+  hydratePosSearchIndex,
+  resetPosSearchCatalogForTests,
   setPosSearchCatalog,
 } from "@/lib/pos-product-search-index";
 
@@ -143,6 +146,67 @@ describe("pos-product-search-index", () => {
     expect(post.map((p) => p.product_code)).toEqual(["P1"]);
     const marai = searchPosCatalogIndex("marai");
     expect(marai.map((p) => p.product_code)).toEqual(["M1"]);
+  });
+
+  it("prefix pruning still finds fuzzy typos", () => {
+    setPosSearchCatalog([
+      { product_code: "P1", product_name: "Postman Envelope" },
+      { product_code: "M1", product_name: "Marai Rice" },
+      { product_code: "S1", product_name: "Spaghetti 500g" },
+      { product_code: "X1", product_name: "Unrelated Soap" },
+    ]);
+    expect(searchPosCatalogIndex("postmn").map((p) => p.product_code)).toEqual(["P1"]);
+    expect(searchPosCatalogIndex("maraii").map((p) => p.product_code)).toEqual(["M1"]);
+    expect(searchPosCatalogIndex("spageti").map((p) => p.product_code)).toEqual(["S1"]);
+  });
+
+  it("exact barcode lookup returns the product", () => {
+    setPosSearchCatalog([
+      {
+        product_code: "P1",
+        product_name: "Barcode item",
+        barcode: "6001234567890",
+      },
+      { product_code: "P2", product_name: "Other", barcode: "1111111111111" },
+    ]);
+    expect(searchPosCatalogIndex("6001234567890").map((p) => p.product_code)).toEqual(["P1"]);
+  });
+
+  it("searches a large catalog quickly", () => {
+    const products = [];
+    for (let i = 0; i < 5000; i += 1) {
+      products.push({
+        product_code: `C${i}`,
+        product_name: `Product Item Number ${i}`,
+        barcode: `6000000${String(i).padStart(6, "0")}`,
+        unit_price: 100 + (i % 50),
+      });
+    }
+    products.push({ product_code: "TARGET", product_name: "Kiss Kid Biscuit Special", unit_price: 50 });
+    setPosSearchCatalog(products);
+    const t0 = performance.now();
+    const hits = searchPosCatalogIndex("kiss kid");
+    const ms = performance.now() - t0;
+    expect(hits[0]?.product_code).toBe("TARGET");
+    expect(ms).toBeLessThan(80);
+  });
+
+  it("round-trips a persisted index snapshot without re-typing names", () => {
+    const products = [
+      { product_code: "K1", product_name: "Kiss Kid Biscuit", unit_price: 100 },
+      { product_code: "M1", product_name: "Marai Rice", unit_price: 200 },
+    ];
+    setPosSearchCatalog(products, { warmedAt: 12345 });
+    const snapshot = serializePosSearchIndex({ warmedAt: 12345 });
+    expect(snapshot?.schema).toBe(1);
+    expect(snapshot?.entries?.[0]?.product).toBeUndefined();
+
+    resetPosSearchCatalogForTests();
+    expect(searchPosCatalogIndex("kiss")).toEqual([]);
+
+    expect(hydratePosSearchIndex(snapshot, products)).toBe(true);
+    expect(searchPosCatalogIndex("kiss kid").map((p) => p.product_code)).toEqual(["K1"]);
+    expect(searchPosCatalogIndex("marai").map((p) => p.product_code)).toEqual(["M1"]);
   });
 
   it("sameSearchResultList detects identical order", () => {

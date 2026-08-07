@@ -89,6 +89,8 @@ const SALES_DEFAULTS = {
   enable_pos_order_edit: false,
   append_same_day_customer_orders: false,
   enable_backoffice_order_edit: true,
+  /** Sales → Edit order popup: modern (default) or classic POS-style. */
+  backoffice_order_edit_layout: "modern",
   order_document_type: "receipt",
   invoice_valid_days: 7,
   receipt_copies: 1,
@@ -1279,6 +1281,10 @@ export function mergeSalesSettings(moduleSettings) {
   sales.pos_order_type_mode = resolvePosOrderTypeMode(sales);
   sales.external_pos_layout =
     String(sales.external_pos_layout ?? "modern").toLowerCase() === "classic"
+      ? "classic"
+      : "modern";
+  sales.backoffice_order_edit_layout =
+    String(sales.backoffice_order_edit_layout ?? "modern").toLowerCase() === "classic"
       ? "classic"
       : "modern";
   if (sales.enable_retail_pricing == null && sales.allow_wholesale != null) {

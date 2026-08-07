@@ -23,7 +23,7 @@ import {
 } from "@/components/customers/customer-form";
 import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 import { formDraftKey } from "@/stores/form-drafts";
-import { useFormDraft } from "@/hooks/use-form-draft";
+import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 
 export function CustomersIdEditScreen() {
   const params = useParams();
@@ -49,7 +49,7 @@ export function CustomersIdEditScreen() {
   const isBaseline = useCallback(
     (value) => {
       if (!serverForm || !value) return true;
-      return JSON.stringify(value) === JSON.stringify(serverForm);
+      return isFormValuesEqual(value, serverForm);
     },
     [serverForm],
   );
@@ -59,6 +59,7 @@ export function CustomersIdEditScreen() {
     value: form,
     setValue: setForm,
     enabled: !loading && form != null && serverForm != null,
+    debounceMs: 800,
     isBaseline,
   });
 

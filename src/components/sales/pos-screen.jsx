@@ -126,7 +126,6 @@ import {
 import {
   mergePosSearchResults,
   productMatchesPosSearch,
-  rankPosProductSearchResults,
 } from "@/lib/pos-product-search-rank";
 import {
   sameSearchResultList,
@@ -3683,70 +3682,75 @@ export function PosScreen({ standalone = false }) {
       setSearchResults((prev) =>
         (prev ?? []).filter((product) => productMatchesPosSearch(product, trimmed)),
       );
+      /** Offline/index search is already ranked — only enrich + sellable filter. */
+      const paintFromOffline = async () => {
+        const local = await searchOffline(trimmed, 80);
+        return sellableSearchResults(
+          local.map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+        ).slice(0, rankOpts.limit);
+      };
+
+      const finishRetailPackages = (list) => {
+        const missingPkg = list
+          .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
+          .map((p) => p.product_code);
+        const cap = classicLayout ? 15 : 40;
+        if (missingPkg.length) {
+          void ensureRetailPackages(missingPkg.slice(0, cap)).then(() => {
+            if (seq !== searchSeq.current || abort.signal.aborted) return;
+            setRetailByCode({ ...retailByCodeRef.current });
+          });
+        } else {
+          setRetailByCode({ ...retailByCodeRef.current });
+        }
+      };
+
+      const applyRemoteMerge = (remoteRaw) => {
+        if (seq !== searchSeq.current || abort.signal.aborted) return;
+        const remote = sellableSearchResults(
+          (remoteRaw ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
+        );
+        const list = mergePosSearchResults(localPaint, remote, trimmed, rankOpts);
+        seedRetailAndIndex(list);
+        for (const p of list) {
+          const code = p?.product_code;
+          if (!code || retailByCodeRef.current[code] != null) continue;
+          if (p.retail_package) retailByCodeRef.current[code] = p.retail_package;
+        }
+        commitSearchResults(list);
+        finishRetailPackages(list);
+      };
+
       let localPaint = [];
       try {
         if (standalone && offlineMode) {
-          const list = rankPosProductSearchResults(
-            sellableSearchResults(
-              (await searchOffline(trimmed, 80)).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
-            ),
-            trimmed,
-            rankOpts,
-          );
+          const list = await paintFromOffline();
           if (seq !== searchSeq.current) return;
           seedRetailAndIndex(list);
           commitSearchResults(list);
           setSearching(false);
-          const missingOffline = list
-            .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
-            .map((p) => p.product_code);
-          if (missingOffline.length) {
-            void ensureRetailPackages(missingOffline.slice(0, 40)).then(() => {
-              if (seq !== searchSeq.current) return;
-              setRetailByCode({ ...retailByCodeRef.current });
-            });
-          } else {
-            setRetailByCode({ ...retailByCodeRef.current });
-          }
+          finishRetailPackages(list);
           return;
         }
 
-        // Classic / standalone: paint warmed IndexedDB catalog immediately, then merge API.
+        // Classic / standalone: paint warmed catalog immediately (already ranked in-memory).
         if (standalone) {
           try {
-            const local = await searchOffline(trimmed, 80);
-            if (seq === searchSeq.current && local.length) {
-              localPaint = rankPosProductSearchResults(
-                sellableSearchResults(local.map((p) => enrichProductForLpo(p, uomMap, vatMap))),
-                trimmed,
-                rankOpts,
-              );
-              if (localPaint.length) {
-                seedRetailAndIndex(localPaint);
-                // Paint immediately — do not wait on retail package fetches (major lag source).
-                commitSearchResults(localPaint);
-                setSearching(false);
-                const missingLocal = localPaint
-                  .filter(
-                    (p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined,
-                  )
-                  .map((p) => p.product_code);
-                if (missingLocal.length) {
-                  void ensureRetailPackages(missingLocal.slice(0, 15)).then(() => {
-                    if (seq !== searchSeq.current) return;
-                    setRetailByCode({ ...retailByCodeRef.current });
-                  });
-                } else {
-                  setRetailByCode({ ...retailByCodeRef.current });
-                }
-              }
+            localPaint = await paintFromOffline();
+            if (seq === searchSeq.current && localPaint.length) {
+              seedRetailAndIndex(localPaint);
+              commitSearchResults(localPaint);
+              setSearching(false);
+              finishRetailPackages(localPaint);
             }
           } catch {
             /* fall through to API */
           }
         }
 
-        const res = await apiRequest("/products", {
+        // Strong local hits: merge API in background so typing stays snappy.
+        const localStrong = localPaint.length >= 8;
+        const apiPromise = apiRequest("/products", {
           searchParams: {
             per_page: 50,
             q: trimmed,
@@ -3758,35 +3762,19 @@ export function PosScreen({ standalone = false }) {
           loading: false,
           reportIssues: false,
         });
+
+        if (localStrong) {
+          void apiPromise
+            .then((res) => applyRemoteMerge(res.data))
+            .catch((err) => {
+              if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
+            });
+          return;
+        }
+
+        const res = await apiPromise;
         if (seq !== searchSeq.current || abort.signal.aborted) return;
-        const remote = sellableSearchResults(
-          (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap)),
-        );
-        const list = mergePosSearchResults(localPaint, remote, trimmed, rankOpts);
-        seedRetailAndIndex(list);
-
-        for (const p of list) {
-          const code = p?.product_code;
-          if (!code || retailByCodeRef.current[code] != null) continue;
-          if (p.retail_package) {
-            retailByCodeRef.current[code] = p.retail_package;
-          }
-        }
-
-        commitSearchResults(list);
-        const missingPkg = list
-          .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
-          .map((p) => p.product_code);
-        if (missingPkg.length) {
-          void ensureRetailPackages(classicLayout ? missingPkg.slice(0, 15) : missingPkg.slice(0, 40)).then(
-            () => {
-              if (seq !== searchSeq.current || abort.signal.aborted) return;
-              setRetailByCode({ ...retailByCodeRef.current });
-            },
-          );
-        } else {
-          setRetailByCode({ ...retailByCodeRef.current });
-        }
+        applyRemoteMerge(res.data);
       } catch (err) {
         if (isAbortError(err) || abort.signal.aborted || seq !== searchSeq.current) return;
         // Network drop mid-search: keep local paint or fall back to offline catalog.
@@ -3797,15 +3785,7 @@ export function PosScreen({ standalone = false }) {
               setStatusMessage("Offline catalog — prices from last sync.");
               return;
             }
-            const list = rankPosProductSearchResults(
-              sellableSearchResults(
-                (await searchOffline(trimmed, 80)).map((p) =>
-                  enrichProductForLpo(p, uomMap, vatMap),
-                ),
-              ),
-              trimmed,
-              rankOpts,
-            );
+            const list = await paintFromOffline();
             if (seq !== searchSeq.current) return;
             seedRetailAndIndex(list);
             commitSearchResults(list);
@@ -5722,7 +5702,7 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (!localDraftEdit && (busy || lineBusy)) return;
+    if (!classicLayout && !localDraftEdit && (busy || lineBusy)) return;
     const entryQty = parseDecimalInput(entryQtyRaw);
     if (!(entryQty > 0)) {
       setStatusMessage("Enter a quantity greater than zero, or use − to remove the line.");
@@ -5731,9 +5711,11 @@ export function PosScreen({ standalone = false }) {
 
     const run = async () => {
       const activeCart = cartRef.current ?? cart;
-      const product =
-        productByCodeRef.current[line.product_code] ??
-        (await resolveProductByCode(line.product_code));
+      // Prefer cache — qty↔unit conversion only needs product UOM, not a network round-trip.
+      let product = productByCodeRef.current[line.product_code] ?? null;
+      if (!product) {
+        product = await resolveProductByCode(line.product_code);
+      }
       if (!product) {
         setStatusMessage("Product not found for this cart line.");
         return;
@@ -5745,7 +5727,14 @@ export function PosScreen({ standalone = false }) {
         : lineIsRetail;
       const switchingMode = sessionIsRetail !== lineIsRetail;
 
-      if (switchingMode && sessionIsRetail) {
+      // Qty↔unit conversion uses product UOM only. Await retail package only on a
+      // true cache miss (hot path after a kg/bag sale already has it loaded).
+      if (
+        switchingMode &&
+        sessionIsRetail &&
+        retailByCodeRef.current[line.product_code] === undefined &&
+        !product?.retail_package
+      ) {
         await ensureRetailPackageForProduct(product);
       }
       const retailPackage = getRetailPackage(line.product_code);
@@ -5823,6 +5812,7 @@ export function PosScreen({ standalone = false }) {
         discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
+        unlockUiEarly: classicLayout,
         lineRetailStockFlagOverride: sessionIsRetail,
       });
       if (ok) {
@@ -5832,7 +5822,9 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    if (localDraftEdit) {
+    // Classic (and previous-order local drafts): same as scan-add — optimistic paint,
+    // do not freeze the qty grid behind lineBusy / PATCH.
+    if (classicLayout || localDraftEdit) {
       if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(async () => {
         try {

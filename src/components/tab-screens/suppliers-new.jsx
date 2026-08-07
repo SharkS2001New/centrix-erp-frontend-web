@@ -12,7 +12,7 @@ import {
   SupplierFormPageShell,
 } from "@/components/suppliers/supplier-form";
 import { formDraftKey } from "@/stores/form-drafts";
-import { useFormDraft } from "@/hooks/use-form-draft";
+import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 
 export function SuppliersNewScreen() {
   const { exitTo } = useTabFormExit(tabAddTitle("supplier"));
@@ -21,7 +21,7 @@ export function SuppliersNewScreen() {
   const [formError, setFormError] = useState(null);
 
   const isBaseline = useCallback(
-    (value) => JSON.stringify(value) === JSON.stringify(EMPTY_SUPPLIER_FORM),
+    (value) => isFormValuesEqual(value, EMPTY_SUPPLIER_FORM),
     [],
   );
 
@@ -29,6 +29,7 @@ export function SuppliersNewScreen() {
     draftKey: formDraftKey("supplier", "new"),
     value: form,
     setValue: setForm,
+    debounceMs: 800,
     isBaseline,
   });
 

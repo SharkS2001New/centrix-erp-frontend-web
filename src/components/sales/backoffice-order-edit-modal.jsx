@@ -3,26 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchRetailPackagesForProductCodes } from "@/lib/reference-data-cache";
-import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
-import {
-  saleLineSoldUnitPrice,
-  saleLineDiscountTotalFromEntered,
-  saleLineEnteredDiscountPerUnit,
-  saleLineEntryQtyForEdit,
-  saleLineEntryQtyToBase,
-  saleLinePreviewRowAmount,
-  saleLinePackQtyForDiscount,
-} from "@/lib/sale-line-items";
-import {
-  computePosLine,
-  defaultPosEntryQty,
-  lineDiscountTotal,
-  posCartLineTypeLabel,
-  productHasRetailTiers,
-} from "@/lib/pos-line";
+import { formatOrderNumber, formatSaleKes, isBackofficeSale } from "@/lib/sales";
+import { posCartLineTypeLabel } from "@/lib/pos-line";
 import { posCashOrderTotal } from "@/lib/pos-cash-round";
-import { getPosSalesConfig, saleAppliesRouteMarkupPricing, showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
-import { isBackofficeSale } from "@/lib/sales";
+import {
+  getPosSalesConfig,
+  saleAppliesRouteMarkupPricing,
+  showBackofficeLineDiscountEdit,
+} from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton, TrashIcon } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
@@ -40,283 +28,32 @@ import {
   searchCreditCustomers,
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import { isClassicBackofficeOrderEditLayout } from "@/lib/backoffice-order-edit-layout";
+import {
+  buildEditLine,
+  buildLineQuantitiesSaveBody,
+  buildNewDraftLine,
+  draftsEqual,
+  indexRetailPackages,
+  isRetailLine,
+  lineChangeKind,
+  lineChangeRowClass,
+  lineKey,
+  lineLabel,
+  priceDraftLine,
+  productAllowsRetail,
+  snapshotDraft,
+} from "@/lib/backoffice-order-edit";
+import { ClassicBackofficeOrderEditModal } from "@/components/sales/classic-backoffice-order-edit-modal";
 
-function lineLabel(line) {
-  const code = line?.product_code ?? line?.product?.product_code ?? "";
-  const name = line?.product?.product_name ?? line?.description ?? "";
-  if (name && code) return `${name} (${code})`;
-  return name || code || "Item";
-}
-
-function lineKey(line) {
-  return line?.id != null ? `id-${line.id}` : `new-${line.clientKey}`;
-}
-
-function isRetailLine(line) {
-  return Number(line?.on_wholesale_retail) === 1;
-}
-
-/** Product can be sold at retail only when retail package tiers exist. */
-function productAllowsRetail(productCode, retailMap) {
-  if (!productCode) return false;
-  return productHasRetailTiers(retailMap[String(productCode)] ?? null);
-}
-
-function indexRetailPackages(rows) {
-  const map = {};
-  for (const row of rows ?? []) {
-    if (row?.product_code) map[row.product_code] = row;
-  }
-  return map;
-}
-
-function productWithUom(product, uomById) {
-  if (!product) return product;
-  if (product.uom && typeof product.uom === "object") return product;
-  const unit =
-    product.unit_id != null && uomById?.get
-      ? uomById.get(product.unit_id)
-      : (product.unit ?? null);
-  return unit ? { ...product, uom: unit } : product;
-}
-
-function snapshotDraft(lines) {
-  return lines.map((line) => ({
-    key: lineKey(line),
-    id: line.id ?? null,
-    product_code: String(line.product_code ?? ""),
-    draftQty: String(line.draftQty ?? ""),
-    draftDiscount: String(line.draftDiscount ?? 0),
-    on_wholesale_retail: isRetailLine(line) ? 1 : 0,
-  }));
-}
-
-function draftsEqual(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    const left = a[i];
-    const right = b[i];
-    if (
-      left.key !== right.key ||
-      left.id !== right.id ||
-      left.product_code !== right.product_code ||
-      left.draftQty !== right.draftQty ||
-      left.draftDiscount !== right.draftDiscount ||
-      left.on_wholesale_retail !== right.on_wholesale_retail
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/** @returns {"new" | "edited" | null} */
-function lineChangeKind(line, baselineByKey) {
-  if (line?.id == null) return "new";
-  const base = baselineByKey?.get(lineKey(line));
-  if (!base) return "edited";
-  const qty = String(line.draftQty ?? "");
-  const discount = String(line.draftDiscount ?? 0);
-  const pricing = isRetailLine(line) ? 1 : 0;
-  if (
-    qty !== String(base.draftQty ?? "") ||
-    discount !== String(base.draftDiscount ?? 0) ||
-    pricing !== Number(base.on_wholesale_retail ?? 0)
-  ) {
-    return "edited";
-  }
-  return null;
-}
-
-function lineChangeRowClass(kind) {
-  if (kind === "new") {
-    return "border-l-[3px] border-l-emerald-500 bg-emerald-50/90 dark:border-l-emerald-400 dark:bg-emerald-950/35";
-  }
-  if (kind === "edited") {
-    return "border-l-[3px] border-l-amber-500 bg-amber-50/90 dark:border-l-amber-400 dark:bg-amber-950/35";
-  }
-  return "";
-}
-
-function buildEditLine(line, uomById, retailMap) {
-  const editLine = {
-    id: line.id,
-    clientKey: line.clientKey ?? null,
-    product_code: line.product_code,
-    product: line.product ? productWithUom(line.product, uomById) : line.product,
-    quantity: Number(line.quantity ?? 0),
-    selling_price: Number(line.selling_price ?? 0),
-    display_unit_price: line.display_unit_price,
-    amount: Number(line.amount ?? 0),
-    product_vat: Number(line.product_vat ?? 0),
-    discount_given: Number(line.discount_given ?? 0),
-    uom: line.uom,
-    on_wholesale_retail: line.on_wholesale_retail,
-  };
-  return {
-    ...editLine,
-    draftDiscount: saleLineEnteredDiscountPerUnit(editLine, uomById, retailMap),
-    draftQty: saleLineEntryQtyForEdit(editLine, uomById, retailMap),
-  };
-}
-
-/**
- * POS-aligned pricing for edit drafts: wholesale/retail tiers, package markups, and route markup.
- */
-function priceDraftLine(
-  line,
+export function ModernBackofficeOrderEditModal({
+  open,
+  sale,
   uomById,
-  retailMap,
-  routeMarkupPerUnit,
-  { discountEditEnabled = false, cashRound = false } = {},
-) {
-  const product = productWithUom(
-    line.product ?? {
-      product_code: line.product_code,
-      unit_price: line.selling_price,
-      uom: line.uom,
-    },
-    uomById,
-  );
-  if (!product?.product_code) {
-    return {
-      amount: saleLinePreviewRowAmount(line, line.draftQty, uomById, {
-        retailByCode: retailMap,
-        draftDiscount: line.draftDiscount,
-        discountEditEnabled,
-      }),
-      unitPrice: saleLineSoldUnitPrice(line, uomById, retailMap),
-      baseQty: saleLineEntryQtyToBase(line, line.draftQty, uomById, retailMap),
-      displayUnitPrice: saleLineSoldUnitPrice(line, uomById, retailMap),
-    };
-  }
-
-  const retailPackage = retailMap[line.product_code] ?? null;
-  const asRetail = isRetailLine(line) && productHasRetailTiers(retailPackage);
-  const sellWholesale = !asRetail;
-  const entryQty = String(line.draftQty ?? defaultPosEntryQty(product, sellWholesale, retailPackage));
-
-  // Existing saved lines: keep sold economics. Unit price = line total ÷ qty (whole KES).
-  // Repricing from today's catalog would show the wrong PRICE vs AMOUNT on Edit Order.
-  if (line.id != null) {
-    const amount = saleLinePreviewRowAmount(line, line.draftQty, uomById, {
-      retailByCode: retailMap,
-      draftDiscount: line.draftDiscount,
-      discountEditEnabled,
-    });
-    const packQty = saleLinePackQtyForDiscount(line, uomById, retailMap, line.draftQty);
-    let discountTotal = 0;
-    if (discountEditEnabled) {
-      discountTotal = lineDiscountTotal(Number(line.draftDiscount ?? 0), packQty);
-    } else {
-      const oldBase = Number(line.quantity ?? 0);
-      const newBase = saleLineEntryQtyToBase(line, line.draftQty, uomById, retailMap);
-      if (oldBase > 0 && newBase > 0) {
-        discountTotal = Math.round((Number(line.discount_given ?? 0) * newBase) / oldBase * 100) / 100;
-      } else {
-        discountTotal = Math.max(0, Number(line.discount_given ?? 0));
-      }
-    }
-    const gross = amount + discountTotal;
-    const unitPrice = packQty > 0 ? Math.round(gross / packQty) : 0;
-    return {
-      amount,
-      unitPrice,
-      displayUnitPrice: unitPrice,
-      baseQty: saleLineEntryQtyToBase(line, line.draftQty, uomById, retailMap),
-      packQty,
-      discountTotal,
-    };
-  }
-
-  const base = computePosLine({
-    product,
-    entryQty,
-    sellWholesale,
-    retailPackage,
-    discount: 0,
-    routeMarkupPerUnit,
-    retailLine: asRetail,
-    cashRound,
-  });
-
-  let discountTotal = 0;
-  if (discountEditEnabled) {
-    discountTotal = lineDiscountTotal(Number(line.draftDiscount ?? 0), base.packQty);
-  } else if (line.id != null) {
-    const oldBase = Number(line.quantity ?? 0);
-    if (oldBase > 0 && base.baseQty > 0) {
-      discountTotal = Math.round((Number(line.discount_given ?? 0) * base.baseQty) / oldBase * 100) / 100;
-    }
-  }
-
-  const computed =
-    discountTotal > 0
-      ? computePosLine({
-          product,
-          entryQty,
-          sellWholesale,
-          retailPackage,
-          discount: discountTotal,
-          routeMarkupPerUnit,
-          retailLine: asRetail,
-          cashRound,
-        })
-      : base;
-
-  return {
-    amount: computed.lineAmount,
-    unitPrice: computed.displayUnitPrice,
-    displayUnitPrice: computed.displayUnitPrice,
-    baseQty: computed.baseQty,
-    packQty: computed.packQty,
-    discountTotal: computed.discountApplied,
-  };
-}
-
-function buildNewDraftLine(
-  product,
-  uomById,
-  retailMap,
-  { asRetail = false, routeMarkupPerUnit = 0, cashRound = false } = {},
-) {
-  const productResolved = productWithUom(product, uomById);
-  const retailPackage = retailMap[product.product_code] ?? null;
-  const useRetail = Boolean(asRetail && productHasRetailTiers(retailPackage));
-  const sellWholesale = !useRetail;
-  const entryQty = defaultPosEntryQty(productResolved, sellWholesale, retailPackage);
-  const computed = computePosLine({
-    product: productResolved,
-    entryQty,
-    sellWholesale,
-    retailPackage,
-    discount: 0,
-    routeMarkupPerUnit,
-    retailLine: useRetail,
-    cashRound,
-  });
-  const baseQty =
-    Number.isFinite(computed.baseQty) && computed.baseQty > 0 ? computed.baseQty : 1;
-
-  return {
-    id: null,
-    clientKey: `n-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    product_code: product.product_code,
-    product: productResolved,
-    quantity: baseQty,
-    selling_price: computed.displayUnitPrice,
-    display_unit_price: computed.displayUnitPrice,
-    amount: computed.lineAmount,
-    product_vat: 0,
-    discount_given: 0,
-    uom: productResolved.uom,
-    on_wholesale_retail: useRetail ? 1 : 0,
-    draftDiscount: 0,
-    draftQty: String(entryQty),
-  };
-}
-
-export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved, capabilities = null }) {
+  onClose,
+  onSaved,
+  capabilities = null,
+}) {
   const { hasPermission } = useAuth();
   const [lines, setLines] = useState([]);
   const [pendingFocusQtyKey, setPendingFocusQtyKey] = useState(null);
@@ -382,10 +119,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setBaselineCustomerNum(originalCustomer);
     setCustomerOptions([]);
     try {
-      const [detail] = await Promise.all([
-        // Always load full sale so route_id / fulfillment_meta are present for markup rules.
-        apiRequest(`/sales/${sale.id}`),
-      ]);
+      const detail = await apiRequest(`/sales/${sale.id}`);
       const saleForPricing = { ...sale, ...detail };
       const applyMarkup = saleAppliesRouteMarkupPricing(saleForPricing, capabilities?.module_settings, {
         standalone: !isBackofficeSale(saleForPricing, capabilities),
@@ -590,9 +324,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     }
 
     const existing = lines.find(
-      (line) =>
-        String(line.product_code) === code &&
-        isRetailLine(line) === asRetail,
+      (line) => String(line.product_code) === code && isRetailLine(line) === asRetail,
     );
     if (existing) {
       const focusKey = lineKey(existing);
@@ -615,9 +347,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     let focusKey = lineKey(newLine);
     setLines((prev) => {
       const again = prev.find(
-        (line) =>
-          String(line.product_code) === code &&
-          isRetailLine(line) === asRetail,
+        (line) => String(line.product_code) === code && isRetailLine(line) === asRetail,
       );
       if (again) {
         focusKey = lineKey(again);
@@ -686,64 +416,27 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   async function handleSave() {
     if (!sale?.id) return false;
     if (saving) return false;
-    if (lines.length === 0) {
-      setError("An order must keep at least one line item.");
+
+    const bodyOrError = buildLineQuantitiesSaveBody({
+      lines,
+      removedIds,
+      customerNum,
+      baselineCustomerNum,
+      uomById,
+      retailByCode,
+      discountEditEnabled,
+    });
+    if (bodyOrError.error) {
+      setError(bodyOrError.error);
       return false;
-    }
-    if (customerDirty && !customerNum) {
-      setError("Select the correct customer for this order.");
-      return false;
-    }
-
-    const payload = [];
-    for (const line of lines) {
-      const entryQty = Number(line.draftQty);
-      if (!Number.isFinite(entryQty) || entryQty <= 0) {
-        setError("Each line needs a quantity greater than zero.");
-        return false;
-      }
-      const baseQty = saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode);
-      if (!Number.isFinite(baseQty) || baseQty <= 0) {
-        setError("Each line needs a quantity greater than zero.");
-        return false;
-      }
-
-      const item =
-        line.id != null
-          ? { id: line.id, quantity: baseQty }
-          : {
-              product_code: line.product_code,
-              quantity: baseQty,
-              on_wholesale_retail:
-                isRetailLine(line) && productAllowsRetail(line.product_code, retailByCode),
-            };
-
-      if (discountEditEnabled) {
-        const perUnit = Number(line.draftDiscount ?? 0);
-        if (Number.isFinite(perUnit)) {
-          item.discount_given = saleLineDiscountTotalFromEntered(
-            perUnit,
-            line,
-            entryQty,
-            uomById,
-            retailByCode,
-          );
-        }
-      }
-      payload.push(item);
     }
 
     setSaving(true);
     setError(null);
     try {
-      const body = { items: payload };
-      if (removedIds.length) body.remove_item_ids = removedIds;
-      if (customerDirty && customerNum) {
-        body.customer_num = Number(customerNum);
-      }
       const updated = await apiRequest(`/sales/orders/${sale.id}/line-quantities`, {
         method: "PATCH",
-        body,
+        body: bodyOrError,
       });
       setLeavePromptOpen(false);
       setBaselineDraft(snapshotDraft(lines));
@@ -952,141 +645,141 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                 </div>
               ) : null}
               <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="theme-table-head border-b text-left text-xs font-medium uppercase tracking-wide">
-                  <th className="px-3 py-2">Item</th>
-                  {retailPricingEnabled ? <th className="w-28 px-3 py-2">Type</th> : null}
-                  <th className="w-28 px-3 py-2 text-right">Qty</th>
-                  <th className="w-32 px-3 py-2 text-right">Unit price</th>
-                  {discountEditEnabled ? (
-                    <th className="w-28 px-3 py-2 text-right">Disc / unit</th>
-                  ) : null}
-                  <th className="w-32 px-3 py-2 text-right">Amount</th>
-                  <th className="w-12 px-2 py-2 text-center">
-                    <span className="sr-only">Remove</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => {
-                  const key = lineKey(line);
-                  const changeKind = lineChangeKind(line, baselineByKey);
-      const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
-        discountEditEnabled,
-        cashRound: enablePosCashRounding,
-      });
-                  const amount = priced.amount;
-                  const unitPrice = priced.unitPrice;
-                  const allowsRetail = productAllowsRetail(line.product_code, retailByCode);
-                  const canTogglePricing =
-                    retailPricingEnabled && line.id == null && allowsRetail;
+                <thead>
+                  <tr className="theme-table-head border-b text-left text-xs font-medium uppercase tracking-wide">
+                    <th className="px-3 py-2">Item</th>
+                    {retailPricingEnabled ? <th className="w-28 px-3 py-2">Type</th> : null}
+                    <th className="w-28 px-3 py-2 text-right">Qty</th>
+                    <th className="w-32 px-3 py-2 text-right">Unit price</th>
+                    {discountEditEnabled ? (
+                      <th className="w-28 px-3 py-2 text-right">Disc / unit</th>
+                    ) : null}
+                    <th className="w-32 px-3 py-2 text-right">Amount</th>
+                    <th className="w-12 px-2 py-2 text-center">
+                      <span className="sr-only">Remove</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => {
+                    const key = lineKey(line);
+                    const changeKind = lineChangeKind(line, baselineByKey);
+                    const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
+                      discountEditEnabled,
+                      cashRound: enablePosCashRounding,
+                    });
+                    const amount = priced.amount;
+                    const unitPrice = priced.unitPrice;
+                    const allowsRetail = productAllowsRetail(line.product_code, retailByCode);
+                    const canTogglePricing =
+                      retailPricingEnabled && line.id == null && allowsRetail;
 
-                  return (
-                    <tr
-                      key={key}
-                      className={`theme-table-row border-b last:border-b-0 ${lineChangeRowClass(changeKind)}`}
-                    >
-                      <td className="px-3 py-2.5 text-slate-800 dark:text-slate-100">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span>{lineLabel(line)}</span>
-                          {changeKind === "new" ? (
-                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200">
-                              New
-                            </span>
-                          ) : null}
-                          {changeKind === "edited" ? (
-                            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-900/70 dark:text-amber-200">
-                              Edited
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      {retailPricingEnabled ? (
-                        <td className="px-3 py-2.5">
-                          {canTogglePricing ? (
-                            <select
-                              value={isRetailLine(line) ? "retail" : "wholesale"}
-                              disabled={saving}
-                              onChange={(e) =>
-                                updateLinePricingMode(key, e.target.value === "retail")
-                              }
-                              className={`${inputClassName()} w-full min-w-[6.5rem] text-xs`}
-                              aria-label={`Pricing type for ${lineLabel(line)}`}
-                            >
-                              <option value="wholesale">Wholesale</option>
-                              <option value="retail">Retail</option>
-                            </select>
-                          ) : (
-                            <span
-                              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                                isRetailLine(line)
-                                  ? "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200"
-                                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                              }`}
-                              title={
-                                line.id == null && !allowsRetail
-                                  ? "This product has wholesale pricing only"
-                                  : undefined
-                              }
-                            >
-                              {posCartLineTypeLabel(line)}
-                            </span>
-                          )}
+                    return (
+                      <tr
+                        key={key}
+                        className={`theme-table-row border-b last:border-b-0 ${lineChangeRowClass(changeKind)}`}
+                      >
+                        <td className="px-3 py-2.5 text-slate-800 dark:text-slate-100">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{lineLabel(line)}</span>
+                            {changeKind === "new" ? (
+                              <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200">
+                                New
+                              </span>
+                            ) : null}
+                            {changeKind === "edited" ? (
+                              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-900/70 dark:text-amber-200">
+                                Edited
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
-                      ) : null}
-                      <td className="px-3 py-2.5 text-right">
-                        <input
-                          ref={(el) => {
-                            if (el) qtyInputRefs.current.set(key, el);
-                            else qtyInputRefs.current.delete(key);
-                          }}
-                          type="number"
-                          min="0.0001"
-                          step="any"
-                          value={line.draftQty ?? ""}
-                          disabled={saving}
-                          onChange={(e) => updateQty(key, e.target.value)}
-                          className={`${inputClassName()} w-24 text-right text-sm`}
-                          aria-label={`Quantity for ${lineLabel(line)}`}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-200">
-                        {formatSaleKes(unitPrice)}
-                      </td>
-                      {discountEditEnabled ? (
+                        {retailPricingEnabled ? (
+                          <td className="px-3 py-2.5">
+                            {canTogglePricing ? (
+                              <select
+                                value={isRetailLine(line) ? "retail" : "wholesale"}
+                                disabled={saving}
+                                onChange={(e) =>
+                                  updateLinePricingMode(key, e.target.value === "retail")
+                                }
+                                className={`${inputClassName()} w-full min-w-[6.5rem] text-xs`}
+                                aria-label={`Pricing type for ${lineLabel(line)}`}
+                              >
+                                <option value="wholesale">Wholesale</option>
+                                <option value="retail">Retail</option>
+                              </select>
+                            ) : (
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                                  isRetailLine(line)
+                                    ? "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200"
+                                    : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                }`}
+                                title={
+                                  line.id == null && !allowsRetail
+                                    ? "This product has wholesale pricing only"
+                                    : undefined
+                                }
+                              >
+                                {posCartLineTypeLabel(line)}
+                              </span>
+                            )}
+                          </td>
+                        ) : null}
                         <td className="px-3 py-2.5 text-right">
                           <input
+                            ref={(el) => {
+                              if (el) qtyInputRefs.current.set(key, el);
+                              else qtyInputRefs.current.delete(key);
+                            }}
                             type="number"
-                            min="0"
+                            min="0.0001"
                             step="any"
-                            value={line.draftDiscount ?? 0}
+                            value={line.draftQty ?? ""}
                             disabled={saving}
-                            onChange={(e) => updateDiscount(key, e.target.value)}
-                            className={`${inputClassName()} w-28 text-right text-sm`}
-                            aria-label={`Discount for ${lineLabel(line)}`}
+                            onChange={(e) => updateQty(key, e.target.value)}
+                            className={`${inputClassName()} w-24 text-right text-sm`}
+                            aria-label={`Quantity for ${lineLabel(line)}`}
                           />
                         </td>
-                      ) : null}
-                      <td className="px-3 py-2.5 text-right font-medium text-slate-900 dark:text-slate-50">
-                        {formatSaleKes(amount)}
-                      </td>
-                      <td className="px-2 py-2.5 text-center">
-                        <button
-                          type="button"
-                          disabled={saving || lines.length <= 1}
-                          onClick={() => removeLine(line)}
-                          className="inline-flex rounded-md p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/40"
-                          aria-label={`Remove ${lineLabel(line)}`}
-                          title="Remove item"
-                        >
-                          <TrashIcon />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-200">
+                          {formatSaleKes(unitPrice)}
+                        </td>
+                        {discountEditEnabled ? (
+                          <td className="px-3 py-2.5 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={line.draftDiscount ?? 0}
+                              disabled={saving}
+                              onChange={(e) => updateDiscount(key, e.target.value)}
+                              className={`${inputClassName()} w-28 text-right text-sm`}
+                              aria-label={`Discount for ${lineLabel(line)}`}
+                            />
+                          </td>
+                        ) : null}
+                        <td className="px-3 py-2.5 text-right font-medium text-slate-900 dark:text-slate-50">
+                          {formatSaleKes(amount)}
+                        </td>
+                        <td className="px-2 py-2.5 text-center">
+                          <button
+                            type="button"
+                            disabled={saving || lines.length <= 1}
+                            onClick={() => removeLine(line)}
+                            className="inline-flex rounded-md p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/40"
+                            aria-label={`Remove ${lineLabel(line)}`}
+                            title="Remove item"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </>
           )}
         </div>
@@ -1170,4 +863,12 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       ) : null}
     </div>,
   );
+}
+
+/** Routes to classic or modern Edit order UI from platform `backoffice_order_edit_layout`. */
+export function BackofficeOrderEditModal(props) {
+  if (isClassicBackofficeOrderEditLayout(props.capabilities)) {
+    return <ClassicBackofficeOrderEditModal {...props} />;
+  }
+  return <ModernBackofficeOrderEditModal {...props} />;
 }

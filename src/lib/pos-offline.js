@@ -6,7 +6,10 @@ import {
 } from "@/lib/catalog-cache";
 import {
   hasPosSearchCatalog,
-  searchPosCatalogIndex,
+  hydratePosSearchIndex,
+  isPosSearchIndexSnapshotValid,
+  searchPosCatalogIndexAsync,
+  serializePosSearchIndex,
   setPosSearchCatalog,
 } from "@/lib/pos-product-search-index";
 import { rankPosProductSearchResults } from "@/lib/pos-product-search-rank";
@@ -59,13 +62,47 @@ function sortCatalog(products, query) {
   return rankPosProductSearchResults(products, query, { limit: products.length });
 }
 
+const SEARCH_INDEX_META_KEY = "search_index_v1";
+
+async function persistPosSearchIndexSnapshot(warmedAt) {
+  try {
+    const snapshot = serializePosSearchIndex({ warmedAt });
+    if (!snapshot) return;
+    await idbSetMeta(SEARCH_INDEX_META_KEY, snapshot);
+  } catch {
+    /* quota / private mode — in-memory index still works */
+  }
+}
+
+async function tryHydratePosSearchIndex(products, warmedAt) {
+  if (hasPosSearchCatalog()) return true;
+  try {
+    const snapshot = await idbGetMeta(SEARCH_INDEX_META_KEY);
+    if (
+      !isPosSearchIndexSnapshotValid(snapshot, {
+        warmedAt,
+        catalogCount: products.length,
+      })
+    ) {
+      return false;
+    }
+    return hydratePosSearchIndex(snapshot, products);
+  } catch {
+    return false;
+  }
+}
+
 /** Warm lean product catalog into IndexedDB for offline search. */
 export async function warmPosOfflineCatalog({ force = false } = {}) {
   const last = Number((await idbGetMeta("catalog_warmed_at")) ?? 0);
   if (!force && last && Date.now() - last < POS_OFFLINE_CATALOG_TTL_MS) {
     const existing = await idbGetAllCatalog();
     if (existing.length && !hasPosSearchCatalog()) {
-      setPosSearchCatalog(existing);
+      const hydrated = await tryHydratePosSearchIndex(existing, last);
+      if (!hydrated) {
+        setPosSearchCatalog(existing, { warmedAt: last });
+        void persistPosSearchIndexSnapshot(last);
+      }
     }
     return { skipped: true, count: existing.length };
   }
@@ -94,11 +131,13 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
   } while (page <= lastPage && page <= 50);
 
   // Full replace so soft/permanent deletes drop out of local search immediately.
+  const warmedAt = Date.now();
   await idbClearStore("catalog");
   await idbPutCatalogProducts(products);
-  await idbSetMeta("catalog_warmed_at", Date.now());
+  await idbSetMeta("catalog_warmed_at", warmedAt);
   await idbSetMeta("catalog_count", products.length);
-  setPosSearchCatalog(products);
+  setPosSearchCatalog(products, { warmedAt });
+  void persistPosSearchIndexSnapshot(warmedAt);
   return { skipped: false, count: products.length };
 }
 
@@ -109,10 +148,17 @@ export async function searchPosOfflineCatalog(query, { limit = 50 } = {}) {
   // Prefer in-memory index (precomputed normalized fields) — target <50ms.
   if (!hasPosSearchCatalog()) {
     const all = await idbGetAllCatalog();
-    if (all.length) setPosSearchCatalog(all);
+    if (all.length) {
+      const warmedAt = Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || null;
+      const hydrated = await tryHydratePosSearchIndex(all, warmedAt);
+      if (!hydrated) {
+        setPosSearchCatalog(all, { warmedAt });
+        void persistPosSearchIndexSnapshot(warmedAt);
+      }
+    }
   }
   if (hasPosSearchCatalog()) {
-    return searchPosCatalogIndex(trimmed, { limit });
+    return searchPosCatalogIndexAsync(trimmed, { limit });
   }
 
   const all = await idbGetAllCatalog();

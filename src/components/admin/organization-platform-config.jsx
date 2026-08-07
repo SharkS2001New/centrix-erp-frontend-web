@@ -361,6 +361,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_pos_order_edit: false,
     append_same_day_customer_orders: false,
     enable_backoffice_order_edit: true,
+    backoffice_order_edit_layout: "modern",
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
@@ -448,6 +449,8 @@ export function salesPlatformFromApi(apiPayload) {
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     append_same_day_customer_orders: Boolean(apiPayload.append_same_day_customer_orders ?? false),
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
+    backoffice_order_edit_layout:
+      apiPayload.backoffice_order_edit_layout === "classic" ? "classic" : "modern",
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
     reserve_stock_on_cart: apiPayload.reserve_stock_on_cart !== false,
     cart_reservation_ttl_minutes:
@@ -601,6 +604,28 @@ export function OrganizationPlatformSalesSettings({
             checked={salesPlatform?.enable_backoffice_order_edit !== false}
             onChange={(v) => patch({ enable_backoffice_order_edit: v })}
           />
+          {salesPlatform?.enable_backoffice_order_edit !== false ? (
+            <div className="ml-6 space-y-1 border-l border-slate-200 pl-4">
+              <label className="block text-sm font-medium text-slate-900">Edit Orders mode</label>
+              <select
+                className={inputClass}
+                value={
+                  salesPlatform?.backoffice_order_edit_layout === "classic" ? "classic" : "modern"
+                }
+                onChange={(e) => patch({ backoffice_order_edit_layout: e.target.value })}
+              >
+                <option value="modern">Modern — current Centrix Edit order popup</option>
+                <option value="classic">
+                  Classic — POS-style cart, item swap, retail/wholesale mode
+                </option>
+              </select>
+              <p className="text-xs text-slate-500">
+                Same idea as External POS layout. Classic uses the Classic POS look and interactions
+                inside the Edit order popup (swap, F12 retail/wholesale) while keeping the same
+                pricing and route markups.
+              </p>
+            </div>
+          ) : null}
           <Toggle
             label="Enable M-Pesa STK Push"
             description="When off, this organization cannot configure M-Pesa and STK Push is hidden on POS checkout."

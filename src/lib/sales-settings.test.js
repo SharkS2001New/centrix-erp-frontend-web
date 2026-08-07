@@ -238,6 +238,14 @@ describe("sales-settings POS cash rounding", () => {
     expect(getPosSalesConfig({ sales: {} }).enablePosCashRounding).toBe(false);
   });
 
+  it("normalizes backoffice_order_edit_layout in mergeSalesSettings", () => {
+    expect(mergeSalesSettings({ sales: {} }).backoffice_order_edit_layout).toBe("modern");
+    expect(
+      mergeSalesSettings({ sales: { backoffice_order_edit_layout: "classic" } })
+        .backoffice_order_edit_layout,
+    ).toBe("classic");
+  });
+
   it("keeps classic layout rounding on when the flag is unset (legacy)", () => {
     expect(
       resolveEnablePosCashRounding({ sales: { external_pos_layout: "classic" } }),

@@ -124,10 +124,12 @@ function maxFuzzyDistance(token) {
 /**
  * @param {string} token
  * @param {object} hay
+ * @param {{ allowFuzzy?: boolean }} [options]
  * @returns {string | null}
  */
-function tokenMatchKind(token, hay) {
+function tokenMatchKind(token, hay, options = {}) {
   if (!token) return null;
+  const allowFuzzy = options.allowFuzzy !== false;
 
   if (hay.barcode && hay.barcode === token) return "exact_barcode";
   if (hay.barcodeCompact && hay.barcodeCompact === token) return "exact_barcode";
@@ -151,6 +153,8 @@ function tokenMatchKind(token, hay) {
 
   const amount = parseAmountSearchTerm(token);
   if (amount != null && (hay.prices ?? []).includes(amount)) return "exact_price";
+
+  if (!allowFuzzy) return null;
 
   const maxDist = maxFuzzyDistance(token);
   if (maxDist <= 0) return null;
@@ -215,9 +219,11 @@ function isStrongWholeQueryHit(kinds, fullCompact, hay) {
 /**
  * @param {object} hay
  * @param {string} query
+ * @param {{ allowFuzzy?: boolean, preNorm?: { normalized: string, compact: string, tokens: string[] } }} [options]
  * @returns {string[]}
  */
-function matchKindsForIndexed(hay, query) {
+export function matchKindsForIndexed(hay, query, options = {}) {
+  const allowFuzzy = options.allowFuzzy !== false;
   const raw = String(query ?? "").trim();
   if (!raw) return [];
 
@@ -248,7 +254,7 @@ function matchKindsForIndexed(hay, query) {
     if ((hay.prices ?? []).includes(amount)) return ["exact_price"];
   }
 
-  const q = normalizeSearchText(raw);
+  const q = options.preNorm ?? normalizeSearchText(raw);
   if (!q.compact) return [];
 
   // Spacing-insensitive: "P ostman" / "post man" / "POSTMAN" → same compact hit.
@@ -269,7 +275,7 @@ function matchKindsForIndexed(hay, query) {
   const tokens = q.tokens.length ? q.tokens : [q.compact];
   const kinds = [];
   for (const token of tokens) {
-    const kind = tokenMatchKind(token, hay);
+    const kind = tokenMatchKind(token, hay, { allowFuzzy });
     if (!kind) {
       // Phrase / near-phrase: "kiss kid" inside "kiss kids …"
       if (tokens.length > 1 && (hay.name.includes(q.normalized) || hay.nameCompact.includes(q.compact))) {
@@ -294,10 +300,13 @@ export function productMatchesIndexedQuery(entry, query) {
 /**
  * @param {object} entry
  * @param {string} query
- * @param {{ fuzzyOnly?: boolean }} [options]
+ * @param {{ fuzzyOnly?: boolean, allowFuzzy?: boolean, preNorm?: object, kinds?: string[] }} [options]
  */
 export function scoreIndexedProduct(entry, query, options = {}) {
-  const kinds = matchKindsForIndexed(entry, query);
+  const allowFuzzy = options.allowFuzzy !== false;
+  const kinds =
+    options.kinds ??
+    matchKindsForIndexed(entry, query, { allowFuzzy, preNorm: options.preNorm });
   if (!kinds.length) return 0;
   if (options.fuzzyOnly === false && isFuzzyOnlyKinds(kinds)) return 0;
 
@@ -305,7 +314,7 @@ export function scoreIndexedProduct(entry, query, options = {}) {
     kinds.reduce((sum, kind) => sum + (KIND_SCORE[kind] ?? 0), 0) / Math.max(kinds.length, 1);
   let score = base;
 
-  const q = normalizeSearchText(query);
+  const q = options.preNorm ?? normalizeSearchText(query);
   if (entry.barcodeCompact && entry.barcodeCompact === q.compact) score = Math.max(score, 100);
   else if (entry.codeCompact === q.compact) score = Math.max(score, 100);
   else if (entry.skuCompact === q.compact) score = Math.max(score, 98);
@@ -364,35 +373,55 @@ export function explainPosSearchMatch(product, query) {
  *   limit?: number,
  *   getAvailableQty?: (product: object) => number | null | undefined,
  *   indexedByCode?: Record<string, object>,
+ *   entries?: object[],
  * }} [options]
  */
 export function rankPosProductSearchResults(products, query, options = {}) {
   const limit = options.limit ?? 40;
   const getQty = options.getAvailableQty;
   const indexedByCode = options.indexedByCode ?? null;
-  const q = normalizeSearchText(query);
-  const fullCompact = q.compact;
+  const preNorm = normalizeSearchText(query);
+  const fullCompact = preNorm.compact;
 
-  let scored = [];
-  for (const product of products ?? []) {
-    if (!product?.product_code) continue;
-    const hay =
-      indexedByCode?.[String(product.product_code)] ?? productSearchHaystack(product);
-    const kinds = matchKindsForIndexed(hay, query);
-    if (!kinds.length) continue;
-    const score = scoreIndexedProduct(hay, query);
-    if (score <= 0) continue;
-    const availableQty = getQty ? getQty(product) : null;
-    scored.push({
-      product,
-      score,
-      availableQty: availableQty ?? null,
-      fuzzyOnly: isFuzzyOnlyKinds(kinds),
-      strongHit: isStrongWholeQueryHit(kinds, fullCompact, hay),
-      nameStarts: Boolean(
-        hay.name?.startsWith(q.normalized) || hay.nameCompact?.startsWith(fullCompact),
-      ),
-    });
+  /** @param {object[]} list @param {boolean} allowFuzzy */
+  function scoreList(list, allowFuzzy) {
+    const scored = [];
+    for (const product of list ?? []) {
+      if (!product?.product_code) continue;
+      const hay =
+        indexedByCode?.[String(product.product_code)] ??
+        (product.words && product.nameCompact != null
+          ? product
+          : productSearchHaystack(product));
+      const kinds = matchKindsForIndexed(hay, query, { allowFuzzy, preNorm });
+      if (!kinds.length) continue;
+      const score = scoreIndexedProduct(hay, query, { kinds, preNorm, allowFuzzy });
+      if (score <= 0) continue;
+      const availableQty = getQty ? getQty(hay.product ?? product) : null;
+      scored.push({
+        product: hay.product ?? product,
+        score,
+        availableQty: availableQty ?? null,
+        fuzzyOnly: isFuzzyOnlyKinds(kinds),
+        strongHit: isStrongWholeQueryHit(kinds, fullCompact, hay),
+        nameStarts: Boolean(
+          hay.name?.startsWith(preNorm.normalized) || hay.nameCompact?.startsWith(fullCompact),
+        ),
+      });
+    }
+    return scored;
+  }
+
+  // Phase 1: solid matches only (no Levenshtein). Phase 2: fuzzy only on leftovers.
+  let scored = scoreList(products, false);
+  if (scored.length < Math.min(8, limit)) {
+    const solidCodes = new Set(scored.map((row) => String(row.product.product_code)));
+    const remaining = [];
+    for (const product of products ?? []) {
+      const code = String(product?.product_code ?? "");
+      if (code && !solidCodes.has(code)) remaining.push(product);
+    }
+    if (remaining.length) scored = scored.concat(scoreList(remaining, true));
   }
 
   if (scored.some((row) => !row.fuzzyOnly)) {
@@ -402,12 +431,6 @@ export function rankPosProductSearchResults(products, query, options = {}) {
   // Finished typing an exact product word (marai) → keep exact hits first-class.
   if (fullCompact.length >= 4 && scored.some((row) => row.strongHit)) {
     const strong = scored.filter((row) => row.strongHit);
-    // Still allow longer names that start with the exact word (Marai Rice).
-    const startsWithExact = scored.filter(
-      (row) => !row.strongHit && row.nameStarts && row.score >= KIND_SCORE.name_prefix,
-    );
-    scored = strong.length ? [...strong, ...startsWithExact.filter((r) => !strong.includes(r))] : scored;
-    // Prefer strong-only when any exact word/name/code hit exists.
     if (strong.length) scored = strong;
   }
 

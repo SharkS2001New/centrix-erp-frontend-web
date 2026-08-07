@@ -58,6 +58,7 @@ export function CustomersNewScreen() {
     value: form,
     setValue: setForm,
     enabled: !loading,
+    debounceMs: 800,
     isBaseline,
   });
 

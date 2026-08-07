@@ -29,7 +29,7 @@ import {
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { formDraftKey } from "@/stores/form-drafts";
-import { useFormDraft } from "@/hooks/use-form-draft";
+import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
 import { productPhotoFileUrl } from "@/components/media/entity-photo-display";
 
@@ -74,7 +74,7 @@ export function ProductsCodeEditScreen() {
   const isBaseline = useCallback(
     (value) => {
       if (!serverForm || !value) return true;
-      return JSON.stringify(value) === JSON.stringify(serverForm);
+      return isFormValuesEqual(value, serverForm);
     },
     [serverForm],
   );
@@ -84,6 +84,7 @@ export function ProductsCodeEditScreen() {
     value: form,
     setValue: setForm,
     enabled: !productLoading && serverForm != null,
+    debounceMs: 800,
     isBaseline,
   });
 
@@ -150,32 +151,39 @@ export function ProductsCodeEditScreen() {
     };
   }, [imagePreview]);
 
-  // Only wait on the product record — reference dropdowns fill in while the form paints.
-  const loading = productLoading;
+  // Only wait on the product record for draft hydration — reference dropdowns fill while form paints.
   const error = loadError || (!productLoading && metaError && !serverForm ? metaError : null);
 
-  function updateField(key, value) {
+  const updateField = useCallback((key, value) => {
     setIsDirty(true);
     setFormError(null);
     setForm((prev) => ({ ...prev, [key]: value }));
-  }
+  }, []);
 
-  function onImageSelect(file) {
+  const onImageSelect = useCallback((file) => {
     setIsDirty(true);
-    if (imagePreview?.startsWith("blob:")) {
-      URL.revokeObjectURL(imagePreview);
-    }
+    setImagePreview((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
     setImageFile(file || null);
-    setImagePreview(file ? URL.createObjectURL(file) : null);
-  }
+  }, []);
 
-  function handleSubcategoryCreated(sub) {
-    setSubCategories((prev) => [...prev, sub]);
-    reload();
-    updateField("subcategory_id", String(sub.id));
-  }
+  const handleSubcategoryCreated = useCallback(
+    (sub) => {
+      setSubCategories((prev) => [...prev, sub]);
+      reload();
+      updateField("subcategory_id", String(sub.id));
+    },
+    [reload, setSubCategories, updateField],
+  );
 
-  const displayName = useMemo(() => form.product_name || productCode, [form.product_name, productCode]);
+  const openSubcategoryModal = useCallback(() => setSubcategoryModalOpen(true), []);
+
+  const displayName = useMemo(
+    () => form.product_name || productCode,
+    [form.product_name, productCode],
+  );
   const editTabTitle = hotelCatalogue
     ? tabEditTitle("menu product", displayName)
     : tabEditTitle("Product", displayName);
@@ -184,6 +192,7 @@ export function ProductsCodeEditScreen() {
 
   async function saveProduct(e) {
     e.preventDefault();
+    if (productLoading || metaLoading) return;
     if (!form.product_name.trim()) {
       setFormError("Product name is required.");
       return;
@@ -246,9 +255,7 @@ export function ProductsCodeEditScreen() {
       title={hotelCatalogue ? "Edit menu product" : "Edit product"}
       subtitle={displayName}
     >
-      {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
-      ) : error ? (
+      {error ? (
         <div>
           <p className="text-sm text-red-600">{error}</p>
           <Link href={productsCatalogHref()} className="mt-3 inline-block text-sm text-[#185FA5] hover:underline">
@@ -257,6 +264,11 @@ export function ProductsCodeEditScreen() {
         </div>
       ) : (
         <>
+          {productLoading ? (
+            <p className="mb-3 text-xs text-slate-500">Loading product…</p>
+          ) : metaLoading ? (
+            <p className="mb-3 text-xs text-slate-500">Loading dropdown options…</p>
+          ) : null}
           <ProductFormCard
             onSubmit={saveProduct}
             actions={
@@ -268,10 +280,14 @@ export function ProductsCodeEditScreen() {
                   <TabFormCancelButton href={detailHref} onClick={handleCancel} />
                   <button
                     type="submit"
-                    disabled={saving || metaLoading}
+                    disabled={saving || productLoading || metaLoading}
                     className="rounded-lg bg-[#185FA5] px-6 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
                   >
-                    {saving ? "Saving…" : metaLoading ? "Loading…" : "Save changes"}
+                    {saving
+                      ? "Saving…"
+                      : productLoading || metaLoading
+                        ? "Loading…"
+                        : "Save changes"}
                   </button>
                 </div>
               </>
@@ -289,10 +305,10 @@ export function ProductsCodeEditScreen() {
               globalReorderLevel={globalReorderLevel}
               imagePreview={imagePreview}
               onImageSelect={onImageSelect}
-              onOpenSubcategoryModal={() => setSubcategoryModalOpen(true)}
+              onOpenSubcategoryModal={openSubcategoryModal}
               allowDiscounts={allowDiscounts}
               branches={branches}
-              refsLoading={metaLoading}
+              refsLoading={productLoading || metaLoading}
             />
           </ProductFormCard>
 

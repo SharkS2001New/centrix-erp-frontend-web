@@ -3,15 +3,39 @@ import { P } from "@/lib/permission-codes";
 import {
   BACKOFFICE_DEFAULT_LANDING_PATH,
   recallWorkspaceLandingPath,
+  rememberWorkspacePath,
   resolveAccessibleWorkspaces,
   workspaceLandingPath,
 } from "@/lib/workspace-navigation";
+import { seedWorkspaceTabLanding } from "@/lib/tab-workspace";
 
 vi.mock("@/lib/auth-storage", () => ({
   getStoredWorkspace: vi.fn(() => null),
 }));
 
 import { getStoredWorkspace } from "@/lib/auth-storage";
+
+function installSessionStorageMock() {
+  const storage = new Map();
+  global.window = globalThis;
+  global.sessionStorage = {
+    getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+    setItem: (key, value) => {
+      storage.set(key, String(value));
+    },
+    removeItem: (key) => {
+      storage.delete(key);
+    },
+    clear: () => {
+      storage.clear();
+    },
+    key: (i) => [...storage.keys()][i] ?? null,
+    get length() {
+      return storage.size;
+    },
+  };
+  return storage;
+}
 
 const capabilities = {
   platform_tab_workspace_enabled: true,
@@ -45,9 +69,10 @@ function ctx(permissions, caps = capabilities) {
 describe("workspace-navigation backoffice landing", () => {
   beforeEach(() => {
     getStoredWorkspace.mockReturnValue(null);
+    installSessionStorageMock().clear();
   });
 
-  it("opens Business summary when overview permission is granted", () => {
+  it("opens Business summary on first visit when overview permission is granted", () => {
     const access = ctx([P.dashboard.overview.view]);
 
     expect(
@@ -69,15 +94,26 @@ describe("workspace-navigation backoffice landing", () => {
     ).toBe("/inventory");
   });
 
-  it("prefers Business summary over API home_path and remembered routes", () => {
-    const access = ctx([P.dashboard.overview.view, P.inventory.stock.view]);
+  it("resumes the last backoffice tab instead of forcing Business summary", () => {
+    const access = ctx([P.dashboard.overview.view, P.inventory.stock.view, P.sales.orders.create]);
+    seedWorkspaceTabLanding(1, "backoffice", "/sales/pos", { title: "Create new order" });
+    seedWorkspaceTabLanding(1, "backoffice", "/inventory/stock", { title: "Stock" });
 
     expect(
       recallWorkspaceLandingPath(1, 1, "backoffice", capabilities, access),
-    ).toBe(BACKOFFICE_DEFAULT_LANDING_PATH);
+    ).toBe("/inventory/stock");
   });
 
-  it("opens Business summary when switching from External POS (stored workspace still pos)", () => {
+  it("resumes a remembered backoffice route when no tabs exist", () => {
+    const access = ctx([P.dashboard.overview.view, P.inventory.stock.view]);
+    rememberWorkspacePath(1, 1, "backoffice", "/inventory/stock");
+
+    expect(
+      recallWorkspaceLandingPath(1, 1, "backoffice", capabilities, access),
+    ).toBe("/inventory/stock");
+  });
+
+  it("opens Business summary on first Backoffice entry from External POS", () => {
     getStoredWorkspace.mockReturnValue("pos");
     const access = ctx([
       P.dashboard.overview.view,
