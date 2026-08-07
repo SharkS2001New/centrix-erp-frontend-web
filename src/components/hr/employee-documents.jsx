@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, apiUploadForm, ApiError, employeeDocumentFilePath } from "@/lib/api";
 import { ProtectedFileLink } from "@/components/media/protected-file-preview";
-import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, FormModal, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 const DOC_TYPES = [
@@ -152,17 +152,12 @@ export function EmployeeDocuments({ employeeId }) {
           />
         </Field>
         <Field label="Document type">
-          <select
+          <SearchableSelect
             value={documentType}
-            onChange={(e) => setDocumentType(e.target.value)}
+            onChange={setDocumentType}
+            options={DOC_TYPES}
             className={inputClassName()}
-          >
-            {DOC_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
         <Field label="File (PDF, image, Word — max 10MB)">
           <input

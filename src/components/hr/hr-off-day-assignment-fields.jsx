@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { Field, formatShortDate, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, formatShortDate, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
 
@@ -303,21 +303,21 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
         />
       </Field>
       <Field label="Duration">
-        <select
+        <SearchableSelect
           value={form.duration_type}
-          onChange={(e) => {
-            const duration_type = e.target.value;
+          onChange={(duration_type) => {
             setForm((p) => ({
               ...p,
               duration_type,
               end_date: duration_type === "half_day" ? p.start_date : p.end_date,
             }));
           }}
+          options={[
+            { value: "full_day", label: "Full day(s)" },
+            { value: "half_day", label: "Half day (single date)" },
+          ]}
           className={inputClassName()}
-        >
-          <option value="full_day">Full day(s)</option>
-          <option value="half_day">Half day (single date)</option>
-        </select>
+        />
       </Field>
       {isHalfDay ? (
         <HrSelectField

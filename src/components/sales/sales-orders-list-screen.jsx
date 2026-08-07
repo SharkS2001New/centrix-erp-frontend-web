@@ -1793,32 +1793,20 @@ export default function SalesOrdersListScreen({
               </Field>
             ) : null}
             <Field label="Status">
-              <select
+              <FilterSelect
                 value={effectiveStatusFilter ?? "all"}
                 disabled={queueConfig?.lockStatusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
-              >
-                {statusOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                options={statusOptions}
+              />
             </Field>
             {showSourceFilter ? (
               <Field label="Source">
-                <select
+                <FilterSelect
                   value={effectiveSourceFilter ?? "all"}
                   onChange={(e) => setSourceFilter(e.target.value)}
-                  className={FILTER_CONTROL_CLASS}
-                >
-                  {sourceOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  options={sourceOptions}
+                />
               </Field>
             ) : null}
             <Field label="User">

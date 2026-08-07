@@ -41,8 +41,12 @@ import { formatOrgDate } from "@/lib/format";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
 
 import {
+  buildPayrollSheetExportFooter,
+  buildPayrollSheetExportRows,
   buildPayrollSheetFooter,
   buildPayrollSheetRows,
   PAYROLL_SHEET_COLUMNS,
@@ -175,6 +179,12 @@ export function HrPayrollRunsIdScreen() {
 
   const period = run?.pay_period ?? run?.payPeriod ?? null;
 
+  useTabTitle(
+    period || run
+      ? tabDetailTitle("Payroll run", periodLabel(period) || run?.period_code || `#${runId}`)
+      : "Payroll run",
+  );
+
   const totalDeductions = useMemo(() => {
     if (run?.total_gross != null && run?.total_net != null) {
       return Number(run.total_gross) - Number(run.total_net);
@@ -236,6 +246,8 @@ export function HrPayrollRunsIdScreen() {
         key: col.key,
         label: col.label,
         align: col.align,
+        csvAsText: col.key === "account_number",
+        cellClass: col.key === "account_number" ? "text" : "",
         accessor: (row) => String(row[col.key] ?? ""),
       })),
     );
@@ -245,8 +257,16 @@ export function HrPayrollRunsIdScreen() {
     return buildPayrollSheetRows(targetLines, employeeNameFromLine);
   }
 
+  function payrollSheetExportRows(targetLines = lines) {
+    return buildPayrollSheetExportRows(targetLines, employeeNameFromLine);
+  }
+
   function payrollSheetFooterRow(targetLines = lines) {
     return buildPayrollSheetFooter(targetLines, employeeNameFromLine);
+  }
+
+  function payrollSheetExportFooterRow(targetLines = lines) {
+    return buildPayrollSheetExportFooter(targetLines, employeeNameFromLine);
   }
 
   function exportPayrollSheetCsv() {
@@ -266,8 +286,8 @@ export function HrPayrollRunsIdScreen() {
       slugifyReportFilename(`payroll-sheet-${run?.id ?? runId}`),
       meta,
       payrollSheetExportColumns(),
-      payrollSheetRows(),
-      payrollSheetFooterRow(),
+      payrollSheetExportRows(),
+      payrollSheetExportFooterRow(),
     );
     notifySuccess("Payroll sheet CSV downloaded.");
   }
@@ -519,8 +539,8 @@ export function HrPayrollRunsIdScreen() {
     <div className="theme-workspace min-h-full">
       <AppBreadcrumb
         items={[
-          { label: "Payroll", href: "/hr/payroll" },
-          { label: run ? `Run — ${periodLabel(period)}` : "Payroll run" },
+          { label: "Payroll runs", href: "/hr/payroll" },
+          { label: run ? periodLabel(period) || `Run #${run.id}` : "Payroll run" },
         ]}
       />
 

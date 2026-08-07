@@ -35,6 +35,12 @@ const PREFERRED_SCREENS = {
     exportName: "ProductsDeletedScreen",
     title: "Deleted products",
   },
+  "hr-payroll": {
+    title: "Payroll runs",
+  },
+  "hr-payroll-runs-id": {
+    title: "Payroll run",
+  },
 };
 
 function walkPages(dir, out = []) {

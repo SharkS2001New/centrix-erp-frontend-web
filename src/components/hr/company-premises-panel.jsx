@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 function geolocationErrorMessage(error) {
@@ -164,18 +164,15 @@ export function CompanyPremisesPanel({ embedded = false }) {
         <div className="mt-4 space-y-4">
           {multiBranch ? (
             <Field label="Branch">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={selectedBranchId}
-                onChange={(e) => setSelectedBranchId(e.target.value)}
-              >
-                {branches.map((branch) => (
-                  <option key={branch.branch_id} value={String(branch.branch_id)}>
-                    {branch.branch_name}
-                    {branch.has_premises_location ? " — configured" : " — not set"}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedBranchId}
+                options={branches.map((branch) => ({
+                  value: String(branch.branch_id),
+                  label: `${branch.branch_name}${branch.has_premises_location ? " — configured" : " — not set"}`,
+                }))}
+              />
             </Field>
           ) : null}
 

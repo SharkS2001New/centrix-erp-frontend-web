@@ -45,13 +45,15 @@ export function buildReportMeta({
   };
 }
 
-/** @param {Array<{ key?: string, label: string, accessor?: Function, align?: string, printAsRow?: boolean, print_as_row?: boolean }>} columns */
+/** @param {Array<{ key?: string, label: string, accessor?: Function, align?: string, printAsRow?: boolean, print_as_row?: boolean, csvAsText?: boolean, cellClass?: string }>} columns */
 export function normalizeExportColumns(columns) {
   return (columns ?? []).map((col) => ({
     key: col.key ?? col.label,
     label: col.label,
     align: col.align,
     printAsRow: Boolean(col.printAsRow || col.print_as_row),
+    csvAsText: Boolean(col.csvAsText),
+    cellClass: col.cellClass ?? "",
     getValue: (row) => {
       const raw = typeof col.accessor === "function" ? col.accessor(row) : row[col.key];
       if (raw == null) return "";
@@ -101,6 +103,7 @@ export function buildReportPrintHtml({
 @page { size: A4 ${landscape ? "landscape" : "portrait"}; margin: 10mm; }
 ${reportDocumentStyles(generalSettings)}
 tr.note-row td { background: #f8fafc; color: #334155; font-size: 0.92em; padding-top: 4px; padding-bottom: 6px; }
+td.text, th.text { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: keep-all; }
 ${compactTableCss}
 </style></head><body>
 ${watermarkHtml}
@@ -118,8 +121,14 @@ ${orgHeaderHtml}
     .map((row) => {
       const main = `<tr>${tableColumns
         .map((col) => {
-          const align = col.align === "right" ? ' class="num"' : "";
-          return `<td${align}>${escapeHtml(col.getValue(row))}</td>`;
+          const classes = [
+            col.align === "right" ? "num" : "",
+            col.cellClass || (col.csvAsText ? "text" : ""),
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const classAttr = classes ? ` class="${classes}"` : "";
+          return `<td${classAttr}>${escapeHtml(col.getValue(row))}</td>`;
         })
         .join("")}</tr>`;
       const notes = noteColumns
@@ -137,9 +146,15 @@ ${
   footerRow
     ? `<tfoot><tr>${tableColumns
         .map((col, index) => {
-          const align = col.align === "right" ? ' class="num"' : "";
+          const classes = [
+            col.align === "right" ? "num" : "",
+            col.cellClass || (col.csvAsText ? "text" : ""),
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const classAttr = classes ? ` class="${classes}"` : "";
           const value = footerRow[col.key] ?? (index === 0 ? "Totals" : "");
-          return `<td${align}>${escapeHtml(value)}</td>`;
+          return `<td${classAttr}>${escapeHtml(value)}</td>`;
         })
         .join("")}</tr></tfoot>`
     : ""
@@ -178,7 +193,11 @@ export function downloadReportCsv(filename, meta, columns, rows, footerRow = nul
     ...rows.map((row) =>
       columns
         .map((col) => {
-          const text = col.getValue(row).replace(/"/g, '""');
+          let text = col.getValue(row).replace(/"/g, '""');
+          if (col.csvAsText && text) {
+            // Leading tab keeps Excel/LibreOffice from coercing long digit strings.
+            text = `\t${text}`;
+          }
           return `"${text}"`;
         })
         .join(","),
@@ -188,8 +207,11 @@ export function downloadReportCsv(filename, meta, columns, rows, footerRow = nul
     rowLines.push(
       columns
         .map((col, index) => {
-          const raw = footerRow[col.key] ?? (index === 0 ? "Total" : "");
-          const text = String(raw ?? "").replace(/"/g, '""');
+          let raw = footerRow[col.key] ?? (index === 0 ? "Total" : "");
+          let text = String(raw ?? "").replace(/"/g, '""');
+          if (col.csvAsText && text) {
+            text = `\t${text}`;
+          }
           return `"${text}"`;
         })
         .join(","),

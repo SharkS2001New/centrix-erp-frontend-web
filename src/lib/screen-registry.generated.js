@@ -886,7 +886,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "hr-payroll-runs-id",
-    title: "Runs",
+    title: "Payroll run",
     route: "/hr/payroll/runs/[id]",
     match: match_hr_payroll_runs_id,
   },
@@ -1516,7 +1516,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "hr-payroll",
-    title: "Payroll",
+    title: "Payroll runs",
     route: "/hr/payroll",
     match: match_hr_payroll,
   },

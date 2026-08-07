@@ -42,7 +42,27 @@ export function cartHasOptimisticLines(cart) {
 }
 
 export function cartLineRef(line) {
-  return line?.update_code ?? line?.id ?? null;
+  const code = line?.update_code;
+  if (code != null && String(code).trim() !== "") return code;
+  if (line?.id != null && String(line.id).trim() !== "") return line.id;
+  return null;
+}
+
+/** Resolve a cart line index for in-place edit/swap (id or update_code). */
+export function findCartLineIndexByRef(lines, editingRef) {
+  if (editingRef == null || String(editingRef).trim() === "") return -1;
+  const ref = String(editingRef);
+  const list = Array.isArray(lines) ? lines : [];
+  let idx = list.findIndex((line) => String(cartLineRef(line)) === ref);
+  if (idx >= 0) return idx;
+  idx = list.findIndex(
+    (line) =>
+      (line?.id != null && String(line.id) === ref) ||
+      (line?.update_code != null &&
+        String(line.update_code).trim() !== "" &&
+        String(line.update_code) === ref),
+  );
+  return idx;
 }
 
 /** SKU / barcode shaped queries skip search debounce. */
@@ -67,6 +87,10 @@ export function mergePreservedOptimisticLines(serverLines, prevLines) {
   for (const line of prevLines ?? []) {
     if (!line?._optimistic) continue;
     const already =
+      (line?.id != null &&
+        !String(line.id).startsWith("pending-") &&
+        !String(line.id).startsWith("opt-") &&
+        lines.some((row) => String(row.id) === String(line.id))) ||
       lines.some(
         (row) =>
           String(row.product_code) === String(line.product_code) &&
@@ -95,9 +119,9 @@ export function applyCartMutationResponse(prevCart, res, { targetLineRef = null 
   const lines = [...(prevCart.lines ?? [])];
   const ref = cartLineRef(res);
   const idx =
-    targetLineRef != null
-      ? lines.findIndex((line) => String(cartLineRef(line)) === String(targetLineRef))
-      : lines.findIndex((line) => String(cartLineRef(line)) === String(ref));
+    targetLineRef != null && String(targetLineRef).trim() !== ""
+      ? findCartLineIndexByRef(lines, targetLineRef)
+      : findCartLineIndexByRef(lines, ref);
 
   if (idx >= 0) {
     const { _optimistic: _dropOptimistic, ...rest } = lines[idx];
@@ -148,26 +172,33 @@ export function applyOptimisticCartMutation(prevCart, optimisticLine, { mergeTar
   if (!prevCart?.id) return prevCart;
   const lines = [...(prevCart.lines ?? [])];
 
-  if (editingRef) {
-    const idx = lines.findIndex((line) => String(cartLineRef(line)) === String(editingRef));
+  if (editingRef != null && String(editingRef).trim() !== "") {
+    const idx = findCartLineIndexByRef(lines, editingRef);
     if (idx >= 0) {
       const existing = lines[idx];
+      const preservedCode =
+        existing.update_code != null && String(existing.update_code).trim() !== ""
+          ? existing.update_code
+          : existing.id;
       lines[idx] = {
         ...optimisticLine,
         id: existing.id,
-        update_code: existing.update_code ?? existing.id,
+        update_code: preservedCode,
       };
-    } else lines.push(optimisticLine);
+    }
+    // Editing must never invent a second row when the target line is missing.
   } else if (mergeTarget) {
-    const idx = lines.findIndex(
-      (line) => String(cartLineRef(line)) === String(cartLineRef(mergeTarget)),
-    );
+    const idx = findCartLineIndexByRef(lines, cartLineRef(mergeTarget));
     if (idx >= 0) {
       const existing = lines[idx];
+      const preservedCode =
+        existing.update_code != null && String(existing.update_code).trim() !== ""
+          ? existing.update_code
+          : existing.id;
       lines[idx] = {
         ...optimisticLine,
         id: existing.id,
-        update_code: existing.update_code ?? existing.id,
+        update_code: preservedCode,
       };
     } else lines.push(optimisticLine);
   } else {

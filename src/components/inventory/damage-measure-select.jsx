@@ -1,6 +1,6 @@
 "use client";
 
-import { inputClassName } from "@/components/catalog/catalog-shared";
+import { inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
 import { defaultDamageMeasureLevel, damageMeasureLabel, normalizeDamageLevel } from "@/lib/stock-uom";
 
@@ -20,19 +20,14 @@ export function DamageMeasureSelect({
   const normalized = normalizeDamageLevel(value, uom);
 
   return (
-    <select
-      id={id}
-      className={className ?? `${inputClassName()} text-xs capitalize`}
-      value={normalized}
-      onChange={(e) => onChange(e.target.value)}
-      onClick={onClick}
-    >
-      {options.map((opt) => (
-        <option key={opt.key} value={opt.key}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
+    <div id={id} className="contents" onClick={onClick}>
+      <SearchableSelect
+        className={className ?? `${inputClassName()} text-xs capitalize`}
+        value={normalized}
+        onChange={onChange}
+        options={options.map((opt) => ({ value: opt.key, label: opt.label }))}
+      />
+    </div>
   );
 }
 

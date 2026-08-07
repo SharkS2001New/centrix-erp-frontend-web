@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { AttendanceMobileDeviceIdHelpModal } from "@/components/hr/attendance-mobile-device-id-help-modal";
 import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 
@@ -175,20 +175,15 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
         </Field>
         {multiBranch || branches.length > 0 ? (
           <Field label="Branch">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={form.branch_id}
-              onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value }))}
-            >
-              {branches.map((branch) => {
+              onChange={(value) => setForm((f) => ({ ...f, branch_id: value }))}
+              options={branches.map((branch) => {
                 const id = branch.branch_id ?? branch.id;
-                return (
-                  <option key={id} value={String(id)}>
-                    {branch.branch_name ?? branch.name}
-                  </option>
-                );
+                return { value: String(id), label: branch.branch_name ?? branch.name };
               })}
-            </select>
+            />
           </Field>
         ) : (
           <Field label="Branch">

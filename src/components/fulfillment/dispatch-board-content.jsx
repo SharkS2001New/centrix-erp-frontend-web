@@ -9,7 +9,15 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
-import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
+import {
+  CatalogPageShell,
+  Field,
+  PaginationBar,
+  PrimaryLink,
+  inputClassName,
+  PrimaryButton,
+  FilterSelect,
+} from "@/components/catalog/catalog-shared";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
 import { DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -290,18 +298,14 @@ export function DispatchBoardContent() {
           />
         </Field>
         <Field label="Route">
-          <select
-            className={inputClassName()}
+          <FilterSelect
             value={routeFilter}
             onChange={(e) => setRouteFilter(e.target.value)}
-          >
-            <option value="all">All routes</option>
-            {routes.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.route_name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "all", label: "All routes" },
+              ...routes.map((r) => ({ value: String(r.id), label: r.route_name })),
+            ]}
+          />
         </Field>
         <button
           type="button"

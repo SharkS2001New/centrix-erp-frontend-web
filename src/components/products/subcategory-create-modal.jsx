@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, FormModal, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 
 export function SubcategoryCreateModal({ open, categories = [], onClose, onCreated }) {
   const [categoryId, setCategoryId] = useState("");
@@ -61,19 +61,14 @@ export function SubcategoryCreateModal({ open, categories = [], onClose, onCreat
       submitLabel="Create"
     >
       <Field label="Category">
-        <select
+        <SearchableSelect
           className={inputClassName()}
           value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
+          onChange={setCategoryId}
+          options={categories.map((c) => ({ value: String(c.id), label: c.category_name }))}
+          placeholder="Select category"
           required
-        >
-          <option value="">Select category</option>
-          {categories.map((c) => (
-            <option key={c.id} value={String(c.id)}>
-              {c.category_name}
-            </option>
-          ))}
-        </select>
+        />
       </Field>
       <Field label="Sub-category name" required>
         <input

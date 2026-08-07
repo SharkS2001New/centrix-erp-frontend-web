@@ -55,6 +55,51 @@ function primaryAccountNumber(line) {
   return String(primary?.account_number ?? "").trim();
 }
 
+function coalesceAmount(...values) {
+  for (const value of values) {
+    if (value == null || value === "") continue;
+    const amount = Number(value);
+    if (Number.isFinite(amount)) return amount;
+  }
+  return 0;
+}
+
+function lineGrossPay(line, meta) {
+  const fromLine = coalesceAmount(line?.gross_pay, meta?.period_gross, meta?.gross_pay);
+  if (fromLine > 0) return fromLine;
+
+  const payroll = meta?.payroll ?? {};
+  const basic = periodBasicFromMeta(meta, payroll);
+  const overtime = Number(payroll.overtime ?? 0);
+  const reconstructed = basic + overtime;
+  return reconstructed > 0 ? reconstructed : fromLine;
+}
+
+function lineNetPay(line, meta, grossPay) {
+  const direct = coalesceAmount(line?.net_pay, meta?.net_pay);
+  if (direct > 0) return direct;
+
+  const deductions = Number(line?.deductions ?? 0);
+  if (grossPay > 0 && deductions > 0) {
+    return Math.max(0, Math.round((grossPay - deductions) * 100) / 100);
+  }
+
+  return direct;
+}
+
+/** Plain decimal string for CSV/Excel (no currency symbol or thousands separators). */
+export function formatPayrollSheetExportAmount(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "";
+  if (amount === 0) return "0.00";
+  return amount.toFixed(2);
+}
+
+/** Full account number for export — never coerce to a number. */
+export function formatPayrollSheetExportAccount(value) {
+  return String(value ?? "").trim();
+}
+
 /**
  * @param {object} line
  * @param {number} index
@@ -68,12 +113,15 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
       ? nameResolver(line)
       : line?.employee?.full_name ?? `#${line?.employee_id ?? ""}`;
 
+  const grossPay = lineGrossPay(line, meta);
+  const netPay = lineNetPay(line, meta, grossPay);
+
   return {
     no: index + 1,
     name,
     basic_salary: periodBasicFromMeta(meta, payroll),
     overtime: Number(payroll.overtime ?? 0),
-    gross_salary: Number(line?.gross_pay ?? 0),
+    gross_salary: grossPay,
     advance: advanceAmount(payroll),
     nssf: Number(line?.nssf ?? 0),
     shif: Number(line?.shif ?? 0),
@@ -81,7 +129,7 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
     paye: Number(line?.paye ?? 0),
     loan_absent: loanAbsentAmount(payroll, line?.other_deductions),
     total_ded: Number(line?.deductions ?? 0),
-    net_pay: Number(line?.net_pay ?? 0),
+    net_pay: netPay,
     account_number: primaryAccountNumber(line),
   };
 }
@@ -106,6 +154,26 @@ export function payrollSheetDisplayRow(numeric) {
   };
 }
 
+/** @param {object} numeric */
+export function payrollSheetExportRow(numeric) {
+  return {
+    no: String(numeric.no ?? ""),
+    name: numeric.name ?? "",
+    basic_salary: formatPayrollSheetExportAmount(numeric.basic_salary),
+    overtime: numeric.overtime > 0 ? formatPayrollSheetExportAmount(numeric.overtime) : "",
+    gross_salary: formatPayrollSheetExportAmount(numeric.gross_salary),
+    advance: numeric.advance > 0 ? formatPayrollSheetExportAmount(numeric.advance) : "",
+    nssf: formatPayrollSheetExportAmount(numeric.nssf),
+    shif: formatPayrollSheetExportAmount(numeric.shif),
+    housing: formatPayrollSheetExportAmount(numeric.housing),
+    paye: formatPayrollSheetExportAmount(numeric.paye),
+    loan_absent: numeric.loan_absent > 0 ? formatPayrollSheetExportAmount(numeric.loan_absent) : "",
+    total_ded: formatPayrollSheetExportAmount(numeric.total_ded),
+    net_pay: formatPayrollSheetExportAmount(numeric.net_pay),
+    account_number: formatPayrollSheetExportAccount(numeric.account_number),
+  };
+}
+
 /**
  * @param {object[]} lines
  * @param {(line: object) => string} [nameResolver]
@@ -113,6 +181,17 @@ export function payrollSheetDisplayRow(numeric) {
 export function buildPayrollSheetRows(lines, nameResolver) {
   return (lines ?? []).map((line, index) =>
     payrollSheetDisplayRow(payrollSheetNumericRow(line, index, nameResolver)),
+  );
+}
+
+/**
+ * CSV-friendly rows: plain decimals (Excel-safe) and full account numbers as text.
+ * @param {object[]} lines
+ * @param {(line: object) => string} [nameResolver]
+ */
+export function buildPayrollSheetExportRows(lines, nameResolver) {
+  return (lines ?? []).map((line, index) =>
+    payrollSheetExportRow(payrollSheetNumericRow(line, index, nameResolver)),
   );
 }
 
@@ -126,6 +205,23 @@ export function buildPayrollSheetFooter(lines, nameResolver) {
     }
   }
   return payrollSheetDisplayRow({
+    no: "",
+    name: "Total",
+    ...totals,
+    account_number: "",
+  });
+}
+
+/** @param {object[]} lines @param {(line: object) => string} [nameResolver] */
+export function buildPayrollSheetExportFooter(lines, nameResolver) {
+  const totals = Object.fromEntries(NUMERIC_KEYS.map((key) => [key, 0]));
+  for (let i = 0; i < (lines ?? []).length; i += 1) {
+    const numeric = payrollSheetNumericRow(lines[i], i, nameResolver);
+    for (const key of NUMERIC_KEYS) {
+      totals[key] += Number(numeric[key] ?? 0);
+    }
+  }
+  return payrollSheetExportRow({
     no: "",
     name: "Total",
     ...totals,

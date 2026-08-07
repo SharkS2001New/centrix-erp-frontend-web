@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
-import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
+import { parseDecimalInput, INPUT_CLASS, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
 import {
@@ -2085,17 +2085,12 @@ export function PosPaymentPanel({
           {cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
             <>
               <PosField label="Bank type">
-                <select
+                <SearchableSelect
                   className={inputCls}
                   value={bankType}
-                  onChange={(e) => setBankType(e.target.value)}
-                >
-                  {cfg.bankOptions.map((o) => (
-                    <option key={o.value || "none"} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setBankType}
+                  options={cfg.bankOptions.map((o) => ({ value: o.value, label: o.label }))}
+                />
               </PosField>
               {cfg.showBankAmount ? (
                 <>

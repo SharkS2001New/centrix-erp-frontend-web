@@ -12,7 +12,12 @@ import {
   showBackofficeLineDiscountEdit,
 } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
-import { inputClassName, PrimaryButton, TrashIcon } from "@/components/catalog/catalog-shared";
+import {
+  inputClassName,
+  PrimaryButton,
+  TrashIcon,
+  SearchableSelect,
+} from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { InlineActionError } from "@/components/shared/inline-action-error";
@@ -707,18 +712,18 @@ export function ModernBackofficeOrderEditModal({
                         {retailPricingEnabled ? (
                           <td className="px-3 py-2.5">
                             {canTogglePricing ? (
-                              <select
+                              <SearchableSelect
                                 value={isRetailLine(line) ? "retail" : "wholesale"}
                                 disabled={saving}
-                                onChange={(e) =>
-                                  updateLinePricingMode(key, e.target.value === "retail")
+                                onChange={(value) =>
+                                  updateLinePricingMode(key, value === "retail")
                                 }
+                                options={[
+                                  { value: "wholesale", label: "Wholesale" },
+                                  { value: "retail", label: "Retail" },
+                                ]}
                                 className={`${inputClassName()} w-full min-w-[6.5rem] text-xs`}
-                                aria-label={`Pricing type for ${lineLabel(line)}`}
-                              >
-                                <option value="wholesale">Wholesale</option>
-                                <option value="retail">Retail</option>
-                              </select>
+                              />
                             ) : (
                               <span
                                 className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${

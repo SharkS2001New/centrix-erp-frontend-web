@@ -270,6 +270,16 @@ export function matchKindsForIndexed(hay, query, options = {}) {
     if (hay.nameCompact.includes(q.compact) || hay.codeCompact.includes(q.compact)) {
       return ["compact_match"];
     }
+    // One extra letter past a name token (yaba → yabal) — keep the row while refining.
+    for (const word of hay.words ?? []) {
+      if (
+        word.length >= 3 &&
+        q.compact.startsWith(word) &&
+        q.compact.length - word.length === 1
+      ) {
+        return ["word_prefix"];
+      }
+    }
   }
 
   const tokens = q.tokens.length ? q.tokens : [q.compact];

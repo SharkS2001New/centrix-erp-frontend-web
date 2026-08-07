@@ -581,9 +581,8 @@ export function ClassicPosCartTable({
                 <div className="classic-pos-entry-qty-wrap">
                   <input
                     ref={qtyRef}
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     className="classic-pos-cart-qty-input"
                     value={entryQty}
                     disabled={busy}

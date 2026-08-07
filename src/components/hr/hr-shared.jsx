@@ -787,6 +787,9 @@ export function payrollBreakdownSections(line, employee) {
   const expectedDays = Number(
     payroll.expected_work_days ?? payroll.attendance?.expected_days ?? 0,
   );
+  const remainingDays = Number(
+    payroll.remaining_days ?? payroll.attendance?.remaining_days ?? 0,
+  );
   const expectedHours = Number(payroll.expected_hours ?? payroll.attendance?.expected_hours ?? 0);
   const lateMinutes = Number(payroll.attendance?.late_minutes_total ?? 0);
   // Lateness reduces paid hours (and prorated allowances). Surface the KES impact on receipts.
@@ -797,7 +800,7 @@ export function payrollBreakdownSections(line, employee) {
       : 0;
   const daysHint =
     useProration && expectedDays > 0
-      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} days`
+      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days`
       : null;
   // When lateness is listed under deductions, show payable before that cut so the slip balances:
   // (payable + lateness) − (statutory + other + lateness) = net.
@@ -816,8 +819,8 @@ export function payrollBreakdownSections(line, employee) {
       emphasis: true,
       hint: useProration
         ? latenessAmount > 0
-          ? "Pay for days worked before lateness deduction"
-          : "Pay for days worked, before deductions"
+          ? "Full-month calendar pay before lateness deduction"
+          : "Full-month calendar pay (Sundays & holidays included)"
         : "Amount before deductions",
     },
   ];
@@ -851,9 +854,12 @@ export function payrollBreakdownSections(line, employee) {
   const attendanceNote =
     attendance && useProration
       ? [
-          `${formatPayrollDays(attendance.paid_days ?? paidDays)} paid days of ${formatPayrollDays(attendance.expected_days ?? expectedDays)} scheduled`,
-          Number(attendance.assumed_future_days ?? 0) > 0
-            ? `${attendance.assumed_future_days} remaining (credited)`
+          `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days`,
+          Number(attendance.rest_days_paid ?? 0) > 0
+            ? `${formatPayrollDays(attendance.rest_days_paid)} rest days (Sun/holiday) included`
+            : null,
+          remainingDays > 0
+            ? `${formatPayrollDays(remainingDays)} remaining days credited`
             : null,
           Number(attendance.absent_days ?? 0) > 0 ? `${attendance.absent_days} absent` : null,
           Number(attendance.unpaid_leave_days ?? 0) > 0

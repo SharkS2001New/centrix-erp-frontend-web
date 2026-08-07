@@ -341,7 +341,10 @@ export function posCartHasInsufficientStock(
 }
 
 function cartLineRef(line) {
-  return line?.update_code ?? line?.id ?? null;
+  const code = line?.update_code;
+  if (code != null && String(code).trim() !== "") return code;
+  if (line?.id != null && String(line.id).trim() !== "") return line.id;
+  return null;
 }
 
 /** Which stock columns to show in POS product search for current settings. */

@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatShortDate, getSaleTimestamp, StatCard, SortableColumnHeader, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
+import {
+  formatShortDate,
+  getSaleTimestamp,
+  StatCard,
+  SortableColumnHeader,
+  TABLE_HEAD_ROW_CLASS,
+  SearchableSelect,
+} from "@/components/catalog/catalog-shared";
 import {
   TableRowSelectCell,
   TableSelectAllHeader,
@@ -967,19 +974,13 @@ export function OrderListTableHead({
     if (!filtersEnabled) return null;
     if (options) {
       return (
-        <select
+        <SearchableSelect
           className={COLUMN_FILTER_INPUT_CLASS}
           value={columnFilters[key] ?? ""}
-          onChange={(e) => onColumnFilterChange(key, e.target.value)}
-          aria-label={`Filter ${placeholder}`}
-        >
-          <option value="">All</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => onColumnFilterChange(key, value)}
+          options={options}
+          placeholder="All"
+        />
       );
     }
     return (

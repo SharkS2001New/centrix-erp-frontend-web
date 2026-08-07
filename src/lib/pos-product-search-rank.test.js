@@ -74,6 +74,13 @@ describe("pos-product-search-rank", () => {
     expect(productMatchesPosSearch(spaghetti, "spageti")).toBe(true);
   });
 
+  it("still matches when the cashier types one letter past a name token", () => {
+    const yaba = { product_code: "Y1", product_name: "Yaba Clear Soap" };
+    expect(productMatchesPosSearch(yaba, "yab")).toBe(true);
+    expect(productMatchesPosSearch(yaba, "yaba")).toBe(true);
+    expect(productMatchesPosSearch(yaba, "yabal")).toBe(true);
+  });
+
   it("ranks marai ahead of mara and marathon", () => {
     const marai = { product_code: "M1", product_name: "Marai Rice" };
     const mara = { product_code: "M2", product_name: "Mara Sugar" };

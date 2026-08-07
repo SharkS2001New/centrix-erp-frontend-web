@@ -18,6 +18,7 @@ import {
   SELECT_CLASS,
   INPUT_READONLY_CLASS,
   COMPACT_INPUT_CLASS,
+  SearchableSelect,
 } from "@/components/catalog/catalog-shared";
 import { todayCalendarDate } from "@/lib/datetime";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
@@ -125,7 +126,6 @@ import {
 } from "@/lib/pos-stock";
 import {
   mergePosSearchResults,
-  productMatchesPosSearch,
 } from "@/lib/pos-product-search-rank";
 import {
   sameSearchResultList,
@@ -136,6 +136,7 @@ import {
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
   cartHasOptimisticLines,
+  cartLineRef,
   findMergeableCartLine,
   looksLikeProductCodeQuery,
   mergePreservedOptimisticLines,
@@ -326,10 +327,6 @@ function isEmptyPosLineForm(lineForm) {
     String(lineForm.discount ?? "0") === "0" &&
     !lineForm.unit_price
   );
-}
-
-function cartLineRef(line) {
-  return line?.update_code ?? line?.id ?? null;
 }
 
 function isLocalCartLineId(id) {
@@ -3662,7 +3659,10 @@ export function PosScreen({ standalone = false }) {
         });
       };
 
+      let committedNonEmpty = false;
+
       const commitSearchResults = (list) => {
+        if (list.length > 0) committedNonEmpty = true;
         setSearchResults((prev) => (sameSearchResultList(prev, list) ? prev : list));
       };
 
@@ -3678,10 +3678,8 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       setSearching(true);
-      // Drop stale rows that no longer match this query (stops Mara flashing while typing Marai).
-      setSearchResults((prev) =>
-        (prev ?? []).filter((product) => productMatchesPosSearch(product, trimmed)),
-      );
+      // Keep the prior list visible while this query is in flight. Clearing early when the
+      // query lengthens (yab → yabal) blanked the dropdown before index/API responded.
       /** Offline/index search is already ranked — only enrich + sellable filter. */
       const paintFromOffline = async () => {
         const local = await searchOffline(trimmed, 80);
@@ -3804,7 +3802,12 @@ export function PosScreen({ standalone = false }) {
           setStatusMessage("Cannot reach server and no offline catalog match.");
         }
       } finally {
-        if (seq === searchSeq.current) setSearching(false);
+        if (seq === searchSeq.current) {
+          setSearching(false);
+          if (!committedNonEmpty && trimmed) {
+            setSearchResults([]);
+          }
+        }
       }
     },
     [
@@ -4004,7 +4007,20 @@ export function PosScreen({ standalone = false }) {
     const liveCart = cartRef.current ?? cart;
     const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
-    let targetLineRef = editingRef ?? cartLineRef(mergeTarget);
+    const intendedEdit = editingId != null || editingRef != null;
+    let targetLineRef = cartLineRef(
+      editingRef != null || editingId != null
+        ? { update_code: editingRef, id: editingId }
+        : mergeTarget,
+    );
+    if (!targetLineRef && mergeTarget) {
+      targetLineRef = cartLineRef(mergeTarget);
+    }
+
+    if (intendedEdit && !targetLineRef) {
+      setStatusMessage("Could not resolve the cart line to update.");
+      return false;
+    }
 
     if (mergeTarget && !editingId) {
       const newBaseQty = Number(mergeTarget.quantity) + incrementBaseQty;
@@ -5711,17 +5727,29 @@ export function PosScreen({ standalone = false }) {
 
     const run = async () => {
       const activeCart = cartRef.current ?? cart;
+      const liveLine =
+        (activeCart?.lines ?? []).find(
+          (row) =>
+            sameLineId(row.id, line.id) ||
+            (cartLineRef(line) != null &&
+              String(cartLineRef(row)) === String(cartLineRef(line))),
+        ) ?? line;
+      const lineRef = cartLineRef(liveLine);
+      if (!lineRef) {
+        setStatusMessage("Could not resolve the cart line to update.");
+        return;
+      }
       // Prefer cache — qty↔unit conversion only needs product UOM, not a network round-trip.
-      let product = productByCodeRef.current[line.product_code] ?? null;
+      let product = productByCodeRef.current[liveLine.product_code] ?? null;
       if (!product) {
-        product = await resolveProductByCode(line.product_code);
+        product = await resolveProductByCode(liveLine.product_code);
       }
       if (!product) {
         setStatusMessage("Product not found for this cart line.");
         return;
       }
 
-      const lineIsRetail = cartLineRetailStockFlag(line);
+      const lineIsRetail = cartLineRetailStockFlag(liveLine);
       const sessionIsRetail = posSalesConfig.enableRetailPricing
         ? isPosRetailSession(sellWholesaleRef.current)
         : lineIsRetail;
@@ -5732,17 +5760,17 @@ export function PosScreen({ standalone = false }) {
       if (
         switchingMode &&
         sessionIsRetail &&
-        retailByCodeRef.current[line.product_code] === undefined &&
+        retailByCodeRef.current[liveLine.product_code] === undefined &&
         !product?.retail_package
       ) {
         await ensureRetailPackageForProduct(product);
       }
-      const retailPackage = getRetailPackage(line.product_code);
+      const retailPackage = getRetailPackage(liveLine.product_code);
 
       // Use the number in the qty field as-is in the F12 session mode (do not × conversion).
       // When F12 session differs from the line's mode, reprice from catalog — do not lock old unit.
       const lockedUnit = !switchingMode
-        ? cartLineLockedUnitOverride(line, product.uom, lineIsRetail, {
+        ? cartLineLockedUnitOverride(liveLine, product.uom, lineIsRetail, {
             cashRound: enablePosCashRounding,
           })
         : null;
@@ -5756,14 +5784,14 @@ export function PosScreen({ standalone = false }) {
       );
       const packQty = cartLinePackQtyForDiscount(
         {
-          ...line,
+          ...liveLine,
           quantity: computedPreview.baseQty,
           on_wholesale_retail: sessionIsRetail ? 1 : 0,
         },
         product,
         retailPackage,
       );
-      const perUnitDiscount = lineDiscountPerUnit(line.discount_given, packQty);
+      const perUnitDiscount = lineDiscountPerUnit(liveLine.discount_given, packQty);
       const computed = applyComputedPrice(
         product,
         entryQty,
@@ -5788,7 +5816,7 @@ export function PosScreen({ standalone = false }) {
             product,
           ),
           productByCode: productByCodeRef.current,
-          excludeLineId: line?.id ?? line?.update_code,
+          excludeLineId: liveLine?.id ?? liveLine?.update_code,
         });
         if (!stockCheck.ok) {
           setStatusMessage(
@@ -5807,8 +5835,8 @@ export function PosScreen({ standalone = false }) {
         product,
         computed,
         incrementBaseQty: computed.baseQty,
-        editingId: line.id,
-        editingRef: cartLineRef(line),
+        editingId: liveLine.id,
+        editingRef: lineRef,
         discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
@@ -5816,7 +5844,7 @@ export function PosScreen({ standalone = false }) {
         lineRetailStockFlagOverride: sessionIsRetail,
       });
       if (ok) {
-        setSelectedLineId(line.id);
+        setSelectedLineId(liveLine.id);
         // After qty Enter, park on Scan code for the next item.
         window.requestAnimationFrame(() => focusScanCode());
       }
@@ -10368,22 +10396,21 @@ export function PosScreen({ standalone = false }) {
                     </span>
                   ) : null}
                   {lockedToRouteOrder || isRouteOrder ? (
-                    <select
+                    <SearchableSelect
                       className={`${SELECT_CLASS} min-w-[10rem] px-2 py-1 text-xs`}
                       value={selectedRouteId}
                       disabled={busy}
-                      onChange={(e) => void handleRouteChange(e.target.value)}
-                    >
-                      <option value="">Select route…</option>
-                      {routes.map((route) => (
-                        <option key={route.id} value={route.id}>
-                          {route.route_name}
-                          {Number(route.route_markup_price ?? 0) > 0
+                      onChange={(value) => void handleRouteChange(value)}
+                      placeholder="Select route…"
+                      options={routes.map((route) => ({
+                        value: String(route.id),
+                        label:
+                          route.route_name +
+                          (Number(route.route_markup_price ?? 0) > 0
                             ? ` (+${Number(route.route_markup_price).toLocaleString()} markup)`
-                            : ""}
-                        </option>
-                      ))}
-                    </select>
+                            : ""),
+                      }))}
+                    />
                   ) : null}
                 </div>
               ) : null}

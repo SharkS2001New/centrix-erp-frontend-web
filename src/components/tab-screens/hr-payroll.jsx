@@ -408,8 +408,8 @@ export function HrPayrollScreen() {
     <>
     {deleteWaitOverlay}
     <CatalogPageShell
-      title="Payroll"
-      subtitle="Runs, pay periods, and employee payroll lines"
+      title="Payroll runs"
+      subtitle="Monthly payrolls and payments — open a run to review, approve, or pay"
       action={
         <div className="flex flex-wrap items-center gap-2">
           {tab === "runs" ? (
@@ -528,7 +528,10 @@ export function HrPayrollScreen() {
       ) : tab === "runs" ? (
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
-            <h2 className="text-[15px] font-medium text-slate-900">Payroll runs</h2>
+            <h2 className="text-[15px] font-medium text-slate-900">Payments by month</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Open a payroll run to view the sheet, export, approve, or mark as paid.
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] border-collapse text-sm">

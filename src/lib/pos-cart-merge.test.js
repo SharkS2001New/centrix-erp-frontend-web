@@ -3,9 +3,18 @@ import {
   applyCartMutationResponse,
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
+  cartLineRef,
   mergePreservedOptimisticLines,
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
+
+describe("cartLineRef", () => {
+  it("falls back to id when update_code is blank", () => {
+    expect(cartLineRef({ id: 42, update_code: "" })).toBe(42);
+    expect(cartLineRef({ id: 42, update_code: "   " })).toBe(42);
+    expect(cartLineRef({ id: 42, update_code: "CLU-X" })).toBe("CLU-X");
+  });
+});
 
 describe("mergePreservedOptimisticLines", () => {
   it("keeps pending optimistic rows the server cart does not have yet", () => {
@@ -108,6 +117,75 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(next.lines[0].id).toBe(1);
     expect(next.lines[0].update_code).toBe("u1");
     expect(next.lines[0]._optimistic).toBe(true);
+  });
+
+  it("updates qty in place and never duplicates when edit target resolves by id", () => {
+    const prev = {
+      id: 10,
+      update_no: 2,
+      lines: [
+        {
+          id: 42,
+          update_code: "",
+          product_code: "SOAP",
+          quantity: 2,
+          amount: 200,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "SOAP", product_name: "Soap" },
+      {
+        product_code: "SOAP",
+        quantity: 6,
+        unit_price: 100,
+        display_unit_price: 100,
+        uom: "PCS",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 600 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic, { editingRef: 42 });
+    expect(next.lines).toHaveLength(1);
+    expect(next.lines[0].id).toBe(42);
+    expect(next.lines[0].quantity).toBe(6);
+  });
+
+  it("does not push a duplicate row when the edit target is missing", () => {
+    const prev = {
+      id: 10,
+      update_no: 2,
+      lines: [
+        {
+          id: 1,
+          update_code: "u1",
+          product_code: "A",
+          quantity: 1,
+          amount: 10,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "A", product_name: "A" },
+      {
+        product_code: "A",
+        quantity: 3,
+        unit_price: 10,
+        display_unit_price: 10,
+        uom: "PCS",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 30 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic, { editingRef: "missing" });
+    expect(next.lines).toHaveLength(1);
+    expect(next.lines[0].quantity).toBe(1);
   });
 
   it("reverts a failed swap back to the previous SKU without changing update_no", () => {

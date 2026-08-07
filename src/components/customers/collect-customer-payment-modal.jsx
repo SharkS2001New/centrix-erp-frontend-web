@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { Field, inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { Field, inputClassName, PrimaryButton, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
@@ -184,27 +184,24 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
             </Field>
 
             <Field label="Payment method">
-              <select
+              <SearchableSelect
                 required
                 className={inputClassName()}
                 value={form.payment_method_id}
-                onChange={(e) => setForm((f) => ({ ...f, payment_method_id: e.target.value }))}
-              >
-                <option value="">Select method</option>
-                {methods.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.method_name || m.name || m.method_code}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setForm((f) => ({ ...f, payment_method_id: value }))}
+                options={methods.map((m) => ({
+                  value: String(m.id),
+                  label: m.method_name || m.name || m.method_code,
+                }))}
+                placeholder="Select method"
+              />
             </Field>
 
             <Field label="Apply to invoice (optional)">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={form.customer_invoice_id}
-                onChange={(e) => {
-                  const id = e.target.value;
+                onChange={(id) => {
                   const inv = invoices.find((i) => String(i.id) === String(id));
                   const due = inv
                     ? inv.balance_due != null
@@ -218,20 +215,18 @@ export function CollectCustomerPaymentModal({ customer, onClose, onSuccess }) {
                       due != null && due > 0 ? due.toFixed(2) : f.amount_paid,
                   }));
                 }}
-              >
-                <option value="">Oldest unpaid first (auto)</option>
-                {invoices.map((inv) => {
+                options={invoices.map((inv) => {
                   const due =
                     inv.balance_due != null
                       ? Number(inv.balance_due)
                       : Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);
-                  return (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.invoice_number || `Invoice #${inv.id}`} · {formatCustomerKes(due)}
-                    </option>
-                  );
+                  return {
+                    value: String(inv.id),
+                    label: `${inv.invoice_number || `Invoice #${inv.id}`} · ${formatCustomerKes(due)}`,
+                  };
                 })}
-              </select>
+                placeholder="Oldest unpaid first (auto)"
+              />
               <p className="mt-1 text-xs text-slate-500">
                 Leave blank to allocate across unpaid invoices, oldest first.
               </p>

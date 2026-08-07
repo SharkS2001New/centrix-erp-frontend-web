@@ -14,6 +14,7 @@ import {
   TABLE_SHELL_CLASS,
   TABLE_BODY_ROW_CLASS,
   inputClassName,
+  SearchableSelect,
 } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -358,19 +359,14 @@ export function HrSelectField({
       placeholder={placeholder ?? `Search ${String(label).toLowerCase()}…`}
     />
   ) : (
-    <select
+    <SearchableSelect
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={onChange}
       required={required}
       className={inputClassName()}
-    >
-      <option value="">{options.length === 0 ? "No options — use + to create" : "Select…"}</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      options={options}
+      placeholder={options.length === 0 ? "No options — use + to create" : "Select…"}
+    />
   );
 
   if (!onAdd) {

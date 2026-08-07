@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   formatTimeDisplay12h,
   partsToTime24h,
@@ -73,47 +73,29 @@ export function HrTimePickerField({
   return (
     <Field label={label}>
       <div className="relative z-10 grid grid-cols-3 gap-2">
-        <select
+        <SearchableSelect
           value={parts.hour}
-          onChange={(e) => updatePart("hour", e.target.value)}
+          onChange={(value) => updatePart("hour", value)}
           required={required}
-          aria-label={`${label} hour`}
+          placeholder="Hour"
+          options={HOUR_OPTIONS}
           className={inputClassName()}
-        >
-          <option value="">Hour</option>
-          {HOUR_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select
+        />
+        <SearchableSelect
           value={parts.minute}
-          onChange={(e) => updatePart("minute", e.target.value)}
+          onChange={(value) => updatePart("minute", value)}
           required={required}
-          aria-label={`${label} minute`}
+          placeholder="Min"
+          options={MINUTE_OPTIONS}
           className={inputClassName()}
-        >
-          <option value="">Min</option>
-          {MINUTE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select
+        />
+        <SearchableSelect
           value={parts.period || (defaultPeriod === "PM" ? "PM" : "AM")}
-          onChange={(e) => updatePart("period", e.target.value)}
+          onChange={(value) => updatePart("period", value)}
           required={required}
-          aria-label={`${label} AM or PM`}
+          options={PERIOD_OPTIONS}
           className={inputClassName()}
-        >
-          {PERIOD_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        />
       </div>
       {complete ? (
         <p className="mt-1 text-xs text-slate-500">
