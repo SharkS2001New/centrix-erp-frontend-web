@@ -4,6 +4,21 @@ import { clearAllTabWorkspaceMemory } from "./tab-workspace";
 const TOKEN_KEY = "pos_erp_token";
 const WORKSPACE_ROUTE_MEMORY_PREFIX = "pos_erp_workspace_routes";
 
+/**
+ * Monotonic session generation. Bumped on login, workspace/channel switch, and logout
+ * so in-flight API 401s from a rotated Sanctum token do not clear the new session.
+ */
+let authEpoch = 0;
+
+export function getAuthEpoch() {
+  return authEpoch;
+}
+
+export function bumpAuthEpoch() {
+  authEpoch += 1;
+  return authEpoch;
+}
+
 function clearWorkspaceRouteMemoryOnLogout() {
   if (typeof window === "undefined") return;
   try {
@@ -42,6 +57,7 @@ export function hasAuthSession() {
 }
 
 export function setSession(token, user, organization = null, memberships = [], loginChannel = null) {
+  bumpAuthEpoch();
   if (useCookieAuth) {
     localStorage.removeItem(TOKEN_KEY);
   } else if (token) {
@@ -175,6 +191,7 @@ export function readCachedAuthSnapshot() {
 }
 
 export function clearSession() {
+  bumpAuthEpoch();
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(ORG_KEY);

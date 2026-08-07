@@ -377,6 +377,9 @@ export function AuthProvider({ children }) {
     setOrganization(res.organization ?? null);
     setMemberships(res.memberships ?? []);
     setLoginChannel(workspaceLoginChannel(workspaceId));
+    if (res.capabilities) {
+      setCapabilities(res.capabilities);
+    }
     return res;
   }, []);
 

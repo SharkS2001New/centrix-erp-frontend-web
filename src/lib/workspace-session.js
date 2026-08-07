@@ -1,5 +1,10 @@
 import { apiRequest } from "@/lib/api";
-import { setSession, setStoredCapabilities, setStoredWorkspace } from "@/lib/auth-storage";
+import {
+  bumpAuthEpoch,
+  setSession,
+  setStoredCapabilities,
+  setStoredWorkspace,
+} from "@/lib/auth-storage";
 import { workspaceLoginChannel } from "@/lib/workspaces";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
@@ -19,6 +24,8 @@ export function getAuthClientId() {
  * POS workspace → pos channel so orders record order_source=pos.
  */
 export async function applyWorkspaceSession(workspaceId) {
+  // Invalidate in-flight API 401 handlers before the server deletes the old token.
+  bumpAuthEpoch();
   const loginChannel = workspaceLoginChannel(workspaceId);
   const res = await apiRequest("/auth/switch-workspace", {
     method: "POST",

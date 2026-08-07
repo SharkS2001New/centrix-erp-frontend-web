@@ -8,7 +8,7 @@ import {
   needsWorkspaceSelection,
   workspaceLandingPath,
 } from "@/lib/workspace-navigation";
-import { getStoredWorkspace } from "@/lib/auth-storage";
+import { getStoredWorkspace, getStoredLoginChannel } from "@/lib/auth-storage";
 import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
@@ -71,7 +71,10 @@ export function PosWorkspaceGuard({ children }) {
     if (loading || platformUser) return;
     const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
     if (!isPosWorkspace(workspaceId)) return;
-    if (loginChannel === POS_LOGIN_CHANNEL) return;
+    // Prefer stored channel — React state can lag right after WorkspaceSwitcher.
+    if (loginChannel === POS_LOGIN_CHANNEL || getStoredLoginChannel() === POS_LOGIN_CHANNEL) {
+      return;
+    }
     switchWorkspace("pos").catch((err) => {
       console.error("Failed to switch to POS session", err);
     });

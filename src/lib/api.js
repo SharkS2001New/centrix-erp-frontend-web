@@ -1,4 +1,4 @@
-import { getToken, clearSession, isScreenLocked, canSeeServerErrorDetail } from "./auth-storage";
+import { getToken, clearSession, isScreenLocked, canSeeServerErrorDetail, getAuthEpoch, hasAuthSession } from "./auth-storage";
 import { isLicenseExpiredApiCode } from "./organization-license";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 import { apiV1BaseUrl } from "./api-base-url";
@@ -385,11 +385,15 @@ async function performApiRequest(path, url, options = {}) {
   const trackIssues = options.reportIssues !== false;
   const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
   const apiPath = path.startsWith("http") ? new URL(path).pathname : path;
+  // Capture before await — workspace switch rotates Sanctum tokens mid-flight.
+  const requestAuthEpoch = getAuthEpoch();
+  const requestBearerToken =
+    options.token !== undefined ? options.token : getToken();
 
   if (trackNavigation) beginAppLoading(options.loadingLabel ?? "Loading…");
 
   try {
-    const token = options.token ?? getToken();
+    const token = requestBearerToken;
     const headers = {
       Accept: "application/json",
     };
@@ -437,6 +441,18 @@ async function performApiRequest(path, url, options = {}) {
       if (typeof window !== "undefined") {
         const code = data?.code;
         const licenseExpired = isLicenseExpiredApiCode(code);
+        const authRotatedSinceRequest =
+          requestAuthEpoch !== getAuthEpoch() ||
+          (!useCookieAuth &&
+            requestBearerToken &&
+            getToken() &&
+            requestBearerToken !== getToken());
+        // Stale 401 after backoffice→POS (or any) token rotation must not wipe the new session.
+        const ignoreStaleUnauthorized =
+          res.status === 401 &&
+          authRotatedSinceRequest &&
+          hasAuthSession() &&
+          !licenseExpired;
 
         if (licenseExpired && (res.status === 401 || res.status === 403)) {
           if (!isAuthEndpoint(path)) {
@@ -447,7 +463,7 @@ async function performApiRequest(path, url, options = {}) {
           if (!window.location.pathname.startsWith("/login")) {
             window.location.assign("/login?reason=license");
           }
-        } else if (res.status === 401) {
+        } else if (res.status === 401 && !ignoreStaleUnauthorized) {
           const locked = isScreenLocked();
           const stayOnPageWhileLocked =
             locked && code !== "session_active_elsewhere";
