@@ -832,7 +832,7 @@ async function resolveNextPosTicketForWorkspace(
     activeCart,
     sessionOrders,
     pendingSale,
-    await peekIssuedPosTicketMax().catch(() => null),
+    await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null),
   );
   const emptyFresh =
     !(activeCart?.lines?.length > 0) &&
@@ -842,7 +842,7 @@ async function resolveNextPosTicketForWorkspace(
 
   // Already on the blank next ticket after F10 / prepare — keep it (do not +1 again),
   // unless the on-device/server seq has moved past a cancelled ticket (274 → 275).
-  const localNext = await peekLocalPosTicketNext().catch(() => null);
+  const localNext = await peekLocalPosTicketNext(null, floatSessionId).catch(() => null);
 
   if (
     emptyFresh &&
@@ -2643,7 +2643,7 @@ export function PosScreen({ standalone = false }) {
     if (!standalone) return undefined;
     let cancelled = false;
     void (async () => {
-      const nextTicket = await peekNextPosTicketNumber().catch(() => null);
+      const nextTicket = await peekNextPosTicketNumber(null, floatSessionId).catch(() => null);
       if (cancelled || nextTicket == null) return;
       const live = cartRef.current;
       const hasLines = (live?.lines?.length ?? 0) > 0;
@@ -2658,7 +2658,7 @@ export function PosScreen({ standalone = false }) {
     return () => {
       cancelled = true;
     };
-  }, [standalone, pendingSync, failedSyncOrders.length, editOrderNo]);
+  }, [standalone, pendingSync, failedSyncOrders.length, editOrderNo, floatSessionId]);
 
   /** After a failed sync, drop stale offline/edit markers so a new ticket cannot reattach to the old order. */
   useEffect(() => {
@@ -7759,7 +7759,7 @@ export function PosScreen({ standalone = false }) {
       if (sale?.pos_order_num != null) {
         void purgeReservedPosTicketsUpTo(sale.pos_order_num, sale.pos_order_date).catch(() => {});
         // Keep local Cash Sales counter aligned with server after online sale.
-        void seedLocalPosTicketSeqFromSale(sale).catch(() => {});
+        void seedLocalPosTicketSeqFromSale(sale, floatSessionId).catch(() => {});
       }
       // Annotate with cashier-entered tenders + change so the receipt is correct
       // even when aligned payment_splits stored net (post-change) cash on the sale.
@@ -8092,7 +8092,7 @@ export function PosScreen({ standalone = false }) {
     const deleteCartId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
     if (deleteCartId) markServerCartConsumed(deleteCartId);
 
-    const issuedPosMax = await peekIssuedPosTicketMax().catch(() => null);
+    const issuedPosMax = await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null);
     const peekNextPos = resolveFreshWorkspacePosNum(
       activeCart,
       sessionPosOrders,
@@ -8569,7 +8569,7 @@ export function PosScreen({ standalone = false }) {
     skipEditAutosaveRef.current = true;
     setPendingSyncOpen(false);
 
-    const issuedPosMax = await peekIssuedPosTicketMax().catch(() => null);
+    const issuedPosMax = await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null);
     const hasPendingOutbox = pendingSync > 0 || failedSyncOrders.length > 0;
 
     // Already on a blank new order at last+1 (e.g. after F10) — F8 must not bump again.

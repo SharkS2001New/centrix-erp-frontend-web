@@ -165,11 +165,23 @@ function enableWorkspacePatch(workspaceId) {
         "customers_suppliers.reports": true,
       };
     case "distribution":
-      return { distribution: true };
+      return {
+        distribution: true,
+        "distribution.dashboard": true,
+        "distribution.reports": true,
+      };
     case "accounting":
-      return { accounting: true };
+      return {
+        accounting: true,
+        "accounting.dashboard": true,
+        "accounting.reports": true,
+      };
     case "hr":
-      return { hr_payroll: true };
+      return {
+        hr_payroll: true,
+        "hr_payroll.dashboard": true,
+        "hr_payroll.reports": true,
+      };
     case "admin":
       return { admin: true };
     default:

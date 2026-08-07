@@ -210,6 +210,7 @@ export function usePosOfflineSupport({ enabled = false, floatSessionId = null } 
         const results = await syncPosOfflineOutbox({
           includeErrors,
           clientSaleUuid,
+          floatSessionId,
           onProgress: (progress) => {
             setSyncProgress({
               phase: progress.phase ?? "syncing",

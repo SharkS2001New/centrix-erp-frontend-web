@@ -444,14 +444,12 @@ export function saleLinePrintQtyPackage(
     });
   }
 
-  // Without conversion metadata, never pair base qty with a pack label ("25 bag").
-  // Prefer the stored sold-unit label alone only when qty looks like pack counts (≤ base
-  // is unknown); show base qty with a neutral unit instead.
+  // Without conversion metadata, never pair base qty with a pack label ("350 bag").
+  // Base units stay labeled neutrally; pack conversion requires line.unit / product.unit.
   if (line?.uom) {
-    const label = String(line.uom).trim();
     return {
       quantity: formatDisplayQty(baseQty),
-      package: label || "units",
+      package: "units",
     };
   }
 

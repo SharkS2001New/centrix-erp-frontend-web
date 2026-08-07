@@ -231,7 +231,10 @@ export async function ensurePosOfflineOrderNumbers({
     // Seed local Cash Sales sequence from server (cancelled #s stay consumed).
     const nextPos = Number(res?.next_pos_order_num ?? 0);
     if (Number.isFinite(nextPos) && nextPos > 0) {
-      await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date);
+      await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date, sessionId || null, {
+        // New float session must restart at server peek (#1), not keep a day-scoped floor.
+        force: Boolean(sessionId),
+      });
     }
     return {
       reserved: slots.length || numbers.length,
@@ -243,9 +246,9 @@ export async function ensurePosOfflineOrderNumbers({
 }
 
 /** Next Cash Sales # from the on-device sequence (after server reseed / local issues). */
-export async function peekLocalPosTicketNext(posOrderDate = null) {
+export async function peekLocalPosTicketNext(posOrderDate = null, floatSessionId = null) {
   const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
-  const key = `pos_ticket_seq_${today}`;
+  const key = localPosTicketSeqKey(today, floatSessionId);
   const current = Number((await idbGetMeta(key)) ?? 0);
   if (!(current > 0)) return null;
   return current + 1;
@@ -267,12 +270,15 @@ export async function purgeReservedPosTicketsUpTo(posOrderNum, posOrderDate = nu
 }
 
 /**
- * Highest Cash Sales # already issued on-device today (local seq + pending/failed outbox).
+ * Highest Cash Sales # already issued on-device for this float session (or day).
  * Does not consume the next number.
  */
-export async function peekIssuedPosTicketMax(posOrderDate = null) {
+export async function peekIssuedPosTicketMax(posOrderDate = null, floatSessionId = null) {
   const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
-  const key = `pos_ticket_seq_${today}`;
+  const sessionId = Number(floatSessionId);
+  const scopedSession =
+    Number.isFinite(sessionId) && sessionId > 0 ? sessionId : null;
+  const key = localPosTicketSeqKey(today, scopedSession);
   let maxIssued = Number((await idbGetMeta(key)) ?? 0);
 
   try {
@@ -284,9 +290,14 @@ export async function peekIssuedPosTicketMax(posOrderDate = null) {
       const date =
         normalizePosOrderDate(row?.sale_payload?.pos_order_date) ??
         normalizePosOrderDate(row?.checkout_body?.pos_order_date);
-      if (num > maxIssued && (!date || date === today)) {
-        maxIssued = num;
+      if (!(num > maxIssued) || (date && date !== today)) continue;
+      const rowSession = outboxRowFloatSessionId(row);
+      if (scopedSession) {
+        if (rowSession !== scopedSession) continue;
+      } else if (rowSession) {
+        continue;
       }
+      maxIssued = num;
     }
   } catch {
     /* ignore */
@@ -296,8 +307,8 @@ export async function peekIssuedPosTicketMax(posOrderDate = null) {
 }
 
 /** Next Cash Sales # for a blank workspace (respects pending/failed outbox tickets). */
-export async function peekNextPosTicketNumber(posOrderDate = null) {
-  const max = await peekIssuedPosTicketMax(posOrderDate);
+export async function peekNextPosTicketNumber(posOrderDate = null, floatSessionId = null) {
+  const max = await peekIssuedPosTicketMax(posOrderDate, floatSessionId);
   return max != null ? max + 1 : null;
 }
 
@@ -824,35 +835,75 @@ export async function peekNextPosOfflineOrderSlot() {
 /**
  * Seed local Cash Sales counter so offline tickets continue from server sale max.
  * @param {number} lastIssued - highest Cash Sales # already issued (0 → next is 1)
+ * @param {string|null} [posOrderDate]
+ * @param {number|null} [floatSessionId] - when set, seq is scoped to this till session
+ * @param {{ force?: boolean }} [options] - force=true replaces the counter (new float session)
  */
-export async function seedLocalPosTicketSeq(lastIssued, posOrderDate = null) {
+export async function seedLocalPosTicketSeq(
+  lastIssued,
+  posOrderDate = null,
+  floatSessionId = null,
+  { force = false } = {},
+) {
   const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
-  const key = `pos_ticket_seq_${today}`;
+  const key = localPosTicketSeqKey(today, floatSessionId);
   const current = Number((await idbGetMeta(key)) ?? 0);
   const floor = Math.max(0, Number(lastIssued) || 0);
-  // Never lower a local counter that already issued higher pending tickets.
-  if (floor > current) {
+  if (force || floor > current) {
     await idbSetMeta(key, floor);
   }
 }
 
-/** Align local Cash Sales counter after a server sale response. */
-export async function seedLocalPosTicketSeqFromSale(sale) {
+/** Align local Cash Sales counter after a server sale response (same float session only). */
+export async function seedLocalPosTicketSeqFromSale(sale, activeFloatSessionId = null) {
   const num = Number(sale?.pos_order_num ?? 0);
   if (!Number.isFinite(num) || num <= 0) return;
-  await seedLocalPosTicketSeq(num, sale?.pos_order_date);
+  const saleSession = Number(sale?.float_session_id ?? 0) || null;
+  const activeSession = Number(activeFloatSessionId ?? 0) || null;
+  // Never raise the new session counter from a prior-session (or day-scoped) ticket.
+  if (activeSession && saleSession && saleSession !== activeSession) return;
+  if (activeSession && !saleSession) return;
+  await seedLocalPosTicketSeq(num, sale?.pos_order_date, activeSession ?? saleSession);
 }
 
 /**
- * Next Cash Sales # for this cashier/day on-device: max(local seq, pending outbox) + 1.
+ * IndexedDB meta key for the on-device Cash Sales counter.
+ * Prefer float-session scope so Z/reopen starts at #1 even on the same day.
+ */
+function localPosTicketSeqKey(posOrderDate, floatSessionId = null) {
+  const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
+  const sessionId = Number(floatSessionId);
+  if (Number.isFinite(sessionId) && sessionId > 0) {
+    return `pos_ticket_seq_${today}_s${sessionId}`;
+  }
+  return `pos_ticket_seq_${today}`;
+}
+
+function outboxRowFloatSessionId(row) {
+  const raw =
+    row?.cart_seed?.float_session_id ??
+    row?.sale_payload?.float_session_id ??
+    row?.checkout_body?.float_session_id ??
+    null;
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+/**
+ * Next Cash Sales # for this float session (or cashier/day) on-device:
+ * max(local seq, pending outbox for the same session) + 1.
  * Independent of reserved S00xx org numbers.
  */
-async function allocateLocalPosTicketNumber() {
+async function allocateLocalPosTicketNumber(floatSessionId = null) {
   const today = todayPosOrderDate();
-  const key = `pos_ticket_seq_${today}`;
+  const sessionId = Number(floatSessionId);
+  const scopedSession =
+    Number.isFinite(sessionId) && sessionId > 0 ? sessionId : null;
+  const key = localPosTicketSeqKey(today, scopedSession);
   let current = Number((await idbGetMeta(key)) ?? 0);
 
   // Pending outbox may already hold higher tickets sold offline but not synced.
+  // Only count tickets from the same float session (or day-scoped when no session).
   try {
     const pending = await idbListPendingOutbox();
     for (const row of pending ?? []) {
@@ -862,9 +913,14 @@ async function allocateLocalPosTicketNumber() {
       const date =
         normalizePosOrderDate(row?.sale_payload?.pos_order_date) ??
         normalizePosOrderDate(row?.checkout_body?.pos_order_date);
-      if (num > current && (!date || date === today)) {
-        current = num;
+      if (!(num > current) || (date && date !== today)) continue;
+      const rowSession = outboxRowFloatSessionId(row);
+      if (scopedSession) {
+        if (rowSession !== scopedSession) continue;
+      } else if (rowSession) {
+        continue;
       }
+      current = num;
     }
   } catch {
     /* ignore */
@@ -1020,7 +1076,9 @@ export async function completeOfflineCashSale({
     }
   }
   if (posOrderNum == null && !isPreviousOrderEdit && !editingUuid) {
-    const localTicket = await allocateLocalPosTicketNumber();
+    const localTicket = await allocateLocalPosTicketNumber(
+      floatSessionId ?? cart.float_session_id ?? null,
+    );
     posOrderNum = localTicket.pos_order_num;
     posOrderDate = localTicket.pos_order_date ?? posOrderDate;
   }
@@ -1260,6 +1318,8 @@ export async function completeOfflineCashSale({
       quantity: item.quantity,
       unit_price: item.unit_price,
       uom: item.uom,
+      unit_id: item.unit_id ?? null,
+      unit: item.unit ?? null,
       on_wholesale_retail: item.on_wholesale_retail,
       discount_given: item.discount_given,
       product_name: item.product_name,
@@ -1458,12 +1518,22 @@ export function buildPreviousOrderEditPrintSale(
 }
 
 function mapOutboxLinesForPut(row) {
-  return (row.lines ?? []).map((line) => buildOutboxLineBody(line));
+  const lines =
+    Array.isArray(row.lines) && row.lines.length > 0
+      ? row.lines
+      : Array.isArray(row.sale_payload?.items)
+        ? row.sale_payload.items
+        : [];
+  return lines.map((line) => buildOutboxLineBody(line));
 }
 
 function buildOutboxLineBody(line) {
   const qty = Math.max(0.0001, Number(line.quantity) || 0);
   const unitPrice = Number(line.unit_price ?? 0);
+  const unit =
+    line.unit && typeof line.unit === "object"
+      ? snapshotUomForPrint(line.unit)
+      : null;
   return {
     product_code: line.product_code,
     quantity: qty,
@@ -1471,10 +1541,15 @@ function buildOutboxLineBody(line) {
     display_unit_price:
       line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
     uom: line.uom ?? undefined,
+    unit_id: line.unit_id ?? unit?.id ?? undefined,
+    // Snapshot so sync/sale display can show packs (5 bag) not base (350 bag).
+    ...(unit ? { unit } : {}),
     on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
     discount_given: Number(line.discount_given ?? 0) || 0,
     product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+    // Frozen offline total — server must not reprice / recreate from catalogue.
     amount: line.amount != null ? Number(line.amount) : undefined,
+    product_name: line.product_name ?? undefined,
   };
 }
 
@@ -1641,6 +1716,12 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   if (customerKraPin) {
     body.customer_kra_pin = customerKraPin;
   }
+  // After Z/reopen, attach the currently open float session so checkout does not
+  // reject the closed session id stamped when the sale was sold offline.
+  const openFloatSessionId = Number(extras.float_session_id ?? 0);
+  if (Number.isFinite(openFloatSessionId) && openFloatSessionId > 0) {
+    body.float_session_id = openFloatSessionId;
+  }
   return body;
 }
 
@@ -1709,41 +1790,51 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
     return checkoutPreviousOrderEditOutboxRow(row, orderNum);
   }
 
+  // Prefer the currently open float session when syncing after Z/reopen so the
+  // closed session id from the original offline sale does not block checkout.
+  const openFloatSessionId =
+    Number(extras.float_session_id ?? 0) > 0
+      ? Number(extras.float_session_id)
+      : null;
+  const cartSeed = {
+    channel: "pos",
+    branch_id: row.cart_seed?.branch_id ?? undefined,
+    till_id: row.cart_seed?.till_id ?? undefined,
+    ...(openFloatSessionId
+      ? { float_session_id: openFloatSessionId }
+      : row.cart_seed?.float_session_id
+        ? { float_session_id: row.cart_seed.float_session_id }
+        : {}),
+  };
+
   const cart = await apiRequest("/sales/carts", {
     method: "POST",
-    body: {
-      channel: "pos",
-      branch_id: row.cart_seed?.branch_id ?? undefined,
-      till_id: row.cart_seed?.till_id ?? undefined,
-    },
+    body: cartSeed,
     loading: false,
     reportIssues: false,
   });
   const cartId = cart?.id;
   if (!cartId) throw new Error("Could not create sync cart.");
 
-  for (const line of row.lines ?? []) {
-    await apiRequest(`/sales/carts/${cartId}/lines`, {
-      method: "POST",
-      body: buildOutboxLineBody(line),
-      loading: false,
-      reportIssues: false,
-    });
-  }
-
+  // Sticky TemporaryCart is reused per cashier+channel — REPLACE lines so leftover
+  // draft/online lines are not appended onto the offline snapshot (extra items / qty blow-up).
   const orderDiscount = Number(row.order_discount ?? 0);
-  if (orderDiscount > 0) {
-    await apiRequest(`/sales/carts/${cartId}`, {
-      method: "PATCH",
-      body: { order_discount: orderDiscount },
-      loading: false,
-      reportIssues: false,
-    });
-  }
+  await apiRequest(`/sales/carts/${cartId}/lines`, {
+    method: "PUT",
+    body: {
+      lines: mapOutboxLinesForPut(row),
+      order_discount: orderDiscount > 0 ? orderDiscount : 0,
+    },
+    loading: false,
+    reportIssues: false,
+  });
 
   return apiRequest(`/sales/carts/${cartId}/checkout`, {
     method: "POST",
-    body: await checkoutBodyForOutboxRow(row, orderNum, extras),
+    body: await checkoutBodyForOutboxRow(row, orderNum, {
+      ...extras,
+      ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
+    }),
     loading: false,
     reportIssues: false,
   });
@@ -2280,6 +2371,7 @@ export async function syncPosOfflineOutbox({
   onProgress,
   includeErrors = true,
   clientSaleUuid = null,
+  floatSessionId = null,
 } = {}) {
   return withPosOfflineExclusiveLock(async () => {
     await idbReclaimStuckSyncingOutbox({ olderThanMs: 5 * 60_000 });
@@ -2288,6 +2380,8 @@ export async function syncPosOfflineOutbox({
     if (onlyUuid) {
       pending = pending.filter((row) => String(row.client_sale_uuid) === onlyUuid);
     }
+    const openFloatSessionId =
+      Number(floatSessionId ?? 0) > 0 ? Number(floatSessionId) : null;
     const total = pending.length;
     const results = [];
     let done = 0;
@@ -2362,10 +2456,15 @@ export async function syncPosOfflineOutbox({
               },
             },
             printedOrderNum,
+            openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
           );
         } else if (!sale) {
           try {
-            sale = await checkoutOutboxRow(row, printedOrderNum);
+            sale = await checkoutOutboxRow(
+              row,
+              printedOrderNum,
+              openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
+            );
           } catch (firstErr) {
             // Previous-order edit updates an existing online sale — the order # is
             // supposed to exist. Recover / re-restore instead of treating it as a
@@ -2386,13 +2485,19 @@ export async function syncPosOfflineOutbox({
                   sale = await checkoutOutboxRow(
                     { ...row, server_cart_id: null },
                     printedOrderNum,
+                    openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
                   );
                 } catch (retryErr) {
                   if (isCashSalesTicketCollisionError(retryErr)) {
                     sale = await checkoutOutboxRow(
                       { ...row, server_cart_id: null },
                       printedOrderNum,
-                      { clear_pos_order_num: true },
+                      {
+                        clear_pos_order_num: true,
+                        ...(openFloatSessionId
+                          ? { float_session_id: openFloatSessionId }
+                          : {}),
+                      },
                     );
                     needsReprint = true;
                   } else {
@@ -2408,6 +2513,7 @@ export async function syncPosOfflineOutbox({
               // Retry without locking the printed ticket so the API allocates the next free #.
               sale = await checkoutOutboxRow(row, printedOrderNum, {
                 clear_pos_order_num: true,
+                ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
               });
               needsReprint = true;
             } else if (isDuplicateOrderNumError(firstErr)) {
@@ -2435,6 +2541,7 @@ export async function syncPosOfflineOutbox({
                     },
                   },
                   printedOrderNum,
+                  openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
                 );
               }
             } else {
@@ -2467,7 +2574,7 @@ export async function syncPosOfflineOutbox({
           original_order_num: printedOrderNum,
         });
         if (sale) {
-          await seedLocalPosTicketSeqFromSale(sale).catch(() => {});
+          await seedLocalPosTicketSeqFromSale(sale, openFloatSessionId).catch(() => {});
         }
         done += 1;
         results.push({
