@@ -14,7 +14,14 @@ export function allowedLoginChannelValues(capabilities) {
   }
 
   const allowed = new Set();
-  if (capabilities?.modules?.["sales.backend"] !== false) {
+  if (
+    capabilities?.modules?.["sales.backend"] ||
+    capabilities?.modules?.["hospitality.backend"] ||
+    capabilities?.modules?.["hospitality.bar_pos"] ||
+    capabilities?.modules?.admin ||
+    capabilities?.modules?.accounting ||
+    capabilities?.modules?.hr_payroll
+  ) {
     allowed.add("backoffice");
   }
   if (capabilities?.modules?.["sales.pos"]) {
@@ -30,10 +37,22 @@ export function allowedLoginChannelValues(capabilities) {
   ) {
     allowed.add("mobile");
   }
-  if (
-    capabilities?.modules?.["sales.backend"] !== false &&
-    capabilities?.module_settings?.sales?.enable_manager_app !== false
-  ) {
+  const salesManager =
+    Boolean(capabilities?.modules?.["sales.backend"]) &&
+    capabilities?.module_settings?.sales?.enable_manager_app !== false;
+  const nonSalesManager =
+    !capabilities?.modules?.["sales.backend"] &&
+    Boolean(
+      capabilities?.modules?.hr_payroll ||
+        capabilities?.modules?.accounting ||
+        capabilities?.modules?.inventory ||
+        capabilities?.modules?.admin ||
+        capabilities?.modules?.customers_suppliers ||
+        capabilities?.modules?.distribution ||
+        capabilities?.modules?.["hospitality.backend"] ||
+        capabilities?.modules?.["hospitality.bar_pos"],
+    );
+  if (salesManager || nonSalesManager) {
     allowed.add("manager");
   }
 
