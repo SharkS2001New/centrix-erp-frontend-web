@@ -5,6 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { isProductCodeInCatalogCached } from "@/lib/catalog-cache";
 import { getStoredOrganization } from "@/lib/auth-storage";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
+import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { RetailPricingTiersEditor, defaultRetailPricingTier } from "@/components/catalog/retail-pricing-tiers";
 import {
@@ -762,14 +763,14 @@ export const ProductFormFields = memo(function ProductFormFields({
       {!hotelCatalogue && allowDiscounts ? (
         <>
           <Field label="Discount type">
-            <select
+            <SearchableSelect
               value={form.discount_type}
-              onChange={(e) => onChange("discount_type", e.target.value)}
-              className={inputClassName()}
-            >
-              <option value="percentage">Percentage (%)</option>
-              <option value="fixed">Fixed amount (KES)</option>
-            </select>
+              onChange={(next) => onChange("discount_type", next)}
+              options={[
+                { value: "percentage", label: "Percentage (%)" },
+                { value: "fixed", label: "Fixed amount (KES)" },
+              ]}
+            />
           </Field>
 
           {form.discount_type === "fixed" ? (

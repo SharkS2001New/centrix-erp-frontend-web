@@ -156,7 +156,7 @@ export function printReportTable(options) {
   }
 }
 
-export function downloadReportCsv(filename, meta, columns, rows) {
+export function downloadReportCsv(filename, meta, columns, rows, footerRow = null) {
   const headerLines = [];
   if (meta.organizationName) headerLines.push(`"${meta.organizationName.replace(/"/g, '""')}"`);
   headerLines.push(`"${meta.title.replace(/"/g, '""')}"`);
@@ -173,7 +173,7 @@ export function downloadReportCsv(filename, meta, columns, rows) {
   headerLines.push(`"Printed: ${meta.printedAt}"`);
   headerLines.push("");
 
-  const csvBody = [
+  const rowLines = [
     columns.map((col) => col.label).join(","),
     ...rows.map((row) =>
       columns
@@ -183,7 +183,20 @@ export function downloadReportCsv(filename, meta, columns, rows) {
         })
         .join(","),
     ),
-  ].join("\n");
+  ];
+  if (footerRow) {
+    rowLines.push(
+      columns
+        .map((col, index) => {
+          const raw = footerRow[col.key] ?? (index === 0 ? "Total" : "");
+          const text = String(raw ?? "").replace(/"/g, '""');
+          return `"${text}"`;
+        })
+        .join(","),
+    );
+  }
+
+  const csvBody = rowLines.join("\n");
 
   const blob = new Blob([`${headerLines.join("\n")}\n${csvBody}`], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);

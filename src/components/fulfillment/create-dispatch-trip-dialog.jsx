@@ -10,7 +10,7 @@ import {
   fetchRoutesCached,
   fetchVehiclesCached,
 } from "@/lib/reference-data-cache";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { notifyError } from "@/lib/notify";
 
 const EMPTY_LIST = [];
@@ -54,6 +54,7 @@ export function CreateDispatchTripDialog({
   defaultDate = null,
   defaultRouteIds,
   defaultSaleIds,
+  defaultBranchId = null,
   title = "Create trip chart",
   description = "Combine one or more routes on the same delivery run. Driver and vehicle are required.",
 }) {
@@ -215,11 +216,18 @@ export function CreateDispatchTripDialog({
       return;
     }
 
+    const branchId = defaultBranchId ?? user?.branch_id ?? null;
+    if (!branchId) {
+      notifyError("Your user account has no branch. Select orders with a branch or ask an admin to set your branch.");
+      return;
+    }
+
     setSaving(true);
     try {
       const trip = await apiRequest("/dispatch-trips", {
         method: "POST",
         body: {
+          branch_id: Number(branchId),
           scheduled_date: scheduledDate,
           route_ids: routeIds,
           driver_id: Number(driverId),
@@ -238,7 +246,7 @@ export function CreateDispatchTripDialog({
     } finally {
       setSaving(false);
     }
-  }, [scheduledDate, selectedRouteIds, driverId, vehicleId, selectedCrewEmployeeIds, notes, saleIds, onClose, router]);
+  }, [scheduledDate, selectedRouteIds, driverId, vehicleId, selectedCrewEmployeeIds, notes, saleIds, defaultBranchId, user?.branch_id, onClose, router]);
 
   if (!open) return null;
 
@@ -287,34 +295,34 @@ export function CreateDispatchTripDialog({
             </div>
           </Field>
           <Field label="Driver">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={driverId}
-              onChange={(e) => setDriverId(e.target.value)}
+              onChange={setDriverId}
               disabled={refsLoading}
-            >
-              <option value="">{refsLoading ? "Loading drivers…" : "Select driver"}</option>
-              {drivers.map((driver) => (
-                <option key={driver.id} value={driver.id}>
-                  {driver.full_name ?? driver.driver_name ?? `Driver #${driver.id}`}
-                </option>
-              ))}
-            </select>
+              placeholder={refsLoading ? "Loading drivers…" : "Select driver"}
+              options={[
+                { value: "", label: refsLoading ? "Loading drivers…" : "Select driver" },
+                ...drivers.map((driver) => ({
+                  value: String(driver.id),
+                  label: driver.full_name ?? driver.driver_name ?? `Driver #${driver.id}`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Vehicle">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
+              onChange={setVehicleId}
               disabled={refsLoading}
-            >
-              <option value="">{refsLoading ? "Loading vehicles…" : "Select vehicle"}</option>
-              {vehicles.map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.plate_number ?? vehicle.vehicle_name ?? `Vehicle #${vehicle.id}`}
-                </option>
-              ))}
-            </select>
+              placeholder={refsLoading ? "Loading vehicles…" : "Select vehicle"}
+              options={[
+                { value: "", label: refsLoading ? "Loading vehicles…" : "Select vehicle" },
+                ...vehicles.map((vehicle) => ({
+                  value: String(vehicle.id),
+                  label: vehicle.plate_number ?? vehicle.vehicle_name ?? `Vehicle #${vehicle.id}`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Turn boys / works with (optional)">
             <p className="mb-2 text-xs text-slate-500">

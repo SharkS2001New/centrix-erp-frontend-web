@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -211,18 +212,18 @@ export function TripExpensesPanel({
         <form onSubmit={saveExpense} className="mt-4 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Expense type">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.expense_group_id}
-                onChange={(e) => setForm((f) => ({ ...f, expense_group_id: e.target.value }))}
-              >
-                <option value="">Select…</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.group_name}
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => setForm((f) => ({ ...f, expense_group_id: next }))}
+                placeholder="Select…"
+                options={[
+                  { value: "", label: "Select…" },
+                  ...groups.map((group) => ({
+                    value: String(group.id),
+                    label: group.group_name,
+                  })),
+                ]}
+              />
             </Field>
             <Field label="Amount (KES)">
               <input
@@ -243,18 +244,18 @@ export function TripExpensesPanel({
               />
             </Field>
             <Field label="Payment method">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.payment_method_id}
-                onChange={(e) => setForm((f) => ({ ...f, payment_method_id: e.target.value }))}
-              >
-                <option value="">Select…</option>
-                {paymentMethods.map((method) => (
-                  <option key={method.id} value={method.id}>
-                    {method.payment_method_name ?? method.method_name ?? method.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => setForm((f) => ({ ...f, payment_method_id: next }))}
+                placeholder="Select…"
+                options={[
+                  { value: "", label: "Select…" },
+                  ...paymentMethods.map((method) => ({
+                    value: String(method.id),
+                    label: method.payment_method_name ?? method.method_name ?? method.name,
+                  })),
+                ]}
+              />
             </Field>
             <div className="sm:col-span-2 lg:col-span-4">
               <Field label="Notes (optional)">

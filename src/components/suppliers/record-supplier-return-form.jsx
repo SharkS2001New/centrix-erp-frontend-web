@@ -5,7 +5,13 @@ import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-
 import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, inputClassName, formatShortDate, RequiredMark } from "@/components/catalog/catalog-shared";
+import {
+  Field,
+  SearchableSelect,
+  inputClassName,
+  formatShortDate,
+  RequiredMark,
+} from "@/components/catalog/catalog-shared";
 import { ReturnProofField } from "@/components/returns/return-proof-field";
 import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel";
 import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
@@ -806,17 +812,11 @@ export function RecordSupplierReturnForm({
                 </span>
               </p>
             ) : (
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={addDraft.stock_location}
-                onChange={(e) => setAddDraft((d) => ({ ...d, stock_location: e.target.value }))}
-              >
-                {locationOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => setAddDraft((d) => ({ ...d, stock_location: next }))}
+                options={locationOptions}
+              />
             )}
           </Field>
           <div className="sm:col-span-2">
@@ -952,11 +952,10 @@ export function RecordSupplierReturnForm({
 
             <div className="grid shrink-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Supplier" required>
-                <select
-                  className={inputClassName()}
+                <SearchableSelect
                   value={supplierId}
-                  onChange={(e) => {
-                    setSupplierId(e.target.value);
+                  onChange={(next) => {
+                    setSupplierId(next);
                     if (!initialLpoNo) setLpoNo("");
                     setLpoSummary(null);
                     setLines([]);
@@ -964,100 +963,94 @@ export function RecordSupplierReturnForm({
                   }}
                   required
                   disabled={mode === RETURN_MODES.LPO && Boolean(initialLpoNo)}
-                >
-                  <option value="">Select supplier</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={String(s.id)}>
-                      {s.supplier_name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select supplier"
+                  options={[
+                    { value: "", label: "Select supplier" },
+                    ...suppliers.map((s) => ({ value: String(s.id), label: s.supplier_name })),
+                  ]}
+                />
               </Field>
 
               {mode === RETURN_MODES.LPO ? (
                 <Field label="Purchase order">
-                  <select
-                    className={inputClassName()}
+                  <SearchableSelect
                     value={lpoNo}
-                    onChange={(e) => {
-                      setLpoNo(e.target.value);
+                    onChange={(next) => {
+                      setLpoNo(next);
                       setLines([]);
                       setSupplierInvoiceNo("");
                     }}
                     required
                     disabled={!supplierId || loadingLpos || Boolean(initialLpoNo)}
-                  >
-                    <option value="">
-                      {loadingLpos ? "Loading LPOs…" : "Select LPO"}
-                    </option>
-                    {lpoOptions.map((l) => (
-                      <option key={l.lpo_no} value={String(l.lpo_no)}>
-                        {lpoRowDisplayNumber(l)} — {l.status_name ?? `Status ${l.lpo_status_code}`}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={loadingLpos ? "Loading LPOs…" : "Select LPO"}
+                    options={[
+                      { value: "", label: loadingLpos ? "Loading LPOs…" : "Select LPO" },
+                      ...lpoOptions.map((l) => ({
+                        value: String(l.lpo_no),
+                        label: `${lpoRowDisplayNumber(l)} — ${l.status_name ?? `Status ${l.lpo_status_code}`}`,
+                      })),
+                    ]}
+                  />
                 </Field>
               ) : null}
 
               {mode === RETURN_MODES.MANUAL && supplierId ? (
                 <Field label="Purchase order (optional)">
-                  <select
-                    className={inputClassName()}
+                  <SearchableSelect
                     value={lpoNo}
-                    onChange={(e) => {
-                      setLpoNo(e.target.value);
-                      if (!e.target.value) {
+                    onChange={(next) => {
+                      setLpoNo(next);
+                      if (!next) {
                         setLpoSummary(null);
                         setSupplierInvoiceNo("");
                       }
                     }}
                     disabled={loadingLpos}
-                  >
-                    <option value="">
-                      {loadingLpos ? "Loading LPOs…" : "None — manual / legacy stock"}
-                    </option>
-                    {lpoOptions.map((l) => (
-                      <option key={l.lpo_no} value={String(l.lpo_no)}>
-                        {lpoRowDisplayNumber(l)} — {l.status_name ?? `Status ${l.lpo_status_code}`}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={loadingLpos ? "Loading LPOs…" : "None — manual / legacy stock"}
+                    options={[
+                      {
+                        value: "",
+                        label: loadingLpos ? "Loading LPOs…" : "None — manual / legacy stock",
+                      },
+                      ...lpoOptions.map((l) => ({
+                        value: String(l.lpo_no),
+                        label: `${lpoRowDisplayNumber(l)} — ${l.status_name ?? `Status ${l.lpo_status_code}`}`,
+                      })),
+                    ]}
+                  />
                 </Field>
               ) : null}
 
               <Field label="Branch">
-                <select
-                  className={inputClassName()}
+                <SearchableSelect
                   value={branchId}
-                  onChange={(e) => setBranchId(e.target.value)}
+                  onChange={(next) => setBranchId(next)}
                   required
-                >
-                  <option value="">Select branch</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={String(b.id)}>
-                      {b.branch_name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select branch"
+                  options={[
+                    { value: "", label: "Select branch" },
+                    ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
+                  ]}
+                />
               </Field>
 
               <div className="min-w-0">
                 {mode === RETURN_MODES.LPO && lpoNo && lpoHasReceivedStock ? (
                   lpoInvoiceChoices.length > 1 ? (
                     <Field label="Supplier inv. no." required>
-                      <select
-                        className={inputClassName()}
+                      <SearchableSelect
                         value={supplierInvoiceNo}
-                        onChange={(e) => setSupplierInvoiceNo(e.target.value)}
+                        onChange={(next) => setSupplierInvoiceNo(next)}
                         required
-                      >
-                        <option value="">Select supplier invoice</option>
-                        {lpoInvoiceChoices.map((inv) => (
-                          <option key={inv.id} value={inv.number}>
-                            {formatLpoInvoiceLabel(inv)}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Select supplier invoice"
+                        options={[
+                          { value: "", label: "Select supplier invoice" },
+                          ...lpoInvoiceChoices.map((inv) => ({
+                            value: inv.number,
+                            label: formatLpoInvoiceLabel(inv),
+                          })),
+                        ]}
+                      />
                       <p className="theme-subtext mt-1 text-[11px]">
                         Invoices recorded when stock was received on this LPO. Pick the one this
                         return relates to.
@@ -1454,19 +1447,13 @@ export function RecordSupplierReturnForm({
                                       );
                                     }
                                     return (
-                                      <select
-                                        className={inputClassName()}
+                                      <SearchableSelect
                                         value={line.stock_location}
-                                        onChange={(e) =>
-                                          updateLine(line.key, { stock_location: e.target.value })
+                                        onChange={(next) =>
+                                          updateLine(line.key, { stock_location: next })
                                         }
-                                      >
-                                        {lineOptions.map((opt) => (
-                                          <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                          </option>
-                                        ))}
-                                      </select>
+                                        options={lineOptions}
+                                      />
                                     );
                                   })()}
                                 </Field>

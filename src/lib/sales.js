@@ -119,16 +119,26 @@ export function isPosOrMobileSale(sale, capabilities = null) {
   return sourceKey === "pos" || sourceKey === "mobile";
 }
 
+function backofficeLineEditEnabled(capabilities = null) {
+  const sales = salesSettingsFromCapabilities(capabilities);
+  return sales?.enable_backoffice_order_edit !== false;
+}
+
 /** Line-edit popup for Sales/Orders (backoffice, POS, mobile, editable discount revision). */
 export function shouldOpenBackofficeOrderEdit(sale, workflow = null, capabilities = null) {
   // Platform Edit-order stages are the hard gate — API flags must not expand beyond them.
   if (!isOrderEditVisible(sale, workflow, capabilities)) return false;
 
-  if (sale?.can_edit_lines) return true;
+  // Discount-revision resubmit always uses the line-edit popup.
   if (String(sale?.status ?? "").toLowerCase() === "editable") return true;
 
+  if (!backofficeLineEditEnabled(capabilities)) return false;
+
+  // Trust API eligibility — avoids opening Edit when save would be rejected.
+  if (typeof sale?.can_edit_lines === "boolean") return sale.can_edit_lines;
+
   const sourceKey = resolveOrderSourceKey(sale?.order_source, sale?.channel, capabilities);
-  // From Sales/Orders, always use the edit popup — never send cashiers back to create-order/POS.
+  // From Sales/Orders, prefer the edit popup for channel-eligible orders when flags are stale.
   if (sourceKey === "mobile" || sourceKey === "pos") return true;
   if (isBackofficeSale(sale, capabilities)) return true;
 

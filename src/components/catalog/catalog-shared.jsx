@@ -198,6 +198,7 @@ export function FilterToolbar({ children, className = "" }) {
 }
 
 export { SearchableFilterSelect as FilterSelect } from "@/components/catalog/searchable-filter-select";
+export { SearchableSelect } from "@/components/catalog/searchable-select";
 
 export function PaginationBar({
   page,

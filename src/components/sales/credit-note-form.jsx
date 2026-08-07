@@ -5,7 +5,7 @@ import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
@@ -20,6 +20,12 @@ import {
   parseInvoiceNumber,
   salesReturnSearchParams,
 } from "@/components/sales/customer-returns-shared";
+import {
+  creditCustomerToOption,
+  fetchCreditCustomerByNum,
+  searchCreditCustomers,
+} from "@/lib/credit-customer-search";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
 function emptyCreditLineFromSaleItem(item) {
   const lineTotal = Math.round(Number(item.amount ?? item.line_total ?? 0) * 100) / 100;
@@ -49,6 +55,11 @@ function isCreditReasonValid(preset, otherText) {
   return true;
 }
 
+function isGenericWalkInName(name) {
+  const trimmed = String(name ?? "").trim();
+  return !trimmed || /^walk[\s-]*in$/i.test(trimmed);
+}
+
 export function CreditNoteForm({
   onSaved,
   onCancel,
@@ -65,8 +76,11 @@ export function CreditNoteForm({
   const [invoiceQuery, setInvoiceQuery] = useState("");
   const [saleOptions, setSaleOptions] = useState([]);
   const [saleId, setSaleId] = useState("");
+  const [walkIn, setWalkIn] = useState(true);
+  const [walkInName, setWalkInName] = useState("");
   const [customerNum, setCustomerNum] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [customerLoading, setCustomerLoading] = useState(false);
   const [invoiceBalance, setInvoiceBalance] = useState(null);
   const [creditDate, setCreditDate] = useState(new Date().toISOString().slice(0, 10));
   const [refundMethod, setRefundMethod] = useState("CASH");
@@ -88,7 +102,65 @@ export function CreditNoteForm({
   const displayTotal = itemizeProducts ? lineCreditTotal : amountOnlyTotal;
   const canSubmit =
     Boolean(saleId) &&
-    (itemizeProducts ? lines.some((line) => Number(line.credit_amount) > 0) : amountOnlyTotal > 0);
+    (itemizeProducts ? lines.some((line) => Number(line.credit_amount) > 0) : amountOnlyTotal > 0) &&
+    (walkIn ? Boolean(walkInName.trim()) : Boolean(customerNum));
+
+  const searchCustomersForSelect = useCallback(async (query) => {
+    const rows = await searchCreditCustomers(query, { perPage: 30 });
+    setCustomerOptions((prev) => {
+      const byValue = new Map(prev.map((row) => [String(row.value), row]));
+      for (const row of rows) byValue.set(String(row.value), row);
+      return Array.from(byValue.values());
+    });
+    return rows;
+  }, []);
+
+  const applyCustomerFromSale = useCallback(async (sale, detailCustomer = null) => {
+    const num = sale?.customer_num != null ? String(sale.customer_num) : "";
+    const override = String(
+      sale?.customer_name_override ?? detailCustomer?.customer_name ?? sale?.customer_name ?? "",
+    ).trim();
+
+    if (num) {
+      setWalkIn(false);
+      setWalkInName("");
+      setCustomerNum(num);
+      setCustomerLoading(true);
+      try {
+        const customer =
+          detailCustomer?.customer_num != null
+            ? detailCustomer
+            : await fetchCreditCustomerByNum(num);
+        if (customer) {
+          setCustomerOptions([creditCustomerToOption(customer)]);
+        } else {
+          setCustomerOptions([
+            {
+              value: num,
+              label: override || `Customer #${num}`,
+              searchText: `${override} ${num}`,
+            },
+          ]);
+        }
+      } catch {
+        setCustomerOptions([
+          {
+            value: num,
+            label: override || `Customer #${num}`,
+            searchText: `${override} ${num}`,
+          },
+        ]);
+      } finally {
+        setCustomerLoading(false);
+      }
+      return;
+    }
+
+    setWalkIn(true);
+    setCustomerNum("");
+    setCustomerOptions([]);
+    setWalkInName(isGenericWalkInName(override) ? "" : override);
+  }, []);
 
   useEffect(() => {
     const q = invoiceQuery.trim();
@@ -115,8 +187,7 @@ export function CreditNoteForm({
       const res = await apiRequest(`/sales/${id}/return-lines`);
       const sale = res.sale ?? res;
       setSaleId(String(sale.id));
-      setCustomerNum(sale.customer_num ? String(sale.customer_num) : "");
-      setCustomerName(sale.customer_name_override ?? res.customer?.customer_name ?? "");
+      await applyCustomerFromSale(sale, res.customer ?? sale.customer ?? null);
       setInvoiceQuery(displayQuery ?? formatReceiptNumber(sale));
       const balance = Number(sale.order_total ?? sale.balance ?? 0);
       setInvoiceBalance(Number.isFinite(balance) ? balance : null);
@@ -136,7 +207,7 @@ export function CreditNoteForm({
     } finally {
       setLoadingSale(false);
     }
-  }, []);
+  }, [applyCustomerFromSale]);
 
   useEffect(() => {
     if (!initialSaleId) return;
@@ -258,6 +329,16 @@ export function CreditNoteForm({
       setError("Reason for credit note is required.");
       return;
     }
+    if (walkIn) {
+      if (!walkInName.trim()) {
+        setError("Enter the walk-in customer's name, or untick Walk-in and pick a customer.");
+        return;
+      }
+    } else if (!customerNum) {
+      setError("Select a customer, or tick Walk-in and enter their name.");
+      return;
+    }
+
     const resolvedReason = resolveReturnReason(reasonPreset, reasonOther);
 
     const payloadLines = itemizeProducts
@@ -285,15 +366,21 @@ export function CreditNoteForm({
     setSaving(true);
     setError(null);
     try {
+      const noteParts = [];
+      if (walkIn && walkInName.trim()) {
+        noteParts.push(`Walk-in: ${walkInName.trim()}`);
+      }
+      if (notes.trim()) noteParts.push(notes.trim());
+
       const body = {
         sale_id: Number(saleId),
-        customer_num: customerNum ? Number(customerNum) : null,
+        customer_num: walkIn ? null : Number(customerNum),
         branch_id: user.branch_id,
         credit_date: creditDate,
         return_date: creditDate,
         refund_method: refundMethod,
         reason: resolvedReason,
-        notes: notes.trim() || null,
+        notes: noteParts.length ? noteParts.join("\n") : null,
         ...(itemizeProducts
           ? { lines: payloadLines }
           : { total_amount: amountOnlyTotal, lines: [] }),
@@ -366,8 +453,65 @@ export function CreditNoteForm({
           ) : null}
         </Field>
 
-        <Field label="Customer">
-          <input className={inputClassName()} value={customerName || "Walk-in"} readOnly />
+        <Field label="Customer" required>
+          <label className="mb-2 flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={walkIn}
+              disabled={saving || loadingSale}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setWalkIn(next);
+                setError(null);
+                if (next) {
+                  setCustomerNum("");
+                } else {
+                  setWalkInName("");
+                }
+              }}
+            />
+            Walk-in
+          </label>
+          {walkIn ? (
+            <input
+              className={inputClassName()}
+              value={walkInName}
+              disabled={saving || loadingSale}
+              onChange={(e) => {
+                setWalkInName(e.target.value);
+                setError(null);
+              }}
+              placeholder="Walk-in customer name"
+              required
+              autoComplete="off"
+            />
+          ) : (
+            <PosSearchableSelect
+              value={customerNum}
+              onChange={(nextValue, option) => {
+                setCustomerNum(nextValue);
+                if (option) {
+                  setCustomerOptions((prev) => {
+                    const without = prev.filter((row) => String(row.value) !== String(option.value));
+                    return [option, ...without];
+                  });
+                }
+                setError(null);
+              }}
+              options={customerOptions}
+              loadOptions={searchCustomersForSelect}
+              loading={customerLoading}
+              disabled={saving || loadingSale}
+              placeholder="Search customer name or number…"
+              searchPlaceholder="Type name, phone, or customer #…"
+              emptyLabel="No customers found"
+              idleSearchLabel="Type to search customers…"
+            />
+          )}
+          <p className="mt-1 text-xs text-slate-500">
+            Prefills from the invoice when you load it. Change the customer or use Walk-in and type
+            their name.
+          </p>
         </Field>
 
         <Field label="Credit date" required>
@@ -381,34 +525,28 @@ export function CreditNoteForm({
         </Field>
 
         <Field label="Refund method">
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={refundMethod}
-            onChange={(e) => setRefundMethod(e.target.value)}
-          >
-            {REFUND_METHODS.map((method) => (
-              <option key={method.value} value={method.value}>
-                {method.label}
-              </option>
-            ))}
-          </select>
+            onChange={setRefundMethod}
+            options={REFUND_METHODS.map((method) => ({
+              value: method.value,
+              label: method.label,
+            }))}
+          />
         </Field>
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Field label="Reason for credit" required>
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={reasonPreset}
-            onChange={(e) => setReasonPreset(e.target.value)}
+            onChange={setReasonPreset}
             required
-          >
-            {CREDIT_NOTE_REASONS.map((reason) => (
-              <option key={reason} value={reason}>
-                {reason}
-              </option>
-            ))}
-          </select>
+            options={CREDIT_NOTE_REASONS.map((reason) => ({
+              value: reason,
+              label: reason,
+            }))}
+          />
         </Field>
         {reasonPreset === RETURN_REASON_OTHER ? (
           <Field label="Please specify" required>

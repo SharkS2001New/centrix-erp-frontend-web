@@ -8,6 +8,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
@@ -244,48 +245,45 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
           ) : null}
 
           <Field label="Supplier">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={form.supplier_id}
-              onChange={(e) =>
-                setForm((p) => ({ ...p, supplier_id: e.target.value, lpo_no: "" }))
+              onChange={(next) =>
+                setForm((p) => ({ ...p, supplier_id: next, lpo_no: "" }))
               }
-            >
-              <option value="">Select supplier…</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.supplier_name}
-                </option>
-              ))}
-            </select>
+              placeholder="Select supplier…"
+              options={[
+                { value: "", label: "Select supplier…" },
+                ...suppliers.map((s) => ({ value: String(s.id), label: s.supplier_name })),
+              ]}
+            />
           </Field>
 
           <Field label="Purchase order">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={form.lpo_no}
-              onChange={(e) => setForm((p) => ({ ...p, lpo_no: e.target.value }))}
+              onChange={(next) => setForm((p) => ({ ...p, lpo_no: next }))}
               disabled={!form.supplier_id}
-            >
-              <option value="">Select purchase order…</option>
-              {lpoOptions.map((l) => (
-                <option key={l.lpo_no} value={l.lpo_no}>
-                  {lpoRowDisplayNumber(l)}
-                </option>
-              ))}
-            </select>
+              placeholder="Select purchase order…"
+              options={[
+                { value: "", label: "Select purchase order…" },
+                ...lpoOptions.map((l) => ({
+                  value: String(l.lpo_no),
+                  label: lpoRowDisplayNumber(l),
+                })),
+              ]}
+            />
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Stock location">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.stock_location}
-                onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-              >
-                <option value="store">Store / warehouse</option>
-                <option value="shop">Shop</option>
-              </select>
+                onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
+                options={[
+                  { value: "store", label: "Store / warehouse" },
+                  { value: "shop", label: "Shop" },
+                ]}
+              />
             </Field>
             <Field label="Supplier invoice / GRN ref">
               <input
@@ -407,14 +405,14 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Stock location">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.stock_location}
-                onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-              >
-                <option value="store">Store / warehouse</option>
-                <option value="shop">Shop</option>
-              </select>
+                onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
+                options={[
+                  { value: "store", label: "Store / warehouse" },
+                  { value: "shop", label: "Shop" },
+                ]}
+              />
             </Field>
             <Field label="Invoice / GRN ref (optional)">
               <input

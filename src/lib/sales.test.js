@@ -68,14 +68,23 @@ describe("sales order edit routing", () => {
     modules: { sales: true, "sales.pos": true },
   };
 
-  it("opens the line-edit popup for booked mobile orders", () => {
-    expect(shouldOpenBackofficeOrderEdit(mobileBookedSale, null, capabilitiesWithPos)).toBe(true);
-    expect(shouldRestoreOrderToCart(mobileBookedSale, null, capabilitiesWithPos)).toBe(false);
+  it("restores booked mobile orders to cart when line edit is not allowed", () => {
+    expect(shouldOpenBackofficeOrderEdit(mobileBookedSale, null, capabilitiesWithPos)).toBe(false);
+    expect(shouldRestoreOrderToCart(mobileBookedSale, null, capabilitiesWithPos)).toBe(true);
   });
 
-  it("opens the line-edit popup for booked POS orders from Sales/Orders", () => {
-    expect(shouldOpenBackofficeOrderEdit(posBookedSale, null, capabilitiesWithPos)).toBe(true);
-    expect(shouldRestoreOrderToCart(posBookedSale, null, capabilitiesWithPos)).toBe(false);
+  it("restores booked POS orders to cart when line edit is not allowed", () => {
+    expect(shouldOpenBackofficeOrderEdit(posBookedSale, null, capabilitiesWithPos)).toBe(false);
+    expect(shouldRestoreOrderToCart(posBookedSale, null, capabilitiesWithPos)).toBe(true);
+  });
+
+  it("hides line edit when backoffice order editing is disabled in platform settings", () => {
+    const caps = {
+      ...capabilitiesWithPos,
+      module_settings: { sales: { enable_backoffice_order_edit: false } },
+    };
+    const sale = { ...posBookedSale, can_edit_lines: true };
+    expect(shouldOpenBackofficeOrderEdit(sale, null, caps)).toBe(false);
   });
 
   it("prefers the popup when can_edit_lines is true", () => {

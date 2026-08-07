@@ -1,7 +1,7 @@
 "use client";
 
 import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
-import { inputClassName } from "@/components/catalog/catalog-shared";
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 
 export const REASON_SCOPE = {
   ORDER: "order",
@@ -71,18 +71,11 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
       <span className="theme-accent-label mb-1 block text-xs font-bold uppercase tracking-wide">
         How are you returning?
       </span>
-      <select
-        id={`${idPrefix}-type`}
-        className={inputClassName()}
+      <SearchableSelect
         value={selectValue}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        options={options}
+      />
       <p className="theme-subtext mt-1 text-[11px] leading-snug">
         {options.find((o) => o.value === selectValue)?.hint ??
           "Full package = whole UOM unit. Pieces / loose = individual units."}

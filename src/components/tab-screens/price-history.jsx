@@ -9,7 +9,12 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchCategoriesCached, fetchUsersCached } from "@/lib/reference-data-cache";
-import { PaginationBar } from "@/components/catalog/catalog-shared";
+import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
+import {
+  Field,
+  inputClassName,
+  PaginationBar,
+} from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { PRICE_HISTORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
@@ -121,6 +126,30 @@ function groupByProduct(rows) {
 }
 
 const RECORDS_PAGE_SIZE = 50;
+const initialDateRange = defaultDateRange(7);
+
+function buildPriceHistoryParams({
+  page,
+  perPage = RECORDS_PAGE_SIZE,
+  debouncedSearch,
+  categoryFilter,
+  userFilter,
+  fromDate,
+  toDate,
+}) {
+  const extra = {
+    date_from: fromDate || undefined,
+    date_to: toDate || undefined,
+  };
+  if (categoryFilter !== "all") extra.category_id = categoryFilter;
+  if (userFilter !== "all") extra.changed_by = userFilter;
+  return buildPageParams({
+    page,
+    perPage,
+    q: debouncedSearch,
+    extra,
+  });
+}
 
 export function PriceHistoryScreen() {
   const { user } = useAuth();
@@ -135,8 +164,15 @@ export function PriceHistoryScreen() {
   const debouncedSearch = useDebouncedValue(search);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
+  const [fromDate, setFromDate] = useState(initialDateRange.from);
+  const [toDate, setToDate] = useState(initialDateRange.to);
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState(() => new Set());
+
+  const dateRangeLabel = useMemo(
+    () => formatCompactDateRange(fromDate, toDate),
+    [fromDate, toDate],
+  );
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -155,15 +191,13 @@ export function PriceHistoryScreen() {
   const loadRecords = useCallback(async () => {
     setListLoading(true);
     try {
-      const extra = { days: 7 };
-      if (categoryFilter !== "all") extra.category_id = categoryFilter;
-      if (userFilter !== "all") extra.changed_by = userFilter;
-
-      const searchParams = buildPageParams({
+      const searchParams = buildPriceHistoryParams({
         page,
-        perPage: RECORDS_PAGE_SIZE,
-        q: debouncedSearch,
-        extra,
+        debouncedSearch,
+        categoryFilter,
+        userFilter,
+        fromDate,
+        toDate,
       });
       const histRes = await apiRequest("/price-history", { searchParams });
       const parsed = parsePaginator(histRes);
@@ -176,7 +210,7 @@ export function PriceHistoryScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, debouncedSearch, categoryFilter, userFilter]);
+  }, [page, debouncedSearch, categoryFilter, userFilter, fromDate, toDate]);
 
   useTabAwareDataLoad(loadReferenceData);
 
@@ -184,7 +218,7 @@ export function PriceHistoryScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, categoryFilter, userFilter]);
+  }, [debouncedSearch, categoryFilter, userFilter, fromDate, toDate]);
 
   const enriched = useMemo(() => enrichHistory(records), [records]);
 
@@ -209,7 +243,7 @@ export function PriceHistoryScreen() {
         <div>
           <h1 className="text-xl font-medium text-slate-900">Price history</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Selling price changes in the last 7 days, grouped by product
+            Selling price changes for {dateRangeLabel}, grouped by product
           </p>
         </div>
         <CatalogListExport
@@ -218,17 +252,22 @@ export function PriceHistoryScreen() {
           apiPath="/price-history"
           columns={PRICE_HISTORY_EXPORT_COLUMNS}
           totalCount={totalRecords}
-          getSearchParams={() => {
-            const extra = { days: 7 };
-            if (categoryFilter !== "all") extra.category_id = categoryFilter;
-            if (userFilter !== "all") extra.changed_by = userFilter;
-            return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
-          }}
+          getSearchParams={() =>
+            buildPriceHistoryParams({
+              page: 1,
+              perPage: 200,
+              debouncedSearch,
+              categoryFilter,
+              userFilter,
+              fromDate,
+              toDate,
+            })
+          }
           disabled={loading || listLoading}
         />
       </div>
 
-      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+      <div className="mb-3.5 flex flex-wrap items-end gap-2">
         <div className="relative w-72 flex-1 max-w-xl sm:w-96">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -239,9 +278,24 @@ export function PriceHistoryScreen() {
             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
           />
         </div>
-        <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
-          Last 7 days
-        </span>
+        <Field label="From">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={fromDate}
+            max={toDate || undefined}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={(e) => setToDate(e.target.value)}
+          />
+        </Field>
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
@@ -273,7 +327,7 @@ export function PriceHistoryScreen() {
           <p className="p-8 text-sm text-slate-500">Loading price history…</p>
         ) : productGroups.length === 0 ? (
           <p className="px-4 py-12 text-center text-sm text-slate-500">
-            No price changes in the last 7 days match your filters.
+            No price changes for {dateRangeLabel} match your filters.
           </p>
         ) : (
           <ul className={`divide-y divide-slate-200 ${listLoading ? "opacity-60" : ""}`}>

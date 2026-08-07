@@ -6,6 +6,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
@@ -141,14 +142,14 @@ export function EditDamageDrawer({ open, damage, products = [], uoms = [], onClo
         </Field>
 
         <Field label="Location">
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={form.stock_location}
-            onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-          >
-            <option value="shop">Shop</option>
-            <option value="store">Store</option>
-          </select>
+            onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
+            options={[
+              { value: "shop", label: "Shop" },
+              { value: "store", label: "Store" },
+            ]}
+          />
         </Field>
 
         <Field label="Reason">

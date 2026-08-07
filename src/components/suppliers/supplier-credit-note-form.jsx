@@ -6,7 +6,7 @@ import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchSuppliersCached } from "@/lib/reference-data-cache";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { formatSaleKes } from "@/lib/sales";
 import {
@@ -164,19 +164,19 @@ export function SupplierCreditNoteForm({
 
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Supplier" required>
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
+            onChange={setSupplierId}
             required
-          >
-            <option value="">Select supplier…</option>
-            {suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>
-                {supplier.supplier_name}
-              </option>
-            ))}
-          </select>
+            placeholder="Select supplier…"
+            options={[
+              { value: "", label: "Select supplier…" },
+              ...suppliers.map((supplier) => ({
+                value: String(supplier.id),
+                label: supplier.supplier_name ?? `Supplier #${supplier.id}`,
+              })),
+            ]}
+          />
         </Field>
 
         <Field label="Credit date" required>
@@ -211,18 +211,16 @@ export function SupplierCreditNoteForm({
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Field label="Reason for credit" required>
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={reasonPreset}
-            onChange={(e) => setReasonPreset(e.target.value)}
+            onChange={setReasonPreset}
             required
-          >
-            {SUPPLIER_CREDIT_NOTE_REASONS.map((reason) => (
-              <option key={reason} value={reason}>
-                {reason}
-              </option>
-            ))}
-          </select>
+            placeholder="Select reason…"
+            options={SUPPLIER_CREDIT_NOTE_REASONS.map((reason) => ({
+              value: reason,
+              label: reason,
+            }))}
+          />
         </Field>
         {reasonPreset === RETURN_REASON_OTHER ? (
           <Field label="Please specify" required>

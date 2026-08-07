@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchDriversCached, fetchVehiclesCached } from "@/lib/reference-data-cache";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { notifyError } from "@/lib/notify";
 
@@ -159,38 +159,48 @@ export function MergeDispatchTripsDialog({
             </ul>
           </Field>
           <Field label="Keep trip code">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={targetTripId}
-              onChange={(e) => setTargetTripId(e.target.value)}
-            >
-              <option value="">Create new merged trip</option>
-              {draftTrips.map((trip) => (
-                <option key={trip.id} value={trip.id}>
-                  {trip.trip_code} — {formatTripRoutesLabel(trip)}
-                </option>
-              ))}
-            </select>
+              onChange={setTargetTripId}
+              placeholder="Create new merged trip"
+              options={[
+                { value: "", label: "Create new merged trip" },
+                ...draftTrips.map((trip) => ({
+                  value: String(trip.id),
+                  label: `${trip.trip_code} — ${formatTripRoutesLabel(trip)}`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Driver">
-            <select className={inputClassName()} value={driverId} onChange={(e) => setDriverId(e.target.value)} disabled={refsLoading}>
-              <option value="">{refsLoading ? "Loading drivers…" : "Select driver"}</option>
-              {drivers.map((driver) => (
-                <option key={driver.id} value={driver.id}>
-                  {driver.full_name ?? driver.driver_name ?? `Driver #${driver.id}`}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={driverId}
+              onChange={setDriverId}
+              disabled={refsLoading}
+              placeholder={refsLoading ? "Loading drivers…" : "Select driver"}
+              options={[
+                { value: "", label: refsLoading ? "Loading drivers…" : "Select driver" },
+                ...drivers.map((driver) => ({
+                  value: String(driver.id),
+                  label: driver.full_name ?? driver.driver_name ?? `Driver #${driver.id}`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Vehicle">
-            <select className={inputClassName()} value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} disabled={refsLoading}>
-              <option value="">{refsLoading ? "Loading vehicles…" : "Select vehicle"}</option>
-              {vehicles.map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.plate_number ?? vehicle.vehicle_name ?? `Vehicle #${vehicle.id}`}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={vehicleId}
+              onChange={setVehicleId}
+              disabled={refsLoading}
+              placeholder={refsLoading ? "Loading vehicles…" : "Select vehicle"}
+              options={[
+                { value: "", label: refsLoading ? "Loading vehicles…" : "Select vehicle" },
+                ...vehicles.map((vehicle) => ({
+                  value: String(vehicle.id),
+                  label: vehicle.plate_number ?? vehicle.vehicle_name ?? `Vehicle #${vehicle.id}`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Notes">
             <textarea className={inputClassName()} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />

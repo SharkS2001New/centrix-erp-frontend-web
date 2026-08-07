@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { resolveCustomerMediaUrl } from "@/lib/api";
 import { fetchBranchesCached, fetchRoutesCached } from "@/lib/reference-data-cache";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { CustomerLocationSection } from "@/components/customers/customer-location-section";
 import { CustomerShopImageField } from "@/components/customers/customer-shop-image-field";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
@@ -193,29 +193,27 @@ export function CustomerFormFields({
       <Field label="Type">
         {routeCustomersOnly ? (
           <>
-            <select
+            <SearchableSelect
               value="route"
+              onChange={() => {}}
               disabled
-              aria-readonly="true"
-              className={`${inputClassName()} cursor-not-allowed bg-slate-50 text-slate-600`}
-            >
-              <option value="route">Route</option>
-            </select>
+              options={[{ value: "route", label: "Route" }]}
+            />
             <p className="mt-1 text-xs text-slate-500">
               Distribution companies only use route customers assigned to a sales or delivery route.
             </p>
           </>
         ) : (
           <>
-            <select
+            <SearchableSelect
               value={form.customer_type}
-              onChange={(e) => onChange("customer_type", e.target.value)}
-              className={inputClassName()}
-            >
-              <option value="debtor">Debtor</option>
-              <option value="route">Route</option>
-              <option value="regular">Regular customer</option>
-            </select>
+              onChange={(v) => onChange("customer_type", v)}
+              options={[
+                { value: "debtor", label: "Debtor" },
+                { value: "route", label: "Route" },
+                { value: "regular", label: "Regular customer" },
+              ]}
+            />
             <p className="mt-1 text-xs text-slate-500">
               Debtors are on account. Route customers belong to a delivery route. Regular customers are
               for records that are not on credit.
@@ -227,22 +225,19 @@ export function CustomerFormFields({
       {showBranchSelect && (
         <div className="md:col-span-2 xl:col-span-3">
           <Field label="Branch" required>
-            <select
+            <SearchableSelect
               value={form.branch_id}
-              onChange={(e) => onChange("branch_id", e.target.value)}
+              onChange={(v) => onChange("branch_id", v)}
               required
-              className={inputClassName()}
-            >
-              <option value="" disabled>
-                Select branch
-              </option>
-              {branches.map((b) => (
-                <option key={b.id} value={String(b.id)}>
-                  {b.branch_name}
-                  {b.branch_code ? ` (${b.branch_code})` : ""}
-                </option>
-              ))}
-            </select>
+              placeholder="Select branch"
+              options={[
+                { value: "", label: "Select branch" },
+                ...branches.map((b) => ({
+                  value: String(b.id),
+                  label: `${b.branch_name}${b.branch_code ? ` (${b.branch_code})` : ""}`,
+                })),
+              ]}
+            />
           </Field>
         </div>
       )}

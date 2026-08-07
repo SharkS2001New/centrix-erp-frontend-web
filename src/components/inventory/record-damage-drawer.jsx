@@ -10,6 +10,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
@@ -179,14 +180,14 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
         </Field>
 
         <Field label="Location">
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={form.stock_location}
-            onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-          >
-            <option value="shop">Shop</option>
-            <option value="store">Store / warehouse</option>
-          </select>
+            onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
+            options={[
+              { value: "shop", label: "Shop" },
+              { value: "store", label: "Store / warehouse" },
+            ]}
+          />
         </Field>
 
         <Field label="Reason">

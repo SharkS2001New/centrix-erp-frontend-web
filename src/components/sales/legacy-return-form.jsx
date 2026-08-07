@@ -7,7 +7,7 @@ import { TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   REFUND_METHODS,
@@ -265,17 +265,11 @@ export function LegacyReturnForm({
           />
         </Field>
         <Field label="Refund method">
-          <select
-            className={inputClassName}
+          <SearchableSelect
             value={refundMethod}
-            onChange={(e) => setRefundMethod(e.target.value)}
-          >
-            {REFUND_METHODS.map((method) => (
-              <option key={method.value} value={method.value}>
-                {method.label}
-              </option>
-            ))}
-          </select>
+            onChange={setRefundMethod}
+            options={REFUND_METHODS}
+          />
         </Field>
         <ReturnReasonFields
           preset={reasonPreset}

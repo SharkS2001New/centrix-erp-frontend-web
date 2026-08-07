@@ -42,19 +42,15 @@ import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
-const AUTO_PROCESS_KEY = (id) => `payroll-auto-process-${id}`;
+import {
+  buildPayrollSheetFooter,
+  buildPayrollSheetRows,
+  PAYROLL_SHEET_COLUMNS,
+} from "@/lib/payroll-sheet";
 
-const PAYROLL_SHEET_COLUMNS = [
-  { key: "employee", label: "Employee", align: "left" },
-  { key: "gross_pay", label: "Gross Pay", align: "right" },
-  { key: "paye", label: "PAYE", align: "right" },
-  { key: "nssf", label: "NSSF", align: "right" },
-  { key: "shif", label: "SHIF", align: "right" },
-  { key: "housing_levy", label: "Housing Levy", align: "right" },
-  { key: "other_deductions", label: "Other", align: "right" },
-  { key: "deductions", label: "Total Deductions", align: "right" },
-  { key: "net_pay", label: "Net Pay", align: "right" },
-];
+const AUTO_PROCESS_KEY = (id) => `payroll-auto-process-${id}`;
+const PAYROLL_SHEET_COL_COUNT = PAYROLL_SHEET_COLUMNS.length + 2;
+const SHEET_CELL = "border border-slate-200 px-2 py-2";
 
 function lineHasEmployeeEmail(line) {
   const employee = line?.employee;
@@ -71,10 +67,6 @@ function employeeNameFromLine(line) {
     emp?.full_name ||
     `#${line?.employee_id ?? ""}`
   );
-}
-
-function moneyCell(value) {
-  return formatHrKesFull(value);
 }
 
 export function HrPayrollRunsIdScreen() {
@@ -199,6 +191,14 @@ export function HrPayrollRunsIdScreen() {
     () => lines.filter((line) => selectedLineIds.has(String(line.id))),
     [lines, selectedLineIds],
   );
+  const payrollSheetDisplayRows = useMemo(
+    () => buildPayrollSheetRows(lines, employeeNameFromLine),
+    [lines],
+  );
+  const payrollSheetTotals = useMemo(
+    () => buildPayrollSheetFooter(lines, employeeNameFromLine),
+    [lines],
+  );
   const canPrintOrEmailReceipts =
     run && ["processed", "paid"].includes(run.status) && lines.length > 0;
 
@@ -230,18 +230,23 @@ export function HrPayrollRunsIdScreen() {
     });
   }
 
+  function payrollSheetExportColumns() {
+    return normalizeExportColumns(
+      PAYROLL_SHEET_COLUMNS.map((col) => ({
+        key: col.key,
+        label: col.label,
+        align: col.align,
+        accessor: (row) => String(row[col.key] ?? ""),
+      })),
+    );
+  }
+
   function payrollSheetRows(targetLines = lines) {
-    return targetLines.map((line) => ({
-      employee: employeeNameFromLine(line),
-      gross_pay: moneyCell(line.gross_pay),
-      paye: moneyCell(line.paye),
-      nssf: moneyCell(line.nssf),
-      shif: moneyCell(line.shif),
-      housing_levy: moneyCell(line.housing_levy),
-      other_deductions: moneyCell(line.other_deductions),
-      deductions: moneyCell(line.deductions),
-      net_pay: moneyCell(line.net_pay),
-    }));
+    return buildPayrollSheetRows(targetLines, employeeNameFromLine);
+  }
+
+  function payrollSheetFooterRow(targetLines = lines) {
+    return buildPayrollSheetFooter(targetLines, employeeNameFromLine);
   }
 
   function exportPayrollSheetCsv() {
@@ -257,19 +262,12 @@ export function HrPayrollRunsIdScreen() {
       printedAt: reportPrintedAt(),
       extraLines: reportConstantHeaderForRun(),
     });
-    const columns = normalizeExportColumns(
-      PAYROLL_SHEET_COLUMNS.map((col) => ({
-        key: col.key,
-        label: col.label,
-        align: col.align,
-        accessor: (row) => String(row[col.key] ?? ""),
-      })),
-    );
     downloadReportCsv(
       slugifyReportFilename(`payroll-sheet-${run?.id ?? runId}`),
       meta,
-      columns,
+      payrollSheetExportColumns(),
       payrollSheetRows(),
+      payrollSheetFooterRow(),
     );
     notifySuccess("Payroll sheet CSV downloaded.");
   }
@@ -291,19 +289,12 @@ export function HrPayrollRunsIdScreen() {
       printedAt: reportPrintedAt(),
       extraLines: reportConstantHeaderForRun(),
     });
-    const columns = normalizeExportColumns(
-      PAYROLL_SHEET_COLUMNS.map((col) => ({
-        key: col.key,
-        label: col.label,
-        align: col.align,
-        accessor: (row) => String(row[col.key] ?? ""),
-      })),
-    );
     try {
       printReportTable({
         meta,
-        columns,
+        columns: payrollSheetExportColumns(),
         rows: payrollSheetRows(),
+        footerRow: payrollSheetFooterRow(),
         branding,
         generalSettings: generalSettings(),
       });
@@ -707,8 +698,8 @@ export function HrPayrollRunsIdScreen() {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Payroll sheet</h2>
               <p className="mt-0.5 text-xs text-slate-500">
-                Gross Pay, PAYE, NSSF, SHIF, Housing Levy, and Net Pay. Export CSV or Print / PDF
-                from the actions above. Select rows to print or email individual payslips.
+                Basic salary, overtime, statutory deductions, advances, and net pay — matching the
+                payroll sheet layout. Export CSV or Print / PDF from the actions above.
               </p>
               {canPrintOrEmailReceipts && selectedCount > 0 ? (
                 <p className="mt-2 text-xs font-medium text-slate-700">
@@ -724,10 +715,10 @@ export function HrPayrollRunsIdScreen() {
               ) : null}
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] border-collapse text-sm">
+              <table className="w-full min-w-[1400px] border-collapse border border-slate-200 text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
-                    <th className="w-10 px-4 py-2.5">
+                    <th className={`w-10 ${SHEET_CELL}`}>
                       {canPrintOrEmailReceipts ? (
                         <input
                           type="checkbox"
@@ -738,33 +729,33 @@ export function HrPayrollRunsIdScreen() {
                         />
                       ) : null}
                     </th>
-                    <th className="px-4 py-2.5">Employee</th>
-                    <th className="px-4 py-2.5 text-right">Gross Pay</th>
-                    <th className="px-4 py-2.5 text-right">PAYE</th>
-                    <th className="px-4 py-2.5 text-right">NSSF</th>
-                    <th className="px-4 py-2.5 text-right">SHIF</th>
-                    <th className="px-4 py-2.5 text-right">Housing Levy</th>
-                    <th className="px-4 py-2.5 text-right">Other</th>
-                    <th className="px-4 py-2.5 text-right">Total Deductions</th>
-                    <th className="px-4 py-2.5 text-right">Net Pay</th>
-                    <th className="w-[70px] px-4 py-2.5">Actions</th>
+                    {PAYROLL_SHEET_COLUMNS.map((col) => (
+                      <th
+                        key={col.key}
+                        className={`${SHEET_CELL} ${col.align === "right" ? "text-right" : "text-left"}`}
+                      >
+                        {col.label}
+                      </th>
+                    ))}
+                    <th className={`w-[70px] ${SHEET_CELL}`}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {processing ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={PAYROLL_SHEET_COL_COUNT} className={`${SHEET_CELL} py-12 text-center text-slate-500`}>
                         Calculating employee lines… results will appear here when ready.
                       </td>
                     </tr>
                   ) : lines.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={PAYROLL_SHEET_COL_COUNT} className={`${SHEET_CELL} py-12 text-center text-slate-500`}>
                         No payroll lines for this run.
                       </td>
                     </tr>
                   ) : (
-                    lines.map((line) => {
+                    lines.map((line, index) => {
+                      const row = payrollSheetDisplayRows[index] ?? {};
                       const name = employeeNameFromLine(line);
                       const isSelected = selectedLine?.id === line.id;
                       const isChecked = selectedLineIds.has(String(line.id));
@@ -773,11 +764,11 @@ export function HrPayrollRunsIdScreen() {
                         <tr
                           key={line.id}
                           onClick={() => openLineDetail(line)}
-                          className={`cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50 ${
+                          className={`cursor-pointer hover:bg-slate-50 ${
                             isSelected ? "bg-[#E6F1FB]/40" : ""
                           }`}
                         >
-                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <td className={SHEET_CELL} onClick={(e) => e.stopPropagation()}>
                             {canPrintOrEmailReceipts ? (
                               <input
                                 type="checkbox"
@@ -788,29 +779,32 @@ export function HrPayrollRunsIdScreen() {
                               />
                             ) : null}
                           </td>
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            <span>{name}</span>
-                            {canPrintOrEmailReceipts && !hasEmail ? (
-                              <span className="mt-0.5 block text-[11px] font-normal text-amber-700">
-                                No email on file
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.gross_pay)}</td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.paye)}</td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.nssf)}</td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.shif)}</td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.housing_levy)}</td>
-                          <td className="px-4 py-3 text-right">
-                            {formatHrKesFull(line.other_deductions)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {formatHrKesFull(line.deductions)}
-                          </td>
-                          <td className="px-4 py-3 text-right font-medium">
-                            {formatHrKesFull(line.net_pay)}
-                          </td>
-                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          {PAYROLL_SHEET_COLUMNS.map((col) => (
+                            <td
+                              key={col.key}
+                              className={`${SHEET_CELL} ${
+                                col.key === "name"
+                                  ? "font-medium text-slate-900"
+                                  : col.align === "right"
+                                    ? "text-right font-mono text-slate-800"
+                                    : "text-slate-700"
+                              } ${col.key === "net_pay" ? "font-semibold" : ""}`}
+                            >
+                              {col.key === "name" ? (
+                                <>
+                                  <span>{row.name}</span>
+                                  {canPrintOrEmailReceipts && !hasEmail ? (
+                                    <span className="mt-0.5 block text-[11px] font-normal text-amber-700">
+                                      No email on file
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                row[col.key] ?? (col.align === "right" ? "—" : "")
+                              )}
+                            </td>
+                          ))}
+                          <td className={SHEET_CELL} onClick={(e) => e.stopPropagation()}>
                             <IconButton label="Breakdown" onClick={() => openLineDetail(line)}>
                               <ViewIcon />
                             </IconButton>
@@ -820,6 +814,22 @@ export function HrPayrollRunsIdScreen() {
                     })
                   )}
                 </tbody>
+                {!processing && lines.length > 0 ? (
+                  <tfoot>
+                    <tr className="bg-slate-100 font-semibold text-slate-900">
+                      <td className={SHEET_CELL} />
+                      {PAYROLL_SHEET_COLUMNS.map((col) => (
+                        <td
+                          key={col.key}
+                          className={`${SHEET_CELL} ${col.align === "right" ? "text-right font-mono" : ""}`}
+                        >
+                          {payrollSheetTotals[col.key] ?? ""}
+                        </td>
+                      ))}
+                      <td className={SHEET_CELL} />
+                    </tr>
+                  </tfoot>
+                ) : null}
               </table>
             </div>
           </div>

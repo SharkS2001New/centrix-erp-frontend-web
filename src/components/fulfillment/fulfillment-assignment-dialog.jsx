@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { dataUrlToFile, SignaturePad } from "@/components/fulfillment/signature-pad";
 
 export function FulfillmentAssignmentDialog({
@@ -67,34 +67,34 @@ export function FulfillmentAssignmentDialog({
 
         <div className="mt-5 space-y-4">
           <Field label="Driver">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={driverId}
-              onChange={(e) => setDriverId(e.target.value)}
-            >
-              <option value="">Select driver…</option>
-              {routeDrivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.full_name ?? d.driver_code}
-                </option>
-              ))}
-            </select>
+              onChange={setDriverId}
+              placeholder="Select driver…"
+              options={[
+                { value: "", label: "Select driver…" },
+                ...routeDrivers.map((d) => ({
+                  value: String(d.id),
+                  label: d.full_name ?? d.driver_code,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Vehicle">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-            >
-              <option value="">Select vehicle…</option>
-              {vehicles
-                .filter((v) => v.is_active !== false)
-                .map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.plate_number ?? v.vehicle_name ?? v.vehicle_code}
-                  </option>
-                ))}
-            </select>
+              onChange={setVehicleId}
+              placeholder="Select vehicle…"
+              options={[
+                { value: "", label: "Select vehicle…" },
+                ...vehicles
+                  .filter((v) => v.is_active !== false)
+                  .map((v) => ({
+                    value: String(v.id),
+                    label: v.plate_number ?? v.vehicle_name ?? v.vehicle_code,
+                  })),
+              ]}
+            />
           </Field>
         </div>
 
@@ -194,32 +194,32 @@ export function TripAssignmentDialog({
 
         <div className="mt-5 space-y-4">
           <Field label="Driver">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={driverId}
-              onChange={(e) => setDriverId(e.target.value)}
-            >
-              <option value="">Select driver…</option>
-              {activeDrivers.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.full_name ?? d.driver_code}
-                </option>
-              ))}
-            </select>
+              onChange={setDriverId}
+              placeholder="Select driver…"
+              options={[
+                { value: "", label: "Select driver…" },
+                ...activeDrivers.map((d) => ({
+                  value: String(d.id),
+                  label: d.full_name ?? d.driver_code,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Vehicle">
-            <select
-              className={inputClassName()}
+            <SearchableSelect
               value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-            >
-              <option value="">Select vehicle…</option>
-              {activeVehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.plate_number ?? v.vehicle_name ?? v.vehicle_code}
-                </option>
-              ))}
-            </select>
+              onChange={setVehicleId}
+              placeholder="Select vehicle…"
+              options={[
+                { value: "", label: "Select vehicle…" },
+                ...activeVehicles.map((v) => ({
+                  value: String(v.id),
+                  label: v.plate_number ?? v.vehicle_name ?? v.vehicle_code,
+                })),
+              ]}
+            />
           </Field>
         </div>
 

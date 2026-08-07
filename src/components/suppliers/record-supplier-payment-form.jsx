@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
-import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { SupplierFormCard, SupplierFormPageShell } from "./supplier-form";
 import {
@@ -352,16 +352,15 @@ export function RecordSupplierPaymentForm({
             </p>
 
             <Field label="Supplier">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={supplierId}
-                onChange={(e) => {
-                  setSupplierId(e.target.value);
+                onChange={(next) => {
+                  setSupplierId(next);
                   setForm((p) => ({
                     ...EMPTY_SUPPLIER_PAYMENT_FORM,
                     payment_method_id: p.payment_method_id,
                     date_paid: p.date_paid,
-                    lpo_no: initialLpoNo && e.target.value === String(initialSupplierId)
+                    lpo_no: initialLpoNo && next === String(initialSupplierId)
                       ? String(initialLpoNo)
                       : "",
                   }));
@@ -369,14 +368,12 @@ export function RecordSupplierPaymentForm({
                 }}
                 required
                 disabled={Boolean(initialSupplierId)}
-              >
-                <option value="">Select supplier</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.supplier_name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select supplier"
+                options={[
+                  { value: "", label: "Select supplier" },
+                  ...suppliers.map((s) => ({ value: String(s.id), label: s.supplier_name })),
+                ]}
+              />
             </Field>
 
             {supplierId && supplierOwing != null ? (
@@ -433,33 +430,29 @@ export function RecordSupplierPaymentForm({
             ) : null}
 
             <Field label="Link payment to LPO">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.lpo_no}
-                onChange={(e) =>
+                onChange={(next) =>
                   setForm((p) => ({
                     ...p,
-                    lpo_no: e.target.value,
+                    lpo_no: next,
                     amount_paid: "",
                   }))
                 }
                 disabled={!supplierId || loadingSupplier}
-              >
-                <option value="">General payment (supplier account)</option>
-                {lpoOptions.map((l) => (
-                  <option
-                    key={l.lpo_no}
-                    value={String(l.lpo_no)}
-                    disabled={!l.can_pay}
-                  >
-                    {lpoRowDisplayNumber(l)} — {formatSupplierKes(l.balance_due)} due
-                    {Number(l.total_amount) > 0
-                      ? ` (total ${formatSupplierKes(l.total_amount)})`
-                      : " (no LPO total)"}
-                    {!l.can_pay ? " — receive stock first" : ""}
-                  </option>
-                ))}
-              </select>
+                placeholder="General payment (supplier account)"
+                options={[
+                  { value: "", label: "General payment (supplier account)" },
+                  ...lpoOptions.map((l) => ({
+                    value: String(l.lpo_no),
+                    label: `${lpoRowDisplayNumber(l)} — ${formatSupplierKes(l.balance_due)} due${
+                      Number(l.total_amount) > 0
+                        ? ` (total ${formatSupplierKes(l.total_amount)})`
+                        : " (no LPO total)"
+                    }${!l.can_pay ? " — receive stock first" : ""}`,
+                  })),
+                ]}
+              />
               <p className="mt-1 text-xs text-slate-500">
                 Optional. Allocates this payment to a purchase order for balance and history.
               </p>
@@ -550,19 +543,16 @@ export function RecordSupplierPaymentForm({
             ) : null}
 
             <Field label="Payment method">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.payment_method_id}
-                onChange={(e) => onPaymentMethodChange(e.target.value)}
+                onChange={(next) => onPaymentMethodChange(next)}
                 required
-              >
-                <option value="">Select method</option>
-                {paymentMethods.map((m) => (
-                  <option key={m.id} value={String(m.id)}>
-                    {m.method_name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select method"
+                options={[
+                  { value: "", label: "Select method" },
+                  ...paymentMethods.map((m) => ({ value: String(m.id), label: m.method_name })),
+                ]}
+              />
             </Field>
 
             <PaymentMethodReferenceFields

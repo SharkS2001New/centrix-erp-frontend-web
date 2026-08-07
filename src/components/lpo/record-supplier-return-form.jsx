@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   lpoReturnableLines,
   lpoCanRecordReturn,
@@ -178,45 +178,41 @@ export function RecordSupplierReturnForm({
             className="mt-6 space-y-4 theme-panel rounded-xl border p-6 shadow-sm"
           >
             <Field label="Branch (stock location)">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
+                onChange={(next) => setBranchId(next)}
                 required
-              >
-                <option value="">Select branch</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={String(b.id)}>
-                    {b.branch_name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select branch"
+                options={[
+                  { value: "", label: "Select branch" },
+                  ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
+                ]}
+              />
             </Field>
 
             <Field label="Product">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.product_code}
-                onChange={(e) => {
-                  const line = returnableLines.find((l) => l.product_code === e.target.value);
+                onChange={(next) => {
+                  const line = returnableLines.find((l) => l.product_code === next);
                   const { primary } = line ? lpoReceivedLocationMeta(line) : { primary: "store" };
                   setForm((p) => ({
                     ...p,
-                    product_code: e.target.value,
+                    product_code: next,
                     quantity: line ? String(Math.min(1, Number(line.returnable_qty))) : "",
                     stock_location: primary,
                   }));
                 }}
                 required
-              >
-                <option value="">Select product</option>
-                {returnableLines.map((line) => (
-                  <option key={line.id} value={line.product_code}>
-                    {line.product_name} — max return {line.max_return_qty ?? line.returnable_qty}{" "}
-                    {line.package_name || "packs"}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select product"
+                options={[
+                  { value: "", label: "Select product" },
+                  ...returnableLines.map((line) => ({
+                    value: line.product_code,
+                    label: `${line.product_name} — max return ${line.max_return_qty ?? line.returnable_qty} ${line.package_name || "packs"}`,
+                  })),
+                ]}
+              />
             </Field>
 
             <Field label="Quantity to return (packs)">
@@ -257,30 +253,24 @@ export function RecordSupplierReturnForm({
                   </span>
                 </p>
               ) : (
-                <select
-                  className={inputClassName()}
+                <SearchableSelect
                   value={form.stock_location}
-                  onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-                >
-                  {locationOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(next) => setForm((p) => ({ ...p, stock_location: next }))}
+                  options={locationOptions}
+                />
               )}
             </Field>
 
             <Field label="Package type">
-              <select
-                className={inputClassName()}
+              <SearchableSelect
                 value={form.package_type}
-                onChange={(e) => setForm((p) => ({ ...p, package_type: e.target.value }))}
-              >
-                <option value="full_package">Full package</option>
-                <option value="partial">Partial package</option>
-                <option value="pieces">Pieces</option>
-              </select>
+                onChange={(next) => setForm((p) => ({ ...p, package_type: next }))}
+                options={[
+                  { value: "full_package", label: "Full package" },
+                  { value: "partial", label: "Partial package" },
+                  { value: "pieces", label: "Pieces" },
+                ]}
+              />
             </Field>
 
             <Field label="Reason" required>

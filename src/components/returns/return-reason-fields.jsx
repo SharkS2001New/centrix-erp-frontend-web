@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   RETURN_REASONS,
   RETURN_REASON_OTHER,
@@ -25,19 +25,14 @@ export function ReturnReasonFields({
   return (
     <>
       <Field label={label} required={required}>
-        <select
+        <SearchableSelect
           className={selectClassName}
           value={preset}
-          onChange={(e) => onPresetChange(e.target.value)}
+          onChange={onPresetChange}
           required={required}
           disabled={disabled}
-        >
-          {RETURN_REASONS.map((reason) => (
-            <option key={reason} value={reason}>
-              {reason}
-            </option>
-          ))}
-        </select>
+          options={RETURN_REASONS.map((reason) => ({ value: reason, label: reason }))}
+        />
       </Field>
       {preset === RETURN_REASON_OTHER ? (
         <Field label={otherLabel} required={required}>

@@ -125,6 +125,7 @@ export function buildEditLine(line, uomById, retailMap) {
     discount_given: Number(line.discount_given ?? 0),
     uom: line.uom,
     on_wholesale_retail: line.on_wholesale_retail,
+    sold_on_wholesale_retail: line.on_wholesale_retail,
   };
   return {
     ...editLine,
@@ -169,9 +170,12 @@ export function priceDraftLine(
   const sellWholesale = !asRetail;
   const entryQty = String(line.draftQty ?? defaultPosEntryQty(product, sellWholesale, retailPackage));
 
-  // Existing saved lines: keep sold economics. Unit price = line total ÷ qty (whole KES).
-  // Repricing from today's catalog would show the wrong PRICE vs AMOUNT on Edit Order.
-  if (line.id != null) {
+  const soldAsRetail =
+    Number(line.sold_on_wholesale_retail ?? line.on_wholesale_retail) === 1;
+  const pricingUnchanged = soldAsRetail === asRetail;
+
+  // Existing saved lines: keep sold economics unless wholesale/retail was toggled.
+  if (line.id != null && pricingUnchanged) {
     const amount = saleLinePreviewRowAmount(line, line.draftQty, uomById, {
       retailByCode: retailMap,
       draftDiscount: line.draftDiscount,
@@ -385,6 +389,16 @@ export function buildLineQuantitiesSaveBody({
             on_wholesale_retail:
               isRetailLine(line) && productAllowsRetail(line.product_code, retailByCode),
           };
+
+    if (line.id != null) {
+      const soldAsRetail =
+        Number(line.sold_on_wholesale_retail ?? line.on_wholesale_retail) === 1;
+      const nowAsRetail =
+        isRetailLine(line) && productAllowsRetail(line.product_code, retailByCode);
+      if (soldAsRetail !== nowAsRetail) {
+        item.on_wholesale_retail = nowAsRetail;
+      }
+    }
 
     if (discountEditEnabled) {
       const perUnit = Number(line.draftDiscount ?? 0);

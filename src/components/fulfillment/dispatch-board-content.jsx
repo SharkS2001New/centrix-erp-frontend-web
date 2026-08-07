@@ -56,6 +56,7 @@ export function DispatchBoardContent() {
   const [createTripDefaults, setCreateTripDefaults] = useState({
     routeIds: [],
     saleIds: [],
+    branchId: null,
   });
 
   useEffect(() => {
@@ -186,10 +187,28 @@ export function DispatchBoardContent() {
     const selectedSales = sales.filter((s) => ids.includes(s.id));
     if (!selectedSales.length) return;
 
+    const assignStatus = String(distributionSettings.assignOnStatus || "processed").toLowerCase();
+    const notReady = selectedSales.filter(
+      (s) => String(s.status ?? "").toLowerCase() !== assignStatus,
+    );
+    if (notReady.length) {
+      notifyError(
+        `${notReady.length} selected order(s) must be “${assignStatus}” before they can be added to a trip chart. Use “Assign driver” first if orders are still booked.`,
+      );
+      return;
+    }
+
+    const branchId = selectedSales.find((s) => s.branch_id)?.branch_id ?? user?.branch_id ?? null;
+    if (!branchId) {
+      notifyError("Could not determine branch for the selected orders.");
+      return;
+    }
+
     const routeIds = [...new Set(selectedSales.map((s) => s.route_id).filter(Boolean))];
     setCreateTripDefaults({
       routeIds,
       saleIds: ids,
+      branchId,
     });
     setCreateTripOpen(true);
   }
@@ -236,13 +255,14 @@ export function DispatchBoardContent() {
         open={createTripOpen}
         onClose={() => {
           setCreateTripOpen(false);
-          setCreateTripDefaults({ routeIds: [], saleIds: [] });
+          setCreateTripDefaults({ routeIds: [], saleIds: [], branchId: null });
           setSelectedIds(new Set());
         }}
         routes={routes}
         drivers={drivers}
         vehicles={vehicles}
         defaultDate={toDate}
+        defaultBranchId={createTripDefaults.branchId ?? user?.branch_id ?? null}
         defaultRouteIds={
           createTripDefaults.routeIds.length
             ? createTripDefaults.routeIds

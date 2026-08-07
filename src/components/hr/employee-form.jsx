@@ -10,7 +10,7 @@ import {
   fetchUsersCached,
   invalidateReferenceResource,
 } from "@/lib/reference-data-cache";
-import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, FormModal, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { EntityPhotoField } from "@/components/media/entity-photo-field";
 import { employeePhotoFileUrl } from "@/components/media/entity-photo-display";
@@ -608,27 +608,27 @@ export function EmployeeFormWizard({
               />
             </Field>
             <Field label="ID type">
-              <select
+              <SearchableSelect
                 value={form.id_document_type}
-                onChange={(e) => updateField("id_document_type", e.target.value)}
-                className={inputClassName()}
-              >
-                <option value="national_id">National ID</option>
-                <option value="passport">Passport</option>
-              </select>
+                onChange={(v) => updateField("id_document_type", v)}
+                options={[
+                  { value: "national_id", label: "National ID" },
+                  { value: "passport", label: "Passport" },
+                ]}
+              />
             </Field>
             <Field label="Gender">
-              <select
+              <SearchableSelect
                 value={form.gender}
-                onChange={(e) => updateField("gender", e.target.value)}
-                className={inputClassName()}
-              >
-                <option value="">—</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-                <option value="undisclosed">Prefer not to say</option>
-              </select>
+                onChange={(v) => updateField("gender", v)}
+                options={[
+                  { value: "", label: "—" },
+                  { value: "male", label: "Male" },
+                  { value: "female", label: "Female" },
+                  { value: "other", label: "Other" },
+                  { value: "undisclosed", label: "Prefer not to say" },
+                ]}
+              />
             </Field>
             <Field label="Date of birth">
               <input
@@ -639,18 +639,18 @@ export function EmployeeFormWizard({
               />
             </Field>
             <Field label="Marital status">
-              <select
+              <SearchableSelect
                 value={form.marital_status}
-                onChange={(e) => updateField("marital_status", e.target.value)}
-                className={inputClassName()}
-              >
-                <option value="">—</option>
-                <option value="single">Single</option>
-                <option value="married">Married</option>
-                <option value="divorced">Divorced</option>
-                <option value="widowed">Widowed</option>
-                <option value="other">Other</option>
-              </select>
+                onChange={(v) => updateField("marital_status", v)}
+                options={[
+                  { value: "", label: "—" },
+                  { value: "single", label: "Single" },
+                  { value: "married", label: "Married" },
+                  { value: "divorced", label: "Divorced" },
+                  { value: "widowed", label: "Widowed" },
+                  { value: "other", label: "Other" },
+                ]}
+              />
             </Field>
           </>
         )}
@@ -891,30 +891,18 @@ export function EmployeeFormWizard({
               <FieldError message={tabErrors.job_title} />
             </Field>
             <Field label="Employment type">
-              <select
+              <SearchableSelect
                 value={form.employment_type}
-                onChange={(e) => updateField("employment_type", e.target.value)}
-                className={inputClassName()}
-              >
-                {EMPLOYMENT_TYPE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => updateField("employment_type", v)}
+                options={EMPLOYMENT_TYPE_OPTIONS}
+              />
             </Field>
             <Field label="Employment status">
-              <select
+              <SearchableSelect
                 value={form.employment_status}
-                onChange={(e) => updateField("employment_status", e.target.value)}
-                className={inputClassName()}
-              >
-                {EMPLOYMENT_STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => updateField("employment_status", v)}
+                options={EMPLOYMENT_STATUS_OPTIONS}
+              />
               {form.employment_status !== "active" ? (
                 <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   Non-active status marks the employee inactive and automatically disables login for any linked system user (tokens are revoked).
@@ -1134,15 +1122,15 @@ export function EmployeeFormWizard({
               is auto-added.
             </p>
             <Field label="Pay frequency">
-              <select
+              <SearchableSelect
                 value={form.pay_frequency}
-                onChange={(e) => updateField("pay_frequency", e.target.value)}
-                className={inputClassName()}
-              >
-                <option value="monthly">Monthly</option>
-                <option value="biweekly">Bi-weekly</option>
-                <option value="weekly">Weekly</option>
-              </select>
+                onChange={(v) => updateField("pay_frequency", v)}
+                options={[
+                  { value: "monthly", label: "Monthly" },
+                  { value: "biweekly", label: "Bi-weekly" },
+                  { value: "weekly", label: "Weekly" },
+                ]}
+              />
             </Field>
             <Field label="KRA PIN">
               <input
@@ -1329,17 +1317,11 @@ function PaymentAccountCard({
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Field label="Payment method">
-          <select
+          <SearchableSelect
             value={method}
-            onChange={(e) => onUpdate({ payment_method: e.target.value })}
-            className={inputClassName()}
-          >
-            {PAYMENT_METHOD_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onUpdate({ payment_method: v })}
+            options={PAYMENT_METHOD_OPTIONS}
+          />
         </Field>
         {isBank ? (
           <>

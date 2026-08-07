@@ -1,6 +1,6 @@
 "use client";
 
-import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import { SearchableSelect } from "@/components/catalog/searchable-select";
 
 /** Same control class as catalog-shared FILTER_CONTROL_CLASS (avoid circular import). */
 const CONTROL_CLASS =
@@ -9,6 +9,7 @@ const CONTROL_CLASS =
 /**
  * Toolbar filter select with searchable dropdown (sticky search + scroll list).
  * Preserves the native `<select onChange={(e) => …}>` event shape for existing call sites.
+ * Always searchable — including short enum lists.
  */
 export function SearchableFilterSelect({
   value,
@@ -19,38 +20,16 @@ export function SearchableFilterSelect({
   placeholder,
   searchPlaceholder = "Search…",
 }) {
-  const inputClassName = `${CONTROL_CLASS} ${className}`.trim();
-
-  // Short enum lists use a compact native select (status filters, yes/no, etc.).
-  if (options.length <= 10) {
-    return (
-      <select
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        className={inputClassName}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
   return (
-    <PosSearchableSelect
+    <SearchableSelect
       value={value}
-      onChange={(next) => onChange?.({ target: { value: next } })}
+      onChange={onChange}
       options={options}
       placeholder={placeholder ?? options[0]?.label ?? "— Select —"}
       searchPlaceholder={searchPlaceholder}
-      minSearchLength={0}
-      idleSearchLabel="Type to search…"
-      emptyLabel="No matches"
       disabled={disabled}
-      inputClassName={inputClassName}
+      className={`${CONTROL_CLASS} ${className}`.trim()}
+      nativeEvent
     />
   );
 }

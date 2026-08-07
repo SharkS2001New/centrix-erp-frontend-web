@@ -5,7 +5,7 @@ import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-
 import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { ReturnProofField } from "@/components/returns/return-proof-field";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
@@ -474,17 +474,11 @@ export function CustomerReturnForm({
           />
         </Field>
         <Field label="Refund method">
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={refundMethod}
-            onChange={(e) => setRefundMethod(e.target.value)}
-          >
-            {REFUND_METHODS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+            onChange={setRefundMethod}
+            options={REFUND_METHODS}
+          />
         </Field>
         <ReturnReasonFields
           preset={reasonPreset}
@@ -493,14 +487,14 @@ export function CustomerReturnForm({
           onOtherTextChange={setReasonOther}
         />
         <Field label="Restock location">
-          <select
-            className={inputClassName()}
+          <SearchableSelect
             value={stockLocation}
-            onChange={(e) => setStockLocation(e.target.value)}
-          >
-            <option value="shop">Shop floor</option>
-            <option value="store">Store / warehouse</option>
-          </select>
+            onChange={setStockLocation}
+            options={[
+              { value: "shop", label: "Shop floor" },
+              { value: "store", label: "Store / warehouse" },
+            ]}
+          />
         </Field>
       </div>
 

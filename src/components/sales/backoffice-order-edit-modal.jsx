@@ -276,19 +276,25 @@ export function ModernBackofficeOrderEditModal({
   function updateLinePricingMode(key, asRetail) {
     setLines((prev) =>
       prev.map((line) => {
-        if (lineKey(line) !== key || line.id != null) return line;
+        if (lineKey(line) !== key) return line;
         if (asRetail && !productAllowsRetail(line.product_code, retailByCode)) {
           return line;
         }
-        const rebuilt = buildNewDraftLine(line.product, uomById, retailByCode, {
-          asRetail,
-          routeMarkupPerUnit,
-          cashRound: enablePosCashRounding,
-        });
+        if (line.id == null) {
+          const rebuilt = buildNewDraftLine(line.product, uomById, retailByCode, {
+            asRetail,
+            routeMarkupPerUnit,
+            cashRound: enablePosCashRounding,
+          });
+          return {
+            ...rebuilt,
+            clientKey: line.clientKey,
+            draftDiscount: line.draftDiscount,
+          };
+        }
         return {
-          ...rebuilt,
-          clientKey: line.clientKey,
-          draftDiscount: line.draftDiscount,
+          ...line,
+          on_wholesale_retail: asRetail ? 1 : 0,
         };
       }),
     );
@@ -439,7 +445,12 @@ export function ModernBackofficeOrderEditModal({
         body: bodyOrError,
       });
       setLeavePromptOpen(false);
-      setBaselineDraft(snapshotDraft(lines));
+      const syncedLines = lines.map((line) => ({
+        ...line,
+        sold_on_wholesale_retail: line.on_wholesale_retail,
+      }));
+      setLines(syncedLines);
+      setBaselineDraft(snapshotDraft(syncedLines));
       setBaselineRemovedIds([]);
       setBaselineCustomerNum(customerNum);
       onSaved?.(updated);
@@ -671,8 +682,7 @@ export function ModernBackofficeOrderEditModal({
                     const amount = priced.amount;
                     const unitPrice = priced.unitPrice;
                     const allowsRetail = productAllowsRetail(line.product_code, retailByCode);
-                    const canTogglePricing =
-                      retailPricingEnabled && line.id == null && allowsRetail;
+                    const canTogglePricing = retailPricingEnabled && allowsRetail;
 
                     return (
                       <tr

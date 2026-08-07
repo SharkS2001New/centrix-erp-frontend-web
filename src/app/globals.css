@@ -3535,7 +3535,6 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  border: 1px solid var(--classic-border, #8a7a55);
   background: var(--classic-input-bg, #fff) !important;
   padding: 0.4rem 0.55rem;
   font-size: 0.95rem;
@@ -3545,6 +3544,7 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
 
 .classic-pos-cart-scan-input {
   min-width: 8.5rem;
+  border: 1px solid var(--classic-border, #8a7a55);
 }
 
 .classic-pos-cart-qty-input {
@@ -3552,6 +3552,8 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   text-align: center;
   margin: 0 auto;
   display: block;
+  border: none;
+  background: transparent !important;
 }
 
 .classic-pos-qty-adjust {
@@ -3626,8 +3628,8 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   max-width: 5.5rem;
   flex: 1 1 auto;
   box-sizing: border-box;
-  border: 1px solid var(--classic-border, #8a7a55);
-  background: var(--classic-input-bg, #fff);
+  border: none;
+  background: transparent;
   color: var(--classic-text, #1a1a1a);
   padding: 0.15rem 0.25rem;
   font-size: 0.82rem;
@@ -3637,8 +3639,7 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
 }
 
 .classic-pos-line-qty-input:focus {
-  outline: 2px solid var(--classic-caption, #8b0000);
-  outline-offset: 0;
+  outline: none;
 }
 
 html[data-theme="dark"] .classic-pos-qty-btn {

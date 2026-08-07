@@ -1,7 +1,7 @@
 "use client";
 
 import { TabFormExitButton, TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { LpoOrderItemsSection } from "./lpo-order-items-section";
 import { isLpoHeaderComplete } from "./lpo-shared";
 
@@ -107,19 +107,16 @@ export function LpoFormFields({
           <>
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Supplier">
-                <select
-                  className={inputClassName()}
+                <SearchableSelect
                   value={form.supplier_id}
-                  onChange={(e) => updateField("supplier_id", e.target.value)}
+                  onChange={(next) => updateField("supplier_id", next)}
                   required
-                >
-                  <option value="">Select supplier</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={String(s.id)}>
-                      {s.supplier_name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select supplier"
+                  options={[
+                    { value: "", label: "Select supplier" },
+                    ...suppliers.map((s) => ({ value: String(s.id), label: s.supplier_name })),
+                  ]}
+                />
               </Field>
               <Field label="Valid until">
                 <input
