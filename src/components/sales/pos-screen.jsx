@@ -30,6 +30,7 @@ import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import {
   cartLineEnteredDiscountPerUnit,
   cartLinePackQtyForDiscount,
+  saleLineProductName,
   snapshotUomForPrint,
 } from "@/lib/sale-line-items";
 import { uomCompactPackageLabel } from "@/lib/uom-packaging";
@@ -997,7 +998,9 @@ function saleHasPrintableItems(sale) {
   return (
     Array.isArray(sale?.items) &&
     sale.items.length > 0 &&
-    !sale.items.some((line) => line?.product_code && !line?.product_name && !line?.name)
+    !sale.items.some(
+      (line) => line?.product_code && !saleLineProductName(line) && !line?.name,
+    )
   );
 }
 
@@ -1015,6 +1018,8 @@ function fastPosPrintOptions(sale, base = {}) {
     // Receipt HTML is built from the sale already in memory — don't wait on WAN.
     skipNetworkLookups: true,
     skipLogoFetch: true,
+    // Just-completed checkout — don't block thermal print on stock-gate races.
+    skipStockPrintGate: true,
   };
 }
 
@@ -1498,7 +1503,7 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     // Warm local print agent so the first receipt can skip the health ping.
-    if (!standalone) return;
+    // Backoffice Create order uses the same thermal path as External POS.
     if (!isPrintAgentEnabled()) return;
     void warmPrintAgentHealth();
   }, [standalone, capabilities?.module_settings?.local_printing]);

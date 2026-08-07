@@ -2,6 +2,7 @@ import {
   fillPrintWindow,
   openBlankPrintWindow,
   printWindowFeatures,
+  PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import {
   injectPrintDocumentBaseline,
@@ -73,7 +74,7 @@ async function tryAgentPrint({ preparedHtml, copies, jobType, config }) {
  * Route a print job to Centrix Print Agent or the browser dialog (org settings).
  * Agent falls back to the browser dialog when offline.
  *
- * @returns {Promise<{ mode: "agent" | "browser", ok: boolean, printer?: string, jobId?: string }>}
+ * @returns {Promise<{ mode: "agent" | "browser", ok: boolean, error?: string, printer?: string, jobId?: string }>}
  */
 export async function dispatchPrintJob({
   html,
@@ -85,7 +86,7 @@ export async function dispatchPrintJob({
   provider = getLocalPrintProvider(),
 }) {
   if (!html?.trim()) {
-    return { mode: "browser", ok: false };
+    return { mode: "browser", ok: false, error: "Nothing to print." };
   }
 
   const preparedHtml = preparePrintHtml(html, jobType);
@@ -96,6 +97,7 @@ export async function dispatchPrintJob({
   }
 
   const activeProvider = provider;
+  let agentError = null;
 
   if (activeProvider === "agent" || (activeProvider === "browser" && isPrintAgentEnabled())) {
     const config = activeProvider === "agent" ? { ...agentConfig, enabled: true } : agentConfig;
@@ -105,32 +107,58 @@ export async function dispatchPrintJob({
         if (isPrintAgentRecentlyHealthy({ ...config, enabled: true })) {
           try {
             return await tryAgentPrint({ preparedHtml, copies, jobType, config });
-          } catch {
+          } catch (err) {
             invalidatePrintAgentHealth({ ...config, enabled: true });
+            agentError = err instanceof Error ? err.message : "Print agent failed.";
           }
         }
 
-        const health = await checkPrintAgentHealth(
+        let health = await checkPrintAgentHealth(
           { ...config, enabled: true },
           { quick: true },
         );
+        // Quick ping can time out on a cold agent — retry once with the full timeout
+        // before falling back to the browser (common on backoffice first print).
+        if (!health?.ok) {
+          health = await checkPrintAgentHealth(
+            { ...config, enabled: true },
+            { quick: false, bypassCache: true },
+          );
+        }
         if (health?.ok) {
           return await tryAgentPrint({ preparedHtml, copies, jobType, config });
         }
-      } catch {
+      } catch (err) {
+        agentError = err instanceof Error ? err.message : "Print agent unreachable.";
         // Agent missing/offline → browser dialog (fallback always on in org settings)
       }
     }
   }
 
+  let opened = 0;
   for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
     const win = openBlankPrintWindow(windowFeatures);
     if (win) {
       await fillPrintWindow(win, preparedHtml, { skipBaseline: true });
+      opened += 1;
     }
   }
 
-  return { mode: "browser", ok: true };
+  if (opened === 0) {
+    return {
+      mode: "browser",
+      ok: false,
+      error: agentError
+        ? `Print agent failed (${agentError}). ${PRINT_BLOCKED_MESSAGE}`
+        : PRINT_BLOCKED_MESSAGE,
+    };
+  }
+
+  return {
+    mode: "browser",
+    ok: true,
+    ...(agentError ? { agentFallback: true, agentError } : {}),
+  };
 }
 
 /** Keep in-memory org cache in sync when the admin picks a mode (persist via Save). */

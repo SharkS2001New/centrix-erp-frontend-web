@@ -301,7 +301,12 @@ export async function printSaleOrder(sale, options = {}) {
     if (job?.cancelled) return null;
     throw new Error(job?.error || "Print failed.");
   }
-  await dispatchPreparedSalePrintJob(job);
+  const result = await dispatchPreparedSalePrintJob(job);
+  if (!result?.ok) {
+    throw new Error(
+      result?.error || "Print failed — nothing was sent to the printer.",
+    );
+  }
   return job.documentType;
 }
 
@@ -470,12 +475,19 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       options.requireQrWhenFiscalized != null
         ? Boolean(options.requireQrWhenFiscalized)
         : kraConfigured && !saleForPrint?._skip_kra_qr;
+    // Only skip WAN when we already have a usable verification link. A success
+    // kra_response without signature_link must still fetch — otherwise fast
+    // checkout print fails intermittently when the device omits the QR URL.
+    const kraInlineForGate = extractKraReceiptData(
+      saleForPrint,
+      saleForPrint?._skip_kra_qr ? null : options.kraReceipt,
+    );
     const kraAllowNetwork =
       options.allowKraNetwork != null
         ? Boolean(options.allowKraNetwork)
         : kraConfigured &&
           !saleIsOfflinePending &&
-          !(skipNetworkLookups && options.kraReceipt) &&
+          !(skipNetworkLookups && Boolean(kraInlineForGate?.signatureLink)) &&
           !saleForPrint?._skip_kra_qr;
 
     let kraData = null;

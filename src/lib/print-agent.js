@@ -169,10 +169,14 @@ export async function checkPrintAgentHealth(
   }
 }
 
-/** Background warm-up so the first POS receipt can skip the health round-trip. */
+/** Background warm-up so the first POS/backoffice receipt can skip the health round-trip. */
 export async function warmPrintAgentHealth(config = getPrintAgentConfig()) {
   if (!config?.enabled && !isPrintAgentEnabled()) return null;
-  return checkPrintAgentHealth({ ...config, enabled: true }, { quick: true, bypassCache: true });
+  const enabled = { ...config, enabled: true };
+  const quick = await checkPrintAgentHealth(enabled, { quick: true, bypassCache: true });
+  if (quick?.ok) return quick;
+  // Cold agent / busy till — full timeout so the next receipt can use the warm path.
+  return checkPrintAgentHealth(enabled, { quick: false, bypassCache: true });
 }
 
 /**
