@@ -148,8 +148,6 @@ export function HrPayrollScreen() {
     [runs, periodById],
   );
 
-  const recentRuns = useMemo(() => sortedRuns.slice(0, 5), [sortedRuns]);
-
   const sortedPeriods = useMemo(
     () =>
       [...orgPeriods].sort(
@@ -452,53 +450,13 @@ export function HrPayrollScreen() {
       banner={
         !loading && tab === "runs" ? (
           <div className="mb-6 space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               <StatCard label="Current month" value={formatHrKesFull(stats.monthTotal)} />
               <StatCard label="Employees" value={stats.employees.toLocaleString()} />
               <StatCard label="Pending approval" value={stats.pendingApproval.toLocaleString()} />
               <StatCard label="Awaiting payment" value={stats.awaitingPayment.toLocaleString()} />
               <StatCard label="Paid runs" value={stats.paid.toLocaleString()} />
             </div>
-            {recentRuns.length > 0 && (
-              <div className="theme-panel rounded-xl border p-5 shadow-sm">
-                <h2 className="text-[15px] font-medium text-slate-900">Recent payroll runs</h2>
-                <ul className="mt-4 divide-y divide-slate-100">
-                  {recentRuns.map((run) => {
-                    const period = periodById.get(run.pay_period_id) ?? run.pay_period;
-                    const done = payrollRunIsCompleted(run.status);
-                    const processed = payrollRunIsProcessed(run.status);
-                    return (
-                      <li key={run.id}>
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/hr/payroll/runs/${run.id}`)}
-                          className="flex w-full items-center justify-between gap-4 py-3 text-left hover:bg-slate-50"
-                        >
-                          <div>
-                            <p className="font-medium text-slate-900">{periodLabel(period)}</p>
-                            <p className="text-sm text-slate-500">{formatHrKesFull(run.total_net)}</p>
-                          </div>
-                          <span
-                            className={`inline-flex items-center gap-1 text-sm ${
-                              done ? "text-[#27500A]" : processed ? "text-[#0C447C]" : "text-slate-500"
-                            }`}
-                          >
-                            {done ? (
-                              <>
-                                <CheckIcon />
-                                Paid
-                              </>
-                            ) : (
-                              <PayrollRunStatusBadge status={run.status} />
-                            )}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
           </div>
         ) : null
       }
@@ -883,10 +841,3 @@ function TrashIcon() {
   );
 }
 
-function CheckIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
-  );
-}
