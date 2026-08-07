@@ -7,7 +7,7 @@ import {
   parseFooterLines,
   serializeFooterLines,
 } from "@/lib/footer-line-format";
-import { inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { inputClassName } from "@/components/catalog/catalog-shared";
 
 const ALIGN_OPTIONS = [
   { value: "left", label: "Left", short: "L" },
@@ -158,14 +158,18 @@ export function FooterLineEditor({
               >
                 I
               </ToolbarButton>
-              <SearchableSelect
-  className={"rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"}
-  value={line.size ?? "md"}
-  nativeEvent
-  onChange={(e) => updateLine(index, { size: e.target.value })}
-  searchPlaceholder={"Text size"}
-  options={SIZE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+              <select
+                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700"
+                value={line.size ?? "md"}
+                title="Text size"
+                onChange={(e) => updateLine(index, { size: e.target.value })}
+              >
+                {SIZE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
               <ToolbarButton
                 title="Show dashed line after this row"
                 active={line.dividerAfter}

@@ -1,7 +1,6 @@
 "use client";
 
 import { humanizeBackendTerm } from "@/lib/user-facing-labels";
-import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { PROVISIONABLE_WORKSPACES, applicationsFromEnabledModules } from "@/lib/workspace-modules";
 
 const APPLICATION_LABELS = Object.fromEntries(
@@ -133,33 +132,43 @@ export function ProvisionTemplateControls({
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <label className="block text-sm">
           <span className="theme-subtext text-xs font-medium">Load template</span>
-          <SearchableSelect
-  className={"mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"}
-  value={""}
-  nativeEvent
-  onChange={(e) => {
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            defaultValue=""
+            onChange={(e) => {
               const id = e.target.value;
               if (!id) return;
               const template = templates.find((row) => String(row.id) === id);
               if (template) onLoadTemplate?.(template);
               e.target.value = "";
             }}
-  options={templates.map((template) => ({ value: template.id, label: template.name }))}
-/>
+          >
+            <option value="">Choose a template…</option>
+            {templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="block text-sm">
           <span className="theme-subtext text-xs font-medium">Clone organization</span>
-          <SearchableSelect
-  className={"mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"}
-  value={selectedCloneOrgId}
-  nativeEvent
-  onChange={(e) => {
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            value={selectedCloneOrgId}
+            onChange={(e) => {
               onSelectedCloneOrgIdChange?.(e.target.value);
               if (e.target.value) onCloneOrganization?.(e.target.value);
             }}
-  options={organizations.map((org) => ({ value: org.id, label: "{org.org_name} ({org.company_code})" }))}
-/>
+          >
+            <option value="">Choose an organization…</option>
+            {organizations.map((org) => (
+              <option key={org.id} value={org.id}>
+                {org.org_name} ({org.company_code})
+              </option>
+            ))}
+          </select>
         </label>
 
         <div className="block text-sm">

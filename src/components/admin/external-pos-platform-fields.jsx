@@ -1,7 +1,6 @@
 "use client";
 
 import {
-import { SearchableSelect } from "@/components/catalog/catalog-shared";
   CLASSIC_POS_COLOR_OVERRIDE_FIELDS,
   CLASSIC_POS_THEME_TEMPLATES,
   classicPosThemeCssVars,
@@ -244,13 +243,14 @@ export function ExternalPosPlatformFields({
       {posEnabled && showLayout ? (
         <div className="space-y-4">
           <Field label="POS layout">
-            <SearchableSelect
-  className={inputClass}
-  value={layout}
-  nativeEvent
-  onChange={(e) => patch({ external_pos_layout: e.target.value })}
-  options={[{ value: "modern", label: "Modern — current Centrix POS" }, { value: "classic", label: "Classic — cart on top, Find window, themeable colors" }]}
-/>
+            <select
+              className={inputClass}
+              value={layout}
+              onChange={(e) => patch({ external_pos_layout: e.target.value })}
+            >
+              <option value="modern">Modern — current Centrix POS</option>
+              <option value="classic">Classic — cart on top, Find window, themeable colors</option>
+            </select>
             <p className="mt-1 text-xs text-slate-500">
               Only affects the external POS workspace (/pos). Organization sidebar color for the rest of
               the ERP is under Administration → Centrix ERP Themes.

@@ -11,7 +11,7 @@ import {
   notificationsFormFromApi,
   salesCustomerAlertsPayloadFromForm,
 } from "@/lib/notifications-settings";
-import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import {
@@ -247,13 +247,17 @@ export function NotificationsSettingsPanel({
                         />
                       </Field>
                       <Field label="Encryption">
-                        <SearchableSelect
-  className={inputClassName()}
-  value={form.smtp_encryption}
-  nativeEvent
-  onChange={(e) => setForm((f) => ({ ...f, smtp_encryption: e.target.value }))}
-  options={SMTP_ENCRYPTION_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                        <select
+                          className={inputClassName()}
+                          value={form.smtp_encryption}
+                          onChange={(e) => setForm((f) => ({ ...f, smtp_encryption: e.target.value }))}
+                        >
+                          {SMTP_ENCRYPTION_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </Field>
                     </div>
                   ) : null}

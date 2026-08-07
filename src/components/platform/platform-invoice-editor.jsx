@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   PLATFORM_BILLING_MODULE_GROUPS,
@@ -536,43 +536,61 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
             <h2 className="text-sm font-semibold text-slate-900">Invoice details</h2>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Tenant organization">
-                <SearchableSelect
-  className={inputClass}
-  value={form.organization_id}
-  nativeEvent
-  onChange={(e) => void handleOrganizationChange(e.target.value)}
-  options={organizations.map((org) => ({ value: org.id, label: "{org.org_name} ({org.company_code})" }))}
-/>
+                <select
+                  className={inputClass}
+                  value={form.organization_id}
+                  onChange={(e) => void handleOrganizationChange(e.target.value)}
+                >
+                  <option value="">— Select tenant —</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.org_name} ({org.company_code})
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="Design template">
-                <SearchableSelect
-  className={inputClass}
-  value={form.template_id}
-  nativeEvent
-  onChange={(e) => updateForm({ template_id: e.target.value })}
-  options={PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => ({ value: tpl.id, label: tpl.label }))}
-/>
+                <select
+                  className={inputClass}
+                  value={form.template_id}
+                  onChange={(e) => updateForm({ template_id: e.target.value })}
+                >
+                  {PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="Saved template">
-                <SearchableSelect
-  className={inputClass}
-  value={""}
-  nativeEvent
-  onChange={(e) => {
+                <select
+                  className={inputClass}
+                  defaultValue=""
+                  onChange={(e) => {
                     if (e.target.value) applySavedTemplate(e.target.value);
                     e.target.value = "";
                   }}
-  options={savedTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
-/>
+                >
+                  <option value="">— Load saved template —</option>
+                  {savedTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="Status">
-                <SearchableSelect
-  className={inputClass}
-  value={form.status}
-  nativeEvent
-  onChange={(e) => updateForm({ status: e.target.value })}
-  options={PLATFORM_INVOICE_STATUSES.map((row) => ({ value: row.id, label: row.label }))}
-/>
+                <select
+                  className={inputClass}
+                  value={form.status}
+                  onChange={(e) => updateForm({ status: e.target.value })}
+                >
+                  {PLATFORM_INVOICE_STATUSES.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="Invoice number">
                 <input
@@ -761,13 +779,17 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
             <div className="mt-3">
               <Field label="Page spacing / margins">
-                <SearchableSelect
-  className={inputClass}
-  value={invoiceOptions.print_spacing || "comfortable"}
-  nativeEvent
-  onChange={(e) => updateInvoiceOptions({ print_spacing: e.target.value })}
-  options={PLATFORM_INVOICE_SPACING.map((row) => ({ value: row.id, label: "{row.label} — {row.description}" }))}
-/>
+                <select
+                  className={inputClass}
+                  value={invoiceOptions.print_spacing || "comfortable"}
+                  onChange={(e) => updateInvoiceOptions({ print_spacing: e.target.value })}
+                >
+                  {PLATFORM_INVOICE_SPACING.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.label} — {row.description}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
 
@@ -776,13 +798,15 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               {invoiceOptions.show_branding !== false ? (
                 <>
               <Field label="Header branding">
-                <SearchableSelect
-  className={inputClass}
-  value={invoiceOptions.brand_mode}
-  nativeEvent
-  onChange={(e) => updateInvoiceOptions({ brand_mode: e.target.value })}
-  options={[{ value: "name", label: "Name only" }, { value: "logo", label: "Logo only" }, { value: "both", label: "Logo and name" }]}
-/>
+                <select
+                  className={inputClass}
+                  value={invoiceOptions.brand_mode}
+                  onChange={(e) => updateInvoiceOptions({ brand_mode: e.target.value })}
+                >
+                  <option value="name">Name only</option>
+                  <option value="logo">Logo only</option>
+                  <option value="both">Logo and name</option>
+                </select>
               </Field>
               <Field label="Brand name">
                 <input
@@ -838,13 +862,15 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               {invoiceOptions.watermark_enabled === true ? (
                 <>
                   <Field label="Watermark style">
-                    <SearchableSelect
-  className={inputClass}
-  value={invoiceOptions.watermark_mode}
-  nativeEvent
-  onChange={(e) => updateInvoiceOptions({ watermark_mode: e.target.value })}
-  options={[{ value: "name", label: "Brand name" }, { value: "text", label: "Custom text" }, { value: "logo", label: "Logo image" }]}
-/>
+                    <select
+                      className={inputClass}
+                      value={invoiceOptions.watermark_mode}
+                      onChange={(e) => updateInvoiceOptions({ watermark_mode: e.target.value })}
+                    >
+                      <option value="name">Brand name</option>
+                      <option value="text">Custom text</option>
+                      <option value="logo">Logo image</option>
+                    </select>
                   </Field>
                   {invoiceOptions.watermark_mode === "text" ? (
                     <Field label="Watermark text">

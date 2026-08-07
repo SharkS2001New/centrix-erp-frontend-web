@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   PROVISION_LICENSE_MODES,
   PROVISION_TRIAL_PRESETS,
@@ -140,14 +139,22 @@ export function ProvisionSubscriptionFields({
               <span className="mb-1 block text-xs font-medium text-slate-600">
                 {isTrial ? "Plan (optional for trial)" : "Plan"}
               </span>
-              <SearchableSelect
-  className={inputClass}
-  value={form.plan_id}
-  nativeEvent
-  onChange={(e) => applyPlan(e.target.value)}
-  required={form.license_mode === "plan"}
-  options={plans.map((plan) => ({ value: plan.id, label: plan.name }))}
-/>
+              <select
+                className={inputClass}
+                value={form.plan_id}
+                required={form.license_mode === "plan"}
+                onChange={(e) => applyPlan(e.target.value)}
+              >
+                <option value="">{isTrial ? "— Custom trial (no plan) —" : "— Select plan —"}</option>
+                {plans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name} · first{" "}
+                    {formatBillingMoney(plan.first_payment_price ?? plan.price, plan.currency)} · renew{" "}
+                    {formatBillingMoney(plan.renewal_price ?? plan.price, plan.currency)}/
+                    {plan.interval}
+                  </option>
+                ))}
+              </select>
               {selectedPlan ? (
                 <span className="mt-1 block text-xs text-slate-500">
                   {licenseBasisLabel(selectedPlan.license_basis)}

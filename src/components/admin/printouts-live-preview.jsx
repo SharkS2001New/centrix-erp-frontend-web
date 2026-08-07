@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   buildHospitalityCheckReceiptHtml,
   sampleHospitalityCheckPreviewData,
@@ -371,24 +370,35 @@ export function PrintoutsLivePreview({
         </p>
         {previewOptions.length > 0 ? (
         <div className="mt-3 space-y-2">
-          <SearchableSelect
-  className={"w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"}
-  value={previewType}
-  nativeEvent
-  onChange={(e) => setPreviewType(e.target.value)}
-  options={previewOptions.map((option) => ({ value: option.id, label: option.label }))}
-/>
+          <select
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+            value={previewType}
+            onChange={(e) => setPreviewType(e.target.value)}
+          >
+            {previewOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           {templateField && setForm ? (
             <div className="space-y-1">
               <label className="block text-xs font-medium text-slate-600">
                 Document template
               </label>
-              <SearchableSelect
-  className={"w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"}
-  value={templateValue}
-  onChange={(e)}
-  options={ORG_DOCUMENT_DESIGN_TEMPLATES.map((tpl) => ({ value: tpl.id, label: tpl.label }))}
-/>
+              <select
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                value={templateValue}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, [templateField]: e.target.value }))
+                }
+              >
+                {ORG_DOCUMENT_DESIGN_TEMPLATES.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.label}
+                  </option>
+                ))}
+              </select>
               {templateMeta?.description ? (
                 <p className="text-[11px] leading-snug text-slate-500">
                   {templateMeta.description}

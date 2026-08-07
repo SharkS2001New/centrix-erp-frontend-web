@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { aiStartersForWorkspace } from "@/lib/ai-workspace";
 import {
@@ -364,13 +364,17 @@ export function PlatformAiTrainingScreen() {
                   </label>
                   <label className="block text-sm">
                     <span className="theme-heading mb-1 block font-medium">Module scope</span>
-                    <SearchableSelect
-  className={inputClassName()}
-  value={form.workspace_id}
-  nativeEvent
-  onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
-  options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                    <select
+                      className={inputClassName()}
+                      value={form.workspace_id}
+                      onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
+                    >
+                      {AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => (
+                        <option key={opt.value || "all"} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -393,13 +397,17 @@ export function PlatformAiTrainingScreen() {
             <div className="theme-inset-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border p-5 shadow-sm">
               <div className="flex shrink-0 items-center justify-between gap-2">
                 <h3 className="theme-heading text-sm font-semibold">Saved notes</h3>
-                <SearchableSelect
-  className={`${inputClassName()} px-2 py-1 text-xs`}
-  value={filterWorkspace}
-  nativeEvent
-  onChange={(e) => setFilterWorkspace(e.target.value)}
-  options={AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                <select
+                  className={`${inputClassName()} px-2 py-1 text-xs`}
+                  value={filterWorkspace}
+                  onChange={(e) => setFilterWorkspace(e.target.value)}
+                >
+                  {AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => (
+                    <option key={opt.value || "all"} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {loadingKnowledge ? (
@@ -458,13 +466,18 @@ export function PlatformAiTrainingScreen() {
             ) : (
               <label className="mt-3 block max-w-md text-sm">
                 <span className="theme-heading mb-1 block font-medium">Sample data organization</span>
-                <SearchableSelect
-  className={inputClassName()}
-  value={previewOrgId}
-  nativeEvent
-  onChange={(e) => setPreviewOrgId(e.target.value)}
-  options={tenantOrgs.map((org) => ({ value: org.id, label: "{org.org_name} ({org.company_code})" }))}
-/>
+                <select
+                  className={inputClassName()}
+                  value={previewOrgId}
+                  onChange={(e) => setPreviewOrgId(e.target.value)}
+                >
+                  <option value="">Select organization…</option>
+                  {tenantOrgs.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.org_name} ({org.company_code})
+                    </option>
+                  ))}
+                </select>
               </label>
             )}
 

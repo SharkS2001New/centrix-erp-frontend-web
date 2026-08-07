@@ -8,7 +8,7 @@ import { useBackgroundTasks } from "@/contexts/background-task-context";
 import { queueReportBuilderPreview } from "@/lib/report-export-api";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { WORKSPACE_BUILDER_LABEL } from "@/lib/workspace-reports";
-import { CatalogPageShell, Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
@@ -446,11 +446,10 @@ export function ReportBuilderScreen() {
                 by a shared dimension (e.g. month or branch).
               </p>
               <Field label="Combine mode">
-                <SearchableSelect
-  className={inputClassName()}
-  value={spec.blend_by ?? ""}
-  nativeEvent
-  onChange={(e) => {
+                <select
+                  className={inputClassName()}
+                  value={spec.blend_by ?? ""}
+                  onChange={(e) => {
                     const blendBy = e.target.value || null;
                     setSpec((prev) => ({
                       ...prev,
@@ -460,8 +459,14 @@ export function ReportBuilderScreen() {
                     setPreviewRows([]);
                     setPreviewFeedback(null);
                   }}
-  options={availableBlendDimensions.map((dim) => ({ value: dim.key, label: "Side-by-side by {dim.label.toLowerCase()}" }))}
-/>
+                >
+                  <option value="">Join sources (default)</option>
+                  {availableBlendDimensions.map((dim) => (
+                    <option key={dim.key} value={dim.key}>
+                      Side-by-side by {dim.label.toLowerCase()}
+                    </option>
+                  ))}
+                </select>
               </Field>
               {isBlendMode ? (
                 <p className="mt-2 text-xs text-slate-500">

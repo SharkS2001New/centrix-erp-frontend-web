@@ -8,7 +8,7 @@ import {
   inventoryFormFromApi,
   inventoryPayloadFromForm,
 } from "@/lib/inventory-settings";
-import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -198,13 +198,17 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               onChange={(v) => setForm((f) => ({ ...f, allow_negative_stock: v }))}
             />
             <Field label="Alert mode">
-              <SearchableSelect
-  className={inputClassName()}
-  value={form.stock_alert_mode}
-  nativeEvent
-  onChange={(e) => setForm((f) => ({ ...f, stock_alert_mode: e.target.value }))}
-  options={STOCK_ALERT_MODE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+              <select
+                className={inputClassName()}
+                value={form.stock_alert_mode}
+                onChange={(e) => setForm((f) => ({ ...f, stock_alert_mode: e.target.value }))}
+              >
+                {STOCK_ALERT_MODE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </Field>
             {form.stock_alert_mode !== "per_product" ? (
               <Field label="Global low stock threshold">
@@ -233,13 +237,17 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
                   onChange={(v) => setForm((f) => ({ ...f, allow_negative_stock: v }))}
                 />
                 <Field label="Alert mode">
-                  <SearchableSelect
-  className={inputClassName()}
-  value={form.stock_alert_mode}
-  nativeEvent
-  onChange={(e) => setForm((f) => ({ ...f, stock_alert_mode: e.target.value }))}
-  options={STOCK_ALERT_MODE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                  <select
+                    className={inputClassName()}
+                    value={form.stock_alert_mode}
+                    onChange={(e) => setForm((f) => ({ ...f, stock_alert_mode: e.target.value }))}
+                  >
+                    {STOCK_ALERT_MODE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 {form.stock_alert_mode !== "per_product" ? (
                   <Field label="Global low stock threshold">
@@ -267,32 +275,47 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
             {activeTab === "locations" ? (
           <div className="space-y-3">
             <Field label="Default receive location">
-              <SearchableSelect
-  className={inputClassName()}
-  value={form.default_receive_location}
-  nativeEvent
-  onChange={(e) => setForm((f) => ({ ...f, default_receive_location: e.target.value }))}
-  options={INVENTORY_LOCATION_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+              <select
+                className={inputClassName()}
+                value={form.default_receive_location}
+                onChange={(e) => setForm((f) => ({ ...f, default_receive_location: e.target.value }))}
+              >
+                {INVENTORY_LOCATION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </Field>
             {!hospitality ? (
               <>
                 <Field label="Default POS sale location">
-                  <SearchableSelect
-  className={inputClassName()}
-  value={form.default_pos_sale_location}
-  nativeEvent
-  onChange={(e) => setForm((f) => ({ ...f, default_pos_sale_location: e.target.value }))}
-  options={INVENTORY_LOCATION_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                  <select
+                    className={inputClassName()}
+                    value={form.default_pos_sale_location}
+                    onChange={(e) => setForm((f) => ({ ...f, default_pos_sale_location: e.target.value }))}
+                  >
+                    {INVENTORY_LOCATION_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Default distribution sale location">
-                  <SearchableSelect
-  className={inputClassName()}
-  value={form.default_distribution_sale_location}
-  onChange={(e)}
-  options={INVENTORY_LOCATION_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
-/>
+                  <select
+                    className={inputClassName()}
+                    value={form.default_distribution_sale_location}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, default_distribution_sale_location: e.target.value }))
+                    }
+                  >
+                    {INVENTORY_LOCATION_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
               </>
             ) : (

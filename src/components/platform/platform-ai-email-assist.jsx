@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { composePlatformEmailWithAi } from "@/lib/platform-ai-compose";
-import { SECONDARY_BTN_CLASS, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 
 /**
  * Helps platform admins draft/improve email subject + body with platform AI keys.
@@ -256,14 +256,19 @@ export function PlatformAiEmailAssist({
           <span className="mb-1 block text-xs font-medium text-indigo-900 dark:text-indigo-200">
             Saved template
           </span>
-          <SearchableSelect
-  className={"w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-indigo-800 dark:bg-slate-900 dark:text-slate-100"}
-  value={templateId}
-  nativeEvent
-  onChange={(e) => chooseTemplate(e.target.value)}
-  disabled={busy}
-  options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
-/>
+          <select
+            className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-indigo-800 dark:bg-slate-900 dark:text-slate-100"
+            value={templateId}
+            onChange={(e) => chooseTemplate(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">— Select a template —</option>
+            {templates.map((tpl) => (
+              <option key={tpl.id} value={tpl.id}>
+                {tpl.name}
+              </option>
+            ))}
+          </select>
         </label>
       ) : null}
 

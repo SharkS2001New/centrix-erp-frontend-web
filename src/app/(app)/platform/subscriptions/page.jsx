@@ -7,7 +7,12 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, FilterSelect, PrimaryButton, SECONDARY_BTN_CLASS, SearchableSelect } from "@/components/catalog/catalog-shared";
+import {
+  CatalogPageShell,
+  FilterSelect,
+  PrimaryButton,
+  SECONDARY_BTN_CLASS,
+} from "@/components/catalog/catalog-shared";
 import {
   SUBSCRIPTION_STATUSES,
   SUBSCRIPTION_STATUS_STYLES,
@@ -654,25 +659,50 @@ export default function PlatformSubscriptionsPage() {
             <div className="mt-4 space-y-3">
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Organization</span>
-                <SearchableSelect
-  className={inputClass}
-  value={form.organization_id}
-  onChange={(e)}
-  options={organizations.map((org) => ({ value: org.id, label: "{org.org_name} ({org.company_code})" }))}
-/>
+                <select
+                  className={inputClass}
+                  value={form.organization_id}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      organization_id: e.target.value,
+                      initial_invoice_id: "",
+                    }))
+                  }
+                >
+                  <option value="">— Select —</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.org_name} ({org.company_code})
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">
                   Initial invoice (optional)
                 </span>
-                <SearchableSelect
-  className={inputClass}
-  value={form.initial_invoice_id}
-  nativeEvent
-  onChange={(e) => setForm((f) => ({ ...f, initial_invoice_id: e.target.value }))}
-  disabled={!form.organization_id || loadingOrgInvoices}
-  options={orgInvoices.map((inv) => ({ value: inv.id, label: invoiceOptionLabel(inv) }))}
-/>
+                <select
+                  className={inputClass}
+                  value={form.initial_invoice_id}
+                  disabled={!form.organization_id || loadingOrgInvoices}
+                  onChange={(e) => setForm((f) => ({ ...f, initial_invoice_id: e.target.value }))}
+                >
+                  <option value="">
+                    {!form.organization_id
+                      ? "Select organization first"
+                      : loadingOrgInvoices
+                        ? "Loading invoices…"
+                        : orgInvoices.length === 0
+                          ? "No invoices for this org"
+                          : "— None —"}
+                  </option>
+                  {orgInvoices.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {invoiceOptionLabel(inv)}
+                    </option>
+                  ))}
+                </select>
                 {form.organization_id ? (
                   <Link
                     href={`/platform/invoices/new?organization=${form.organization_id}`}
@@ -684,13 +714,21 @@ export default function PlatformSubscriptionsPage() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Plan</span>
-                <SearchableSelect
-  className={inputClass}
-  value={form.plan_id}
-  nativeEvent
-  onChange={(e) => applyPaidPlanPeriod(e.target.value)}
-  options={plans.map((plan) => ({ value: plan.id, label: plan.name }))}
-/>
+                <select
+                  className={inputClass}
+                  value={form.plan_id}
+                  onChange={(e) => applyPaidPlanPeriod(e.target.value)}
+                >
+                  <option value="">— Select —</option>
+                  {plans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name} · first{" "}
+                      {formatBillingMoney(plan.first_payment_price ?? plan.price, plan.currency)} · renew{" "}
+                      {formatBillingMoney(plan.renewal_price ?? plan.price, plan.currency)}/
+                      {plan.interval}
+                    </option>
+                  ))}
+                </select>
                 {form.plan_id && form.status !== "trialing" ? (
                   <p className="mt-1 text-xs text-slate-500">
                     Expiry auto-fills from the plan interval (
@@ -716,11 +754,10 @@ export default function PlatformSubscriptionsPage() {
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Status</span>
-                  <SearchableSelect
-  className={inputClass}
-  value={form.status}
-  nativeEvent
-  onChange={(e) => {
+                  <select
+                    className={inputClass}
+                    value={form.status}
+                    onChange={(e) => {
                       const status = e.target.value;
                       if (status === "trialing") {
                         applyTrialDays(form.trial_days || 14);
@@ -738,8 +775,11 @@ export default function PlatformSubscriptionsPage() {
                         }));
                       }
                     }}
-  options={[{ value: row.id, label: {row.label} }]}
-/>
+                  >
+                    {SUBSCRIPTION_STATUSES.filter((row) => row.id !== "expired").map((row) => (
+                      <option key={row.id} value={row.id}>{row.label}</option>
+                    ))}
+                  </select>
                 </label>
               </div>
               {form.status === "trialing" ? (
@@ -908,30 +948,42 @@ export default function PlatformSubscriptionsPage() {
             <div className="mt-4 space-y-3">
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Invoice type</span>
-                <SearchableSelect
-  className={inputClass}
-  value={attachInvoiceKind}
-  nativeEvent
-  onChange={(e) => {
+                <select
+                  className={inputClass}
+                  value={attachInvoiceKind}
+                  onChange={(e) => {
                     const kind = e.target.value;
                     const { initial, renewal } = resolveSubscriptionInvoices(attachTarget);
                     const current = kind === "renewal" ? renewal : initial;
                     setAttachInvoiceKind(kind);
                     setAttachInvoiceId(current?.id ? String(current.id) : "");
                   }}
-  options={[{ value: "initial", label: "Initial invoice (first payment)" }, { value: "renewal", label: "Renewal invoice" }]}
-/>
+                >
+                  <option value="initial">Initial invoice (first payment)</option>
+                  <option value="renewal">Renewal invoice</option>
+                </select>
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Invoice</span>
-                <SearchableSelect
-  className={inputClass}
-  value={attachInvoiceId}
-  nativeEvent
-  onChange={(e) => setAttachInvoiceId(e.target.value)}
-  disabled={loadingOrgInvoices}
-  options={orgInvoices.map((inv) => ({ value: inv.id, label: invoiceOptionLabel(inv) }))}
-/>
+                <select
+                  className={inputClass}
+                  value={attachInvoiceId}
+                  disabled={loadingOrgInvoices}
+                  onChange={(e) => setAttachInvoiceId(e.target.value)}
+                >
+                  <option value="">
+                    {loadingOrgInvoices
+                      ? "Loading invoices…"
+                      : orgInvoices.length === 0
+                        ? "No invoices for this org"
+                        : "— None —"}
+                  </option>
+                  {orgInvoices.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {invoiceOptionLabel(inv)}
+                    </option>
+                  ))}
+                </select>
               </label>
               {attachTarget.organization_id ? (
                 <Link
