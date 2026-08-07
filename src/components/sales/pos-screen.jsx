@@ -508,6 +508,15 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
     ...(!base.payment_method_code && mergedSource?.payment_method_code
       ? { payment_method_code: String(mergedSource.payment_method_code).toUpperCase() }
       : {}),
+    // Lock prior bill total for top-up/return math (browse rows often omit order_total).
+    ...(base.original_order_total == null &&
+    Number(mergedSource?.order_total ?? mergedSource?.amount_paid ?? 0) > 0
+      ? {
+          original_order_total: Math.round(
+            Number(mergedSource.order_total ?? mergedSource.amount_paid) * 100,
+          ) / 100,
+        }
+      : {}),
   };
 
   if ((withPosTicket.lines?.length ?? 0) > 0) {
@@ -2206,6 +2215,8 @@ export function PosScreen({ standalone = false }) {
           pos_order_num: row.pos_order_num ?? null,
           pos_order_date: row.pos_order_date ?? null,
           status: row.status,
+          order_total: row.order_total != null ? Number(row.order_total) : null,
+          amount_paid: row.amount_paid != null ? Number(row.amount_paid) : null,
         }))
         .slice(0, 15);
 
@@ -3473,6 +3484,8 @@ export function PosScreen({ standalone = false }) {
       server_sale_id: sale.id,
       superseded_sale_id: sale.id,
       held_order_num: Number(sale.order_num),
+      // Baseline for the next top-up/return is the total just synced.
+      original_order_total: Math.round(Number(sale.order_total ?? 0) * 100) / 100,
       ...(sale.pos_order_num != null
         ? { pos_order_num: Number(sale.pos_order_num) }
         : {}),

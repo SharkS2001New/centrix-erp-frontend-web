@@ -59,7 +59,14 @@ export function computePreviousOrderEditPaymentDelta(sourceSale, cart) {
   if (!cart?.held_order_num || !cart?.superseded_sale_id) {
     return { amount: 0, type: null, originalTotal: 0, newTotal: 0 };
   }
-  const original = Number(sourceSale?.order_total ?? sourceSale?.amount_paid ?? 0);
+  // Prefer the total locked when the edit session started — browse snapshots and
+  // remounts often omit order_total, which wrongly treats the whole bill as a top-up.
+  const original = Number(
+    cart?.original_order_total ??
+      sourceSale?.order_total ??
+      sourceSale?.amount_paid ??
+      0,
+  );
   const revised = Number(summarizeLocalPosCart(cart).amountDue ?? 0);
   const delta = Math.round((revised - original) * 100) / 100;
   if (Math.abs(delta) < 0.01) {
@@ -97,15 +104,17 @@ export function computePreviousOrderEditSignedDelta(sourceSale, cart) {
 
 /**
  * Build sale payment_adjustments[] from a checkout body (F10 payment panel).
+ * Amounts are always capped/scaled to the edit delta — never the full revised bill.
  *
  * @param {object|null|undefined} body
  * @param {{ amount?: number, type?: string|null }} delta
  */
 export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
   if (!delta?.type || !(Number(delta.amount) > 0)) return [];
+  const expected = Math.round(Number(delta.amount) * 100) / 100;
   const splits = Array.isArray(body?.payment_splits) ? body.payment_splits : [];
   if (splits.length > 0) {
-    return splits
+    const rows = splits
       .filter((row) => Number(row?.amount) > 0)
       .map((row) => ({
         method_code: String(row.method_code ?? body?.payment_method_code ?? "CASH").toUpperCase(),
@@ -118,15 +127,44 @@ export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
               ? String(body.payment_reference).trim()
               : null,
       }));
+    if (!rows.length) return [];
+    const sum = Math.round(rows.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+    if (Math.abs(sum - expected) < 0.02) return rows;
+    if (sum <= 0.009) {
+      return [
+        {
+          method_code: rows[0].method_code,
+          amount: expected,
+          adjustment_type: delta.type,
+          reference_number: rows[0].reference_number,
+        },
+      ];
+    }
+    const factor = expected / sum;
+    const scaled = rows.map((row) => ({
+      ...row,
+      amount: Math.round(Number(row.amount) * factor * 100) / 100,
+    }));
+    const scaledSum = Math.round(scaled.reduce((s, row) => s + Number(row.amount), 0) * 100) / 100;
+    const drift = Math.round((expected - scaledSum) * 100) / 100;
+    if (Math.abs(drift) >= 0.01 && scaled.length) {
+      let largest = 0;
+      scaled.forEach((row, i) => {
+        if (Number(row.amount) >= Number(scaled[largest].amount)) largest = i;
+      });
+      scaled[largest] = {
+        ...scaled[largest],
+        amount: Math.round((Number(scaled[largest].amount) + drift) * 100) / 100,
+      };
+    }
+    return scaled.filter((row) => Number(row.amount) > 0.009);
   }
   const methodCode = String(body?.payment_method_code ?? "CASH").toUpperCase();
-  const payNow = Number(body?.pay_now ?? 0);
-  const amount = payNow > 0 ? payNow : Number(delta.amount);
-  if (!(amount > 0)) return [];
+  // Ignore pay_now when it is the full revised bill — always use the edit delta.
   return [
     {
       method_code: methodCode,
-      amount,
+      amount: expected,
       adjustment_type: delta.type,
       reference_number: body?.payment_reference
         ? String(body.payment_reference).trim()

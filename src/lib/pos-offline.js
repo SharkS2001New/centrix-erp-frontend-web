@@ -422,6 +422,9 @@ export async function savePreviousOrderEditDraft(cart) {
     till_id: cart.till_id ?? null,
     customer_num: cart.customer_num ?? null,
     customer_name_override: cart.customer_name_override ?? null,
+    ...(cart.original_order_total != null
+      ? { original_order_total: Number(cart.original_order_total) }
+      : {}),
     ...(Array.isArray(cart.payment_adjustments) && cart.payment_adjustments.length
       ? { payment_adjustments: cart.payment_adjustments }
       : {}),

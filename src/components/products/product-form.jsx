@@ -410,7 +410,10 @@ async function tryServerGeneratedSku() {
       reportIssues: false,
     });
     const code = res?.code ?? res?.data?.code;
-    return code ? String(code) : null;
+    if (!code) return null;
+    const normalized = String(code).trim();
+    // Server must return a unique 6-digit SKU (legacy PRD#… codes are ignored).
+    return /^\d{6}$/.test(normalized) ? normalized : null;
   } catch {
     return null;
   }
@@ -610,21 +613,23 @@ export const ProductFormFields = memo(function ProductFormFields({
       </Field>
 
       <Field label="Sub-category" required>
-        <div className="flex gap-2">
-          <PosSearchableSelect
-            value={form.subcategory_id}
-            onChange={(value) => onChange("subcategory_id", value)}
-            options={subcategoryOptions}
-            placeholder="Select sub-category"
-            searchPlaceholder="Search sub-category…"
-            required
-            loading={refsLoading && subcategoryOptions.length === 0}
-            inputClassName={`${inputClassName()} min-w-0 flex-1`}
-          />
+        <div className="flex w-full items-stretch gap-2">
+          <div className="min-w-0 flex-1">
+            <PosSearchableSelect
+              value={form.subcategory_id}
+              onChange={(value) => onChange("subcategory_id", value)}
+              options={subcategoryOptions}
+              placeholder="Select sub-category"
+              searchPlaceholder="Search sub-category…"
+              required
+              loading={refsLoading && subcategoryOptions.length === 0}
+              inputClassName={`${inputClassName()} w-full`}
+            />
+          </div>
           <button
             type="button"
             onClick={onOpenSubcategoryModal}
-            className="shrink-0 rounded-lg border border-slate-200 px-3 text-lg font-medium text-[#185FA5] hover:bg-slate-50"
+            className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-xl font-semibold leading-none text-[#185FA5] hover:bg-slate-50"
             title="Create sub-category"
             aria-label="Create sub-category"
           >

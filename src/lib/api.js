@@ -455,11 +455,11 @@ async function performApiRequest(path, url, options = {}) {
           !licenseExpired;
 
         if (licenseExpired && (res.status === 401 || res.status === 403)) {
-          if (!isAuthEndpoint(path)) {
-            await revokeServerAuthSession();
-          }
           clearSession();
           localStorage.removeItem("pos_erp_active_session");
+          if (!isAuthEndpoint(path)) {
+            void revokeServerAuthSession();
+          }
           if (!window.location.pathname.startsWith("/login")) {
             window.location.assign("/login?reason=license");
           }
@@ -469,11 +469,11 @@ async function performApiRequest(path, url, options = {}) {
             locked && code !== "session_active_elsewhere";
 
           if (!stayOnPageWhileLocked) {
-            if (!isAuthEndpoint(path)) {
-              await revokeServerAuthSession();
-            }
             clearSession();
             localStorage.removeItem("pos_erp_active_session");
+            if (!isAuthEndpoint(path)) {
+              void revokeServerAuthSession();
+            }
             if (!window.location.pathname.startsWith("/login")) {
               const reason =
                 code === "session_idle_timeout"

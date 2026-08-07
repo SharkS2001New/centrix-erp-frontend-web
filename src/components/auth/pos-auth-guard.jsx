@@ -29,7 +29,15 @@ export function PosAuthGuard({ children }) {
     );
   }
 
-  if (!hasAuthSession() || !allowed) return null;
+  if (!hasAuthSession()) {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-100 text-slate-600">
+        Signing out…
+      </div>
+    );
+  }
+
+  if (!allowed) return null;
 
   return <>{children}</>;
 }

@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession } from "@/lib/auth-storage";
 
-function AuthGuardPlaceholder() {
+function AuthGuardPlaceholder({ message = "Loading…" }) {
   return (
     <div className="app-shell-bg flex h-screen overflow-hidden" aria-busy="true" aria-live="polite">
       <div className="flex flex-1 items-center justify-center">
-        <p className="theme-subtext text-sm">Loading…</p>
+        <p className="theme-subtext text-sm">{message}</p>
       </div>
     </div>
   );
@@ -19,6 +19,7 @@ export function AuthGuard({ children }) {
   const [ready, setReady] = useState(false);
   const { loading, user } = useAuth();
   const router = useRouter();
+  const sessionPresent = hasAuthSession();
 
   useEffect(() => {
     setReady(true);
@@ -29,7 +30,7 @@ export function AuthGuard({ children }) {
     if (!hasAuthSession()) {
       router.replace("/login");
     }
-  }, [ready, loading, router]);
+  }, [ready, loading, router, sessionPresent, user]);
 
   if (!ready) {
     return <AuthGuardPlaceholder />;
@@ -42,7 +43,7 @@ export function AuthGuard({ children }) {
   }
 
   if (!hasAuthSession()) {
-    return null;
+    return <AuthGuardPlaceholder message="Signing out…" />;
   }
 
   return <>{children}</>;

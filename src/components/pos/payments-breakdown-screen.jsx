@@ -38,7 +38,7 @@ const TENDER_LABELS = {
 const EXPORT_COLUMNS = [
   { key: "order", label: "Order" },
   { key: "customer_name", label: "Customer name" },
-  { key: "amount", label: "Amount", align: "right" },
+  { key: "amount", label: "Order total", align: "right" },
   { key: "return_amount", label: "Return amount", align: "right" },
   { key: "topup_amount", label: "Top-up amount", align: "right" },
   { key: "paid_at", label: "Paid at" },
@@ -142,7 +142,7 @@ function mapPaymentExportRow(row, methodName, methods = [], { orderHrefPrefix = 
   return {
     order: orderLabel,
     customer_name: row.customer_name || "Walk-in",
-    amount: formatAccountingAmount(row.amount),
+    amount: formatAccountingAmount(row.order_total ?? row.amount),
     return_amount: (() => {
       const base = formatAdjustmentCell(row.return_amount);
       const hint = adjustmentMethodHint(row.return_methods);
@@ -737,7 +737,7 @@ export function PaymentsBreakdownScreen({
                 <tr>
                   <th className="px-4 py-3">{orderColumnLabel}</th>
                   <th className="px-4 py-3">{apiPath.includes("hospitality") ? "Guest / outlet" : "Customer name"}</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
+                  <th className="px-4 py-3 text-right">Order total</th>
                   <th className="px-4 py-3 text-right">Return amount</th>
                   <th className="px-4 py-3 text-right">Top-up amount</th>
                   <th className="px-4 py-3">Paid at</th>
@@ -777,7 +777,17 @@ export function PaymentsBreakdownScreen({
                       {row.customer_name || "Walk-in"}
                       </td>
                     <td className="px-4 py-3 text-right font-medium text-[var(--theme-text)]">
-                      {formatAccountingAmount(row.amount)}
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span>
+                          {formatAccountingAmount(row.order_total ?? row.amount)}
+                        </span>
+                        {row.is_mixed && Number(row.method_amount ?? 0) > 0 ? (
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
+                            {tenderDisplayName(methodCode, methods)}{" "}
+                            {formatAccountingAmount(row.method_amount)}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <AdjustmentAmountCell

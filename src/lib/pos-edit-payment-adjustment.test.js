@@ -21,6 +21,63 @@ describe("resolvePosPaymentMethodCode", () => {
   });
 });
 
+describe("buildPaymentAdjustmentsFromCheckoutBody", () => {
+  it("maps payment splits to adjustment rows", () => {
+    const delta = { amount: 1000, type: "return" };
+    const rows = buildPaymentAdjustmentsFromCheckoutBody(
+      {
+        payment_splits: [
+          { method_code: "CASH", amount: 600 },
+          { method_code: "MPESA", amount: 400, reference_number: "ABC123" },
+        ],
+      },
+      delta,
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ method_code: "CASH", amount: 600, adjustment_type: "return" });
+    expect(rows[1]).toMatchObject({
+      method_code: "MPESA",
+      amount: 400,
+      adjustment_type: "return",
+      reference_number: "ABC123",
+    });
+  });
+
+  it("scales payment splits when cashier enters the full revised bill", () => {
+    const delta = { amount: 6516.66, type: "topup" };
+    const rows = buildPaymentAdjustmentsFromCheckoutBody(
+      {
+        payment_method_code: "CASH",
+        pay_now: 12510,
+        payment_splits: [{ method_code: "CASH", amount: 12510 }],
+      },
+      delta,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      method_code: "CASH",
+      amount: 6516.66,
+      adjustment_type: "topup",
+    });
+  });
+
+  it("uses edit delta instead of pay_now for a single tender", () => {
+    const delta = { amount: 500, type: "topup" };
+    const rows = buildPaymentAdjustmentsFromCheckoutBody(
+      { payment_method_code: "CASH", pay_now: 9000 },
+      delta,
+    );
+    expect(rows).toEqual([
+      {
+        method_code: "CASH",
+        amount: 500,
+        adjustment_type: "topup",
+        reference_number: null,
+      },
+    ]);
+  });
+});
+
 describe("computePreviousOrderEditPaymentDelta", () => {
   const editCart = {
     held_order_num: 42,
@@ -54,28 +111,17 @@ describe("computePreviousOrderEditPaymentDelta", () => {
     expect(delta.type).toBe("topup");
     expect(delta.amount).toBe(1000);
   });
-});
 
-describe("buildPaymentAdjustmentsFromCheckoutBody", () => {
-  it("maps payment splits to adjustment rows", () => {
-    const delta = { amount: 1000, type: "return" };
-    const rows = buildPaymentAdjustmentsFromCheckoutBody(
-      {
-        payment_splits: [
-          { method_code: "CASH", amount: 600 },
-          { method_code: "MPESA", amount: 400, reference_number: "ABC123" },
-        ],
-      },
-      delta,
-    );
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ method_code: "CASH", amount: 600, adjustment_type: "return" });
-    expect(rows[1]).toMatchObject({
-      method_code: "MPESA",
-      amount: 400,
-      adjustment_type: "return",
-      reference_number: "ABC123",
-    });
+  it("prefers cart.original_order_total when source sale omits totals", () => {
+    const cart = {
+      ...editCart,
+      original_order_total: 5993.34,
+      lines: [{ product_code: "A1", quantity: 1, unit_price: 12510, amount: 12510 }],
+    };
+    const delta = computePreviousOrderEditPaymentDelta({ id: 100 }, cart);
+    expect(delta.type).toBe("topup");
+    expect(delta.amount).toBe(6516.66);
+    expect(delta.originalTotal).toBe(5993.34);
   });
 });
 

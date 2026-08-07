@@ -581,28 +581,29 @@ export function AuthProvider({ children }) {
     const hadSession = hasAuthSession();
     // Capture credentials before local clear so the server revoke can authenticate.
     const token = getToken();
+    const loginPath = reason ? `/login?reason=${encodeURIComponent(reason)}` : "/login";
 
-    // 1) Local logout first — UI / guards treat the user as signed out immediately.
+    // 1) Local session clear only — do not set React auth state first.
+    //    Clearing user/capabilities here unmounts heavy screens (e.g. POS) on the
+    //    main thread and can stall the logout timeout / soft navigation for tens of seconds.
     clearSession();
     clearStoredActiveSession();
     invalidateReferenceDataCache();
     invalidateReportBuilderTemplateCache();
     capabilitiesRefreshAt.current = 0;
     capabilitiesRefreshPromise.current = null;
-    setUser(null);
-    setOrganization(null);
-    setMemberships([]);
-    setCapabilities(null);
-    setLoginChannel(null);
 
-    // 2) Server logout — must run (cookie and/or bearer). keepalive survives navigation;
-    //    we still wait briefly so Soft Router nav doesn't cancel a non-keepalive path.
+    // 2) Fire-and-forget server revoke (keepalive survives hard navigation).
     if (hadSession) {
-      await endServerAuthSession({ token });
+      void endServerAuthSession({ token });
     }
 
-    // 3) Login page after local clear + server revoke attempt.
-    router.replace(reason ? `/login?reason=${encodeURIComponent(reason)}` : "/login");
+    // 3) Hard navigate immediately — login must not wait on network or React unmount.
+    if (typeof window !== "undefined") {
+      window.location.assign(loginPath);
+      return;
+    }
+    router.replace(loginPath);
   }, [router]);
 
   const isOrgWide = useCallback(

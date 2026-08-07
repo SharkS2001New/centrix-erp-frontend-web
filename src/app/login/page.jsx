@@ -30,7 +30,13 @@ import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600">
+          Loading…
+        </div>
+      }
+    >
       <LoginForm />
     </Suspense>
   );
