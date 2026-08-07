@@ -51,7 +51,10 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [verifyMode, setVerifyMode] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
+  const [platformCurrentPassword, setPlatformCurrentPassword] = useState(null);
+  const [platformPasswordLoaded, setPlatformPasswordLoaded] = useState(false);
   const requiredPasswordChange = Boolean(user?.must_change_password);
+  const isPlatformAdmin = Boolean(user?.is_super_admin || capabilities?.is_super_admin);
   const savedEmail = String(user?.email ?? "").trim();
   const emailVerified = Boolean(user?.email_verified_at);
   const emailDirty = email.trim() !== savedEmail;
@@ -61,6 +64,35 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
     setUsername(user?.username ?? "");
     setEmail(user?.email ?? "");
   }, [user?.email, user?.full_name, user?.username]);
+
+  useEffect(() => {
+    if (!isPlatformAdmin || requiredPasswordChange) {
+      setPlatformCurrentPassword(null);
+      setPlatformPasswordLoaded(false);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest("/auth/platform-admin-current-password", {
+          method: "GET",
+          loading: false,
+          reportIssues: false,
+        });
+        if (cancelled) return;
+        setPlatformCurrentPassword(
+          res?.matches_bootstrap && res?.password ? String(res.password) : null,
+        );
+      } catch {
+        if (!cancelled) setPlatformCurrentPassword(null);
+      } finally {
+        if (!cancelled) setPlatformPasswordLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPlatformAdmin, requiredPasswordChange, user?.id]);
 
   async function onSaveProfile(e) {
     e.preventDefault();
@@ -152,7 +184,11 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
         : await apiRequest("/auth/change-password", {
             method: "POST",
             body: {
-              current_password: currentPassword,
+              ...(isPlatformAdmin
+                ? currentPassword.trim()
+                  ? { current_password: currentPassword }
+                  : {}
+                : { current_password: currentPassword }),
               password,
               password_confirmation: passwordConfirmation,
             },
@@ -163,6 +199,8 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
       setCurrentPassword("");
       setPassword("");
       setPasswordConfirmation("");
+      setPlatformCurrentPassword(null);
+      setPlatformPasswordLoaded(false);
 
       const nextUser = { ...(res?.user ?? user), must_change_password: false };
       const ctx = buildAccessContext({
@@ -328,9 +366,28 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
           <p className="mt-2 text-sm text-slate-600">
             Choose a new password to unlock the rest of the application.
           </p>
+        ) : isPlatformAdmin ? (
+          <p className="mt-2 text-sm text-slate-600">
+            Platform admins can set a new password without the current one — there is no
+            forgot-password path for this account.
+          </p>
         ) : null}
         <form onSubmit={onSubmit} className="mt-4 space-y-4">
-          {!requiredPasswordChange ? (
+          {!requiredPasswordChange && isPlatformAdmin && platformPasswordLoaded && platformCurrentPassword ? (
+            <Field label="Current password">
+              <PasswordInput
+                className={inputClassName()}
+                value={platformCurrentPassword}
+                readOnly
+                autoComplete="off"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Shown only for the platform admin while the account still uses the
+                configured server password. Use the eye icon to reveal it.
+              </p>
+            </Field>
+          ) : null}
+          {!requiredPasswordChange && !isPlatformAdmin ? (
             <Field label="Current password">
               <PasswordInput
                 className={inputClassName()}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { outboxRowMatchesServerSale } from "@/lib/pos-offline";
+import {
+  outboxNeedsSupersedeOfServerSale,
+  outboxRowMatchesServerSale,
+  outboxRowSharesClientSaleUuid,
+} from "@/lib/pos-offline";
 
 describe("outboxRowMatchesServerSale", () => {
   const liveSale = {
@@ -120,6 +124,55 @@ describe("outboxRowMatchesServerSale", () => {
     };
 
     expect(outboxRowMatchesServerSale(row, synced, 6002)).toBe(true);
+  });
+
+  it("does not treat an older uuid upload as already synced when outbox has a newer edit", () => {
+    const row = {
+      sync_kind: "sale",
+      client_sale_uuid: "uuid-edit-1",
+      content_revision: 2,
+      order_num: 7001,
+      checkout_body: { order_num: 7001, pay_now: 150 },
+      sale_payload: { order_total: 150 },
+    };
+    const olderRevision = {
+      id: 80,
+      order_num: 7001,
+      order_total: 100,
+      fulfillment_meta: {
+        pos_sync_id: "uuid-edit-1:1",
+        client_sale_uuid: "uuid-edit-1",
+        pos_content_revision: 1,
+      },
+    };
+
+    expect(outboxRowMatchesServerSale(row, olderRevision, 7001)).toBe(false);
+    expect(outboxRowSharesClientSaleUuid(row, olderRevision)).toBe(true);
+    expect(outboxNeedsSupersedeOfServerSale(row, olderRevision)).toBe(true);
+  });
+
+  it("does not supersede a different customer's sale that only shares unrelated identity", () => {
+    const row = {
+      sync_kind: "sale",
+      client_sale_uuid: "uuid-a",
+      content_revision: 2,
+      order_num: 8001,
+      checkout_body: { order_num: 8001, pay_now: 200, customer_num: 1 },
+      sale_payload: { order_total: 200, customer_num: 1 },
+    };
+    const otherCustomer = {
+      id: 90,
+      order_num: 8002,
+      order_total: 50,
+      fulfillment_meta: {
+        pos_sync_id: "uuid-b:1",
+        client_sale_uuid: "uuid-b",
+        pos_content_revision: 1,
+      },
+    };
+
+    expect(outboxRowSharesClientSaleUuid(row, otherCustomer)).toBe(false);
+    expect(outboxNeedsSupersedeOfServerSale(row, otherCustomer)).toBe(false);
   });
 
   it("matches a new offline sale by reserved org # + same-day POS ticket + total", () => {

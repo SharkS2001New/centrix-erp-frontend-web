@@ -351,7 +351,7 @@ export async function idbIsOutboxBlockingForCart(cart) {
 }
 
 /** Rows left mid-sync after a crash/reload — reclaim for retry. */
-export async function idbReclaimStuckSyncingOutbox({ olderThanMs = 60_000 } = {}) {
+export async function idbReclaimStuckSyncingOutbox({ olderThanMs = 5 * 60_000 } = {}) {
   const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
   const cutoff = Date.now() - olderThanMs;
   let reclaimed = 0;
@@ -400,9 +400,16 @@ export async function idbMarkOutboxSynced(uuid, serverSale, extras = {}) {
   if (!existing) return;
 
   // Another edit re-queued this row while sync was in flight — keep pending.
-  if (existing.sync_status === "pending" || existing.sync_status === "error") {
+  // Also never mark mid-edit rows synced (cashier still has the sale open).
+  if (
+    existing.sync_status === "pending" ||
+    existing.sync_status === "error" ||
+    existing.sync_status === "editing"
+  ) {
     await idbPutOutboxSale({
       ...existing,
+      // Keep editing status if cashier is still in the sale; otherwise pending for re-upload.
+      sync_status: existing.sync_status === "editing" ? "editing" : existing.sync_status,
       server_sale_id: serverSale?.id ?? existing.server_sale_id,
       server_order_num: serverSale?.order_num ?? existing.server_order_num ?? existing.order_num,
       updated_at_ms: Date.now(),

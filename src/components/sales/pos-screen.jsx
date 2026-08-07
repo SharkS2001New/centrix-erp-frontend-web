@@ -430,6 +430,14 @@ function usesPosLocalDraftLineEdits(cart) {
   return Boolean(isPreviousOrderEditSession(cart) || cart?.offline);
 }
 
+/**
+ * Open sale is continuing in IndexedDB (outage, reconnect mid-sale, or queued offline edit).
+ * Line adds / removes / checkout must stay local — TemporaryCart "active" is not a real server id.
+ */
+function usesLocalPosCartWorkspace(cart) {
+  return Boolean(cart?.offline || cart?.offline_client_sale_uuid);
+}
+
 /** Workspace still shows the sale that just completed (bootstrap did not clear held restore). */
 function isStalePostCheckoutWorkspace(cart, completedSale) {
   if (!cart || !completedSale) return false;
@@ -804,15 +812,16 @@ async function resolveNextPosTicketForWorkspace(
   activeCart,
   sessionOrders,
   pendingSale = null,
-  { skipServerReseed = false } = {},
+  { skipServerReseed = false, floatSessionId = null } = {},
 ) {
   // Ctrl+R / new order: reseed from server so cancelled Cash Sales #s are skipped (274→275).
   // Post-checkout prepare uses session/local peek only — server reseed runs in background.
+  // Pass floatSessionId so a new till session after Z starts at receipt 1.
   if (skipServerReseed) {
-    void ensurePosOfflineOrderNumbers({ force: false }).catch(() => {});
+    void ensurePosOfflineOrderNumbers({ force: false, floatSessionId }).catch(() => {});
   } else {
     try {
-      await ensurePosOfflineOrderNumbers({ force: false });
+      await ensurePosOfflineOrderNumbers({ force: false, floatSessionId });
     } catch {
       /* offline — use local seq / session */
     }
@@ -1057,6 +1066,26 @@ export function PosScreen({ standalone = false }) {
     [classicLayout, classicThemeTemplate, classicThemeColors],
   );
   const {
+    activeSession,
+    tillId,
+    floatSessionId,
+    openSession,
+    addFloat,
+    recordCashMovement,
+    recordSessionExpense,
+    suspendSession,
+    resumeSession,
+    closeSession,
+    sessionReport,
+    refreshReport,
+    suspendedSession,
+    busy: sessionBusy,
+    error: sessionError,
+    setError: setSessionError,
+    loading: sessionLoading,
+    hasPosTill,
+  } = usePosSession();
+  const {
     offlineMode,
     networkStatus,
     canFlushOutbox,
@@ -1074,7 +1103,7 @@ export function PosScreen({ standalone = false }) {
     flushOutboxAfterSale,
     syncOfflineOrders,
     syncSingleOfflineOrder,
-  } = usePosOfflineSupport({ enabled: standalone });
+  } = usePosOfflineSupport({ enabled: standalone, floatSessionId });
 
   /** Push queued outbox sales to the server (await when caller must block). */
   async function pushOutboxAfterSale(orderNum, { syncingLabel = "syncing", background = false } = {}) {
@@ -1165,26 +1194,6 @@ export function PosScreen({ standalone = false }) {
     () => mergeGeneralSettings(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
-  const {
-    activeSession,
-    tillId,
-    floatSessionId,
-    openSession,
-    addFloat,
-    recordCashMovement,
-    recordSessionExpense,
-    suspendSession,
-    resumeSession,
-    closeSession,
-    sessionReport,
-    refreshReport,
-    suspendedSession,
-    busy: sessionBusy,
-    error: sessionError,
-    setError: setSessionError,
-    loading: sessionLoading,
-    hasPosTill,
-  } = usePosSession();
   const { runBlockingTask, overlayNode: checkoutWaitOverlay } = useBlockingWait(
     "Completing sale…",
   );
@@ -1516,13 +1525,28 @@ export function PosScreen({ standalone = false }) {
         throw new Error("No till is available for this branch.");
       }
 
-      await openSession({
+      const opened = await openSession({
         ...payload,
         till_id: tillId,
         branch_id: branchId,
         device_identifier: getPosDeviceIdentifier(),
       });
       setFloatModalOpen(false);
+      // After Z/close + reopen, Cash Sales # must restart at 1 for the new session.
+      try {
+        const sessionId = opened?.id ?? null;
+        const refreshed = await ensurePosOfflineOrderNumbers({
+          force: true,
+          floatSessionId: sessionId,
+        });
+        const nextNum = Number(refreshed?.next_pos_order_num ?? 0);
+        if (Number.isFinite(nextNum) && nextNum > 0) {
+          applyFreshWorkspacePlaceholder(cartRef.current, nextNum);
+          setEditOrderNo(String(nextNum));
+        }
+      } catch {
+        /* cart peek on next scan will correct */
+      }
       defaultScanFocusDoneRef.current = false;
       window.requestAnimationFrame(() => {
         focusPosScanInput({ selectAll: true });
@@ -2664,6 +2688,8 @@ export function PosScreen({ standalone = false }) {
   }, [standalone, syncProgress?.phase, syncProgress?.failed]);
 
   // When the offline catalog refreshes, apply new prices to open cart lines.
+  // Pause while offline, and also while a continued offline / queued-edit cart is open
+  // so reconnect does not rewrite prices mid-sale.
   useEffect(() => {
     if (!standalone || offlineMode) return undefined;
     let cancelled = false;
@@ -2671,6 +2697,14 @@ export function PosScreen({ standalone = false }) {
     async function syncCatalogPricesToCart() {
       const activeCart = cartRef.current;
       if (!activeCart?.lines?.length) return;
+      if (
+        activeCart.offline ||
+        activeCart.offline_client_sale_uuid ||
+        activeCart.held_order_num ||
+        activeCart.superseded_sale_id
+      ) {
+        return;
+      }
       try {
         const warm = await warmPosOfflineCatalog({ force: false });
         if (cancelled || warm.skipped) return;
@@ -3549,10 +3583,12 @@ export function PosScreen({ standalone = false }) {
       }
       // Open sale already continuing locally after an outage — keep it.
       // Rematerializing onto TemporaryCart re-POSTed lines and duplicated items.
+      // Includes queued offline edits (offline_client_sale_uuid) after reconnect.
       if (
-        current?.offline &&
-        (current.lines?.length > 0 || current.held_order_num) &&
-        !current.offline_client_sale_uuid
+        usesLocalPosCartWorkspace(current) &&
+        (current.lines?.length > 0 ||
+          current.held_order_num ||
+          current.offline_client_sale_uuid)
       ) {
         return current;
       }
@@ -4322,11 +4358,13 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
 
-    if (standalone && offlineMode) {
+    // Local workspace: true offline/slow, OR mid-sale cart kept local after reconnect.
+    // Never POST to TemporaryCart with id "active" — that breaks scanning after the link returns.
+    if (standalone && (offlineMode || usesLocalPosCartWorkspace(liveCart))) {
       // Continue the open sale in place — never rebuild/copy TemporaryCart lines here.
-      const live = cartRef.current;
+      const live = cartRef.current ?? liveCart;
       const activeCart =
-        live?.offline && Array.isArray(live.lines)
+        usesLocalPosCartWorkspace(live) && Array.isArray(live.lines)
           ? live
           : presentLocalOfflineCart(
               await continueOpenCartThroughOutage(live ?? (await ensureCart()), {
@@ -4335,7 +4373,7 @@ export function PosScreen({ standalone = false }) {
                 float_session_id: floatSessionId,
               }),
             );
-      if (activeCart && !cartRef.current?.offline) {
+      if (activeCart && !usesLocalPosCartWorkspace(cartRef.current)) {
         cartRef.current = activeCart;
         setCart(activeCart);
       }
@@ -4412,6 +4450,9 @@ export function PosScreen({ standalone = false }) {
           float_session_id: floatSessionId ?? working?.float_session_id,
           order_discount: Number(working?.order_discount ?? 0) || 0,
           held_order_num: preserveOfflineIdentity ? working?.held_order_num ?? null : null,
+          superseded_sale_id: preserveOfflineIdentity
+            ? working?.superseded_sale_id ?? null
+            : null,
           offline_client_sale_uuid: preserveOfflineIdentity
             ? working?.offline_client_sale_uuid ?? null
             : null,
@@ -4429,7 +4470,9 @@ export function PosScreen({ standalone = false }) {
       setCart(presented);
       setStatusMessage(
         successMessage ??
-          `Added offline (will sync when online). ${orderNumbersLeft} order # left.`,
+          (offlineMode
+            ? `Added offline (will sync when online). ${orderNumbersLeft} order # left.`
+            : `Added. ${orderNumbersLeft} order # left.`),
       );
       if (clearEntry) clearClassicEntryFields();
       void refreshOfflineCounts();
@@ -4862,7 +4905,13 @@ export function PosScreen({ standalone = false }) {
     if (!trimmed) return false;
 
     let product = null;
-    if (classicLayout || offlineMode) {
+    // Prefer the warmed offline catalog whenever the open sale is local — including
+    // after reconnect mid-sale — so scans do not depend on live product GETs.
+    if (
+      classicLayout ||
+      offlineMode ||
+      usesLocalPosCartWorkspace(cartRef.current)
+    ) {
       try {
         const local = await getPosOfflineProduct(trimmed);
         if (local && isSellableCatalogProduct(local)) {
@@ -5451,6 +5500,16 @@ export function PosScreen({ standalone = false }) {
 
   async function syncCartRoute(routeId) {
     if (!cart?.id) return null;
+    if (usesLocalPosCartWorkspace(cart) || !isServerPosCartId(cart.id)) {
+      const nextCart = { ...cart, route_id: routeId ?? null };
+      let saved = nextCart;
+      if (usesLocalPosCartWorkspace(cart)) {
+        saved = presentLocalOfflineCart(await saveLocalPosCart(nextCart));
+      }
+      cartRef.current = saved;
+      setCart(saved);
+      return saved;
+    }
     const updated = await apiRequest(`/sales/carts/${cart.id}`, {
       method: "PATCH",
       body: { route_id: routeId ?? null },
@@ -5473,17 +5532,30 @@ export function PosScreen({ standalone = false }) {
     }
     setBusy(true);
     try {
+      // Local workspace / previous-order draft — never PATCH TemporaryCart "active".
       if (
-        cart.held_order_num &&
-        cart.superseded_sale_id &&
-        !cart.offline &&
-        !cart.offline_client_sale_uuid &&
-        !cart.discount_resubmit
+        usesLocalPosCartWorkspace(cart) ||
+        (cart.held_order_num &&
+          cart.superseded_sale_id &&
+          !cart.discount_resubmit)
       ) {
         const nextCart = withEditDraftDirty({ ...cart, order_discount: next });
-        cartRef.current = nextCart;
-        setCart(nextCart);
-        persistPreviousOrderLocalDraft(nextCart);
+        let saved = nextCart;
+        if (usesLocalPosCartWorkspace(cart)) {
+          saved = presentLocalOfflineCart(
+            await saveLocalPosCart({
+              ...nextCart,
+              lines: (nextCart.lines ?? []).map((l) => ({
+                ...l,
+                client_line_id: l.client_line_id ?? l.id,
+              })),
+            }),
+          );
+        } else {
+          persistPreviousOrderLocalDraft(nextCart);
+        }
+        cartRef.current = saved;
+        setCart(saved);
         setOrderDiscountDraft(next > 0 ? String(next) : "");
         return;
       }
@@ -6796,8 +6868,14 @@ export function PosScreen({ standalone = false }) {
     if (!activeCart?.lines?.length || !productMeta || !Object.keys(productMeta).length) {
       return 0;
     }
-    // Keep sold prices when revising / appending to an existing order.
-    if (activeCart.held_order_num || activeCart.superseded_sale_id) {
+    // Keep sold prices when revising / appending to an existing order, or while a
+    // local-first / offline cart is still open after reconnect.
+    if (
+      activeCart.held_order_num ||
+      activeCart.superseded_sale_id ||
+      activeCart.offline ||
+      activeCart.offline_client_sale_uuid
+    ) {
       return 0;
     }
     const mergedProducts = { ...productByCodeRef.current, ...productMeta };
@@ -6970,7 +7048,7 @@ export function PosScreen({ standalone = false }) {
         cartRef.current,
         sessionPosOrders,
         saleForPeek,
-        { skipServerReseed: true },
+        { skipServerReseed: true, floatSessionId },
       );
       if (
         peekNextPos != null &&
@@ -7406,8 +7484,11 @@ export function PosScreen({ standalone = false }) {
           cart: local,
           user,
           organization,
-          cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
+          cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local, {
+            cashRound: enablePosCashRounding,
+          }).amountDue,
           floatSessionId,
+          cashRound: enablePosCashRounding,
         });
         const sale = annotateSaleWithReceiptTenders(
           offlineCashTendered > 0
@@ -7459,9 +7540,22 @@ export function PosScreen({ standalone = false }) {
       isLocalFirstCashCheckout(body) &&
       (!activeCart.held_order_num || isPreviousOrderCashEdit)
     ) {
-      const reservedLeft = isPreviousOrderCashEdit
+      let reservedLeft = isPreviousOrderCashEdit
         ? 1
         : await peekPosOfflineOrderNumberCount();
+      // Keep sell→print→sync local-first when online: refill the org # pool before
+      // falling back to TemporaryCart checkout (which breaks the offline-identical path).
+      if (reservedLeft <= 0 && !isPreviousOrderCashEdit) {
+        try {
+          await ensurePosOfflineOrderNumbers({
+            force: false,
+            floatSessionId: floatSessionId ?? null,
+          });
+          reservedLeft = await peekPosOfflineOrderNumberCount();
+        } catch {
+          /* fall through if reserve fails */
+        }
+      }
       if (reservedLeft > 0) {
         const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
         const cashTendered = Number(body?.__cash_tendered ?? 0);
@@ -7505,8 +7599,11 @@ export function PosScreen({ standalone = false }) {
             cart: local,
             user,
             organization,
-            cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local).amountDue,
+            cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local, {
+              cashRound: enablePosCashRounding,
+            }).amountDue,
             floatSessionId,
+            cashRound: enablePosCashRounding,
           });
           const sale = annotateSaleWithReceiptTenders(
             mergeSaleWithCheckoutPosTicket(localSale, activeCart, checkoutCartFields),
@@ -8592,7 +8689,10 @@ export function PosScreen({ standalone = false }) {
                 user,
                 organization,
                 floatSessionId,
-                cashAmount: summarizeLocalPosCart(local).amountDue,
+                cashAmount: summarizeLocalPosCart(local, {
+                  cashRound: enablePosCashRounding,
+                }).amountDue,
+                cashRound: enablePosCashRounding,
               });
               void refreshOfflineCounts();
             } catch (e) {
@@ -8752,7 +8852,7 @@ export function PosScreen({ standalone = false }) {
         activeCart,
         sessionPosOrders,
         null,
-        { skipServerReseed: true },
+        { skipServerReseed: true, floatSessionId },
       );
       applyFreshWorkspacePlaceholder(cartRef.current ?? activeCart, peekNextPos);
       report(32);
@@ -8788,6 +8888,8 @@ export function PosScreen({ standalone = false }) {
                     const peekNextPos = await resolveNextPosTicketForWorkspace(
                       cartRef.current,
                       sessionPosOrders,
+                      null,
+                      { floatSessionId },
                     );
                     const merged = mergeFreshWorkspaceCart(
                       stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
@@ -8817,7 +8919,9 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    const peekNextPos = await resolveNextPosTicketForWorkspace(activeCart, sessionPosOrders);
+    const peekNextPos = await resolveNextPosTicketForWorkspace(activeCart, sessionPosOrders, null, {
+      floatSessionId,
+    });
     const generation = ++freshWorkspaceGenerationRef.current;
 
     setPaymentOpen(false);

@@ -26,6 +26,7 @@ function ChangePasswordForm() {
   } = useAuth();
   const reason = searchParams.get("reason");
   const isExpired = reason === "expired" && !user?.must_change_password;
+  const isPlatformAdmin = Boolean(user?.is_super_admin);
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -57,18 +58,22 @@ function ChangePasswordForm() {
       setError("Password confirmation does not match.");
       return;
     }
-    if (isExpired && !currentPassword.trim()) {
+    if (isExpired && !isPlatformAdmin && !currentPassword.trim()) {
       setError("Enter your current password.");
       return;
     }
 
     setSubmitting(true);
     try {
-      if (isExpired || (!user?.must_change_password && currentPassword)) {
+      if (isExpired || (!user?.must_change_password && (currentPassword || isPlatformAdmin))) {
         const res = await apiRequest("/auth/change-password", {
           method: "POST",
           body: {
-            current_password: currentPassword,
+            ...(isPlatformAdmin
+              ? currentPassword.trim()
+                ? { current_password: currentPassword }
+                : {}
+              : { current_password: currentPassword }),
             password,
             password_confirmation: confirmation,
           },
@@ -94,13 +99,15 @@ function ChangePasswordForm() {
 
   const title = isExpired ? "Change your password" : "Set a new password";
   const subtitle = isExpired
-    ? "Your password has expired. Enter your current password and choose a new one to continue."
+    ? isPlatformAdmin
+      ? "Your password has expired. As platform admin you can set a new password without the current one."
+      : "Your password has expired. Enter your current password and choose a new one to continue."
     : `Hi ${user?.full_name ?? user?.username ?? "there"} — choose a new password before continuing.`;
 
   return (
     <AuthShell title={title} subtitle={subtitle}>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        {isExpired ? (
+        {isExpired && !isPlatformAdmin ? (
           <AuthField label="Current password">
             <PasswordInput
               className={authInputClass()}

@@ -2089,8 +2089,7 @@ export function OrganizationUsersPanel({
                   />
                 </OrgRegisterField>
                 <OrgRegisterField label="Password *">
-                  <input
-                    type="password"
+                  <PasswordInput
                     className={inputClass}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -2480,13 +2479,14 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
             >
               {editing ? "Cancel edit" : "Edit details"}
             </button>
-            <input
-              type="password"
-              className="w-36 rounded border border-slate-300 px-2 py-1 text-xs"
-              placeholder="New password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="w-36">
+              <PasswordInput
+                className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                placeholder="New password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
             <label className="flex items-center gap-1.5 text-xs text-slate-600">
               <input
                 type="checkbox"

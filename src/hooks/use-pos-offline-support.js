@@ -37,7 +37,7 @@ const EMPTY_SYNC_PROGRESS = {
  * (including "slow" — sync still runs so the queue does not grow forever).
  * Aimed at outages up to ~1.5 hours; reconnect still flushes any leftovers.
  */
-export function usePosOfflineSupport({ enabled = false } = {}) {
+export function usePosOfflineSupport({ enabled = false, floatSessionId = null } = {}) {
   const { status, browserOnline, apiOnline, refresh: refreshNetwork } = useNetworkStatus({
     enabled,
     reportOutages: false,
@@ -155,7 +155,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
   const prepare = useCallback(async () => {
     if (!enabled || !fullyOnline) return null;
     try {
-      const ready = await preparePosOfflineReady();
+      const ready = await preparePosOfflineReady({ floatSessionId });
       setCatalogReady(ready.catalogCount > 0);
       setOrderNumbersLeft(ready.orderNumbersAvailable);
       if (ready.nextPosOrderNum != null) {
@@ -167,7 +167,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       console.warn("POS offline prepare failed", err);
       return null;
     }
-  }, [enabled, fullyOnline]);
+  }, [enabled, fullyOnline, floatSessionId]);
 
   /**
    * Serialize outbox flushes so concurrent sells cannot double-post.
@@ -262,7 +262,10 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
           }
           if (fullyOnline) {
             await warmPosOfflineCatalog({ force: true });
-            await ensurePosOfflineOrderNumbers({ force: false });
+            await ensurePosOfflineOrderNumbers({
+              force: false,
+              floatSessionId,
+            });
           }
         } else if (failed.length) {
           // Errored rows stay in the queue for manual Sync — do not arm the
@@ -343,7 +346,7 @@ export function usePosOfflineSupport({ enabled = false } = {}) {
       () => undefined,
     );
     return next;
-  }, [enabled, fullyOnline, refreshCounts, notifySyncProblem]);
+  }, [enabled, fullyOnline, floatSessionId, refreshCounts, notifySyncProblem]);
 
   /**
    * After a local/outbox sale: probe API, flush the queue, retry until live or attempts exhausted.

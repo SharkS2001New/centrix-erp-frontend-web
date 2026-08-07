@@ -48,6 +48,7 @@ import {
   todayPosOrderDate,
 } from "@/lib/pos-offline-db";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
+import { roundLightStoresAmount } from "@/lib/pos-cash-round";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
 import { rebuildPreviousOrderEditTenders } from "@/lib/pos-edit-payment-adjustment";
@@ -179,20 +180,33 @@ export async function getPosOfflineCatalogMeta() {
 }
 
 /** Reserve sequential org order numbers (S00xx) while online for offline selling.
- * Cash Sales # is NOT reserved — each cashier stays on 1,2,3… from sales only.
- * Always refreshes the local Cash Sales sequence from the server peek (includes
- * cancelled tickets so Ctrl+R advances 274 cancelled → next 275).
+ * Cash Sales # is NOT reserved — each float session (or cashier/day) stays on 1,2,3…
+ * from sales only. Always refreshes the local Cash Sales sequence from the server peek.
+ *
+ * @param {{ force?: boolean, floatSessionId?: number|null }} [options]
  */
-export async function ensurePosOfflineOrderNumbers({ force = false } = {}) {
+export async function ensurePosOfflineOrderNumbers({
+  force = false,
+  floatSessionId = null,
+} = {}) {
   return withPosOfflineExclusiveLock(async () => {
     const available = await idbCountOrderNumbers();
-    const poolOk = !force && available >= POS_OFFLINE_RESERVE_LOW;
-    const need = poolOk
-      ? 0
-      : Math.max(POS_OFFLINE_RESERVE_COUNT - available, POS_OFFLINE_RESERVE_COUNT);
+    // Always hit the reserve endpoint (count may be 0) so Cash Sales # reseeds.
+    // Reserve more S00xx only when the pool is low — `force` must not burn slots
+    // just to refresh a session-scoped Cash Sales peek after Z/reopen.
+    const need =
+      available >= POS_OFFLINE_RESERVE_LOW
+        ? 0
+        : Math.max(POS_OFFLINE_RESERVE_COUNT - available, POS_OFFLINE_RESERVE_COUNT);
+    void force;
+    const body = { count: Math.min(need, POS_OFFLINE_RESERVE_COUNT) };
+    const sessionId = Number(floatSessionId);
+    if (Number.isFinite(sessionId) && sessionId > 0) {
+      body.float_session_id = sessionId;
+    }
     const res = await apiRequest("/sales/order-numbers/reserve", {
       method: "POST",
-      body: { count: Math.min(need, POS_OFFLINE_RESERVE_COUNT) },
+      body,
       loading: false,
       reportIssues: false,
     });
@@ -701,10 +715,11 @@ export async function removeLocalPosCartLine(cart, clientLineId) {
   return saveLocalPosCart({ ...cart, lines });
 }
 
-export function summarizeLocalPosCart(cart) {
+export function summarizeLocalPosCart(cart, { cashRound = false } = {}) {
   const lines = cart?.lines ?? [];
   let total = 0;
   let vat = 0;
+  const lineAmounts = [];
   for (const line of lines) {
     const qty = Number(line.quantity ?? 0);
     const price = Number(line.unit_price ?? 0);
@@ -712,13 +727,27 @@ export function summarizeLocalPosCart(cart) {
       line.amount != null && Number.isFinite(Number(line.amount))
         ? Math.round(Number(line.amount) * 100) / 100
         : Math.round(qty * price * 100) / 100;
+    lineAmounts.push(amount);
     total += amount;
     const rate = Number(line.vat_rate ?? line.tax_rate ?? 0);
     if (rate > 0) {
       vat += Math.round(((amount * rate) / (100 + rate)) * 100) / 100;
     }
   }
-  total = Math.round(total * 100) / 100;
+  const orderDiscount = Math.min(
+    Math.max(0, Number(cart?.order_discount ?? 0) || 0),
+    total,
+  );
+  if (cashRound) {
+    // Match checkout: round each line, subtract discount, round the order total.
+    const roundedNet = lineAmounts.reduce(
+      (sum, amount) => sum + roundLightStoresAmount(amount),
+      0,
+    );
+    total = roundLightStoresAmount(Math.max(0, roundedNet - orderDiscount));
+  } else {
+    total = Math.round(Math.max(0, total - orderDiscount) * 100) / 100;
+  }
   vat = Math.round(vat * 100) / 100;
   return {
     total,
@@ -887,8 +916,9 @@ export async function completeOfflineCashSale({
   floatSessionId,
   keepCart = false,
   skipClearDraft = false,
+  cashRound = false,
 }) {
-  const summary = summarizeLocalPosCart(cart);
+  const summary = summarizeLocalPosCart(cart, { cashRound: Boolean(cashRound) });
   const reuseOrderNumEarly =
     cart.held_order_num != null && Number(cart.held_order_num) > 0
       ? Number(cart.held_order_num)
@@ -940,7 +970,10 @@ export async function completeOfflineCashSale({
     let slot = await takePosOfflineOrderSlot();
     if (!slot?.order_num) {
       try {
-        await ensurePosOfflineOrderNumbers({ force: true });
+        await ensurePosOfflineOrderNumbers({
+          force: true,
+          floatSessionId: floatSessionId ?? cart.float_session_id ?? null,
+        });
       } catch {
         /* still offline — fall through */
       }
@@ -1018,24 +1051,32 @@ export async function completeOfflineCashSale({
         ? "M-Pesa"
         : paymentMethodCode;
 
-  // Prefer the cart/body customer; fall back to a prior outbox revision so edits
-  // do not wipe the buyer and sync as Walk-in (TemporaryCart has no customer columns).
-  const customerNumRaw =
-    cart.customer_num ??
-    existingOutbox?.sale_payload?.customer_num ??
-    existingOutbox?.checkout_body?.customer_num ??
-    null;
+  // Prefer the cart customer. When revising a queued offline sale, trust the cart
+  // only — never resurrect Customer A after the cashier cleared to Walk-in.
+  const revisingQueuedOffline = Boolean(editingUuid);
+  const customerNumRaw = revisingQueuedOffline
+    ? cart.customer_num
+    : (cart.customer_num ??
+      existingOutbox?.sale_payload?.customer_num ??
+      existingOutbox?.checkout_body?.customer_num ??
+      null);
   const customerNum =
     customerNumRaw != null && Number(customerNumRaw) > 0 ? Number(customerNumRaw) : null;
-  const customerNameOverride =
-    String(cart.customer_name_override ?? "").trim() ||
-    String(existingOutbox?.sale_payload?.customer_name_override ?? "").trim() ||
-    String(existingOutbox?.checkout_body?.customer_name_override ?? "").trim() ||
-    null;
-  const customerKraPin =
-    String(cart.customer_kra_pin ?? "").trim() ||
-    String(existingOutbox?.checkout_body?.customer_kra_pin ?? "").trim() ||
-    null;
+  const customerNameOverride = revisingQueuedOffline
+    ? (String(cart.customer_name_override ?? "").trim() || null)
+    : (
+        String(cart.customer_name_override ?? "").trim() ||
+        String(existingOutbox?.sale_payload?.customer_name_override ?? "").trim() ||
+        String(existingOutbox?.checkout_body?.customer_name_override ?? "").trim() ||
+        null
+      );
+  const customerKraPin = revisingQueuedOffline
+    ? (String(cart.customer_kra_pin ?? "").trim() || null)
+    : (
+        String(cart.customer_kra_pin ?? "").trim() ||
+        String(existingOutbox?.checkout_body?.customer_kra_pin ?? "").trim() ||
+        null
+      );
 
   const saleItems = [];
   for (const [index, line] of (cart.lines ?? []).entries()) {
@@ -1196,8 +1237,8 @@ export async function completeOfflineCashSale({
       offline_order: true,
       client_completed_at: soldAtIso,
       client_sale_uuid: clientSaleUuid,
-      // Revision only for previous-order edits — new sales keep a stable uuid key for retry dedupe.
-      ...(syncKind === "previous_order_edit" ? { content_revision: contentRevision } : {}),
+      // Revision-aware sync key so an edit before upload sends the latest payload.
+      content_revision: contentRevision,
       float_session_id: sale.float_session_id,
       customer_num: customerNum,
       customer_name_override: customerNameOverride,
@@ -1264,6 +1305,7 @@ export async function upsertPreviousOrderEditOutbox({
   organization,
   floatSessionId,
   cashAmount,
+  cashRound = false,
 }) {
   if (!cart?.held_order_num || !cart?.superseded_sale_id) {
     throw new Error("Not a previous-order edit session.");
@@ -1276,6 +1318,7 @@ export async function upsertPreviousOrderEditOutbox({
     floatSessionId,
     keepCart: true,
     skipClearDraft: true,
+    cashRound,
   });
 }
 
@@ -1553,8 +1596,16 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     offline_order: true,
     client_sale_uuid: row.client_sale_uuid,
   };
-  if (row.sync_kind === "previous_order_edit" && row.content_revision != null) {
-    body.content_revision = Number(row.content_revision);
+  // Always stamp content_revision for offline uploads so uuid:revision idempotency
+  // matches the latest queued payload (edits before sync are not frozen at rev 1).
+  const revision =
+    row.content_revision != null
+      ? Number(row.content_revision)
+      : body.content_revision != null
+        ? Number(body.content_revision)
+        : null;
+  if (revision != null && Number.isFinite(revision)) {
+    body.content_revision = revision;
   }
   if (extras.clear_pos_order_num) {
     delete body.pos_order_num;
@@ -1745,6 +1796,11 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
   if (row.sync_status === "synced") {
     throw new Error("That sale already synced. Reopen it with its server order number.");
   }
+  if (row.sync_status === "syncing") {
+    throw new Error(
+      "That sale is uploading now. Wait for sync to finish, then edit if it is still pending.",
+    );
+  }
 
   const sale = row.sale_payload ?? {};
   const lines = (row.lines?.length ? row.lines : sale.items ?? []).map((line) => {
@@ -1895,7 +1951,13 @@ export async function discardOutboxSale(clientSaleUuid) {
     }
     // Refresh reserved S00xx + Cash Sales sequence from server (includes cancelled max).
     try {
-      await ensurePosOfflineOrderNumbers({ force: true });
+      await ensurePosOfflineOrderNumbers({
+        force: true,
+        floatSessionId:
+          existing.sale_payload?.float_session_id ??
+          existing.checkout_body?.float_session_id ??
+          null,
+      });
     } catch {
       /* ignore when offline */
     }
@@ -1998,11 +2060,13 @@ export function outboxRowMatchesServerSale(row, sale, orderNum) {
   if (!sale?.id) return false;
 
   const clientUuid = row.client_sale_uuid;
-  const expectedSyncId =
-    row.sync_kind === "previous_order_edit" && row.content_revision != null
-      ? `${clientUuid}:${Number(row.content_revision)}`
-      : clientUuid;
+  const outboxRev = Number(row.content_revision ?? 0);
   const meta = sale.fulfillment_meta ?? {};
+  const stampedRev = Number(meta.pos_content_revision ?? 0);
+  const expectedSyncId =
+    outboxRev > 0 || row.sync_kind === "previous_order_edit"
+      ? `${clientUuid}:${outboxRev || 0}`
+      : clientUuid;
 
   // Exact idempotency stamp from a prior successful checkout of this outbox payload.
   if (expectedSyncId && meta.pos_sync_id && String(meta.pos_sync_id) === String(expectedSyncId)) {
@@ -2016,12 +2080,16 @@ export function outboxRowMatchesServerSale(row, sale, orderNum) {
   }
 
   // New offline sales: recover when the sale carries our client uuid (even if list
-  // search omitted pos_sync_id).
+  // search omitted pos_sync_id) — but only when the outbox is not a newer edit.
   const saleUuid =
     meta.client_sale_uuid ??
     meta.offline_client_sale_uuid ??
     sale.client_sale_uuid;
   if (clientUuid && saleUuid && String(saleUuid) === String(clientUuid)) {
+    if (outboxRev > stampedRev) {
+      // Cashier edited after an earlier upload attempt — must re-upload / supersede.
+      return false;
+    }
     return true;
   }
 
@@ -2048,7 +2116,45 @@ export function outboxRowMatchesServerSale(row, sale, orderNum) {
   return delta < 0.02;
 }
 
-/** If this offline sale already synced, recover the server row (avoid duplicate checkout). */
+/** Same offline client uuid as this outbox row (any content revision). */
+export function outboxRowSharesClientSaleUuid(row, sale) {
+  if (!row?.client_sale_uuid || !sale?.id) return false;
+  const meta = sale.fulfillment_meta ?? {};
+  const saleUuid =
+    meta.client_sale_uuid ??
+    meta.offline_client_sale_uuid ??
+    sale.client_sale_uuid;
+  return Boolean(saleUuid && String(saleUuid) === String(row.client_sale_uuid));
+}
+
+/** True when a queued offline sale was edited after an older revision already reached the server. */
+export function outboxNeedsSupersedeOfServerSale(row, sale) {
+  if (!sale?.id || row?.sync_kind === "previous_order_edit") return false;
+  if (outboxRowMatchesServerSale(row, sale, Number(row.order_num ?? sale.order_num))) {
+    return false;
+  }
+  const outboxRev = Number(row.content_revision ?? 0);
+  const stampedRev = Number(sale.fulfillment_meta?.pos_content_revision ?? 0);
+  if (outboxRowSharesClientSaleUuid(row, sale) && outboxRev > stampedRev) {
+    return true;
+  }
+  const rowTotal = Number(row.sale_payload?.order_total ?? row.checkout_body?.pay_now ?? 0);
+  const saleTotal = Number(sale.order_total ?? 0);
+  if (
+    outboxRowSharesClientSaleUuid(row, sale)
+    && outboxRev > 0
+    && rowTotal > 0
+    && Math.abs(rowTotal - saleTotal) > 0.02
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * If this offline sale already synced (or an older revision of it did), recover the
+ * server row so we mark synced / supersede instead of posting a duplicate.
+ */
 async function findExistingSyncedSaleForOutboxRow(row, orderNum) {
   const queries = new Set();
   if (orderNum) queries.add(String(orderNum));
@@ -2108,7 +2214,19 @@ async function findExistingSyncedSaleForOutboxRow(row, orderNum) {
     }
   }
 
-  return candidates.find((sale) => outboxRowMatchesServerSale(row, sale, orderNum)) ?? null;
+  const exact =
+    candidates.find((sale) => outboxRowMatchesServerSale(row, sale, orderNum)) ?? null;
+  if (exact) return exact;
+
+  // Older revision of the same offline uuid already on server — caller will supersede
+  // with the latest payload (keeps one order #; no Customer A/B cross-write).
+  if (row.sync_kind !== "previous_order_edit") {
+    const ancestor =
+      candidates.find((sale) => outboxNeedsSupersedeOfServerSale(row, sale)) ?? null;
+    if (ancestor) return ancestor;
+  }
+
+  return null;
 }
 
 const reportedOutboxFailureAt = new Map();
@@ -2164,7 +2282,7 @@ export async function syncPosOfflineOutbox({
   clientSaleUuid = null,
 } = {}) {
   return withPosOfflineExclusiveLock(async () => {
-    await idbReclaimStuckSyncingOutbox({ olderThanMs: 60_000 });
+    await idbReclaimStuckSyncingOutbox({ olderThanMs: 5 * 60_000 });
     let pending = await idbListPendingOutbox({ includeErrors });
     const onlyUuid = String(clientSaleUuid ?? "").trim();
     if (onlyUuid) {
@@ -2186,10 +2304,24 @@ export async function syncPosOfflineOutbox({
     });
 
     for (let index = 0; index < pending.length; index += 1) {
-      const row = pending[index];
-      const printedOrderNum = Number(row.order_num);
-      const claimed = await idbMarkOutboxSyncing(row.client_sale_uuid);
+      const listedRow = pending[index];
+      const printedOrderNum = Number(listedRow.order_num);
+      const claimed = await idbMarkOutboxSyncing(listedRow.client_sale_uuid);
       if (!claimed) continue;
+
+      // Always upload the latest IndexedDB payload — not the stale list snapshot.
+      const row = (await idbGetOutboxSale(listedRow.client_sale_uuid)) ?? listedRow;
+      if (row.sync_status === "editing") {
+        // Cashier opened the sale mid-claim — leave pending for later.
+        await idbPutOutboxSale({
+          ...row,
+          sync_status: "pending",
+          sync_started_at_ms: null,
+          revision_at_sync: null,
+          updated_at_ms: Date.now(),
+        });
+        continue;
+      }
 
       const current = index + 1;
       onProgress?.({
@@ -2211,7 +2343,27 @@ export async function syncPosOfflineOutbox({
         let usedOrderNum = printedOrderNum;
         let needsReprint = false;
 
-        if (!sale) {
+        if (sale && outboxNeedsSupersedeOfServerSale(row, sale)) {
+          // Older revision already on server; upload this edit as a superseding checkout
+          // under the same order number (not a second unrelated sale).
+          sale = await checkoutOutboxRow(
+            {
+              ...row,
+              sync_kind: "previous_order_edit",
+              superseded_sale_id: Number(sale.id),
+              server_cart_id: null,
+              server_sale_id: Number(sale.id),
+              checkout_body: {
+                ...(row.checkout_body ?? {}),
+                pay_now: 0,
+                offline_order: true,
+                content_revision: Number(row.content_revision ?? 0),
+                client_sale_uuid: row.client_sale_uuid,
+              },
+            },
+            printedOrderNum,
+          );
+        } else if (!sale) {
           try {
             sale = await checkoutOutboxRow(row, printedOrderNum);
           } catch (firstErr) {
@@ -2261,37 +2413,29 @@ export async function syncPosOfflineOutbox({
             } else if (isDuplicateOrderNumError(firstErr)) {
               sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
               if (!sale) {
-                // Server already has this org order # (or a colliding unique key). Drop the
-                // local outbox row so sync stops retrying / reporting — do not leave a
-                // stuck "duplicate" error.
-                await idbDeleteOutboxSale(row.client_sale_uuid);
-                const local = await idbGetLocalCart("active");
-                if (local?.offline_client_sale_uuid === row.client_sale_uuid) {
-                  await idbClearLocalCart("active");
-                }
-                done += 1;
-                results.push({
-                  ok: true,
-                  discarded_duplicate: true,
-                  order_num: printedOrderNum,
-                  printed_order_num: printedOrderNum,
-                  needs_reprint: false,
-                  client_sale_uuid: row.client_sale_uuid,
-                  sync_kind: row.sync_kind ?? "sale",
-                  sale: null,
-                });
-                onProgress?.({
-                  phase: "item_done",
-                  current,
-                  total,
-                  done,
-                  failed,
-                  ok: true,
-                  discarded_duplicate: true,
-                  order_num: printedOrderNum,
-                  message: `Cleared local duplicate order #${printedOrderNum} (${done} of ${total})…`,
-                });
-                continue;
+                // Do not delete the outbox — leave an error so the cashier can retry /
+                // investigate. Deleting caused silent loss when recovery missed the uuid.
+                throw firstErr;
+              }
+              // Older revision may already own this order # — apply the latest payload.
+              if (outboxNeedsSupersedeOfServerSale(row, sale)) {
+                sale = await checkoutOutboxRow(
+                  {
+                    ...row,
+                    sync_kind: "previous_order_edit",
+                    superseded_sale_id: Number(sale.id),
+                    server_cart_id: null,
+                    server_sale_id: Number(sale.id),
+                    checkout_body: {
+                      ...(row.checkout_body ?? {}),
+                      pay_now: 0,
+                      offline_order: true,
+                      content_revision: Number(row.content_revision ?? 0),
+                      client_sale_uuid: row.client_sale_uuid,
+                    },
+                  },
+                  printedOrderNum,
+                );
               }
             } else {
               throw firstErr;
@@ -2412,10 +2556,13 @@ export function isLocalFirstCashCheckout(body) {
 }
 
 /** Prepare for offline: catalog + order number pool + Cash Sales seq from server. */
-export async function preparePosOfflineReady() {
+export async function preparePosOfflineReady({ floatSessionId = null } = {}) {
   const catalog = await warmPosOfflineCatalog({ force: false });
   // Always hit reserve (count may be 0) so Ctrl+R reseeds Cash Sales past cancelled #s.
-  const numbers = await ensurePosOfflineOrderNumbers({ force: false });
+  const numbers = await ensurePosOfflineOrderNumbers({
+    force: false,
+    floatSessionId,
+  });
   return {
     catalogCount: catalog.count,
     orderNumbersAvailable: numbers.available,

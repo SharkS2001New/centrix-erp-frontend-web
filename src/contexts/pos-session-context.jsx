@@ -203,6 +203,16 @@ export function PosSessionProvider({ children }) {
         setStoredActiveSession(session);
         setActiveSession(session);
         await refreshReport(session.id);
+        // New float session → Cash Sales # starts at 1; refresh local peek immediately.
+        try {
+          const { ensurePosOfflineOrderNumbers } = await import("@/lib/pos-offline");
+          await ensurePosOfflineOrderNumbers({
+            force: true,
+            floatSessionId: session?.id ?? null,
+          });
+        } catch {
+          /* peek is best-effort — cart load also peeks next_pos_order_num */
+        }
         return session;
       } catch (e) {
         const message = e instanceof ApiError ? e.message : "Could not open session";
