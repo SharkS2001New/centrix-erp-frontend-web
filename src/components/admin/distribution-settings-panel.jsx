@@ -9,7 +9,7 @@ import {
   distributionFormFromApi,
   distributionPayloadFromForm,
 } from "@/lib/distribution-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
@@ -136,32 +136,22 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Assign driver on status">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={form.assign_on_status}
-                  onChange={(e) => setForm((f) => ({ ...f, assign_on_status: e.target.value }))}
+                  onChange={(next) => setForm((f) => ({ ...f, assign_on_status: next }))}
                   disabled={!form.enable_distribution_ops}
-                >
-                  {DISTRIBUTION_ASSIGN_STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  options={DISTRIBUTION_ASSIGN_STATUS_OPTIONS}
+                />
               </Field>
               <Field label="Set delivery date on">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={form.set_delivery_date_on}
-                  onChange={(e) => setForm((f) => ({ ...f, set_delivery_date_on: e.target.value }))}
+                  onChange={(next) => setForm((f) => ({ ...f, set_delivery_date_on: next }))}
                   disabled={!form.enable_distribution_ops}
-                >
-                  {DISTRIBUTION_DELIVERY_DATE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  options={DISTRIBUTION_DELIVERY_DATE_OPTIONS}
+                />
               </Field>
             </div>
             <Toggle

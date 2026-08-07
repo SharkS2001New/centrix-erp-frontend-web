@@ -32,6 +32,7 @@ import {
   ShieldIcon,
   TrashIcon,
   SearchInput,
+  SearchableSelect,
   TABLE_HEAD_ROW_CLASS,
   inputClassName,
   workspaceCardClassName,
@@ -942,14 +943,15 @@ export function AdminUsersScreen() {
             />
           </Field>
           <Field label="Access scope">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={form.access_scope}
-              onChange={(e) => setForm((f) => ({ ...f, access_scope: e.target.value }))}
-            >
-              <option value="org">Whole organization</option>
-              <option value="branch">Single branch only</option>
-            </select>
+              onChange={(v) => setForm((f) => ({ ...f, access_scope: v }))}
+              options={[
+                { value: "org", label: "Whole organization" },
+                { value: "branch", label: "Single branch only" },
+              ]}
+            />
           </Field>
           <Field label="Branch" required={form.access_scope === "branch" || showPosTillField}>
             <HrSearchableSelect

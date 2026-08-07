@@ -12,6 +12,7 @@ import { fetchCategoriesCached, fetchUsersCached } from "@/lib/reference-data-ca
 import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
 import {
   Field,
+  FilterSelect,
   inputClassName,
   PaginationBar,
 } from "@/components/catalog/catalog-shared";
@@ -296,30 +297,28 @@ export function PriceHistoryScreen() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
-        <select
+        <FilterSelect
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5]"
-        >
-          <option value="all">All categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={String(c.id)}>
-              {c.category_name}
-            </option>
-          ))}
-        </select>
-        <select
+          options={[
+            { value: "all", label: "All categories" },
+            ...categories.map((c) => ({
+              value: String(c.id),
+              label: c.category_name,
+            })),
+          ]}
+        />
+        <FilterSelect
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5]"
-        >
-          <option value="all">All users</option>
-          {users.map((u) => (
-            <option key={u.id} value={String(u.id)}>
-              {u.username ?? u.full_name}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "all", label: "All users" },
+            ...users.map((u) => ({
+              value: String(u.id),
+              label: u.username ?? u.full_name,
+            })),
+          ]}
+        />
       </div>
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">

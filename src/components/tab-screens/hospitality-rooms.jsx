@@ -14,6 +14,7 @@ import {
   inputClassName,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SECONDARY_BTN_CLASS,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
@@ -520,19 +521,20 @@ function HospitalityRoomsManager() {
             />
           </Field>
           <Field label="Room type">
-            <select
+            <SearchableSelect
               className={inputClassName}
               value={roomForm.room_type_id}
-              onChange={(e) => setRoomForm((p) => ({ ...p, room_type_id: e.target.value }))}
+              onChange={(v) => setRoomForm((p) => ({ ...p, room_type_id: v }))}
               required
-            >
-              <option value="">Select type…</option>
-              {roomTypes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              placeholder="Select type…"
+              options={[
+                { value: "", label: "Select type…" },
+                ...roomTypes.map((t) => ({
+                  value: String(t.id),
+                  label: t.name,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Floor">
             <input
@@ -542,17 +544,12 @@ function HospitalityRoomsManager() {
             />
           </Field>
           <Field label="Status">
-            <select
+            <SearchableSelect
               className={inputClassName}
               value={roomForm.status}
-              onChange={(e) => setRoomForm((p) => ({ ...p, status: e.target.value }))}
-            >
-              {ROOM_STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setRoomForm((p) => ({ ...p, status: v }))}
+              options={ROOM_STATUSES}
+            />
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -608,19 +605,20 @@ function HospitalityRoomsManager() {
           }}
         >
           <Field label="Room type">
-            <select
+            <SearchableSelect
               className={inputClassName}
               required
               value={planForm.room_type_id}
-              onChange={(e) => setPlanForm((p) => ({ ...p, room_type_id: e.target.value }))}
-            >
-              <option value="">Select…</option>
-              {roomTypes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setPlanForm((p) => ({ ...p, room_type_id: v }))}
+              placeholder="Select…"
+              options={[
+                { value: "", label: "Select…" },
+                ...roomTypes.map((t) => ({
+                  value: String(t.id),
+                  label: t.name,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Code">
             <input

@@ -17,6 +17,7 @@ import {
   inputClassName,
   PaginationBar,
   PencilIcon,
+  SearchableSelect,
   SearchInput,
   SECONDARY_BTN_CLASS,
   SortableColumnHeader,
@@ -690,21 +691,17 @@ export function ExpensesScreen() {
 
                   <Field label="Expense group">
                     <div className="flex gap-2">
-                      <select
+                      <SearchableSelect
                         value={form.expense_group_id}
-                        onChange={(e) => updateField("expense_group_id", e.target.value)}
+                        onChange={(v) => updateField("expense_group_id", v)}
                         required
                         className={`${inputClassName()} min-w-0 flex-1`}
-                      >
-                        <option value="" disabled>
-                          Select group
-                        </option>
-                        {groups.map((g) => (
-                          <option key={g.id} value={String(g.id)}>
-                            {g.group_name}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Select group"
+                        options={groups.map((g) => ({
+                          value: String(g.id),
+                          label: g.group_name,
+                        }))}
+                      />
                       <button
                         type="button"
                         onClick={() => {
@@ -743,21 +740,17 @@ export function ExpensesScreen() {
                   </Field>
 
                   <Field label="Payment method">
-                    <select
+                    <SearchableSelect
                       value={form.payment_method_id}
-                      onChange={(e) => updateField("payment_method_id", e.target.value)}
+                      onChange={(v) => updateField("payment_method_id", v)}
                       required
                       className={inputClassName()}
-                    >
-                      <option value="" disabled>
-                        Select method
-                      </option>
-                      {paymentMethods.map((pm) => (
-                        <option key={pm.id} value={String(pm.id)}>
-                          {pm.method_name}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Select method"
+                      options={paymentMethods.map((pm) => ({
+                        value: String(pm.id),
+                        label: pm.method_name,
+                      }))}
+                    />
                   </Field>
 
                   <Field label="Reference no.">

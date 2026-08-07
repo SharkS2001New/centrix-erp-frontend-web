@@ -7,7 +7,7 @@ import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platfor
 import { apiRequest, ApiError } from "@/lib/api";
 import { accountOptionLabel } from "@/lib/accounting-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { CatalogPageShell, PrimaryButton, SearchInput } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton, SearchInput, SearchableSelect } from "@/components/catalog/catalog-shared";
 
 export function AccountingAccountMappingsScreen() {
   const [localAccounts, setLocalAccounts] = useState([]);
@@ -156,19 +156,18 @@ export function AccountingAccountMappingsScreen() {
                     <td className="px-4 py-3 capitalize text-slate-600">{account.account_type}</td>
                     <td className="px-4 py-3">
                       {externalAccounts.length > 0 ? (
-                        <select
+                        <SearchableSelect
                           className="theme-input w-full max-w-md rounded-lg border px-3 py-2 text-sm"
                           value={selected}
-                          onChange={(e) => setMapping(code, e.target.value)}
-                        >
-                          <option value="">— Not mapped —</option>
-                          {externalAccounts.map((ext) => (
-                            <option key={ext.id} value={ext.id}>
-                              {ext.name}
-                              {ext.account_type ? ` (${ext.account_type})` : ""}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(v) => setMapping(code, v)}
+                          options={[
+                            { value: "", label: "— Not mapped —" },
+                            ...externalAccounts.map((ext) => ({
+                              value: String(ext.id),
+                              label: `${ext.name}${ext.account_type ? ` (${ext.account_type})` : ""}`,
+                            })),
+                          ]}
+                        />
                       ) : (
                         <input
                           className="theme-input w-full max-w-md rounded-lg border px-3 py-2 text-sm"

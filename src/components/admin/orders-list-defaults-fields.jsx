@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import {
   ORDER_LIST_COLUMN_OPTIONS,
@@ -167,18 +167,12 @@ export function OrdersListDefaultsFields({
             </p>
           </Field>
           <Field label="Default sort order">
-            <select
-              id={`${idPrefix}-sort`}
+            <SearchableSelect
               className={inputClassName()}
               value={sort}
-              onChange={(e) => patch({ orders_list_sort: e.target.value })}
-            >
-              {ORDERS_LIST_SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => patch({ orders_list_sort: next })}
+              options={ORDERS_LIST_SORT_OPTIONS}
+            />
           </Field>
         </div>
       ) : null}

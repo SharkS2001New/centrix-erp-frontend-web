@@ -1,5 +1,6 @@
 "use client";
 
+import { forwardRef } from "react";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
 /** Default form control class (mirrors catalog-shared inputClassName, avoids circular import). */
@@ -12,19 +13,22 @@ const FORM_INPUT_CLASS =
  *
  * `nativeEvent`: when true, onChange receives `{ target: { value } }` (FilterSelect-compatible).
  */
-export function SearchableSelect({
-  value,
-  onChange,
-  options = [],
-  placeholder = "— Select —",
-  searchPlaceholder = "Search…",
-  required = false,
-  disabled = false,
-  loading = false,
-  className = "",
-  emptyLabel = "No matches",
-  nativeEvent = false,
-}) {
+export const SearchableSelect = forwardRef(function SearchableSelect(
+  {
+    value,
+    onChange,
+    options = [],
+    placeholder = "— Select —",
+    searchPlaceholder = "Search…",
+    required = false,
+    disabled = false,
+    loading = false,
+    className = "",
+    emptyLabel = "No matches",
+    nativeEvent = false,
+  },
+  ref,
+) {
   const inputClassName = className.trim()
     ? className.includes("theme-input")
       ? className.trim()
@@ -33,6 +37,7 @@ export function SearchableSelect({
 
   return (
     <PosSearchableSelect
+      ref={ref}
       value={value}
       onChange={(next) => {
         if (nativeEvent) {
@@ -53,4 +58,4 @@ export function SearchableSelect({
       inputClassName={inputClassName}
     />
   );
-}
+});

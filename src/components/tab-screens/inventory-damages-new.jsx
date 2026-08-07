@@ -9,7 +9,7 @@ import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchBranchesCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import {
   DamageMeasureSelect,
@@ -155,23 +155,24 @@ export function InventoryDamagesNewScreen() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Branch">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={branchId}
-              onChange={(e) => {
-                setBranchId(e.target.value);
+              onChange={(v) => {
+                setBranchId(v);
                 setLines([]);
               }}
               disabled={!canPickBranch && Boolean(user?.branch_id)}
               required
-            >
-              <option value="">Select branch…</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.branch_name ?? b.name ?? b.branch_code ?? `Branch ${b.id}`}
-                </option>
-              ))}
-            </select>
+              placeholder="Select branch…"
+              options={[
+                { value: "", label: "Select branch…" },
+                ...branches.map((b) => ({
+                  value: String(b.id),
+                  label: b.branch_name ?? b.name ?? b.branch_code ?? `Branch ${b.id}`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Reason">
             <input
@@ -233,15 +234,15 @@ export function InventoryDamagesNewScreen() {
                 />
               </td>
               <td className="px-3 py-2">
-                <select
+                <SearchableSelect
                   className={`${inputClassName()} text-xs`}
                   value={line.stock_location}
-                  onChange={(e) => updateLine(index, { stock_location: e.target.value })}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <option value="shop">Shop</option>
-                  <option value="store">Store</option>
-                </select>
+                  onChange={(stock_location) => updateLine(index, { stock_location })}
+                  options={[
+                    { value: "shop", label: "Shop" },
+                    { value: "store", label: "Store" },
+                  ]}
+                />
               </td>
             </>
             );

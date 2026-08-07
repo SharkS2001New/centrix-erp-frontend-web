@@ -5,11 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import {
-  CatalogPageShell,
-  PrimaryButton,
-  SECONDARY_BTN_CLASS,
-} from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton, SECONDARY_BTN_CLASS, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { PLATFORM_BILLING_MODULES } from "@/lib/platform-invoices";
 import {
   LICENSE_BASIS_OPTIONS,
@@ -266,11 +262,13 @@ export default function PlatformPlansPage() {
                 </label>
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Interval</span>
-                  <select className={inputClass} value={form.interval} onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}>
-                    {PLAN_INTERVALS.map((row) => (
-                      <option key={row.id} value={row.id}>{row.label}</option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+  className={inputClass}
+  value={form.interval}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}
+  options={PLAN_INTERVALS.map((row) => ({ value: row.id, label: row.label }))}
+/>
                 </label>
               </div>
               <fieldset>
@@ -342,16 +340,13 @@ export default function PlatformPlansPage() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Auto-draft invoice template</span>
-                <select
-                  className={inputClass}
-                  value={form.auto_invoice_template_id}
-                  onChange={(e) => setForm((f) => ({ ...f, auto_invoice_template_id: e.target.value }))}
-                >
-                  <option value="">— None —</option>
-                  {templates.map((tpl) => (
-                    <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+  className={inputClass}
+  value={form.auto_invoice_template_id}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, auto_invoice_template_id: e.target.value }))}
+  options={templates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
+/>
               </label>
               <div className="space-y-3">
                 <p className="text-xs font-medium text-slate-600">Licensed Centrix applications</p>

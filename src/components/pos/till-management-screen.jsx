@@ -19,6 +19,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SearchInput,
   StatCard,
   formatShortDate,
@@ -873,32 +874,34 @@ export function TillManagementScreen() {
                           <td className="px-4 py-3 text-slate-700">{branchById.get(till.branch_id)?.branch_name ?? "—"}</td>
                           <td className="px-4 py-3 text-slate-600">{tillLockLabel(till, userById) ?? "None"}</td>
                           <td className="px-4 py-3">
-                            <select
+                            <SearchableSelect
                               className="w-full min-w-[8rem] rounded-md border border-slate-200 px-2 py-1.5 text-sm"
                               value={draft.lock_mode}
-                              onChange={(e) => setLockDraft(till.id, till, { lock_mode: e.target.value })}
-                            >
-                              <option value="">No lock</option>
-                              <option value="user">Lock to user</option>
-                              <option value="computer">Lock to computer</option>
-                            </select>
+                              onChange={(v) => setLockDraft(till.id, till, { lock_mode: v })}
+                              options={[
+                                { value: "", label: "No lock" },
+                                { value: "user", label: "Lock to user" },
+                                { value: "computer", label: "Lock to computer" },
+                              ]}
+                            />
                           </td>
                           <td className="px-4 py-3">
                             {draft.lock_mode === "user" ? (
-                              <select
+                              <SearchableSelect
                                 className="w-full min-w-[10rem] rounded-md border border-slate-200 px-2 py-1.5 text-sm"
                                 value={draft.cashier_id}
-                                onChange={(e) => setLockDraft(till.id, till, { cashier_id: e.target.value })}
-                              >
-                                <option value="">Select cashier</option>
-                                {users
-                                  .filter((u) => u?.is_active !== false)
-                                  .map((u) => (
-                                    <option key={u.id} value={u.id}>
-                                      {u.full_name ?? u.username ?? `User #${u.id}`}
-                                    </option>
-                                  ))}
-                              </select>
+                                onChange={(v) => setLockDraft(till.id, till, { cashier_id: v })}
+                                placeholder="Select cashier"
+                                options={[
+                                  { value: "", label: "Select cashier" },
+                                  ...users
+                                    .filter((u) => u?.is_active !== false)
+                                    .map((u) => ({
+                                      value: String(u.id),
+                                      label: u.full_name ?? u.username ?? `User #${u.id}`,
+                                    })),
+                                ]}
+                              />
                             ) : draft.lock_mode === "computer" ? (
                               <input
                                 className="w-full min-w-[12rem] rounded-md border border-slate-200 px-2 py-1.5 text-sm font-mono"

@@ -9,7 +9,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { fetchSuppliersCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import {
   formatLpoKes,
@@ -452,48 +452,49 @@ export function InventoryReceiptsReceiveScreen() {
           <form onSubmit={submitLpo} className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Supplier">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={form.supplier_id}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, supplier_id: e.target.value, lpo_no: "" }))
-                  }
-                >
-                  <option value="">Select supplier…</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.supplier_name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm((p) => ({ ...p, supplier_id: v, lpo_no: "" }))}
+                  placeholder="Select supplier…"
+                  options={[
+                    { value: "", label: "Select supplier…" },
+                    ...suppliers.map((s) => ({
+                      value: String(s.id),
+                      label: s.supplier_name,
+                    })),
+                  ]}
+                />
               </Field>
               <Field label="Purchase order">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={form.lpo_no}
-                  onChange={(e) => setForm((p) => ({ ...p, lpo_no: e.target.value }))}
+                  onChange={(v) => setForm((p) => ({ ...p, lpo_no: v }))}
                   disabled={!form.supplier_id}
-                >
-                  <option value="">Select purchase order…</option>
-                  {lpoOptions.map((l) => (
-                    <option key={l.lpo_no} value={l.lpo_no}>
-                      {lpoRowDisplayNumber(l)}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select purchase order…"
+                  options={[
+                    { value: "", label: "Select purchase order…" },
+                    ...lpoOptions.map((l) => ({
+                      value: l.lpo_no,
+                      label: lpoRowDisplayNumber(l),
+                    })),
+                  ]}
+                />
               </Field>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Stock location">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={form.stock_location}
-                  onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-                >
-                  <option value="store">Store / warehouse</option>
-                  <option value="shop">Shop</option>
-                </select>
+                  onChange={(v) => setForm((p) => ({ ...p, stock_location: v }))}
+                  options={[
+                    { value: "store", label: "Store / warehouse" },
+                    { value: "shop", label: "Shop" },
+                  ]}
+                />
               </Field>
               <Field label="Receipt reference">
                 <input
@@ -714,14 +715,15 @@ export function InventoryReceiptsReceiveScreen() {
           <form onSubmit={submitManual} className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Stock location">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={form.stock_location}
-                  onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-                >
-                  <option value="store">Store / warehouse</option>
-                  <option value="shop">Shop</option>
-                </select>
+                  onChange={(v) => setForm((p) => ({ ...p, stock_location: v }))}
+                  options={[
+                    { value: "store", label: "Store / warehouse" },
+                    { value: "shop", label: "Shop" },
+                  ]}
+                />
               </Field>
               <Field label="Receipt reference (optional)">
                 <input

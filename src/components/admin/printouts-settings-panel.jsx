@@ -30,7 +30,7 @@ import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-
 import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview";
 import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import {
   ORG_DOCUMENT_DESIGN_TEMPLATES,
   orgDocumentTemplateMeta,
@@ -53,17 +53,13 @@ function DocumentTemplateSelect({
   return (
     <div className="space-y-1">
       <Field label={label}>
-        <select
-          className={inputClassName()}
-          value={value}
-          onChange={(e) => setForm((f) => ({ ...f, [settingKey]: e.target.value }))}
-        >
-          {ORG_DOCUMENT_DESIGN_TEMPLATES.map((tpl) => (
-            <option key={tpl.id} value={tpl.id}>
-              {tpl.label}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect
+  className={inputClassName()}
+  value={value}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, [settingKey]: e.target.value }))}
+  options={ORG_DOCUMENT_DESIGN_TEMPLATES.map((tpl) => ({ value: tpl.id, label: tpl.label }))}
+/>
       </Field>
       {meta?.description ? (
         <p className="text-xs text-slate-500">{meta.description}</p>
@@ -263,14 +259,13 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
             {showThermal ? (
               <div className="space-y-3 border-t border-slate-200 pt-4">
                 <Field label="Receipt copies">
-                  <select
-                    className={inputClassName()}
-                    value={form.receipt_copies}
-                    onChange={(e) => setForm((f) => ({ ...f, receipt_copies: e.target.value }))}
-                  >
-                    <option value="1">Single receipt</option>
-                    <option value="2">Double receipt (customer + merchant)</option>
-                  </select>
+                  <SearchableSelect
+  className={inputClassName()}
+  value={form.receipt_copies}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, receipt_copies: e.target.value }))}
+  options={[{ value: "1", label: "Single receipt" }, { value: "2", label: "Double receipt (customer + merchant)" }]}
+/>
                   <p className="mt-1 text-xs text-slate-500">
                     How many copies print when staff print an order to a thermal printer.
                   </p>
@@ -310,17 +305,13 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
             onChange={(v) => setForm((f) => ({ ...f, show_organization_on_documents: v }))}
           />
           <Field label="Report and document header">
-            <select
-              className={inputClassName()}
-              value={form.document_header_display}
-              onChange={(e) => setForm((f) => ({ ...f, document_header_display: e.target.value }))}
-            >
-              {DOCUMENT_HEADER_DISPLAY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+  className={inputClassName()}
+  value={form.document_header_display}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, document_header_display: e.target.value }))}
+  options={DOCUMENT_HEADER_DISPLAY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+/>
           </Field>
           <p className="text-xs text-slate-500">
             Open each document tab (receipt, invoice, proforma, etc.) to choose whether that printout shows the
@@ -335,15 +326,13 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections, organization =
 function OrderPrintFormatField({ form, setForm }) {
   return (
     <Field label="Order print format">
-      <select
-        className={inputClassName()}
-        value={form.order_document_type}
-        onChange={(e) => setForm((f) => ({ ...f, order_document_type: e.target.value }))}
-      >
-        <option value="receipt">Thermal receipt only</option>
-        <option value="invoice">A4 sales invoice only</option>
-        <option value="both">Both — choose at print time</option>
-      </select>
+      <SearchableSelect
+  className={inputClassName()}
+  value={form.order_document_type}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, order_document_type: e.target.value }))}
+  options={[{ value: "receipt", label: "Thermal receipt only" }, { value: "invoice", label: "A4 sales invoice only" }, { value: "both", label: "Both — choose at print time" }]}
+/>
       <p className="mt-1 text-xs text-slate-500">
         Thermal receipt only shows the thermal printout tab. A4 invoice only shows the A4 tab. Both enables
         both tabs and lets staff choose at print time.
@@ -857,15 +846,13 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
         description="80mm guest checks for Hotel POS — same thermal customization as retail (fonts, logo, footer, payment instructions), laid out like a hotel F&B bill."
       />
       <Field label="Receipt copies">
-        <select
-          className={inputClassName()}
-          value={form.check_receipt_copies}
-          onChange={(e) => setForm((f) => ({ ...f, check_receipt_copies: e.target.value }))}
-        >
-          <option value="1">Single receipt</option>
-          <option value="2">Double receipt</option>
-          <option value="3">Triple receipt</option>
-        </select>
+        <SearchableSelect
+  className={inputClassName()}
+  value={form.check_receipt_copies}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, check_receipt_copies: e.target.value }))}
+  options={[{ value: "1", label: "Single receipt" }, { value: "2", label: "Double receipt" }, { value: "3", label: "Triple receipt" }]}
+/>
       </Field>
       <PrintFontSettingsFields
         form={form}

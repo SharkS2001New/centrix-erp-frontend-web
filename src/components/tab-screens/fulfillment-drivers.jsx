@@ -25,6 +25,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SECONDARY_BTN_CLASS,
   SearchInput,
   StatCard,
@@ -518,19 +519,18 @@ export function FulfillmentDriversScreen() {
         submitLabel={drawerMode === "edit" ? "Save changes" : "Save driver"}
       >
         <Field label="Employee record (optional)">
-          <select
+          <SearchableSelect
             value={form.employee_id}
-            onChange={(e) => updateField("employee_id", e.target.value)}
+            onChange={(v) => updateField("employee_id", v)}
             className={inputClassName()}
-          >
-            <option value="">Standalone driver / not an employee</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={String(employee.id)}>
-                {employee.full_name ?? employee.employee_code ?? `Employee #${employee.id}`}
-                {employee.employee_code ? ` · ${employee.employee_code}` : ""}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "Standalone driver / not an employee" },
+              ...employees.map((employee) => ({
+                value: String(employee.id),
+                label: `${employee.full_name ?? employee.employee_code ?? `Employee #${employee.id}`}${employee.employee_code ? ` · ${employee.employee_code}` : ""}`,
+              })),
+            ]}
+          />
           <p className="mt-1 text-xs text-slate-500">
             If the driver is already an HR employee, link this record instead of creating duplicate details.
           </p>
@@ -567,47 +567,47 @@ export function FulfillmentDriversScreen() {
           />
         </Field>
         <Field label="Default route (optional)">
-          <select
+          <SearchableSelect
             value={form.default_route_id}
-            onChange={(e) => updateField("default_route_id", e.target.value)}
+            onChange={(v) => updateField("default_route_id", v)}
             className={inputClassName()}
-          >
-            <option value="">None</option>
-            {routes.map((r) => (
-              <option key={r.id} value={String(r.id)}>
-                {r.route_name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "None" },
+              ...routes.map((r) => ({
+                value: String(r.id),
+                label: r.route_name,
+              })),
+            ]}
+          />
         </Field>
         <Field label="Default vehicle (optional)">
-          <select
+          <SearchableSelect
             value={form.default_vehicle_id}
-            onChange={(e) => updateField("default_vehicle_id", e.target.value)}
+            onChange={(v) => updateField("default_vehicle_id", v)}
             className={inputClassName()}
-          >
-            <option value="">None</option>
-            {vehicles.map((v) => (
-              <option key={v.id} value={String(v.id)}>
-                {v.vehicle_name || v.plate_number || v.vehicle_code}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "None" },
+              ...vehicles.map((v) => ({
+                value: String(v.id),
+                label: v.vehicle_name || v.plate_number || v.vehicle_code,
+              })),
+            ]}
+          />
         </Field>
         <Field label="Linked user (optional)">
-          <select
+          <SearchableSelect
             value={form.user_id}
-            onChange={(e) => updateField("user_id", e.target.value)}
+            onChange={(v) => updateField("user_id", v)}
             disabled={Boolean(form.employee_id && form.user_id)}
             className={inputClassName()}
-          >
-            <option value="">None</option>
-            {users.map((u) => (
-              <option key={u.id} value={String(u.id)}>
-                {u.full_name ?? u.username}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "None" },
+              ...users.map((u) => ({
+                value: String(u.id),
+                label: u.full_name ?? u.username,
+              })),
+            ]}
+          />
         </Field>
         <div className="flex items-center justify-between border-t border-slate-200 pt-3">
           <span className="text-sm text-slate-900">Status</span>

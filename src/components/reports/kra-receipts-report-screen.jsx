@@ -15,6 +15,7 @@ import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { isOrgAdministrator } from "@/lib/admin-scope";
 import {
   PaginationBar,
+  SearchableSelect,
   SECONDARY_BTN_CLASS,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
@@ -779,18 +780,13 @@ export function KraReceiptsReportScreen({ definition }) {
             </p>
             <label className="mt-4 block text-sm font-medium text-slate-700">
               Refund reason
-              <select
+              <SearchableSelect
                 className="theme-input mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                 value={creditReasonCode}
                 disabled={crediting}
-                onChange={(e) => setCreditReasonCode(e.target.value)}
-              >
-                {KRA_REFUND_REASON_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                onChange={setCreditReasonCode}
+                options={KRA_REFUND_REASON_OPTIONS}
+              />
             </label>
             {crediting ? (
               <div className="mt-4 space-y-2" aria-live="polite">

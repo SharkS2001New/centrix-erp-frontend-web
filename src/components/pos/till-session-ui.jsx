@@ -22,6 +22,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 
@@ -156,52 +157,55 @@ export function TillFormDrawer({
         />
       </Field>
       <Field label="Branch">
-        <select
+        <SearchableSelect
           className={inputClassName()}
           value={form.branch_id}
-          onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value }))}
+          onChange={(v) => setForm((f) => ({ ...f, branch_id: v }))}
           required
-        >
-          <option value="">Select branch</option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.branch_name}
-            </option>
-          ))}
-        </select>
+          placeholder="Select branch"
+          options={[
+            { value: "", label: "Select branch" },
+            ...branches.map((b) => ({
+              value: String(b.id),
+              label: b.branch_name,
+            })),
+          ]}
+        />
       </Field>
       <Field label="Till lock (optional)">
-        <select
+        <SearchableSelect
           className={inputClassName()}
           value={form.lock_mode}
-          onChange={(e) => setForm((f) => ({
+          onChange={(v) => setForm((f) => ({
             ...f,
-            lock_mode: e.target.value,
-            cashier_id: e.target.value === "user" ? f.cashier_id : "",
-            ip_address: e.target.value === "computer" ? f.ip_address : "",
+            lock_mode: v,
+            cashier_id: v === "user" ? f.cashier_id : "",
+            ip_address: v === "computer" ? f.ip_address : "",
           }))}
-        >
-          <option value="">No lock — any cashier can use</option>
-          <option value="user">Lock to cashier</option>
-          <option value="computer">Lock to computer</option>
-        </select>
+          options={[
+            { value: "", label: "No lock — any cashier can use" },
+            { value: "user", label: "Lock to cashier" },
+            { value: "computer", label: "Lock to computer" },
+          ]}
+        />
       </Field>
       {form.lock_mode === "user" ? (
         <Field label="Cashier">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={form.cashier_id}
-            onChange={(e) => setForm((f) => ({ ...f, cashier_id: e.target.value }))}
-          >
-            <option value="">Select cashier</option>
-            {users
-              .filter((u) => u?.is_active !== false)
-              .map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name ?? u.username ?? `User #${u.id}`}
-                </option>
-              ))}
-          </select>
+            onChange={(v) => setForm((f) => ({ ...f, cashier_id: v }))}
+            placeholder="Select cashier"
+            options={[
+              { value: "", label: "Select cashier" },
+              ...users
+                .filter((u) => u?.is_active !== false)
+                .map((u) => ({
+                  value: String(u.id),
+                  label: u.full_name ?? u.username ?? `User #${u.id}`,
+                })),
+            ]}
+          />
         </Field>
       ) : null}
       {form.lock_mode === "computer" ? (
@@ -343,20 +347,19 @@ export function OpenSessionModal({
                 }
               />
             ) : (
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={tillId}
-                onChange={(e) => {
-                  setTillId(e.target.value);
-                }}
-              >
-                <option value="">Select till</option>
-                {tills.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.till_name || t.till_number} ({t.till_number})
-                  </option>
-                ))}
-              </select>
+                onChange={setTillId}
+                placeholder="Select till"
+                options={[
+                  { value: "", label: "Select till" },
+                  ...tills.map((t) => ({
+                    value: String(t.id),
+                    label: `${t.till_name || t.till_number} (${t.till_number})`,
+                  })),
+                ]}
+              />
             )}
           </Field>
           <Field label="Cashier (logged-in user)">
@@ -367,19 +370,17 @@ export function OpenSessionModal({
             />
           </Field>
           <Field label="Payment type">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={paymentType}
-              onChange={(e) => setPaymentType(e.target.value)}
+              onChange={setPaymentType}
               required={requireTillFloat}
               disabled={canResume || !requireTillFloat}
-            >
-              {FLOAT_PAYMENT_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {floatPaymentTypeLabel(type)}
-                </option>
-              ))}
-            </select>
+              options={FLOAT_PAYMENT_TYPES.map((type) => ({
+                value: type,
+                label: floatPaymentTypeLabel(type),
+              }))}
+            />
           </Field>
           {requireTillFloat ? (
             <>
@@ -494,11 +495,15 @@ export function AddFloatModal({ open, onClose, onSaved, session, busy, error }) 
 
         <div className="mt-5 space-y-4">
           <Field label="Payment type">
-            <select className={inputClassName()} value={paymentType} onChange={(e) => setPaymentType(e.target.value)}>
-              {FLOAT_PAYMENT_TYPES.map((type) => (
-                <option key={type} value={type}>{floatPaymentTypeLabel(type)}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              className={inputClassName()}
+              value={paymentType}
+              onChange={setPaymentType}
+              options={FLOAT_PAYMENT_TYPES.map((type) => ({
+                value: type,
+                label: floatPaymentTypeLabel(type),
+              }))}
+            />
           </Field>
           <Field label="Amount to add (KES)">
             <input
@@ -633,16 +638,16 @@ export function RecordSessionExpenseModal({
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
           ) : null}
           <Field label="Category">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={expenseGroupId}
-              onChange={(e) => setExpenseGroupId(e.target.value)}
+              onChange={setExpenseGroupId}
               disabled={busy}
-            >
-              {expenseGroups.map((group) => (
-                <option key={group.id} value={group.id}>{group.group_name}</option>
-              ))}
-            </select>
+              options={expenseGroups.map((group) => ({
+                value: String(group.id),
+                label: group.group_name,
+              }))}
+            />
           </Field>
           <Field label="Description">
             <input
@@ -851,16 +856,16 @@ export function FloatBreakdownModal({
                 </p>
               ) : null}
               <Field label="Payment type">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={paymentType}
-                  onChange={(e) => setPaymentType(e.target.value)}
+                  onChange={setPaymentType}
                   disabled={addFloatBusy}
-                >
-                  {FLOAT_PAYMENT_TYPES.map((type) => (
-                    <option key={type} value={type}>{floatPaymentTypeLabel(type)}</option>
-                  ))}
-                </select>
+                  options={FLOAT_PAYMENT_TYPES.map((type) => ({
+                    value: type,
+                    label: floatPaymentTypeLabel(type),
+                  }))}
+                />
               </Field>
               <Field label="Amount to add (KES)">
                 <input
@@ -910,16 +915,13 @@ export function FloatBreakdownModal({
                 </p>
               ) : null}
               <Field label="Type">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={movementType}
-                  onChange={(e) => setMovementType(e.target.value)}
+                  onChange={setMovementType}
                   disabled={cashMovementBusy}
-                >
-                  {CASH_MOVEMENT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                  options={CASH_MOVEMENT_OPTIONS}
+                />
                 {cashMovementHint(movementType) ? (
                   <p className="mt-1.5 text-xs text-slate-500">{cashMovementHint(movementType)}</p>
                 ) : null}

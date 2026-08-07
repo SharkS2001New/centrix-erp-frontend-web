@@ -7,7 +7,9 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   CatalogPageShell,
+  SearchableSelect,
   formatShortDate,
+  inputClassName,
   parseDecimalInput,
 } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
@@ -163,19 +165,17 @@ export function AccountingBankReconciliationScreen() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-700">Bank account</span>
-              <select
+              <SearchableSelect
                 value={form.chart_of_account_id}
-                onChange={(e) => setForm((prev) => ({ ...prev, chart_of_account_id: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                onChange={(v) => setForm((prev) => ({ ...prev, chart_of_account_id: v }))}
+                className={inputClassName()}
                 required
-              >
-                <option value="">Select account…</option>
-                {bankAccounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {accountOptionLabel(account)}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select account…"
+                options={bankAccounts.map((account) => ({
+                  value: String(account.id),
+                  label: accountOptionLabel(account),
+                }))}
+              />
             </label>
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-slate-700">Title</span>

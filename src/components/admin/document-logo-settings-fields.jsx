@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   DOCUMENT_LOGO_POSITIONS,
   DOCUMENT_LOGO_SIZES,
@@ -73,30 +73,20 @@ export function DocumentLogoSettingsFields({
       {show ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Logo position">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={position}
-              onChange={(e) => setForm((f) => ({ ...f, [keys.position]: e.target.value }))}
-            >
-              {positions.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.label}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => setForm((f) => ({ ...f, [keys.position]: next }))}
+              options={positions.map((row) => ({ value: row.id, label: row.label }))}
+            />
           </Field>
           <Field label="Logo size">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={size}
-              onChange={(e) => setForm((f) => ({ ...f, [keys.size]: e.target.value }))}
-            >
-              {sizes.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.label}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => setForm((f) => ({ ...f, [keys.size]: next }))}
+              options={sizes.map((row) => ({ value: row.id, label: row.label }))}
+            />
           </Field>
         </div>
       ) : null}

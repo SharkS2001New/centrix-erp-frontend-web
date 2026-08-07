@@ -34,6 +34,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SECONDARY_BTN_CLASS,
   SearchInput,
   TABLE_BODY_ROW_CLASS,
@@ -746,10 +747,9 @@ export function UomsScreen() {
                 />
               </Field>
               <Field label="Category">
-                <select
+                <SearchableSelect
                   value={form.uom_type}
-                  onChange={(e) => {
-                    const value = e.target.value;
+                  onChange={(value) => {
                     updateField("uom_type", value);
                     const small = defaultSmallLabelForType(value);
                     if (!form.full_name.trim()) {
@@ -759,13 +759,8 @@ export function UomsScreen() {
                   }}
                   required
                   className={inputClassName()}
-                >
-                  {typeOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  options={typeOptions}
+                />
               </Field>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-500">
@@ -815,18 +810,13 @@ export function UomsScreen() {
                 />
               </Field>
               <Field label="Category">
-                <select
+                <SearchableSelect
                   value={form.uom_type}
-                  onChange={(e) => updateField("uom_type", e.target.value)}
+                  onChange={(v) => updateField("uom_type", v)}
                   required
                   className={inputClassName()}
-                >
-                  {typeOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  options={typeOptions}
+                />
               </Field>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-500">
@@ -851,18 +841,13 @@ export function UomsScreen() {
             />
           </Field>
           <Field label="Category">
-            <select
+            <SearchableSelect
               value={form.uom_type}
-              onChange={(e) => updateField("uom_type", e.target.value)}
+              onChange={(v) => updateField("uom_type", v)}
               required
               className={inputClassName()}
-            >
-              {typeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              options={typeOptions}
+            />
           </Field>
         </div>
 

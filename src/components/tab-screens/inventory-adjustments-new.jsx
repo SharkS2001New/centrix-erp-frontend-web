@@ -10,7 +10,7 @@ import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { isStockAdjustmentApprovalEnabled } from "@/lib/sales-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import {
   DamageMeasureSelect,
@@ -181,15 +181,15 @@ export function InventoryAdjustmentsNewScreen() {
             return (
               <>
                 <td className="px-3 py-2">
-                  <select
+                  <SearchableSelect
                     className={`${inputClassName()} text-xs`}
                     value={line.direction}
-                    onChange={(e) => updateLine(index, { direction: e.target.value })}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value="increase">Increase (+)</option>
-                    <option value="decrease">Decrease (−)</option>
-                  </select>
+                    onChange={(direction) => updateLine(index, { direction })}
+                    options={[
+                      { value: "increase", label: "Increase (+)" },
+                      { value: "decrease", label: "Decrease (−)" },
+                    ]}
+                  />
                 </td>
                 <td className="px-3 py-2">
                   <DamageMeasureSelect
@@ -211,15 +211,15 @@ export function InventoryAdjustmentsNewScreen() {
                   />
                 </td>
                 <td className="px-3 py-2">
-                  <select
+                  <SearchableSelect
                     className={`${inputClassName()} text-xs`}
                     value={line.stock_location}
-                    onChange={(e) => updateLine(index, { stock_location: e.target.value })}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value="shop">Shop</option>
-                    <option value="store">Store</option>
-                  </select>
+                    onChange={(stock_location) => updateLine(index, { stock_location })}
+                    options={[
+                      { value: "shop", label: "Shop" },
+                      { value: "store", label: "Store" },
+                    ]}
+                  />
                 </td>
               </>
             );

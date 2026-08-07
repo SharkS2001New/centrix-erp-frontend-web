@@ -6,7 +6,7 @@ import {
   procurementFormFromApi,
   procurementPayloadFromForm,
 } from "@/lib/procurement-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
@@ -75,14 +75,15 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
               />
             </Field>
             <Field label="Default receive location">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={form.default_receive_location}
-                onChange={(e) => setForm((f) => ({ ...f, default_receive_location: e.target.value }))}
-              >
-                <option value="store">Store / warehouse</option>
-                <option value="shop">Shop floor</option>
-              </select>
+                onChange={(next) => setForm((f) => ({ ...f, default_receive_location: next }))}
+                options={[
+                  { value: "store", label: "Store / warehouse" },
+                  { value: "shop", label: "Shop floor" },
+                ]}
+              />
             </Field>
             <Toggle
               label="Email supplier when LPO is issued"

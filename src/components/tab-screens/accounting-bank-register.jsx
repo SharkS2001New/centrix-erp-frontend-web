@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
-import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, FilterSelect, formatShortDate } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { notifyError } from "@/lib/notify";
 
@@ -74,17 +74,15 @@ export function AccountingBankRegisterScreen() {
       <div className="theme-panel mb-6 grid gap-4 rounded-xl border p-4 shadow-sm md:grid-cols-4">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600">Account</label>
-          <select
+          <FilterSelect
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          >
-            {bankAccounts.map((item) => (
-              <option key={item.id} value={item.id}>
-                {accountOptionLabel(item)}
-              </option>
-            ))}
-          </select>
+            className="w-full"
+            options={bankAccounts.map((item) => ({
+              value: String(item.id),
+              label: accountOptionLabel(item),
+            }))}
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600">From</label>

@@ -6,7 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { PLATFORM_BILLING_MODULES, DEFAULT_PLATFORM_SELLER } from "@/lib/platform-invoices";
 import {
@@ -395,18 +395,22 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Type">
-                <select className={inputClass} value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}>
-                  {CONTRACT_KINDS.map((row) => (
-                    <option key={row.id} value={row.id}>{row.label}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+  className={inputClass}
+  value={form.kind}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}
+  options={CONTRACT_KINDS.map((row) => ({ value: row.id, label: row.label }))}
+/>
               </Field>
               <Field label="Status">
-                <select className={inputClass} value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-                  {CONTRACT_STATUSES.map((row) => (
-                    <option key={row.id} value={row.id}>{row.label}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+  className={inputClass}
+  value={form.status}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+  options={CONTRACT_STATUSES.map((row) => ({ value: row.id, label: row.label }))}
+/>
               </Field>
               <div className="sm:col-span-2">
                 <Field label="Title">
@@ -414,10 +418,11 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
                 </Field>
               </div>
               <Field label="Organization (optional until provision)">
-                <select
-                  className={inputClass}
-                  value={form.organization_id}
-                  onChange={(e) => {
+                <SearchableSelect
+  className={inputClass}
+  value={form.organization_id}
+  nativeEvent
+  onChange={(e) => {
                     const org = organizations.find((row) => String(row.id) === e.target.value);
                     setForm((f) => ({
                       ...f,
@@ -429,36 +434,29 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
                       customer_tax_pin: f.customer_tax_pin || org?.org_pin || "",
                     }));
                   }}
-                >
-                  <option value="">— Prospect / not provisioned —</option>
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.org_name} ({org.company_code})
-                    </option>
-                  ))}
-                </select>
+  options={organizations.map((org) => ({ value: org.id, label: "{org.org_name} ({org.company_code})" }))}
+/>
               </Field>
               <Field label="Plan">
-                <select className={inputClass} value={form.plan_id} onChange={(e) => applyPlan(e.target.value)}>
-                  <option value="">— Custom agreement —</option>
-                  {plans.map((plan) => (
-                    <option key={plan.id} value={plan.id}>{plan.name}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+  className={inputClass}
+  value={form.plan_id}
+  nativeEvent
+  onChange={(e) => applyPlan(e.target.value)}
+  options={plans.map((plan) => ({ value: plan.id, label: plan.name }))}
+/>
               </Field>
               <Field label="Reference">
                 <input className={inputClass} value={form.reference} onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))} placeholder="Q-2026-001" />
               </Field>
               <Field label="Licence basis">
-                <select
-                  className={inputClass}
-                  value={form.license_basis}
-                  onChange={(e) => setForm((f) => ({ ...f, license_basis: e.target.value }))}
-                >
-                  {LICENSE_BASIS_OPTIONS.map((row) => (
-                    <option key={row.id} value={row.id}>{row.label}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+  className={inputClass}
+  value={form.license_basis}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, license_basis: e.target.value }))}
+  options={LICENSE_BASIS_OPTIONS.map((row) => ({ value: row.id, label: row.label }))}
+/>
               </Field>
               <Field label="First-time payment (KES)">
                 <input
@@ -485,10 +483,11 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
                 />
               </Field>
               <Field label="Renewal period">
-                <select
-                  className={inputClass}
-                  value={form.interval === "annual" || form.interval === "yearly" ? "annual" : "monthly"}
-                  onChange={(e) => {
+                <SearchableSelect
+  className={inputClass}
+  value={form.interval === "annual" || form.interval === "yearly" ? "annual" : "monthly"}
+  nativeEvent
+  onChange={(e) => {
                     const interval = e.target.value;
                     setForm((f) => {
                       const start = f.start_date || new Date().toISOString().slice(0, 10);
@@ -502,11 +501,8 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
                       };
                     });
                   }}
-                >
-                  {PLAN_INTERVALS.map((row) => (
-                    <option key={row.id} value={row.id}>{row.label}</option>
-                  ))}
-                </select>
+  options={PLAN_INTERVALS.map((row) => ({ value: row.id, label: row.label }))}
+/>
                 <p className="mt-1 text-[11px] text-slate-500">
                   {isAnnualBillingInterval(form.interval)
                     ? "Yearly: start and expiry (next renewal) fill automatically."

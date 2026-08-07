@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, inputClassName, PrimaryButton, SELECT_CLASS } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, inputClassName, PrimaryButton, SELECT_CLASS } from "@/components/catalog/catalog-shared";
 
 function fieldValue(values, name, field) {
   if (values[name] !== undefined && values[name] !== null) return values[name];
@@ -65,19 +65,14 @@ export function AiActionForm({ formSpec, values, onChange, onSubmit, onCancel, l
           if (field.type === "select" && Array.isArray(field.options)) {
             return (
               <AiField key={name} label={label} required={required}>
-                <select
+                <SearchableSelect
                   className={`${SELECT_CLASS} w-full`}
                   value={val ?? ""}
                   required={required}
-                  onChange={(e) => onChange(name, e.target.value === "" ? "" : e.target.value)}
-                >
-                  <option value="">Select…</option>
-                  {field.options.map((opt) => (
-                    <option key={String(opt.value)} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select…"
+                  onChange={(next) => onChange(name, next === "" ? "" : next)}
+                  options={field.options.map((opt) => ({ value: opt.value, label: opt.label }))}
+                />
                 {field.hint ? <p className="mt-1 text-xs theme-text-muted">{field.hint}</p> : null}
               </AiField>
             );

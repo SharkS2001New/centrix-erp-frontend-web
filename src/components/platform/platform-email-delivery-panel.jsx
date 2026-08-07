@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { PrimaryButton, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+import { PrimaryButton, SECONDARY_BTN_CLASS, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar } from "@/components/admin/settings-sub-tabs";
 import {
   PLATFORM_MAIL_DEFAULTS,
@@ -315,19 +315,15 @@ export function PlatformEmailDeliveryPanel() {
       {(activeEmailTab === "smtp" || activeEmailTab === "imap") && (
         <div className="theme-panel flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 shadow-sm">
           <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Mailbox</span>
-          <select
-            className={`${inputClass} max-w-xs`}
-            value={form.account_id || ""}
-            onChange={(e) => void switchAccount(e.target.value)}
-            disabled={saving || loading}
-          >
-            {(form.accounts || []).map((account) => (
-              <option key={account.id} value={account.id}>
-                {mailboxAccountLabel(account)}
-                {account.is_default ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+  className={`${inputClass} max-w-xs`}
+  value={form.account_id || ""}
+  nativeEvent
+  onChange={(e) => void switchAccount(e.target.value)}
+  disabled={saving || loading}
+  options={[{ value: account.id, label: {mailboxAccountLabel(account)}
+                {account.is_default ? " (default)" : ""} }]}
+/>
           <button
             type="button"
             className={SECONDARY_BTN_CLASS}
@@ -464,15 +460,13 @@ export function PlatformEmailDeliveryPanel() {
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
-            <select
-              className={inputClass}
-              value={form.smtp_encryption}
-              onChange={(e) => setForm((f) => ({ ...f, smtp_encryption: e.target.value }))}
-            >
-              <option value="tls">TLS</option>
-              <option value="ssl">SSL</option>
-              <option value="none">None</option>
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={form.smtp_encryption}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, smtp_encryption: e.target.value }))}
+  options={[{ value: "tls", label: "TLS" }, { value: "ssl", label: "SSL" }, { value: "none", label: "None" }]}
+/>
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Username</span>
@@ -641,15 +635,13 @@ export function PlatformEmailDeliveryPanel() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
-                <select
-                  className={inputClass}
-                  value={form.auth_smtp_encryption}
-                  onChange={(e) => setForm((f) => ({ ...f, auth_smtp_encryption: e.target.value }))}
-                >
-                  <option value="tls">TLS</option>
-                  <option value="ssl">SSL</option>
-                  <option value="none">None</option>
-                </select>
+                <SearchableSelect
+  className={inputClass}
+  value={form.auth_smtp_encryption}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, auth_smtp_encryption: e.target.value }))}
+  options={[{ value: "tls", label: "TLS" }, { value: "ssl", label: "SSL" }, { value: "none", label: "None" }]}
+/>
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">SMTP username</span>
@@ -750,10 +742,11 @@ export function PlatformEmailDeliveryPanel() {
           ) : null}
           <label className="mt-4 block max-w-sm text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Mail mode</span>
-            <select
-              className={inputClass}
-              value={form.imap_enabled ? "imap" : "smtp"}
-              onChange={(e) => {
+            <SearchableSelect
+  className={inputClass}
+  value={form.imap_enabled ? "imap" : "smtp"}
+  nativeEvent
+  onChange={(e) => {
                 const mode = e.target.value;
                 setForm((f) => {
                   if (mode === "smtp") return { ...f, imap_enabled: false };
@@ -761,10 +754,8 @@ export function PlatformEmailDeliveryPanel() {
                   return { ...next, imap_enabled: true };
                 });
               }}
-            >
-              <option value="imap">IMAP — send + inbox sync</option>
-              <option value="smtp">SMTP — send only</option>
-            </select>
+  options={[{ value: "imap", label: "IMAP — send + inbox sync" }, { value: "smtp", label: "SMTP — send only" }]}
+/>
             <span className="mt-1 block text-xs text-slate-500">
               Choose SMTP if your provider blocks IMAP. You can still fill IMAP fields and test the
               connection before switching to IMAP mode.
@@ -828,15 +819,13 @@ export function PlatformEmailDeliveryPanel() {
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
-            <select
-              className={inputClass}
-              value={form.imap_encryption}
-              onChange={(e) => setForm((f) => ({ ...f, imap_encryption: e.target.value }))}
-            >
-              <option value="ssl">SSL</option>
-              <option value="tls">TLS</option>
-              <option value="none">None</option>
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={form.imap_encryption}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, imap_encryption: e.target.value }))}
+  options={[{ value: "ssl", label: "SSL" }, { value: "tls", label: "TLS" }, { value: "none", label: "None" }]}
+/>
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Username</span>
@@ -879,15 +868,13 @@ export function PlatformEmailDeliveryPanel() {
               <span className="mb-1 block text-xs font-medium text-slate-600">
                 Gmail inbox tab to sync
               </span>
-              <select
-                className={inputClass}
-                value={form.imap_sync_filter || "primary"}
-                onChange={(e) => setForm((f) => ({ ...f, imap_sync_filter: e.target.value }))}
-              >
-                <option value="primary">Primary (default)</option>
-                <option value="updates">Updates</option>
-                <option value="all">All mail in INBOX</option>
-              </select>
+              <SearchableSelect
+  className={inputClass}
+  value={form.imap_sync_filter || "primary"}
+  nativeEvent
+  onChange={(e) => setForm((f) => ({ ...f, imap_sync_filter: e.target.value }))}
+  options={[{ value: "primary", label: "Primary (default)" }, { value: "updates", label: "Updates" }, { value: "all", label: "All mail in INBOX" }]}
+/>
               <span className="mt-1 block text-xs text-slate-500">
                 For Gmail only. Choose Primary to pull client mail from the Primary tab instead of Updates.
               </span>
@@ -1011,19 +998,12 @@ export function PlatformEmailDeliveryPanel() {
               <span className="mb-1 block text-xs font-medium text-slate-600">
                 Renewal invoice design
               </span>
-              <select
-                className={inputClass}
-                value={form.renewal_invoice_design_id || "modern"}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, renewal_invoice_design_id: e.target.value }))
-                }
-              >
-                {PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.label}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+  className={inputClass}
+  value={form.renewal_invoice_design_id || "modern"}
+  onChange={(e)}
+  options={PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => ({ value: tpl.id, label: tpl.label }))}
+/>
               <span className="mt-1 block text-[11px] text-slate-500">
                 Design used for auto-draft renewal invoice PDFs emailed to org admins.
               </span>
@@ -1032,21 +1012,12 @@ export function PlatformEmailDeliveryPanel() {
               <span className="mb-1 block text-xs font-medium text-slate-600">
                 Saved invoice template (optional)
               </span>
-              <select
-                className={inputClass}
-                value={form.renewal_invoice_saved_template_id || ""}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, renewal_invoice_saved_template_id: e.target.value }))
-                }
-              >
-                <option value="">— Use design above / plan template —</option>
-                {invoiceSavedTemplates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name}
-                    {tpl.template_id ? ` (${tpl.template_id})` : ""}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+  className={inputClass}
+  value={form.renewal_invoice_saved_template_id || ""}
+  onChange={(e)}
+  options={invoiceSavedTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
+/>
               <span className="mt-1 block text-[11px] text-slate-500">
                 If set, branding/options from this saved template win. Otherwise the plan’s
                 auto-draft template is used, then the design above. Amount always comes from the

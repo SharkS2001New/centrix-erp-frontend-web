@@ -7,6 +7,7 @@ import {
   CatalogPageShell,
   Field,
   FILTER_CONTROL_CLASS,
+  FilterSelect,
   FilterToolbar,
   PaginationBar,
   SearchInput,
@@ -546,16 +547,16 @@ export function PaymentsBreakdownScreen({
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
           <label className="flex items-center gap-2 text-xs font-medium text-[var(--theme-text-muted)]">
             <span className="whitespace-nowrap">Print</span>
-            <select
+            <FilterSelect
               value={printScope}
               onChange={(e) => setPrintScope(e.target.value === "all" ? "all" : "active")}
               className={FILTER_CONTROL_CLASS}
               disabled={loading || methods.length === 0}
-              aria-label="Print scope"
-            >
-              <option value="active">This tab ({methodName})</option>
-              <option value="all">All tabs</option>
-            </select>
+              options={[
+                { value: "active", label: `This tab (${methodName})` },
+                { value: "all", label: "All tabs" },
+              ]}
+            />
           </label>
           <ReportExportToolbar
             filename={exportFilename}
@@ -601,7 +602,7 @@ export function PaymentsBreakdownScreen({
         </Field>
         {showBranchFilter ? (
           <Field label="Branch">
-            <select
+            <FilterSelect
               value={branchId}
               onChange={(e) => {
                 setBranchId(e.target.value);
@@ -610,18 +611,18 @@ export function PaymentsBreakdownScreen({
                 setPage(1);
               }}
               className={FILTER_CONTROL_CLASS}
-            >
-              <option value="">All branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.branch_name ?? branch.name ?? `Branch ${branch.id}`}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "All branches" },
+                ...branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: branch.branch_name ?? branch.name ?? `Branch ${branch.id}`,
+                })),
+              ]}
+            />
           </Field>
         ) : null}
         <Field label="Cashier">
-          <select
+          <FilterSelect
             value={cashierId}
             onChange={(e) => {
               setCashierId(e.target.value);
@@ -629,32 +630,32 @@ export function PaymentsBreakdownScreen({
               setPage(1);
             }}
             className={FILTER_CONTROL_CLASS}
-          >
-            <option value="">All cashiers</option>
-            {cashierOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "All cashiers" },
+              ...cashierOptions.map((opt) => ({
+                value: opt.value,
+                label: opt.label,
+              })),
+            ]}
+          />
         </Field>
         {!hideSessionFilter ? (
           <Field label="Till session">
-            <select
+            <FilterSelect
               value={floatSessionId}
               onChange={(e) => {
                 setFloatSessionId(e.target.value);
                 setPage(1);
               }}
               className={`${FILTER_CONTROL_CLASS} min-w-[14rem]`}
-            >
-              <option value="">All sessions in range</option>
-              {sessionOptions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {sessionLabel(session)}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "All sessions in range" },
+                ...sessionOptions.map((session) => ({
+                  value: String(session.id),
+                  label: sessionLabel(session),
+                })),
+              ]}
+            />
           </Field>
         ) : null}
         <Field label="Search">

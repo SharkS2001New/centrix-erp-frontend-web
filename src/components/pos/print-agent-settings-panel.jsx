@@ -5,6 +5,7 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import {
   Field,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
@@ -384,19 +385,20 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       {provider === "agent" ? (
         <div className="mt-5 space-y-4">
           <Field label="Preferred printer">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={agentForm.printerName}
               disabled={!canEdit}
-              onChange={(e) => updateAgent("printerName", e.target.value)}
-            >
-              <option value="">System / first available</option>
-              {(health?.printers ?? []).map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => updateAgent("printerName", v)}
+              placeholder="System / first available"
+              options={[
+                { value: "", label: "System / first available" },
+                ...(health?.printers ?? []).map((name) => ({
+                  value: name,
+                  label: name,
+                })),
+              ]}
+            />
           </Field>
           {!health?.printers?.length ? (
             <p className="theme-subtext text-xs">

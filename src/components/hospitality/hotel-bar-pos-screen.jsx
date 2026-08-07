@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
 import { useHotelPosOfflineSupport } from "@/hooks/use-hotel-pos-offline-support";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -1437,21 +1438,20 @@ export function HotelBarPosScreen() {
                   <label className="sr-only" htmlFor="hotel-pos-table-select">
                     Choose table
                   </label>
-                  <select
-                    id="hotel-pos-table-select"
+                  <SearchableSelect
                     ref={tableSelectRef}
                     className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
                     value={selectedTableId}
-                    onChange={(e) => setSelectedTableId(e.target.value)}
-                  >
-                    <option value="">Choose table…</option>
-                    {floorTables.map((table) => (
-                      <option key={table.id} value={String(table.id)}>
-                        {table.label || table.code}
-                        {table.zone ? ` · ${table.zone}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setSelectedTableId}
+                    placeholder="Choose table…"
+                    options={[
+                      { value: "", label: "Choose table…" },
+                      ...floorTables.map((table) => ({
+                        value: String(table.id),
+                        label: `${table.label || table.code}${table.zone ? ` · ${table.zone}` : ""}`,
+                      })),
+                    ]}
+                  />
                 </div>
               ) : null}
               {showGuestField ? (
@@ -1476,28 +1476,33 @@ export function HotelBarPosScreen() {
                   <label className="sr-only" htmlFor="hotel-pos-room-folio">
                     Assign room / folio
                   </label>
-                  <select
-                    id="hotel-pos-room-folio"
+                  <SearchableSelect
                     className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
                     value={selectedFolioId}
-                    onChange={(e) => applySelectedFolio(e.target.value)}
+                    onChange={applySelectedFolio}
                     disabled={!collectPayment || offlineMode}
-                  >
-                    <option value="">
-                      {offlineMode
+                    placeholder={
+                      offlineMode
                         ? "Room charge unavailable offline"
                         : openFolios.length
                           ? "Assign room / folio…"
-                          : "No open guest folios"}
-                    </option>
-                    {openFolios.map((folio) => (
-                      <option key={folio.id} value={String(folio.id)}>
-                        {folio.room_number ? `Rm ${folio.room_number}` : "No room"}
-                        {folio.guest_name ? ` · ${folio.guest_name}` : ""}
-                        {folio.folio_number ? ` · ${folio.folio_number}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                          : "No open guest folios"
+                    }
+                    options={[
+                      {
+                        value: "",
+                        label: offlineMode
+                          ? "Room charge unavailable offline"
+                          : openFolios.length
+                            ? "Assign room / folio…"
+                            : "No open guest folios",
+                      },
+                      ...openFolios.map((folio) => ({
+                        value: String(folio.id),
+                        label: `${folio.room_number ? `Rm ${folio.room_number}` : "No room"}${folio.guest_name ? ` · ${folio.guest_name}` : ""}${folio.folio_number ? ` · ${folio.folio_number}` : ""}`,
+                      })),
+                    ]}
+                  />
                 </div>
               ) : null}
               {roomChargeEnabled ? (
@@ -1505,20 +1510,20 @@ export function HotelBarPosScreen() {
                   <label className="sr-only" htmlFor="hotel-pos-order-type">
                     Order type
                   </label>
-                  <select
-                    id="hotel-pos-order-type"
+                  <SearchableSelect
                     className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
                     value={chargeToRoom ? "room" : "pay"}
-                    onChange={(e) => {
-                      const toRoom = e.target.value === "room";
+                    onChange={(v) => {
+                      const toRoom = v === "room";
                       setChargeToRoom(toRoom);
                       if (!toRoom) setSelectedFolioId("");
                     }}
                     disabled={!collectPayment}
-                  >
-                    <option value="pay">Collect payment</option>
-                    <option value="room">Charge to room</option>
-                  </select>
+                    options={[
+                      { value: "pay", label: "Collect payment" },
+                      { value: "room", label: "Charge to room" },
+                    ]}
+                  />
                 </div>
               ) : null}
             </div>
@@ -1788,11 +1793,11 @@ export function HotelBarPosScreen() {
                 <span className="theme-subtext mb-1 block text-[11px] font-semibold uppercase tracking-wide">
                   Nights
                 </span>
-                <select
+                <SearchableSelect
                   className="theme-input hotel-pos-field w-full rounded-xl px-3 py-2.5 text-sm"
                   value={String(roomStayDraft.nights)}
-                  onChange={(e) => {
-                    const nights = Number(e.target.value) || 1;
+                  onChange={(v) => {
+                    const nights = Number(v) || 1;
                     setRoomStayDraft((prev) =>
                       prev
                         ? {
@@ -1803,13 +1808,11 @@ export function HotelBarPosScreen() {
                         : prev,
                     );
                   }}
-                >
-                  {Array.from({ length: 14 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      {n} night{n === 1 ? "" : "s"}
-                    </option>
-                  ))}
-                </select>
+                  options={Array.from({ length: 14 }, (_, i) => i + 1).map((n) => ({
+                    value: String(n),
+                    label: `${n} night${n === 1 ? "" : "s"}`,
+                  }))}
+                />
               </label>
               <label className="block">
                 <span className="theme-subtext mb-1 block text-[11px] font-semibold uppercase tracking-wide">

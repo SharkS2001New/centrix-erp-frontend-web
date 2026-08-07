@@ -9,9 +9,11 @@ import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import {
   CatalogPageShell,
   Field,
+  FilterSelect,
   FormDrawer,
   inputClassName,
   PrimaryButton,
+  SearchableSelect,
   SecondaryButton,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
@@ -168,13 +170,17 @@ function ReservationsManager() {
       }
     >
       <div className="mb-4 flex flex-wrap gap-2">
-        <select className={inputClassName()} value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="booked">Booked</option>
-          <option value="checked_in">Checked in</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="no_show">No-show</option>
-        </select>
+        <FilterSelect
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          options={[
+            { value: "", label: "All statuses" },
+            { value: "booked", label: "Booked" },
+            { value: "checked_in", label: "Checked in" },
+            { value: "cancelled", label: "Cancelled" },
+            { value: "no_show", label: "No-show" },
+          ]}
+        />
         <input
           className={`${inputClassName()} w-72 sm:w-96`}
           placeholder="Search guest / code…"
@@ -278,49 +284,50 @@ function ReservationsManager() {
             />
           </Field>
           <Field label="Room type">
-            <select
+            <SearchableSelect
               required
               className={inputClassName()}
               value={form.room_type_id}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, room_type_id: e.target.value, room_id: "", rate_plan_id: "" }))
+              onChange={(v) =>
+                setForm((f) => ({ ...f, room_type_id: v, room_id: "", rate_plan_id: "" }))
               }
-            >
-              <option value="">Select…</option>
-              {roomTypes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              placeholder="Select…"
+              options={[
+                { value: "", label: "Select…" },
+                ...roomTypes.map((t) => ({
+                  value: String(t.id),
+                  label: t.name,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Room (optional)">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={form.room_id}
-              onChange={(e) => setForm((f) => ({ ...f, room_id: e.target.value }))}
-            >
-              <option value="">Unassigned</option>
-              {roomsForType.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.room_number} ({r.status})
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setForm((f) => ({ ...f, room_id: v }))}
+              options={[
+                { value: "", label: "Unassigned" },
+                ...roomsForType.map((r) => ({
+                  value: String(r.id),
+                  label: `${r.room_number} (${r.status})`,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Rate plan (optional)">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={form.rate_plan_id}
-              onChange={(e) => setForm((f) => ({ ...f, rate_plan_id: e.target.value }))}
-            >
-              <option value="">Room type base rate</option>
-              {plansForType.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {p.amount}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setForm((f) => ({ ...f, rate_plan_id: v }))}
+              options={[
+                { value: "", label: "Room type base rate" },
+                ...plansForType.map((p) => ({
+                  value: String(p.id),
+                  label: `${p.name} — ${p.amount}`,
+                })),
+              ]}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Arrival">

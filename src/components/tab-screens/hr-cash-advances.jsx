@@ -8,6 +8,7 @@ import {
   formatShortDate,
   inputClassName,
   parseDecimalInput,
+  SearchableSelect,
 } from "@/components/catalog/catalog-shared";
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
@@ -261,14 +262,15 @@ export function HrCashAdvancesScreen() {
             />
           </Field>
           <Field label="Repayment">
-            <select
+            <SearchableSelect
               value={form.repayment_mode}
-              onChange={(e) => setForm((p) => ({ ...p, repayment_mode: e.target.value }))}
+              onChange={(v) => setForm((p) => ({ ...p, repayment_mode: v }))}
               className={inputClassName()}
-            >
-              <option value="full_next_cycle">Deduct full balance on next payroll</option>
-              <option value="fixed_per_cycle">Fixed amount each payroll cycle</option>
-            </select>
+              options={[
+                { value: "full_next_cycle", label: "Deduct full balance on next payroll" },
+                { value: "fixed_per_cycle", label: "Fixed amount each payroll cycle" },
+              ]}
+            />
           </Field>
           {form.repayment_mode === "fixed_per_cycle" && (
             <Field label="Amount per payroll cycle (KES)">

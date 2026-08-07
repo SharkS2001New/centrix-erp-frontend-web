@@ -7,6 +7,7 @@ import {
   CatalogPageShell,
   Field,
   PrimaryButton,
+  SearchableSelect,
   SecondaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -461,15 +462,16 @@ export function HospitalitySettingsScreen() {
               description="Restaurant mode: explode recipes into ingredients. Packaged items use Direct mode on the recipe."
             />
             <Field label="Deduct from location">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 disabled={!canEdit || saving}
                 value={stockForm.stock_location}
-                onChange={(e) => setStockForm((f) => ({ ...f, stock_location: e.target.value }))}
-              >
-                <option value="shop">Shop / outlet</option>
-                <option value="store">Store / kitchen store</option>
-              </select>
+                onChange={(v) => setStockForm((f) => ({ ...f, stock_location: v }))}
+                options={[
+                  { value: "shop", label: "Shop / outlet" },
+                  { value: "store", label: "Store / kitchen store" },
+                ]}
+              />
             </Field>
             <Toggle
               disabled={!canEdit || saving}
@@ -608,17 +610,12 @@ export function HospitalitySettingsScreen() {
                 placeholder="Search ugali, soda, …"
               />
               <Field label="Deduct mode">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={draft.deduct_mode}
-                  onChange={(e) => setDraft((d) => ({ ...d, deduct_mode: e.target.value }))}
-                >
-                  {DEDUCT_MODE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setDraft((d) => ({ ...d, deduct_mode: v }))}
+                  options={DEDUCT_MODE_OPTIONS}
+                />
                 <p className="theme-subtext mt-1 text-xs">
                   {DEDUCT_MODE_OPTIONS.find((o) => o.value === draft.deduct_mode)?.hint}
                 </p>

@@ -13,6 +13,7 @@ import {
   FormDrawer,
   IconButton,
   PrimaryButton,
+  SearchableSelect,
   StatCard,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -714,36 +715,32 @@ export function HrPayrollScreen() {
               ))}
             </div>
           ) : (
-            <select
+            <SearchableSelect
               value={runForm.pay_period_id}
-              onChange={(e) => setRunForm((p) => ({ ...p, pay_period_id: e.target.value }))}
+              onChange={(v) => setRunForm((p) => ({ ...p, pay_period_id: v }))}
               required
               className={inputClassName()}
-            >
-              <option value="" disabled>
-                Select period
-              </option>
-              {runnablePeriods.map((p) => (
-                <option key={p.id} value={String(p.id)}>
-                  {periodLabel(p)} ({formatPeriodRange(p)})
-                </option>
-              ))}
-            </select>
+              placeholder="Select period"
+              options={runnablePeriods.map((p) => ({
+                value: String(p.id),
+                label: `${periodLabel(p)} (${formatPeriodRange(p)})`,
+              }))}
+            />
           )}
         </Field>
         <Field label="Department">
-          <select
+          <SearchableSelect
             value={runForm.department_id}
-            onChange={(e) => setRunForm((p) => ({ ...p, department_id: e.target.value }))}
+            onChange={(v) => setRunForm((p) => ({ ...p, department_id: v }))}
             className={inputClassName()}
-          >
-            <option value="">All departments</option>
-            {departments.map((d) => (
-              <option key={d.id} value={String(d.id)}>
-                {d.department_name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "All departments" },
+              ...departments.map((d) => ({
+                value: String(d.id),
+                label: d.department_name,
+              })),
+            ]}
+          />
         </Field>
         <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
           <input

@@ -12,6 +12,7 @@ import {
   FormDrawer,
   inputClassName,
   PrimaryButton,
+  SearchableSelect,
   SecondaryButton,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
@@ -201,17 +202,15 @@ export function HospitalityOutletsScreen() {
             <section className="mt-8 space-y-3">
               <div className="flex flex-wrap items-end gap-2">
                 <h2 className="theme-heading text-base font-semibold">Floor tables</h2>
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={selectedOutletId}
-                  onChange={(e) => setSelectedOutletId(e.target.value)}
-                >
-                  {outlets.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedOutletId}
+                  options={outlets.map((o) => ({
+                    value: String(o.id),
+                    label: o.name,
+                  }))}
+                />
                 <SecondaryButton onClick={() => void load()}>Refresh tables</SecondaryButton>
               </div>
               <form
@@ -330,15 +329,16 @@ export function HospitalityOutletsScreen() {
             />
           </Field>
           <Field label="Type">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={form.outlet_type}
-              onChange={(e) => setForm((f) => ({ ...f, outlet_type: e.target.value }))}
-            >
-              <option value="bar">Bar</option>
-              <option value="restaurant">Restaurant</option>
-              <option value="other">Other</option>
-            </select>
+              onChange={(v) => setForm((f) => ({ ...f, outlet_type: v }))}
+              options={[
+                { value: "bar", label: "Bar" },
+                { value: "restaurant", label: "Restaurant" },
+                { value: "other", label: "Other" },
+              ]}
+            />
           </Field>
           {editingId ? (
             <label className="flex items-center gap-2 text-sm">

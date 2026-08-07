@@ -95,6 +95,27 @@ function isIgnoredIssuePath(path) {
   );
 }
 
+/** Client-side connectivity failures — not server bugs. */
+function isClientNetworkIssueMessage(message, context = {}) {
+  const parts = [
+    String(message ?? ""),
+    String(context?.user_message ?? ""),
+  ];
+  return parts.some((part) => {
+    const normalized = part.trim().toLowerCase();
+    if (!normalized) return false;
+    return (
+      normalized.includes("request timed out")
+      || normalized.includes("check your connection")
+      || normalized.includes("connection timed out")
+      || normalized.includes("network request failed")
+      || normalized.includes("failed to fetch")
+      || normalized.includes("networkerror")
+      || normalized.includes("load failed")
+    );
+  });
+}
+
 export async function logApiErrorIssue({
   path,
   method,
@@ -110,6 +131,10 @@ export async function logApiErrorIssue({
   // Server-side reporter owns HTTP 500 logs with full stack traces.
   if (status >= 500) {
     return issueReportId ? { id: issueReportId } : null;
+  }
+
+  if (isClientNetworkIssueMessage(message, context)) {
+    return null;
   }
 
   const technicalDetail = extractTechnicalDetailFromApiBody(apiBody);

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { PosReportView } from "@/components/pos/pos-report-view";
 import { PosStatusBadge, printPosTillReport } from "@/components/pos/pos-shared";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
@@ -360,18 +360,13 @@ export function CloseSessionModal({
         ) : null}
 
         <Field label="Reason">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={setReason}
             disabled={busy}
-          >
-            {CLOSE_REASONS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+            options={CLOSE_REASONS.map((r) => ({ value: r, label: r }))}
+          />
         </Field>
         <Field label="Notes">
           <textarea
@@ -632,20 +627,21 @@ export function HandoverSessionModal({
           <p className="mt-2 text-slate-500">Session #{session?.id ?? "—"}</p>
         </div>
         <Field label="Hand over to">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={toCashierId}
-            onChange={(e) => setToCashierId(e.target.value)}
+            onChange={setToCashierId}
             required
             disabled={busy}
-          >
-            <option value="">Select cashier</option>
-            {options.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name ?? u.username}
-              </option>
-            ))}
-          </select>
+            placeholder="Select cashier"
+            options={[
+              { value: "", label: "Select cashier" },
+              ...options.map((u) => ({
+                value: String(u.id),
+                label: u.full_name ?? u.username,
+              })),
+            ]}
+          />
         </Field>
         <Field label="Notes (optional)">
           <textarea

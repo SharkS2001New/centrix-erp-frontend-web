@@ -13,7 +13,7 @@ import {
   generalFormFromApi,
   generalPayloadFromForm,
 } from "@/lib/general-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
@@ -65,43 +65,28 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage, 
               <h3 className="text-sm font-medium text-slate-900">Region & language</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Field label="Default currency">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.currency}
-                    onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
-                  >
-                    {CURRENCY_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, currency: next }))}
+                    options={CURRENCY_OPTIONS}
+                  />
                 </Field>
                 <Field label="Timezone">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.timezone}
-                    onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
-                  >
-                    {TIMEZONE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, timezone: next }))}
+                    options={TIMEZONE_OPTIONS}
+                  />
                 </Field>
                 <Field label="Language">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.language}
-                    onChange={(e) => setForm((f) => ({ ...f, language: e.target.value }))}
-                  >
-                    {LANGUAGE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, language: next }))}
+                    options={LANGUAGE_OPTIONS}
+                  />
                 </Field>
                 <Field label="Default phone country code">
                   <input
@@ -127,66 +112,47 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage, 
               <h3 className="text-sm font-medium text-slate-900">Numbers & calendar</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Field label="Date format">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.date_format}
-                    onChange={(e) => setForm((f) => ({ ...f, date_format: e.target.value }))}
-                  >
-                    {DATE_FORMAT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, date_format: next }))}
+                    options={DATE_FORMAT_OPTIONS}
+                  />
                 </Field>
                 <Field label="Decimal places">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.decimal_places}
-                    onChange={(e) => setForm((f) => ({ ...f, decimal_places: e.target.value }))}
-                  >
-                    {DECIMAL_PLACES_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, decimal_places: next }))}
+                    options={DECIMAL_PLACES_OPTIONS}
+                  />
                 </Field>
                 <Field label="Thousands separator">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.number_thousands_separator}
-                    onChange={(e) => setForm((f) => ({ ...f, number_thousands_separator: e.target.value }))}
-                  >
-                    {THOUSANDS_SEPARATOR_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, number_thousands_separator: next }))}
+                    options={THOUSANDS_SEPARATOR_OPTIONS}
+                  />
                 </Field>
                 <Field label="Fiscal year starts">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.fiscal_year_start_month}
-                    onChange={(e) => setForm((f) => ({ ...f, fiscal_year_start_month: e.target.value }))}
-                  >
-                    {FISCAL_MONTH_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, fiscal_year_start_month: next }))}
+                    options={FISCAL_MONTH_OPTIONS}
+                  />
                 </Field>
                 <Field label="Week starts on">
-                  <select
+                  <SearchableSelect
                     className={inputClassName()}
                     value={form.week_starts_on}
-                    onChange={(e) => setForm((f) => ({ ...f, week_starts_on: e.target.value }))}
-                  >
-                    <option value="monday">Monday</option>
-                    <option value="sunday">Sunday</option>
-                  </select>
+                    onChange={(next) => setForm((f) => ({ ...f, week_starts_on: next }))}
+                    options={[
+                      { value: "monday", label: "Monday" },
+                      { value: "sunday", label: "Sunday" },
+                    ]}
+                  />
                 </Field>
               </div>
             </div>

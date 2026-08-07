@@ -7,7 +7,7 @@ import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platfor
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useOrgFormat } from "@/lib/org-format";
-import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, FilterSelect, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 export function AccountingExportQueueScreen() {
@@ -141,16 +141,16 @@ export function AccountingExportQueueScreen() {
       ) : null}
 
       <div className="mb-4 flex flex-wrap items-end gap-3 text-sm">
-        <select
-          className="rounded-lg border border-slate-300 px-3 py-2"
+        <FilterSelect
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="">All statuses</option>
-          <option value="pending">Pending ({counts.pending})</option>
-          <option value="exported">Exported ({counts.exported})</option>
-          <option value="failed">Failed ({counts.failed})</option>
-        </select>
+          options={[
+            { value: "", label: "All statuses" },
+            { value: "pending", label: `Pending (${counts.pending})` },
+            { value: "exported", label: `Exported (${counts.exported})` },
+            { value: "failed", label: `Failed (${counts.failed})` },
+          ]}
+        />
         <Link href="/accounting/account-mappings" className="font-medium text-[#185FA5] hover:underline">
           Account mappings
         </Link>

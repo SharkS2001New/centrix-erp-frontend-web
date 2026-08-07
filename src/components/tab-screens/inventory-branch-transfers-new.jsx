@@ -9,7 +9,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchBranchesCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel";
 import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
 import {
@@ -162,61 +162,50 @@ export function InventoryBranchTransfersNewScreen() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="From branch">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={fromBranchId}
-                  onChange={(e) => setFromBranchId(e.target.value)}
-                >
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.branch_name ?? b.branch_code ?? b.id}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setFromBranchId}
+                  options={branches.map((b) => ({
+                    value: String(b.id),
+                    label: b.branch_name ?? b.branch_code ?? String(b.id),
+                  }))}
+                />
               </Field>
               <Field label="To branch">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={toBranchId}
-                  onChange={(e) => setToBranchId(e.target.value)}
+                  onChange={setToBranchId}
                   required
-                >
-                  <option value="">Select branch…</option>
-                  {toBranchOptions.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.branch_name ?? b.branch_code ?? b.id}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select branch…"
+                  options={[
+                    { value: "", label: "Select branch…" },
+                    ...toBranchOptions.map((b) => ({
+                      value: String(b.id),
+                      label: b.branch_name ?? b.branch_code ?? String(b.id),
+                    })),
+                  ]}
+                />
               </Field>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="From location">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={fromLocation}
-                  onChange={(e) => setFromLocation(e.target.value)}
-                >
-                  {TRANSFER_FROM_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setFromLocation}
+                  options={TRANSFER_FROM_OPTIONS}
+                />
               </Field>
               <Field label="To location">
-                <select
+                <SearchableSelect
                   className={inputClassName()}
                   value={toLocation}
-                  onChange={(e) => setToLocation(e.target.value)}
-                >
-                  {TRANSFER_FROM_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setToLocation}
+                  options={TRANSFER_FROM_OPTIONS}
+                />
               </Field>
             </div>
 

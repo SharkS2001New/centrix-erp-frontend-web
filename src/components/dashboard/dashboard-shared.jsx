@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Field, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, SearchableSelect, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
 import { HubKpiCard } from "@/components/reports/report-charts";
 import { formatReportKes } from "@/lib/reports/format";
 
@@ -122,14 +122,15 @@ export function DashboardDateRangeBar({
       </Field>
       {showBranch ? (
         <Field label="Branch">
-          <select className={inputClassName()} value={branchId} onChange={(e) => onBranchChange(e.target.value)}>
-            <option value="">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.branch_name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            className={inputClassName()}
+            value={branchId}
+            onChange={(next) => onBranchChange(next)}
+            options={[
+              { value: "", label: "All branches" },
+              ...branches.map((b) => ({ value: b.id, label: b.branch_name })),
+            ]}
+          />
         </Field>
       ) : null}
       {onRefresh ? <DashboardRefreshButton onClick={onRefresh} loading={refreshing} /> : null}

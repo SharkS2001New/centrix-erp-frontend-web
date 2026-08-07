@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
@@ -122,11 +123,11 @@ export function ChangeSubscriptionPlanModal({
 
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">New package</span>
-            <select
-              className={inputClass}
-              value={planId}
-              disabled={loadingPlans || saving}
-              onChange={(e) => {
+            <SearchableSelect
+  className={inputClass}
+  value={planId}
+  nativeEvent
+  onChange={(e) => {
                 const next = e.target.value;
                 setPlanId(next);
                 const plan = plans.find((p) => String(p.id) === next);
@@ -134,19 +135,9 @@ export function ChangeSubscriptionPlanModal({
                   setSeatCount(String(plan.seat_limit));
                 }
               }}
-            >
-              <option value="">
-                {loadingPlans ? "Loading packages…" : "— Select package —"}
-              </option>
-              {plans.map((plan) => (
-                <option key={plan.id} value={plan.id}>
-                  {plan.name} · first{" "}
-                  {formatBillingMoney(plan.first_payment_price ?? plan.price, plan.currency)} · renew{" "}
-                  {formatBillingMoney(plan.renewal_price ?? plan.price, plan.currency)}/
-                  {plan.interval}
-                </option>
-              ))}
-            </select>
+  disabled={loadingPlans || saving}
+  options={plans.map((plan) => ({ value: plan.id, label: plan.name }))}
+/>
           </label>
 
           {selectedPlan ? (

@@ -18,6 +18,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SearchInput,
   SECONDARY_BTN_CLASS,
   TrashIcon,
@@ -417,15 +418,16 @@ export function SalesVouchersScreen() {
         submitLabel={drawerMode === "create" ? "Add voucher" : "Save changes"}
       >
         <Field label="Voucher type">
-          <select
+          <SearchableSelect
             value={form.voucher_kind}
-            onChange={(e) => updateField("voucher_kind", e.target.value)}
+            onChange={(v) => updateField("voucher_kind", v)}
             className={inputClassName()}
             disabled={drawerMode === "edit"}
-          >
-            <option value="payment">Payment voucher (stored balance)</option>
-            <option value="discount">Discount voucher (order discount)</option>
-          </select>
+            options={[
+              { value: "payment", label: "Payment voucher (stored balance)" },
+              { value: "discount", label: "Discount voucher (order discount)" },
+            ]}
+          />
         </Field>
         <Field label="Voucher code">
           <input
@@ -471,14 +473,15 @@ export function SalesVouchersScreen() {
         ) : (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Discount type">
-              <select
+              <SearchableSelect
                 value={form.discount_type}
-                onChange={(e) => updateField("discount_type", e.target.value)}
+                onChange={(v) => updateField("discount_type", v)}
                 className={inputClassName()}
-              >
-                <option value="fixed">Fixed amount (KES)</option>
-                <option value="percentage">Percentage (%)</option>
-              </select>
+                options={[
+                  { value: "fixed", label: "Fixed amount (KES)" },
+                  { value: "percentage", label: "Percentage (%)" },
+                ]}
+              />
             </Field>
             <Field label={form.discount_type === "percentage" ? "Percentage" : "Amount (KES)"}>
               <input

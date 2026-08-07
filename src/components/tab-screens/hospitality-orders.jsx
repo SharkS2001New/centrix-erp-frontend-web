@@ -9,6 +9,7 @@ import { OrderExpandButton } from "@/components/sales/sales-orders-shared";
 import {
   CatalogPageShell,
   Field,
+  FilterSelect,
   FILTER_CONTROL_CLASS,
   FilterToolbar,
   PaginationBar,
@@ -218,31 +219,32 @@ export function HospitalityOrdersScreen() {
               />
             </Field>
             <Field label="Status">
-              <select
+              <FilterSelect
                 className={FILTER_CONTROL_CLASS}
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="open">Open / unpaid</option>
-                <option value="unpaid">Awaiting payment</option>
-                <option value="paid">Paid</option>
-                <option value="void">Voided</option>
-                <option value="">All</option>
-              </select>
+                options={[
+                  { value: "open", label: "Open / unpaid" },
+                  { value: "unpaid", label: "Awaiting payment" },
+                  { value: "paid", label: "Paid" },
+                  { value: "void", label: "Voided" },
+                  { value: "", label: "All" },
+                ]}
+              />
             </Field>
             <Field label="Outlet">
-              <select
+              <FilterSelect
                 className={FILTER_CONTROL_CLASS}
                 value={outletId}
                 onChange={(e) => setOutletId(e.target.value)}
-              >
-                <option value="">All outlets</option>
-                {outlets.map((outlet) => (
-                  <option key={outlet.id} value={String(outlet.id)}>
-                    {outlet.name || outlet.code}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "All outlets" },
+                  ...outlets.map((outlet) => ({
+                    value: String(outlet.id),
+                    label: outlet.name || outlet.code,
+                  })),
+                ]}
+              />
             </Field>
             <button
               type="button"

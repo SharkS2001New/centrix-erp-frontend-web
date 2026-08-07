@@ -9,7 +9,7 @@ import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { isStockTransferApprovalEnabled } from "@/lib/sales-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   lineFromEnrichedProduct,
   resolveInventoryLineUom,
@@ -175,30 +175,20 @@ export function InventoryTransfersNewScreen() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="From">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={fromLocation}
-              onChange={(e) => handleFromChange(e.target.value)}
-            >
-              {TRANSFER_FROM_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={handleFromChange}
+              options={TRANSFER_FROM_OPTIONS}
+            />
           </Field>
           <Field label="To">
-            <select
+            <SearchableSelect
               className={inputClassName()}
               value={toLocation}
-              onChange={(e) => setToLocation(e.target.value)}
-            >
-              {toOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={setToLocation}
+              options={toOptions}
+            />
           </Field>
         </div>
 

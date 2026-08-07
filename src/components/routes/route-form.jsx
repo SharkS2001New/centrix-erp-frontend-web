@@ -8,6 +8,7 @@ import {
   isInCalendarWeek,
   isSameCalendarDay,
   isSameCalendarMonth,
+  SearchableSelect,
 } from "@/components/catalog/catalog-shared";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { useAuth } from "@/contexts/auth-context";
@@ -126,22 +127,17 @@ export function RouteFormFields({
             {branchesLoading ? (
               <p className="text-sm text-slate-500">Loading branches…</p>
             ) : (
-              <select
+              <SearchableSelect
                 value={form.branch_id}
-                onChange={(e) => onChange("branch_id", e.target.value)}
+                onChange={(v) => onChange("branch_id", v)}
                 required
                 className={inputClassName()}
-              >
-                <option value="" disabled>
-                  Select branch
-                </option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={String(branch.id)}>
-                    {branch.branch_name}
-                    {branch.branch_code ? ` (${branch.branch_code})` : ""}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select branch"
+                options={branches.map((branch) => ({
+                  value: String(branch.id),
+                  label: `${branch.branch_name}${branch.branch_code ? ` (${branch.branch_code})` : ""}`,
+                }))}
+              />
             )}
           </Field>
         </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Field, inputClassName, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+import { Field, inputClassName, SECONDARY_BTN_CLASS, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 import { formatSaleKes } from "@/lib/sales";
@@ -877,23 +877,17 @@ export function MarkupPricingFormulasPanel({ salesForm, setSalesForm }) {
           </fieldset>
           <div className="lg:col-span-2">
             <Field label="Route (optional)">
-              <select
-                className={inputClassName()}
-                value={routeId}
-                onChange={(e) => {
+              <SearchableSelect
+  className={inputClassName()}
+  value={routeId}
+  nativeEvent
+  onChange={(e) => {
                   setRouteId(e.target.value);
                   setPreview(null);
                   setPreviewOpen(false);
                 }}
-              >
-                <option value="">No route markup</option>
-                {routes.map((route) => (
-                  <option key={route.id} value={route.id}>
-                    {route.route_name ?? route.name ?? `Route #${route.id}`}
-                    {route.route_markup_price != null ? ` (+${route.route_markup_price})` : ""}
-                  </option>
-                ))}
-              </select>
+  options={routes.map((route) => ({ value: route.id, label: route.route_name ?? route.name }))}
+/>
             </Field>
           </div>
         </div>

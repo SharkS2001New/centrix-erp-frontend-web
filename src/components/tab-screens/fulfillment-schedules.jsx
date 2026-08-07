@@ -17,6 +17,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SearchInput,
   TrashIcon,
   inputClassName,
@@ -395,59 +396,59 @@ export function FulfillmentSchedulesScreen() {
         submitLabel={drawerMode === "edit" ? "Save changes" : "Save schedule"}
       >
         <Field label="Route">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={form.route_id}
-            onChange={(e) => setForm((f) => ({ ...f, route_id: e.target.value }))}
-          >
-            <option value="">Select route…</option>
-            {routes.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.route_name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setForm((f) => ({ ...f, route_id: v }))}
+            placeholder="Select route…"
+            options={[
+              { value: "", label: "Select route…" },
+              ...routes.map((r) => ({
+                value: String(r.id),
+                label: r.route_name,
+              })),
+            ]}
+          />
         </Field>
         <Field label="Day of week">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={form.day_of_week}
-            onChange={(e) => setForm((f) => ({ ...f, day_of_week: e.target.value }))}
-          >
-            {DAY_OPTIONS.map((d) => (
-              <option key={d.value} value={d.value}>
-                {d.label}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setForm((f) => ({ ...f, day_of_week: v }))}
+            options={DAY_OPTIONS}
+          />
         </Field>
         <Field label="Default driver">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={form.default_driver_id}
-            onChange={(e) => setForm((f) => ({ ...f, default_driver_id: e.target.value }))}
-          >
-            <option value="">None</option>
-            {drivers.filter((d) => d.is_active !== false).map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.full_name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setForm((f) => ({ ...f, default_driver_id: v }))}
+            options={[
+              { value: "", label: "None" },
+              ...drivers
+                .filter((d) => d.is_active !== false)
+                .map((d) => ({
+                  value: String(d.id),
+                  label: d.full_name,
+                })),
+            ]}
+          />
         </Field>
         <Field label="Default vehicle">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={form.default_vehicle_id}
-            onChange={(e) => setForm((f) => ({ ...f, default_vehicle_id: e.target.value }))}
-          >
-            <option value="">None</option>
-            {vehicles.filter((v) => v.is_active !== false).map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.plate_number ?? v.vehicle_name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setForm((f) => ({ ...f, default_vehicle_id: v }))}
+            options={[
+              { value: "", label: "None" },
+              ...vehicles
+                .filter((v) => v.is_active !== false)
+                .map((v) => ({
+                  value: String(v.id),
+                  label: v.plate_number ?? v.vehicle_name,
+                })),
+            ]}
+          />
         </Field>
         <Field label="Departure time">
           <input

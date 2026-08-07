@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
 
 export function OrganizationSwitcher({ collapsed = false }) {
@@ -40,8 +41,8 @@ export function OrganizationSwitcher({ collapsed = false }) {
     );
   }
 
-  async function onChange(e) {
-    const code = e.target.value;
+  async function onChange(next) {
+    const code = next;
     if (!code || code === organization?.company_code || switching) return;
     setSwitching(true);
     try {
@@ -57,18 +58,16 @@ export function OrganizationSwitcher({ collapsed = false }) {
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#abb9e8]">
           Organization
         </span>
-        <select
+        <SearchableSelect
           className="app-sidebar-select w-full rounded-md border px-2 py-1.5 text-[13px] outline-none"
           value={organization?.company_code ?? ""}
           onChange={onChange}
           disabled={switching}
-        >
-          {options.map((m) => (
-            <option key={m.organization_id} value={m.company_code}>
-              {m.org_name} ({m.company_code})
-            </option>
-          ))}
-        </select>
+          options={options.map((m) => ({
+            value: m.company_code,
+            label: `${m.org_name} (${m.company_code})`,
+          }))}
+        />
       </label>
     </div>
   );

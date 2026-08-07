@@ -9,9 +9,11 @@ import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import {
   CatalogPageShell,
   Field,
+  FilterSelect,
   FormDrawer,
   inputClassName,
   PrimaryButton,
+  SearchableSelect,
   SecondaryButton,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
@@ -113,11 +115,15 @@ function FoliosManager() {
   return (
     <CatalogPageShell title="Guest folios" subtitle="Charges, payments, and guest balances.">
       <div className="mb-4 flex flex-wrap gap-2">
-        <select className={inputClassName()} value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="open">Open</option>
-          <option value="checked_out">Checked out</option>
-          <option value="">All</option>
-        </select>
+        <FilterSelect
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          options={[
+            { value: "open", label: "Open" },
+            { value: "checked_out", label: "Checked out" },
+            { value: "", label: "All" },
+          ]}
+        />
         <SecondaryButton onClick={() => void load()}>Refresh</SecondaryButton>
       </div>
       {loading ? (
@@ -202,17 +208,15 @@ function FoliosManager() {
                 <form className="space-y-2 rounded-lg border border-[var(--theme-border)] p-3" onSubmit={postCharge}>
                   <p className="text-xs font-semibold uppercase">Post charge</p>
                   <Field label="Type">
-                    <select
+                    <SearchableSelect
                       className={inputClassName()}
                       value={charge.charge_type}
-                      onChange={(e) => setCharge((c) => ({ ...c, charge_type: e.target.value }))}
-                    >
-                      {["room", "fnb", "minibar", "laundry", "other"].map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setCharge((c) => ({ ...c, charge_type: v }))}
+                      options={["room", "fnb", "minibar", "laundry", "other"].map((t) => ({
+                        value: t,
+                        label: t,
+                      }))}
+                    />
                   </Field>
                   <Field label="Description">
                     <input

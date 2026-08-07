@@ -11,6 +11,7 @@ import {
   Field,
   inputClassName,
   PrimaryButton,
+  SearchableSelect,
   SecondaryButton,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
@@ -288,26 +289,25 @@ function FrontDeskManager() {
                     <td className="px-3 py-2">{row.confirmation_code}</td>
                     <td className="px-3 py-2">{row.guest_name}</td>
                     <td className="px-3 py-2">
-                      <select
+                      <SearchableSelect
                         className={inputClassName()}
                         value={roomValue}
                         disabled={busy}
-                        onChange={(e) =>
+                        onChange={(v) =>
                           setArrivalRoomById((prev) => ({
                             ...prev,
-                            [row.id]: e.target.value,
+                            [row.id]: v,
                           }))
                         }
-                      >
-                        <option value="">Select vacant/clean room…</option>
-                        {options.map((r) => (
-                          <option key={r.id} value={String(r.id)}>
-                            {r.room_number}
-                            {r.status ? ` (${r.status})` : ""}
-                            {row.room_id && Number(row.room_id) === Number(r.id) ? " · reserved" : ""}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Select vacant/clean room…"
+                        options={[
+                          { value: "", label: "Select vacant/clean room…" },
+                          ...options.map((r) => ({
+                            value: String(r.id),
+                            label: `${r.room_number}${r.status ? ` (${r.status})` : ""}${row.room_id && Number(row.room_id) === Number(r.id) ? " · reserved" : ""}`,
+                          })),
+                        ]}
+                      />
                     </td>
                     <td className="px-3 py-2">
                       <PrimaryButton
@@ -405,25 +405,25 @@ function FrontDeskManager() {
                     {foliosEnabled ? <td className="px-3 py-2">{row.guest_name}</td> : null}
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <select
+                        <SearchableSelect
                           className={`${inputClassName()} min-w-[8rem]`}
                           value={pick}
                           disabled={busy}
-                          onChange={(e) =>
+                          onChange={(v) =>
                             setInHouseRoomById((prev) => ({
                               ...prev,
-                              [row.id]: e.target.value,
+                              [row.id]: v,
                             }))
                           }
-                        >
-                          <option value="">Select room…</option>
-                          {roomsForInHouse(row).map((r) => (
-                            <option key={r.id} value={String(r.id)}>
-                              {r.room_number}
-                              {r.status ? ` (${r.status})` : ""}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder="Select room…"
+                          options={[
+                            { value: "", label: "Select room…" },
+                            ...roomsForInHouse(row).map((r) => ({
+                              value: String(r.id),
+                              label: `${r.room_number}${r.status ? ` (${r.status})` : ""}`,
+                            })),
+                          ]}
+                        />
                         <SecondaryButton
                           disabled={busy || !pick || (row.room_id && Number(row.room_id) === Number(pick))}
                           onClick={() => void assignInHouseRoom(row)}
@@ -488,19 +488,20 @@ function FrontDeskManager() {
             />
           </Field>
           <Field label="Room">
-            <select
+            <SearchableSelect
               required
               className={inputClassName()}
               value={walkIn.room_id}
-              onChange={(e) => setWalkIn((w) => ({ ...w, room_id: e.target.value }))}
-            >
-              <option value="">Select vacant/clean room…</option>
-              {availableRooms.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.room_number} ({r.status})
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setWalkIn((w) => ({ ...w, room_id: v }))}
+              placeholder="Select vacant/clean room…"
+              options={[
+                { value: "", label: "Select vacant/clean room…" },
+                ...availableRooms.map((r) => ({
+                  value: String(r.id),
+                  label: `${r.room_number} (${r.status})`,
+                })),
+              ]}
+            />
           </Field>
           <PrimaryButton showIcon={false} type="submit" disabled={busy}>
             Check in walk-in

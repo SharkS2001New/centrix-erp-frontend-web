@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { PaginationBar } from "@/components/catalog/catalog-shared";
+import { PaginationBar, FilterSelect } from "@/components/catalog/catalog-shared";
 import { printLegacyArchiveSale } from "@/components/sales/sale-order-print";
 import { ReportBadge } from "@/components/reports/report-screen-shared";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
@@ -594,17 +594,14 @@ export function LegacyArchiveReportScreen() {
       <div className="mb-4 flex flex-wrap items-end gap-3 theme-panel rounded-xl border p-4 shadow-sm">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Channel</label>
-          <select
+          <FilterSelect
             value={channel}
             onChange={(e) => setChannel(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          >
-            {CHANNELS.map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+            options={CHANNELS.map((c) => ({
+              value: c.key,
+              label: c.label,
+            }))}
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">From *</label>

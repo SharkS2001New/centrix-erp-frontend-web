@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -55,7 +56,7 @@ import {
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
-import { ClassicPosThemePicker } from "@/components/admin/external-pos-platform-fields";
+import { ExternalPosPlatformFields } from "@/components/admin/external-pos-platform-fields";
 import {
   HOTEL_POS_THEME_DEFAULT,
   HOTEL_POS_THEME_TEMPLATES,
@@ -239,18 +240,14 @@ export function OrganizationTenantProfile({
         </OrgRegisterField>
         {industryOptions.length > 0 ? (
           <OrgRegisterField label="Industry *" className="sm:col-span-2 sm:max-w-md">
-            <select
-              className={inputClass}
-              value={industry ?? ""}
-              onChange={(e) => onIndustryChange?.(e.target.value)}
-              required
-            >
-              {industryOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={"industry ?? """}
+  nativeEvent
+  onChange={e) => onIndustryChange?.(e.target.value}
+  required={true}
+  options={industryOptions.map((item) => ({ value: item.id, label: item.label }))}
+/>
             <p className="mt-1 text-xs text-slate-500">
               {industryOptions.find((item) => item.id === industry)?.description ||
                 "Applications, roles, and permissions follow the selected industry."}
@@ -259,18 +256,14 @@ export function OrganizationTenantProfile({
         ) : null}
         {setupProfiles.length > 0 ? (
           <OrgRegisterField label="Setup type *" className="sm:col-span-2 sm:max-w-md">
-            <select
-              className={inputClass}
-              value={deploymentProfile}
-              onChange={(e) => onProfileChange?.(e.target.value)}
-              required
-            >
-              {setupProfiles.map((profile) => (
-                <option key={profile.key} value={profile.key}>
-                  {profile.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={"deploymentProfile"}
+  nativeEvent
+  onChange={e) => onProfileChange?.(e.target.value}
+  required={true}
+  options={setupProfiles.map((profile) => ({ value: profile.value ?? profile.id, label: profile.label }))}
+/>
             <p className="mt-1 text-xs text-slate-500">
               {industry === "hospitality"
                 ? "Hotel & Hospitality setup. Applications tab shows Hotel POS and Hotel Backoffice only."
@@ -503,6 +496,91 @@ export function salesPlatformFromApi(apiPayload) {
   };
 }
 
+export function defaultPayrollPlatformState() {
+  return {
+    payroll_month_days_basis: "calendar",
+    shif_minimum_monthly: "",
+  };
+}
+
+export function payrollPlatformFromApi(apiPayload) {
+  if (!apiPayload) return defaultPayrollPlatformState();
+  const basis = apiPayload.payroll_month_days_basis === "fixed_30" ? "fixed_30" : "calendar";
+  const shifMin = apiPayload.shif_minimum_monthly;
+  return {
+    payroll_month_days_basis: basis,
+    shif_minimum_monthly:
+      shifMin == null || shifMin === "" ? "" : String(shifMin),
+  };
+}
+
+export function payrollPlatformToApi(payrollPlatform) {
+  const shifRaw = String(payrollPlatform?.shif_minimum_monthly ?? "").trim();
+  return {
+    payroll_month_days_basis:
+      payrollPlatform?.payroll_month_days_basis === "fixed_30" ? "fixed_30" : "calendar",
+    shif_minimum_monthly: shifRaw === "" ? null : Number(shifRaw),
+  };
+}
+
+export function OrganizationPlatformPayrollSettings({ payrollPlatform, onChange, enabledModules = {} }) {
+  const payrollEnabled = Boolean(enabledModules.hr_payroll);
+  const state = payrollPlatform ?? defaultPayrollPlatformState();
+
+  function patch(partial) {
+    onChange?.({ ...state, ...partial });
+  }
+
+  return (
+    <PlatformFormSection
+      title="Payroll"
+      description="Platform-only payroll rules for this organization. Tenant HR managers cannot change these."
+    >
+      {!payrollEnabled ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Enable the <strong>Human resources</strong> module to configure payroll behaviour.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <label className="block">
+            <span className="text-xs font-medium text-slate-600">Monthly pay day basis</span>
+            <select
+              className={`${inputClass} mt-1`}
+              value={state.payroll_month_days_basis ?? "calendar"}
+              onChange={(e) => patch({ payroll_month_days_basis: e.target.value })}
+            >
+              <option value="calendar">Calendar days in pay period (28–31)</option>
+              <option value="fixed_30">Fixed 30 days every month</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Fixed 30 days uses a daily rate of monthly salary ÷ 30. Full-month pay with no absences
+              stays at the contract amount even in shorter months. Calendar mode divides by the actual
+              days in the pay period.
+            </p>
+          </label>
+
+          <label className="block max-w-xs">
+            <span className="text-xs font-medium text-slate-600">SHIF minimum (KES / month)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className={`${inputClass} mt-1`}
+              placeholder="Platform default (300)"
+              value={state.shif_minimum_monthly ?? ""}
+              onChange={(e) => patch({ shif_minimum_monthly: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Leave blank to use the platform Kenya payroll SHIF minimum. Set a value here when this
+              organization needs a different statutory floor.
+            </p>
+          </label>
+        </div>
+      )}
+    </PlatformFormSection>
+  );
+}
+
 export function OrganizationPlatformSalesSettings({
   salesPlatform,
   onChange,
@@ -598,34 +676,6 @@ export function OrganizationPlatformSalesSettings({
             checked={Boolean(salesPlatform?.append_same_day_customer_orders)}
             onChange={(v) => patch({ append_same_day_customer_orders: v })}
           />
-          <Toggle
-            label="Allow editing orders from Sales"
-            description="When on, staff can Edit order from the Sales orders list for any source (Point of sale, Mobile, or Backoffice). Change customer, add/remove lines, adjust quantities and discounts; totals and stock update on save."
-            checked={salesPlatform?.enable_backoffice_order_edit !== false}
-            onChange={(v) => patch({ enable_backoffice_order_edit: v })}
-          />
-          {salesPlatform?.enable_backoffice_order_edit !== false ? (
-            <div className="ml-6 space-y-1 border-l border-slate-200 pl-4">
-              <label className="block text-sm font-medium text-slate-900">Edit Orders mode</label>
-              <select
-                className={inputClass}
-                value={
-                  salesPlatform?.backoffice_order_edit_layout === "classic" ? "classic" : "modern"
-                }
-                onChange={(e) => patch({ backoffice_order_edit_layout: e.target.value })}
-              >
-                <option value="modern">Modern — current Centrix Edit order popup</option>
-                <option value="classic">
-                  Classic — POS-style cart, item swap, retail/wholesale mode
-                </option>
-              </select>
-              <p className="text-xs text-slate-500">
-                Same idea as External POS layout. Classic uses the Classic POS look and interactions
-                inside the Edit order popup (swap, F12 retail/wholesale) while keeping the same
-                pricing and route markups.
-              </p>
-            </div>
-          ) : null}
           <Toggle
             label="Enable M-Pesa STK Push"
             description="When off, this organization cannot configure M-Pesa and STK Push is hidden on POS checkout."
@@ -831,17 +881,13 @@ export function OrganizationOrderWorkflowSettings({
                     />
                   </OrgRegisterField>
                   <OrgRegisterField label="Still in pipeline before">
-                    <select
-                      className={inputClass}
-                      value={salesPlatform?.order_expiry_before_status ?? "processed"}
-                      onChange={(e) => patch({ order_expiry_before_status: e.target.value })}
-                    >
-                      {expiryPipelineSteps.map((step) => (
-                        <option key={step.key} value={step.key}>
-                          {step.label}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+  className={inputClass}
+  value={"salesPlatform?.order_expiry_before_status ?? "processed""}
+  nativeEvent
+  onChange={e) => patch({ order_expiry_before_status: e.target.value }}
+  options={expiryPipelineSteps.map((step) => ({ value: step.value ?? step.id, label: step.label }))}
+/>
                     <p className="mt-1 text-xs text-slate-500">
                       Orders in earlier stages (e.g. booked, pending) are expired once the day limit passes.
                     </p>
@@ -1195,10 +1241,11 @@ function OrganizationHotelServicesPanel({
       >
         <div className="space-y-4">
           <OrgRegisterField label="Checkout mode">
-            <select
-              className={inputClass}
-              value={collectMode ? "collect" : "save"}
-              onChange={(e) => {
+            <SearchableSelect
+  className={inputClass}
+  value={"collectMode ? "collect" : "save""}
+  nativeEvent
+  onChange={(e) => {
                 const collect = e.target.value === "collect";
                 patchSales({
                   hotel_pos_collect_payment: collect,
@@ -1209,10 +1256,8 @@ function OrganizationHotelServicesPanel({
                   },
                 });
               }}
-            >
-              <option value="collect">Collect payment — buy and pay now</option>
-              <option value="save">Save order — print unpaid receipt, pay later</option>
-            </select>
+  options={[{ value: "collect", label: "Collect payment — buy and pay now" }, { value: "save", label: "Save order — print unpaid receipt, pay later" }]}
+/>
           </OrgRegisterField>
           <div>
             <p className="theme-heading text-sm font-semibold">Payment statuses</p>
@@ -1339,26 +1384,22 @@ function OrganizationHotelServicesPanel({
             </div>
           </OrgRegisterField>
           <OrgRegisterField label="Hotel POS product grid">
-            <select
-              className={inputClass}
-              value={Number(salesPlatform?.hotel_pos_grid_columns) === 5 ? 5 : 4}
-              onChange={(e) => patchSales({ hotel_pos_grid_columns: Number(e.target.value) })}
-            >
-              <option value={4}>4 columns</option>
-              <option value={5}>5 columns</option>
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={"Number(salesPlatform?.hotel_pos_grid_columns) === 5 ? 5 : 4"}
+  nativeEvent
+  onChange={e) => patchSales({ hotel_pos_grid_columns: Number(e.target.value) }}
+  options={[{ value: 4, label: "4 columns" }, { value: 5, label: "5 columns" }]}
+/>
           </OrgRegisterField>
           <OrgRegisterField label="Menu items shown (before search)">
-            <select
-              className={inputClass}
-              value={Number(salesPlatform?.hotel_pos_catalog_limit) || 30}
-              onChange={(e) => patchSales({ hotel_pos_catalog_limit: Number(e.target.value) })}
-            >
-              <option value={20}>20</option>
-              <option value={30}>30</option>
-              <option value={40}>40</option>
-              <option value={50}>50</option>
-            </select>
+            <SearchableSelect
+  className={inputClass}
+  value={"Number(salesPlatform?.hotel_pos_catalog_limit) || 30"}
+  nativeEvent
+  onChange={e) => patchSales({ hotel_pos_catalog_limit: Number(e.target.value) }}
+  options={[{ value: 20, label: "20" }, { value: 30, label: "30" }, { value: 40, label: "40" }, { value: 50, label: "50" }]}
+/>
           </OrgRegisterField>
         </div>
       </PlatformFormSection>
@@ -1637,31 +1678,6 @@ export function OrganizationModuleToggles({
       }
     >
       <div className="space-y-4">
-        {typeof onSalesChange === "function" ? (
-          <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-4">
-            <ClassicPosThemePicker
-              value={salesPlatform?.classic_pos_theme_template}
-              onChange={(id) =>
-                onSalesChange({
-                  ...(salesPlatform ?? {}),
-                  classic_pos_theme_template: id,
-                })
-              }
-              colors={salesPlatform?.classic_pos_theme_colors}
-              onColorsChange={(next) =>
-                onSalesChange({
-                  ...(salesPlatform ?? {}),
-                  classic_pos_theme_colors: next,
-                })
-              }
-              description={
-                isHotelProfile
-                  ? "Hotel Backoffice and Admin: sidebar + primary buttons. Organization admins can also change this under Centrix ERP Themes. Hotel POS desk colors are set under Hotel POS below."
-                  : "Backoffice: sidebar + primary buttons only. Classic External POS: full palette. Organization admins can also change this under Centrix ERP Themes."
-              }
-            />
-          </div>
-        ) : null}
         {workspaces.length === 0 ? (
           <p className="theme-subtext text-sm">No applications available for this deployment profile.</p>
         ) : null}
@@ -1695,7 +1711,7 @@ export function OrganizationModuleToggles({
                   <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                   {workspace.id === "pos" && enabled ? (
                     <span className="theme-subtext mt-1 block text-xs">
-                      Color theme is above. POS layout and cashier behaviour are under Administration
+                      Centrix ERP theme colors are configured by the organization under Administration
                       → Centrix ERP Themes. Till close, barcode, and customer prompts are under
                       Organization settings → Sales → Tills.
                     </span>
@@ -1715,6 +1731,62 @@ export function OrganizationModuleToggles({
                   ) : null}
                 </span>
               </label>
+              {workspace.id === "pos" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <ExternalPosPlatformFields
+                    value={salesPlatform ?? {}}
+                    onChange={onSalesChange}
+                    posEnabled
+                    showTheme={false}
+                    showLayout
+                    showBehaviourToggles
+                  />
+                </div>
+              ) : null}
+              {workspace.id === "backoffice" && enabled && typeof onSalesChange === "function" ? (
+                <div className="mt-3 space-y-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <Toggle
+                    label="Allow editing orders from Sales"
+                    description="When on, staff can Edit order from the Sales orders list for any source (Point of sale, Mobile, or Backoffice). Change customer, add/remove lines, adjust quantities and discounts; totals and stock update on save."
+                    checked={salesPlatform?.enable_backoffice_order_edit !== false}
+                    onChange={(v) =>
+                      onSalesChange({
+                        ...(salesPlatform ?? {}),
+                        enable_backoffice_order_edit: v,
+                      })
+                    }
+                  />
+                  {salesPlatform?.enable_backoffice_order_edit !== false ? (
+                    <div className="ml-6 space-y-1 border-l border-slate-200 pl-4">
+                      <label className="block text-sm font-medium text-slate-900">Edit Orders mode</label>
+                      <select
+                        className={inputClass}
+                        value={
+                          salesPlatform?.backoffice_order_edit_layout === "classic"
+                            ? "classic"
+                            : "modern"
+                        }
+                        onChange={(e) =>
+                          onSalesChange({
+                            ...(salesPlatform ?? {}),
+                            backoffice_order_edit_layout: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="modern">Modern — current Centrix Edit order popup</option>
+                        <option value="classic">
+                          Classic — POS-style cart, item swap, retail/wholesale mode
+                        </option>
+                      </select>
+                      <p className="text-xs text-slate-500">
+                        Same idea as External POS layout. Classic uses the Classic POS look and
+                        interactions inside the Edit order popup (swap, F12 retail/wholesale) while
+                        keeping the same pricing and route markups.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {workspace.id === "hotel_bar_pos" && enabled ? (
                 <p className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8 text-xs text-slate-600">
                   Hotel POS theme, checkout mode, payment references, and services are configured on the{" "}
@@ -1983,33 +2055,23 @@ export function OrganizationUsersPanel({
                   />
                 </OrgRegisterField>
                 <OrgRegisterField label="Branch *">
-                  <select
-                    className={inputClass}
-                    value={branchId}
-                    onChange={(e) => setBranchId(e.target.value)}
-                  >
-                    <option value="">Select branch</option>
-                    {branches.map((branch) => (
-                      <option key={branch.id} value={String(branch.id)}>
-                        {branch.branch_name}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+  className={inputClass}
+  value={"branchId"}
+  nativeEvent
+  onChange={e) => setBranchId(e.target.value}
+  options={branches.map((branch) => ({ value: branch.id, label: branch.branch_name }))}
+/>
                 </OrgRegisterField>
                 <OrgRegisterField label="Role *">
-                  <select
-                    className={inputClass}
-                    value={roleId}
-                    onChange={(e) => setRoleId(e.target.value)}
-                    disabled={isAdmin}
-                  >
-                    <option value="">Select role</option>
-                    {roles.map((role) => (
-                      <option key={role.id} value={String(role.id)}>
-                        {role.role_name}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+  className={inputClass}
+  value={"roleId"}
+  nativeEvent
+  onChange={e) => setRoleId(e.target.value}
+  disabled={true}
+  options={roles.map((role) => ({ value: role.id, label: role.label }))}
+/>
                 </OrgRegisterField>
               </div>
 

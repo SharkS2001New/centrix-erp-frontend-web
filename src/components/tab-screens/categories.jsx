@@ -25,6 +25,7 @@ import {
   ParentChip,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SECONDARY_BTN_CLASS,
   SearchInput,
   TABLE_BODY_ROW_CLASS,
@@ -628,21 +629,17 @@ export function CategoriesScreen() {
       >
         {modalKind === "subcategory" && (
           <Field label="Parent category">
-            <select
+            <SearchableSelect
               value={parentCategoryId}
-              onChange={(e) => setParentCategoryId(e.target.value)}
+              onChange={setParentCategoryId}
               required
               className={inputClassName()}
-            >
-              <option value="" disabled>
-                Select category
-              </option>
-              {categories.map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.category_name}
-                </option>
-              ))}
-            </select>
+              placeholder="Select category"
+              options={categories.map((c) => ({
+                value: String(c.id),
+                label: c.category_name,
+              }))}
+            />
           </Field>
         )}
         <Field label={modalKind === "category" ? "Category name" : "Sub-category name"} required>

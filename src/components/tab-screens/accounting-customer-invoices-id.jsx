@@ -16,6 +16,7 @@ import {
   CatalogPageShell,
   Field,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
@@ -260,19 +261,17 @@ export function AccountingCustomerInvoicesIdScreen() {
               />
             </Field>
             <Field label="Payment method">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={payForm.payment_method_id}
-                onChange={(e) => setPayForm((f) => ({ ...f, payment_method_id: e.target.value }))}
+                onChange={(v) => setPayForm((f) => ({ ...f, payment_method_id: v }))}
                 required
-              >
-                <option value="">Select…</option>
-                {methods.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.method_name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select…"
+                options={methods.map((m) => ({
+                  value: String(m.id),
+                  label: m.method_name,
+                }))}
+              />
             </Field>
             <Field label="Date paid">
               <input

@@ -9,6 +9,7 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
   Field,
+  FilterSelect,
   PrimaryButton,
   formatShortDate,
   inputClassName,
@@ -164,14 +165,17 @@ export function AccountingCashFlowScreen() {
               <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
             </Field>
             <Field label="Branch">
-              <select className={inputClassName()} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-                <option value="">All branches</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.branch_name}
-                  </option>
-                ))}
-              </select>
+              <FilterSelect
+                value={branchId}
+                onChange={(e) => setBranchId(e.target.value)}
+                options={[
+                  { value: "", label: "All branches" },
+                  ...branches.map((b) => ({
+                    value: String(b.id),
+                    label: b.branch_name,
+                  })),
+                ]}
+              />
             </Field>
             <PrimaryButton type="button" showIcon={false} onClick={() => void load()}>
               Refresh

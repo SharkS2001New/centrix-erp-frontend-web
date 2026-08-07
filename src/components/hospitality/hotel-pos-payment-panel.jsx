@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/catalog/catalog-shared";
 import { formatHotelMoney } from "@/lib/hotel-pos-settings";
 import { HotelPosAmountKeypad } from "@/components/hospitality/hotel-pos-amount-keypad";
 
@@ -386,17 +387,15 @@ export function HotelPosPaymentPanel({
 
             {cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
               <div className="space-y-2">
-                <select
+                <SearchableSelect
                   className="theme-input w-full rounded-xl px-3 py-2.5 text-sm"
                   value={bankType}
-                  onChange={(e) => setBankType(e.target.value)}
-                >
-                  {cfg.bankOptions.map((o) => (
-                    <option key={o.value || "none"} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setBankType}
+                  options={cfg.bankOptions.map((o) => ({
+                    value: o.value,
+                    label: o.label,
+                  }))}
+                />
                 {cfg.showBankAmount ? (
                   <HotelPosMethodBlock
                     {...methodBlockProps}
@@ -473,19 +472,19 @@ export function HotelPosPaymentPanel({
                 value={roomCharge}
                 balanceForMethod={amountExcluding("room")}
                 extra={
-                  <select
+                  <SearchableSelect
                     className="theme-input mt-2 w-full rounded-xl px-3 py-2 text-sm"
                     value={folioId}
-                    onChange={(e) => setFolioId(e.target.value)}
-                  >
-                    <option value="">Select open folio…</option>
-                    {(openFolios || []).map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.folio_number} · {f.guest_name}
-                        {f.room_number ? ` · Rm ${f.room_number}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setFolioId}
+                    placeholder="Select open folio…"
+                    options={[
+                      { value: "", label: "Select open folio…" },
+                      ...(openFolios || []).map((f) => ({
+                        value: String(f.id),
+                        label: `${f.folio_number} · ${f.guest_name}${f.room_number ? ` · Rm ${f.room_number}` : ""}`,
+                      })),
+                    ]}
+                  />
                 }
               />
             ) : null}

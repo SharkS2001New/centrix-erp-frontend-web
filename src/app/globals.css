@@ -3541,11 +3541,19 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--classic-text, #1a1a1a) !important;
+  border: 1px solid transparent;
+  outline: none;
+  box-shadow: none;
+  --classic-cell-focus-border: color-mix(in srgb, var(--classic-border, #8a7a55) 38%, #fff);
 }
 
 .classic-pos-cart-scan-input {
   min-width: 8.5rem;
-  border: 1px solid var(--classic-border, #8a7a55);
+  border-color: var(--classic-cell-focus-border);
+}
+
+.classic-pos-cart-scan-input:focus {
+  border-color: var(--classic-cell-focus-border);
 }
 
 .classic-pos-cart-qty-input,
@@ -3554,12 +3562,18 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   text-align: center;
   margin: 0 auto;
   display: block;
-  border: none;
-  outline: none;
-  box-shadow: none;
   background: transparent !important;
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* New line qty — same lighter border as scan while adding a product */
+.classic-pos-cart-qty-input {
+  border-color: var(--classic-cell-focus-border);
+}
+
+.classic-pos-cart-qty-input:focus {
+  border-color: var(--classic-cell-focus-border);
 }
 
 .classic-pos-cart-qty-input::-webkit-outer-spin-button,
@@ -3577,13 +3591,12 @@ html[data-classic-pos-active] .theme-btn-secondary:hover:not(:disabled) {
   padding: 0.15rem 0.25rem;
   font-size: 0.82rem;
   height: 1.45rem;
+  border-color: transparent;
 }
 
-.classic-pos-line-qty-input:focus,
-.classic-pos-cart-qty-input:focus {
-  outline: none;
-  border: none;
-  box-shadow: none;
+/* Saved line qty — borderless until focused (Edit / click in cell) */
+.classic-pos-line-qty-input:focus {
+  border-color: var(--classic-cell-focus-border);
 }
 
 .classic-pos-qty-adjust {

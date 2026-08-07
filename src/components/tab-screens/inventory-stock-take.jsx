@@ -17,6 +17,7 @@ import {
   IconButton,
   PencilIcon,
   PrimaryButton,
+  SearchableSelect,
   SECONDARY_BTN_CLASS,
   TrashIcon,
   inputClassName,
@@ -333,15 +334,16 @@ export function InventoryStockTakeScreen() {
           />
         </Field>
         <Field label="Warehouse / location">
-          <select
+          <SearchableSelect
             className={inputClassName()}
             value={form.stock_location}
-            onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-          >
-            <option value="both">Shop and store</option>
-            <option value="shop">Shop only</option>
-            <option value="store">Store / warehouse only</option>
-          </select>
+            onChange={(v) => setForm((p) => ({ ...p, stock_location: v }))}
+            options={[
+              { value: "both", label: "Shop and store" },
+              { value: "shop", label: "Shop only" },
+              { value: "store", label: "Store / warehouse only" },
+            ]}
+          />
         </Field>
         <div className="theme-panel rounded-lg border px-3 py-3">
           <p className="text-sm font-medium theme-heading">Product scope</p>
@@ -350,56 +352,52 @@ export function InventoryStockTakeScreen() {
           </p>
           <div className="mt-3 space-y-3">
             <Field label="Supplier">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={form.filter_supplier_id}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, filter_supplier_id: e.target.value }))
-                }
-              >
-                <option value="all">All suppliers</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={String(supplier.id)}>
-                    {supplier.supplier_name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, filter_supplier_id: v }))}
+                options={[
+                  { value: "all", label: "All suppliers" },
+                  ...suppliers.map((supplier) => ({
+                    value: String(supplier.id),
+                    label: supplier.supplier_name,
+                  })),
+                ]}
+              />
             </Field>
             <Field label="Category">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={form.filter_category_id}
-                onChange={(e) =>
+                onChange={(v) =>
                   setForm((p) => ({
                     ...p,
-                    filter_category_id: e.target.value,
+                    filter_category_id: v,
                     filter_subcategory_id: "all",
                   }))
                 }
-              >
-                <option value="all">All categories</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={String(category.id)}>
-                    {category.category_name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "all", label: "All categories" },
+                  ...categories.map((category) => ({
+                    value: String(category.id),
+                    label: category.category_name,
+                  })),
+                ]}
+              />
             </Field>
             <Field label="Subcategory">
-              <select
+              <SearchableSelect
                 className={inputClassName()}
                 value={form.filter_subcategory_id}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, filter_subcategory_id: e.target.value }))
-                }
-              >
-                <option value="all">All subcategories</option>
-                {subCategoryOptions.map((subCategory) => (
-                  <option key={subCategory.id} value={String(subCategory.id)}>
-                    {subCategory.subcategory_name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setForm((p) => ({ ...p, filter_subcategory_id: v }))}
+                options={[
+                  { value: "all", label: "All subcategories" },
+                  ...subCategoryOptions.map((subCategory) => ({
+                    value: String(subCategory.id),
+                    label: subCategory.subcategory_name,
+                  })),
+                ]}
+              />
             </Field>
           </div>
         </div>

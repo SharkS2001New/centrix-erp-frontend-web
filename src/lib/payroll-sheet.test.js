@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPayrollSheetExportFooter,
+  buildPayrollSheetExportRows,
   buildPayrollSheetFooter,
   buildPayrollSheetRows,
   payrollSheetNumericRow,
@@ -54,5 +56,39 @@ describe("payroll-sheet", () => {
     const numeric = payrollSheetNumericRow(sampleLine, 0, () => "Alex");
     expect(numeric.advance).toBe(300);
     expect(numeric.loan_absent).toBe(200);
+  });
+
+  it("falls back to statutory_meta when gross_pay and net_pay are zero on the line", () => {
+    const line = {
+      ...sampleLine,
+      gross_pay: 0,
+      net_pay: 0,
+      statutory_meta: {
+        ...sampleLine.statutory_meta,
+        period_gross: 8000,
+        net_pay: 6600,
+      },
+    };
+    const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
+    expect(numeric.gross_salary).toBe(8000);
+    expect(numeric.net_pay).toBe(6600);
+  });
+
+  it("exports plain decimals and full account numbers for CSV", () => {
+    const line = {
+      ...sampleLine,
+      employee: {
+        ...sampleLine.employee,
+        bank_accounts: [{ is_primary: true, account_number: "01234567890123456789" }],
+      },
+    };
+    const row = buildPayrollSheetExportRows([line], () => "Alex")[0];
+    expect(row.gross_salary).toBe("8000.00");
+    expect(row.net_pay).toBe("6600.00");
+    expect(row.basic_salary).toBe("8000.00");
+    expect(row.account_number).toBe("01234567890123456789");
+    const footer = buildPayrollSheetExportFooter([line], () => "Alex");
+    expect(footer.gross_salary).toBe("8000.00");
+    expect(footer.net_pay).toBe("6600.00");
   });
 });

@@ -8,6 +8,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  SearchableSelect,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -367,18 +368,16 @@ export function HrKpisScreen() {
         <div className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Organization KPI">
-              <select
+              <SearchableSelect
                 value={selectedKpiId ?? ""}
-                onChange={(e) => setSelectedKpiId(Number(e.target.value) || null)}
+                onChange={(v) => setSelectedKpiId(Number(v) || null)}
                 className={inputClassName()}
-              >
-                <option value="">Select KPI…</option>
-                {orgKpis.map((k) => (
-                  <option key={k.id} value={k.id}>
-                    {k.label}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select KPI…"
+                options={orgKpis.map((k) => ({
+                  value: String(k.id),
+                  label: k.label,
+                }))}
+              />
             </Field>
             {selectedKpi && canManage ? (
               <PrimaryButton
