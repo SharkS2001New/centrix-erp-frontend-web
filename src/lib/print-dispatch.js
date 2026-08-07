@@ -93,8 +93,11 @@ export async function dispatchPrintJob({
 
   const preparedHtml = preparePrintHtml(html, jobType);
 
+  // Receipts/Z settle quickly — never block the till UI for minutes on missing afterprint.
+  const settleTimeoutMs = jobType === "receipt" ? 5_000 : 20_000;
+
   if (printWindow) {
-    await fillPrintWindow(printWindow, preparedHtml, { skipBaseline: true });
+    await fillPrintWindow(printWindow, preparedHtml, { skipBaseline: true, settleTimeoutMs });
     return { mode: "browser", ok: true };
   }
 
@@ -164,7 +167,7 @@ export async function dispatchPrintJob({
   for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
     const win = openBlankPrintWindow(windowFeatures);
     if (win) {
-      await fillPrintWindow(win, preparedHtml, { skipBaseline: true });
+      await fillPrintWindow(win, preparedHtml, { skipBaseline: true, settleTimeoutMs });
       opened += 1;
     }
   }

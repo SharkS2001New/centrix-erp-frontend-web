@@ -63,9 +63,45 @@ async function withLocalStorageLock(callback) {
   }
 }
 
-export async function withPosOfflineExclusiveLock(callback) {
+/**
+ * @template T
+ * @param {() => Promise<T> | T} callback
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {Promise<T>}
+ */
+export async function withPosOfflineExclusiveLock(callback, options = {}) {
+  const timeoutMs = Number(options.timeoutMs ?? 30_000);
   if (typeof navigator !== "undefined" && navigator.locks?.request) {
-    return navigator.locks.request(LOCK_NAME, { mode: "exclusive" }, callback);
+    const controller =
+      typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer =
+      controller && Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? window.setTimeout(() => {
+            try {
+              controller.abort();
+            } catch {
+              /* ignore */
+            }
+          }, timeoutMs)
+        : null;
+    try {
+      return await navigator.locks.request(
+        LOCK_NAME,
+        {
+          mode: "exclusive",
+          ...(controller ? { signal: controller.signal } : {}),
+        },
+        callback,
+      );
+    } catch (err) {
+      // Timed out waiting for another tab — still run (localStorage mutex has its own cap).
+      if (err?.name === "AbortError") {
+        return withLocalStorageLock(callback);
+      }
+      throw err;
+    } finally {
+      if (timer != null) window.clearTimeout(timer);
+    }
   }
   return withLocalStorageLock(callback);
 }

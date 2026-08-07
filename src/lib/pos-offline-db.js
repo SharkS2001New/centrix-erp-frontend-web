@@ -5,11 +5,15 @@
 
 import { APP_TIMEZONE, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
-const DB_NAME = "centrix-pos-offline-v1";
+export const POS_OFFLINE_DB_NAME = "centrix-pos-offline-v1";
+const DB_NAME = POS_OFFLINE_DB_NAME;
 const DB_VERSION = 3;
 
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
+
+/** Meta key: which cashier/org last owned this device IndexedDB. */
+export const POS_OFFLINE_OWNER_META_KEY = "pos_device_owner";
 
 function openDb() {
   if (typeof indexedDB === "undefined") {
@@ -18,7 +22,10 @@ function openDb() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onerror = () => reject(req.error ?? new Error("Failed to open offline DB."));
+      req.onerror = () => {
+        dbPromise = null;
+        reject(req.error ?? new Error("Failed to open offline DB."));
+      };
       req.onsuccess = () => resolve(req.result);
       req.onupgradeneeded = (event) => {
         const db = req.result;
@@ -113,6 +120,76 @@ export async function idbSetMeta(key, value) {
 
 export async function idbClearStore(storeName) {
   await withStore(storeName, "readwrite", (store) => store.clear());
+}
+
+/**
+ * Close the open connection and delete the entire External POS IndexedDB.
+ * Next openDb() recreates an empty database.
+ */
+export async function idbWipeDatabaseCompletely() {
+  if (typeof indexedDB === "undefined") {
+    return;
+  }
+
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      try {
+        db.close();
+      } catch {
+        /* already closed */
+      }
+    } catch {
+      /* open failed — still attempt delete */
+    }
+    dbPromise = null;
+  }
+
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (ok, err) => {
+      if (settled) return;
+      settled = true;
+      if (ok) resolve();
+      else reject(err ?? new Error("Failed to delete POS offline database."));
+    };
+
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = () => finish(true);
+    req.onerror = () => finish(false, req.error);
+    const schedule =
+      typeof window !== "undefined" && typeof window.setTimeout === "function"
+        ? window.setTimeout.bind(window)
+        : setTimeout;
+    // Another connection can block delete forever — do not hang Z / cashier switch.
+    req.onblocked = () => {
+      schedule(() => finish(true), 2_000);
+    };
+    schedule(() => finish(true), 5_000);
+  });
+}
+
+/**
+ * Clear every object store without deleting the database file.
+ * Fallback when deleteDatabase is blocked.
+ */
+export async function idbClearAllStores() {
+  const names = [
+    "held_parks",
+    "local_cart",
+    "order_slots",
+    "order_numbers",
+    "catalog",
+    "meta",
+    "outbox",
+  ];
+  for (const name of names) {
+    try {
+      await idbClearStore(name);
+    } catch {
+      /* store may not exist yet */
+    }
+  }
 }
 
 export async function idbPutCatalogProducts(products) {

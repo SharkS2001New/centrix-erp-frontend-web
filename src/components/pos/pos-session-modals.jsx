@@ -473,8 +473,9 @@ export function ZReportModal({
   async function handlePrint() {
     if (printing) return;
     setPrinting(true);
+    let printOk = false;
     try {
-      await printPosTillReport({
+      const result = await printPosTillReport({
         type: "Z",
         organizationName,
         tillName: tillNo,
@@ -485,9 +486,19 @@ export function ZReportModal({
         showFloatBreakdown,
         moduleSettings,
       });
-      await onPrinted?.();
+      printOk = result?.ok !== false;
+    } catch (err) {
+      console.warn("Z report print failed", err);
+      printOk = false;
     } finally {
+      // Release "Printing…" before wipe/logout — IndexedDB wipe must not freeze this button.
       setPrinting(false);
+    }
+    if (!printOk) return;
+    try {
+      await onPrinted?.();
+    } catch (err) {
+      console.warn("Z report post-print cleanup failed", err);
     }
   }
 
@@ -501,7 +512,7 @@ export function ZReportModal({
       title="Z report"
       subtitle={
         signOutAfterFinish
-          ? "Print Z to clear local holds for the next session, then sign out"
+          ? "Print Z to wipe this till's local offline data, then sign out"
           : "End-of-day report for the closed session"
       }
       footer={

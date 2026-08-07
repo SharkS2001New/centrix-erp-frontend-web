@@ -122,9 +122,14 @@ function loadHtmlIntoPrintTarget(win, htmlContent, onReady) {
 
 /**
  * Open the browser print dialog for a prepared window/iframe.
- * Resolves when printing finishes (afterprint) or the attempt fails.
+ * Resolves when printing finishes (afterprint) or the settle timeout fires.
+ * Thermal / POS receipts use a short settle so Z print cannot hang the till UI.
+ *
+ * @param {Window} win
+ * @param {{ settleTimeoutMs?: number }} [options]
  */
-function scheduleBrowserPrint(win) {
+function scheduleBrowserPrint(win, options = {}) {
+  const settleTimeoutMs = Number(options.settleTimeoutMs ?? 8_000);
   return new Promise((resolve) => {
     if (!win || win.closed) {
       resolve(false);
@@ -139,8 +144,8 @@ function scheduleBrowserPrint(win) {
     };
 
     attachPrintCloseHandlers(win, () => finish(true));
-    // Headless / cancelled dialogs may never fire afterprint.
-    window.setTimeout(() => finish(true), 120_000);
+    // Headless / cancelled dialogs / iframe paths may never fire afterprint.
+    window.setTimeout(() => finish(true), Math.max(1_500, settleTimeoutMs));
 
     window.setTimeout(() => {
       if (win.closed) {
@@ -164,7 +169,11 @@ function scheduleBrowserPrint(win) {
 /**
  * @returns {Promise<boolean>}
  */
-export function fillPrintWindow(win, htmlContent, { autoPrint = true, skipBaseline = false } = {}) {
+export function fillPrintWindow(
+  win,
+  htmlContent,
+  { autoPrint = true, skipBaseline = false, settleTimeoutMs } = {},
+) {
   if (!win || win.closed) return Promise.resolve(false);
 
   const preparedHtml = skipBaseline
@@ -185,7 +194,7 @@ export function fillPrintWindow(win, htmlContent, { autoPrint = true, skipBaseli
         resolve(false);
         return;
       }
-      void scheduleBrowserPrint(win).then(resolve);
+      void scheduleBrowserPrint(win, { settleTimeoutMs }).then(resolve);
     };
 
     loadHtmlIntoPrintTarget(win, htmlWithoutScript, triggerPrint);

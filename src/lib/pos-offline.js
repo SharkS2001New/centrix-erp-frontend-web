@@ -231,9 +231,11 @@ export async function ensurePosOfflineOrderNumbers({
     // Seed local Cash Sales sequence from server (cancelled #s stay consumed).
     const nextPos = Number(res?.next_pos_order_num ?? 0);
     if (Number.isFinite(nextPos) && nextPos > 0) {
-      await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date, sessionId || null, {
-        // New float session must restart at server peek (#1), not keep a day-scoped floor.
-        force: Boolean(sessionId),
+      const scoped = Number.isFinite(sessionId) && sessionId > 0;
+      await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date, scoped ? sessionId : null, {
+        // New/open float session must take the session-scoped peek (usually #1),
+        // never keep a prior day-scoped floor.
+        force: scoped,
       });
     }
     return {
@@ -472,7 +474,10 @@ export async function clearPreviousOrderEditDraft() {
   await idbClearLocalCart(PREVIOUS_ORDER_EDIT_DRAFT_ID);
 }
 
-export { clearPosSessionLocalCache } from "@/lib/pos-session-local-cache";
+export {
+  clearPosSessionLocalCache,
+  ensurePosOfflineOwnerIsolation,
+} from "@/lib/pos-session-local-cache";
 
 export function isServerPosCartId(id) {
   return id != null && String(id) !== "active" && /^\d+$/.test(String(id));

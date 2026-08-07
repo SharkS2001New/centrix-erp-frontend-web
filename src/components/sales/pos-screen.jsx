@@ -777,15 +777,25 @@ function resolveFreshWorkspacePosNum(
   sessionOrders,
   pendingSale = null,
   issuedPosMax = null,
+  floatSessionId = null,
 ) {
   const serverNext = resolvePosNextBrowseNumber(activeCart);
   let maxPos = 0;
   if (issuedPosMax != null && Number(issuedPosMax) > 0) {
     maxPos = Number(issuedPosMax);
   }
+  const activeSession = Number(floatSessionId);
+  const scopedSession =
+    Number.isFinite(activeSession) && activeSession > 0 ? activeSession : null;
   const rows = [...(sessionOrders ?? [])];
   if (pendingSale) rows.unshift(pendingSale);
   for (const row of rows) {
+    // After Z/reopen, ignore tickets from a prior float session (or unsynced
+    // outbox still carrying the closed session id) so Cash Sales # restarts at 1.
+    if (scopedSession != null) {
+      const rowSession = Number(row?.float_session_id ?? 0);
+      if (rowSession !== scopedSession) continue;
+    }
     const n = Number(resolvePosSessionTicketNumber(row) ?? 0);
     if (n > maxPos) maxPos = n;
   }
@@ -833,6 +843,7 @@ async function resolveNextPosTicketForWorkspace(
     sessionOrders,
     pendingSale,
     await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null),
+    floatSessionId,
   );
   const emptyFresh =
     !(activeCart?.lines?.length > 0) &&
@@ -1108,7 +1119,12 @@ export function PosScreen({ standalone = false }) {
     flushOutboxAfterSale,
     syncOfflineOrders,
     syncSingleOfflineOrder,
-  } = usePosOfflineSupport({ enabled: standalone, floatSessionId });
+  } = usePosOfflineSupport({
+    enabled: standalone,
+    floatSessionId,
+    organizationId: organization?.id ?? user?.organization_id,
+    userId: user?.id,
+  });
 
   /** Push queued outbox sales to the server (await when caller must block). */
   async function pushOutboxAfterSale(orderNum, { syncingLabel = "syncing", background = false } = {}) {
@@ -1537,20 +1553,30 @@ export function PosScreen({ standalone = false }) {
         device_identifier: getPosDeviceIdentifier(),
       });
       setFloatModalOpen(false);
+      // New session must not inherit prior-session Cash Sales # from browse list.
+      setSessionPosOrders([]);
+      setCompletedSale(null);
+      completedSaleRef.current = null;
       // After Z/close + reopen, Cash Sales # must restart at 1 for the new session.
       try {
         const sessionId = opened?.id ?? null;
+        const { seedLocalPosTicketSeq } = await import("@/lib/pos-offline");
+        // Force local counter to 0 before server peek so UI cannot flash old day max.
+        if (sessionId) {
+          await seedLocalPosTicketSeq(0, null, sessionId, { force: true });
+        }
         const refreshed = await ensurePosOfflineOrderNumbers({
           force: true,
           floatSessionId: sessionId,
         });
-        const nextNum = Number(refreshed?.next_pos_order_num ?? 0);
-        if (Number.isFinite(nextNum) && nextNum > 0) {
-          applyFreshWorkspacePlaceholder(cartRef.current, nextNum);
-          setEditOrderNo(String(nextNum));
-        }
+        const nextNum = Number(refreshed?.next_pos_order_num ?? 1);
+        const startAt =
+          Number.isFinite(nextNum) && nextNum > 0 ? nextNum : 1;
+        applyFreshWorkspacePlaceholder(cartRef.current, startAt);
+        setEditOrderNo(String(startAt));
       } catch {
-        /* cart peek on next scan will correct */
+        applyFreshWorkspacePlaceholder(cartRef.current, 1);
+        setEditOrderNo("1");
       }
       defaultScanFocusDoneRef.current = false;
       window.requestAnimationFrame(() => {
@@ -1631,18 +1657,22 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function resetPosLocalStateAfterZPrint() {
-    // Only after Z is printed — prepare a clean device for the next till session.
+    // Best-effort sync, then always wipe IndexedDB completely so the next cashier
+    // cannot see this shift's carts / holds / offline sales.
     if (pendingSync > 0 || failedSyncOrders.length > 0) {
       try {
-        await syncOfflineOrders();
+        await Promise.race([
+          syncOfflineOrders(),
+          new Promise((resolve) => window.setTimeout(resolve, 8_000)),
+        ]);
       } catch {
-        /* keep unsynced rows — clearPosSessionLocalCache preserves them */
+        /* wipe proceeds anyway */
       }
     }
     try {
       await clearPosSessionLocalCache();
     } catch (e) {
-      console.warn("Could not clear POS IndexedDB after Z print", e);
+      console.warn("Could not wipe POS IndexedDB after Z print", e);
       try {
         await clearAllLocalHeldOrders();
         await clearLocalPosCart();
@@ -1675,12 +1705,20 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleZReportPrinted() {
-    await resetPosLocalStateAfterZPrint();
-    leavePosAfterZ();
+    try {
+      await resetPosLocalStateAfterZPrint();
+    } finally {
+      leavePosAfterZ();
+    }
   }
 
-  function handleZReportSignOut() {
-    // Sign out without printing — do not wipe held orders / IndexedDB.
+  async function handleZReportSignOut() {
+    // Sign out without print — still wipe so the next cashier cannot inherit this shift.
+    try {
+      await clearPosSessionLocalCache();
+    } catch (e) {
+      console.warn("Could not wipe POS IndexedDB on Z dismiss", e);
+    }
     leavePosAfterZ();
   }
 
@@ -2251,7 +2289,9 @@ export function PosScreen({ standalone = false }) {
       order_num: sale.order_num,
       pos_order_num: sale.pos_order_num ?? null,
       pos_order_date: sale.pos_order_date ?? null,
+      float_session_id: sale.float_session_id ?? floatSessionId ?? null,
       status: sale.status,
+      ...(sale.offline_pending_sync ? { offline_pending_sync: true } : {}),
     };
     setSessionPosOrders((prev) => {
       // Same POS ticket after edit replaces the previous sale id so ← opens the live receipt.
@@ -2322,9 +2362,13 @@ export function PosScreen({ standalone = false }) {
       ]),
     ).join(",");
 
-    // Previous-order browse: today only, this cashier, last 15.
+    // Previous-order browse: today only, this cashier, current float session.
     const today = new Date().toISOString().slice(0, 10);
     const cashierId = user?.id != null ? Number(user.id) : null;
+    const activeFloatId =
+      floatSessionId != null && Number(floatSessionId) > 0
+        ? Number(floatSessionId)
+        : null;
 
     async function fetchRows(searchParams) {
       const res = await apiRequest("/sales", { searchParams });
@@ -2344,6 +2388,7 @@ export function PosScreen({ standalone = false }) {
           to_date: today,
             date_field: "placed",
           ...(cashierId != null ? { cashier_id: cashierId } : {}),
+          ...(activeFloatId != null ? { float_session_id: activeFloatId } : {}),
         };
         rows = await fetchRows(
           buildPageParams({
@@ -2380,6 +2425,10 @@ export function PosScreen({ standalone = false }) {
             const rowCashier = row.cashier_id ?? row.created_by;
             if (rowCashier != null && Number(rowCashier) !== cashierId) return false;
           }
+          if (activeFloatId != null) {
+            const rowSession = Number(row.float_session_id ?? 0);
+            if (rowSession !== activeFloatId) return false;
+          }
           const source = String(row.order_source ?? row.channel ?? "pos").toLowerCase();
           if (source && source !== "pos") return false;
           const status = String(row.status ?? "").toLowerCase();
@@ -2391,6 +2440,7 @@ export function PosScreen({ standalone = false }) {
           order_num: row.order_num,
           pos_order_num: row.pos_order_num ?? null,
           pos_order_date: row.pos_order_date ?? null,
+          float_session_id: row.float_session_id ?? null,
           status: row.status,
           order_total: row.order_total != null ? Number(row.order_total) : null,
           amount_paid: row.amount_paid != null ? Number(row.amount_paid) : null,
@@ -2403,6 +2453,12 @@ export function PosScreen({ standalone = false }) {
       } catch {
         offlineOrders = [];
       }
+      // Keep unsynced sales from prior sessions visible for sync/edit, but the
+      // Cash Sales # sequencer only counts the open float session (below).
+      offlineOrders = offlineOrders.map((row) => ({
+        ...row,
+        float_session_id: row.float_session_id ?? null,
+      }));
 
       const offlineBrowseKeys = new Set(
         offlineOrders
@@ -2416,6 +2472,7 @@ export function PosScreen({ standalone = false }) {
           order_num: row.order_num,
           pos_order_num: row.pos_order_num ?? null,
           pos_order_date: row.pos_order_date ?? null,
+          float_session_id: row.float_session_id ?? null,
           status: row.status,
           offline_pending_sync: true,
         })),
@@ -2445,9 +2502,19 @@ export function PosScreen({ standalone = false }) {
           isFreshWorkspacePlaceholder(live) ||
           (!editingPrevious && !live?.offline_client_sale_uuid);
         if (onFreshNewOrder) {
+          // Prefer session-scoped next ticket — never fall back to prior-session max.
+          const nextScoped = resolveFreshWorkspacePosNum(
+            live,
+            orders,
+            null,
+            null,
+            activeFloatId,
+          );
+          if (nextScoped != null) return String(nextScoped);
           const next = resolvePosNextBrowseNumber(live);
           if (next != null) return String(next);
           if (String(current ?? "").trim()) return current;
+          return "1";
         } else if (String(current ?? "").trim()) {
           return current;
         }
@@ -2462,7 +2529,14 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(message);
       return [];
     }
-  }, [enablePosOrderEdit, standalone, channelWorkflow, user?.id, user?.branch_id]);
+  }, [
+    enablePosOrderEdit,
+    standalone,
+    channelWorkflow,
+    user?.id,
+    user?.branch_id,
+    floatSessionId,
+  ]);
 
   const clearOrderNameSearch = useCallback(() => {
     orderNameSearchSeqRef.current += 1;
@@ -6543,7 +6617,13 @@ export function PosScreen({ standalone = false }) {
     // Holding parks IndexedDB only — invalidate any in-flight held restore materialize.
     // (applyFreshWorkspacePlaceholder also bumps this.)
     const serverId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
-    const quickPeek = resolveFreshWorkspacePosNum(activeCart, sessionPosOrders);
+    const quickPeek = resolveFreshWorkspacePosNum(
+      activeCart,
+      sessionPosOrders,
+      null,
+      null,
+      floatSessionId,
+    );
     applyFreshWorkspacePlaceholder(activeCart, quickPeek);
 
     if (classicLayout) {
@@ -7029,6 +7109,8 @@ export function PosScreen({ standalone = false }) {
         checkoutCart,
         sessionPosOrders,
         saleForPeek,
+        null,
+        floatSessionId,
       );
       applyFreshWorkspacePlaceholder(checkoutCart, quickPeek);
       setStatusMessage("New order — scan or search a product.");
@@ -8098,6 +8180,7 @@ export function PosScreen({ standalone = false }) {
       sessionPosOrders,
       null,
       issuedPosMax,
+      floatSessionId,
     );
     const generation = ++freshWorkspaceGenerationRef.current;
 
@@ -9478,6 +9561,12 @@ export function PosScreen({ standalone = false }) {
                 restoredCart.pos_order_date ??
                 sale?.pos_order_date ??
                 saleSnapshot?.pos_order_date ??
+                null,
+              float_session_id:
+                restoredCart.float_session_id ??
+                sale?.float_session_id ??
+                saleSnapshot?.float_session_id ??
+                floatSessionId ??
                 null,
               status: sale?.status ?? saleSnapshot?.status,
               offline_pending_sync: true,

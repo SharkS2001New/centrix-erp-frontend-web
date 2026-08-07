@@ -304,8 +304,10 @@ export async function resolveKraReceiptDataForSale(sale, kraReceipt = null) {
 }
 
 /**
- * Resolve KRA fiscal data + QR image for print.
- * When KRA fiscalization is active for the sale, a scannable eTIMS QR is required.
+ * Resolve KRA fiscal data + QR image for print (best-effort).
+ * When a verification link exists, build the QR. When KRA is on but the sale
+ * has no eTIMS link yet (or QR generation fails), print a normal receipt —
+ * never block print on missing KRA.
  */
 export async function ensureKraQrForPrint(
   sale,
@@ -315,7 +317,8 @@ export async function ensureKraQrForPrint(
     capabilities = null,
     allowNetwork = true,
     qrSize = 100,
-    requireQrWhenFiscalized = true,
+    /** @deprecated Ignored — missing QR no longer blocks print. */
+    requireQrWhenFiscalized: _requireQrWhenFiscalized = false,
   } = {},
 ) {
   const kraEnabled = isKraDeviceConfigured(moduleSettings, capabilities);
@@ -332,8 +335,7 @@ export async function ensureKraQrForPrint(
     return { kraData, kraQrDataUrl };
   }
 
-  const expectQr =
-    requireQrWhenFiscalized &&
+  const tryFetch =
     isKraFiscalizationActive(moduleSettings, capabilities) &&
     !isKraBypassedForOrderTotal(moduleSettings, sale?.order_total) &&
     String(sale?.status ?? "").toLowerCase() !== "pending_approval";
@@ -341,11 +343,11 @@ export async function ensureKraQrForPrint(
   let kraData = extractKraReceiptData(sale, kraReceipt);
 
   if (allowNetwork && sale?.id && !kraData?.signatureLink) {
-    const attempts = expectQr || kraEnabled ? 4 : 1;
+    const attempts = tryFetch || kraEnabled ? 4 : 1;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       kraData = await resolveKraReceiptDataForSale(sale, kraReceipt);
       if (kraData?.signatureLink) break;
-      if (!(expectQr || kraEnabled) || attempt >= attempts - 1) break;
+      if (!(tryFetch || kraEnabled) || attempt >= attempts - 1) break;
       await sleep(300 * (attempt + 1));
     }
   }
@@ -357,35 +359,18 @@ export async function ensureKraQrForPrint(
     }
   }
 
-  // Any verification link must become a printed QR image.
+  // Link present but QR image failed — still print the receipt without the scan block.
   if (kraData?.signatureLink && !kraQrDataUrl) {
-    throw new Error(
-      "KRA is enabled but the eTIMS QR code could not be generated for this receipt. Please reprint.",
-    );
+    return { kraData, kraQrDataUrl: null };
   }
 
-  if (expectQr && !kraQrDataUrl) {
-    // Legacy / pre-eTIMS receipts — print normally without the KRA scan block.
+  // No verification link (not fiscalized yet / legacy) — normal receipt.
+  if (!kraQrDataUrl) {
     if (!saleLooksFiscalized(sale, kraData)) {
       return { kraData: null, kraQrDataUrl: null };
     }
-    throw new Error(
-      kraData?.signatureLink
-        ? "KRA is enabled but the eTIMS QR code could not be generated for this receipt. Please reprint."
-        : "KRA is enabled but this sale has no eTIMS verification link yet. Please reprint in a moment.",
-    );
-  }
-
-  // Sale carries fiscal payload (even if default submit is off) — still require QR.
-  if (
-    requireQrWhenFiscalized &&
-    kraEnabled &&
-    saleLooksFiscalized(sale, kraData) &&
-    !kraQrDataUrl
-  ) {
-    throw new Error(
-      "KRA is enabled but the eTIMS QR code could not be generated for this receipt. Please reprint.",
-    );
+    // Fiscalized payload without a usable link/QR — print without the KRA block.
+    return { kraData: null, kraQrDataUrl: null };
   }
 
   return { kraData, kraQrDataUrl };

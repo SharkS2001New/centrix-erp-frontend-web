@@ -460,10 +460,11 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       String(saleForPrint?.id ?? "").startsWith("offline:") ||
       Boolean(saleForPrint?._skip_kra_qr);
     const kraConfigured = isKraDeviceConfigured(moduleSettings, options.capabilities);
+    // Missing eTIMS QR must never block print — include QR when available, else normal receipt.
     const requireQrWhenFiscalized =
       options.requireQrWhenFiscalized != null
         ? Boolean(options.requireQrWhenFiscalized)
-        : kraConfigured && !saleForPrint?._skip_kra_qr;
+        : false;
     // Only skip WAN when we already have a usable verification link. A success
     // kra_response without signature_link must still fetch — otherwise fast
     // checkout print fails intermittently when the device omits the QR URL.
@@ -491,15 +492,8 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
           qrSize: documentType === "invoice" ? 140 : 100,
           requireQrWhenFiscalized,
         }));
-      } catch (kraPrintError) {
-        // Re-throw when KRA is required — do not silently print without the QR.
-        if (requireQrWhenFiscalized) {
-          disposePrintWindow(printWindow);
-          return {
-            ok: false,
-            error: kraPrintError instanceof Error ? kraPrintError.message : "KRA QR required for print.",
-          };
-        }
+      } catch {
+        // Best-effort only — always fall through to a normal receipt/invoice.
         kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);
         kraQrDataUrl = null;
       }

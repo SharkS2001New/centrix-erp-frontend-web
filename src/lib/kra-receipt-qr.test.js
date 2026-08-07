@@ -146,27 +146,28 @@ describe("kra receipt QR", () => {
     expect(result.kraQrDataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
-  it("still requires a QR when the sale was fiscalized but the link is missing", async () => {
-    await expect(
-      ensureKraQrForPrint(
-        {
-          id: 5,
-          status: "completed",
-          order_total: 50,
-          kra_response: { status: "success", invoice_number: "CU-5" },
-        },
-        {
-          moduleSettings: {
-            finance: {
-              enable_kra_integration: true,
-              enable_kra_device: true,
-              default_submit_kra: true,
-            },
+  it("prints without QR when fiscalized but the eTIMS link is missing", async () => {
+    const result = await ensureKraQrForPrint(
+      {
+        id: 5,
+        status: "completed",
+        order_total: 50,
+        kra_response: { status: "success", invoice_number: "CU-5" },
+      },
+      {
+        moduleSettings: {
+          finance: {
+            enable_kra_integration: true,
+            enable_kra_device: true,
+            default_submit_kra: true,
           },
-          allowNetwork: false,
         },
-      ),
-    ).rejects.toThrow(/verification link/i);
+        allowNetwork: false,
+      },
+    );
+
+    expect(result.kraQrDataUrl).toBeNull();
+    expect(result.kraData).toBeNull();
   });
 
   it("looks up kra_response from the sale when missing inline", async () => {

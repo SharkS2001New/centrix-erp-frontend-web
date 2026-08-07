@@ -6,6 +6,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { pingApiHealth } from "@/lib/network-status";
 import {
   ensurePosOfflineOrderNumbers,
+  ensurePosOfflineOwnerIsolation,
   getPosOfflineAutoRetryCount,
   getPosOfflinePendingCount,
   peekNextPosTicketNumber,
@@ -37,7 +38,12 @@ const EMPTY_SYNC_PROGRESS = {
  * (including "slow" — sync still runs so the queue does not grow forever).
  * Aimed at outages up to ~1.5 hours; reconnect still flushes any leftovers.
  */
-export function usePosOfflineSupport({ enabled = false, floatSessionId = null } = {}) {
+export function usePosOfflineSupport({
+  enabled = false,
+  floatSessionId = null,
+  organizationId = null,
+  userId = null,
+} = {}) {
   const { status, browserOnline, apiOnline, refresh: refreshNetwork } = useNetworkStatus({
     enabled,
     reportOutages: false,
@@ -480,6 +486,30 @@ export function usePosOfflineSupport({ enabled = false, floatSessionId = null } 
     void prepare();
     void refreshCounts();
   }, [enabled, prepare, refreshCounts]);
+
+  // Different cashier/org on the same browser must never inherit prior offline sales.
+  useEffect(() => {
+    if (!enabled || !userId || !organizationId) return undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await ensurePosOfflineOwnerIsolation({
+          organizationId,
+          userId,
+        });
+        if (cancelled) return;
+        if (result.wiped) {
+          await refreshCounts();
+          await prepare();
+        }
+      } catch (err) {
+        console.warn("POS offline owner isolation failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, organizationId, userId, prepare, refreshCounts]);
 
   useEffect(() => {
     if (!enabled) return undefined;
