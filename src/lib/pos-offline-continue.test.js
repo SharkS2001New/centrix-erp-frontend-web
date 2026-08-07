@@ -85,6 +85,30 @@ describe("continueOpenCartThroughOutage", () => {
     expect(second.lines).toHaveLength(1);
   });
 
+  it("collapses duplicate optimistic rows for the same SKU when continuing offline", async () => {
+    const open = {
+      id: 77,
+      channel: "pos",
+      lines: Array.from({ length: 10 }, (_, i) => ({
+        id: `pending-${i}`,
+        update_code: `pending-${i}`,
+        product_code: "YABAL",
+        product_name: "Yabal 2 bag",
+        quantity: 1,
+        unit_price: 100,
+        amount: 100,
+        on_wholesale_retail: 0,
+        _optimistic: true,
+      })),
+    };
+
+    const local = await continueOpenCartThroughOutage(open, { branch_id: 1 });
+    expect(local.lines).toHaveLength(1);
+    expect(local.lines[0].product_code).toBe("YABAL");
+    expect(local.lines[0].quantity).toBe(10);
+    expect(local.lines[0].amount).toBe(1000);
+  });
+
   it("merges repeat scans of the same SKU into one local line", async () => {
     let cart = {
       id: "active",

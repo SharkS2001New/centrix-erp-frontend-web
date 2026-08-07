@@ -4022,13 +4022,30 @@ export function PosScreen({ standalone = false }) {
     const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
     const intendedEdit = editingId != null || editingRef != null;
+    // Always re-resolve merge against the live cart. Classic Qty-Enter queues
+    // commits with a stale mergeTarget from React state — during an outage that
+    // spawned one optimistic row per key-repeat instead of one merged line.
+    let resolvedMergeTarget = mergeTarget;
+    if (!intendedEdit && posSalesConfig.combineIdenticalLines !== false) {
+      resolvedMergeTarget =
+        findMergeableCartLine(
+          liveCart?.lines,
+          product.product_code,
+          computed,
+          posSalesConfig,
+          sellWholesale,
+          null,
+          product,
+          { combineIdenticalLines: true },
+        ) ?? mergeTarget;
+    }
     let targetLineRef = cartLineRef(
       editingRef != null || editingId != null
         ? { update_code: editingRef, id: editingId }
-        : mergeTarget,
+        : resolvedMergeTarget,
     );
-    if (!targetLineRef && mergeTarget) {
-      targetLineRef = cartLineRef(mergeTarget);
+    if (!targetLineRef && resolvedMergeTarget) {
+      targetLineRef = cartLineRef(resolvedMergeTarget);
     }
 
     if (intendedEdit && !targetLineRef) {
@@ -4036,21 +4053,21 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
 
-    if (mergeTarget && !editingId) {
-      const newBaseQty = Number(mergeTarget.quantity) + incrementBaseQty;
+    if (resolvedMergeTarget && !editingId) {
+      const newBaseQty = Number(resolvedMergeTarget.quantity) + incrementBaseQty;
       const mergedEntryQty = posEntryQtyFromBaseQty(
         newBaseQty,
         product,
         retailPackage,
-        cartLineRetailStockFlag(mergeTarget),
+        cartLineRetailStockFlag(resolvedMergeTarget),
       );
       // Keep the cashier-facing price already on the cart line (important for order edits / same-day append).
       // Never lock API amortized unit_price — retail paths would × conversion again (e.g. 3600×25).
       const lockedUnit =
         cartLineLockedUnitOverride(
-          mergeTarget,
+          resolvedMergeTarget,
           product.uom,
-          cartLineRetailStockFlag(mergeTarget),
+          cartLineRetailStockFlag(resolvedMergeTarget),
           { cashRound: enablePosCashRounding },
         ) ?? override;
       finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
@@ -4071,8 +4088,8 @@ export function PosScreen({ standalone = false }) {
           );
 
     const stockBaseQty =
-      mergeTarget && !editingId
-        ? Number(mergeTarget.quantity) + incrementBaseQty
+      resolvedMergeTarget && !editingId
+        ? Number(resolvedMergeTarget.quantity) + incrementBaseQty
         : computed.baseQty;
 
     const stockCheck = posStockAvailability({
@@ -4084,7 +4101,7 @@ export function PosScreen({ standalone = false }) {
       allowNegativeStock,
       stockAsRetail,
       productByCode: productByCodeRef.current,
-      excludeLineId: editingId ?? mergeTarget?.id ?? mergeTarget?.update_code,
+      excludeLineId: editingId ?? resolvedMergeTarget?.id ?? resolvedMergeTarget?.update_code,
     });
     if (!stockCheck.ok) {
       setStatusMessage(
@@ -4116,14 +4133,48 @@ export function PosScreen({ standalone = false }) {
         setCart(activeCart);
       }
       const working = cartRef.current ?? activeCart;
+      // Re-resolve against the offline workspace — continueOpenCart may have just
+      // collapsed duplicate rows from a link flap.
+      const offlineMerge =
+        !intendedEdit && posSalesConfig.combineIdenticalLines !== false
+          ? findMergeableCartLine(
+              working?.lines,
+              product.product_code,
+              computed,
+              posSalesConfig,
+              sellWholesale,
+              null,
+              product,
+              { combineIdenticalLines: true },
+            ) ?? resolvedMergeTarget
+          : resolvedMergeTarget;
+      if (offlineMerge && !editingId && offlineMerge !== resolvedMergeTarget) {
+        const newBaseQty = Number(offlineMerge.quantity) + incrementBaseQty;
+        const mergedEntryQty = posEntryQtyFromBaseQty(
+          newBaseQty,
+          product,
+          retailPackage,
+          cartLineRetailStockFlag(offlineMerge),
+        );
+        const lockedUnit =
+          cartLineLockedUnitOverride(
+            offlineMerge,
+            product.uom,
+            cartLineRetailStockFlag(offlineMerge),
+            { cashRound: enablePosCashRounding },
+          ) ?? override;
+        finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
+        resolvedMergeTarget = offlineMerge;
+        targetLineRef = cartLineRef(offlineMerge);
+      }
       const preserveOfflineIdentity = isActiveOfflineEditSession(working);
       const localLine = {
         client_line_id:
           editingId != null
             ? String(editingRef ?? editingId)
-            : mergeTarget?.client_line_id ??
-              mergeTarget?.update_code ??
-              mergeTarget?.id ??
+            : resolvedMergeTarget?.client_line_id ??
+              resolvedMergeTarget?.update_code ??
+              resolvedMergeTarget?.id ??
               newClientSaleUuid(),
         product_code: product.product_code,
         product_name: product.product_name ?? product.description ?? product.product_code,
@@ -4206,7 +4257,7 @@ export function PosScreen({ standalone = false }) {
     const previousLineSnapshot =
       targetLineRef != null
         ? {
-            ...(mergeTarget ??
+            ...(resolvedMergeTarget ??
               liveCart.lines?.find(
                 (line) => String(cartLineRef(line)) === String(targetLineRef),
               ) ??
@@ -4219,7 +4270,7 @@ export function PosScreen({ standalone = false }) {
       if (!baseCart?.id || needsLineDiscountApproval) return null;
       const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
       const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
-        mergeTarget,
+        mergeTarget: resolvedMergeTarget,
         editingRef: targetLineRef,
       });
       cartRef.current = optimisticCart;
@@ -4327,7 +4378,7 @@ export function PosScreen({ standalone = false }) {
     const optimisticCart =
       painted?.optimisticCart ??
       applyOptimisticCartMutation(activeCart, optimisticLine, {
-        mergeTarget,
+        mergeTarget: resolvedMergeTarget,
         editingRef: targetLineRef,
       });
 
@@ -4338,16 +4389,16 @@ export function PosScreen({ standalone = false }) {
         return { ...rest, _draftEdit: true };
       });
       // Preserve real server line ids when updating/merging an existing restored line.
-      if (targetLineRef || mergeTarget) {
+      if (targetLineRef || resolvedMergeTarget) {
         const base =
-          mergeTarget ??
+          resolvedMergeTarget ??
           activeCart.lines?.find((line) => String(cartLineRef(line)) === String(targetLineRef));
         if (base && !String(base.id ?? "").startsWith("pending-")) {
-          const preserveRef = targetLineRef ?? cartLineRef(mergeTarget);
+          const preserveRef = targetLineRef ?? cartLineRef(resolvedMergeTarget);
           let idx = draftLines.findIndex(
             (line) => String(cartLineRef(line)) === String(preserveRef),
           );
-          if (idx < 0 && mergeTarget) {
+          if (idx < 0 && resolvedMergeTarget) {
             idx = draftLines.findIndex(
               (line) =>
                 String(line.product_code) === String(product.product_code) &&
@@ -5409,23 +5460,23 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    const mergeTarget = editingLineId
-      ? null
-      : findMergeableCartLine(
-          cart?.lines,
-          lineForm.product_code,
-          computed,
-          posSalesConfig,
-          sellWholesale,
-          null,
-          selectedProduct,
-          { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
-        );
-
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
     const run = async () => {
     try {
+      const liveLines = cartRef.current?.lines;
+      const mergeTarget = editingLineId
+        ? null
+        : findMergeableCartLine(
+            liveLines,
+            lineForm.product_code,
+            computed,
+            posSalesConfig,
+            sellWholesale,
+            null,
+            selectedProduct,
+            { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
+          );
       const ok = await commitCartLine({
         product: selectedProduct,
         computed,
@@ -10551,6 +10602,7 @@ export function PosScreen({ standalone = false }) {
                 }
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
+                    if (e.repeat) return;
                     e.preventDefault();
                     handleQuantityEnter();
                   }
@@ -11049,6 +11101,7 @@ export function PosScreen({ standalone = false }) {
                     return;
                   }
                   if (e.key === "Enter") {
+                    if (e.repeat) return;
                     e.preventDefault();
                     handleQuantityEnter();
                   }

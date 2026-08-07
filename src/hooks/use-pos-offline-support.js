@@ -35,7 +35,7 @@ const EMPTY_SYNC_PROGRESS = {
  * While healthy: warm IndexedDB catalog + reserved order #s in the background.
  * Sell path: save local outbox → print → immediately flush when API is reachable
  * (including "slow" — sync still runs so the queue does not grow forever).
- * Aimed at brief outages (~30 minutes); reconnect still flushes any leftovers.
+ * Aimed at outages up to ~1.5 hours; reconnect still flushes any leftovers.
  */
 export function usePosOfflineSupport({ enabled = false } = {}) {
   const { status, browserOnline, apiOnline, refresh: refreshNetwork } = useNetworkStatus({

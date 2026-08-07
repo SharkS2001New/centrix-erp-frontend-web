@@ -53,10 +53,10 @@ import { submitSystemIssueReport } from "@/lib/system-issue-reports";
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
-/** Re-warm catalog while healthy so a brief drop (~30 min) still has recent prices. */
-export const POS_OFFLINE_CATALOG_TTL_MS = 30 * 60 * 1000;
-/** Design target for drop/slow bridge — not a hard cutoff. */
-export const POS_OFFLINE_TARGET_OUTAGE_MS = 30 * 60 * 1000;
+/** Re-warm catalog while healthy so a ~1.5h drop still has recent prices. */
+export const POS_OFFLINE_CATALOG_TTL_MS = 90 * 60 * 1000;
+/** Design target for drop/slow bridge (~1.5 hours) — not a hard cutoff; sync on reconnect. */
+export const POS_OFFLINE_TARGET_OUTAGE_MS = 90 * 60 * 1000;
 
 function sortCatalog(products, query) {
   return rankPosProductSearchResults(products, query, { limit: products.length });
@@ -545,44 +545,53 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
   if (!openCart) return null;
 
   if (openCart.offline && Array.isArray(openCart.lines)) {
+    const collapsed = collapseCombineableLocalLines(openCart.lines);
+    const next =
+      collapsed.length === openCart.lines.length
+        ? openCart
+        : { ...openCart, lines: collapsed, updated_at_ms: Date.now() };
     try {
-      await saveLocalPosCart(openCart);
+      await saveLocalPosCart(next);
     } catch {
       /* keep in-memory cart even if IDB write fails */
     }
-    return openCart;
+    return next;
   }
 
-  const lines = (openCart.lines ?? [])
-    .map((line) => {
-      const qty = Number(line.quantity ?? 0);
-      if (!line?.product_code || !(qty > 0)) return null;
-      const clientLineId = String(
-        line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
-      );
-      const { _optimistic: _dropOptimistic, ...rest } = line;
-      return {
-        ...rest,
-        client_line_id: clientLineId,
-        product_code: line.product_code,
-        product_name: line.product_name ?? line.description ?? line.product_code,
-        quantity: qty,
-        unit_price: Number(line.unit_price ?? line.price ?? 0),
-        display_unit_price:
-          line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
-        amount: line.amount != null ? Number(line.amount) : undefined,
-        uom: line.uom ?? null,
-        unit_id: line.unit_id ?? line.product?.unit_id ?? line.product?.unit?.id ?? null,
-        unit:
-          snapshotUomForPrint(line.unit) ??
-          snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
-        on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
-        discount_given: Number(line.discount_given ?? 0),
-        product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
-        vat_rate: Number(line.vat_rate ?? line.tax_rate ?? 0),
-      };
-    })
-    .filter(Boolean);
+  // Classic Enter-repeat / stale merge during a link flap can leave several
+  // optimistic rows for the same SKU — collapse them so offline sell stays normal.
+  const lines = collapseCombineableLocalLines(
+    (openCart.lines ?? [])
+      .map((line) => {
+        const qty = Number(line.quantity ?? 0);
+        if (!line?.product_code || !(qty > 0)) return null;
+        const clientLineId = String(
+          line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
+        );
+        const { _optimistic: _dropOptimistic, ...rest } = line;
+        return {
+          ...rest,
+          client_line_id: clientLineId,
+          product_code: line.product_code,
+          product_name: line.product_name ?? line.description ?? line.product_code,
+          quantity: qty,
+          unit_price: Number(line.unit_price ?? line.price ?? 0),
+          display_unit_price:
+            line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+          amount: line.amount != null ? Number(line.amount) : undefined,
+          uom: line.uom ?? null,
+          unit_id: line.unit_id ?? line.product?.unit_id ?? line.product?.unit?.id ?? null,
+          unit:
+            snapshotUomForPrint(line.unit) ??
+            snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
+          on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
+          discount_given: Number(line.discount_given ?? 0),
+          product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+          vat_rate: Number(line.vat_rate ?? line.tax_rate ?? 0),
+        };
+      })
+      .filter(Boolean),
+  );
 
   const migratedFrom =
     isServerPosCartId(openCart.id) ? openCart.id : openCart.migrated_from_online_cart_id ?? null;
@@ -621,7 +630,45 @@ export async function adoptOnlineCartForOffline(onlineCart, seed = {}) {
 
 /** Merge key matches classic POS merge (SKU + retail/wholesale), not UOM label. */
 function lineKey(line) {
-  return `${line.product_code}|${line.on_wholesale_retail ? 1 : 0}`;
+  return `${line.product_code}|${Number(line.on_wholesale_retail) ? 1 : 0}`;
+}
+
+/**
+ * Collapse duplicate SKU (+ retail/wholesale) rows into one line.
+ * Used when adopting a TemporaryCart that grew duplicate optimistic rows mid-outage.
+ */
+export function collapseCombineableLocalLines(lines) {
+  if (!Array.isArray(lines) || lines.length < 2) return lines ?? [];
+  const byKey = new Map();
+  for (const line of lines) {
+    if (!line?.product_code) continue;
+    const key = lineKey(line);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...line });
+      continue;
+    }
+    const nextQty = Number(existing.quantity ?? 0) + Number(line.quantity ?? 0);
+    const existingAmount =
+      existing.amount != null && Number.isFinite(Number(existing.amount))
+        ? Number(existing.amount)
+        : Number(existing.quantity ?? 0) * Number(existing.unit_price ?? 0);
+    const addAmount =
+      line.amount != null && Number.isFinite(Number(line.amount))
+        ? Number(line.amount)
+        : Number(line.quantity ?? 0) * Number(line.unit_price ?? 0);
+    byKey.set(key, {
+      ...existing,
+      ...line,
+      client_line_id: existing.client_line_id ?? line.client_line_id,
+      quantity: nextQty,
+      unit_price: Number(line.unit_price ?? existing.unit_price ?? 0),
+      amount: Math.round((existingAmount + addAmount) * 100) / 100,
+      discount_given:
+        Number(existing.discount_given ?? 0) + Number(line.discount_given ?? 0),
+    });
+  }
+  return [...byKey.values()];
 }
 
 export async function upsertLocalPosCartLine(cart, line) {
@@ -632,6 +679,8 @@ export async function upsertLocalPosCartLine(cart, line) {
     lines[idx] = {
       ...lines[idx],
       ...line,
+      // Keep the first identity so repeat adds update the same row.
+      client_line_id: lines[idx].client_line_id ?? line.client_line_id,
       quantity: Number(line.quantity),
       unit_price: Number(line.unit_price),
     };
