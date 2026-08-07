@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { SearchableSelect } from "@/components/catalog/catalog-shared";
+import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { useAuth } from "@/contexts/auth-context";
 import { useHotelPosOfflineSupport } from "@/hooks/use-hotel-pos-offline-support";
 import { apiRequest, ApiError } from "@/lib/api";

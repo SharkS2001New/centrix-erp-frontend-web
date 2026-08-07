@@ -266,6 +266,8 @@ export function PosPaymentPanel({
   const isTopupAdjustment = adjustmentMode && signedEditDelta > 0.01;
   const stkPushAvailable = Boolean(enableStkPush && cartId && !cashOnlyOffline && !adjustmentMode);
   const mpesaFieldsLocked = Boolean(lockMpesaFields || stkAppliedLock);
+  /** Credit customer field — hide offline (cash amount only). */
+  const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode && !cashOnlyOffline;
 
   useEffect(() => setMounted(true), []);
 
@@ -1255,9 +1257,6 @@ export function PosPaymentPanel({
         ((hasCreditCustomer && !creditValidationError) ||
           amountPaid + 0.01 >= checkoutTotal ||
           (cfg.allowPartialPayment && amountPaid > 0));
-
-  /** Credit customer field is shown whenever credit payment is enabled in admin settings. */
-  const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode && !cashOnlyOffline;
 
   useEffect(() => {
     if (!open || step !== "payment") return;
