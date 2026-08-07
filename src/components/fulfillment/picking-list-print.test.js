@@ -111,6 +111,19 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).not.toContain("Totals Value of Order");
   });
 
+  it("defaults to A4 and avoids cutting table rows across pages", () => {
+    const sample = samplePickingListPreviewData({ salesLayout: true });
+    const html = buildPickingListHtml({
+      pickingList: sample.pickingList,
+      trip: sample.trip,
+      layout: "sales",
+    });
+
+    expect(html).toMatch(/@page\s*\{\s*size:\s*A4/);
+    expect(html).toMatch(/tbody tr\s*\{[^}]*page-break-inside:\s*avoid/);
+    expect(html).toContain('class="has-doc-print-edge-footer"');
+  });
+
   it("titles combined lists with natural-language route names", () => {
     const html = buildPickingListHtml({
       pickingList: {

@@ -8,7 +8,9 @@ describe("print document baseline", () => {
     );
 
     expect(html).toContain('id="centrix-print-baseline"');
+    expect(html).toMatch(/@page\s*\{[^}]*size:\s*A4/);
     expect(html).toMatch(/@page\s*\{[^}]*margin:\s*0\s*!important/);
+    expect(html).toMatch(/@page\s+centrix-edge\s*\{[^}]*size:\s*A4/);
     expect(html).toMatch(/@page\s+centrix-edge\s*\{[^}]*margin:\s*0\s*!important/);
     // Clearance for the fixed edge footer must be body padding, not @page bottom margin.
     expect(html).toMatch(

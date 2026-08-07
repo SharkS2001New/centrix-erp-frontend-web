@@ -42,7 +42,9 @@ export function payrollRunFormDefaults(moduleSettings) {
   const hr = mergeHrPayrollSettings(moduleSettings);
   return {
     include_allowances: true,
-    use_attendance_proration: hr.require_attendance_for_payroll,
+    // Always default ON so absents / unpaid offs reduce basic pay. Org setting
+    // require_attendance_for_payroll only forces this on (and disables unticking).
+    use_attendance_proration: true,
     include_overtime: hr.include_overtime_in_payroll,
     include_employee_deductions: hr.include_other_deductions_in_payroll,
   };

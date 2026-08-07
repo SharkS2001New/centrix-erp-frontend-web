@@ -338,11 +338,29 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
   const printPx = createOrgPrintPx(generalSettings, "picking_list");
   const px = printPx.body;
   const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "picking_list");
+  const sharedPrintLayout = `
+    @page { size: A4; margin: 0; }
+    html { height: auto; }
+    .sheet { position: static; z-index: 1; }
+    table { page-break-inside: auto; }
+    thead { display: table-header-group; }
+    tbody tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .summary-box,
+    .signatures,
+    .doc-footer {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+  `;
 
   if (salesLayout) {
     return `
     ${orgPrintInkStyles(generalSettings, "picking_list")}
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "picking_list" })}
+    ${sharedPrintLayout}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
     .page { padding: ${px(24)}; }
@@ -369,9 +387,13 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
       body { font-size: ${px(12, true)}; }
-      .page { padding: ${px(12, true)}; }
+      .page { padding: ${px(8, true)} ${px(4, true)} 0; }
       thead th { font-size: ${px(11, true)}; }
       tbody td { font-size: ${px(11, true)}; }
+      tbody tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
     }
   `;
   }
@@ -379,6 +401,7 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
   return `
     ${orgPrintInkStyles(generalSettings, "picking_list")}
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "picking_list" })}
+    ${sharedPrintLayout}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
     .page { padding: ${px(24)}; }
@@ -405,9 +428,13 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
       body { font-size: ${px(12, true)}; }
-      .page { padding: ${px(12, true)}; }
+      .page { padding: ${px(8, true)} ${px(4, true)} 0; }
       thead th { font-size: ${px(11, true)}; }
       tbody td { font-size: ${px(11, true)}; }
+      tbody tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
     }
   `;
 }

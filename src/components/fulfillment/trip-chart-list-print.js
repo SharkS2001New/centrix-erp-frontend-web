@@ -129,16 +129,20 @@ function tripChartListPrintStyles(generalSettings) {
   return `
     ${orgPrintInkStyles(generalSettings, "trip_chart")}
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "trip_chart" })}
+    @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
+    html { height: auto; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
-    .page { padding: ${px(24)}; }
+    .page { padding: ${px(24)}; position: static; }
     .org-header { text-align: center; margin-bottom: ${px(12)}; }
     .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
     .org-name { font-size: ${px(16)}; font-weight: 700; letter-spacing: 0.04em; }
     .title-block { text-align: center; margin-bottom: ${px(16)}; }
     .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
     .meta-line { font-size: ${px(11)}; margin: ${px(2)} 0; color: #334155; }
-    table { width: 100%; border-collapse: collapse; margin-top: ${px(8)}; }
+    table { width: 100%; border-collapse: collapse; margin-top: ${px(8)}; page-break-inside: auto; }
+    thead { display: table-header-group; }
+    tbody tr { page-break-inside: avoid; break-inside: avoid; }
     th, td { border: 1px solid #cbd5e1; padding: ${px(6)} ${px(8)}; font-size: ${px(11)}; vertical-align: top; }
     th { background: #f1f5f9; text-align: left; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; font-size: ${px(10)}; }
     .col-no { width: 8%; text-align: center; }
@@ -151,6 +155,8 @@ function tripChartListPrintStyles(generalSettings) {
       border-radius: ${px(6)};
       padding: ${px(10)} ${px(12)};
       background: #f8fafc;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .summary-row {
       display: flex;
@@ -165,13 +171,19 @@ function tripChartListPrintStyles(generalSettings) {
       grid-template-columns: 1fr 1fr;
       gap: ${px(24)};
       margin-top: ${px(28)};
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .signatures h3 { font-size: ${px(11)}; margin: 0 0 ${px(10)}; text-transform: uppercase; letter-spacing: 0.04em; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(10)} 0; }
-    .doc-footer { margin-top: ${px(20)}; font-size: ${px(10)}; color: #64748b; }
+    .doc-footer { margin-top: ${px(20)}; font-size: ${px(10)}; color: #64748b; page-break-inside: avoid; }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: ${px(12, true)}; }
-      .page { padding: ${px(12, true)}; }
+      .page { padding: ${px(8, true)} ${px(4, true)} 0; }
+      tbody tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
     }
   `;
 }
@@ -238,7 +250,7 @@ export function buildTripChartListHtml({
   <title>Trip Chart List${meta.tripCode ? ` — ${escapeHtml(meta.tripCode)}` : ""}</title>
   <style>${tripChartListPrintStyles(generalSettings)}</style>
 </head>
-<body>
+<body class="has-doc-print-edge-footer">
   <div class="page">
     ${buildReportOrgHeaderHtml(branding, {
       layout: "a4",

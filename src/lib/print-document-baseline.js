@@ -14,9 +14,11 @@ export const PRINT_DOCUMENT_BASELINE_HTML = `
    * body padding instead — never non-zero @page margins (those re-enable browser chrome).
    */
   @page {
+    size: A4;
     margin: 0 !important;
   }
   @page centrix-edge {
+    size: A4;
     margin: 0 !important;
   }
   @page centrix-thermal {

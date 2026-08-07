@@ -724,10 +724,12 @@ export function HrPayrollScreen() {
             disabled={hrSettings.require_attendance_for_payroll}
             className="rounded border-slate-300"
           />
-          Calculate basic pay from attendance, paid leave, and deductible (unpaid) offs
-          {hrSettings.require_attendance_for_payroll ? (
-            <span className="text-xs text-slate-500">(required by organization settings)</span>
-          ) : null}
+          <span>
+            Calculate basic pay from attendance (deduct absents and unpaid offs; credit paid leave)
+            {hrSettings.require_attendance_for_payroll ? (
+              <span className="text-xs text-slate-500"> — required by organization settings</span>
+            ) : null}
+          </span>
         </label>
         {hrSettings.include_overtime_in_payroll ? (
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
