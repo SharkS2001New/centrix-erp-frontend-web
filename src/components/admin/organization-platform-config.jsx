@@ -496,6 +496,109 @@ export function salesPlatformFromApi(apiPayload) {
   };
 }
 
+/** Platform-controlled Kenya payroll knobs (month days basis + SHIF floor). */
+export function defaultPayrollPlatformState() {
+  return {
+    payroll_month_days_basis: "calendar",
+    shif_minimum_monthly: "",
+  };
+}
+
+export function payrollPlatformFromApi(apiPayload = {}) {
+  const basis =
+    String(apiPayload?.payroll_month_days_basis ?? "calendar").toLowerCase() === "fixed_30"
+      ? "fixed_30"
+      : "calendar";
+  const shif = apiPayload?.shif_minimum_monthly;
+
+  return {
+    payroll_month_days_basis: basis,
+    shif_minimum_monthly: shif == null || shif === "" ? "" : String(shif),
+  };
+}
+
+export function payrollPlatformToApi(state = {}) {
+  const basis =
+    String(state?.payroll_month_days_basis ?? "calendar").toLowerCase() === "fixed_30"
+      ? "fixed_30"
+      : "calendar";
+  const raw = state?.shif_minimum_monthly;
+  let shif = null;
+  if (raw !== "" && raw != null && raw !== false) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) shif = n;
+  }
+
+  return {
+    payroll_month_days_basis: basis,
+    shif_minimum_monthly: shif,
+  };
+}
+
+function OrganizationPayrollPlatformSettings({
+  payrollPlatform,
+  onChange,
+  enabledModules = {},
+}) {
+  const hrEnabled = Boolean(enabledModules.hr_payroll);
+  const state = payrollPlatform ?? defaultPayrollPlatformState();
+
+  function patch(partial) {
+    onChange?.({ ...state, ...partial });
+  }
+
+  return (
+    <PlatformFormSection
+      title="Payroll"
+      description="Platform-only Kenya payroll rules for this organization. Tenant HR settings cannot override these."
+    >
+      {!hrEnabled ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Enable the <strong>Human Resources</strong> application to configure payroll for this
+          organization.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <label className="block max-w-md">
+            <span className="mb-1 block text-sm font-medium text-slate-700">
+              Payroll month days basis
+            </span>
+            <select
+              className={inputClass}
+              value={state.payroll_month_days_basis === "fixed_30" ? "fixed_30" : "calendar"}
+              onChange={(e) => patch({ payroll_month_days_basis: e.target.value })}
+            >
+              <option value="calendar">Calendar days in the month</option>
+              <option value="fixed_30">Fixed 30 days</option>
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              Used when prorating salary for mid-month joins, exits, and unpaid days.
+            </span>
+          </label>
+          <label className="block max-w-md">
+            <span className="mb-1 block text-sm font-medium text-slate-700">
+              SHIF minimum monthly (KES)
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              className={inputClass}
+              value={state.shif_minimum_monthly ?? ""}
+              placeholder="Leave blank for statutory default"
+              onChange={(e) => patch({ shif_minimum_monthly: e.target.value })}
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Optional floor for Social Health Insurance Fund contributions. Blank uses the platform
+              statutory default.
+            </span>
+          </label>
+        </div>
+      )}
+    </PlatformFormSection>
+  );
+}
+
 export function OrganizationPlatformSalesSettings({
   salesPlatform,
   onChange,
@@ -1072,6 +1175,7 @@ const MANAGE_ORG_TABS = [
   { id: "workflow", label: "Order workflow" },
   { id: "status", label: "Organization status" },
   { id: "modules", label: "Applications" },
+  { id: "payroll", label: "Payroll" },
   { id: "users", label: "Users" },
   { id: "maintenance", label: "Maintenance" },
 ];
@@ -1083,6 +1187,7 @@ const REGISTER_ORG_TABS = [
   { id: "orders_list", label: "Orders list" },
   { id: "workflow", label: "Order workflow" },
   { id: "modules", label: "Applications" },
+  { id: "payroll", label: "Payroll" },
   { id: "admin", label: "Initial administrator" },
 ];
 
@@ -1406,6 +1511,8 @@ export function OrganizationConfigTabs({
   onEnableTabWorkspaceChange,
   salesPlatform,
   onSalesChange,
+  payrollPlatform = null,
+  onPayrollChange = null,
   enabledModules = {},
   moduleOptions = [],
   onToggleModule,
@@ -1429,6 +1536,9 @@ export function OrganizationConfigTabs({
     ) {
       return false;
     }
+    if (tab.id === "payroll") {
+      return Boolean(enabledModules.hr_payroll) && typeof onPayrollChange === "function";
+    }
     return true;
   });
 
@@ -1442,8 +1552,15 @@ export function OrganizationConfigTabs({
       (activeTab === "sales" || activeTab === "orders_list" || activeTab === "workflow")
     ) {
       setActiveTab("hotel");
+      return;
     }
-  }, [isHospitality, activeTab]);
+    if (
+      activeTab === "payroll" &&
+      (!enabledModules.hr_payroll || typeof onPayrollChange !== "function")
+    ) {
+      setActiveTab("profile");
+    }
+  }, [isHospitality, activeTab, enabledModules.hr_payroll, onPayrollChange]);
 
   return (
     <div className="w-full min-w-0 space-y-4">
@@ -1518,6 +1635,14 @@ export function OrganizationConfigTabs({
           profilePresets={profilePresets}
           salesPlatform={salesPlatform}
           onSalesChange={onSalesChange}
+        />
+      ) : null}
+
+      {activeTab === "payroll" ? (
+        <OrganizationPayrollPlatformSettings
+          payrollPlatform={payrollPlatform ?? defaultPayrollPlatformState()}
+          onChange={onPayrollChange}
+          enabledModules={enabledModules}
         />
       ) : null}
 
