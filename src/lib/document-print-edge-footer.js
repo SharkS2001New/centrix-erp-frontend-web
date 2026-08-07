@@ -1,5 +1,5 @@
 import { PRINT_POWERED_BY } from "@/lib/branding";
-import { escapeHtml } from "@/lib/branded-document-print";
+import { escapeHtml } from "@/lib/html-escape";
 import { buildStyledFooterLinesHtml, parseFooterLines } from "@/lib/footer-line-format";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { orgPrintInkStyles, orgPrintSectionPx } from "@/lib/print-typography";

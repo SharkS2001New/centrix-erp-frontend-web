@@ -1,5 +1,4 @@
 import { formatOrgDate } from "@/lib/format";
-import { formatAppDateTime } from "@/lib/datetime";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { openPrintWindow, PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
 import {
@@ -9,6 +8,9 @@ import {
   reportDocumentStyles,
 } from "@/lib/reports/report-branding";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
+import { reportPrintedAt, slugifyReportFilename } from "@/lib/reports/export-meta";
+
+export { reportPrintedAt, slugifyReportFilename };
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -16,10 +18,6 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-export function reportPrintedAt() {
-  return formatAppDateTime(new Date());
 }
 
 /** @param {object} options */
@@ -232,13 +230,6 @@ export function downloadReportCsv(filename, meta, columns, rows, footerRow = nul
 /** Fetch all pages from a paginated report API (max 200 per page). */
 export async function fetchAllPaginatedRows(apiPath, baseSearchParams = {}, options = {}) {
   return fetchAllPaginatedRowsSmart(apiPath, baseSearchParams, options);
-}
-
-export function slugifyReportFilename(value) {
-  return String(value ?? "report")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 /** @param {object[]} rows @param {(key: string) => string} [labelize] @param {{ multiBranch?: boolean }} [options] */

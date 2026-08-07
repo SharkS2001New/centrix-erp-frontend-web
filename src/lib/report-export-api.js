@@ -1,6 +1,6 @@
 import { apiRequest, ApiError } from "@/lib/api";
 import { EXPORT_EMPTY_ROWS_MESSAGE } from "@/lib/background-task-errors";
-import { reportPrintedAt, slugifyReportFilename } from "@/lib/reports/export";
+import { reportPrintedAt, slugifyReportFilename } from "@/lib/reports/export-meta";
 import { sanitizeExportSearchParams } from "@/lib/report-export-limits";
 
 /** @param {Array<{ key?: string, label: string, align?: string, printAsRow?: boolean }>} columns */

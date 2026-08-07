@@ -1182,16 +1182,6 @@ export function PosScreen({ standalone = false }) {
   const enableMpesaOnPos =
     mpesaStkPlatformEnabled && Boolean(posSalesConfig.payment?.enableMpesaAmount);
   const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings, capabilities);
-  /** Local-first workspace (offline/slow or mid-sale outage cart): no network payments / STK. */
-  const posNetworkPaymentsBlocked =
-    standalone && (offlineMode || Boolean(cart?.offline) || Boolean(cart?.offline_client_sale_uuid));
-  const showCartPaymentPrompts =
-    !posNetworkPaymentsBlocked &&
-    posCartPaymentPromptsEnabled({
-      enableVouchers,
-      enablePoints: enableRedeemablePoints,
-      enableMpesa: enableMpesaOnPos,
-    });
   const checkoutPaymentConfig = useMemo(() => {
     if (mpesaStkPlatformEnabled) return posSalesConfig.payment;
     return {
@@ -1732,6 +1722,16 @@ export function PosScreen({ standalone = false }) {
   });
 
   const [cart, setCart] = useState(null);
+  /** Local-first workspace (offline/slow or mid-sale outage cart): no network payments / STK. */
+  const posNetworkPaymentsBlocked =
+    standalone && (offlineMode || Boolean(cart?.offline) || Boolean(cart?.offline_client_sale_uuid));
+  const showCartPaymentPrompts =
+    !posNetworkPaymentsBlocked &&
+    posCartPaymentPromptsEnabled({
+      enableVouchers,
+      enablePoints: enableRedeemablePoints,
+      enableMpesa: enableMpesaOnPos,
+    });
   const [selectedLineId, setSelectedLineId] = useState(null);
   const {
     selectedIds: selectedLineIds,

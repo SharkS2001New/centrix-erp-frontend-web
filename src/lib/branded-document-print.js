@@ -15,14 +15,9 @@ import {
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 import { resolveDocumentPrintPhonesLine } from "@/lib/document-print-phones";
+import { escapeHtml } from "@/lib/html-escape";
 
-export function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+export { escapeHtml };
 
 export function formatDocAmount(value) {
   if (value == null || value === "") return "—";
