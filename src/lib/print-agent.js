@@ -16,7 +16,7 @@ const HEALTH_PATH = "/v1/health";
 const HEALTH_TIMEOUT_MS = 1200;
 const QUICK_HEALTH_TIMEOUT_MS = 500;
 /** Async queue returns quickly; sync/test print may still wait for PDF + printer. */
-const PRINT_TIMEOUT_MS = 8000;
+const PRINT_TIMEOUT_MS = 20000;
 const PRINT_WAIT_TIMEOUT_MS = 45000;
 /** Skip localhost health pings for a short window after a successful check/print. */
 const HEALTH_CACHE_TTL_MS = 45_000;

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { mapWithConcurrency, fetchAllPages } from "@/lib/api-concurrency";
+import { saleLineProductName } from "@/lib/sale-line-items";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
@@ -125,7 +126,7 @@ const ORDERS_TABLE_SORT_FIRST_DIR = {
   order_total: "desc",
 };
 
-/** Fetch this many order details in parallel before printing the chunk. */
+/** Fetch this many order details / HTML jobs in parallel before queueing the chunk. */
 const BATCH_PRINT_CHUNK_SIZE = 5;
 const ORDER_COLUMNS_STORAGE_PREFIX = "sales.orders.visibleColumns";
 
@@ -138,7 +139,21 @@ function chunkItems(items, size) {
 }
 
 function saleHasPrintableItems(sale) {
-  return Array.isArray(sale?.items);
+  return (
+    Array.isArray(sale?.items) &&
+    sale.items.length > 0 &&
+    !sale.items.some(
+      (line) => line?.product_code && !saleLineProductName(line) && !line?.name,
+    )
+  );
+}
+
+function summarizePrintFailures(failureReasons, failed) {
+  if (failed <= 0) return null;
+  const unique = [...new Set(failureReasons.filter(Boolean))];
+  if (unique.length === 0) return `${failed} failed`;
+  const sample = unique.slice(0, 2).join(" · ");
+  return `${failed} failed (${sample}${unique.length > 2 ? "…" : ""})`;
 }
 
 /** Print jobs run in the background — do not freeze the table UI. */
@@ -1008,6 +1023,13 @@ export default function SalesOrdersListScreen({
   async function printOrder(sale, documentType = null, { batch = false, printCache = null } = {}) {
     if (!sale?.id) return false;
 
+    if (!isPrintInvoiceVisible(sale, capabilities)) {
+      setActionMessage(
+        "Cannot print this order — it is not in a printable stage, or stock is not available for one or more items.",
+      );
+      return false;
+    }
+
     const cachedType =
       documentType ?? defaultOrderListPrintDocumentType(capabilities?.module_settings, capabilities);
     // When Centrix Print Agent is configured, do not pre-open a browser window for
@@ -1027,6 +1049,14 @@ export default function SalesOrdersListScreen({
       }
       if (!detail) {
         disposePrintWindow(printWindow);
+        setActionMessage("Could not load order details for print.");
+        return false;
+      }
+      if (!isPrintInvoiceVisible(detail, capabilities)) {
+        disposePrintWindow(printWindow);
+        setActionMessage(
+          "Cannot print invoice — stock is not available for one or more items on this order. Restock or enable Allow negative stock in inventory settings.",
+        );
         return false;
       }
       const printed = await printSaleOrder(detail, {
@@ -1056,11 +1086,12 @@ export default function SalesOrdersListScreen({
   }
 
   /**
-   * Pipeline: prepare chunk N fully (details + HTML), queue all of it to the printer at once,
-   * and while that batch is printing/queueing, prepare chunk N+1 so the next send feels instant.
+   * Pipeline: prepare chunk N fully (details + HTML) in parallel (5 at a time),
+   * then queue that chunk to the printer one job at a time (agent cannot take a
+   * parallel burst). While chunk N is queueing, prepare chunk N+1.
    */
   async function printOrdersInChunks(printable, documentType, { loadingBusy, printingBusy } = {}) {
-    if (!printable.length) return { printed: 0, failed: 0 };
+    if (!printable.length) return { printed: 0, failed: 0, failureReasons: [] };
 
     const useAgentQueue = shouldUsePrintAgentForDocument(documentType);
     if (useAgentQueue) {
@@ -1100,8 +1131,11 @@ export default function SalesOrdersListScreen({
               setDetailsById((prev) => ({ ...prev, [key]: loaded }));
             }
             return loaded;
-          } catch {
-            return null;
+          } catch (error) {
+            return {
+              __printError:
+                error instanceof Error ? error.message : "Could not load order for print.",
+            };
           }
         },
         BATCH_PRINT_CHUNK_SIZE,
@@ -1110,10 +1144,41 @@ export default function SalesOrdersListScreen({
 
     async function prepareChunkForPrint(chunk) {
       const details = await fetchChunkDetails(chunk);
-      const usable = details.filter((detail) => detail?.id && saleHasPrintableItems(detail));
+      const loadErrors = [];
+      const usable = [];
+      for (let i = 0; i < details.length; i += 1) {
+        const detail = details[i];
+        if (detail?.__printError) {
+          loadErrors.push(detail.__printError);
+          continue;
+        }
+        if (detail?.id && saleHasPrintableItems(detail)) {
+          usable.push(detail);
+          continue;
+        }
+        // Detail loaded without line items — try one forced refresh.
+        if (detail?.id) {
+          try {
+            const loaded = await apiRequest(`/sales/${detail.id}`, { loading: false });
+            if (loaded && saleHasPrintableItems(loaded)) {
+              detailCache.set(String(detail.id), loaded);
+              usable.push(loaded);
+              continue;
+            }
+          } catch {
+            /* counted below */
+          }
+        }
+        loadErrors.push(
+          detail?.id
+            ? `Order #${detail.order_num ?? detail.id} has no printable line items.`
+            : "Order detail missing for print.",
+        );
+      }
+
       const printCache = await warmSalePrintBatch(usable, printOptsBase);
 
-      // Build every receipt HTML for this chunk up front so queueing is just fire-and-forget.
+      // Build every receipt HTML for this chunk up front so queueing is sequential only.
       const jobs = await mapWithConcurrency(
         usable,
         async (detail) => {
@@ -1129,13 +1194,14 @@ export default function SalesOrdersListScreen({
         BATCH_PRINT_CHUNK_SIZE,
       );
 
-      return { details, jobs, printCache };
+      return { details, jobs, printCache, loadErrors };
     }
 
     const chunks = chunkItems(printable, BATCH_PRINT_CHUNK_SIZE);
     let printed = 0;
     let failed = 0;
     let queued = 0;
+    const failureReasons = [];
 
     let nextChunkPromise = chunks.length > 0 ? prepareChunkForPrint(chunks[0]) : null;
 
@@ -1150,12 +1216,16 @@ export default function SalesOrdersListScreen({
         printable.length === 1
           ? "Preparing receipt…"
           : hasNext
-            ? `Preparing receipts ${from}–${to} of ${printable.length} (next batch will load while these print)…`
+            ? `Preparing receipts ${from}–${to} of ${printable.length} (next batch of ${BATCH_PRINT_CHUNK_SIZE} loads while these queue)…`
             : `Preparing receipts ${from}–${to} of ${printable.length}…`,
       );
 
       const prepared = await nextChunkPromise;
       const jobs = prepared?.jobs ?? [];
+      for (const reason of prepared?.loadErrors ?? []) {
+        failed += 1;
+        failureReasons.push(reason);
+      }
 
       // Start preparing the next chunk immediately — overlaps with queueing this batch.
       nextChunkPromise = hasNext ? prepareChunkForPrint(chunks[chunkIndex + 1]) : null;
@@ -1166,13 +1236,14 @@ export default function SalesOrdersListScreen({
       for (const row of jobs) {
         if (!row?.job?.ok) {
           failed += 1;
+          failureReasons.push(
+            row?.job?.error ||
+              `Could not prepare receipt for order #${row?.detail?.order_num ?? row?.detail?.id ?? "?"}.`,
+          );
           continue;
         }
         readyJobs.push(row);
       }
-
-      // Also count chunk rows that never made it into usable details.
-      failed += Math.max(0, chunk.length - jobs.length);
 
       if (!readyJobs.length) {
         setActionMessage(
@@ -1184,50 +1255,52 @@ export default function SalesOrdersListScreen({
       setActionMessage(
         printable.length === 1
           ? "Sending receipt to printer…"
-          : hasNext
-            ? `Queueing receipts ${from}–${to} of ${printable.length} (preparing ${to + 1}–${Math.min(to + BATCH_PRINT_CHUNK_SIZE, printable.length)} next)…`
-            : `Queueing receipts ${from}–${to} of ${printable.length}…`,
+          : `Queueing receipts ${from}–${to} of ${printable.length} one at a time${
+              hasNext
+                ? ` (preparing ${to + 1}–${Math.min(to + BATCH_PRINT_CHUNK_SIZE, printable.length)} next)…`
+                : "…"
+            }`,
       );
 
-      if (useAgentQueue) {
-        // Fire the whole chunk into the print-agent queue together — feels instant.
-        const results = await Promise.allSettled(
-          readyJobs.map(({ job }) => dispatchPreparedSalePrintJob(job)),
-        );
-        for (const result of results) {
-          if (result.status === "fulfilled" && result.value?.ok !== false) {
+      // Always one-at-a-time to the printer. Parallel agent POSTs overload the
+      // local queue and then fall back to blocked browser popups → mass failures.
+      for (let jobIndex = 0; jobIndex < readyJobs.length; jobIndex += 1) {
+        const { job, detail } = readyJobs[jobIndex];
+        const receiptNo = from + jobIndex;
+        try {
+          const result = await dispatchPreparedSalePrintJob(job, {
+            allowBrowserFallback: !useAgentQueue,
+          });
+          if (result?.ok !== false) {
             printed += 1;
             queued += 1;
           } else {
             failed += 1;
+            failureReasons.push(
+              result?.error ||
+                `Print failed for order #${detail?.order_num ?? detail?.id ?? receiptNo}.`,
+            );
           }
+        } catch (error) {
+          failed += 1;
+          failureReasons.push(
+            error instanceof Error
+              ? error.message
+              : `Print failed for order #${detail?.order_num ?? detail?.id ?? receiptNo}.`,
+          );
         }
-      } else {
-        // Browser dialog cannot take a parallel burst — keep one-at-a-time.
-        for (const { job } of readyJobs) {
-          try {
-            const result = await dispatchPreparedSalePrintJob(job);
-            if (result?.ok !== false) {
-              printed += 1;
-              queued += 1;
-            } else {
-              failed += 1;
-            }
-          } catch {
-            failed += 1;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-      }
 
-      setActionMessage(
-        queued < printable.length
-          ? `Queued ${queued} of ${printable.length} receipts — printer running${hasNext ? ", next batch loading…" : "…"}`
-          : `Queued all ${queued} receipts to the printer.`,
-      );
+        setActionMessage(
+          printable.length === 1
+            ? "Sending receipt to printer…"
+            : `Queued ${queued} of ${printable.length} · printing receipt ${receiptNo}/${printable.length}${
+                hasNext || jobIndex + 1 < readyJobs.length ? "…" : "."
+              }`,
+        );
+      }
     }
 
-    return { printed, failed };
+    return { printed, failed, failureReasons };
   }
 
   function patchSaleInState(updated) {
@@ -1394,14 +1467,15 @@ export default function SalesOrdersListScreen({
         if (!documentType) return;
       }
 
-      const { printed, failed } = await printOrdersInChunks(printable, documentType, {
+      const { printed, failed, failureReasons } = await printOrdersInChunks(printable, documentType, {
         loadingBusy: "print-load",
         printingBusy: "print",
       });
 
       const parts = [`Printed ${printed} of ${printable.length}`];
       if (skipped > 0) parts.push(`${skipped} skipped`);
-      if (failed > 0) parts.push(`${failed} failed`);
+      const failPart = summarizePrintFailures(failureReasons, failed);
+      if (failPart) parts.push(failPart);
       setActionMessage(`${parts.join(" · ")}.`);
       if (printed > 0) clearSelection();
     } finally {
@@ -1462,7 +1536,7 @@ export default function SalesOrdersListScreen({
         `Loading ${printable.length} ${formatLabel}${printable.length === 1 ? "" : "s"}…`,
       );
 
-      const { printed, failed } = await printOrdersInChunks(printable, documentType, {
+      const { printed, failed, failureReasons } = await printOrdersInChunks(printable, documentType, {
         loadingBusy: "print-all-load",
         printingBusy: "print-all",
       });
@@ -1471,7 +1545,8 @@ export default function SalesOrdersListScreen({
         `Printed ${printed} of ${printable.length} (${formatLabel}${printable.length === 1 ? "" : "s"})`,
       ];
       if (skipped > 0) parts.push(`${skipped} skipped`);
-      if (failed > 0) parts.push(`${failed} failed`);
+      const failPart = summarizePrintFailures(failureReasons, failed);
+      if (failPart) parts.push(failPart);
       setActionMessage(`${parts.join(" · ")}.`);
     } catch (e) {
       setActionMessage(e instanceof Error ? e.message : "Could not print all orders.");

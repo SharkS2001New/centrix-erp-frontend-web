@@ -72,7 +72,7 @@ async function tryAgentPrint({ preparedHtml, copies, jobType, config }) {
 
 /**
  * Route a print job to Centrix Print Agent or the browser dialog (org settings).
- * Agent falls back to the browser dialog when offline.
+ * Agent falls back to the browser dialog when offline (unless allowBrowserFallback is false).
  *
  * @returns {Promise<{ mode: "agent" | "browser", ok: boolean, error?: string, printer?: string, jobId?: string }>}
  */
@@ -84,6 +84,8 @@ export async function dispatchPrintJob({
   windowFeatures = "width=420,height=720",
   agentConfig = getPrintAgentConfig(),
   provider = getLocalPrintProvider(),
+  /** When false, batch thermal printing stays on the agent (no popup-blocker fallback). */
+  allowBrowserFallback = true,
 }) {
   if (!html?.trim()) {
     return { mode: "browser", ok: false, error: "Nothing to print." };
@@ -126,13 +128,36 @@ export async function dispatchPrintJob({
           );
         }
         if (health?.ok) {
-          return await tryAgentPrint({ preparedHtml, copies, jobType, config });
+          try {
+            return await tryAgentPrint({ preparedHtml, copies, jobType, config });
+          } catch (err) {
+            invalidatePrintAgentHealth({ ...config, enabled: true });
+            agentError = err instanceof Error ? err.message : "Print agent failed.";
+            // One retry after a failed warm/hot print (agent briefly busy).
+            try {
+              await new Promise((resolve) => setTimeout(resolve, 250));
+              return await tryAgentPrint({ preparedHtml, copies, jobType, config });
+            } catch (retryErr) {
+              agentError =
+                retryErr instanceof Error ? retryErr.message : agentError;
+            }
+          }
         }
       } catch (err) {
         agentError = err instanceof Error ? err.message : "Print agent unreachable.";
         // Agent missing/offline → browser dialog (fallback always on in org settings)
       }
     }
+  }
+
+  if (!allowBrowserFallback) {
+    return {
+      mode: "agent",
+      ok: false,
+      error: agentError
+        ? `Print agent failed (${agentError}).`
+        : "Print agent is offline. Start Centrix Print Agent and try again.",
+    };
   }
 
   let opened = 0;

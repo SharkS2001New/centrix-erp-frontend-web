@@ -618,8 +618,8 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
 }
 
 /** Send a prepared job to the Centrix agent queue or browser print dialog. */
-export async function dispatchPreparedSalePrintJob(job) {
-  if (!job?.ok) return { mode: "browser", ok: false };
+export async function dispatchPreparedSalePrintJob(job, dispatchOptions = {}) {
+  if (!job?.ok) return { mode: "browser", ok: false, error: job?.error || "Print failed." };
 
   if (job.mode === "invoice" || job.mode === "proforma") {
     const copies = Math.max(1, Number(job.copies ?? 1) || 1);
@@ -636,5 +636,6 @@ export async function dispatchPreparedSalePrintJob(job) {
     documentId: job.documentId,
     printWindow: job.printWindow ?? null,
     windowFeatures: "width=420,height=720",
+    allowBrowserFallback: dispatchOptions.allowBrowserFallback !== false,
   });
 }

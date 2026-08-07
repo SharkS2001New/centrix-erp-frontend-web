@@ -328,11 +328,11 @@ export function appIdsForIndustry(industryId) {
 export function filterWorkspacesByIndustry(workspaces, industryId) {
   if (!Array.isArray(workspaces) || workspaces.length === 0) return [];
   const allowed = new Set(appIdsForIndustry(industryId));
-  // Mobile / manager are commerce permission apps (not always in provisionable list).
+  // Mobile is commerce-only; Manager (approvals / reports) is shared with hospitality.
   if (industryId !== "hospitality") {
     allowed.add("mobile");
-    allowed.add("manager");
   }
+  allowed.add("manager");
   return workspaces.filter((ws) => allowed.has(ws.id));
 }
 
