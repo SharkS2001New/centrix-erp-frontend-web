@@ -1,4 +1,19 @@
 import { resolveOrgPrintFontSettings, resolveOrgPrintSectionSettings } from "@/lib/print-font-settings";
+import {
+  normalizeOrgPrintFontSizePx,
+  normalizeOrgPrintFontWeight,
+  ORG_PRINT_FONT_SIZE_LIMITS,
+  ORG_PRINT_FONT_WEIGHT_DEFAULT,
+  ORG_PRINT_FONT_WEIGHTS,
+} from "@/lib/print-font-normalize";
+
+export {
+  normalizeOrgPrintFontSizePx,
+  normalizeOrgPrintFontWeight,
+  ORG_PRINT_FONT_SIZE_LIMITS,
+  ORG_PRINT_FONT_WEIGHT_DEFAULT,
+  ORG_PRINT_FONT_WEIGHTS,
+};
 
 export const ORG_PRINT_FONT_FAMILIES = [
   { id: "times", label: "Times New Roman", css: "'Times New Roman', Times, serif" },
@@ -31,18 +46,6 @@ export const ORG_PRINT_FONT_SCALES = [
   { id: "extra_large", label: "Extra large", multiplier: 1.3 },
   { id: "custom", label: "Custom size" },
 ];
-
-export const ORG_PRINT_FONT_SIZE_LIMITS = { min: 8, max: 24, default: 14 };
-
-export const ORG_PRINT_FONT_WEIGHTS = [
-  { id: "normal", label: "Normal", value: 400 },
-  { id: "medium", label: "Medium", value: 500 },
-  { id: "semibold", label: "Semibold (recommended)", value: 600 },
-  { id: "bold", label: "Bold", value: 700 },
-  { id: "extra_bold", label: "Extra bold", value: 800 },
-];
-
-export const ORG_PRINT_FONT_WEIGHT_DEFAULT = "semibold";
 
 export const ORG_PRINT_SECTIONS = ["header", "body", "footer"];
 
@@ -84,19 +87,6 @@ export function orgPrintFontScale(scaleId) {
     ORG_PRINT_FONT_SCALES.find((row) => row.id === scaleId)
     ?? ORG_PRINT_FONT_SCALES.find((row) => row.id === "standard")
   );
-}
-
-export function normalizeOrgPrintFontSizePx(value) {
-  const { min, max, default: fallback } = ORG_PRINT_FONT_SIZE_LIMITS;
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.round(Math.min(max, Math.max(min, num)));
-}
-
-export function normalizeOrgPrintFontWeight(weightId) {
-  const id = String(weightId ?? "").trim();
-  if (ORG_PRINT_FONT_WEIGHTS.some((row) => row.id === id)) return id;
-  return ORG_PRINT_FONT_WEIGHT_DEFAULT;
 }
 
 export function orgPrintFontWeightNumeric(weightId) {

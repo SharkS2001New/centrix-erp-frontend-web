@@ -2,7 +2,7 @@ import {
   normalizeOrgPrintFontSizePx,
   normalizeOrgPrintFontWeight,
   ORG_PRINT_FONT_WEIGHT_DEFAULT,
-} from "@/lib/print-typography";
+} from "@/lib/print-font-normalize";
 
 /** Admin form / API keys for each printable document type. */
 export const PRINT_FONT_VARIANTS = {

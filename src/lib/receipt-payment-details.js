@@ -1,5 +1,11 @@
-import { isRouteOrderSale } from "@/lib/sales";
 import { stringifyPrintField } from "@/lib/sale-document-print-shared";
+
+/** Mobile field sales or POS route-order mode (kept local to avoid sales ↔ sales-settings cycle). */
+function isRouteOrderSale(sale) {
+  if (!sale?.route_id) return false;
+  const channel = String(sale.channel ?? sale.order_source ?? "").toLowerCase();
+  return channel === "mobile" || channel === "pos";
+}
 
 export { sampleReceiptPreviewSale } from "@/lib/print-preview-samples";
 

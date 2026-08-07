@@ -1,6 +1,4 @@
 import { humanizeBackendTerm, salesChannelLabel } from "@/lib/user-facing-labels";
-import { formatOrgCurrency } from "@/lib/format";
-import { activeGeneralSettings } from "@/lib/general-settings";
 import { getSaleTimestamp, isSameCalendarDay, formatAppDateTime } from "@/lib/datetime";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
@@ -17,6 +15,8 @@ import {
   resolveEditOrderStatuses,
   salesSettingsFromCapabilities,
 } from "@/lib/sales-settings";
+
+export { formatSaleKes } from "@/lib/sale-currency";
 
 export const SALE_STATUS_LABELS = Object.fromEntries(
   DEFAULT_ORDER_WORKFLOW.steps.map((s) => [s.status, s.label]),
@@ -169,11 +169,6 @@ export const ORDER_PIPELINE_STEPS = workflowPipelineSteps();
 
 /** Allowed transitions (mirrors OrderWorkflowController). */
 export const SALE_TRANSITIONS = workflowTransitions();
-
-export function formatSaleKes(value, settings) {
-  if (value == null || value === "") return "—";
-  return formatOrgCurrency(value, settings ?? activeGeneralSettings());
-}
 
 export function formatOrderNumber(saleOrNum) {
   if (saleOrNum == null || saleOrNum === "") return "—";

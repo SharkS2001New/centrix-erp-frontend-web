@@ -14,7 +14,7 @@ import {
   normalizePricingFormulas,
   buildRouteFormulaVars,
 } from "@/lib/pricing-formula";
-import { formatSaleKes } from "@/lib/sales";
+import { formatSaleKes } from "@/lib/sale-currency";
 import {
   baseToDisplayQty,
   displayToBaseQty,
