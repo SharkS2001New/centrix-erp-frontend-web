@@ -48,10 +48,6 @@ function heldCustomerName(order) {
   );
 }
 
-function heldOrderTitle(order) {
-  return `${heldOrderLabel(order)} - ${heldCustomerName(order)}`;
-}
-
 function heldOrderPaidAmount(order) {
   return heldAmountPaid(order);
 }
@@ -90,6 +86,8 @@ export function PosHeldOrdersOverlay({
   embedded = false,
   workspaceHasLines = false,
   cartSeed = null,
+  classicTheme = false,
+  themeStyle = null,
 }) {
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -348,7 +346,7 @@ export function PosHeldOrdersOverlay({
 
   async function handleDelete(order) {
     if (!order?.id) return;
-    const label = heldOrderTitle(order);
+    const label = `${heldOrderLabel(order)} - ${heldCustomerName(order)}`;
     const ok = await confirm({
       title: "Delete held order",
       message: `Delete held order ${label}? This cannot be undone.`,
@@ -402,7 +400,17 @@ export function PosHeldOrdersOverlay({
         role="dialog"
         aria-modal="true"
         aria-labelledby="held-orders-title"
-        className={`${posModalPanelClass(embedded, "flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl")}`}
+        data-pos-layout={classicTheme ? "classic" : undefined}
+        className={`${posModalPanelClass(
+          embedded,
+          [
+            "flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl",
+            classicTheme ? "pos-workspace-classic" : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        )}`}
+        style={themeStyle ?? undefined}
       >
         <header className="classic-pos-themed-dialog-header shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-[var(--theme-primary-fg)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -417,7 +425,7 @@ export function PosHeldOrdersOverlay({
                   </span>
                 ) : null}
               </div>
-              <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs text-white/75">
+              <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs opacity-80">
                 Click an order to view its items, then Restore or Delete.
               </p>
             </div>
@@ -426,7 +434,7 @@ export function PosHeldOrdersOverlay({
                 type="button"
                 disabled={actionsDisabled}
                 onClick={() => void handleRestore(selectedOrder)}
-                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--theme-primary)] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="theme-primary-btn rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busyOrderId && selectedOrder && busyOrderId === selectedOrder.id
                   ? "Restoring…"
@@ -436,7 +444,7 @@ export function PosHeldOrdersOverlay({
                 type="button"
                 disabled={actionsDisabled}
                 onClick={() => void handleDelete(selectedOrder)}
-                className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-red-300/80 bg-red-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Delete
               </button>
@@ -444,7 +452,7 @@ export function PosHeldOrdersOverlay({
                 type="button"
                 disabled={Boolean(busyOrderId)}
                 onClick={onClose}
-                className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-50"
+                className="theme-secondary-btn rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:opacity-50"
               >
                 Close
               </button>
@@ -452,7 +460,7 @@ export function PosHeldOrdersOverlay({
           </div>
         </header>
 
-        <div className="shrink-0 theme-table-head-row border-b px-4 py-2.5">
+        <div className="shrink-0 theme-table-head-row border-b border-[var(--theme-border)] px-4 py-2.5">
           <input
             type="search"
             value={search}
@@ -463,13 +471,13 @@ export function PosHeldOrdersOverlay({
             className={INPUT_CLASS}
           />
           {selectedOrder ? (
-            <p className="mt-1.5 truncate text-xs text-slate-600">
+            <p className="theme-text-muted mt-1.5 truncate text-xs">
               Selected:{" "}
-              <span className="font-semibold text-slate-800">{heldCustomerName(selectedOrder)}</span>
-              <span className="text-slate-500"> · {heldOrderLabel(selectedOrder)}</span>
+              <span className="theme-heading font-semibold">{heldCustomerName(selectedOrder)}</span>
+              <span className="theme-text-subtle"> · {heldOrderLabel(selectedOrder)}</span>
             </p>
           ) : filtered.length > 0 ? (
-            <p className="mt-1.5 text-xs text-slate-500">
+            <p className="theme-text-muted mt-1.5 text-xs">
               Click a row to select it and show line items.
             </p>
           ) : null}
@@ -491,17 +499,17 @@ export function PosHeldOrdersOverlay({
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--theme-surface-subtle)]">
           {loading ? (
-            <p className="px-4 py-10 text-center text-sm text-slate-500">Loading held orders…</p>
+            <p className="theme-text-muted px-4 py-10 text-center text-sm">Loading held orders…</p>
           ) : listError ? (
             <p className="m-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {listError}
             </p>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-              <p className="text-sm font-medium text-slate-700">
+              <p className="theme-heading text-sm font-medium">
                 {search.trim() ? "No matching held orders" : "No held orders"}
               </p>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="theme-text-muted mt-1 text-sm">
                 {search.trim()
                   ? `Nothing matches “${search.trim()}”. Try another customer name or HOLD #.`
                   : "Use Hold on the cart to park a sale for later."}
@@ -520,9 +528,9 @@ export function PosHeldOrdersOverlay({
                 return (
                   <li
                     key={key}
-                    className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${
+                    className={`theme-panel theme-table-shell overflow-hidden rounded-xl border border-[var(--theme-border)] shadow-sm ${
                       isSelected
-                        ? "ring-2 ring-[var(--theme-primary)] ring-offset-1"
+                        ? "ring-2 ring-[var(--theme-primary)] ring-offset-1 ring-offset-[var(--theme-surface-subtle)]"
                         : ""
                     }`}
                   >
@@ -542,8 +550,10 @@ export function PosHeldOrdersOverlay({
                           selectOrder(order);
                         }
                       }}
-                      className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left ${
-                        isSelected ? "bg-[var(--theme-primary-subtle)]" : "hover:bg-slate-50"
+                      className={`flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left ${
+                        isSelected
+                          ? "bg-[var(--theme-primary-subtle)]"
+                          : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
                       <OrderExpandButton
@@ -551,38 +561,41 @@ export function PosHeldOrdersOverlay({
                         onClick={(e) => toggleExpand(order, e)}
                         label={isExpanded ? "Hide line items" : "Show line items"}
                       />
-                      <span className="min-w-0 flex-1 text-center">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          {heldOrderLabel(order)}
-                        </span>
-                        <span className="mt-0.5 block text-sm font-semibold text-slate-900">
-                          {heldCustomerName(order)}
-                        </span>
-                        {heldOrderPaidAmount(order) > 0.009 ? (
-                          <>
-                            <span className="mt-1 block text-sm font-semibold tabular-nums text-emerald-800 dark:text-emerald-400">
-                              Amount paid {formatSaleKes(heldOrderPaidAmount(order))}
-                            </span>
-                            <span className="block text-sm font-semibold tabular-nums text-amber-800 dark:text-amber-300">
-                              Balance remaining {formatSaleKes(heldOrderBalanceRemaining(order))}
-                            </span>
-                          </>
-                        ) : null}
-                        <span className="mt-1 block text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
-                          {formatSaleKes(order.order_total)}
-                        </span>
-                        <span className="mt-0.5 block text-xs text-slate-500">
-                          {order.created_at ? formatShortDate(order.created_at) : ""}
-                        </span>
-                      </span>
+                      {/* One row · three equal columns */}
+                      <div className="grid min-w-0 flex-1 grid-cols-3 items-start gap-3">
+                        <div className="min-w-0">
+                          <div className="theme-heading truncate text-base font-bold leading-tight">
+                            {heldCustomerName(order)}
+                          </div>
+                          <div className="theme-text-muted mt-0.5 truncate text-xs font-medium leading-tight">
+                            {heldOrderLabel(order)}
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold leading-tight tabular-nums text-[var(--theme-text)]">
+                            Paid {formatSaleKes(heldOrderPaidAmount(order))}
+                          </div>
+                          <div className="theme-text-muted mt-0.5 truncate text-xs leading-tight tabular-nums">
+                            Balance {formatSaleKes(heldOrderBalanceRemaining(order))}
+                          </div>
+                        </div>
+                        <div className="min-w-0 text-right">
+                          <div className="truncate text-sm font-bold leading-tight tabular-nums text-[var(--theme-accent-text)]">
+                            {formatSaleKes(order.order_total)}
+                          </div>
+                          <div className="theme-text-muted mt-0.5 truncate text-xs leading-tight">
+                            Held order total
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     {isExpanded ? (
-                      <div className="w-full border-t border-slate-200 bg-slate-50/50">
+                      <div className="w-full border-t border-[var(--theme-border)] bg-[var(--theme-surface-muted)]">
                         {isLoadingItems ? (
-                          <p className="px-4 py-3 text-xs text-slate-500">Loading items…</p>
+                          <p className="theme-text-muted px-4 py-3 text-xs">Loading items…</p>
                         ) : items.length === 0 ? (
-                          <p className="px-4 py-3 text-xs text-slate-500">No line items on this order.</p>
+                          <p className="theme-text-muted px-4 py-3 text-xs">No line items on this order.</p>
                         ) : (
                           <table className="w-full border-collapse text-sm">
                             <thead>
@@ -597,23 +610,23 @@ export function PosHeldOrdersOverlay({
                               {items.map((line) => (
                                 <tr
                                   key={line.id ?? line.client_line_id ?? `${line.product_code}-${line.line_no}`}
-                                  className="border-b border-slate-100 last:border-b-0"
+                                  className="border-b border-[var(--theme-border)] last:border-b-0"
                                 >
-                                  <td className="px-4 py-2.5 text-slate-800">
+                                  <td className="theme-heading px-4 py-2.5">
                                     {saleLineProductLabel(line)}
                                     {line.on_wholesale_retail ? (
-                                      <span className="ml-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-violet-800">
+                                      <span className="ml-1.5 rounded bg-[var(--theme-primary-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[var(--theme-primary)]">
                                         Retail
                                       </span>
                                     ) : null}
                                   </td>
-                                  <td className="px-4 py-2.5 text-center text-slate-700">
+                                  <td className="theme-text-muted px-4 py-2.5 text-center">
                                     {saleLineQtyLabel(line, uomById)}
                                   </td>
-                                  <td className="px-4 py-2.5 text-right text-slate-700">
+                                  <td className="theme-text-muted px-4 py-2.5 text-right">
                                     {formatSaleKes(saleLineSoldUnitPrice(line, uomById))}
                                   </td>
-                                  <td className="px-4 py-2.5 text-right font-medium text-slate-900">
+                                  <td className="theme-heading px-4 py-2.5 text-right font-medium">
                                     {formatSaleKes(saleLineListRowAmount(line, uomById))}
                                   </td>
                                 </tr>

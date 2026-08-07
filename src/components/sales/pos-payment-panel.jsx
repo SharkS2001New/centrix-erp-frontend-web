@@ -1434,7 +1434,7 @@ export function PosPaymentPanel({
           </p>
         ) : null}
         {confirmSummary && confirmSummary.changeDue > 0 ? (
-          <p className="mt-2 text-lg font-bold tabular-nums tracking-tight">
+          <p className="mt-2 text-[1.1025rem] font-semibold tabular-nums tracking-tight">
             Change: {formatSaleKes(confirmSummary.changeDue)}
           </p>
         ) : null}
@@ -1969,27 +1969,27 @@ export function PosPaymentPanel({
                   : "Adjustment"
               : "Bill Total"}
           </dt>
-          <dd className="text-lg font-bold tabular-nums tracking-tight">
+          <dd className="text-[1.1025rem] font-semibold tabular-nums tracking-tight">
             {isReturnAdjustment ? `−${formatSaleKes(checkoutTotal)}` : formatSaleKes(checkoutTotal)}
           </dd>
         </div>
         {mpesaFieldsLocked && parseDecimalInput(mpesaAmount) > 0 ? (
           <div className="flex items-baseline justify-between gap-3 text-emerald-800 dark:text-emerald-400">
             <dt className="font-medium">M-Pesa applied</dt>
-            <dd className="text-lg font-bold tabular-nums tracking-tight">
+            <dd className="text-[1.1025rem] font-semibold tabular-nums tracking-tight">
               {formatSaleKes(parseDecimalInput(mpesaAmount))}
             </dd>
           </div>
         ) : null}
         <div className="flex items-baseline justify-between gap-3">
           <dt className="theme-subtext font-medium">Amount Paid</dt>
-          <dd className="text-xl font-bold tabular-nums tracking-tight">
+          <dd className="text-[1.225rem] font-semibold tabular-nums tracking-tight">
             {formatSaleKes(amountPaid)}
           </dd>
         </div>
         <div className="flex items-baseline justify-between gap-3">
           <dt className="theme-subtext font-medium">Balance Due</dt>
-          <dd className="text-xl font-bold tabular-nums tracking-tight">
+          <dd className="text-[1.225rem] font-semibold tabular-nums tracking-tight">
             {formatSaleKes(balanceDue)}
           </dd>
         </div>
@@ -1997,7 +1997,7 @@ export function PosPaymentPanel({
         <div className="flex items-baseline justify-between gap-3">
           <dt className="theme-subtext font-medium">Change Due</dt>
           <dd
-            className={`text-xl font-bold tabular-nums tracking-tight${
+            className={`text-[1.225rem] font-semibold tabular-nums tracking-tight${
               changeExcessive ? " text-amber-700 dark:text-amber-400" : ""
             }`}
           >

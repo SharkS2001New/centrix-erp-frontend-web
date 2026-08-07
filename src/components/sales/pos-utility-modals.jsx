@@ -68,7 +68,9 @@ export function PosPreviousOrderLoadingOverlay({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[175] flex items-center justify-center p-4 pointer-events-auto"
+      className={`fixed inset-0 z-[175] flex items-center justify-center p-4 ${
+        soft ? "pointer-events-none" : "pointer-events-auto"
+      }`}
       aria-live="polite"
       aria-busy="true"
       role="status"
@@ -77,7 +79,7 @@ export function PosPreviousOrderLoadingOverlay({
         className={`absolute inset-0 ${soft ? "bg-slate-900/10" : "bg-slate-900/25 backdrop-blur-[1px]"}`}
         aria-hidden="true"
       />
-      <div className="relative w-full max-w-sm theme-panel rounded-xl border px-6 py-7 text-center shadow-2xl ring-1 ring-slate-900/5">
+      <div className="relative w-full max-w-sm theme-panel rounded-xl border px-6 py-7 text-center shadow-2xl ring-1 ring-slate-900/5 pointer-events-auto">
         <div
           className="mx-auto h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--theme-border)] border-t-[var(--theme-primary)]"
           aria-hidden="true"

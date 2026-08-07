@@ -298,7 +298,7 @@ export function ExternalPosPlatformFields({
           />
           <Toggle
             label="Allow editing completed POS orders"
-            description="When on, cashiers can reload a completed order by number to correct mistakes. Stock is restored, a KRA credit note is issued when the original sale was fiscalized, and checkout creates a new sale."
+            description="When on, cashiers can reload a completed order by number to correct mistakes. Stock is restored immediately; a KRA credit note is issued in the background when the original sale was fiscalized, and checkout creates a new sale."
             checked={Boolean(value?.enable_pos_order_edit)}
             onChange={(v) => patch({ enable_pos_order_edit: v })}
           />

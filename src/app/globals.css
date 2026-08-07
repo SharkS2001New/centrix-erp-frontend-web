@@ -3001,13 +3001,16 @@ html[data-theme="dark"] .pos-workspace-classic {
   color: var(--classic-text, #1a1a1a);
 }
 
-/* Classic backoffice Edit order: tall cart so scan search results have room */
+/* Classic backoffice Edit order: cart fills remaining space; Delete bar stays pinned below */
 .classic-backoffice-edit-cart {
-  min-height: min(52vh, 460px);
+  min-height: min(50.96vh, 451px);
+  flex: 1 1 auto;
 }
 
 .classic-backoffice-edit-cart .classic-pos-cart-table-wrap {
   height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .classic-pos-cart-table-scroll {

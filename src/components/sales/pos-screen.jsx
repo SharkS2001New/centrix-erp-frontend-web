@@ -179,6 +179,7 @@ import { PosStatusFooter } from "./pos-status-footer";
 import {
   applyClassicPosDocumentTheme,
   applyOrgErpSidebarTheme,
+  classicPosThemeBridgeVars,
   classicPosThemeCssVars,
   isDarkClassicPosTheme,
   resolveClassicPosThemeColors,
@@ -584,7 +585,7 @@ function resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId) {
   return { id: saleId, order_num: restoredRaw?.held_order_num ?? null };
 }
 
-/** Paint sale lines immediately while restore-to-cart (KRA void + stock) finishes. */
+/** Paint sale lines immediately while restore-to-cart finishes in the background. */
 function buildOptimisticPreviousOrderCart(saleId, sourceSale, existingCart) {
   const items = Array.isArray(sourceSale?.items) ? sourceSale.items : [];
   if (!items.length) return null;
@@ -1041,6 +1042,13 @@ export function PosScreen({ standalone = false }) {
   const classicThemeVars = useMemo(
     () =>
       classicLayout ? classicPosThemeCssVars(classicThemeTemplate, classicThemeColors) : null,
+    [classicLayout, classicThemeTemplate, classicThemeColors],
+  );
+  const classicThemeBridgeVars = useMemo(
+    () =>
+      classicLayout
+        ? classicPosThemeBridgeVars(classicThemeTemplate, classicThemeColors)
+        : null,
     [classicLayout, classicThemeTemplate, classicThemeColors],
   );
   const {
@@ -2889,12 +2897,6 @@ export function PosScreen({ standalone = false }) {
     closeProductSearchDropdown();
     searchInputRef.current?.blur?.();
     defaultScanFocusDoneRef.current = false;
-  }, []);
-
-  const markPreviousOrderLoadingConfirming = useCallback(() => {
-    setPreviousOrderLoadingMessage("Confirming previous order…");
-    setPreviousOrderLoadingDetail("Voiding on KRA device and updating stock…");
-    setPreviousOrderLoadingSoft(true);
   }, []);
 
   const endPreviousOrderLoading = useCallback(() => {
@@ -6120,7 +6122,7 @@ export function PosScreen({ standalone = false }) {
       `Remove ${itemLabel} from the revised order? Stock for removed lines is already back in inventory — it was restored when you opened this receipt.`;
     if (isKraDeviceConfigured(capabilities?.module_settings, capabilities)) {
       message +=
-        " If the original sale was sent to KRA, a credit note was issued when you opened the order; revised KRA fiscalization runs in the background when the order syncs.";
+        " If the original sale was sent to KRA, a credit note is issued in the background when you open the order; the revised sale is fiscalized when you finish checkout.";
     } else if (instantAutoEditSync) {
       message += " Changes save automatically — use Alt+P to reprint.";
     } else {
@@ -9334,17 +9336,40 @@ export function PosScreen({ standalone = false }) {
       replace = true;
     }
 
-    setBusy(true);
-    beginPreviousOrderLoading("Loading previous order…", {
-      detail: "Preparing cart — confirming with KRA and stock…",
-    });
-    setOrderEditError(null);
-
     const previousCartSnapshot = cartRef.current;
     const previousEditSource = editSourceSale;
     let paintedOptimistic = false;
     let restoreActive = true;
     let handoffToReplaceRetry = false;
+    let unlockedEarly = false;
+    let loadingBegun = false;
+
+    const beginLoadingIfNeeded = () => {
+      if (loadingBegun) return;
+      loadingBegun = true;
+      setBusy(true);
+      beginPreviousOrderLoading("Loading previous order…", {
+        detail: "Painting lines — stock and KRA finish in the background…",
+        soft: true,
+      });
+    };
+
+    const unlockTillEarly = (labelForStatus) => {
+      if (unlockedEarly) return;
+      unlockedEarly = true;
+      setBusy(false);
+      if (loadingBegun) endPreviousOrderLoading();
+      if (labelForStatus != null) {
+        const kraFiscalize = shouldSubmitKraOnCheckout(
+          capabilities?.module_settings,
+          capabilities,
+          summarizeLocalPosCart(cartRef.current)?.total,
+        );
+        setStatusMessage(
+          `Order #${labelForStatus} loaded — ${previousOrderEditWorkspaceHint({ kraFiscalize })}`,
+        );
+      }
+    };
 
     const paintOptimisticFromSale = (source) => {
       if (!restoreActive) return false;
@@ -9362,14 +9387,86 @@ export function PosScreen({ standalone = false }) {
       const browseNum = resolvePosBrowseNumber(optimistic);
       if (browseNum != null) setEditOrderNo(String(browseNum));
       paintedOptimistic = true;
-      markPreviousOrderLoadingConfirming();
+      // Unlock immediately — cashier can edit while restore/stock/KRA finish.
+      unlockTillEarly(browseNum ?? optimistic.held_order_num ?? saleId);
+      if (standalone) {
+        const kraFiscalize = shouldSubmitKraOnCheckout(
+          capabilities?.module_settings,
+          capabilities,
+          summarizeLocalPosCart(optimistic)?.total,
+        );
+        notifySuccess(
+          previousOrderEditModeMessages(browseNum ?? optimistic.held_order_num ?? saleId, {
+            kraFiscalize,
+          }).loaded,
+        );
+      }
       return true;
     };
+
+    const applyAuthoritativeRestoredCart = (restoredRaw) => {
+      const sourceSale = resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId);
+      const restoredCart = presentRestoredEditCart(restoredRaw, sourceSale);
+      const live = cartRef.current;
+      const sameEdit =
+        live &&
+        Number(live.superseded_sale_id) === Number(saleId) &&
+        Boolean(live.held_order_num);
+      const dirty = sameEdit && editedOrderHasLocalDraftChanges(live);
+
+      let nextCart = restoredCart;
+      if (dirty) {
+        // Keep cashier edits; bind to the real server cart id for sync.
+        nextCart = {
+          ...restoredCart,
+          customer_num: live.customer_num ?? restoredCart.customer_num,
+          customer_name_override:
+            live.customer_name_override ?? restoredCart.customer_name_override,
+          order_discount: live.order_discount ?? restoredCart.order_discount,
+          lines: live.lines,
+          _editDraftDirty: true,
+        };
+      }
+      const { _optimistic_restore: _omitOptimistic, ...clean } = nextCart;
+      cartRef.current = clean;
+      setCart(clean);
+      persistPreviousOrderLocalDraft(clean, { immediate: dirty });
+      setSelectedLineId(null);
+      setEditingLineId(null);
+      setEditingLineRef(null);
+      setReplacingLineId(null);
+      setPaymentOpen(false);
+      setEditSourceSale(sourceSale);
+      orderNoUserEditedRef.current = false;
+      const browseNum = resolvePosBrowseNumber(clean);
+      const orderNum = clean?.held_order_num ?? clean?.next_order_num;
+      if (browseNum != null || orderNum != null) {
+        if (browseNum != null) setEditOrderNo(String(browseNum));
+        setSessionPosOrders((prev) => {
+          const next = prev.filter((row) => String(row.id) !== String(saleId));
+          const idx =
+            browseNum != null
+              ? next.findIndex((row) => sessionOrderMatchesBrowseNum(row, browseNum))
+              : next.findIndex((row) => String(row.order_num) === String(orderNum));
+          setEditBrowseIndex(idx >= 0 ? idx : 0);
+          return next;
+        });
+
+        const customerMemory = extractSaleCustomerMemory(sourceSale);
+        if (customerMemory.name || customerMemory.customerNum != null) {
+          rememberPosOrderCustomer(browseNum ?? orderNum, customerMemory);
+        }
+      }
+      return { clean, sourceSale, browseNum, orderNum, restoredRaw };
+    };
+
+    setOrderEditError(null);
 
     try {
       if (saleSnapshot?.items?.length) {
         paintOptimisticFromSale(saleSnapshot);
       } else {
+        beginLoadingIfNeeded();
         // Fetch line items in parallel with restore so the till can paint sooner.
         void apiRequest(`/sales/${saleId}`)
           .then((sale) => {
@@ -9385,48 +9482,17 @@ export function PosScreen({ standalone = false }) {
           });
       }
 
-      // Single round-trip: restore-to-cart returns restored_from_sale metadata.
+      if (!paintedOptimistic) beginLoadingIfNeeded();
+
+      // Fast cart restore (stock + KRA finish afterResponse on the API).
       const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
         method: "POST",
         body: { replace },
       });
       restoreActive = false;
-      const sourceSale = resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId);
-      const restoredCart = presentRestoredEditCart(restoredRaw, sourceSale);
-      cartRef.current = restoredCart;
-      setCart(restoredCart);
-      persistPreviousOrderLocalDraft(restoredCart);
-      setSelectedLineId(null);
-      setEditingLineId(null);
-      setEditingLineRef(null);
-      setReplacingLineId(null);
-      setPaymentOpen(false);
-      setEditSourceSale(sourceSale);
-      orderNoUserEditedRef.current = false;
-      const browseNum = resolvePosBrowseNumber(restoredCart);
-      const orderNum = restoredCart?.held_order_num ?? restoredCart?.next_order_num;
-      if (browseNum != null || orderNum != null) {
-        if (browseNum != null) setEditOrderNo(String(browseNum));
-        // Drop from local ← browse while editing this ticket (Sales & Orders still shows it).
-        setSessionPosOrders((prev) => {
-          const next = prev.filter((row) => String(row.id) !== String(saleId));
-          // Keep browse index aligned with the loaded POS ticket # (or clamp).
-          const idx =
-            browseNum != null
-              ? next.findIndex((row) => sessionOrderMatchesBrowseNum(row, browseNum))
-              : next.findIndex((row) => String(row.order_num) === String(orderNum));
-          setEditBrowseIndex(idx >= 0 ? idx : 0);
-          return next;
-        });
-
-        const customerMemory = extractSaleCustomerMemory(sourceSale);
-        if (customerMemory.name || customerMemory.customerNum != null) {
-          rememberPosOrderCustomer(browseNum ?? orderNum, customerMemory);
-        }
-      }
-      const label = browseNum ?? restoredCart?.held_order_num ?? saleId;
-      setPaymentOpen(false);
-      const restoredSummary = summarizeLocalPosCart(restoredCart);
+      const applied = applyAuthoritativeRestoredCart(restoredRaw);
+      const label = applied.browseNum ?? applied.clean?.held_order_num ?? saleId;
+      const restoredSummary = summarizeLocalPosCart(applied.clean);
       const kraFiscalize = shouldSubmitKraOnCheckout(
         capabilities?.module_settings,
         capabilities,
@@ -9434,13 +9500,20 @@ export function PosScreen({ standalone = false }) {
       );
       const editMsgs = previousOrderEditModeMessages(label, { kraFiscalize });
       const editHint = previousOrderEditWorkspaceHint({ kraFiscalize });
-      setStatusMessage(
-        keepEditing
-          ? `Order #${label} updated — ${editHint}`
-          : `Order #${label} loaded — ${editHint}`,
-      );
-      if (standalone) {
-        notifySuccess(editMsgs.loaded);
+      const kraVoidPending = Boolean(restoredRaw?.kra_void_pending);
+      if (!unlockedEarly) {
+        setStatusMessage(
+          keepEditing
+            ? `Order #${label} updated — ${editHint}`
+            : kraVoidPending
+              ? `Order #${label} loaded — ${editHint} KRA void runs in the background.`
+              : `Order #${label} loaded — ${editHint}`,
+        );
+        if (standalone) {
+          notifySuccess(editMsgs.loaded);
+        }
+      } else if (kraVoidPending || restoredRaw?.stock_reverse_pending) {
+        setStatusMessage(`Order #${label} ready — ${editHint}`);
       }
     } catch (e) {
       restoreActive = false;
@@ -9470,11 +9543,11 @@ export function PosScreen({ standalone = false }) {
         }
         return;
       }
-      // Loading a fiscalized receipt voids it on the KRA device first — surface that clearly.
+      // Rare: restore itself should not wait on KRA anymore; keep clear copy if device errors surface.
       if (/kra device rejected|not on the kra device|not registered on the kra|plu/i.test(message)) {
         message =
-          `Could not open this receipt for edit — KRA must void it first. ${message} ` +
-          `Upload the order’s products to the device, then try again (or open it by customer name if that finds a different pending receipt).`;
+          `Could not complete KRA void for this receipt. ${message} ` +
+          `Upload the order’s products to the device, then try again.`;
       }
       setOrderEditError(message);
       setStatusMessage(message);
@@ -9482,8 +9555,8 @@ export function PosScreen({ standalone = false }) {
     } finally {
       if (handoffToReplaceRetry) {
         // Balance this attempt's begin*; the retry owns busy/loading.
-        endPreviousOrderLoading();
-      } else {
+        if (loadingBegun && !unlockedEarly) endPreviousOrderLoading();
+      } else if (loadingBegun && !unlockedEarly) {
         setBusy(false);
         endPreviousOrderLoading();
       }
@@ -11359,7 +11432,7 @@ export function PosScreen({ standalone = false }) {
                 onOrderNoSubmit={() => {
                   if (!enablePosOrderEdit) {
                     setStatusMessage(
-                      "Enable “Allow editing completed POS orders” under Platform → Sales behaviour. Loading a previous receipt restores stock and issues a KRA credit note when the original sale was fiscalized.",
+                      "Enable “Allow editing completed POS orders” under Platform → Sales behaviour. Loading a previous receipt restores stock immediately; a KRA credit note is issued in the background when the original sale was fiscalized.",
                     );
                     return;
                   }
@@ -12046,6 +12119,8 @@ export function PosScreen({ standalone = false }) {
           till_id: cart?.till_id ?? null,
           float_session_id: cart?.float_session_id ?? floatSessionId ?? null,
         }}
+        classicTheme={classicLayout}
+        themeStyle={classicThemeBridgeVars}
         onRestored={async (restoredCart, sourceSale, meta = {}) => {
           setHeldOrdersOpen(false);
           setSaveOrderOpen(false);

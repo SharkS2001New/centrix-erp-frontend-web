@@ -27,7 +27,7 @@ import {
 } from "@/components/sales/customer-return-actions";
 import { CustomerReturnDetailModal } from "@/components/sales/customer-return-detail-modal";
 import { printCustomerReturn } from "@/components/sales/credit-note-print";
-import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
+import { ReturnStatusBadge, customerReturnReturnedByName } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { defaultDateRange } from "@/lib/datetime";
 import { useAuth } from "@/contexts/auth-context";
@@ -297,7 +297,7 @@ export function SalesReturnsScreen() {
         {actionError ? <p className="px-4 py-3 text-sm text-red-600">{actionError}</p> : null}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="theme-table-head-row text-xs font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Return no.</th>
@@ -307,18 +307,19 @@ export function SalesReturnsScreen() {
                 <th className="px-4 py-3 text-right">Amount</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="w-36 px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3">Returned by</th>
               </tr>
             </thead>
             <tbody className={listRefresh.contentClassName}>
               {tableLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                     Loading returns…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                     No returns match your filters.
                   </td>
                 </tr>
@@ -328,6 +329,7 @@ export function SalesReturnsScreen() {
                     row.customer?.customer_name ??
                     row.sale?.customer_name_override ??
                     "Walk-in";
+                  const returnedBy = customerReturnReturnedByName(row) ?? "—";
                   return (
                     <tr key={row.id} className="border-t border-slate-100 theme-table-body-row">
                       <td className="px-4 py-3">
@@ -368,6 +370,7 @@ export function SalesReturnsScreen() {
                           onPrint={handlePrint}
                         />
                       </td>
+                      <td className="px-4 py-3 text-slate-700">{returnedBy}</td>
                     </tr>
                   );
                 })

@@ -9,6 +9,7 @@ import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   ReturnStatusBadge,
   customerReturnLineQtyLabel,
+  customerReturnReturnedByName,
   normalizeReturnStatus,
   refundMethodLabel,
   stockLocationLabel,
@@ -65,6 +66,7 @@ export function CustomerReturnDetailModal({
     row?.approved_by_user?.username ??
     row?.approvedByUser?.username ??
     null;
+  const returnedByName = customerReturnReturnedByName(row);
 
   return createPortal(
     <div
@@ -153,6 +155,7 @@ export function CustomerReturnDetailModal({
             }
           />
           <DetailRow label="Return date" value={formatShortDate(row.return_date)} />
+          <DetailRow label="Returned by" value={returnedByName ?? "—"} />
           <DetailRow label="Refund method" value={refundMethodLabel(row.refund_method)} />
           <DetailRow label="Restock location" value={stockLocationLabel(row.stock_location)} />
           <DetailRow label="Reason" value={row.reason ?? "—"} />

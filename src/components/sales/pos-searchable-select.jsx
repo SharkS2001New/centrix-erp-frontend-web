@@ -16,10 +16,8 @@ import { createPortal } from "react-dom";
 const defaultInputCls =
   "theme-input theme-input-focus h-[38px] w-full min-w-[12rem] rounded-lg border px-3 py-2 text-sm outline-none";
 
-const LIST_MAX_HEIGHT = 200;
-const SEARCH_HEADER_HEIGHT = 44;
+const LIST_MAX_HEIGHT = 240;
 const MENU_GAP = 4;
-const PANEL_MAX_HEIGHT = LIST_MAX_HEIGHT + SEARCH_HEADER_HEIGHT;
 const MIN_PANEL_WIDTH = 224; // 14rem — room for names; trigger can be narrower in toolbars
 const VIEWPORT_EDGE_PADDING = 8;
 
@@ -28,11 +26,11 @@ function isSelectableOption(option) {
 }
 
 /**
- * Select-style dropdown with an in-panel search field (credit customers, etc.).
+ * Combobox: type to search directly in the field; results open in a list below.
  * Pass `loadOptions` for server-side search; otherwise filters `options` locally.
  *
  * Keyboard: ArrowUp/ArrowDown move highlight, Enter selects and closes, Escape closes.
- * Imperative API: `openAndFocus()` opens the panel and focuses the search field.
+ * Imperative API: `openAndFocus()` focuses the input and opens the results list.
  */
 export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   {
@@ -58,9 +56,8 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   const listId = useId();
   const rootRef = useRef(null);
   const panelRef = useRef(null);
-  const searchRef = useRef(null);
+  const inputRef = useRef(null);
   const listRef = useRef(null);
-  const internalTriggerRef = useRef(null);
   const searchSeq = useRef(0);
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -73,9 +70,9 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
 
   const asyncSearch = typeof loadOptions === "function";
 
-  const setTriggerRef = useCallback(
+  const setInputNodeRef = useCallback(
     (node) => {
-      internalTriggerRef.current = node;
+      inputRef.current = node;
       if (typeof triggerRef === "function") {
         triggerRef(node);
       } else if (triggerRef) {
@@ -89,6 +86,12 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     () => options.find((o) => String(o.value) === String(value)),
     [options, value],
   );
+
+  // Keep the closed field showing the selected label (or empty).
+  useEffect(() => {
+    if (open) return;
+    setQuery(selected?.label ?? "");
+  }, [open, selected?.label, value]);
 
   const filtered = useMemo(() => {
     if (asyncSearch) return asyncOptions;
@@ -155,18 +158,12 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
 
   useEffect(() => {
     if (!open) {
-      setQuery("");
       setAsyncOptions([]);
       setAsyncLoading(false);
       setAsyncError(null);
       setHighlightIndex(-1);
       return;
     }
-    const t = window.setTimeout(() => {
-      searchRef.current?.focus();
-      searchRef.current?.select?.();
-    }, 0);
-    return () => window.clearTimeout(t);
   }, [open]);
 
   useEffect(() => {
@@ -217,13 +214,9 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
       const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP;
       const spaceAbove = rect.top - MENU_GAP;
       const openUp =
-        spaceBelow < Math.min(PANEL_MAX_HEIGHT, 180) && spaceAbove > spaceBelow;
+        spaceBelow < Math.min(LIST_MAX_HEIGHT, 180) && spaceAbove > spaceBelow;
       const available = openUp ? spaceAbove : spaceBelow;
-      const panelHeight = Math.max(
-        SEARCH_HEADER_HEIGHT + 80,
-        Math.min(PANEL_MAX_HEIGHT, available),
-      );
-      const listHeight = panelHeight - SEARCH_HEADER_HEIGHT;
+      const panelHeight = Math.max(80, Math.min(LIST_MAX_HEIGHT, available));
 
       setMenuStyle({
         position: "fixed",
@@ -234,7 +227,6 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
         ...(openUp
           ? { bottom: window.innerHeight - rect.top + MENU_GAP }
           : { top: rect.bottom + MENU_GAP }),
-        listHeight,
       });
     }
 
@@ -248,31 +240,41 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   }, [open, filtered.length, asyncLoading, asyncError, searchError]);
 
   useEffect(() => {
-    function onDocClick(e) {
+    function onDocPointerDown(e) {
       if (rootRef.current?.contains(e.target)) return;
       if (panelRef.current?.contains(e.target)) return;
       setOpen(false);
     }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    document.addEventListener("mousedown", onDocPointerDown);
+    return () => document.removeEventListener("mousedown", onDocPointerDown);
   }, []);
 
   function pick(option) {
     if (!isSelectableOption(option)) return;
     onChange(String(option.value), option);
+    setQuery(option.label ?? "");
     setOpen(false);
-    window.requestAnimationFrame(() => internalTriggerRef.current?.focus());
+    window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function clearSelection(e) {
+    e.preventDefault();
     e.stopPropagation();
     onChange("", null);
-    setOpen(false);
+    setQuery("");
+    setOpen(true);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  function toggleOpen() {
-    if (disabled) return;
-    setOpen((prev) => !prev);
+  function openList({ selectText = false } = {}) {
+    if (disabled || loading) return;
+    setOpen(true);
+    window.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      if (selectText) input.select?.();
+    });
   }
 
   function moveHighlight(direction) {
@@ -288,18 +290,22 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     });
   }
 
-  function handleSearchKeyDown(e) {
+  function handleInputKeyDown(e) {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       setOpen(false);
-      window.requestAnimationFrame(() => internalTriggerRef.current?.focus());
+      setQuery(selected?.label ?? "");
       return;
     }
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
       e.stopPropagation();
+      if (!open) {
+        openList();
+        return;
+      }
       moveHighlight(1);
       return;
     }
@@ -307,57 +313,70 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     if (e.key === "ArrowUp") {
       e.preventDefault();
       e.stopPropagation();
+      if (!open) {
+        openList();
+        return;
+      }
       moveHighlight(-1);
       return;
     }
 
     if (e.key === "Enter") {
-      const option =
-        highlightIndex >= 0 && isSelectableOption(filtered[highlightIndex])
-          ? filtered[highlightIndex]
-          : filtered.find(isSelectableOption);
-      if (!option) return;
-      e.preventDefault();
-      e.stopPropagation();
-      pick(option);
+      if (open) {
+        const option =
+          highlightIndex >= 0 && isSelectableOption(filtered[highlightIndex])
+            ? filtered[highlightIndex]
+            : filtered.find(isSelectableOption);
+        if (option) {
+          e.preventDefault();
+          e.stopPropagation();
+          pick(option);
+          return;
+        }
+      }
+      onTriggerKeyDown?.(e);
+      return;
     }
+
+    onTriggerKeyDown?.(e);
   }
 
   useImperativeHandle(
     ref,
     () => ({
       openAndFocus() {
-        if (disabled || loading) return;
-        setOpen(true);
+        openList({ selectText: true });
       },
       focus() {
-        internalTriggerRef.current?.focus();
+        inputRef.current?.focus();
       },
       close() {
         setOpen(false);
+        setQuery(selected?.label ?? "");
       },
     }),
-    [disabled, loading],
+    [disabled, loading, selected?.label],
   );
 
   const listBusy = loading || asyncLoading;
   const listError = searchError || asyncError;
   const trimmedQuery = query.trim();
   const queryTooShort = asyncSearch && trimmedQuery.length < minSearchLength;
+  const showIdleLocal =
+    !asyncSearch && minSearchLength > 0 && trimmedQuery.length < minSearchLength;
 
   let listMessage = emptyLabel;
-  if (queryTooShort) listMessage = idleSearchLabel;
+  if (queryTooShort || showIdleLocal) listMessage = idleSearchLabel;
   else if (listBusy) listMessage = "Searching…";
   else if (listError) listMessage = listError;
-
-  const triggerLabel = loading
-    ? "Loading…"
-    : selected?.label ?? placeholder;
 
   const activeOptionId =
     highlightIndex >= 0 && filtered[highlightIndex]
       ? `${listId}-opt-${highlightIndex}`
       : undefined;
+
+  const hasClear = Boolean(value) && !disabled && !loading;
+  const inputPaddingClass = hasClear ? "pr-16" : "pr-9";
 
   const panel =
     open && !disabled && menuStyle ? (
@@ -374,25 +393,10 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
         }}
         className="pos-search-select-panel flex flex-col overflow-hidden rounded-lg border shadow-lg"
       >
-        <div className="shrink-0 border-b border-[var(--theme-border)] p-2">
-          <input
-            ref={searchRef}
-            type="search"
-            value={query}
-            placeholder={searchPlaceholder}
-            aria-controls={listId}
-            aria-activedescendant={activeOptionId}
-            aria-autocomplete="list"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            className={`${defaultInputCls} pos-search-select-search`}
-          />
-        </div>
         <ul
           ref={listRef}
           id={listId}
           role="listbox"
-          style={{ maxHeight: menuStyle.listHeight }}
           className="min-h-0 flex-1 overflow-auto py-1"
         >
           {filtered.length === 0 ? (
@@ -416,6 +420,10 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
                     data-option-index={index}
                     role="option"
                     aria-selected={index === highlightIndex || String(o.value) === String(value)}
+                    onMouseDown={(e) => {
+                      // Keep input focus; avoid blur-close before click.
+                      e.preventDefault();
+                    }}
                     onMouseEnter={() => setHighlightIndex(index)}
                     onClick={() => pick(o)}
                     className={`pos-search-select-option block w-full px-3 py-2 text-left text-sm ${
@@ -436,45 +444,69 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
 
   return (
     <div ref={rootRef} className="relative">
-      <button
-        ref={setTriggerRef}
-        type="button"
+      <input
+        ref={setInputNodeRef}
+        type="text"
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={activeOptionId}
         disabled={disabled || loading}
-        onClick={toggleOpen}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
-            if (!open && !disabled && !loading) {
-              e.preventDefault();
-              setOpen(true);
-              return;
-            }
-          }
-          onTriggerKeyDown?.(e);
+        placeholder={loading ? "Loading…" : searchPlaceholder || placeholder}
+        value={loading ? "Loading…" : query}
+        autoComplete="off"
+        spellCheck={false}
+        onFocus={() => {
+          if (disabled || loading) return;
+          setOpen(true);
         }}
-        className={`${inputClassName} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60`}
-      >
-        <span
-          className={`min-w-0 flex-1 truncate ${selected ? "text-[var(--theme-text)]" : "theme-text-muted"}`}
-        >
-          {triggerLabel}
-        </span>
-        <span aria-hidden className="theme-text-muted shrink-0 text-xs">
-          {open ? "▲" : "▼"}
-        </span>
-      </button>
-      {value && !disabled && !loading ? (
+        onClick={() => {
+          if (disabled || loading) return;
+          setOpen(true);
+        }}
+        onChange={(e) => {
+          const next = e.target.value;
+          setQuery(next);
+          setOpen(true);
+          // Drop the prior pick as soon as the field text no longer matches it.
+          if (value && next !== (selected?.label ?? "")) {
+            onChange("", null);
+          }
+        }}
+        onKeyDown={handleInputKeyDown}
+        className={`${inputClassName} ${inputPaddingClass} text-left disabled:cursor-not-allowed disabled:opacity-60`}
+      />
+      {hasClear ? (
         <button
           type="button"
+          tabIndex={-1}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={clearSelection}
-          className="theme-text-muted absolute right-7 top-1/2 -translate-y-1/2 hover:text-[var(--theme-text)]"
+          className="theme-text-muted absolute right-8 top-1/2 -translate-y-1/2 hover:text-[var(--theme-text)]"
           aria-label="Clear selection"
         >
           ×
         </button>
       ) : null}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden
+        disabled={disabled || loading}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            setQuery(selected?.label ?? "");
+            return;
+          }
+          openList({ selectText: true });
+        }}
+        className="theme-text-muted absolute right-2 top-1/2 -translate-y-1/2 text-xs disabled:opacity-60"
+      >
+        {open ? "▲" : "▼"}
+      </button>
       {required && !value ? (
         <input
           tabIndex={-1}

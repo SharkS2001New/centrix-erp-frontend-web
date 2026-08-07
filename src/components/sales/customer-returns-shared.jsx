@@ -58,6 +58,17 @@ export function resolveReturnReason(preset, otherText) {
   return selected;
 }
 
+/** Display name for who created the customer return. */
+export function customerReturnReturnedByName(row) {
+  if (!row) return null;
+  if (typeof row.returned_by_name === "string" && row.returned_by_name.trim()) {
+    return row.returned_by_name.trim();
+  }
+  const user = row.returned_by_user ?? row.returnedByUser ?? null;
+  const name = String(user?.full_name ?? user?.username ?? "").trim();
+  return name || null;
+}
+
 export const REFUND_METHODS = [
   { value: "CASH", label: "Cash" },
   { value: "MPESA", label: "M-Pesa" },

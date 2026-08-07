@@ -94,6 +94,7 @@ export function ClassicBackofficeOrderEditModal({
   const [customerOptions, setCustomerOptions] = useState([]);
   const [customerLoading, setCustomerLoading] = useState(false);
   const [selectedLineKey, setSelectedLineKey] = useState(null);
+  const [selectedLineIds, setSelectedLineIds] = useState(() => new Set());
   const [replacingLineKey, setReplacingLineKey] = useState(null);
   const [swapDraft, setSwapDraft] = useState(null);
   const swapLineQtyRef = useRef(null);
@@ -253,6 +254,7 @@ export function ClassicBackofficeOrderEditModal({
       setBaselineDraft(snapshotDraft(nextLines));
       setBaselineRemovedIds([]);
       setSelectedLineKey(nextLines[0] ? lineKey(nextLines[0]) : null);
+      setSelectedLineIds(new Set());
       setStatusMessage("");
 
       const resolvedCustomerNum =
@@ -660,23 +662,78 @@ export function ClassicBackofficeOrderEditModal({
   }
 
   function removeSelectedLine() {
-    const line = lines.find((row) => lineKey(row) === selectedLineKey);
-    if (!line) return;
-    if (lines.length <= 1) {
-      setError("An order must keep at least one line item.");
+    const checkedKeys = [...selectedLineIds].map(String).filter(Boolean);
+    const keysToRemove =
+      checkedKeys.length > 0
+        ? checkedKeys
+        : selectedLineKey
+          ? [String(selectedLineKey)]
+          : [];
+    if (!keysToRemove.length) return;
+
+    const keySet = new Set(keysToRemove);
+    const targets = lines.filter((row) => keySet.has(String(lineKey(row))));
+    if (!targets.length) return;
+
+    if (lines.length - targets.length < 1) {
+      setError(
+        targets.length > 1
+          ? "Keep at least one line on the order. Uncheck some items before deleting."
+          : "An order must keep at least one line item.",
+      );
       return;
     }
+
     setError(null);
-    if (line.id != null) {
-      setRemovedIds((prev) => (prev.includes(line.id) ? prev : [...prev, line.id]));
-    }
-    const next = lines.filter((row) => lineKey(row) !== lineKey(line));
-    setLines(next);
-    setSelectedLineKey(next[0] ? lineKey(next[0]) : null);
-    if (replacingLineKey === lineKey(line)) {
+    setRemovedIds((prev) => {
+      const next = [...prev];
+      for (const line of targets) {
+        if (line.id != null && !next.includes(line.id)) next.push(line.id);
+      }
+      return next;
+    });
+    const nextLines = lines.filter((row) => !keySet.has(String(lineKey(row))));
+    setLines(nextLines);
+    setSelectedLineIds(new Set());
+    setSelectedLineKey(nextLines[0] ? lineKey(nextLines[0]) : null);
+    if (replacingLineKey && keySet.has(String(replacingLineKey))) {
       cancelReplaceCartLine();
     }
-    setStatusMessage(`Removed ${lineLabel(line)}.`);
+    const label =
+      targets.length === 1
+        ? lineLabel(targets[0])
+        : `${targets.length} items`;
+    setStatusMessage(`Removed ${label}.`);
+  }
+
+  function handleSelectLine(id) {
+    const key = String(id);
+    setSelectedLineKey(key);
+    setSelectedLineIds((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }
+
+  function toggleLineSelect(id) {
+    const key = String(id);
+    setSelectedLineIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setSelectedLineKey(key);
+  }
+
+  function toggleAllLines(checked) {
+    if (!checked) {
+      setSelectedLineIds(new Set());
+      return;
+    }
+    setSelectedLineIds(new Set(cartLines.map((line) => String(line.id))));
   }
 
   function updateSelectedDiscount(value) {
@@ -769,6 +826,15 @@ export function ClassicBackofficeOrderEditModal({
   }
 
   const selectedLine = lines.find((line) => lineKey(line) === selectedLineKey) ?? null;
+  const selectedCount = selectedLineIds.size > 0
+    ? selectedLineIds.size
+    : selectedLineKey
+      ? 1
+      : 0;
+  const allLinesSelected =
+    cartLines.length > 0 && cartLines.every((line) => selectedLineIds.has(String(line.id)));
+  const someLinesSelected =
+    !allLinesSelected && cartLines.some((line) => selectedLineIds.has(String(line.id)));
   const productSearch = (
     <PosProductSearch
       variant="classic"
@@ -903,16 +969,25 @@ export function ClassicBackofficeOrderEditModal({
             </div>
           ) : null}
 
-          {loading ? (
-            <p className="py-10 text-center text-sm" style={{ color: "var(--classic-muted)" }}>
-              Loading order lines…
-            </p>
-          ) : (
-            <div className="classic-backoffice-edit-cart flex min-h-[min(52vh,460px)] flex-1 flex-col overflow-hidden">
-            <ClassicPosCartTable
+          <div className="classic-backoffice-edit-cart flex min-h-0 flex-1 flex-col overflow-hidden">
+            {loading ? (
+              <p
+                className="flex flex-1 items-center justify-center text-center text-sm"
+                style={{ color: "var(--classic-muted)" }}
+              >
+                Loading order lines…
+              </p>
+            ) : (
+              <ClassicPosCartTable
               lines={cartLines}
               selectedLineId={selectedLineKey}
-              onSelectLine={(id) => setSelectedLineKey(String(id))}
+              onSelectLine={handleSelectLine}
+              selectionEnabled
+              selectedLineIds={selectedLineIds}
+              allLinesSelected={allLinesSelected}
+              someLinesSelected={someLinesSelected}
+              onToggleAllLines={toggleAllLines}
+              onToggleLineSelect={toggleLineSelect}
               orderCaption={formatOrderNumber(sale)}
               showOrderNav={false}
               showRetailModeHint={retailPricingEnabled}
@@ -1001,18 +1076,20 @@ export function ClassicBackofficeOrderEditModal({
                 }
               }}
             />
-            </div>
-          )}
+            )}
+          </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs" style={{ color: "var(--classic-muted)" }}>
+          <div
+            className="flex shrink-0 flex-wrap items-center gap-2 border-t px-0 py-[0.49rem] text-xs"
+            style={{ color: "var(--classic-muted)", borderColor: "var(--classic-border, #8a7a55)" }}
+          >
             <button
               type="button"
-              disabled={saving || loading || !selectedLine || lines.length <= 1}
+              disabled={saving || loading || selectedCount === 0 || lines.length <= 1}
               onClick={removeSelectedLine}
-              className="rounded border px-2 py-1 font-medium disabled:opacity-40"
-              style={{ borderColor: "var(--classic-border)" }}
+              className="rounded border border-red-700 bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
             >
-              Remove selected
+              {selectedCount > 1 ? `Delete (${selectedCount})` : "Delete"}
             </button>
             {discountEditEnabled && selectedLine ? (
               <label className="inline-flex items-center gap-1.5">
@@ -1024,7 +1101,7 @@ export function ClassicBackofficeOrderEditModal({
                   className="w-24 rounded border px-1.5 py-0.5 text-right"
                   style={{ borderColor: "var(--classic-border)" }}
                   value={selectedLine.draftDiscount ?? 0}
-                  disabled={saving}
+                  disabled={saving || loading}
                   onChange={(e) => updateSelectedDiscount(e.target.value)}
                 />
               </label>
@@ -1034,7 +1111,7 @@ export function ClassicBackofficeOrderEditModal({
         </div>
 
         <div
-          className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-3"
+          className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-[0.735rem]"
           style={{
             background: "var(--classic-footer, #fafafa)",
             borderColor: "var(--classic-border, #8a7a55)",
