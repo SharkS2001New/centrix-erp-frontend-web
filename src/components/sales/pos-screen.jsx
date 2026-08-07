@@ -65,7 +65,16 @@ import {
   saleCustomerLabel,
 } from "@/lib/sales";
 import { annotateSaleWithReceiptTenders } from "@/lib/checkout-payment-splits";
-import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
+import {
+  getChannelWorkflow,
+  workflowPipelineSteps,
+  checkoutCompleteStatuses,
+  isCheckoutCompleteStatus,
+  saleNeedsPaymentCollection,
+  resolveCheckoutStatus,
+  resolveSaveOrderStatus,
+  resolveSaveOrderStatusLabel,
+} from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
   areSalesDiscountFeaturesEnabled,
@@ -73,9 +82,6 @@ import {
   lineDiscountInputLabel,
   isWorkspaceTillFloatRequired,
   salesCartChannelForWorkspace,
-  resolveCheckoutStatus,
-  resolveSaveOrderStatus,
-  resolveSaveOrderStatusLabel,
   existingOrderDiscountApprovalReason,
   cartNeedsDiscountApprovalAtCheckout,
   canGiveDiscountDirectly,
@@ -694,10 +700,11 @@ function formatPosOrderNameWhen(value) {
 }
 
 function mapPosOrderNameResult(row) {
-  const ticket = resolvePosBrowseNumber(row) ?? row.pos_order_num ?? row.order_num;
+  // Always show Cash Sales # (pos_order_num) — never org S# / order_num.
+  const ticket = resolvePosSessionTicketNumber(row);
   return {
     ...row,
-    ticket_label: ticket != null && ticket !== "" ? String(ticket) : "—",
+    ticket_label: ticket != null ? String(ticket) : "—",
     customer_label: saleCustomerLabel(row),
     amount_label: formatSaleKes(row.order_total ?? row.amount_paid),
     when_label: formatPosOrderNameWhen(row.completed_at ?? row.created_at),
@@ -9132,7 +9139,7 @@ export function PosScreen({ standalone = false }) {
         notifySuccess(editMsgs.loaded);
       }
     } catch (e) {
-      const message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
+      let message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (
         !replace &&
         (message.toLowerCase().includes("already has items") ||
@@ -9153,6 +9160,12 @@ export function PosScreen({ standalone = false }) {
         }
         return;
       }
+      // Loading a fiscalized receipt voids it on the KRA device first — surface that clearly.
+      if (/kra device rejected|not on the kra device|not registered on the kra|plu/i.test(message)) {
+        message =
+          `Could not open this receipt for edit — KRA must void it first. ${message} ` +
+          `Upload the order’s products to the device, then try again (or open it by customer name if that finds a different pending receipt).`;
+      }
       setOrderEditError(message);
       setStatusMessage(message);
       if (standalone) notifyError(message);
@@ -9167,14 +9180,24 @@ export function PosScreen({ standalone = false }) {
     if (!trimmed) return;
 
     setOrderEditError(null);
+    const compact = trimmed.replace(/[\s#\-]+/g, "");
+    const isCashSalesTicket = /^\d+$/.test(compact);
+    const orgOrderMatch = compact.match(/^S0*(\d+)$/i);
+    const ticketNum = isCashSalesTicket ? compact : null;
+    const orgOrderNum = orgOrderMatch ? orgOrderMatch[1] : null;
+
     try {
       try {
         const offlineOrders = await listOfflinePendingSalesForEdit();
-        const offlineMatch = offlineOrders.find(
-          (row) =>
-            sessionOrderMatchesBrowseNum(row, trimmed) ||
-            String(row.order_num) === trimmed,
-        );
+        const offlineMatch =
+          offlineOrders.find(
+            (row) =>
+              (ticketNum != null && String(row.pos_order_num) === ticketNum) ||
+              sessionOrderMatchesBrowseNum(row, trimmed),
+          ) ??
+          (orgOrderNum != null
+            ? offlineOrders.find((row) => String(row.order_num) === orgOrderNum)
+            : null);
         if (offlineMatch?.id) {
           await restoreOrderForEdit(offlineMatch.id, { saleSnapshot: offlineMatch });
           return;
@@ -9183,35 +9206,84 @@ export function PosScreen({ standalone = false }) {
         /* fall through to server lookup */
       }
 
-      const res = await apiRequest("/sales", {
-        searchParams: buildPageParams({
-          page: 1,
-          perPage: 25,
-          q: trimmed,
-          extra: {
-            for_pos_order_edit: 1,
-            channel: "pos",
-            order_source: "pos",
-            with_items: 0,
-            filter_pos_order: trimmed,
-          },
-        }),
-      });
-      const rows = Array.isArray(res?.data) ? res.data : [];
-      const match =
-        rows.find(
+      // Prefer today's Cash Sales # from the in-memory browse list (same as ← / →).
+      if (ticketNum != null) {
+        const sessionMatch = sessionPosOrders.find(
           (row) =>
-            String(row.pos_order_num) === trimmed &&
-            Number(row.order_num) < 9_000_000 &&
-            !row?.fulfillment_meta?.superseded_by_edit,
-        ) ??
-        rows.find(
+            String(row.pos_order_num) === ticketNum &&
+            !row?.fulfillment_meta?.superseded_by_edit &&
+            !isOfflinePendingSaleId(row.id),
+        );
+        if (sessionMatch?.id) {
+          await restoreOrderForEdit(sessionMatch.id, { saleSnapshot: sessionMatch });
+          return;
+        }
+      }
+
+      const today = todayPosOrderDate();
+      const TOMBSTONE_MIN = 9_000_000;
+
+      async function fetchPosEditRows(extra) {
+        const res = await apiRequest("/sales", {
+          searchParams: buildPageParams({
+            page: 1,
+            perPage: 25,
+            // Do not send digit `q` for Cash Sales # — it also matches org order_num /
+            // product codes and can return the wrong fiscalized sale (KRA void then fails).
+            q: orgOrderNum != null ? `S${orgOrderNum}` : "",
+            extra: {
+              for_pos_order_edit: 1,
+              channel: "pos",
+              order_source: "pos",
+              with_items: 0,
+              sort: "-created_at",
+              ...extra,
+            },
+          }),
+        });
+        return Array.isArray(res?.data) ? res.data : [];
+      }
+
+      function pickEditableRow(rows) {
+        const eligible = rows.filter(
           (row) =>
-            String(row.order_num) === trimmed &&
-            Number(row.order_num) < 9_000_000 &&
+            row?.id != null &&
+            Number(row.order_num) < TOMBSTONE_MIN &&
             !row?.fulfillment_meta?.superseded_by_edit,
-        ) ??
-        rows.find((row) => sessionOrderMatchesBrowseNum(row, trimmed));
+        );
+        if (ticketNum != null) {
+          return (
+            eligible.find((row) => String(row.pos_order_num) === ticketNum) ?? null
+          );
+        }
+        if (orgOrderNum != null) {
+          return eligible.find((row) => String(row.order_num) === orgOrderNum) ?? null;
+        }
+        return eligible.find((row) => sessionOrderMatchesBrowseNum(row, trimmed)) ?? null;
+      }
+
+      let match = null;
+      if (ticketNum != null) {
+        // Cash Sales # resets daily — search today first, then widen.
+        match = pickEditableRow(
+          await fetchPosEditRows({
+            filter_pos_order: ticketNum,
+            from_date: today,
+            to_date: today,
+            date_field: "placed",
+          }),
+        );
+        if (!match) {
+          match = pickEditableRow(
+            await fetchPosEditRows({
+              filter_pos_order: ticketNum,
+            }),
+          );
+        }
+      } else {
+        match = pickEditableRow(await fetchPosEditRows({}));
+      }
+
       if (!match?.id) {
         const message = `No POS order found with number ${trimmed}.`;
         setOrderEditError(message);
@@ -9282,9 +9354,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    // On a new order the box shows the next POS ticket # — Enter/click opens the current (latest) receipt.
+    // Placeholder next ticket # (user has not typed): Enter opens the latest completed receipt.
+    // If the cashier typed the same digits, look that Cash Sales # up instead of skipping to "current".
     if (
       !isCartEditSession &&
+      !orderNoUserEditedRef.current &&
       (() => {
         const nextBrowse = resolvePosNextBrowseNumber(cart);
         return nextBrowse != null && String(nextBrowse) === trimmed;
@@ -9294,7 +9368,6 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const fromSession = sessionPosOrders.find((row) => sessionOrderMatchesBrowseNum(row, trimmed));
-    // Always resolve the live sale by POS ticket # (session ids can be stale after edits).
     // Offline pending rows are restored from IndexedDB via restoreOrderForEdit.
     if (fromSession?.id != null && isOfflinePendingSaleId(fromSession.id)) {
       orderNoUserEditedRef.current = false;
@@ -9311,6 +9384,7 @@ export function PosScreen({ standalone = false }) {
     clearOrderNameSearch();
     orderNoUserEditedRef.current = false;
     setOrderEditError(null);
+    setEditOrderNoFromSaleOrCart(row);
     await restoreOrderForEdit(row.id, { saleSnapshot: row });
   }
 

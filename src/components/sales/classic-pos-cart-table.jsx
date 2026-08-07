@@ -363,7 +363,10 @@ export function ClassicPosCartTable({
                             onClick={() => onOrderNameSelect?.(row)}
                           >
                             <span className="classic-pos-order-name-ticket">
-                              {row.ticket_label ?? row.pos_order_num ?? row.order_num ?? "—"}
+                              {row.ticket_label ??
+                                (row.pos_order_num != null && row.pos_order_num !== ""
+                                  ? String(row.pos_order_num)
+                                  : "—")}
                             </span>
                             <span className="classic-pos-order-name-customer">
                               {row.customer_label ?? "Walk-in"}

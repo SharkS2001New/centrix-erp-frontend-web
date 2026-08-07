@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
-import { parseDecimalInput, INPUT_CLASS, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
+import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { formatSaleKes } from "@/lib/sales";
-import { resolveCheckoutStatus } from "@/lib/sales-settings";
+import { resolveCheckoutStatus } from "@/lib/order-workflow";
 import {
   alignPaymentSplitsToPayNow,
   buildCheckoutPaymentSplits,

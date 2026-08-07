@@ -1693,16 +1693,3 @@ export function salesCartChannelForWorkspace({ standalone, sellFromShop, config 
   if (!standalone) return "backend";
   return posChannelFromStockSource(sellFromShop, config);
 }
-
-export {
-  getChannelWorkflow,
-  getOrderWorkflow,
-  isImmediatePaymentMethod,
-  pickEnabledStatus,
-  resolveCheckoutStatus,
-  resolveOrderChannel,
-  resolveSaveOrderStatus,
-  resolveSaveOrderStatusLabel,
-  sanitizeWorkflowReferences,
-  workflowPipelineSteps,
-} from "@/lib/order-workflow";
