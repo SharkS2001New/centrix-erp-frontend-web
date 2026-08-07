@@ -8,6 +8,10 @@ import {
   searchCreditCustomers,
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import {
+  posPaymentMethodHint,
+  resolvePosPaymentMethodCode,
+} from "@/lib/pos-edit-payment-adjustment";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 
@@ -17,6 +21,9 @@ const inputCls = INPUT_CLASS;
  * Hold / save order customer picker.
  * Default: walk-in. Toggle "Existing customer" to search registered customers
  * (links customer_num + KRA PIN onto the sale for receipt / eTIMS).
+ *
+ * When `enableHeldAmountPaid` is on (hold mode), shows Amount Paid + payment method
+ * (default Cash; shortcuts C/M/E/K). Enter: name → amount → hold.
  */
 export function PosSaveOrderDialog({
   open,
@@ -30,8 +37,10 @@ export function PosSaveOrderDialog({
   saveStatusLabel = "",
   workflowPipeline = [],
   embedded = false,
+  enableHeldAmountPaid = false,
 }) {
   const isHold = mode === "hold";
+  const capturePaid = isHold && Boolean(enableHeldAmountPaid);
   const [mounted, setMounted] = useState(false);
   /** "walkin" | "existing" */
   const [customerMode, setCustomerMode] = useState("walkin");
@@ -41,8 +50,12 @@ export function PosSaveOrderDialog({
   const [customerOptions, setCustomerOptions] = useState([]);
   const [prefillLoading, setPrefillLoading] = useState(false);
   const [localError, setLocalError] = useState(null);
+  const [amountPaid, setAmountPaid] = useState("");
+  const [paymentMethodInput, setPaymentMethodInput] = useState("CASH");
   const primaryActionRef = useRef(null);
   const walkInNameRef = useRef(null);
+  const amountPaidRef = useRef(null);
+  const paymentMethodRef = useRef(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -61,6 +74,8 @@ export function PosSaveOrderDialog({
     setSelectedCustomer(null);
     setCustomerOptions([]);
     setLocalError(null);
+    setAmountPaid("");
+    setPaymentMethodInput("CASH");
 
     // Hold: focus the name field so the cashier can type immediately.
     // Save / existing customer: keep primary action focused for Enter.
@@ -115,6 +130,11 @@ export function PosSaveOrderDialog({
   const linkedCustomer = selectedCustomer ?? selectedOption?.customer ?? null;
   const linkedKraPin = String(linkedCustomer?.kra_pin ?? "").trim();
 
+  const resolvedPaymentMethod = useMemo(
+    () => resolvePosPaymentMethodCode(paymentMethodInput) || "CASH",
+    [paymentMethodInput],
+  );
+
   function switchToWalkIn() {
     setCustomerMode("walkin");
     setCustomerNum("");
@@ -137,6 +157,16 @@ export function PosSaveOrderDialog({
     setCustomerNum(nextValue);
     setSelectedCustomer(option?.customer ?? null);
     setLocalError(null);
+    if (capturePaid && nextValue) {
+      window.setTimeout(() => amountPaidRef.current?.focus(), 0);
+    }
+  }
+
+  function focusAmountPaid() {
+    window.setTimeout(() => {
+      amountPaidRef.current?.focus();
+      amountPaidRef.current?.select?.();
+    }, 0);
   }
 
   function handleSave(submitMode = "save") {
@@ -147,7 +177,19 @@ export function PosSaveOrderDialog({
         walkInNameRef.current?.focus();
         return;
       }
-      onSave?.({ walkIn: true, walkInName: name, hold: submitMode === "hold" });
+      const payload = { walkIn: true, walkInName: name, hold: submitMode === "hold" };
+      if (capturePaid && submitMode === "hold") {
+        const raw = String(amountPaid).replace(/,/g, "").trim();
+        const paid = raw === "" ? 0 : Number(raw);
+        if (!Number.isFinite(paid) || paid < 0) {
+          setLocalError("Enter a valid amount paid (0 or more).");
+          focusAmountPaid();
+          return;
+        }
+        payload.heldAmountPaid = Math.round(paid * 100) / 100;
+        payload.heldPaymentMethodCode = resolvedPaymentMethod;
+      }
+      onSave?.(payload);
       return;
     }
     if (!customerNum) {
@@ -163,7 +205,19 @@ export function PosSaveOrderDialog({
       setLocalError("Search and select a valid customer.");
       return;
     }
-    onSave?.({ walkIn: false, customer, hold: submitMode === "hold" });
+    const payload = { walkIn: false, customer, hold: submitMode === "hold" };
+    if (capturePaid && submitMode === "hold") {
+      const raw = String(amountPaid).replace(/,/g, "").trim();
+      const paid = raw === "" ? 0 : Number(raw);
+      if (!Number.isFinite(paid) || paid < 0) {
+        setLocalError("Enter a valid amount paid (0 or more).");
+        focusAmountPaid();
+        return;
+      }
+      payload.heldAmountPaid = Math.round(paid * 100) / 100;
+      payload.heldPaymentMethodCode = resolvedPaymentMethod;
+    }
+    onSave?.(payload);
   }
 
   const handleSaveRef = useRef(handleSave);
@@ -187,13 +241,41 @@ export function PosSaveOrderDialog({
         if (target.closest('[role="listbox"]')) return;
         if (target.tagName === "TEXTAREA") return;
       }
+
+      // Hold + amount paid: Enter on name → amount; Enter on amount → save.
+      if (capturePaid) {
+        const el = target instanceof HTMLElement ? target : null;
+        if (el === walkInNameRef.current || el?.dataset?.holdField === "name") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!walkInName.trim() && customerMode === "walkin") {
+            setLocalError("Enter the walk-in customer's name.");
+            return;
+          }
+          focusAmountPaid();
+          return;
+        }
+        if (el === amountPaidRef.current || el?.dataset?.holdField === "amount") {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSaveRef.current("hold");
+          return;
+        }
+        if (el === paymentMethodRef.current || el?.dataset?.holdField === "method") {
+          e.preventDefault();
+          e.stopPropagation();
+          focusAmountPaid();
+          return;
+        }
+      }
+
       e.preventDefault();
       e.stopPropagation();
       handleSaveRef.current(isHold ? "hold" : "save");
     }
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [open, saving, onClose, isHold]);
+  }, [open, saving, onClose, isHold, capturePaid, walkInName, customerMode]);
 
   if (!open || !mounted) return null;
 
@@ -270,6 +352,7 @@ export function PosSaveOrderDialog({
               <input
                 ref={walkInNameRef}
                 type="text"
+                data-hold-field="name"
                 className={inputCls}
                 value={walkInName}
                 onChange={(e) => {
@@ -329,6 +412,61 @@ export function PosSaveOrderDialog({
               )}
             </div>
           )}
+
+          {capturePaid ? (
+            <div className="mt-3 space-y-3">
+              <label className="block">
+                <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
+                  Amount paid
+                </span>
+                <input
+                  ref={amountPaidRef}
+                  type="text"
+                  inputMode="decimal"
+                  data-hold-field="amount"
+                  className={inputCls}
+                  value={amountPaid}
+                  onChange={(e) => {
+                    setAmountPaid(e.target.value);
+                    setLocalError(null);
+                  }}
+                  placeholder="0.00"
+                  autoComplete="off"
+                  disabled={saving}
+                />
+                <span className="theme-text-muted mt-1 block text-[10px] leading-relaxed">
+                  Enter on name moves here · Enter here holds the order
+                </span>
+              </label>
+              <label className="block">
+                <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
+                  Payment method
+                </span>
+                <input
+                  ref={paymentMethodRef}
+                  type="text"
+                  data-hold-field="method"
+                  className={inputCls}
+                  value={paymentMethodInput}
+                  onChange={(e) => {
+                    setPaymentMethodInput(e.target.value);
+                    setLocalError(null);
+                  }}
+                  onBlur={() => {
+                    const resolved = resolvePosPaymentMethodCode(paymentMethodInput) || "CASH";
+                    setPaymentMethodInput(resolved);
+                  }}
+                  placeholder="CASH"
+                  autoComplete="off"
+                  disabled={saving}
+                />
+                <span className="theme-text-muted mt-1 block text-[10px] leading-relaxed">
+                  Default Cash · {posPaymentMethodHint()} ·{" "}
+                  <strong>{resolvedPaymentMethod}</strong>
+                </span>
+              </label>
+            </div>
+          ) : null}
 
           {error || localError ? (
             <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">

@@ -170,12 +170,24 @@ export function buildOptimisticCartLine(product, lineBody, finalComputed) {
   };
 }
 
-export function applyOptimisticCartMutation(prevCart, optimisticLine, { mergeTarget = null, editingRef = null } = {}) {
+export function applyOptimisticCartMutation(
+  prevCart,
+  optimisticLine,
+  { mergeTarget = null, editingRef = null, editingId = null } = {},
+) {
   if (!prevCart?.id) return prevCart;
   const lines = [...(prevCart.lines ?? [])];
 
-  if (editingRef != null && String(editingRef).trim() !== "") {
-    const idx = findCartLineIndexByRef(lines, editingRef);
+  const intendedEdit =
+    (editingRef != null && String(editingRef).trim() !== "") || editingId != null;
+  if (intendedEdit) {
+    let idx =
+      editingRef != null && String(editingRef).trim() !== ""
+        ? findCartLineIndexByRef(lines, editingRef)
+        : -1;
+    if (idx < 0 && editingId != null) {
+      idx = lines.findIndex((line) => String(line?.id) === String(editingId));
+    }
     if (idx >= 0) {
       const existing = lines[idx];
       const preservedCode =

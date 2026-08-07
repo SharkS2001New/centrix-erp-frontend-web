@@ -119,6 +119,46 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(next.lines[0]._optimistic).toBe(true);
   });
 
+  it("falls back to editingId when update_code no longer matches (previous-order restore)", () => {
+    const prev = {
+      id: "edit:9",
+      update_no: 1,
+      lines: [
+        {
+          id: 55,
+          update_code: "CLU-NEW",
+          product_code: "OLD",
+          product_name: "Old",
+          quantity: 2,
+          amount: 20,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "NEW", product_name: "New" },
+      {
+        product_code: "NEW",
+        quantity: 2,
+        unit_price: 15,
+        display_unit_price: 15,
+        uom: "PCS",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 30 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic, {
+      editingRef: "sale-item-99",
+      editingId: 55,
+    });
+    expect(next.lines).toHaveLength(1);
+    expect(next.lines[0].product_code).toBe("NEW");
+    expect(next.lines[0].id).toBe(55);
+    expect(next.lines[0].update_code).toBe("CLU-NEW");
+  });
+
   it("updates qty in place and never duplicates when edit target resolves by id", () => {
     const prev = {
       id: 10,

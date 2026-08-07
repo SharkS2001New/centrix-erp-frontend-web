@@ -10,6 +10,11 @@ import { PRODUCT_NAME } from "@/lib/branding";
 import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { toast } from "@/lib/toast";
+import {
+  createNotificationEcho,
+  disconnectNotificationEcho,
+  isRealtimeConfigured,
+} from "@/lib/realtime/notification-echo";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
 import {
@@ -1184,6 +1189,56 @@ export function PosScreen({ standalone = false }) {
     "Completing sale…",
   );
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
+
+  // Live snackbar when ERP / managers app updates product prices or markups.
+  useEffect(() => {
+    if (!standalone || !organizationId || !isRealtimeConfigured()) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    /** @type {import('laravel-echo').default | null} */
+    let echo = null;
+    let channel = null;
+    const channelName = `organization.${organizationId}`;
+    let lastToastAt = 0;
+
+    (async () => {
+      try {
+        echo = await createNotificationEcho();
+        if (cancelled || !echo) return;
+
+        channel = echo.private(channelName);
+        channel.listen(".catalog.pricing.updated", (payload) => {
+          const now = Date.now();
+          // Avoid toast spam when several products are saved in quick succession.
+          if (now - lastToastAt < 2500) return;
+          lastToastAt = now;
+          const message =
+            typeof payload?.message === "string" && payload.message.trim()
+              ? payload.message.trim()
+              : "Product prices or markups were updated.";
+          notifySuccess(message);
+        });
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[pos] pricing realtime unavailable", error);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        channel?.stopListening(".catalog.pricing.updated");
+        echo?.leave(channelName);
+      } catch {
+        /* ignore */
+      }
+      disconnectNotificationEcho(echo);
+    };
+  }, [standalone, organizationId]);
+
   const productBranchParams = useMemo(
     () => (user?.branch_id ? { branch_id: user.branch_id } : {}),
     [user?.branch_id],
@@ -4424,6 +4479,7 @@ export function PosScreen({ standalone = false }) {
       const optimisticCart = applyOptimisticCartMutation(baseCart, optimisticLine, {
         mergeTarget: resolvedMergeTarget,
         editingRef: targetLineRef,
+        editingId,
       });
       cartRef.current = optimisticCart;
       setCart(optimisticCart);
@@ -4978,11 +5034,14 @@ export function PosScreen({ standalone = false }) {
   }
 
   function beginReplaceCartLine(lineId) {
-    const line = (cart?.lines ?? []).find((row) => sameLineId(row.id, lineId));
+    const line = (cartRef.current?.lines ?? cart?.lines ?? []).find((row) =>
+      sameLineId(row.id, lineId),
+    );
     if (!line || busy || lineBusy) return;
     swapCommitInFlightRef.current = false;
     swapDraftRef.current = null;
     setSwapDraft(null);
+    replacingLineIdRef.current = line.id;
     setReplacingLineId(line.id);
     setSelectedLineId(line.id);
     setEditingLineId(null);
@@ -5026,7 +5085,29 @@ export function PosScreen({ standalone = false }) {
   async function replaceCartLineWithProduct(line, product, entryQty, discount = 0, override = null) {
     const activeCart = cartRef.current ?? cart;
     if (!line || !product || !activeCart?.id) return false;
-    const isRetailLine = cartLineRetailStockFlag(line);
+
+    // Prefer the live cart row — previous-order restore can remint TemporaryCart ids
+    // after the swap draft was opened against the optimistic sale-item lines.
+    const liveLine =
+      (activeCart.lines ?? []).find(
+        (row) =>
+          sameLineId(row.id, line.id) ||
+          (cartLineRef(line) != null &&
+            String(cartLineRef(row)) === String(cartLineRef(line))) ||
+          (line.client_line_id != null &&
+            String(row.client_line_id) === String(line.client_line_id)),
+      ) ??
+      (activeCart.lines ?? []).find(
+        (row) =>
+          String(row.product_code) === String(line.product_code) &&
+          Number(row.on_wholesale_retail ?? 0) === Number(line.on_wholesale_retail ?? 0) &&
+          (replacingLineIdRef.current == null ||
+            sameLineId(row.id, replacingLineIdRef.current) ||
+            sameLineId(row.id, swapDraftRef.current?.lineId)),
+      ) ??
+      line;
+
+    const isRetailLine = cartLineRetailStockFlag(liveLine);
     const computed = applyComputedPrice(
       product,
       entryQty,
@@ -5040,7 +5121,7 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
 
-    const lineRef = cartLineRef(line);
+    const lineRef = cartLineRef(liveLine);
     if (!lineRef) {
       setStatusMessage("Could not resolve the line to replace.");
       return false;
@@ -5048,11 +5129,11 @@ export function PosScreen({ standalone = false }) {
 
     // Swap replaces this cart row in place (PATCH / local edit) — never delete + add,
     // which duplicated lines when cartRef lagged behind setCart after DELETE.
-    return commitCartLine({
+    const ok = await commitCartLine({
       product,
       computed,
       incrementBaseQty: computed.baseQty,
-      editingId: line.id,
+      editingId: liveLine.id,
       editingRef: lineRef,
       discount,
       override,
@@ -5060,6 +5141,19 @@ export function PosScreen({ standalone = false }) {
       successMessage: null,
       lineRetailStockFlagOverride: isRetailLine,
     });
+    if (!ok) return false;
+
+    // Guard: silent no-op mutations left the old SKU on previous-order drafts.
+    const after = (cartRef.current?.lines ?? []).find(
+      (row) =>
+        sameLineId(row.id, liveLine.id) ||
+        String(cartLineRef(row)) === String(lineRef),
+    );
+    if (after && String(after.product_code) !== String(product.product_code)) {
+      setStatusMessage("Could not swap this line — try again.");
+      return false;
+    }
+    return true;
   }
 
   useEffect(() => {
@@ -5946,6 +6040,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
+    // Immediately park on new-line Scan (Enter or click-away blur). Do not leave
+    // focus on the same row's qty/scan cell.
+    setSelectedLineId(null);
+    focusScanAfterItemAdded();
+
     const run = async () => {
       const activeCart = cartRef.current ?? cart;
       const liveLine =
@@ -6065,9 +6164,9 @@ export function PosScreen({ standalone = false }) {
         lineRetailStockFlagOverride: sessionIsRetail,
       });
       if (ok) {
-        setSelectedLineId(liveLine.id);
-        // After qty Enter, park on Scan code for the next item.
-        window.requestAnimationFrame(() => focusScanCode());
+        // After qty Enter/blur, park on new-line Scan code (not the same row).
+        setSelectedLineId(null);
+        focusScanAfterItemAdded();
       }
     };
 
@@ -8093,7 +8192,14 @@ export function PosScreen({ standalone = false }) {
     return sale ?? null;
   }
 
-  async function handleSaveOrder({ walkIn, walkInName, customer, hold = false } = {}) {
+  async function handleSaveOrder({
+    walkIn,
+    walkInName,
+    customer,
+    hold = false,
+    heldAmountPaid,
+    heldPaymentMethodCode,
+  } = {}) {
     const activeCartEarly = cartRef.current ?? cart;
     if (!(activeCartEarly?.lines?.length > 0)) {
       const message = hold
@@ -8144,6 +8250,12 @@ export function PosScreen({ standalone = false }) {
           branchId: activeCart.branch_id ?? user?.branch_id ?? null,
           tillId: activeCart.till_id ?? null,
           floatSessionId: activeCart.float_session_id ?? floatSessionId ?? null,
+          ...(heldAmountPaid != null
+            ? {
+                heldAmountPaid,
+                heldPaymentMethodCode: heldPaymentMethodCode || "CASH",
+              }
+            : {}),
         });
         // Unlock till immediately — server DELETE / next cart bootstrap run in background.
         setBusy(false);
@@ -9019,11 +9131,17 @@ export function PosScreen({ standalone = false }) {
       // Keep partial tenders from the held park (M-Pesa / voucher / points) after restore.
       const paySource = restoredCart ?? sourceSale ?? enrichedSource;
       const payFields = [
+        "payment_method_code",
+        "cash_payment_amount",
         "mpesa_payment_amount",
         "mpesa_transaction_code",
         "mpesa_phone",
         "voucher_payment_amount",
         "points_payment_amount",
+        "equity_payment_amount",
+        "kcb_payment_amount",
+        "cheque_payment_amount",
+        "bank_payment_amount",
         "amount_paid",
       ];
       const withPay = { ...cartData };
@@ -9413,10 +9531,13 @@ export function PosScreen({ standalone = false }) {
         Number(live.superseded_sale_id) === Number(saleId) &&
         Boolean(live.held_order_num);
       const dirty = sameEdit && editedOrderHasLocalDraftChanges(live);
+      // Swap/replace can be mid-flight before the draft is marked dirty — keep the
+      // optimistic sale-item lines so the swap target id still resolves.
+      const swapActive = Boolean(replacingLineIdRef.current || swapDraftRef.current);
 
       let nextCart = restoredCart;
-      if (dirty) {
-        // Keep cashier edits; bind to the real server cart id for sync.
+      if (dirty || swapActive) {
+        // Keep cashier edits / in-progress swap; bind to the real server cart id for sync.
         nextCart = {
           ...restoredCart,
           customer_num: live.customer_num ?? restoredCart.customer_num,
@@ -9424,7 +9545,7 @@ export function PosScreen({ standalone = false }) {
             live.customer_name_override ?? restoredCart.customer_name_override,
           order_discount: live.order_discount ?? restoredCart.order_discount,
           lines: live.lines,
-          _editDraftDirty: true,
+          ...(dirty ? { _editDraftDirty: true } : {}),
         };
       }
       const { _optimistic_restore: _omitOptimistic, ...clean } = nextCart;
@@ -9434,7 +9555,12 @@ export function PosScreen({ standalone = false }) {
       setSelectedLineId(null);
       setEditingLineId(null);
       setEditingLineRef(null);
-      setReplacingLineId(null);
+      if (!swapActive) {
+        setReplacingLineId(null);
+        replacingLineIdRef.current = null;
+        swapDraftRef.current = null;
+        setSwapDraft(null);
+      }
       setPaymentOpen(false);
       setEditSourceSale(sourceSale);
       orderNoUserEditedRef.current = false;
@@ -12064,6 +12190,18 @@ export function PosScreen({ standalone = false }) {
         prefillMpesaAmount={cart?.mpesa_payment_amount}
         prefillMpesaCode={cart?.mpesa_transaction_code}
         prefillMpesaPhone={cart?.mpesa_phone}
+        prefillCashAmount={cart?.cash_payment_amount}
+        prefillEquityAmount={cart?.equity_payment_amount}
+        prefillKcbAmount={cart?.kcb_payment_amount}
+        prefillChequeAmount={cart?.cheque_payment_amount}
+        prefillBankAmount={cart?.bank_payment_amount}
+        prefillBankType={
+          ["BANK", "OTHER", "ECOBANK", "CARD"].includes(
+            String(cart?.payment_method_code ?? "").toUpperCase(),
+          )
+            ? String(cart.payment_method_code).toUpperCase()
+            : ""
+        }
         prefillWalkInCustomerName={prefilledEditCustomerName}
         lockMpesaFields={Number(cart?.mpesa_payment_amount ?? 0) > 0}
         cartId={cart?.id ?? null}
@@ -12100,6 +12238,7 @@ export function PosScreen({ standalone = false }) {
         saving={busy}
         error={saveOrderError}
         onSave={handleSaveOrder}
+        enableHeldAmountPaid={Boolean(posSalesConfig.enableHeldOrderAmountPaid)}
         saveStatusLabel={resolveSaveOrderStatusLabel({
           channel,
           workflow: channelWorkflow,

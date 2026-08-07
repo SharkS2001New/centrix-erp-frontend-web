@@ -87,6 +87,8 @@ const SALES_DEFAULTS = {
   require_backoffice_till_float: false,
   blind_till_close: false,
   enable_pos_order_edit: false,
+  /** Hold dialog: capture Amount Paid + payment method (C/M/…) and restore into checkout. */
+  enable_held_order_amount_paid: false,
   /**
    * When true (default), POS merges the same product into one cart line and re-prices
    * for the combined qty. When false, each add stays separate (preserves qty markups);
@@ -1603,6 +1605,8 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     /** @deprecated Use requirePosTillFloat or requireBackofficeTillFloat for the active workspace. */
     requireTillFloat: Boolean(sales.require_pos_till_float),
     enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings, options.capabilities ?? null),
+    /** Hold dialog Amount Paid + restore into matching payment method (platform-controlled). */
+    enableHeldOrderAmountPaid: Boolean(sales.enable_held_order_amount_paid),
     /** When false, POS keeps identical SKUs as separate cart lines (receipt still combines). */
     combineIdenticalLines: sales.pos_combine_identical_lines !== false,
     /** When on, new mobile sales for a registered customer append to their open mobile order from today. */

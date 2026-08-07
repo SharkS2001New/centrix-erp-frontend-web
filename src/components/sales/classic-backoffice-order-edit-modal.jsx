@@ -470,6 +470,18 @@ export function ClassicBackofficeOrderEditModal({
     setStatusMessage("Swap cancelled.");
   }
 
+  function focusNewLineScan() {
+    setSelectedLineKey(null);
+    setEntryProduct(null);
+    setEntryQty("");
+    setSearchQuery("");
+    setSearchResults([]);
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus?.();
+      searchInputRef.current?.select?.();
+    });
+  }
+
   async function completeSwapFromDraft(entryQtyRaw) {
     const draft = swapDraft;
     if (!draft?.product || !draft.lineKey) return;
@@ -501,13 +513,11 @@ export function ClassicBackofficeOrderEditModal({
     }
     setLines(result.lines);
     setRemovedIds(result.removedIds);
-    setSelectedLineKey(result.focusKey);
     setReplacingLineKey(null);
     setSwapDraft(null);
-    setSearchQuery("");
-    setSearchResults([]);
     setError(null);
     setStatusMessage(`Swapped to ${draft.product.product_code}.`);
+    focusNewLineScan();
   }
 
   async function handleProductPicked(product) {
@@ -653,12 +663,14 @@ export function ClassicBackofficeOrderEditModal({
             : row,
         ),
       );
+      focusNewLineScan();
       return;
     }
 
     setLines((prev) =>
       prev.map((row) => (lineKey(row) === key ? { ...row, draftQty: trimmed } : row)),
     );
+    focusNewLineScan();
   }
 
   function removeSelectedLine() {

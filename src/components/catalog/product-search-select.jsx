@@ -11,9 +11,21 @@ import { inputClassName } from "@/components/catalog/catalog-shared";
 /** Stable default so excludeCodes=[] does not recreate filtered results every render. */
 const EMPTY_EXCLUDE_CODES = Object.freeze([]);
 
+function displayLabel(p) {
+  const name = p?.product_name?.trim();
+  const code = p?.product_code ?? "";
+  if (name && name !== code) {
+    return `${name} (${code})`;
+  }
+  return code || name || "";
+}
+
 /**
  * Searchable product picker — live API search (no client product catalog cache).
  * Arrow Up/Down moves highlight; Enter selects the highlighted result.
+ *
+ * Closed: shows the selected product label.
+ * Open: starts with an empty search box (selected label is never used as the query).
  */
 export function ProductSearchSelect({
   value,
@@ -35,7 +47,10 @@ export function ProductSearchSelect({
   const rootRef = useRef(null);
   const listRef = useRef(null);
   const [open, setOpen] = useState(false);
+  /** Live search text while open — never mirrors the selected label. */
   const [query, setQuery] = useState("");
+  /** Label shown when the field is closed. */
+  const [closedLabel, setClosedLabel] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
@@ -52,15 +67,6 @@ export function ProductSearchSelect({
     }
     return results.find((p) => String(p.product_code) === String(value)) ?? null;
   }, [value, results, lockedProduct]);
-
-  const displayLabel = (p) => {
-    const name = p?.product_name?.trim();
-    const code = p?.product_code ?? "";
-    if (name && name !== code) {
-      return `${name} (${code})`;
-    }
-    return code || name || "";
-  };
 
   const searchProducts = useCallback(async (q) => {
     const trimmed = q.trim();
@@ -86,9 +92,26 @@ export function ProductSearchSelect({
   }, [user?.organization_id]);
 
   useEffect(() => {
+    if (!open) return undefined;
     const t = setTimeout(() => searchProducts(query), 280);
     return () => clearTimeout(t);
-  }, [query, searchProducts]);
+  }, [open, query, searchProducts]);
+
+  // Keep closed-field label in sync with the current value / locked product.
+  useEffect(() => {
+    if (open) return;
+    if (lockedProduct && String(lockedProduct.product_code) === String(value)) {
+      setClosedLabel(displayLabel(lockedProduct));
+      return;
+    }
+    if (selected) {
+      setClosedLabel(displayLabel(selected));
+      return;
+    }
+    if (!value) {
+      setClosedLabel("");
+    }
+  }, [open, selected, value, lockedProduct]);
 
   useEffect(() => {
     const code = value ? String(value).trim() : "";
@@ -117,7 +140,7 @@ export function ProductSearchSelect({
         if (cancelled || !product?.product_code || !hasName(product)) return;
         onProductSelect?.(product);
         if (!open) {
-          setQuery(displayLabel(product));
+          setClosedLabel(displayLabel(product));
         }
       } catch {
         // Product may have been removed — keep code-only display.
@@ -130,13 +153,13 @@ export function ProductSearchSelect({
   }, [value, disabled, lockedProduct?.product_code, lockedProduct?.product_name, onProductSelect, open, results, user?.organization_id]);
 
   useEffect(() => {
-    if (!open && selected) {
-      setQuery(displayLabel(selected));
-    }
-    if (!open && !value) {
-      setQuery("");
-    }
-  }, [open, selected, value]);
+    if (open) return;
+    setQuery("");
+    setResults([]);
+    setSearching(false);
+    setSearchError(null);
+    setHighlightIndex(-1);
+  }, [open]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -175,16 +198,26 @@ export function ProductSearchSelect({
     option?.scrollIntoView?.({ block: "nearest" });
   }, [highlightIndex]);
 
+  function openList() {
+    if (disabled) return;
+    setQuery("");
+    setResults([]);
+    setSearchError(null);
+    setOpen(true);
+  }
+
   function pick(product) {
     onChange(product.product_code);
     onProductSelect?.(product);
-    setQuery(displayLabel(product));
+    setClosedLabel(displayLabel(product));
+    setQuery("");
     setOpen(false);
     setHighlightIndex(-1);
   }
 
   function clearSelection() {
     onChange("");
+    setClosedLabel("");
     setQuery("");
     setResults([]);
     setOpen(false);
@@ -210,7 +243,7 @@ export function ProductSearchSelect({
       e.preventDefault();
       e.stopPropagation();
       if (!open) {
-        setOpen(true);
+        openList();
         return;
       }
       if (!canNavigate) return;
@@ -244,6 +277,7 @@ export function ProductSearchSelect({
     highlightIndex >= 0 && filtered[highlightIndex]
       ? `${listId}-opt-${highlightIndex}`
       : undefined;
+  const inputDisplayValue = open ? query : closedLabel || (value ? String(value) : "");
 
   return (
     <div ref={rootRef} className={`relative w-full ${className}`.trim()}>
@@ -255,17 +289,21 @@ export function ProductSearchSelect({
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={activeOptionId}
-          value={query}
+          value={inputDisplayValue}
           placeholder={placeholder}
           disabled={disabled}
           required={required && !value}
           onChange={(e) => {
-            setQuery(e.target.value);
+            const next = e.target.value;
+            setQuery(next);
             setOpen(true);
-            if (!e.target.value.trim()) onChange("");
+            if (!next.trim()) onChange("");
           }}
           onFocus={() => {
-            if (!disabled) setOpen(true);
+            if (!disabled) openList();
+          }}
+          onClick={() => {
+            if (!disabled && !open) openList();
           }}
           onKeyDown={onInputKeyDown}
           className={fieldClassName}

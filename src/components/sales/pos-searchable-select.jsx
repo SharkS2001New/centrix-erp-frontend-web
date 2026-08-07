@@ -29,6 +29,10 @@ function isSelectableOption(option) {
  * Combobox: type to search directly in the field; results open in a list below.
  * Pass `loadOptions` for server-side search; otherwise filters `options` locally.
  *
+ * Closed: field shows the selected label.
+ * Open: field is a fresh search box (selected label is never used as the filter,
+ * so opening "All users" / any pick shows the full list until the user types).
+ *
  * Keyboard: ArrowUp/ArrowDown move highlight, Enter selects and closes, Escape closes.
  * Imperative API: `openAndFocus()` focuses the input and opens the results list.
  */
@@ -61,6 +65,7 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   const searchSeq = useRef(0);
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  /** Search text only — never mirrors the selected label while open. */
   const [query, setQuery] = useState("");
   const [menuStyle, setMenuStyle] = useState(null);
   const [asyncOptions, setAsyncOptions] = useState([]);
@@ -86,12 +91,6 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     () => options.find((o) => String(o.value) === String(value)),
     [options, value],
   );
-
-  // Keep the closed field showing the selected label (or empty).
-  useEffect(() => {
-    if (open) return;
-    setQuery(selected?.label ?? "");
-  }, [open, selected?.label, value]);
 
   const filtered = useMemo(() => {
     if (asyncSearch) return asyncOptions;
@@ -157,13 +156,12 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!open) {
-      setAsyncOptions([]);
-      setAsyncLoading(false);
-      setAsyncError(null);
-      setHighlightIndex(-1);
-      return;
-    }
+    if (open) return;
+    setQuery("");
+    setAsyncOptions([]);
+    setAsyncLoading(false);
+    setAsyncError(null);
+    setHighlightIndex(-1);
   }, [open]);
 
   useEffect(() => {
@@ -252,7 +250,7 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
   function pick(option) {
     if (!isSelectableOption(option)) return;
     onChange(String(option.value), option);
-    setQuery(option.label ?? "");
+    setQuery("");
     setOpen(false);
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
@@ -266,15 +264,18 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  function openList({ selectText = false } = {}) {
+  function openList() {
     if (disabled || loading) return;
+    setQuery("");
     setOpen(true);
     window.requestAnimationFrame(() => {
-      const input = inputRef.current;
-      if (!input) return;
-      input.focus();
-      if (selectText) input.select?.();
+      inputRef.current?.focus();
     });
+  }
+
+  function closeList() {
+    setOpen(false);
+    setQuery("");
   }
 
   function moveHighlight(direction) {
@@ -294,8 +295,7 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      setOpen(false);
-      setQuery(selected?.label ?? "");
+      closeList();
       return;
     }
 
@@ -345,17 +345,16 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
     ref,
     () => ({
       openAndFocus() {
-        openList({ selectText: true });
+        openList();
       },
       focus() {
         inputRef.current?.focus();
       },
       close() {
-        setOpen(false);
-        setQuery(selected?.label ?? "");
+        closeList();
       },
     }),
-    [disabled, loading, selected?.label],
+    [disabled, loading],
   );
 
   const listBusy = loading || asyncLoading;
@@ -377,6 +376,13 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
 
   const hasClear = Boolean(value) && !disabled && !loading;
   const inputPaddingClass = hasClear ? "pr-16" : "pr-9";
+
+  // Closed → selected label. Open → live search text (starts empty).
+  const inputDisplayValue = loading
+    ? "Loading…"
+    : open
+      ? query
+      : (selected?.label ?? "");
 
   const panel =
     open && !disabled && menuStyle ? (
@@ -454,23 +460,23 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
         aria-activedescendant={activeOptionId}
         disabled={disabled || loading}
         placeholder={loading ? "Loading…" : searchPlaceholder || placeholder}
-        value={loading ? "Loading…" : query}
+        value={inputDisplayValue}
         autoComplete="off"
         spellCheck={false}
         onFocus={() => {
           if (disabled || loading) return;
-          setOpen(true);
+          if (!open) openList();
         }}
         onClick={() => {
           if (disabled || loading) return;
-          setOpen(true);
+          if (!open) openList();
         }}
         onChange={(e) => {
           const next = e.target.value;
           setQuery(next);
           setOpen(true);
-          // Drop the prior pick as soon as the field text no longer matches it.
-          if (value && next !== (selected?.label ?? "")) {
+          // Drop the prior pick as soon as the user starts typing a new search.
+          if (value && next !== "") {
             onChange("", null);
           }
         }}
@@ -497,11 +503,10 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => {
           if (open) {
-            setOpen(false);
-            setQuery(selected?.label ?? "");
+            closeList();
             return;
           }
-          openList({ selectText: true });
+          openList();
         }}
         className="theme-text-muted absolute right-2 top-1/2 -translate-y-1/2 text-xs disabled:opacity-60"
       >

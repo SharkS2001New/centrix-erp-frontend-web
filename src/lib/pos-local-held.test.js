@@ -185,6 +185,45 @@ describe("pos-local-held", () => {
     expect(cart.amount_paid).toBe(2000);
   });
 
+  it("parks and restores held dialog amount paid onto cash", async () => {
+    const park = await parkCartLocally(
+      {
+        lines: [{ product_code: "TEA", quantity: 1, unit_price: 500 }],
+      },
+      {
+        walkIn: true,
+        walkInName: "John",
+        heldAmountPaid: 200,
+        heldPaymentMethodCode: "C",
+      },
+    );
+    expect(park.amount_paid).toBe(200);
+    expect(park.balance_due).toBe(300);
+    expect(park.payment_method_code).toBe("CASH");
+    expect(park.cash_payment_amount).toBe(200);
+
+    const { cart } = await restoreLocalHeldOrder(park.id);
+    expect(cart.cash_payment_amount).toBe(200);
+    expect(cart.payment_method_code).toBe("CASH");
+    expect(cart.amount_paid).toBe(200);
+  });
+
+  it("parks held amount paid onto M-Pesa when method is M", async () => {
+    const park = await parkCartLocally(
+      {
+        lines: [{ product_code: "TEA", quantity: 1, unit_price: 500 }],
+      },
+      {
+        walkIn: true,
+        heldAmountPaid: 150,
+        heldPaymentMethodCode: "M",
+      },
+    );
+    expect(park.payment_method_code).toBe("MPESA");
+    expect(park.mpesa_payment_amount).toBe(150);
+    expect(park.cash_payment_amount).toBe(0);
+  });
+
   it("omits amount paid when nothing was tendered before hold", async () => {
     const park = await parkCartLocally(
       {

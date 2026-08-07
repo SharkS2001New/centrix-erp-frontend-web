@@ -14,6 +14,7 @@ import {
   idbSetMeta,
   newClientSaleUuid,
 } from "@/lib/pos-offline-db";
+import { resolvePosPaymentMethodCode } from "@/lib/pos-edit-payment-adjustment";
 import { serverCartLinesToLocal, summarizeLocalPosCart } from "@/lib/pos-offline";
 
 const HOLD_SEQ_META_KEY = "local_held_seq";
@@ -41,16 +42,62 @@ function customerLabelFromParkInput({ customer = null, walkIn = false, walkInNam
   return "Walk-in";
 }
 
-/** Sum of tender already applied on an open cart / held park (M-Pesa, voucher, points). */
+function roundMoney(value) {
+  return Math.round(Math.max(0, Number(value) || 0) * 100) / 100;
+}
+
+/** Apply a held-dialog tender onto the payment snapshot fields. */
+export function applyHeldTenderToPayments(payments, methodCode, amount) {
+  const base = payments ?? {};
+  const resolved = resolvePosPaymentMethodCode(methodCode) || "CASH";
+  const method = ["MPESA", "EQUITY", "KCB", "CHEQUE", "BANK", "OTHER", "ECOBANK", "CARD"].includes(
+    resolved,
+  )
+    ? resolved
+    : "CASH";
+  const paid = roundMoney(amount);
+
+  const next = {
+    payment_method_code: method,
+    cash_payment_amount: 0,
+    mpesa_payment_amount: 0,
+    mpesa_transaction_code: base.mpesa_transaction_code ?? null,
+    mpesa_phone: base.mpesa_phone ?? null,
+    voucher_payment_amount: Math.max(0, Number(base.voucher_payment_amount ?? 0)) || 0,
+    points_payment_amount: Math.max(0, Number(base.points_payment_amount ?? 0)) || 0,
+    equity_payment_amount: 0,
+    kcb_payment_amount: 0,
+    cheque_payment_amount: 0,
+    bank_payment_amount: 0,
+    amount_paid: paid,
+  };
+
+  if (method === "MPESA") next.mpesa_payment_amount = paid;
+  else if (method === "EQUITY") next.equity_payment_amount = paid;
+  else if (method === "KCB") next.kcb_payment_amount = paid;
+  else if (method === "CHEQUE") next.cheque_payment_amount = paid;
+  else if (method === "BANK" || method === "OTHER" || method === "ECOBANK" || method === "CARD") {
+    next.bank_payment_amount = paid;
+  } else next.cash_payment_amount = paid;
+
+  return next;
+}
+
+/** Sum of tender already applied on an open cart / held park. */
 export function heldAmountPaid(source) {
   if (!source) return 0;
   const parts =
+    Math.max(0, Number(source.cash_payment_amount ?? 0)) +
     Math.max(0, Number(source.mpesa_payment_amount ?? 0)) +
     Math.max(0, Number(source.voucher_payment_amount ?? 0)) +
-    Math.max(0, Number(source.points_payment_amount ?? 0));
-  if (parts > 0.009) return Math.round(parts * 100) / 100;
+    Math.max(0, Number(source.points_payment_amount ?? 0)) +
+    Math.max(0, Number(source.equity_payment_amount ?? 0)) +
+    Math.max(0, Number(source.kcb_payment_amount ?? 0)) +
+    Math.max(0, Number(source.cheque_payment_amount ?? 0)) +
+    Math.max(0, Number(source.bank_payment_amount ?? 0));
+  if (parts > 0.009) return roundMoney(parts);
   const explicit = Math.max(0, Number(source.amount_paid ?? 0));
-  return Math.round(explicit * 100) / 100;
+  return roundMoney(explicit);
 }
 
 export function heldBalanceDue(source, orderTotal = null) {
@@ -58,16 +105,24 @@ export function heldBalanceDue(source, orderTotal = null) {
     orderTotal != null && Number.isFinite(Number(orderTotal))
       ? Math.max(0, Number(orderTotal))
       : Math.max(0, Number(source?.order_total ?? 0));
-  return Math.round(Math.max(0, total - heldAmountPaid(source)) * 100) / 100;
+  return roundMoney(Math.max(0, total - heldAmountPaid(source)));
 }
 
 function paymentSnapshotFromCart(cart) {
   return {
+    payment_method_code: cart?.payment_method_code
+      ? String(cart.payment_method_code).toUpperCase()
+      : null,
+    cash_payment_amount: Math.max(0, Number(cart?.cash_payment_amount ?? 0)) || 0,
     mpesa_payment_amount: Math.max(0, Number(cart?.mpesa_payment_amount ?? 0)) || 0,
     mpesa_transaction_code: cart?.mpesa_transaction_code ?? null,
     mpesa_phone: cart?.mpesa_phone ?? null,
     voucher_payment_amount: Math.max(0, Number(cart?.voucher_payment_amount ?? 0)) || 0,
     points_payment_amount: Math.max(0, Number(cart?.points_payment_amount ?? 0)) || 0,
+    equity_payment_amount: Math.max(0, Number(cart?.equity_payment_amount ?? 0)) || 0,
+    kcb_payment_amount: Math.max(0, Number(cart?.kcb_payment_amount ?? 0)) || 0,
+    cheque_payment_amount: Math.max(0, Number(cart?.cheque_payment_amount ?? 0)) || 0,
+    bank_payment_amount: Math.max(0, Number(cart?.bank_payment_amount ?? 0)) || 0,
   };
 }
 
@@ -104,9 +159,19 @@ export async function parkCartLocally(cart, options = {}) {
     order_discount: Number(cart?.order_discount ?? 0) || 0,
   };
   const summary = summarizeLocalPosCart(draftCart);
-  const payments = paymentSnapshotFromCart(cart);
-  const amountPaid = heldAmountPaid({ ...payments, amount_paid: cart?.amount_paid });
-  const balanceDue = Math.round(Math.max(0, summary.total - amountPaid) * 100) / 100;
+  let payments = paymentSnapshotFromCart(cart);
+
+  const dialogTender = Number(options.heldAmountPaid);
+  if (Number.isFinite(dialogTender) && dialogTender >= 0) {
+    payments = applyHeldTenderToPayments(
+      payments,
+      options.heldPaymentMethodCode || "CASH",
+      dialogTender,
+    );
+  }
+
+  const amountPaid = heldAmountPaid({ ...payments, amount_paid: payments.amount_paid ?? cart?.amount_paid });
+  const balanceDue = roundMoney(Math.max(0, summary.total - amountPaid));
 
   const park = {
     id,
@@ -185,11 +250,17 @@ export function localCartFromHeldPark(park, seed = {}) {
   }
   const snap = park.cart_snapshot ?? {};
   const payments = paymentSnapshotFromCart({
+    payment_method_code: park.payment_method_code ?? snap.payment_method_code,
+    cash_payment_amount: park.cash_payment_amount ?? snap.cash_payment_amount,
     mpesa_payment_amount: park.mpesa_payment_amount ?? snap.mpesa_payment_amount,
     mpesa_transaction_code: park.mpesa_transaction_code ?? snap.mpesa_transaction_code,
     mpesa_phone: park.mpesa_phone ?? snap.mpesa_phone,
     voucher_payment_amount: park.voucher_payment_amount ?? snap.voucher_payment_amount,
     points_payment_amount: park.points_payment_amount ?? snap.points_payment_amount,
+    equity_payment_amount: park.equity_payment_amount ?? snap.equity_payment_amount,
+    kcb_payment_amount: park.kcb_payment_amount ?? snap.kcb_payment_amount,
+    cheque_payment_amount: park.cheque_payment_amount ?? snap.cheque_payment_amount,
+    bank_payment_amount: park.bank_payment_amount ?? snap.bank_payment_amount,
   });
   const amountPaid = heldAmountPaid({
     ...payments,

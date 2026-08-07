@@ -185,6 +185,13 @@ export function PosPaymentPanel({
   prefillMpesaCode = "",
   prefillWalkInCustomerName = "",
   prefillMpesaPhone = "",
+  /** Restored held-order tenders (cash / equity / etc.). */
+  prefillCashAmount = 0,
+  prefillEquityAmount = 0,
+  prefillKcbAmount = 0,
+  prefillChequeAmount = 0,
+  prefillBankAmount = 0,
+  prefillBankType = "",
   lockMpesaFields = false,
   cartId = null,
   enableStkPush = false,
@@ -289,8 +296,13 @@ export function PosPaymentPanel({
     setCreditSearchOptions([]);
     setSessionBillTotal(total);
     setPaymentDate(todayDateString());
+    const cashPrefill = Math.max(0, Number(prefillCashAmount) || 0);
     setCashAmount(
-      adjustmentMode && total > 0 ? String(Math.ceil(total)) : "0",
+      adjustmentMode && total > 0
+        ? String(Math.ceil(total))
+        : cashPrefill > 0
+          ? String(cashPrefill)
+          : "0",
     );
     const mpesaPrefill = Math.max(0, Number(prefillMpesaAmount) || 0);
     setMpesaAmount(mpesaPrefill > 0 ? String(mpesaPrefill) : "0");
@@ -307,13 +319,17 @@ export function PosPaymentPanel({
     setStkCandidates(null);
     setMpesaPayerName("");
     lastStkAmountRef.current = null;
-    setBankType("");
-    setBankAmount("0");
+    const equityPrefill = Math.max(0, Number(prefillEquityAmount) || 0);
+    const kcbPrefill = Math.max(0, Number(prefillKcbAmount) || 0);
+    const chequePrefill = Math.max(0, Number(prefillChequeAmount) || 0);
+    const bankPrefill = Math.max(0, Number(prefillBankAmount) || 0);
+    setBankType(String(prefillBankType ?? "").trim());
+    setBankAmount(bankPrefill > 0 ? String(bankPrefill) : "0");
     setBankRef("");
-    setEquityAmount("0");
-    setKcbAmount("0");
-    setOtherBankAmount("0");
-    setChequeAmount("0");
+    setEquityAmount(equityPrefill > 0 ? String(equityPrefill) : "0");
+    setKcbAmount(kcbPrefill > 0 ? String(kcbPrefill) : "0");
+    setOtherBankAmount(bankPrefill > 0 && !equityPrefill && !kcbPrefill ? String(bankPrefill) : "0");
+    setChequeAmount(chequePrefill > 0 ? String(chequePrefill) : "0");
     setChequeNo("");
     setWalkInCustomerName(String(prefillWalkInCustomerName ?? "").trim());
     setCustomerNameMode("walkin");
@@ -326,6 +342,12 @@ export function PosPaymentPanel({
     prefillMpesaAmount,
     prefillMpesaCode,
     prefillMpesaPhone,
+    prefillCashAmount,
+    prefillEquityAmount,
+    prefillKcbAmount,
+    prefillChequeAmount,
+    prefillBankAmount,
+    prefillBankType,
     prefillWalkInCustomerName,
     previousOrderEditAdjustment,
     signedEditDelta,

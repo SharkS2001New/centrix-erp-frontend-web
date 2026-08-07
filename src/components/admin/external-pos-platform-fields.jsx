@@ -302,6 +302,12 @@ export function ExternalPosPlatformFields({
             checked={Boolean(value?.enable_pos_order_edit)}
             onChange={(v) => patch({ enable_pos_order_edit: v })}
           />
+          <Toggle
+            label="Save amount paid on held orders"
+            description="When on, the Hold order dialog asks for Amount Paid (Enter moves from name → amount → hold). Payment method defaults to Cash; cashiers can type C, M, E, K, etc. Restoring a held order puts that amount into the matching payment method on checkout."
+            checked={Boolean(value?.enable_held_order_amount_paid)}
+            onChange={(v) => patch({ enable_held_order_amount_paid: v })}
+          />
         </div>
       ) : null}
     </div>

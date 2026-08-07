@@ -26,6 +26,7 @@ function platformExternalPosFromApi(res) {
     enable_pos_cash_rounding: Boolean(sales.enable_pos_cash_rounding),
     receipt_show_all_payment_methods: sales.receipt_show_all_payment_methods !== false,
     enable_pos_order_edit: Boolean(sales.enable_pos_order_edit),
+    enable_held_order_amount_paid: Boolean(sales.enable_held_order_amount_paid),
     pos_combine_identical_lines: sales.pos_combine_identical_lines !== false,
   };
 }
@@ -107,6 +108,9 @@ export function ExternalPosSettingsPanel({
                 platformForm.receipt_show_all_payment_methods,
               ),
               enable_pos_order_edit: Boolean(platformForm.enable_pos_order_edit),
+              enable_held_order_amount_paid: Boolean(
+                platformForm.enable_held_order_amount_paid,
+              ),
               pos_combine_identical_lines: Boolean(platformForm.pos_combine_identical_lines),
             }
           : {}),
