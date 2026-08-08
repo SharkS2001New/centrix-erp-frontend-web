@@ -1243,6 +1243,11 @@ export function PosPaymentPanel({
         setStep("payment");
         return;
       }
+      // Previous-order edit: parent already reprinted and focused a new order.
+      if (adjustmentMode || sale?._previous_order_edit_finished) {
+        setStep("payment");
+        return;
+      }
       setCompletedOrder({
         orderNum: sale.order_num,
         statusLabel: checkoutStatusLabel(sale),

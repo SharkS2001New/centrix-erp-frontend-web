@@ -1007,16 +1007,16 @@ function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline
   }
   if (kraFiscalize) {
     return {
-      loaded: `Order ${label} loaded. Edit lines — sync and KRA run in the background. Alt+P reprints without the fiscal QR.`,
-      f10: "Use Alt+P (or Reprint) — payment breakdown then print. F10 is not required. KRA balances in the background when the order syncs online.",
+      loaded: `Order ${label} loaded. Edit lines — sync and KRA run in the background. Finish with Alt+P or F10: payment methods → reprint → new order.`,
+      f10: "Enter payment methods for the top-up/return, then the revised receipt prints and a new order opens. KRA syncs in the background.",
       synced: `Order ${label} saved. Print again with Alt+P if needed.`,
       leaveConfirm:
         "Start a new order? Edits keep syncing in the background (including KRA). You do not need Alt+P first.",
     };
   }
   return {
-    loaded: `Order ${label} loaded. Each change applies instantly — sync runs 30 seconds after you stop editing. Print with Alt+P when finished, or leave with F8 / next order — updates still sync.`,
-    f10: "F10 syncs now if you are finished. Otherwise edits keep applying and sync runs 30 seconds after you stop.",
+    loaded: `Order ${label} loaded. Each change applies instantly. Finish with Alt+P or F10: payment methods → reprint → new order.`,
+    f10: "Enter payment methods for any top-up/return, then the revised receipt prints and focus moves to a new order.",
     synced: `Order ${label} saved on server. Print the revised receipt (Alt+P or Reprint).`,
     leaveConfirm:
       "Start a new order? Edits stay queued and sync in the background — Alt+P is not required.",
@@ -7825,6 +7825,11 @@ export function PosScreen({ standalone = false }) {
         clearLineEntry();
         setStatusMessage(`Sale #${sale.order_num} saved — printing receipt…`);
         markServerCartConsumed(activeCart.id);
+        if (isPreviousOrderCashEdit && standalone) {
+          queueOutboxAfterSale(sale.order_num);
+          await printRevisedPreviousOrderAndFocusNewOrder(sale);
+          return { ...sale, _previous_order_edit_finished: true };
+        }
         afterSaleCheckoutComplete(sale, options);
         queueOutboxAfterSale(sale.order_num);
         return sale;
@@ -7948,6 +7953,11 @@ export function PosScreen({ standalone = false }) {
           clearPosUiDraft();
           clearLineEntry();
           void clearPreviousOrderEditDraft().catch(() => {});
+          if (isPreviousOrderCashEdit && standalone) {
+            queueOutboxAfterSale(sale.order_num);
+            await printRevisedPreviousOrderAndFocusNewOrder(sale);
+            return { ...sale, _previous_order_edit_finished: true };
+          }
           afterSaleCheckoutComplete(sale, options);
           queueOutboxAfterSale(sale.order_num);
           return sale;
@@ -8114,6 +8124,16 @@ export function PosScreen({ standalone = false }) {
       }
       // Kick print before cart-clear state churn so HTML build starts immediately.
       markServerCartConsumed(liveCart?.id);
+      if (isPreviousOrderCashEdit && standalone) {
+        markSaleForReprint(sale);
+        setSelectedLineId(null);
+        clearPosUiDraft();
+        clearLineEntry();
+        void clearPreviousOrderEditDraft().catch(() => {});
+        setEditSourceSale(null);
+        await printRevisedPreviousOrderAndFocusNewOrder(sale);
+        return { ...sale, _previous_order_edit_finished: true };
+      }
       afterSaleCheckoutComplete(sale, options);
       markSaleForReprint(sale);
       if (!(standalone && !options.skipAutoNextOrder)) {
@@ -8392,6 +8412,89 @@ export function PosScreen({ standalone = false }) {
       editAutosaveTimerRef.current = null;
       runEditedOrderAutosave();
     }, delayMs);
+  }
+
+  /**
+   * After previous-order payment methods are chosen: reprint the revised receipt,
+   * then clear to a blank new order and focus scan. Sync continues in the background.
+   */
+  async function printRevisedPreviousOrderAndFocusNewOrder(saleLike = null) {
+    const editSnapshot =
+      cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id
+        ? buildPreviousOrderEditPrintSale(cartRef.current, {
+            user,
+            organization,
+            sourceSale: editSourceSale,
+          })
+        : null;
+    const sale = editSnapshot ?? saleLike;
+    const cashSalesLabel = formatCashSalesNumber(sale);
+    const orderLabel =
+      cashSalesLabel !== "—"
+        ? cashSalesLabel
+        : sale?.order_num
+          ? `#${sale.order_num}`
+          : "";
+
+    setReceiptPrintStatus("pending");
+    const loadingToastId = toast.loading(
+      orderLabel ? `Printing receipt ${orderLabel}…` : "Printing revised receipt…",
+    );
+    try {
+      if (sale?.id || sale?.order_num || sale?.items?.length) {
+        const skipKraQr =
+          Boolean(sale?._skip_kra_qr) ||
+          Boolean(sale?.kra_skipped) ||
+          kraEditBackgroundFiscalize;
+        const result = await printSaleOrder(
+          sale?._skip_kra_qr || kraEditBackgroundFiscalize
+            ? { ...sale, _skip_kra_qr: true }
+            : sale,
+          fastPosPrintOptions(sale, {
+            capabilities,
+            organization,
+            organizationName: capabilities?.profile_label,
+            uomById,
+            productByCode,
+            user,
+            preparedBy: user?.full_name ?? user?.username ?? null,
+            documentType:
+              resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
+            kraReceipt: skipKraQr ? null : (sale.kra_response ?? sale.kraResponse ?? null),
+            allowKraNetwork: false,
+          }),
+        );
+        if (!result) {
+          setReceiptPrintStatus("failed");
+          toast.error("Print cancelled or no format was selected.", { id: loadingToastId });
+        } else {
+          setReceiptPrintStatus("printed");
+          toast.success(
+            orderLabel
+              ? `Receipt ${orderLabel} printed. Ready for next order.`
+              : "Revised receipt printed. Ready for next order.",
+            { id: loadingToastId },
+          );
+        }
+      } else {
+        toast.dismiss(loadingToastId);
+      }
+    } catch (e) {
+      setReceiptPrintStatus("failed");
+      toast.error(e instanceof Error ? e.message : "Receipt print failed", {
+        id: loadingToastId,
+      });
+    }
+
+    setPaymentOpen(false);
+    setPaymentError(null);
+    if (standalone) {
+      await clearWorkspaceAfterPreviousOrderPrint();
+    } else if (classicLayout) {
+      focusClassicProductSearch();
+    } else {
+      focusProductSearch();
+    }
   }
 
   /**
@@ -9430,6 +9533,15 @@ export function PosScreen({ standalone = false }) {
       if (!standalone) setStatusMessage(message);
       return;
     }
+
+    if (finishingPreviousOrderEdit && standalone) {
+      if (kraEditBackgroundFiscalize) {
+        sale = { ...sale, _skip_kra_qr: true };
+      }
+      await printRevisedPreviousOrderAndFocusNewOrder(sale);
+      return;
+    }
+
     if (receiptPrintStatus === "pending") return;
 
     setReceiptPrintStatus("pending");
@@ -9475,21 +9587,14 @@ export function PosScreen({ standalone = false }) {
       }
       setReceiptPrintStatus("printed");
       const message = orderLabel
-        ? finishingPreviousOrderEdit
-          ? skipKraQr && kraEditBackgroundFiscalize
-            ? `Receipt ${orderLabel} printed. Ready for next order — sync continues in the background.`
-            : `Receipt ${orderLabel} printed. Ready for next order — updates sync in the background.`
-          : skipKraQr && kraEditBackgroundFiscalize
-            ? `Receipt ${orderLabel} sent to printer. KRA syncs in the background.`
-            : `Receipt ${orderLabel} sent to printer.`
+        ? skipKraQr && kraEditBackgroundFiscalize
+          ? `Receipt ${orderLabel} sent to printer. KRA syncs in the background.`
+          : `Receipt ${orderLabel} sent to printer.`
         : "Receipt sent to printer.";
       toast.success(message, { id: loadingToastId });
       if (!standalone) setStatusMessage(message);
 
-      // Leave previous-order edit immediately — do not wait for outbox/KRA upload.
-      if (finishingPreviousOrderEdit && standalone) {
-        await clearWorkspaceAfterPreviousOrderPrint();
-      } else if (classicLayout) {
+      if (classicLayout) {
         focusClassicProductSearch();
       }
     } catch (e) {
@@ -10634,57 +10739,39 @@ export function PosScreen({ standalone = false }) {
         offlineMode || activeCart.offline || activeCart.offline_client_sale_uuid,
       );
 
-      // KRA-off online: instant outbox sync — not a payment dialog.
-      if (!kraOn && !isOfflineEdit) {
+      // Online previous-order edit: payment methods → reprint → new order (same as offline).
+      // KRA fiscalization still runs on background sync after the outbox upload.
+      if (!isOfflineEdit) {
         if (!editedOrderHasLocalDraftChanges(activeCart)) {
           if (pendingSync > 0 || editAutosaveBusy || offlineSyncing) {
             void flushOutboxAfterSale();
             flashPosShortcutMessage("Syncing saved changes to the server…", { error: false });
           } else {
-            const syncedMsg = previousOrderEditModeMessages(activeCart.held_order_num, {
-              kraFiscalize: false,
-            }).synced;
             flashPosShortcutMessage(
-              syncedMsg ?? "Order already saved on server — print with Alt+P.",
+              previousOrderEditModeMessages(activeCart.held_order_num, {
+                kraFiscalize: kraOn,
+              }).synced ?? "Order already saved — print with Alt+P.",
               { error: false },
             );
           }
           return;
         }
-        scheduleEditedOrderAutosave({ immediate: true });
-        flashPosShortcutMessage(
-          previousOrderEditModeMessages(activeCart.held_order_num, {
-            kraFiscalize: false,
-          }).f10,
-          { error: false },
-        );
-        return;
-      }
-
-      if (!activeCart?.lines?.length) {
-        flashPosShortcutMessage("Add items before completing payment (F10).");
-        return;
-      }
-
-      if (cartStockBlocked) {
-        flashPosShortcutMessage("Fix stock issues before completing payment.");
-        return;
-      }
-
-      // KRA-on online: finish with Alt+P (payment breakdown + print) — not F10.
-      // KRA credit notes / revised fiscalization run on background sync.
-      if (kraOn && !isOfflineEdit) {
-        flashPosShortcutMessage(
-          previousOrderEditModeMessages(activeCart.held_order_num, { kraFiscalize: true }).f10,
-          { error: false },
-        );
+        if (!activeCart?.lines?.length) {
+          flashPosShortcutMessage("Add items before completing this edit.");
+          return;
+        }
+        if (cartStockBlocked) {
+          flashPosShortcutMessage("Fix stock issues before completing this edit.");
+          return;
+        }
+        setPaymentError(null);
+        closeProductSearchDropdown();
+        setPaymentOpen(true);
         return;
       }
 
       flashPosShortcutMessage(
-        isOfflineEdit
-          ? previousOrderEditModeMessages(activeCart.held_order_num, { offline: true }).f10
-          : previousOrderEditModeMessages(activeCart.held_order_num, { kraFiscalize: true }).f10,
+        previousOrderEditModeMessages(activeCart.held_order_num, { offline: true }).f10,
         { error: false },
       );
 
