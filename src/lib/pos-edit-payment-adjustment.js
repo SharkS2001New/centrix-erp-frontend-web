@@ -188,8 +188,9 @@ export function reconcilePreviousOrderEditAdjustments(
 /**
  * @param {object|null|undefined} sourceSale
  * @param {object|null|undefined} cart
+ * @param {{ cashRound?: boolean }} [options]
  */
-export function computePreviousOrderEditPaymentDelta(sourceSale, cart) {
+export function computePreviousOrderEditPaymentDelta(sourceSale, cart, options = {}) {
   if (!cart?.held_order_num || !cart?.superseded_sale_id) {
     return { amount: 0, type: null, originalTotal: 0, newTotal: 0 };
   }
@@ -201,7 +202,9 @@ export function computePreviousOrderEditPaymentDelta(sourceSale, cart) {
       sourceSale?.amount_paid ??
       0,
   );
-  const revised = Number(summarizeLocalPosCart(cart).amountDue ?? 0);
+  const revised = Number(
+    summarizeLocalPosCart(cart, { cashRound: Boolean(options.cashRound) }).amountDue ?? 0,
+  );
   const delta = Math.round((revised - original) * 100) / 100;
   if (Math.abs(delta) < 0.01) {
     return {
@@ -225,9 +228,10 @@ export function computePreviousOrderEditPaymentDelta(sourceSale, cart) {
  *
  * @param {object|null|undefined} sourceSale
  * @param {object|null|undefined} cart
+ * @param {{ cashRound?: boolean }} [options]
  */
-export function computePreviousOrderEditSignedDelta(sourceSale, cart) {
-  const delta = computePreviousOrderEditPaymentDelta(sourceSale, cart);
+export function computePreviousOrderEditSignedDelta(sourceSale, cart, options = {}) {
+  const delta = computePreviousOrderEditPaymentDelta(sourceSale, cart, options);
   if (!delta.type) {
     return { ...delta, signedDelta: 0 };
   }

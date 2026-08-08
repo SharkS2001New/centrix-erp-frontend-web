@@ -209,10 +209,7 @@ export function HrPayrollScreen() {
         return ensured;
       }
       if (runnable.length === 0) {
-        throw new Error(
-          schedule?.rules?.join(" ") ||
-            "No pay period is available. Create a pay period for the current or a past month.",
-        );
+        return [];
       }
       return runnable;
     }
@@ -223,10 +220,9 @@ export function HrPayrollScreen() {
         ? ensured.filter((p) => codes.has(p.period_code))
         : ensured.filter((p) => payPeriodRunnableToday(p, new Date(), effectiveGrace));
     if (runnable.length === 0) {
-      throw new Error(
-        schedule?.rules?.join(" ") ||
-          `Payroll cannot run today. Use the last day of the month or the first ${effectiveGrace} days of the next month for the prior period.`,
-      );
+      // Schedule + next_window are already set; return empty so the drawer can
+      // show the period picker empty state instead of failing the prepare call.
+      return [];
     }
     return runnable;
   }, [capabilities?.module_settings, organizationId, runSchedule]);
@@ -243,14 +239,17 @@ export function HrPayrollScreen() {
       });
       setRunDrawerOpen(true);
     } catch (err) {
-      setRunError(
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Could not prepare pay period",
-      );
+      // Still open the drawer so the user can see the schedule rules and why
+      // no period is selectable today (instead of a dead "Run payroll" button).
+      setRunError(null);
       setRunForm({
         ...EMPTY_PAYROLL_RUN_FORM,
         ...payrollRunFormDefaults(capabilities?.module_settings),
       });
       setRunDrawerOpen(true);
+      if (err instanceof Error && err.message) {
+        console.info("Payroll run prepare:", err.message);
+      }
     } finally {
       setRunPreparing(false);
     }
@@ -438,7 +437,7 @@ export function HrPayrollScreen() {
           {tab === "runs" ? (
             <PrimaryButton
               onClick={openGenerateDrawer}
-              disabled={runPreparing || runSchedule?.can_run_any_period_today === false}
+              disabled={runPreparing}
             >
               {runPreparing ? "Preparing…" : "Run payroll"}
             </PrimaryButton>
@@ -649,41 +648,61 @@ export function HrPayrollScreen() {
       )}
 
       <FormDrawer
-        title="Generate payroll"
+        title="Run payroll"
         open={runDrawerOpen}
         onClose={() => setRunDrawerOpen(false)}
-        onSubmit={generatePayroll}
+        onSubmit={(e) => {
+          if (runnablePeriods.length === 0) {
+            e.preventDefault();
+            setRunDrawerOpen(false);
+            return;
+          }
+          generatePayroll(e);
+        }}
         saving={runSaving}
         error={runError}
-        submitLabel="Generate"
+        submitLabel={runnablePeriods.length ? "Generate" : "Close"}
         wide
       >
+        <div className="mb-4 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+          <p className="font-semibold text-slate-800">When can payroll run?</p>
+          {(runSchedule?.rules ?? [
+            "Payroll may run for the current month only on that month's last calendar day.",
+            `Payroll for the previous month may run during the first ${graceDays} days of the following month.`,
+            "Upcoming (future) months cannot be processed.",
+            "Payroll runs can be deleted until they are marked as paid.",
+          ]).map((rule) => (
+            <p key={rule}>• {rule}</p>
+          ))}
+        </div>
         <Field label="Pay period">
           {runnablePeriods.length === 0 ? (
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              <p className="font-medium">No pay period can be processed today.</p>
               <p>
-                {scheduleEnforced
-                  ? `No pay period is available to run today. Payroll runs on the last day of the month or during the first ${graceDays} day${graceDays === 1 ? "" : "s"} of the following month (for the previous month only).`
-                  : "No pay period is available. Create a pay period for the current or a past month, then try again."}
+                {runSchedule?.next_window?.message ||
+                  (scheduleEnforced
+                    ? `Use the last day of this month for the current period, or days 1–${graceDays} of a month to run the previous month.`
+                    : "Create a pay period for the current or a past month, then try again.")}
               </p>
-              {runSchedule?.rules?.map((rule) => (
-                <p key={rule} className="text-xs text-amber-800">
-                  • {rule}
-                </p>
-              ))}
             </div>
           ) : (
-            <SearchableSelect
-              value={runForm.pay_period_id}
-              onChange={(v) => setRunForm((p) => ({ ...p, pay_period_id: v }))}
-              required
-              className={inputClassName()}
-              placeholder="Select period"
-              options={runnablePeriods.map((p) => ({
-                value: String(p.id),
-                label: `${periodLabel(p)} (${formatPeriodRange(p)})`,
-              }))}
-            />
+            <>
+              <SearchableSelect
+                value={runForm.pay_period_id}
+                onChange={(v) => setRunForm((p) => ({ ...p, pay_period_id: v }))}
+                required
+                className={inputClassName()}
+                placeholder="Select the period to run"
+                options={runnablePeriods.map((p) => ({
+                  value: String(p.id),
+                  label: `${periodLabel(p)} (${formatPeriodRange(p)})`,
+                }))}
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                Choose which month to process. Only periods allowed for today are listed.
+              </p>
+            </>
           )}
         </Field>
         <Field label="Department">

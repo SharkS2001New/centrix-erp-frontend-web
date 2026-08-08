@@ -452,6 +452,7 @@ export function FormDrawer({
   saving,
   error,
   submitLabel = "Save",
+  submitDisabled = false,
   wide = false,
   children,
 }) {
@@ -490,7 +491,7 @@ export function FormDrawer({
           <div className="border-t border-[var(--theme-border)] px-5 py-4">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || submitDisabled}
               className="theme-primary-btn w-full rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
             >
               {saving ? "Saving…" : submitLabel}

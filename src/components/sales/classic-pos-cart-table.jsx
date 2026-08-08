@@ -69,7 +69,9 @@ function ClassicLineQtyCell({
             // Enter already commits — skip the blur commit that would fire next
             // (double swap/qty PATCH raced update_no and left the old SKU on the server).
             skipBlurCommitRef.current = true;
-            commit({ force: true });
+            // Do not force-commit an unchanged qty — that marked previous-order edits
+            // dirty and triggered a bogus Payment Breakdown on Alt+P.
+            commit({ force: swapQtyCommit });
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {

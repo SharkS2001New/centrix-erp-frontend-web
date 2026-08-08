@@ -535,13 +535,20 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
       ? { payment_method_code: String(mergedSource.payment_method_code).toUpperCase() }
       : {}),
     // Lock prior bill total for top-up/return math (browse rows often omit order_total).
-    ...(base.original_order_total == null &&
-    Number(mergedSource?.order_total ?? mergedSource?.amount_paid ?? 0) > 0
-      ? {
-          original_order_total: Math.round(
-            Number(mergedSource.order_total ?? mergedSource.amount_paid) * 100,
-          ) / 100,
-        }
+    // Prefer the sale total; if missing, use the cart line summary so an untouched
+    // load never looks like a full-bill top-up.
+    ...(base.original_order_total == null
+      ? (() => {
+          const fromSale = Math.round(
+            Number(mergedSource?.order_total ?? mergedSource?.amount_paid ?? 0) * 100,
+          ) / 100;
+          if (fromSale > 0.009) {
+            return { original_order_total: fromSale };
+          }
+          const fromCart =
+            Math.round(Number(summarizeLocalPosCart(base).amountDue ?? 0) * 100) / 100;
+          return fromCart > 0.009 ? { original_order_total: fromCart } : {};
+        })()
       : {}),
     // Keep original tender mix for receipt rebuild (never use rebuilt outbox payload).
     ...(mergedSource?.id
@@ -2403,7 +2410,10 @@ export function PosScreen({ standalone = false }) {
     if (!options.force && !editedOrderHasLocalDraftChanges(cartNow)) {
       return cartNow;
     }
-    const delta = computePreviousOrderEditPaymentDelta(editSourceSale, cartNow);
+    const delta = computePreviousOrderEditPaymentDelta(editSourceSale, cartNow, {
+      cashRound: enablePosCashRounding,
+    });
+    // No bill change → never prompt (even if a no-op keystroke left the cart dirty).
     if (!delta.type || !(Number(delta.amount) > 0)) return cartNow;
     if (previousOrderAdjustmentsMatchDelta(cartNow.payment_adjustments, delta)) return cartNow;
     const adjustments = await promptPreviousOrderPaymentAdjustment(
@@ -3005,12 +3015,18 @@ export function PosScreen({ standalone = false }) {
 
   const previousOrderEditAdjustment = useMemo(() => {
     if (!isCartEditSession) return null;
-    const delta = computePreviousOrderEditSignedDelta(editSourceSale, cart);
+    // Untouched previous orders must use the normal payment panel (or Alt+P reprint),
+    // never top-up/return breakdown.
+    if (!editedOrderHasLocalDraftChanges(cart)) return null;
+    const delta = computePreviousOrderEditSignedDelta(editSourceSale, cart, {
+      cashRound: enablePosCashRounding,
+    });
+    if (!delta.type || !(Number(delta.amount) > 0)) return null;
     return {
       ...delta,
       orderNum: resolvePosBrowseNumber(cart) ?? cart?.held_order_num ?? null,
     };
-  }, [isCartEditSession, editSourceSale, cart]);
+  }, [isCartEditSession, editSourceSale, cart, enablePosCashRounding]);
   const previousOrderEditReadyToPrint = useMemo(() => {
     if (!instantAutoEditSync || !isCartEditSession) return false;
     if (offlineSyncing || editAutosaveBusy) return false;
@@ -6351,6 +6367,45 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
+    // Unchanged qty (e.g. Enter on the same value) must not mark a previous-order
+    // edit dirty — that wrongly opened Payment Breakdown on Alt+P.
+    {
+      const activeCart = cartRef.current ?? cart;
+      const liveLine =
+        (activeCart?.lines ?? []).find(
+          (row) =>
+            sameLineId(row.id, line.id) ||
+            (cartLineRef(line) != null &&
+              String(cartLineRef(row)) === String(cartLineRef(line))),
+        ) ?? line;
+      const productMeta =
+        productByCodeRef.current[liveLine.product_code] ??
+        productByCode[liveLine.product_code] ??
+        null;
+      const currentEntry = Number(
+        parseDecimalInput(
+          posEntryQtyFromCartLine(
+            liveLine,
+            productMeta,
+            getRetailPackage(liveLine.product_code),
+          ),
+        ),
+      );
+      if (
+        Number.isFinite(currentEntry) &&
+        Math.abs(currentEntry - entryQty) < 0.0001 &&
+        (!posSalesConfig.enableRetailPricing ||
+          cartLineRetailStockFlag(liveLine) ===
+            (posSalesConfig.enableRetailPricing
+              ? isPosRetailSession(sellWholesaleRef.current)
+              : cartLineRetailStockFlag(liveLine)))
+      ) {
+        setSelectedLineId(null);
+        focusScanAfterItemAdded();
+        return;
+      }
+    }
+
     // Immediately park on new-line Scan (Enter or click-away blur). Do not leave
     // focus on the same row's qty/scan cell.
     setSelectedLineId(null);
@@ -7676,7 +7731,9 @@ export function PosScreen({ standalone = false }) {
         // F10 payment panel already collected the delta as tenders — convert to
         // payment_adjustments and skip the separate breakdown dialog.
         if (body?.__previous_order_edit_adjustment) {
-          const delta = computePreviousOrderEditPaymentDelta(editSourceSale, activeCart);
+          const delta = computePreviousOrderEditPaymentDelta(editSourceSale, activeCart, {
+            cashRound: enablePosCashRounding,
+          });
           if (delta.type && Number(delta.amount) > 0) {
             const adjustments = buildPaymentAdjustmentsFromCheckoutBody(body, delta);
             if (adjustments.length) {
@@ -7841,11 +7898,10 @@ export function PosScreen({ standalone = false }) {
       }
     }
 
-    // Online External POS cash (KRA fiscalization OFF): sell → print → save local →
-    // immediate background sync. When KRA is on, skip this — the eTIMS QR only exists
-    // after the fiscal device responds, so checkout stays server-first (wait → print with QR).
-    // Includes previous-order cash edits (same order #; sync updates the server record).
-    // Org S# is not reserved locally — Cash Sales # is enough; server assigns order_num on sync.
+    // Online External POS: sell → print → save local → background sync.
+    // New sales with KRA on stay server-first (eTIMS QR). Previous-order edits always
+    // use the IndexedDB outbox path below (or the dedicated block after this) so a
+    // reprinted receipt cannot outrun the upload.
     const kraFiscalizeOnCheckout = shouldSubmitKraOnCheckout(
       capabilities?.module_settings,
       capabilities,
@@ -7856,7 +7912,7 @@ export function PosScreen({ standalone = false }) {
       !offlineMode &&
       !activeCart.offline &&
       !activeCart.offline_client_sale_uuid &&
-      !kraFiscalizeOnCheckout &&
+      (!kraFiscalizeOnCheckout || isPreviousOrderCashEdit) &&
       isLocalFirstCashCheckout(body) &&
       (!activeCart.held_order_num || isPreviousOrderCashEdit)
     ) {
@@ -7962,11 +8018,111 @@ export function PosScreen({ standalone = false }) {
           queueOutboxAfterSale(sale.order_num);
           return sale;
         } catch (e) {
+          // Previous-order edits must not fall through to TemporaryCart checkout —
+          // that path can print the local draft without writing IndexedDB, so reopen
+          // still shows the pre-edit receipt.
+          if (isPreviousOrderCashEdit) {
+            console.warn("Previous-order local outbox write failed", e);
+            setPaymentError(
+              e instanceof Error
+                ? e.message
+                : "Could not save this order edit for sync. Try again.",
+            );
+            return null;
+          }
           // Fall through to normal online checkout if local-first fails.
           console.warn("Local-first cash checkout failed; using online checkout", e);
         } finally {
           setBusy(false);
         }
+    }
+
+    // Standalone previous-order finish must use IndexedDB outbox (never TemporaryCart).
+    if (isPreviousOrderCashEdit && standalone) {
+      setBusy(true);
+      setPaymentError(null);
+      setReceiptPrintStatus(null);
+      try {
+        const checkoutCart = cartRef.current ?? activeCart;
+        const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
+        const isLocalFirstCredit = Boolean(body?.is_credit_sale);
+        const local = {
+          id: isServerPosCartId(checkoutCart.id) ? checkoutCart.id : "active",
+          lines: (checkoutCart.lines ?? []).map((l) => ({
+            ...l,
+            client_line_id: l.client_line_id ?? l.id,
+          })),
+          branch_id: checkoutCart.branch_id ?? user?.branch_id,
+          till_id: tillId ?? checkoutCart.till_id,
+          float_session_id: floatSessionId ?? checkoutCart.float_session_id,
+          customer_num: body?.customer_num ?? checkoutCart.customer_num,
+          customer_name_override:
+            body?.customer_name_override ?? checkoutCart.customer_name_override,
+          ...(String(body?.customer_kra_pin ?? "").trim()
+            ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
+            : {}),
+          held_order_num: checkoutCart.held_order_num ?? null,
+          superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
+          offline_edit_snapshot:
+            checkoutCart.offline_edit_snapshot ?? editSourceSale ?? null,
+          order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
+          payment_method_code:
+            body?.payment_method_code ??
+            checkoutCart.payment_method_code ??
+            editSourceSale?.payment_method_code ??
+            null,
+          ...(Array.isArray(checkoutCart.payment_adjustments) &&
+          checkoutCart.payment_adjustments.length
+            ? { payment_adjustments: checkoutCart.payment_adjustments }
+            : {}),
+          ...checkoutCartFields,
+        };
+        const { sale: localSale } = await completeOfflineCashSale({
+          cart: local,
+          user,
+          organization,
+          cashAmount: isLocalFirstCredit
+            ? cashPay
+            : cashPay > 0
+              ? cashPay
+              : summarizeLocalPosCart(local, {
+                  cashRound: enablePosCashRounding,
+                }).amountDue,
+          paymentMethodCode: body?.payment_method_code || "CASH",
+          paymentSplits: Array.isArray(body?.payment_splits) ? body.payment_splits : null,
+          isCreditSale: isLocalFirstCredit,
+          paymentReference: body?.payment_reference ?? null,
+          paymentDate: body?.payment_date ?? null,
+          workflowStatus: body?.status ?? null,
+          floatSessionId,
+          cashRound: enablePosCashRounding,
+        });
+        const sale = annotateSaleWithReceiptTenders(
+          mergeSaleWithCheckoutPosTicket(localSale, activeCart, checkoutCartFields),
+          null,
+          0,
+        );
+        markSaleForReprint(sale);
+        if (!(standalone && !options.skipAutoNextOrder)) {
+          setCart(null);
+        }
+        setSelectedLineId(null);
+        clearPosUiDraft();
+        clearLineEntry();
+        void clearPreviousOrderEditDraft().catch(() => {});
+        queueOutboxAfterSale(sale.order_num);
+        await printRevisedPreviousOrderAndFocusNewOrder(sale);
+        return { ...sale, _previous_order_edit_finished: true };
+      } catch (e) {
+        setPaymentError(
+          e instanceof Error
+            ? e.message
+            : "Could not save this order edit for sync. Try again.",
+        );
+        return null;
+      } finally {
+        setBusy(false);
+      }
     }
 
     setBusy(true);
@@ -8045,7 +8201,9 @@ export function PosScreen({ standalone = false }) {
         kraFiscalizeOnPosCheckout &&
         body?.__previous_order_edit_adjustment
       ) {
-        const delta = computePreviousOrderEditPaymentDelta(editSourceSale, liveCart);
+        const delta = computePreviousOrderEditPaymentDelta(editSourceSale, liveCart, {
+          cashRound: enablePosCashRounding,
+        });
         checkoutBody = {
           ...checkoutBody,
           pay_now: 0,
@@ -8125,6 +8283,14 @@ export function PosScreen({ standalone = false }) {
       // Kick print before cart-clear state churn so HTML build starts immediately.
       markServerCartConsumed(liveCart?.id);
       if (isPreviousOrderCashEdit && standalone) {
+        // Unreachable when the IndexedDB finish path above succeeds; keep as a
+        // safety net so TemporaryCart checkout never prints without an outbox row.
+        const live = cartRef.current;
+        if (live && !editedOrderHasLocalDraftChanges(live)) {
+          const dirty = withEditDraftDirty(live);
+          cartRef.current = dirty;
+          setCart(dirty);
+        }
         markSaleForReprint(sale);
         setSelectedLineId(null);
         clearPosUiDraft();
@@ -8417,8 +8583,41 @@ export function PosScreen({ standalone = false }) {
   /**
    * After previous-order payment methods are chosen: reprint the revised receipt,
    * then clear to a blank new order and focus scan. Sync continues in the background.
+   * Callers must already have written the IndexedDB outbox (completeOfflineCashSale /
+   * queuePreviousOrderEditOutboxNow) before invoking this — print alone does not persist.
    */
   async function printRevisedPreviousOrderAndFocusNewOrder(saleLike = null) {
+    // Last-resort: if the workspace is still a dirty previous-order edit, persist
+    // before printing/clearing so reopen cannot show the pre-edit receipt.
+    const liveBeforePrint = cartRef.current;
+    if (
+      standalone &&
+      liveBeforePrint?.held_order_num &&
+      liveBeforePrint?.superseded_sale_id &&
+      editedOrderHasLocalDraftChanges(liveBeforePrint)
+    ) {
+      try {
+        const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
+        if (queuedHeldOrderNum == null) {
+          notifyError(
+            "Could not save this order edit for sync. Receipt was not printed.",
+          );
+          return;
+        }
+        flushPreviousOrderEditOutboxInBackground(
+          queuedHeldOrderNum,
+          freshWorkspaceGenerationRef.current,
+        );
+      } catch (e) {
+        notifyError(
+          e instanceof Error
+            ? e.message
+            : "Could not save this order edit for sync. Receipt was not printed.",
+        );
+        return;
+      }
+    }
+
     const editSnapshot =
       cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id
         ? buildPreviousOrderEditPrintSale(cartRef.current, {
@@ -9451,15 +9650,22 @@ export function PosScreen({ standalone = false }) {
   async function handlePrintReceipt() {
     // Finishing a previous-order edit: prep → payment breakdown → print (no KRA wait).
     // With KRA on, fiscalization / credit-note balancing runs on background outbox sync.
-    // Untouched browse/reprint must NOT prompt for payment or queue a duplicate sale.
-    const dirtyPreviousOrderEdit = Boolean(
+    // Untouched browse/reprint of a *completed* sale (not in edit session) must NOT
+    // prompt for payment or queue a duplicate sale.
+    //
+    // Important: after autosave/sync clears `_editDraftDirty`, the cart is still an
+    // edit session — Alt+P must still print the revised receipt and clear to a new
+    // order (same end state as F8). Gating clear on dirty alone left cashiers stuck
+    // on the edited ticket.
+    const activeEditCart = cartRef.current;
+    const inPreviousOrderEdit = Boolean(
       isCartEditSession &&
-        cartRef.current?.held_order_num &&
-        cartRef.current?.superseded_sale_id &&
-        editedOrderHasLocalDraftChanges(cartRef.current),
+        activeEditCart?.held_order_num &&
+        activeEditCart?.superseded_sale_id,
     );
-    const finishingPreviousOrderEdit = dirtyPreviousOrderEdit;
-    if (finishingPreviousOrderEdit) {
+    const dirtyPreviousOrderEdit =
+      inPreviousOrderEdit && editedOrderHasLocalDraftChanges(activeEditCart);
+    if (dirtyPreviousOrderEdit) {
       const editSummary = summarizeLocalPosCart(cartRef.current);
       const kraFiscalize = shouldSubmitKraOnCheckout(
         capabilities?.module_settings,
@@ -9496,7 +9702,13 @@ export function PosScreen({ standalone = false }) {
       // Await local outbox write only — network/KRA upload continues in the background.
       const workspaceGeneration = freshWorkspaceGenerationRef.current;
       try {
-        const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow();
+        const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
+        if (queuedHeldOrderNum == null) {
+          notifyError(
+            "Could not save this order edit for sync. Keep the order open and try Alt+P again.",
+          );
+          return;
+        }
         flushPreviousOrderEditOutboxInBackground(queuedHeldOrderNum, workspaceGeneration);
       } catch (e) {
         if (e instanceof Error && /cancel/i.test(e.message)) return;
@@ -9534,7 +9746,8 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    if (finishingPreviousOrderEdit && standalone) {
+    // Any previous-order edit session: print revised receipt then blank new order.
+    if (inPreviousOrderEdit && standalone) {
       if (kraEditBackgroundFiscalize) {
         sale = { ...sale, _skip_kra_qr: true };
       }
@@ -12073,8 +12286,9 @@ export function PosScreen({ standalone = false }) {
                     <>
                       Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edits sync in the
                       background — KRA credit notes balance when the order syncs online.{" "}
-                      <strong>Alt+P</strong> (or Reprint): payment breakdown, then print without
-                      the fiscal QR. F10 is not required.
+                      <strong>Alt+P</strong> (or Reprint): if the bill changed, enter the
+                      top-up/return method, then print without the fiscal QR. F10 is not
+                      required.
                       {editAutosaveBusy || pendingSync > 0
                         ? syncProgress?.message
                           ? ` ${syncProgress.message}`
