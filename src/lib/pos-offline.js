@@ -1076,11 +1076,44 @@ export async function completeOfflineCashSale({
 
   const isCreditSale = Boolean(isCreditSaleOpt) && !isPreviousOrderEdit;
   const requestedPay = Math.max(0, Number(cashAmount ?? 0));
-  // Non-credit tendered sales always settle in full offline (Cash/M-Pesa/bank/cheque).
-  // Credit may be unpaid (0) or partially paid.
+
+  const paymentSplits = Array.isArray(paymentSplitsOpt)
+    ? paymentSplitsOpt
+        .filter((part) => part && Number(part.amount) > 0)
+        .map((part) => ({
+          method_code: String(part.method_code ?? part.code ?? "").trim().toUpperCase(),
+          amount: Math.round(Number(part.amount) * 100) / 100,
+          ...(part.reference_number
+            ? { reference_number: String(part.reference_number).trim() }
+            : {}),
+        }))
+        .filter((part) => part.method_code)
+    : [];
+
+  const splitTendered = paymentSplits.reduce(
+    (sum, part) => sum + Number(part.amount ?? 0),
+    0,
+  );
+  const nonCreditTendered =
+    paymentSplits.length > 0 ? splitTendered : requestedPay;
+
+  // Cash / M-Pesa / Equity / KCB / bank / cheque must cover the bill.
+  // Only the credit-customer input may leave unpaid or partially paid.
+  if (
+    !isCreditSale &&
+    !isPreviousOrderEdit &&
+    Number(summary.amountDue) > 0.01 &&
+    nonCreditTendered + 0.01 < Number(summary.amountDue)
+  ) {
+    throw new Error(
+      "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer to leave a balance unpaid or partially paid.",
+    );
+  }
+
+  // Non-credit: settle in full. Credit may be unpaid (0) or partially paid.
   const payNow = isCreditSale
     ? Math.min(requestedPay, summary.total)
-    : Math.max(requestedPay, summary.amountDue);
+    : Math.max(nonCreditTendered, summary.amountDue);
 
   // Previous-order edits must keep the original tender method on the local sale /
   // checkout body. Hardcoding CASH caused synced sales to show Cash after edit.
@@ -1116,18 +1149,7 @@ export async function completeOfflineCashSale({
               ? "KCB"
               : paymentMethodCode;
 
-  const paymentSplits = Array.isArray(paymentSplitsOpt)
-    ? paymentSplitsOpt
-        .filter((part) => part && Number(part.amount) > 0)
-        .map((part) => ({
-          method_code: String(part.method_code ?? part.code ?? "").trim().toUpperCase(),
-          amount: Math.round(Number(part.amount) * 100) / 100,
-          ...(part.reference_number
-            ? { reference_number: String(part.reference_number).trim() }
-            : {}),
-        }))
-        .filter((part) => part.method_code)
-    : [];
+  // paymentSplits normalized above
 
   const sumSplit = (code) =>
     Math.round(

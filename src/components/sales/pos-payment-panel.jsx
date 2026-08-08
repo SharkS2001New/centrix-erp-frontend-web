@@ -575,6 +575,8 @@ export function PosPaymentPanel({
     const payNow = adjustmentMode ? 0 : Math.min(amountPaid, checkoutTotal);
     const creditSale = hasCreditCustomer && !adjustmentMode;
     const paymentMethodCode = creditSale && payNow <= 0 ? "CREDIT" : primaryMethodCode();
+    // External POS: only credit-customer sales may be unpaid/partial.
+    const allowPartial = creditSale && Boolean(cfg.allowPartialPayment);
     const status = resolveCheckoutStatus({
       channel,
       isCredit: creditSale,
@@ -582,7 +584,7 @@ export function PosPaymentPanel({
       total: checkoutTotal,
       workflow,
       paymentMethodCode,
-      allowPartialPayment: cfg.allowPartialPayment,
+      allowPartialPayment: allowPartial,
     });
 
     const cartMpesa = mpesaFieldsLocked
@@ -701,9 +703,7 @@ export function PosPaymentPanel({
         : "Enter payment amounts to cover the full total.";
     }
     if (amountPaid + 0.01 < checkoutTotal) {
-      return cfg.enableCreditPayment
-        ? "Full payment required, or select a credit customer to bill the balance on account."
-        : "Full payment required — enter amounts that cover the total.";
+      return "Full payment required for Cash, M-Pesa, bank, and cheque — or select a credit customer to bill the balance.";
     }
     return null;
   }

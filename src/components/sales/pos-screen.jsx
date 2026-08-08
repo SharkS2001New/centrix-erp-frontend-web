@@ -7531,7 +7531,7 @@ export function PosScreen({ standalone = false }) {
         cashPay + 0.01 < Number(summary?.amountDue ?? 0)
       ) {
         setPaymentError(
-          "Enter payment amounts that cover the full total, or select a credit customer for unpaid / partial payment.",
+          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer to leave a balance unpaid or partially paid.",
         );
         return null;
       }
@@ -7647,6 +7647,17 @@ export function PosScreen({ standalone = false }) {
     ) {
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
       const cashTendered = Number(body?.__cash_tendered ?? 0);
+      const isLocalFirstCredit = Boolean(body?.is_credit_sale);
+      if (
+        !isLocalFirstCredit &&
+        !isPreviousOrderCashEdit &&
+        cashPay + 0.01 < Number(summary?.amountDue ?? 0)
+      ) {
+        setPaymentError(
+          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer to leave a balance unpaid or partially paid.",
+        );
+        return null;
+      }
       setBusy(true);
       setPaymentError(null);
       setReceiptPrintStatus(null);
@@ -7675,6 +7686,7 @@ export function PosScreen({ standalone = false }) {
             checkoutCart.offline_edit_snapshot ?? editSourceSale ?? null,
           order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
           payment_method_code:
+            body?.payment_method_code ??
             checkoutCart.payment_method_code ??
             editSourceSale?.payment_method_code ??
             null,
@@ -7690,6 +7702,12 @@ export function PosScreen({ standalone = false }) {
             cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local, {
               cashRound: enablePosCashRounding,
             }).amountDue,
+            paymentMethodCode: body?.payment_method_code || "CASH",
+            paymentSplits: Array.isArray(body?.payment_splits) ? body.payment_splits : null,
+            isCreditSale: false,
+            paymentReference: body?.payment_reference ?? null,
+            paymentDate: body?.payment_date ?? null,
+            workflowStatus: body?.status ?? null,
             floatSessionId,
             cashRound: enablePosCashRounding,
           });
