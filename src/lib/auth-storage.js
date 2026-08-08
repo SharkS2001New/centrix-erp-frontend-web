@@ -10,6 +10,9 @@ const WORKSPACE_ROUTE_MEMORY_PREFIX = "pos_erp_workspace_routes";
  */
 let authEpoch = 0;
 
+/** >0 while /auth/switch-workspace (or similar) is replacing the bearer/cookie. */
+let authSessionRotationDepth = 0;
+
 export function getAuthEpoch() {
   return authEpoch;
 }
@@ -17,6 +20,20 @@ export function getAuthEpoch() {
 export function bumpAuthEpoch() {
   authEpoch += 1;
   return authEpoch;
+}
+
+/** Mark that the session token is being rotated — suppress hard logout on concurrent 401s. */
+export function beginAuthSessionRotation() {
+  authSessionRotationDepth += 1;
+  return bumpAuthEpoch();
+}
+
+export function endAuthSessionRotation() {
+  authSessionRotationDepth = Math.max(0, authSessionRotationDepth - 1);
+}
+
+export function isAuthSessionRotationInFlight() {
+  return authSessionRotationDepth > 0;
 }
 
 function clearWorkspaceRouteMemoryOnLogout() {

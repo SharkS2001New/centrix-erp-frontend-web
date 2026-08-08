@@ -6,7 +6,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
-import { formatSaleKes } from "@/lib/sales";
+import { formatPosBrowseLabel, formatSaleKes } from "@/lib/sales";
+import { isCheckoutCreditSale } from "@/lib/pos-checkout-credit-sale";
 import { resolveCheckoutStatus } from "@/lib/order-workflow";
 import {
   alignPaymentSplitsToPayNow,
@@ -88,18 +89,11 @@ function buildConfirmPaymentMessage({ billTotal, payNow, balanceDue, isCredit, i
   if (billTotal <= 0.01) {
     return "Complete this order?";
   }
-  if (isCredit && payNow <= 0.01) {
+  if (isCredit) {
     return (
       <>
-        Record credit sale for <strong>{formatSaleKes(billTotal)}</strong>?
-      </>
-    );
-  }
-  if (isCredit && payNow > 0.01 && balanceDue > 0.01) {
-    return (
-      <>
-        Collect <strong>{formatSaleKes(payNow)}</strong> now and record{" "}
-        <strong>{formatSaleKes(balanceDue)}</strong> on credit?
+        Record fully unpaid credit sale for <strong>{formatSaleKes(billTotal)}</strong>?
+        Cash and other tender amounts are ignored.
       </>
     );
   }
@@ -489,14 +483,20 @@ export function PosPaymentPanel({
 
   const creditCustomer = hasCreditCustomer ? selectedCreditCustomer : null;
 
+  const creditSaleActive = isCheckoutCreditSale({
+    hasCreditCustomer,
+    amountPaid,
+    checkoutTotal,
+    adjustmentMode,
+  });
+
   const creditCustomerSummary = useMemo(
     () => customerCreditSummary(creditCustomer),
     [creditCustomer],
   );
 
-  const creditAmountDue = hasCreditCustomer
-    ? Math.max(0, checkoutTotal - amountPaid)
-    : 0;
+  // A/R amount only while booking unpaid credit — not when C/M/E/K covers the bill.
+  const creditAmountDue = creditSaleActive ? Math.max(0, checkoutTotal) : 0;
 
   const creditCustomerOptions = useMemo(() => {
     const pinned =
@@ -580,11 +580,16 @@ export function PosPaymentPanel({
   }
 
   function buildCheckoutBody() {
-    const payNow = adjustmentMode ? 0 : Math.min(amountPaid, checkoutTotal);
-    const creditSale = hasCreditCustomer && !adjustmentMode;
-    const paymentMethodCode = creditSale && payNow <= 0 ? "CREDIT" : primaryMethodCode();
-    // External POS: only credit-customer sales may be unpaid/partial.
-    const allowPartial = creditSale && Boolean(cfg.allowPartialPayment);
+    // I + credit customer + unpaid → fully unpaid A/R.
+    // I then C/M/E/K with full tender → never credit (cashier changed mind).
+    const creditSale = isCheckoutCreditSale({
+      hasCreditCustomer,
+      amountPaid,
+      checkoutTotal,
+      adjustmentMode,
+    });
+    const payNow = adjustmentMode ? 0 : creditSale ? 0 : Math.min(amountPaid, checkoutTotal);
+    const paymentMethodCode = creditSale ? "CREDIT" : primaryMethodCode();
     const status = resolveCheckoutStatus({
       channel,
       isCredit: creditSale,
@@ -592,46 +597,65 @@ export function PosPaymentPanel({
       total: checkoutTotal,
       workflow,
       paymentMethodCode,
-      allowPartialPayment: allowPartial,
+      allowPartialPayment: false,
     });
 
-    const cartMpesa = mpesaFieldsLocked
-      ? Math.max(0, parseDecimalInput(mpesaAmount) || Number(prefillMpesaAmount) || 0)
-      : 0;
-    const tenderAmounts = {
-      cashAmount,
-      mpesaAmount: mpesaFieldsLocked ? String(cartMpesa) : mpesaAmount,
-      chequeAmount,
-      equityAmount,
-      kcbAmount,
-      otherBankAmount,
-      bankAmount,
-      bankType,
-      mpesaCode,
-      chequeNo,
-      bankRef,
-    };
-    const paymentSplits = alignPaymentSplitsToPayNow(
-      buildCheckoutPaymentSplits(cfg, tenderAmounts),
-      adjustmentMode ? amountPaid : payNow + cartMpesa,
-    );
+    const cartMpesa = creditSale
+      ? 0
+      : mpesaFieldsLocked
+        ? Math.max(0, parseDecimalInput(mpesaAmount) || Number(prefillMpesaAmount) || 0)
+        : 0;
+    const tenderAmounts = creditSale
+      ? {
+          cashAmount: "0",
+          mpesaAmount: "0",
+          chequeAmount: "0",
+          equityAmount: "0",
+          kcbAmount: "0",
+          otherBankAmount: "0",
+          bankAmount: "0",
+          bankType,
+          mpesaCode: "",
+          chequeNo: "",
+          bankRef: "",
+        }
+      : {
+          cashAmount,
+          mpesaAmount: mpesaFieldsLocked ? String(cartMpesa) : mpesaAmount,
+          chequeAmount,
+          equityAmount,
+          kcbAmount,
+          otherBankAmount,
+          bankAmount,
+          bankType,
+          mpesaCode,
+          chequeNo,
+          bankRef,
+        };
+    const paymentSplits = creditSale
+      ? []
+      : alignPaymentSplitsToPayNow(
+          buildCheckoutPaymentSplits(cfg, tenderAmounts),
+          adjustmentMode ? amountPaid : payNow + cartMpesa,
+        );
     const receiptTenders = buildReceiptTenderSnapshot(tenderAmounts, {
-      changeDue: adjustmentMode ? 0 : Math.max(0, amountPaid - checkoutTotal),
-      amountPaid,
+      changeDue: adjustmentMode || creditSale ? 0 : Math.max(0, amountPaid - checkoutTotal),
+      amountPaid: creditSale ? 0 : amountPaid,
     });
 
     const body = {
       pay_now: payNow,
       payment_method_code: paymentMethodCode,
-      payment_reference: paymentReferenceForPrimary(),
+      payment_reference: creditSale ? null : paymentReferenceForPrimary(),
       payment_date: resolvedPaymentDate(),
       status,
       is_credit_sale: creditSale,
+      payment_status: creditSale ? "unpaid" : undefined,
       ...(adjustmentMode ? { __previous_order_edit_adjustment: true } : {}),
       ...(paymentSplits.length > 0 ? { payment_splits: paymentSplits } : {}),
       // Frontend-only: full amount tendered by the customer (may exceed order total for cash).
       // Stripped before the API call; used to print the correct change on the receipt.
-      __cash_tendered: amountPaid,
+      __cash_tendered: creditSale ? 0 : amountPaid,
       __receipt_tenders: receiptTenders,
       ...(receiptTenders.change > 0 ? { order_change: receiptTenders.change } : {}),
     };
@@ -641,6 +665,8 @@ export function PosPaymentPanel({
       body.customer_name_override = creditCustomer.customer_name;
       const creditPin = String(creditCustomer.kra_pin ?? "").trim();
       if (creditPin) body.customer_kra_pin = creditPin;
+      // Customer stays on the receipt when they paid in full after opening I;
+      // only A/R (is_credit_sale) is cleared when creditSale is false.
     } else if (linkedReceiptCustomer) {
       // Paid sale linked to a registered customer (receipt / KRA PIN) — not credit A/R.
       body.customer_num = linkedReceiptCustomer.customer_num;
@@ -679,14 +705,24 @@ export function PosPaymentPanel({
       return null;
     }
 
-    if (showCreditPaymentField && hasCreditCustomer && !creditCustomer) {
-      return "Select a valid credit customer.";
-    }
+    // Credit customer + unpaid → fully unpaid A/R (I path).
+    // Credit customer + full C/M/E/K tender → not credit; validate like a cash sale.
     if (hasCreditCustomer) {
-      return validateCustomerCreditSale({
-        customer: creditCustomer,
-        creditAmount: creditAmountDue,
+      if (showCreditPaymentField && !creditCustomer) {
+        return "Select a valid credit customer.";
+      }
+      const creditSale = isCheckoutCreditSale({
+        hasCreditCustomer,
+        amountPaid,
+        checkoutTotal,
+        adjustmentMode,
       });
+      if (creditSale) {
+        return validateCustomerCreditSale({
+          customer: creditCustomer,
+          creditAmount: checkoutTotal,
+        });
+      }
     }
     if (cfg.rejectOverpayment && amountPaid - checkoutTotal > 0.01) {
       return `Payment of ${formatSaleKes(amountPaid)} exceeds the amount due of ${formatSaleKes(checkoutTotal)}. Enter the correct amount to continue.`;
@@ -699,22 +735,13 @@ export function PosPaymentPanel({
         `Enter the amount the customer actually tendered.`
       );
     }
-    // Partial / unpaid only for credit customers — never for Cash/M-Pesa/bank walk-ups.
-    if (
-      hasCreditCustomer &&
-      cfg.allowPartialPayment &&
-      amountPaid > 0 &&
-      amountPaid + 0.01 < checkoutTotal
-    ) {
-      return null;
-    }
     if (amountPaid <= 0 && checkoutTotal > 0) {
       return cfg.enableCreditPayment
-        ? "Enter payment amounts or select a credit customer."
+        ? "Enter payment amounts or select a credit customer (I) for a fully unpaid sale."
         : "Enter payment amounts to cover the full total.";
     }
     if (amountPaid + 0.01 < checkoutTotal) {
-      return "Full payment required for Cash, M-Pesa, bank, and cheque — or select a credit customer to bill the balance.";
+      return "Full payment required for Cash, M-Pesa, bank, and cheque — or select a credit customer (I) to save as fully unpaid.";
     }
     return null;
   }
@@ -728,15 +755,21 @@ export function PosPaymentPanel({
     }
     const total = adjustmentMode ? checkoutTotal : Number(billTotal) || 0;
     setSessionBillTotal(total);
-    const paid = amountPaid;
-    const payNow = adjustmentMode ? 0 : Math.min(paid, total);
+    const isCredit = isCheckoutCreditSale({
+      hasCreditCustomer,
+      amountPaid,
+      checkoutTotal: total,
+      adjustmentMode,
+    });
+    const paid = isCredit ? 0 : amountPaid;
+    const payNow = adjustmentMode ? 0 : isCredit ? 0 : Math.min(paid, total);
     setConfirmSummary({
       billTotal: total,
       amountPaid: paid,
       payNow,
       balanceDue: Math.max(0, total - paid),
-      changeDue: adjustmentMode ? 0 : Math.max(0, paid - total),
-      isCredit: hasCreditCustomer,
+      changeDue: adjustmentMode || isCredit ? 0 : Math.max(0, paid - total),
+      isCredit,
       isReturnAdjustment,
     });
     setStep("confirm");
@@ -787,7 +820,7 @@ export function PosPaymentPanel({
     return Math.max(0, checkoutTotal - (amountPaid - current));
   }
 
-  function activateInvoiceMode() {
+  function clearTenderAmountsForCredit() {
     setCashAmount("0");
     setMpesaAmount("0");
     setEquityAmount("0");
@@ -795,7 +828,14 @@ export function PosPaymentPanel({
     setOtherBankAmount("0");
     setBankAmount("0");
     setChequeAmount("0");
+    setMpesaCode("");
+    setChequeNo("");
+    setBankRef("");
     preferredMethodRef.current = "CREDIT";
+  }
+
+  function activateInvoiceMode() {
+    clearTenderAmountsForCredit();
     setLocalError(null);
     window.requestAnimationFrame(() => {
       creditSelectRef.current?.openAndFocus?.();
@@ -1012,8 +1052,9 @@ export function PosPaymentPanel({
           );
           return;
         }
+        const cashLabel = formatPosBrowseLabel(sale);
         setCompletedOrder({
-          orderNum: sale.order_num,
+          orderNum: cashLabel !== "—" ? cashLabel : null,
           statusLabel: checkoutStatusLabel(sale),
         });
         setStkPhase("idle");
@@ -1251,8 +1292,9 @@ export function PosPaymentPanel({
         setStep("payment");
         return;
       }
+      const cashLabel = formatPosBrowseLabel(sale);
       setCompletedOrder({
-        orderNum: sale.order_num,
+        orderNum: cashLabel !== "—" ? cashLabel : null,
         statusLabel: checkoutStatusLabel(sale),
       });
       setStep("complete");
@@ -1298,7 +1340,7 @@ export function PosPaymentPanel({
     await onContinueNextOrder?.();
   }
 
-  const creditValidationError = hasCreditCustomer
+  const creditValidationError = creditSaleActive
     ? validateCustomerCreditSale({
         customer: creditCustomer,
         creditAmount: creditAmountDue,
@@ -1313,10 +1355,9 @@ export function PosPaymentPanel({
   const canComplete =
     adjustmentMode
       ? checkoutTotal <= 0.01 || amountPaid + 0.01 >= checkoutTotal
-      : !changeExcessive &&
-        ((hasCreditCustomer && !creditValidationError) ||
-          amountPaid + 0.01 >= checkoutTotal ||
-          (hasCreditCustomer && cfg.allowPartialPayment && amountPaid > 0));
+      : creditSaleActive
+        ? !creditValidationError
+        : !changeExcessive && amountPaid + 0.01 >= checkoutTotal;
 
   useEffect(() => {
     if (!open || step !== "payment") return;
@@ -1415,6 +1456,10 @@ export function PosPaymentPanel({
   function handleCreditCustomerChange(value, option) {
     setCustomerNum(value);
     setSelectedCreditCustomer(option?.customer ?? null);
+    if (option?.customer) {
+      // Credit sale is always fully unpaid — drop any cash/M-Pesa/bank values.
+      clearTenderAmountsForCredit();
+    }
     setLocalError(null);
   }
 
@@ -1476,7 +1521,12 @@ export function PosPaymentPanel({
                 billTotal: checkoutTotal,
                 payNow: Math.min(amountPaid, checkoutTotal),
                 balanceDue,
-                isCredit: hasCreditCustomer,
+                isCredit: isCheckoutCreditSale({
+                  hasCreditCustomer,
+                  amountPaid,
+                  checkoutTotal,
+                  adjustmentMode,
+                }),
               })}
         </p>
         {confirmSummary && confirmSummary.balanceDue > 0.01 ? (
@@ -1778,7 +1828,7 @@ export function PosPaymentPanel({
       >
         {completedOrder?.orderNum ? (
           <p>
-            Order <strong>#{completedOrder.orderNum}</strong>
+            Cash Sales <strong>#{completedOrder.orderNum}</strong>
             {completedOrder.statusLabel ? ` — ${completedOrder.statusLabel}` : ""}.
           </p>
         ) : null}
@@ -2083,7 +2133,7 @@ export function PosPaymentPanel({
           <PosField label="Cash amount (C)">
             {cashOnlyOffline ? (
               <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
-                Offline — enter Cash, M-Pesa, bank, or cheque amounts manually. STK push and KRA are skipped; receipt prints now and the sale syncs when online. Only credit sales may stay unpaid or partially paid.
+                Offline — enter Cash, M-Pesa, bank, or cheque amounts manually. STK push and KRA are skipped; receipt prints now and the sale syncs when online. Credit (I + customer) always saves as fully unpaid.
               </p>
             ) : null}
             <input
@@ -2322,6 +2372,8 @@ export function PosPaymentPanel({
             />
           <span className="mt-1 block text-[11px] text-slate-600">
             Registered customers only — walk-ins cannot be charged to accounts receivable.
+            Selecting a customer on direct checkout saves the order as fully unpaid (cash and other
+            tenders are ignored).
           </span>
           {creditCustomer && creditCustomerSummary?.limit > 0 ? (
             <span className="mt-1 block text-[11px] text-slate-600">

@@ -442,12 +442,12 @@ describe("collect small / partial payments on order payment", () => {
     expect(cfg.allowPartialPayment).toBe(true);
   });
 
-  it("allows unpaid/partial on External POS only when credit payment is enabled", () => {
+  it("does not allow partial pay-now on direct checkout credit (always fully unpaid)", () => {
     const withCredit = getCheckoutPaymentConfig(
       { sales: { enable_credit_payment: true } },
       { checkoutContext: "pos", capabilities: caps },
     );
-    expect(withCredit.allowPartialPayment).toBe(true);
+    expect(withCredit.allowPartialPayment).toBe(false);
     expect(withCredit.enableCreditPayment).toBe(true);
 
     const withoutCredit = getCheckoutPaymentConfig(

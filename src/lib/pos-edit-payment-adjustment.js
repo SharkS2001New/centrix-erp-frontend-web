@@ -410,6 +410,19 @@ export function rebuildPreviousOrderEditTenders(sourceSale, adjustments, revised
 
   const hasSourcePayments =
     prior.cash > 0 || prior.mpesa > 0 || prior.equity > 0 || prior.kcb > 0;
+  const priorPaid =
+    Math.round(Math.max(0, Number(sourceSale?.amount_paid) || 0) * 100) / 100;
+  const priorWasCredit = Boolean(
+    sourceSale?.is_credit_sale ||
+      String(sourceSale?.payment_method_code ?? "")
+        .trim()
+        .toUpperCase() === "CREDIT" ||
+      ["unpaid", "partial"].includes(
+        String(sourceSale?.payment_status ?? "")
+          .trim()
+          .toLowerCase(),
+      ),
+  );
 
   let cash = hasSourcePayments ? prior.cash : 0;
   let mpesa = hasSourcePayments ? prior.mpesa : 0;
@@ -439,7 +452,16 @@ export function rebuildPreviousOrderEditTenders(sourceSale, adjustments, revised
     kcb = reduce(kcb);
   }
 
+  // Credit unpaid/partial with no new top-up/return: keep the prior settlement.
+  // Scaling tenders to the full revised bill was marking unpaid/partial as paid.
+  const preserveCreditSettlement =
+    priorWasCredit && topupAmount <= 0.0001 && returnGiven <= 0.0001;
+  const normalizeTarget = preserveCreditSettlement
+    ? Math.min(priorPaid > 0.009 ? priorPaid : hasSourcePayments ? priorTenderSum : 0, target)
+    : target;
+
   if (!hasSourcePayments && topupAmount <= 0 && returnGiven <= 0) {
+    const amountPaid = priorWasCredit ? Math.min(priorPaid, target) : target;
     return {
       cash: 0,
       mpesa: 0,
@@ -447,14 +469,14 @@ export function rebuildPreviousOrderEditTenders(sourceSale, adjustments, revised
       kcb: 0,
       returnGiven,
       topupAmount,
-      amountPaid: target,
+      amountPaid,
       adjustments: rows,
     };
   }
 
   const normalized = normalizePreviousOrderEditTenders(
     { cash, mpesa, equity, kcb },
-    target,
+    normalizeTarget,
   );
   const amountPaid =
     Math.round(

@@ -36,19 +36,27 @@ export function PosWorkspaceGuard({ children }) {
   useEffect(() => {
     if (loading || platformUser) return;
 
-    if (needsWorkspaceSelection(capabilities, storedWorkspace, ctx)) {
+    const accessCtx = buildAccessContext({
+      user,
+      organization,
+      capabilities,
+      requireTillFloat: resolveTillFloatNavFlag(capabilities),
+      isSuperAdmin,
+    });
+
+    if (needsWorkspaceSelection(capabilities, storedWorkspace, accessCtx)) {
       if (pathname !== "/choose-workspace") {
         router.replace("/choose-workspace");
       }
       return;
     }
 
-    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
+    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, accessCtx);
     if (!workspaceId) return;
 
     if (!isPosWorkspace(workspaceId)) {
       router.replace(
-        workspaceLandingPath(user?.id, organization?.id, workspaceId, capabilities, ctx),
+        workspaceLandingPath(user?.id, organization?.id, workspaceId, capabilities, accessCtx),
       );
       return;
     }
@@ -59,17 +67,36 @@ export function PosWorkspaceGuard({ children }) {
         organization?.id,
         workspaceId,
         capabilities,
-        ctx,
+        accessCtx,
       );
       if (pathname !== landingPath) {
         router.replace(landingPath);
       }
     }
-  }, [capabilities, ctx, loading, organization?.id, pathname, platformUser, router, storedWorkspace, user?.id]);
+  }, [
+    capabilities,
+    loading,
+    organization?.id,
+    pathname,
+    platformUser,
+    router,
+    storedWorkspace,
+    user?.id,
+    isSuperAdmin,
+    user,
+    organization,
+  ]);
 
   useEffect(() => {
     if (loading || platformUser) return;
-    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
+    const accessCtx = buildAccessContext({
+      user,
+      organization,
+      capabilities,
+      requireTillFloat: resolveTillFloatNavFlag(capabilities),
+      isSuperAdmin,
+    });
+    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, accessCtx);
     if (!isPosWorkspace(workspaceId)) return;
     // Prefer stored channel — React state can lag right after WorkspaceSwitcher.
     if (loginChannel === POS_LOGIN_CHANNEL || getStoredLoginChannel() === POS_LOGIN_CHANNEL) {
@@ -78,7 +105,17 @@ export function PosWorkspaceGuard({ children }) {
     switchWorkspace("pos").catch((err) => {
       console.error("Failed to switch to POS session", err);
     });
-  }, [capabilities, ctx, loading, loginChannel, platformUser, storedWorkspace, switchWorkspace]);
+  }, [
+    capabilities,
+    loading,
+    loginChannel,
+    platformUser,
+    storedWorkspace,
+    switchWorkspace,
+    isSuperAdmin,
+    user,
+    organization,
+  ]);
 
   if (platformUser) return <>{children}</>;
 

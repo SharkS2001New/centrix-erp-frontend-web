@@ -531,8 +531,8 @@ function TillsCheckoutSettingsTab({
               </p>
             ) : (
               <Toggle
-                label="Credit customer field at POS checkout"
-                description="Shows a searchable credit customer field at checkout. Unpaid balance posts to the customer's account."
+                label="Credit customer field at direct checkout"
+                description="Shows a searchable credit customer field on External POS and Sales → Create order checkout. Selecting a customer always saves a fully unpaid credit sale (cash and other tender amounts are ignored). Collect payment on existing orders still allows partial collect."
                 checked={salesForm.enable_credit_payment}
                 onChange={(v) =>
                   setSalesForm((f) => ({

@@ -9,7 +9,8 @@ import {
   saleLineProductLabel,
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
-import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
+import { formatSaleKes } from "@/components/sales/sales-shared";
+import { formatPosBrowseLabel } from "@/lib/sales";
 import { OrderExpandIcon } from "@/components/sales/sales-orders-shared";
 import { PosOfflineSyncControls } from "@/components/sales/pos-offline-sync-controls";
 import { useConfirm } from "@/lib/use-confirm";
@@ -25,10 +26,11 @@ function orderKey(order) {
   return String(order?.client_sale_uuid ?? order?.id ?? "");
 }
 
+/** External POS only — Cash Sales # / pos_order_num, never org S# / order_num. */
 function pendingSyncTitle(order) {
-  const label = formatReceiptNumber(order);
+  const label = formatPosBrowseLabel(order);
   const customer = order.customer_name ?? order.customer_name_override ?? "Walk-in";
-  return `${label} — ${customer}`;
+  return label !== "—" ? `${label} — ${customer}` : customer;
 }
 
 function syncStatusLabel(order) {
@@ -133,11 +135,11 @@ export function PosPendingSyncOverlay({
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((order) => {
-      const receipt = formatReceiptNumber(order).toLowerCase();
+      const ticket = formatPosBrowseLabel(order).toLowerCase();
       const customer = String(order.customer_name ?? order.customer_name_override ?? "").toLowerCase();
-      const orderNum = String(order.order_num ?? "");
+      const posNum = String(order.pos_order_num ?? "");
       const err = String(order.sync_error ?? "").toLowerCase();
-      return receipt.includes(q) || customer.includes(q) || orderNum.includes(q) || err.includes(q);
+      return ticket.includes(q) || customer.includes(q) || posNum.includes(q) || err.includes(q);
     });
   }, [rows, search]);
 

@@ -23,19 +23,28 @@ export function WorkspaceGuard({ children }) {
     useAuth();
   const [channelReady, setChannelReady] = useState(true);
 
-  const ctx = buildAccessContext({
-    user,
-    organization,
-    capabilities,
-    requireTillFloat: resolveTillFloatNavFlag(capabilities),
-    isSuperAdmin,
-  });
-
   const storedWorkspace = getStoredWorkspace();
-  const platformUser = isPlatformShellUser(ctx);
+  const requireTillFloat = resolveTillFloatNavFlag(capabilities);
+  const platformUser = isPlatformShellUser(
+    buildAccessContext({
+      user,
+      organization,
+      capabilities,
+      requireTillFloat,
+      isSuperAdmin,
+    }),
+  );
 
   useEffect(() => {
     if (loading || platformUser) return;
+
+    const ctx = buildAccessContext({
+      user,
+      organization,
+      capabilities,
+      requireTillFloat,
+      isSuperAdmin,
+    });
 
     if (needsWorkspaceSelection(capabilities, storedWorkspace, ctx)) {
       if (pathname !== "/choose-workspace") {
@@ -67,7 +76,20 @@ export function WorkspaceGuard({ children }) {
         router.replace(landingPath);
       }
     }
-  }, [capabilities, ctx, loading, organization?.id, pathname, platformUser, router, storedWorkspace, user?.id]);
+  }, [
+    capabilities,
+    loading,
+    organization?.id,
+    pathname,
+    platformUser,
+    requireTillFloat,
+    router,
+    storedWorkspace,
+    user?.id,
+    isSuperAdmin,
+    user,
+    organization,
+  ]);
 
   // Visiting /pos switches the Sanctum token to the POS channel. Switch back when
   // returning to backoffice/platform so Applications and other admin APIs work.
@@ -81,6 +103,13 @@ export function WorkspaceGuard({ children }) {
       setChannelReady(true);
       return;
     }
+    const ctx = buildAccessContext({
+      user,
+      organization,
+      capabilities,
+      requireTillFloat,
+      isSuperAdmin,
+    });
     const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
     if (!workspaceId || isPosWorkspace(workspaceId)) {
       setChannelReady(true);
@@ -101,7 +130,18 @@ export function WorkspaceGuard({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [capabilities, ctx, loading, loginChannel, platformUser, storedWorkspace, switchWorkspace]);
+  }, [
+    capabilities,
+    loading,
+    loginChannel,
+    platformUser,
+    storedWorkspace,
+    switchWorkspace,
+    requireTillFloat,
+    isSuperAdmin,
+    user,
+    organization,
+  ]);
 
   if (!channelReady) {
     return null;

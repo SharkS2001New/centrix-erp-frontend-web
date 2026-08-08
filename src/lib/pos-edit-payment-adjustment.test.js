@@ -212,6 +212,52 @@ describe("normalizePreviousOrderEditTenders / rebuildPreviousOrderEditTenders", 
     expect(tenders.returnGiven).toBe(2000);
     expect(tenders.topupAmount).toBe(0);
   });
+
+  it("keeps unpaid credit amount_paid at 0 instead of inventing a full settlement", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      {
+        order_total: 12500,
+        amount_paid: 0,
+        is_credit_sale: true,
+        payment_method_code: "CREDIT",
+        payment_status: "unpaid",
+        cash: 0,
+        mpesa_amount: 0,
+        equity_amount: 0,
+        kcb_amount: 0,
+      },
+      [],
+      12500,
+    );
+    expect(tenders.amountPaid).toBe(0);
+    expect(tenders.cash + tenders.mpesa + tenders.equity + tenders.kcb).toBe(0);
+  });
+
+  it("keeps partial credit amount_paid when there are no cash/mpesa columns", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      {
+        order_total: 10000,
+        amount_paid: 4000,
+        is_credit_sale: true,
+        payment_method_code: "CREDIT",
+        payment_status: "partial",
+        cash: 0,
+        mpesa_amount: 0,
+        equity_amount: 0,
+        kcb_amount: 0,
+      },
+      [],
+      10000,
+    );
+    // priorSaleTenderMap maps CREDIT amount_paid onto cash; rebuild should keep ~4000.
+    expect(tenders.amountPaid).toBe(4000);
+  });
 });
 
 describe("computePreviousOrderEditSignedDelta", () => {

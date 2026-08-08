@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { apiRequest, revokeServerAuthSession, isSessionConflictError } from "@/lib/api";
+import { apiRequest, revokeServerAuthSession, isSessionConflictError, ApiError } from "@/lib/api";
 import { endServerAuthSession } from "@/lib/end-auth-session";
 import {
   clearSession,
@@ -288,9 +288,12 @@ export function AuthProvider({ children }) {
       .then((caps) => {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })
-      .catch(async () => {
+      .catch(async (err) => {
         if (isScreenLocked()) return;
         if (cachedCaps) return;
+        // Network/5xx must not wipe a valid session — only real auth death.
+        const status = err instanceof ApiError ? err.status : null;
+        if (status !== 401 && status !== 403) return;
         await revokeServerAuthSession();
         clearSession();
         setUser(null);

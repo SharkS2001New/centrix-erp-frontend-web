@@ -257,8 +257,8 @@ export function usePosOfflineSupport({
             ? ` ${reprints.length} receipt(s) need reprint (Cash Sales # changed: ${reprints
                 .map((r) => {
                   const from =
-                    r.printed_pos_order_num ?? r.printed_order_num ?? "?";
-                  const to = r.pos_order_num ?? r.order_num ?? "?";
+                    r.printed_pos_order_num ?? "?";
+                  const to = r.pos_order_num ?? "?";
                   return `#${from}→#${to}`;
                 })
                 .join(", ")}).`
@@ -293,7 +293,10 @@ export function usePosOfflineSupport({
         if (failed.length) {
           const detail = failed
             .slice(0, 3)
-            .map((r) => `#${r.order_num}: ${r.error}`)
+            .map((r) => {
+              const ticket = r.pos_order_num ?? r.printed_pos_order_num;
+              return ticket != null ? `Cash Sales #${ticket}: ${r.error}` : String(r.error ?? "Sync failed");
+            })
             .join("; ");
           const more = failed.length > 3 ? ` (+${failed.length - 3} more)` : "";
           notifySyncProblem(`${detail}${more}`);
@@ -305,6 +308,7 @@ export function usePosOfflineSupport({
               failed.map((row) => ({
                 id: row.client_sale_uuid ? `offline:${row.client_sale_uuid}` : null,
                 order_num: row.order_num,
+                pos_order_num: row.pos_order_num ?? row.printed_pos_order_num ?? null,
                 offline_pending_sync: true,
                 sync_error: row.error ?? null,
               })),

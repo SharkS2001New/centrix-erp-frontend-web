@@ -1,4 +1,4 @@
-import { getToken, clearSession, isScreenLocked, canSeeServerErrorDetail, getAuthEpoch, hasAuthSession } from "./auth-storage";
+import { getToken, clearSession, isScreenLocked, canSeeServerErrorDetail, getAuthEpoch, hasAuthSession, isAuthSessionRotationInFlight } from "./auth-storage";
 import { isLicenseExpiredApiCode } from "./organization-license";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 import { apiV1BaseUrl } from "./api-base-url";
@@ -30,7 +30,12 @@ export async function revokeServerAuthSession() {
 
 function isAuthEndpoint(path) {
   const normalized = path.startsWith("http") ? new URL(path).pathname : path;
-  return normalized.includes("/auth/login") || normalized.includes("/auth/logout");
+  return (
+    normalized.includes("/auth/login") ||
+    normalized.includes("/auth/logout") ||
+    normalized.includes("/auth/switch-workspace") ||
+    normalized.includes("/auth/switch-organization")
+  );
 }
 
 export function apiBaseOrigin() {
@@ -448,11 +453,15 @@ async function performApiRequest(path, url, options = {}) {
             getToken() &&
             requestBearerToken !== getToken());
         // Stale 401 after backoffice→POS (or any) token rotation must not wipe the new session.
+        // Also suppress while switch-workspace is in flight: requests that start after the
+        // epoch bump still carry the old token until setSession finishes — those 401s look
+        // "fresh" and used to hard-logout mid module switch.
         const ignoreStaleUnauthorized =
           res.status === 401 &&
-          authRotatedSinceRequest &&
           hasAuthSession() &&
-          !licenseExpired;
+          !licenseExpired &&
+          code !== "session_active_elsewhere" &&
+          (authRotatedSinceRequest || isAuthSessionRotationInFlight());
 
         if (licenseExpired && (res.status === 401 || res.status === 403)) {
           clearSession();

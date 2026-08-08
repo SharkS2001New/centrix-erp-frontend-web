@@ -1046,10 +1046,14 @@ function previousOrderEditWorkspaceHint({ kraFiscalize = false, offline = false 
 
 /** Standalone toast / banner copy for previous-order edit modes. */
 function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline = false } = {}) {
-  const label = orderNum != null ? `#${orderNum}` : "this order";
+  // orderNum must be Cash Sales # / pos_order_num — never org S# / order_num.
+  const label =
+    orderNum != null && orderNum !== "" && String(orderNum) !== "—"
+      ? `Cash Sales #${orderNum}`
+      : "this order";
   if (offline) {
     return {
-      loaded: `Order ${label} loaded. Alt+P reprint; F10 to complete.`,
+      loaded: `${label} loaded. Alt+P reprint; F10 to complete.`,
       f10: "F10 completes this offline order.",
       synced: null,
       leaveConfirm:
@@ -1058,17 +1062,17 @@ function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline
   }
   if (kraFiscalize) {
     return {
-      loaded: `Order ${label} loaded. Edit lines — sync and KRA run in the background. Finish with Alt+P or F10: payment methods → reprint → new order.`,
+      loaded: `${label} loaded. Edit lines — sync and KRA run in the background. Finish with Alt+P or F10: payment methods → reprint → new order.`,
       f10: "Enter payment methods for the top-up/return, then the revised receipt prints and a new order opens. KRA syncs in the background.",
-      synced: `Order ${label} saved. Print again with Alt+P if needed.`,
+      synced: `${label} saved. Print again with Alt+P if needed.`,
       leaveConfirm:
         "Start a new order? Edits keep syncing in the background (including KRA). You do not need Alt+P first.",
     };
   }
   return {
-    loaded: `Order ${label} loaded. Each change applies instantly. Finish with Alt+P or F10: payment methods → reprint → new order.`,
+    loaded: `${label} loaded. Each change applies instantly. Finish with Alt+P or F10: payment methods → reprint → new order.`,
     f10: "Enter payment methods for any top-up/return, then the revised receipt prints and focus moves to a new order.",
-    synced: `Order ${label} saved on server. Print the revised receipt (Alt+P or Reprint).`,
+    synced: `${label} saved on server. Print the revised receipt (Alt+P or Reprint).`,
     leaveConfirm:
       "Start a new order? Edits stay queued and sync in the background — Alt+P is not required.",
   };
@@ -1214,15 +1218,20 @@ export function PosScreen({ standalone = false }) {
     userId: user?.id,
   });
 
-  /** Push queued outbox sales to the server (await when caller must block). */
-  async function pushOutboxAfterSale(orderNum, { syncingLabel = "syncing", background = false } = {}) {
+  /** Push queued outbox sales to the server (await when caller must block).
+   * `posTicketNum` is Cash Sales # / pos_order_num only — never org order_num. */
+  async function pushOutboxAfterSale(posTicketNum, { syncingLabel = "syncing", background = false } = {}) {
     if (!standalone) return true;
+    const ticketLabel =
+      posTicketNum != null && posTicketNum !== "" && String(posTicketNum) !== "—"
+        ? `Cash Sales #${posTicketNum}`
+        : null;
 
     const run = async () => {
       if (!background) {
         setStatusMessage(
-          orderNum != null
-            ? `Sale #${orderNum} saved — pushing to server…`
+          ticketLabel
+            ? `${ticketLabel} saved — pushing to server…`
             : "Pushing sale to server…",
         );
       }
@@ -1238,8 +1247,8 @@ export function PosScreen({ standalone = false }) {
         void loadCompletedPosOrders();
       }
       if (ok) {
-        if (orderNum != null && !background) {
-          setStatusMessage(`Sale #${orderNum} completed and synced.`);
+        if (ticketLabel && !background) {
+          setStatusMessage(`${ticketLabel} completed and synced.`);
         }
         return true;
       }
@@ -1248,13 +1257,13 @@ export function PosScreen({ standalone = false }) {
         failed[0]?.error ??
         (pending > 0 ? `${pending} sale(s) still waiting to sync` : "Could not reach the server");
       notifyError(
-        orderNum != null
-          ? `Sale #${orderNum} saved locally — sync failed: ${detail}`
+        ticketLabel
+          ? `${ticketLabel} saved locally — sync failed: ${detail}`
           : `Sale saved locally — sync failed: ${detail}`,
       );
       setStatusMessage(
-        orderNum != null
-          ? `Sale #${orderNum} saved locally — ${syncingLabel}.`
+        ticketLabel
+          ? `${ticketLabel} saved locally — ${syncingLabel}.`
           : `Sale saved locally — ${syncingLabel}.`,
       );
       return false;
@@ -1268,8 +1277,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   /** Fire-and-forget outbox sync after checkout — receipt prints without waiting.
-   * While offline/slow, only queue the sale; reconnect flushes 1, 2, 3… when online. */
-  function queueOutboxAfterSale(orderNum) {
+   * While offline/slow, only queue the sale; reconnect flushes 1, 2, 3… when online.
+   * `posTicketNum` is Cash Sales # / pos_order_num only — never org order_num. */
+  function queueOutboxAfterSale(posTicketNum) {
     if (offlineMode || !canFlushOutbox) {
       void (async () => {
         await refreshOfflineCounts();
@@ -1283,15 +1293,19 @@ export function PosScreen({ standalone = false }) {
           pending > 0
             ? `${pending} order${pending === 1 ? "" : "s"} waiting to sync`
             : "will sync when online";
+        const ticketLabel =
+          posTicketNum != null && posTicketNum !== "" && String(posTicketNum) !== "—"
+            ? `Cash Sales #${posTicketNum}`
+            : null;
         setStatusMessage(
-          orderNum != null
-            ? `Sale #${orderNum} saved — ${waiting}.`
+          ticketLabel
+            ? `${ticketLabel} saved — ${waiting}.`
             : `Sale saved — ${waiting}.`,
         );
       })();
       return;
     }
-    void pushOutboxAfterSale(orderNum, { background: true });
+    void pushOutboxAfterSale(posTicketNum, { background: true });
   }
 
   const handlePendingSyncCountChange = useCallback(
@@ -3142,7 +3156,7 @@ export function PosScreen({ standalone = false }) {
     if (!delta.type || !(Number(delta.amount) > 0)) return null;
     return {
       ...delta,
-      orderNum: resolvePosBrowseNumber(cart) ?? cart?.held_order_num ?? null,
+      orderNum: resolvePosBrowseNumber(cart) ?? null,
     };
   }, [isCartEditSession, editSourceSale, cart, enablePosCashRounding]);
   const previousOrderEditReadyToPrint = useMemo(() => {
@@ -3242,7 +3256,7 @@ export function PosScreen({ standalone = false }) {
         }
         setAutoHeldPrompt({
           saleId: pending.saleId,
-          orderNum: sale.order_num ?? pending.orderNum,
+          orderNum: sale.pos_order_num ?? pending.orderNum ?? null,
           localHeldId: null,
           holdLabel: null,
         });
@@ -4046,8 +4060,7 @@ export function PosScreen({ standalone = false }) {
         setCart(cleared);
         await startFreshWorkspace();
         setStatusMessage(
-          `Order #${formatPosBrowseLabel({
-            order_num: sale.order_num,
+          `Cash Sales #${formatPosBrowseLabel({
             pos_order_num: sale.pos_order_num,
           })} cancelled — return recorded.`,
         );
@@ -8113,8 +8126,11 @@ export function PosScreen({ standalone = false }) {
         .then((result) => {
           if (!result) {
             setReceiptPrintStatus("failed");
+            const cashLabel = formatPosBrowseLabel(sale);
             notifyError(
-              `Order ${sale.order_num ? `#${sale.order_num}` : ""} saved. Print was cancelled or no format was selected.`,
+              cashLabel !== "—"
+                ? `Cash Sales #${cashLabel} saved. Print was cancelled or no format was selected.`
+                : "Order saved. Print was cancelled or no format was selected.",
             );
             return;
           }
@@ -8123,9 +8139,11 @@ export function PosScreen({ standalone = false }) {
         .catch((printErr) => {
           console.error("Receipt print failed", printErr);
           setReceiptPrintStatus("failed");
-          const label = sale.order_num ? `#${sale.order_num}` : "";
+          const cashLabel = formatPosBrowseLabel(sale);
           notifyError(
-            `Order ${label} saved. Receipt did not print — use Reprint on the confirmation screen or Administration → ${LOCAL_PRINTING_ADMIN_LABEL}.`,
+            cashLabel !== "—"
+              ? `Cash Sales #${cashLabel} saved. Receipt did not print — use Reprint on the confirmation screen or Administration → ${LOCAL_PRINTING_ADMIN_LABEL}.`
+              : `Order saved. Receipt did not print — use Reprint on the confirmation screen or Administration → ${LOCAL_PRINTING_ADMIN_LABEL}.`,
           );
         })
         .finally(() => {
@@ -8344,7 +8362,7 @@ export function PosScreen({ standalone = false }) {
       const offlineCashTendered = Number(body?.__cash_tendered ?? 0);
       const isOfflineCredit = Boolean(body?.is_credit_sale);
       // Non-credit tenders (Cash / M-Pesa / Equity / KCB / bank / cheque) must cover the bill.
-      // Only credit may complete unpaid or partially paid. Previous-order edits settle via
+      // Only credit may complete as fully unpaid. Previous-order edits settle via
       // payment_adjustments (pay_now is 0) — skip this gate for those.
       if (
         !isOfflineCredit &&
@@ -8352,7 +8370,7 @@ export function PosScreen({ standalone = false }) {
         cashPay + 0.01 < Number(summary?.amountDue ?? 0)
       ) {
         setPaymentError(
-          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer to leave a balance unpaid or partially paid.",
+          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer (I) to save as fully unpaid.",
         );
         return null;
       }
@@ -8391,6 +8409,7 @@ export function PosScreen({ standalone = false }) {
             checkoutCart.payment_method_code ??
             editSourceSale?.payment_method_code ??
             null,
+          is_credit_sale: isOfflineCredit,
           ...(Array.isArray(checkoutCart.payment_adjustments) && checkoutCart.payment_adjustments.length
             ? { payment_adjustments: checkoutCart.payment_adjustments }
             : {}),
@@ -8401,14 +8420,18 @@ export function PosScreen({ standalone = false }) {
           user,
           organization,
           cashAmount: isOfflineCredit
-            ? cashPay
+            ? 0
             : cashPay > 0
               ? cashPay
               : summarizeLocalPosCart(local, {
                   cashRound: enablePosCashRounding,
                 }).amountDue,
           paymentMethodCode: method || body?.payment_method_code || "CASH",
-          paymentSplits: Array.isArray(body?.payment_splits) ? body.payment_splits : null,
+          paymentSplits: isOfflineCredit
+            ? null
+            : Array.isArray(body?.payment_splits)
+              ? body.payment_splits
+              : null,
           isCreditSale: isOfflineCredit,
           paymentReference: body?.payment_reference ?? null,
           paymentDate: body?.payment_date ?? null,
@@ -8434,15 +8457,22 @@ export function PosScreen({ standalone = false }) {
         setSelectedLineId(null);
         clearPosUiDraft();
         clearLineEntry();
-        setStatusMessage(`Sale #${sale.order_num} saved — printing receipt…`);
+        {
+          const cashLabel = formatPosBrowseLabel(sale);
+          setStatusMessage(
+            cashLabel !== "—"
+              ? `Cash Sales #${cashLabel} saved — printing receipt…`
+              : "Sale saved — printing receipt…",
+          );
+        }
         markServerCartConsumed(activeCart.id);
         if (isPreviousOrderCashEdit && standalone) {
-          queueOutboxAfterSale(sale.order_num);
+          queueOutboxAfterSale(resolvePosBrowseNumber(sale));
           await printRevisedPreviousOrderAndFocusNewOrder(sale);
           return { ...sale, _previous_order_edit_finished: true };
         }
         afterSaleCheckoutComplete(sale, options);
-        queueOutboxAfterSale(sale.order_num);
+        queueOutboxAfterSale(resolvePosBrowseNumber(sale));
         return sale;
       } catch (e) {
         setPaymentError(e?.message ?? "Offline checkout failed.");
@@ -8479,7 +8509,7 @@ export function PosScreen({ standalone = false }) {
         cashPay + 0.01 < Number(summary?.amountDue ?? 0)
       ) {
         setPaymentError(
-          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer to leave a balance unpaid or partially paid.",
+          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer (I) to save as fully unpaid.",
         );
         return null;
       }
@@ -8525,14 +8555,18 @@ export function PosScreen({ standalone = false }) {
             user,
             organization,
             cashAmount: isLocalFirstCredit
-              ? cashPay
+              ? 0
               : cashPay > 0
                 ? cashPay
                 : summarizeLocalPosCart(local, {
                     cashRound: enablePosCashRounding,
                   }).amountDue,
             paymentMethodCode: body?.payment_method_code || "CASH",
-            paymentSplits: Array.isArray(body?.payment_splits) ? body.payment_splits : null,
+            paymentSplits: isLocalFirstCredit
+              ? null
+              : Array.isArray(body?.payment_splits)
+                ? body.payment_splits
+                : null,
             isCreditSale: isLocalFirstCredit,
             paymentReference: body?.payment_reference ?? null,
             paymentDate: body?.payment_date ?? null,
@@ -8564,12 +8598,12 @@ export function PosScreen({ standalone = false }) {
           clearLineEntry();
           void clearPreviousOrderEditDraft().catch(() => {});
           if (isPreviousOrderCashEdit && standalone) {
-            queueOutboxAfterSale(sale.order_num);
+            queueOutboxAfterSale(resolvePosBrowseNumber(sale));
             await printRevisedPreviousOrderAndFocusNewOrder(sale);
             return { ...sale, _previous_order_edit_finished: true };
           }
           afterSaleCheckoutComplete(sale, options);
-          queueOutboxAfterSale(sale.order_num);
+          queueOutboxAfterSale(resolvePosBrowseNumber(sale));
           return sale;
         } catch (e) {
           // Previous-order edits must not fall through to TemporaryCart checkout —
@@ -8636,14 +8670,18 @@ export function PosScreen({ standalone = false }) {
           user,
           organization,
           cashAmount: isLocalFirstCredit
-            ? cashPay
+            ? 0
             : cashPay > 0
               ? cashPay
               : summarizeLocalPosCart(local, {
                   cashRound: enablePosCashRounding,
                 }).amountDue,
           paymentMethodCode: body?.payment_method_code || "CASH",
-          paymentSplits: Array.isArray(body?.payment_splits) ? body.payment_splits : null,
+          paymentSplits: isLocalFirstCredit
+            ? null
+            : Array.isArray(body?.payment_splits)
+              ? body.payment_splits
+              : null,
           isCreditSale: isLocalFirstCredit,
           paymentReference: body?.payment_reference ?? null,
           paymentDate: body?.payment_date ?? null,
@@ -8664,7 +8702,7 @@ export function PosScreen({ standalone = false }) {
         clearPosUiDraft();
         clearLineEntry();
         void clearPreviousOrderEditDraft().catch(() => {});
-        queueOutboxAfterSale(sale.order_num);
+        queueOutboxAfterSale(resolvePosBrowseNumber(sale));
         await printRevisedPreviousOrderAndFocusNewOrder(sale);
         return { ...sale, _previous_order_edit_finished: true };
       } catch (e) {
@@ -8829,9 +8867,9 @@ export function PosScreen({ standalone = false }) {
 
       if (sale?.fulfillment_meta?.same_day_customer_append) {
         const label = formatPosBrowseLabel(sale);
-        setStatusMessage(`Items added to customer order #${label}.`);
+        setStatusMessage(`Items added to Cash Sales #${label}.`);
         if (standalone) {
-          notifySuccess(`Items added to existing order #${label} for this customer.`);
+          notifySuccess(`Items added to existing Cash Sales #${label} for this customer.`);
         }
       }
       // Kick print before cart-clear state churn so HTML build starts immediately.
@@ -8864,7 +8902,12 @@ export function PosScreen({ standalone = false }) {
       clearLineEntry();
       void clearPreviousOrderEditDraft().catch(() => {});
       if (!kraSoftFailed) {
-        setStatusMessage(`Order #${sale.order_num} completed.`);
+        const cashLabel = formatPosBrowseLabel(sale);
+        setStatusMessage(
+          cashLabel !== "—"
+            ? `Cash Sales #${cashLabel} completed.`
+            : "Order completed.",
+        );
       }
       if (liveCart?.held_order_num) {
         setEditSourceSale(null);
@@ -8988,9 +9031,27 @@ export function PosScreen({ standalone = false }) {
       user,
       organization,
       floatSessionId,
-      cashAmount: summarizeLocalPosCart(local, {
-        cashRound: enablePosCashRounding,
-      }).amountDue,
+      // Credit unpaid/partial: preserve prior amount_paid (often 0). Never pass the
+      // full revised bill as cashAmount — that coerced unpaid edits to paid.
+      cashAmount: (() => {
+        const revisedDue = summarizeLocalPosCart(local, {
+          cashRound: enablePosCashRounding,
+        }).amountDue;
+        const creditEdit = Boolean(
+          local.is_credit_sale ||
+            editSourceSale?.is_credit_sale ||
+            String(
+              local.payment_method_code ?? editSourceSale?.payment_method_code ?? "",
+            )
+              .trim()
+              .toUpperCase() === "CREDIT",
+        );
+        if (!creditEdit) return revisedDue;
+        const priorPaid = Number(
+          editSourceSale?.amount_paid ?? local.amount_paid ?? 0,
+        );
+        return Math.max(0, Math.min(priorPaid, revisedDue));
+      })(),
       cashRound: enablePosCashRounding,
     });
     {
@@ -9051,14 +9112,17 @@ export function PosScreen({ standalone = false }) {
           Number(afterCart.held_order_num) === Number(queuedHeldOrderNum) &&
           !editedOrderHasLocalDraftChanges(afterCart)
         ) {
-          const syncedMsg = previousOrderEditModeMessages(queuedHeldOrderNum, {
+          const syncedMsg = previousOrderEditModeMessages(
+            formatPosBrowseLabel(afterCart),
+            {
             kraFiscalize: shouldSubmitKraOnCheckout(
               capabilities?.module_settings,
               capabilities,
               summarizeLocalPosCart(afterCart)?.total ??
                 summarizeLocalPosCart(afterCart)?.amountDue,
             ),
-          }).synced;
+            },
+          ).synced;
           if (syncedMsg) {
             posSnackbar(syncedMsg);
           }
@@ -9215,12 +9279,7 @@ export function PosScreen({ standalone = false }) {
           : null;
     const sale = editSnapshot ?? saleLike;
     const cashSalesLabel = formatCashSalesNumber(sale);
-    const orderLabel =
-      cashSalesLabel !== "—"
-        ? cashSalesLabel
-        : sale?.order_num
-          ? `#${sale.order_num}`
-          : "";
+    const orderLabel = cashSalesLabel !== "—" ? cashSalesLabel : "";
 
     setReceiptPrintStatus("pending");
     const loadingToastId = toast.loading(
@@ -9584,7 +9643,12 @@ export function PosScreen({ standalone = false }) {
         clearLineEntry();
         await loadCashierCart();
         setStatusMessage(
-          `Order #${sale.order_num} completed — M-Pesa ${formatSaleKes(payNow)} received. Ready for next order.`,
+          (() => {
+            const cashLabel = formatPosBrowseLabel(sale);
+            return cashLabel !== "—"
+              ? `Cash Sales #${cashLabel} completed — M-Pesa ${formatSaleKes(payNow)} received. Ready for next order.`
+              : `Order completed — M-Pesa ${formatSaleKes(payNow)} received. Ready for next order.`;
+          })(),
         );
         window.requestAnimationFrame(() => {
           searchInputRef.current?.focus({ preventScroll: true });
@@ -9735,7 +9799,11 @@ export function PosScreen({ standalone = false }) {
           : "Walk-in"
         : customer?.customer_name;
       const whoSuffix = who ? ` for ${who}` : "";
-      const successText = `Order saved${whoSuffix} — #${sale.order_num} (${sale.status}). Ready for next sale.`;
+      const cashLabel = formatPosBrowseLabel(sale);
+      const successText =
+        cashLabel !== "—"
+          ? `Order saved${whoSuffix} — Cash Sales #${cashLabel} (${sale.status}). Ready for next sale.`
+          : `Order saved${whoSuffix} (${sale.status}). Ready for next sale.`;
       if (standalone) {
         notifySuccess(successText);
       } else {
@@ -9918,14 +9986,13 @@ export function PosScreen({ standalone = false }) {
 
     if (discardPreviousOrderEdit && editingPrevious) {
       if (editedOrderHasLocalDraftChanges(activeCart)) {
-        const orderLabel = activeCart.held_order_num != null
-          ? String(activeCart.held_order_num)
-          : "";
+        const orderLabel = formatPosBrowseLabel(activeCart);
         const ok = await confirm({
           title: "Cancel previous-order edit",
-          message: orderLabel
-            ? `Discard changes to order ${orderLabel}? Items and quantities stay as on the original receipt, and a new order workspace opens.`
-            : "Discard changes to this previous order? Items and quantities stay as on the original receipt, and a new order workspace opens.",
+          message:
+            orderLabel !== "—"
+              ? `Discard changes to Cash Sales #${orderLabel}? Items and quantities stay as on the original receipt, and a new order workspace opens.`
+              : "Discard changes to this previous order? Items and quantities stay as on the original receipt, and a new order workspace opens.",
           confirmLabel: "Discard edits",
           cancelLabel: "Keep editing",
           destructive: true,
@@ -9961,7 +10028,7 @@ export function PosScreen({ standalone = false }) {
           )
         : false;
       const leaveMsgs = editingPrevious
-        ? previousOrderEditModeMessages(activeCart.held_order_num, {
+        ? previousOrderEditModeMessages(formatPosBrowseLabel(activeCart), {
             kraFiscalize,
             offline: activeOfflineEdit,
           })
@@ -10489,12 +10556,7 @@ export function PosScreen({ standalone = false }) {
 
     setReceiptPrintStatus("pending");
     const cashSalesLabel = formatCashSalesNumber(sale);
-    const orderLabel =
-      cashSalesLabel !== "—"
-        ? cashSalesLabel
-        : sale.order_num
-          ? `#${sale.order_num}`
-          : "";
+    const orderLabel = cashSalesLabel !== "—" ? cashSalesLabel : "";
     const loadingToastId = toast.loading(
       orderLabel ? `Printing receipt ${orderLabel}…` : "Printing receipt…",
     );
@@ -10900,11 +10962,15 @@ export function PosScreen({ standalone = false }) {
         if (customerMemory.name || customerMemory.customerNum != null) {
           rememberPosOrderCustomer(browseNum ?? orderNum, customerMemory);
         }
-        const displayNum = browseNum ?? orderNum;
+        const displayNum = browseNum;
         setStatusMessage(
           keepEditing
-            ? `Editing offline order #${displayNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`
-            : `Loaded offline order #${displayNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`,
+            ? displayNum != null
+              ? `Editing offline Cash Sales #${displayNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`
+              : `Editing offline order — ${previousOrderEditWorkspaceHint({ offline: true })}`
+            : displayNum != null
+              ? `Loaded offline Cash Sales #${displayNum} — ${previousOrderEditWorkspaceHint({ offline: true })}`
+              : `Loaded offline order — ${previousOrderEditWorkspaceHint({ offline: true })}`,
         );
         if (standalone && displayNum != null) {
           notifySuccess(
@@ -10979,7 +11045,7 @@ export function PosScreen({ standalone = false }) {
       const sourceSale = saleSnapshot?.id ? saleSnapshot : editSourceSale;
       if (sourceSale) setEditSourceSale(sourceSale);
       const browseNum = resolvePosBrowseNumber(liveCart);
-      const label = browseNum ?? liveCart?.held_order_num ?? saleId;
+      const label = browseNum;
       const kraFiscalize = shouldSubmitKraOnCheckout(
         capabilities?.module_settings,
         capabilities,
@@ -10987,7 +11053,11 @@ export function PosScreen({ standalone = false }) {
       );
       const editHint = previousOrderEditWorkspaceHint({ kraFiscalize });
       setOrderEditError(null);
-      setStatusMessage(`Order #${label} already open for editing — ${editHint}`);
+      setStatusMessage(
+        label != null
+          ? `Cash Sales #${label} already open for editing — ${editHint}`
+          : `Order already open for editing — ${editHint}`,
+      );
       return;
     }
 
@@ -11028,14 +11098,14 @@ export function PosScreen({ standalone = false }) {
       unlockedEarly = true;
       setBusy(false);
       if (loadingBegun) endPreviousOrderLoading();
-      if (labelForStatus != null) {
+      if (labelForStatus != null && labelForStatus !== "—") {
         const kraFiscalize = shouldSubmitKraOnCheckout(
           capabilities?.module_settings,
           capabilities,
           summarizeLocalPosCart(cartRef.current)?.total,
         );
         setStatusMessage(
-          `Order #${labelForStatus} loaded — ${previousOrderEditWorkspaceHint({ kraFiscalize })}`,
+          `Cash Sales #${labelForStatus} loaded — ${previousOrderEditWorkspaceHint({ kraFiscalize })}`,
         );
       }
     };
@@ -11057,7 +11127,7 @@ export function PosScreen({ standalone = false }) {
       if (browseNum != null) setEditOrderNo(String(browseNum));
       paintedOptimistic = true;
       // Unlock immediately — cashier can edit while restore/stock/KRA finish.
-      unlockTillEarly(browseNum ?? optimistic.held_order_num ?? saleId);
+      unlockTillEarly(browseNum);
       if (standalone) {
         const kraFiscalize = shouldSubmitKraOnCheckout(
           capabilities?.module_settings,
@@ -11065,7 +11135,7 @@ export function PosScreen({ standalone = false }) {
           summarizeLocalPosCart(optimistic)?.total,
         );
         notifySuccess(
-          previousOrderEditModeMessages(browseNum ?? optimistic.held_order_num ?? saleId, {
+          previousOrderEditModeMessages(browseNum, {
             kraFiscalize,
           }).loaded,
         );
@@ -11241,7 +11311,7 @@ export function PosScreen({ standalone = false }) {
       });
       restoreActive = false;
       const applied = applyAuthoritativeRestoredCart(restoredRaw);
-      const label = applied.browseNum ?? applied.clean?.held_order_num ?? saleId;
+      const label = applied.browseNum;
       const restoredSummary = summarizeLocalPosCart(applied.clean);
       const kraFiscalize = shouldSubmitKraOnCheckout(
         capabilities?.module_settings,
@@ -11254,16 +11324,26 @@ export function PosScreen({ standalone = false }) {
       if (!unlockedEarly) {
         setStatusMessage(
           keepEditing
-            ? `Order #${label} updated — ${editHint}`
+            ? label != null
+              ? `Cash Sales #${label} updated — ${editHint}`
+              : `Order updated — ${editHint}`
             : kraVoidPending
-              ? `Order #${label} loaded — ${editHint} KRA void runs in the background.`
-              : `Order #${label} loaded — ${editHint}`,
+              ? label != null
+                ? `Cash Sales #${label} loaded — ${editHint} KRA void runs in the background.`
+                : `Order loaded — ${editHint} KRA void runs in the background.`
+              : label != null
+                ? `Cash Sales #${label} loaded — ${editHint}`
+                : `Order loaded — ${editHint}`,
         );
         if (standalone) {
           notifySuccess(editMsgs.loaded);
         }
       } else if (kraVoidPending || restoredRaw?.stock_reverse_pending) {
-        setStatusMessage(`Order #${label} ready — ${editHint}`);
+        setStatusMessage(
+          label != null
+            ? `Cash Sales #${label} ready — ${editHint}`
+            : `Order ready — ${editHint}`,
+        );
       }
     } catch (e) {
       restoreActive = false;
@@ -11764,7 +11844,7 @@ export function PosScreen({ standalone = false }) {
               flashPosShortcutMessage("Syncing saved changes to the server…", { error: false });
             } else {
               flashPosShortcutMessage(
-                previousOrderEditModeMessages(activeCart.held_order_num, {
+                previousOrderEditModeMessages(formatPosBrowseLabel(activeCart), {
                   kraFiscalize: kraOn,
                 }).synced ?? "Order already saved — print with Alt+P.",
                 { error: false },
@@ -11799,7 +11879,9 @@ export function PosScreen({ standalone = false }) {
         }
 
         flashPosShortcutMessage(
-          previousOrderEditModeMessages(activeCart.held_order_num, { offline: true }).f10,
+          previousOrderEditModeMessages(formatPosBrowseLabel(activeCart), {
+            offline: true,
+          }).f10,
           { error: false },
         );
 
@@ -12400,13 +12482,16 @@ export function PosScreen({ standalone = false }) {
                   title={
                     receiptPrintStatus === "pending"
                       ? "Printing receipt…"
-                      : reprintSale?.order_num
-                        ? `Reprint receipt #${reprintSale.order_num}`
-                        : isCartEditSession
-                          ? instantAutoEditSync
-                            ? "Reprint revised receipt (Alt+P)"
-                            : "Reprint this order"
-                      : "Complete an order first"
+                      : (() => {
+                          const cashLabel = formatPosBrowseLabel(reprintSale);
+                          if (cashLabel !== "—") return `Reprint Cash Sales #${cashLabel}`;
+                          if (isCartEditSession) {
+                            return instantAutoEditSync
+                              ? "Reprint revised receipt (Alt+P)"
+                              : "Reprint this order";
+                          }
+                          return "Complete an order first";
+                        })()
                   }
                   onClick={() => void handlePrintReceipt()}
                   className={posHeaderBtnClassName}
@@ -12417,9 +12502,10 @@ export function PosScreen({ standalone = false }) {
                     data-short={
                       receiptPrintStatus === "pending"
                         ? "Printing…"
-                        : reprintSale?.order_num
-                          ? `Reprint #${reprintSale.order_num}`
-                          : "Reprint"
+                        : (() => {
+                            const cashLabel = formatPosBrowseLabel(reprintSale);
+                            return cashLabel !== "—" ? `Reprint #${cashLabel}` : "Reprint";
+                          })()
                     }
                   >
                     {receiptPrintStatus === "pending"
@@ -12470,17 +12556,21 @@ export function PosScreen({ standalone = false }) {
                     type="button"
                     disabled={offlineSyncing}
                     title={
-                      failedSyncOrders[0]?.order_num != null
-                        ? `Print receipt for failed offline order #${failedSyncOrders[0].order_num}`
-                        : "Print receipt for the failed offline order"
+                      (() => {
+                        const cashLabel = formatPosBrowseLabel(failedSyncOrders[0]);
+                        return cashLabel !== "—"
+                          ? `Print receipt for failed offline Cash Sales #${cashLabel}`
+                          : "Print receipt for the failed offline order";
+                      })()
                     }
                     onClick={() => void handlePrintFailedOfflineReceipt(failedSyncOrders[0])}
                     className={posHeaderBtnClassName}
                   >
                     Print failed
-                    {failedSyncOrders[0]?.order_num != null
-                      ? ` #${formatPosBrowseLabel(failedSyncOrders[0])}`
-                      : ""}
+                    {(() => {
+                      const cashLabel = formatPosBrowseLabel(failedSyncOrders[0]);
+                      return cashLabel !== "—" ? ` #${cashLabel}` : "";
+                    })()}
                   </button>
                 ) : null}
               </div>

@@ -6,9 +6,14 @@ import { Field, FormModal, inputClassName, parseDecimalInput } from "@/component
 import { cartTotals, formatSaleKes, getPaymentMethodKind } from "@/lib/sales";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { searchCreditCustomers } from "@/lib/credit-customer-search";
+import { resolveCheckoutStatus } from "@/lib/order-workflow";
 
 const WALK_IN = { customer_num: null, label: "Walk-in" };
 
+/**
+ * Legacy direct-checkout modal (payment methods + optional credit).
+ * Credit method always books a fully unpaid sale — amount received is ignored.
+ */
 export function CheckoutModal({
   open,
   onClose,
@@ -16,6 +21,8 @@ export function CheckoutModal({
   saving,
   error,
   onCheckout,
+  channel = "pos",
+  workflow = null,
 }) {
   const [customerOptions, setCustomerOptions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -30,8 +37,12 @@ export function CheckoutModal({
     (m) => String(m.method_code).toUpperCase() === paymentMethodCode.toUpperCase(),
   );
   const kind = getPaymentMethodKind(selectedMethod);
-  const isCredit = kind === "credit";
-  const received = parseDecimalInput(amountReceived);
+  const creditSale =
+    kind === "credit" ||
+    String(paymentMethodCode ?? "")
+      .trim()
+      .toUpperCase() === "CREDIT";
+  const received = creditSale ? 0 : parseDecimalInput(amountReceived);
   const change = Math.max(0, received - totals.total);
 
   useEffect(() => {
@@ -57,10 +68,14 @@ export function CheckoutModal({
   }, [open]);
 
   useEffect(() => {
-    if (open && totals.total > 0 && kind === "cash") {
+    if (open && totals.total > 0 && kind === "cash" && !creditSale) {
       setAmountReceived(String(Math.ceil(totals.total)));
     }
-  }, [open, totals.total, kind]);
+    if (creditSale) {
+      setAmountReceived("0");
+      setReference("");
+    }
+  }, [open, totals.total, kind, creditSale]);
 
   const searchCustomersForSelect = useCallback(async (query) => {
     const rows = await searchCreditCustomers(query, { perPage: 30 });
@@ -71,20 +86,38 @@ export function CheckoutModal({
   function handleCustomerChange(nextValue, option) {
     setCustomerNum(nextValue);
     setSelectedCustomer(option?.customer ?? null);
+    if (option?.customer) {
+      setAmountReceived("0");
+      const creditMethod = paymentMethods.find((m) => getPaymentMethodKind(m) === "credit");
+      if (creditMethod) setPaymentMethodCode(creditMethod.method_code);
+    }
   }
 
   function handleSubmit() {
+    const payNow = creditSale ? 0 : Math.min(received, totals.total);
+    const methodCode = creditSale ? "CREDIT" : paymentMethodCode;
+    const status = resolveCheckoutStatus({
+      channel,
+      isCredit: creditSale,
+      payNow,
+      total: totals.total,
+      workflow,
+      paymentMethodCode: methodCode,
+      allowPartialPayment: false,
+    });
     const body = {
-      status: isCredit ? "pending_payment" : "completed",
-      payment_method_code: paymentMethodCode,
-      is_credit_sale: isCredit,
-      pay_now: isCredit ? 0 : Math.min(received, totals.total),
+      status,
+      payment_method_code: methodCode,
+      is_credit_sale: creditSale,
+      ...(creditSale ? { payment_status: "unpaid" } : {}),
+      pay_now: payNow,
     };
     if (customerNum) body.customer_num = Number(customerNum);
-    if (isCredit) {
+    if (creditSale) {
       body.customer_name_override =
         selectedCustomer?.customer_name ??
-        customerOptions.find((c) => String(c.value) === String(customerNum))?.customer?.customer_name;
+        customerOptions.find((c) => String(c.value) === String(customerNum))?.customer
+          ?.customer_name;
     }
     onCheckout?.(body);
   }
@@ -155,7 +188,13 @@ export function CheckoutModal({
         </div>
       </Field>
 
-      {!isCredit && kind === "cash" ? (
+      {creditSale ? (
+        <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Credit sale — saved as fully unpaid. Amount received is ignored.
+        </p>
+      ) : null}
+
+      {!creditSale && kind === "cash" ? (
         <>
           <Field label="Amount received">
             <input
@@ -173,7 +212,7 @@ export function CheckoutModal({
         </>
       ) : null}
 
-      {!isCredit && kind !== "cash" && selectedMethod?.requires_reference ? (
+      {!creditSale && kind !== "cash" && selectedMethod?.requires_reference ? (
         <Field label="Reference">
           <input
             className={inputClassName()}
@@ -183,7 +222,6 @@ export function CheckoutModal({
           />
         </Field>
       ) : null}
-
     </FormModal>
   );
 }

@@ -10,9 +10,9 @@ import {
   saleLineProductLabel,
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
-import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
+import { formatSaleKes } from "@/components/sales/sales-shared";
 import { OrderExpandButton } from "@/components/sales/sales-orders-shared";
-import { saleCustomerLabel } from "@/lib/sales";
+import { formatPosBrowseLabel, saleCustomerLabel } from "@/lib/sales";
 import { useConfirm } from "@/lib/use-confirm";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
@@ -34,7 +34,8 @@ function heldOrderLabel(order) {
   if (order?.local_held || isLocalHeldId(order?.id)) {
     return order.hold_label || "HOLD";
   }
-  return formatReceiptNumber(order);
+  // External POS: Cash Sales # only — never org S# / order_num.
+  return formatPosBrowseLabel(order);
 }
 
 function heldCustomerName(order) {
@@ -61,8 +62,7 @@ function heldOrderSearchHaystack(order) {
   const parts = [
     heldCustomerName(order),
     heldOrderLabel(order),
-    formatReceiptNumber(order),
-    order?.order_num,
+    order?.pos_order_num,
     order?.hold_label,
     order?.customer_name_override,
     order?.customer_name,

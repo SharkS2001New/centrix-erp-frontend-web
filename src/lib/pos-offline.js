@@ -960,8 +960,8 @@ export function withPosReceiptTicket(sale, cartOrSource = null) {
 
 /**
  * Complete a local POS sale: reserved order # (or reuse for edits), queue outbox, clear cart.
- * Supports Cash / M-Pesa / bank / cheque tenders (and credit unpaid/partial). Non-credit sales
- * are always marked paid; only credit may stay unpaid or partially paid.
+ * Supports Cash / M-Pesa / bank / cheque tenders (and credit fully unpaid). Non-credit sales
+ * are always marked paid; credit (I + registered customer) always saves as fully unpaid.
  * Supports:
  * - new sale (takes reserved order #)
  * - revising a pending offline sale (same client uuid + order #)
@@ -1092,25 +1092,16 @@ export async function completeOfflineCashSale({
   const soldAtMs = existingOutbox?.created_at_ms ?? Date.now();
   const soldAtIso = new Date(soldAtMs).toISOString();
 
-  // Previous-order edits preserve the original tender method (often CREDIT). Never force
-  // is_credit_sale=false in that case — checkout rejects CREDIT without the credit flag.
-  const priorMethodHint = String(
-    cart.payment_method_code ??
-      existingOutbox?.sale_payload?.payment_method_code ??
-      existingOutbox?.checkout_body?.payment_method_code ??
-      cart.offline_edit_snapshot?.payment_method_code ??
-      "",
-  )
-    .trim()
-    .toUpperCase();
+  // Previous-order edits: keep credit only when the prior sale was an explicit credit sale.
+  // Do not infer credit from payment_method_code alone (that marked cash edits as credit).
   const priorWasCreditSale = Boolean(
     cart.is_credit_sale ??
       existingOutbox?.sale_payload?.is_credit_sale ??
       existingOutbox?.checkout_body?.is_credit_sale ??
       cart.offline_edit_snapshot?.is_credit_sale,
   );
-  const isCreditSale = isPreviousOrderEdit
-    ? priorWasCreditSale || priorMethodHint === "CREDIT"
+  let isCreditSale = isPreviousOrderEdit
+    ? priorWasCreditSale
     : Boolean(isCreditSaleOpt);
   const requestedPay = Math.max(0, Number(cashAmount ?? 0));
 
@@ -1134,8 +1125,18 @@ export async function completeOfflineCashSale({
   const nonCreditTendered =
     paymentSplits.length > 0 ? splitTendered : requestedPay;
 
+  // I then C/M/E/K with full tender: never book as credit A/R (cashier changed mind).
+  if (
+    !isPreviousOrderEdit &&
+    isCreditSale &&
+    Number(summary.amountDue) > 0.01 &&
+    nonCreditTendered + 0.01 >= Number(summary.amountDue)
+  ) {
+    isCreditSale = false;
+  }
+
   // Cash / M-Pesa / Equity / KCB / bank / cheque must cover the bill.
-  // Only the credit-customer input may leave unpaid or partially paid.
+  // Credit (I + registered customer) always saves as fully unpaid — no partial A/R.
   if (
     !isCreditSale &&
     !isPreviousOrderEdit &&
@@ -1143,14 +1144,12 @@ export async function completeOfflineCashSale({
     nonCreditTendered + 0.01 < Number(summary.amountDue)
   ) {
     throw new Error(
-      "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer to leave a balance unpaid or partially paid.",
+      "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer (I) to save as fully unpaid.",
     );
   }
 
-  // Non-credit: settle in full. Credit may be unpaid (0) or partially paid.
-  const payNow = isCreditSale
-    ? Math.min(requestedPay, summary.total)
-    : Math.max(nonCreditTendered, summary.amountDue);
+  // Non-credit: settle in full. Credit sales from POS are always fully unpaid.
+  const payNow = isCreditSale ? 0 : Math.max(nonCreditTendered, summary.amountDue);
 
   // Previous-order edits must keep the original tender method on the local sale /
   // checkout body. Hardcoding CASH caused synced sales to show Cash after edit.
@@ -1164,11 +1163,19 @@ export async function completeOfflineCashSale({
       ];
       for (const raw of candidates) {
         const code = String(raw ?? "").trim().toUpperCase();
-        if (code) return code;
+        if (!code) continue;
+        // Non-credit revise must not keep a CREDIT tender code (server rejects / partial A/R).
+        if (code === "CREDIT" && !isCreditSale) return "CASH";
+        return code;
       }
       return "CASH";
     }
     const fromOpt = String(paymentMethodCodeOpt ?? "").trim().toUpperCase();
+    if (fromOpt && fromOpt !== "CREDIT") return fromOpt;
+    if (fromOpt === "CREDIT" && !isCreditSale) {
+      // Stale CREDIT after full C/M/E/K pay — settle as cash.
+      return "CASH";
+    }
     if (fromOpt) return fromOpt;
     if (isCreditSale && payNow <= 0.01) return "CREDIT";
     return "CASH";
@@ -1219,23 +1226,6 @@ export async function completeOfflineCashSale({
       : paymentMethodCode === "KCB"
         ? payNow
         : 0;
-
-  const amountPaidForStatus = isCreditSale ? payNow : summary.total;
-  const paymentStatus = (() => {
-    if (!isCreditSale) return "paid";
-    if (amountPaidForStatus + 0.01 >= summary.total && summary.total > 0) return "paid";
-    if (amountPaidForStatus > 0.01) return "partial";
-    return "unpaid";
-  })();
-  // Match online checkout: fully paid → workflow "paid" (not "completed").
-  // Offline outbox must be an exact copy of what sync will create.
-  const saleWorkflowStatus =
-    String(workflowStatus ?? "").trim() ||
-    (paymentStatus === "paid"
-      ? "paid"
-      : paymentStatus === "partial"
-        ? "pending_payment"
-        : "unpaid");
 
   // Prefer the cart customer. When revising a queued offline sale, trust the cart
   // only — never resurrect Customer A after the cashier cleared to Walk-in.
@@ -1387,6 +1377,26 @@ export async function completeOfflineCashSale({
     ? editTenders.adjustments
     : editAdjustmentsForCheckout;
 
+  // Prefer rebuilt edit tenders for credit unpaid/partial; never force "paid" on edit.
+  const amountPaidFinal = editTenders
+    ? Math.max(0, Number(editTenders.amountPaid) || 0)
+    : isCreditSale
+      ? payNow
+      : summary.total;
+  const paymentStatusFinal = (() => {
+    if (!isCreditSale) return "paid";
+    if (amountPaidFinal + 0.01 >= summary.total && summary.total > 0) return "paid";
+    if (amountPaidFinal > 0.01) return "partial";
+    return "unpaid";
+  })();
+  const saleWorkflowStatusFinal =
+    String(workflowStatus ?? "").trim() ||
+    (paymentStatusFinal === "paid"
+      ? "paid"
+      : paymentStatusFinal === "partial"
+        ? "pending_payment"
+        : "unpaid");
+
   const sale = {
     id: `offline:${clientSaleUuid}`,
     client_sale_uuid: clientSaleUuid,
@@ -1402,17 +1412,13 @@ export async function completeOfflineCashSale({
     created_by: user?.id ?? null,
     channel: "pos",
     order_source: "pos",
-    status: saleWorkflowStatus,
-    payment_status: editTenders ? "paid" : paymentStatus,
+    status: saleWorkflowStatusFinal,
+    payment_status: paymentStatusFinal,
     payment_method_code: paymentMethodCode,
     is_credit_sale: isCreditSale,
     order_total: summary.total,
     total_vat: summary.vat,
-    amount_paid: editTenders
-      ? editTenders.amountPaid
-      : isCreditSale
-        ? payNow
-        : summary.total,
+    amount_paid: amountPaidFinal,
     cash: editTenders
       ? editTenders.cash
       : tenderCash,
@@ -1448,14 +1454,16 @@ export async function completeOfflineCashSale({
             reference_number: part.reference_number ?? null,
             payment_method: { code: part.method_code, name: part.method_code },
           }))
-        : [
-            {
-              id: 1,
-              payment_method_code: paymentMethodCode,
-              amount: payNow,
-              payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
-            },
-          ],
+        : amountPaidFinal > 0.01
+          ? [
+              {
+                id: 1,
+                payment_method_code: paymentMethodCode,
+                amount: amountPaidFinal,
+                payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
+              },
+            ]
+          : [],
   };
 
   const wasSyncing = existingOutbox?.sync_status === "syncing";
@@ -1504,7 +1512,8 @@ export async function completeOfflineCashSale({
       payment_method_code: paymentMethodCode,
       pay_now: isPreviousOrderEdit ? 0 : payNow,
       is_credit_sale: isCreditSale,
-      ...(saleWorkflowStatus ? { status: saleWorkflowStatus } : {}),
+      payment_status: paymentStatusFinal,
+      ...(saleWorkflowStatusFinal ? { status: saleWorkflowStatusFinal } : {}),
       ...(paymentReference ? { payment_reference: String(paymentReference).trim() } : {}),
       ...(paymentDate ? { payment_date: paymentDate } : {}),
       ...(paymentSplits.length > 0 && !isPreviousOrderEdit
@@ -1730,6 +1739,28 @@ export function buildPreviousOrderEditPrintSale(
   );
 
   const amountPaid = isEmptyCancel ? 0 : tenders.amountPaid;
+  const isCreditPrint = Boolean(
+    cart.is_credit_sale ??
+      sourceSale?.is_credit_sale ??
+      snapshot?.is_credit_sale,
+  ) ||
+    String(cart.payment_method_code ?? sourceSale?.payment_method_code ?? "")
+      .trim()
+      .toUpperCase() === "CREDIT";
+  const printPaymentStatus = (() => {
+    if (isEmptyCancel) return "refunded";
+    if (!isCreditPrint) return "paid";
+    if (amountPaid + 0.01 >= revisedTotal && revisedTotal > 0) return "paid";
+    if (amountPaid > 0.01) return "partial";
+    return "unpaid";
+  })();
+  const printWorkflowStatus = isEmptyCancel
+    ? "cancelled"
+    : printPaymentStatus === "paid"
+      ? "paid"
+      : printPaymentStatus === "partial"
+        ? "pending_payment"
+        : "unpaid";
 
   return {
     id: cart.server_sale_id ?? sourceSale?.id ?? `edit:${orderNum}`,
@@ -1743,9 +1774,10 @@ export function buildPreviousOrderEditPrintSale(
     branch_id: cart.branch_id ?? user?.branch_id ?? null,
     channel: "pos",
     order_source: "pos",
-    status: isEmptyCancel ? "cancelled" : "completed",
-    payment_status: isEmptyCancel ? "refunded" : "paid",
+    status: printWorkflowStatus,
+    payment_status: printPaymentStatus,
     payment_method_code: paymentMethodCode,
+    is_credit_sale: isCreditPrint,
     order_total: revisedTotal,
     total_vat: isEmptyCancel ? 0 : summary.vat,
     amount_paid: amountPaid,
@@ -1997,20 +2029,24 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
     body.float_session_id = openFloatSessionId;
   }
 
-  // Repair stuck previous-order edits that preserved CREDIT method but cleared is_credit_sale.
+  // Repair stuck previous-order edits: CREDIT method without credit flag.
+  // Only re-enable credit when the prior sale was actually a credit sale.
   const methodCode = String(body.payment_method_code ?? "").trim().toUpperCase();
   const priorCredit = Boolean(
     row.sale_payload?.is_credit_sale ??
       row.prior_sale_snapshot?.is_credit_sale ??
       row.checkout_body?.is_credit_sale,
   );
-  if (
-    (row.sync_kind === "previous_order_edit" || methodCode === "CREDIT") &&
-    (priorCredit || methodCode === "CREDIT")
-  ) {
-    body.is_credit_sale = true;
-    if (!body.payment_method_code) {
-      body.payment_method_code = "CREDIT";
+  if (row.sync_kind === "previous_order_edit") {
+    if (priorCredit) {
+      body.is_credit_sale = true;
+      if (!body.payment_method_code) {
+        body.payment_method_code = "CREDIT";
+      }
+    } else if (methodCode === "CREDIT") {
+      // Non-credit revise accidentally kept CREDIT — settle as cash full pay.
+      body.is_credit_sale = false;
+      body.payment_method_code = "CASH";
     }
   }
 
@@ -2756,15 +2792,26 @@ function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
   }
   reportedOutboxFailureAt.set(reportKey, Date.now());
 
+  const posTicket =
+    row?.sale_payload?.pos_order_num ??
+    row?.checkout_body?.pos_order_num ??
+    row?.pos_order_num ??
+    null;
+  const ticketLabel =
+    posTicket != null && posTicket !== ""
+      ? `Cash Sales #${posTicket}`
+      : "offline POS order";
+
   void submitSystemIssueReport({
     kind: "error",
-    message: `POS outbox sync failed for order #${printedOrderNum}: ${message}`,
+    message: `POS outbox sync failed for ${ticketLabel}: ${message}`,
     api_path: "/sales/carts/checkout",
     http_method: "POST",
     http_status: httpStatus,
     context: {
       source: "pos_outbox_sync",
       order_num: printedOrderNum,
+      pos_order_num: posTicket,
       client_sale_uuid: row.client_sale_uuid,
       sync_kind: row.sync_kind ?? "sale",
       superseded_sale_id: row.superseded_sale_id ?? null,
@@ -2822,6 +2869,15 @@ export async function syncPosOfflineOutbox({
   for (let index = 0; index < pending.length; index += 1) {
     const listedRow = pending[index];
     const printedOrderNum = Number(listedRow.order_num);
+    const listedPosTicket =
+      listedRow.sale_payload?.pos_order_num ??
+      listedRow.checkout_body?.pos_order_num ??
+      listedRow.pos_order_num ??
+      null;
+    const cashSalesProgressLabel =
+      listedPosTicket != null && listedPosTicket !== ""
+        ? `Cash Sales #${listedPosTicket}`
+        : null;
     const claimed = await withPosOfflineExclusiveLock(async () => {
       const ok = await idbMarkOutboxSyncing(listedRow.client_sale_uuid);
       if (!ok) return null;
@@ -2851,11 +2907,16 @@ export async function syncPosOfflineOutbox({
       done,
       failed,
       order_num: printedOrderNum,
+      pos_order_num: listedPosTicket,
       sync_kind: row.sync_kind ?? "sale",
       message:
         row.sync_kind === "previous_order_edit"
-          ? `Updating ${current} of ${total} — order #${printedOrderNum}…`
-          : `Syncing ${current} of ${total} — order #${printedOrderNum}…`,
+          ? cashSalesProgressLabel
+            ? `Updating ${current} of ${total} — ${cashSalesProgressLabel}…`
+            : `Updating ${current} of ${total}…`
+          : cashSalesProgressLabel
+            ? `Syncing ${current} of ${total} — ${cashSalesProgressLabel}…`
+            : `Syncing ${current} of ${total}…`,
     });
 
     try {
@@ -3038,6 +3099,8 @@ export async function syncPosOfflineOutbox({
       results.push({
         ok: false,
         order_num: printedOrderNum,
+        pos_order_num: listedPosTicket,
+        printed_pos_order_num: listedPosTicket,
         client_sale_uuid: row.client_sale_uuid,
         sync_kind: row.sync_kind ?? "sale",
         error: message,
@@ -3050,8 +3113,11 @@ export async function syncPosOfflineOutbox({
         failed,
         ok: false,
         order_num: printedOrderNum,
+        pos_order_num: listedPosTicket,
         error: message,
-        message: `Failed order #${printedOrderNum} (${failed} failed)…`,
+        message: cashSalesProgressLabel
+          ? `Failed ${cashSalesProgressLabel} (${failed} failed)…`
+          : `Failed sync (${failed} failed)…`,
       });
     }
   }

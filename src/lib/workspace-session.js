@@ -1,6 +1,7 @@
 import { apiRequest } from "@/lib/api";
 import {
-  bumpAuthEpoch,
+  beginAuthSessionRotation,
+  endAuthSessionRotation,
   setSession,
   setStoredCapabilities,
   setStoredWorkspace,
@@ -19,32 +20,63 @@ export function getAuthClientId() {
   return clientId;
 }
 
+/** Serialize workspace switches — overlapping POS↔backoffice restores raced 401 logout. */
+let workspaceSwitchChain = Promise.resolve();
+let workspaceSwitchInflightId = null;
+let workspaceSwitchInflightPromise = null;
+
 /**
  * Re-issue the session token with the login channel for the selected workspace.
  * POS workspace → pos channel so orders record order_source=pos.
  */
 export async function applyWorkspaceSession(workspaceId) {
-  // Invalidate in-flight API 401 handlers before the server deletes the old token.
-  bumpAuthEpoch();
-  const loginChannel = workspaceLoginChannel(workspaceId);
-  const res = await apiRequest("/auth/switch-workspace", {
-    method: "POST",
-    body: {
-      login_channel: loginChannel,
-      client_id: getAuthClientId(),
-      workspace_id: workspaceId,
-    },
-  });
-  setSession(
-    res.token,
-    res.user,
-    res.organization,
-    res.memberships ?? [],
-    loginChannel,
-  );
-  if (res.capabilities) {
-    setStoredCapabilities(res.capabilities);
+  const target = String(workspaceId ?? "");
+  if (!target) {
+    throw new Error("Workspace is required.");
   }
-  setStoredWorkspace(workspaceId);
-  return res;
+
+  // Coalesce duplicate switches to the same workspace (guard re-renders).
+  if (workspaceSwitchInflightPromise && workspaceSwitchInflightId === target) {
+    return workspaceSwitchInflightPromise;
+  }
+
+  const run = workspaceSwitchChain.then(async () => {
+    workspaceSwitchInflightId = target;
+    // Suppress concurrent API 401 → logout for the whole rotation window
+    // (epoch bump alone is not enough: requests started after bump still carry
+    // the old bearer until setSession runs).
+    beginAuthSessionRotation();
+    try {
+      const loginChannel = workspaceLoginChannel(target);
+      const res = await apiRequest("/auth/switch-workspace", {
+        method: "POST",
+        body: {
+          login_channel: loginChannel,
+          client_id: getAuthClientId(),
+          workspace_id: target,
+        },
+      });
+      setSession(
+        res.token,
+        res.user,
+        res.organization,
+        res.memberships ?? [],
+        loginChannel,
+      );
+      if (res.capabilities) {
+        setStoredCapabilities(res.capabilities);
+      }
+      setStoredWorkspace(target);
+      return res;
+    } finally {
+      endAuthSessionRotation();
+      workspaceSwitchInflightId = null;
+      workspaceSwitchInflightPromise = null;
+    }
+  });
+
+  workspaceSwitchInflightPromise = run;
+  // Keep the chain alive after failures so the next switch still runs.
+  workspaceSwitchChain = run.catch(() => {});
+  return run;
 }

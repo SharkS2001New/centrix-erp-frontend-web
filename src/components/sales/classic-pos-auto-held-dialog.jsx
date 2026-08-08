@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatOrderNumber } from "@/lib/sales";
+import { formatPosBrowseLabel } from "@/lib/sales";
 
 /**
  * Shown on classic POS open when the last leave auto-held a sale.
@@ -30,10 +30,14 @@ export function ClassicPosAutoHeldDialog({
 
   if (!open || !mounted || typeof document === "undefined") return null;
 
+  const cashLabel =
+    orderNum != null && orderNum !== ""
+      ? formatPosBrowseLabel({ pos_order_num: orderNum })
+      : "—";
   const label = holdLabel
     ? holdLabel
-    : orderNum != null && orderNum !== ""
-      ? `order ${formatOrderNumber(orderNum)}`
+    : cashLabel !== "—"
+      ? `Cash Sales #${cashLabel}`
       : "a held order";
 
   return createPortal(

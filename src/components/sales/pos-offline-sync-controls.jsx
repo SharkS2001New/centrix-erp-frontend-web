@@ -32,10 +32,11 @@ export function PosOfflineSyncControls({
   const hasPending = pendingSync > 0;
   const failedOrders = Array.isArray(failedSyncOrders) ? failedSyncOrders : [];
   const latestFailed = failedOrders[0] ?? null;
+  // External POS: Cash Sales # only — never fall back to org order_num / S#.
   const failedBrowseNum =
-    latestFailed?.pos_order_num ??
-    latestFailed?.order_num ??
-    null;
+    latestFailed?.pos_order_num != null && latestFailed.pos_order_num !== ""
+      ? latestFailed.pos_order_num
+      : null;
   const showPrintFailed = failedOrders.length > 0 && !syncing && typeof onPrintFailed === "function";
   // Never show Sync chrome when the queue is empty — even if syncing flag is sticky.
   const activelySyncingQueue = syncing && hasPending;
