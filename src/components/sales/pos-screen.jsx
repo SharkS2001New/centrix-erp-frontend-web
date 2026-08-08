@@ -251,6 +251,7 @@ import {
 } from "@/lib/pos-keyboard-shortcuts";
 import {
   idbDeleteOutboxSale,
+  idbFindSyncedServerSaleIdByPosTicket,
   newClientSaleUuid,
   todayPosOrderDate,
 } from "@/lib/pos-offline-db";
@@ -2545,7 +2546,9 @@ export function PosScreen({ standalone = false }) {
           }
           if (activeFloatId != null) {
             const rowSession = Number(row.float_session_id ?? 0);
-            if (rowSession !== activeFloatId) return false;
+            // Only exclude when the sale is stamped to a *different* open session.
+            // Null/0 (legacy or remapped edits) must stay browseable by Cash Sales #.
+            if (rowSession > 0 && rowSession !== activeFloatId) return false;
           }
           const source = String(row.order_source ?? row.channel ?? "pos").toLowerCase();
           if (source && source !== "pos") return false;
@@ -3926,7 +3929,14 @@ export function PosScreen({ standalone = false }) {
     ) {
       return;
     }
-    if (Number(active.held_order_num) !== Number(sale.order_num)) return;
+
+    // Match by org S# or Cash Sales # — edit checkout mints a new sale id under the same ticket.
+    const sameTicket =
+      Number(active.held_order_num) === Number(sale.order_num) ||
+      (active.pos_order_num != null &&
+        sale.pos_order_num != null &&
+        Number(active.pos_order_num) === Number(sale.pos_order_num));
+    if (!sameTicket) return;
 
     if (String(sale.status ?? "").toLowerCase() === "cancelled") {
       skipEditAutosaveRef.current = true;
@@ -3982,9 +3992,14 @@ export function PosScreen({ standalone = false }) {
     cartRef.current = normalized;
     setCart(normalized);
     setEditSourceSale(sale);
+    // Keep ← / Cash Sales # browse on the live revised sale (edit checkout mints a new id).
+    // Re-apply after list refresh so a slow/empty API response cannot wipe the ticket.
+    rememberCompletedPosOrder(sale);
     void savePreviousOrderEditDraft(normalized).catch(() => {});
     if (enablePosOrderEdit) {
-      void loadCompletedPosOrders();
+      void loadCompletedPosOrders().finally(() => {
+        rememberCompletedPosOrder(sale);
+      });
     }
     if (keepDirty) {
       scheduleEditedOrderAutosave();
@@ -4338,6 +4353,15 @@ export function PosScreen({ standalone = false }) {
   );
 
   useEffect(() => {
+    // Product already selected and Scan shows its code — don't reopen search results.
+    if (
+      selectedProductCode &&
+      String(searchQuery ?? "").trim() === String(selectedProductCode).trim()
+    ) {
+      setSearching(false);
+      setSearchResults([]);
+      return;
+    }
     const trimmed = searchQuery.trim();
     const codeLike = looksLikeProductCodeQuery(searchQuery);
     // Debounce typing so we don't thrash index/API on every keystroke.
@@ -4351,7 +4375,7 @@ export function PosScreen({ standalone = false }) {
           : 200;
     const t = setTimeout(() => searchProducts(searchQuery), delay);
     return () => clearTimeout(t);
-  }, [searchQuery, searchProducts, classicLayout]);
+  }, [searchQuery, searchProducts, classicLayout, selectedProductCode]);
 
   function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
     if (retailLine != null) return retailLine;
@@ -5334,13 +5358,13 @@ export function PosScreen({ standalone = false }) {
       unit_price: String(computed.displayUnitPrice),
     });
 
-    // Classic: keep the typed query (do not replace with code — feels like the search deleted text).
-    if (classicLayout) {
-      searchAbortRef.current?.abort();
-      searchSeq.current += 1;
-      setSearching(false);
-      setSearchResults([]);
-    }
+    // After select, Scan shows the product code (not the typed search fragment)
+    // while focus moves to qty.
+    setSearchQuery(product.product_code ?? "");
+    searchAbortRef.current?.abort();
+    searchSeq.current += 1;
+    setSearching(false);
+    setSearchResults([]);
   }
 
   function beginReplaceCartLine(lineId) {
@@ -8679,8 +8703,10 @@ export function PosScreen({ standalone = false }) {
           if (
             row?.ok &&
             row.sync_kind === "previous_order_edit" &&
-            Number(row.order_num) === Number(queuedHeldOrderNum) &&
-            row.sale?.id
+            row.sale?.id &&
+            (Number(row.order_num) === Number(queuedHeldOrderNum) ||
+              Number(row.printed_order_num) === Number(queuedHeldOrderNum) ||
+              Number(row.sale?.order_num) === Number(queuedHeldOrderNum))
           ) {
             await refreshPreviousOrderEditCartAfterSync(row.sale, { workspaceGeneration });
           }
@@ -10703,13 +10729,42 @@ export function PosScreen({ standalone = false }) {
       const orderNum = clean?.held_order_num ?? clean?.next_order_num;
       if (browseNum != null || orderNum != null) {
         if (browseNum != null) setEditOrderNo(String(browseNum));
+        // Keep this ticket in the browse list while editing. Removing it made the
+        // order look "deleted locally"; after sync the old sale id is superseded and
+        // Cash Sales # lookup failed until the list refreshed with the new id.
         setSessionPosOrders((prev) => {
-          const next = prev.filter((row) => String(row.id) !== String(saleId));
-          const idx =
-            browseNum != null
-              ? next.findIndex((row) => sessionOrderMatchesBrowseNum(row, browseNum))
-              : next.findIndex((row) => String(row.order_num) === String(orderNum));
-          setEditBrowseIndex(idx >= 0 ? idx : 0);
+          const entry = {
+            id: saleId,
+            order_num: orderNum ?? sourceSale?.order_num ?? null,
+            pos_order_num:
+              clean.pos_order_num ?? sourceSale?.pos_order_num ?? null,
+            pos_order_date:
+              clean.pos_order_date ?? sourceSale?.pos_order_date ?? null,
+            float_session_id:
+              clean.float_session_id ??
+              sourceSale?.float_session_id ??
+              floatSessionId ??
+              null,
+            status: sourceSale?.status ?? "paid",
+          };
+          const next = sortPosOrdersByNumberDesc([
+            entry,
+            ...prev.filter(
+              (row) =>
+                String(row.id) !== String(saleId) &&
+                (browseNum == null || !sessionOrderMatchesBrowseNum(row, browseNum)),
+            ),
+          ]);
+          setEditBrowseIndex(
+            Math.max(
+              0,
+              next.findIndex(
+                (row) =>
+                  String(row.id) === String(saleId) ||
+                  (browseNum != null && sessionOrderMatchesBrowseNum(row, browseNum)),
+              ),
+            ),
+          );
           return next;
         });
 
@@ -10904,6 +10959,20 @@ export function PosScreen({ standalone = false }) {
         }
       } catch {
         /* fall through to server lookup */
+      }
+
+      // Synced previous-order edits leave a local outbox row with the new server sale id.
+      // Prefer that over a blind Cash Sales # search (old sale is cancelled / ticket moved).
+      if (ticketNum != null) {
+        try {
+          const syncedSaleId = await idbFindSyncedServerSaleIdByPosTicket(ticketNum);
+          if (syncedSaleId) {
+            await restoreOrderForEdit(syncedSaleId);
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
       }
 
       // Prefer today's Cash Sales # from the in-memory browse list (same as ← / →).

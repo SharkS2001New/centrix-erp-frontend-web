@@ -221,14 +221,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
 
   function pick(product) {
     onSelect?.(product);
-    // Classic: never rewrite the cashier's typed query — parent parks the product on the row.
+    // Classic scan: parent sets the input to product_code and moves focus to qty.
     if (classic) {
       setOpen(false);
       setHighlight(-1);
       highlightCodeRef.current = null;
       return;
     }
-    onQueryChange(product.product_name ?? "");
+    onQueryChange(product.product_code ?? product.product_name ?? "");
     setOpen(false);
   }
 

@@ -497,6 +497,27 @@ export async function idbListEditableOutbox() {
     .sort((a, b) => Number(b.created_at_ms ?? 0) - Number(a.created_at_ms ?? 0));
 }
 
+/**
+ * After a previous-order edit syncs, the outbox row is marked synced (not pending).
+ * Resolve the live server sale id so Cash Sales # reopen does not miss the revised receipt.
+ */
+export async function idbFindSyncedServerSaleIdByPosTicket(ticketNum) {
+  const ticket = Number(ticketNum);
+  if (!Number.isFinite(ticket) || ticket <= 0) return null;
+  const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
+  const matches = rows
+    .filter((r) => r?.sync_status === "synced" && Number(r.server_sale_id ?? 0) > 0)
+    .filter((r) => {
+      const pos =
+        r.sale_payload?.pos_order_num ??
+        r.checkout_body?.pos_order_num ??
+        null;
+      return pos != null && Number(pos) === ticket;
+    })
+    .sort((a, b) => Number(b.synced_at_ms ?? b.updated_at_ms ?? 0) - Number(a.synced_at_ms ?? a.updated_at_ms ?? 0));
+  return matches[0]?.server_sale_id ? Number(matches[0].server_sale_id) : null;
+}
+
 export function resolveOutboxClientUuidForCart(cart) {
   if (cart?.offline_client_sale_uuid) {
     return String(cart.offline_client_sale_uuid).trim() || null;

@@ -22,6 +22,7 @@ import {
   idbCountAutoRetryOutbox,
   idbCountPendingOutbox,
   idbDeleteOutboxSale,
+  idbFindSyncedServerSaleIdByPosTicket,
   idbGetAllCatalog,
   idbGetCatalogProduct,
   idbGetLocalCart,
@@ -463,6 +464,7 @@ export {
   clampPosOrderBusinessDate,
   normalizePosOrderDate,
   todayPosOrderDate,
+  idbFindSyncedServerSaleIdByPosTicket,
 } from "@/lib/pos-offline-db";
 
 /** True when an API error means the TemporaryCart was already checked out / deleted. */
