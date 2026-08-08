@@ -1050,35 +1050,42 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
-  // Distribution / save-order: Unpaid / Partially paid queues also include fulfillment
-  // steps that can show a payment badge (Processed/Delivered + Unpaid). Booked and
-  // Pending stay on their own pages — they do not use a double status.
-  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
-  const paymentStatusFilter = deferPayment ? paymentStatusForCollectionQueue(step.key) : null;
+  // Unpaid / Partially paid / Paid queues always filter by amount paid vs total (same as
+  // summary cards and X/Z ORDTTL). Workflow status alone is stale on POS.
+  const paymentStatusFilter = paymentStatusForCollectionQueue(step.key);
   if (paymentStatusFilter) {
+    const deferPayment = orgDefersPaymentToFulfillment(capabilities);
     const pipelineKeys = new Set(workflowPipelineSteps(workflow).map((s) => s.key));
-    const includeStatuses = [
-      step.key,
-      ...[...FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE].filter((key) => pipelineKeys.has(key)),
-    ];
+    const includeStatuses = deferPayment
+      ? [
+          step.key,
+          ...[...FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE].filter((key) => pipelineKeys.has(key)),
+        ]
+      : null;
+    const isPaidQueue = paymentStatusFilter === "paid";
 
     return {
       slug: step.key,
       title: salesOrderQueueTitle(step.label),
-      subtitle:
-        step.key === "unpaid"
-          ? "Unpaid orders, including processed or delivered with outstanding payment"
-          : "Partially paid orders, including processed or delivered with a partial payment",
+      subtitle: isPaidQueue
+        ? "Fully paid orders — matched by amount paid vs total (same basis as X / Z total sales)"
+        : step.key === "unpaid"
+          ? "Orders with nothing collected yet — matched by amount paid, not workflow label"
+          : "Orders with a remaining balance after a partial payment — matched by amounts",
       fixedStatusFilter: null,
       fixedPaymentStatusFilter: paymentStatusFilter,
-      includeStatuses,
+      ...(includeStatuses && !isPaidQueue ? { includeStatuses } : {}),
       fixedSourceFilter: null,
-      showRouteColumn: true,
-      showDeliveryDateColumn: true,
+      showRouteColumn: Boolean(deferPayment) && !isPaidQueue,
+      showDeliveryDateColumn: Boolean(deferPayment) && !isPaidQueue,
       lockStatusFilter: true,
       lockSourceFilter: false,
-      excludeStatuses: ["cancelled", "expired", "completed", "booked", "pending"],
-      requireOutstandingBalance: true,
+      excludeStatuses: deferPayment && !isPaidQueue
+        ? ["cancelled", "expired", "completed", "booked", "pending"]
+        : ["cancelled", "expired"],
+      // Paid queue is fully settled; unpaid/partial need an outstanding balance.
+      requireOutstandingBalance: !isPaidQueue,
+      ...(isPaidQueue ? { dateRangeDays: 6 } : {}),
     };
   }
 
@@ -1375,10 +1382,11 @@ function primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid, capa
   return null;
 }
 
-/** Map payment-collection queue slugs to sales.payment_status values. */
+/** Map payment-collection queue slugs to amount-based payment buckets. */
 export const PAYMENT_COLLECTION_QUEUE_FILTERS = {
   unpaid: "unpaid",
   pending_payment: "partial",
+  paid: "paid",
 };
 
 export function isPaymentCollectionQueueSlug(slug) {

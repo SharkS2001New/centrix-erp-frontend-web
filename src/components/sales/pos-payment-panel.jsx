@@ -686,7 +686,13 @@ export function PosPaymentPanel({
         `Enter the amount the customer actually tendered.`
       );
     }
-    if (cfg.allowPartialPayment && amountPaid > 0 && amountPaid + 0.01 < checkoutTotal) {
+    // Partial / unpaid only for credit customers — never for Cash/M-Pesa/bank walk-ups.
+    if (
+      hasCreditCustomer &&
+      cfg.allowPartialPayment &&
+      amountPaid > 0 &&
+      amountPaid + 0.01 < checkoutTotal
+    ) {
       return null;
     }
     if (amountPaid <= 0 && checkoutTotal > 0) {
@@ -1280,7 +1286,7 @@ export function PosPaymentPanel({
       : !changeExcessive &&
         ((hasCreditCustomer && !creditValidationError) ||
           amountPaid + 0.01 >= checkoutTotal ||
-          (cfg.allowPartialPayment && amountPaid > 0));
+          (hasCreditCustomer && cfg.allowPartialPayment && amountPaid > 0));
 
   useEffect(() => {
     if (!open || step !== "payment") return;
@@ -1442,9 +1448,7 @@ export function PosPaymentPanel({
             Balance due: {formatSaleKes(confirmSummary.balanceDue)}
             {confirmSummary.isCredit
               ? " — recorded as debtor for the selected customer."
-              : cfg.allowPartialPayment
-                ? " — partial payment; balance remains on this order."
-                : ""}
+              : ""}
           </p>
         ) : null}
         {confirmSummary && confirmSummary.changeDue > 0 ? (

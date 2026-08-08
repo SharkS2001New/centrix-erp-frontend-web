@@ -604,8 +604,10 @@ export default function SalesOrdersListScreen({
   const sourceColumnAvailable = !routeOrdersOnly && sourceOptions.length > 2;
   const discountColumnAvailable = shouldShowSalesDiscountColumn(capabilities?.module_settings);
   const paymentBreakdownColumnsAvailable =
-    String(queueConfig?.fixedPaymentStatusFilter ?? "").toLowerCase() === "partial" ||
-    String(queueSlug ?? "").toLowerCase() === "pending_payment";
+    ["unpaid", "partial"].includes(
+      String(queueConfig?.fixedPaymentStatusFilter ?? "").toLowerCase(),
+    ) ||
+    ["unpaid", "pending_payment"].includes(String(queueSlug ?? "").toLowerCase());
   const showBranchColumn = branchColumnAvailable && visibleColumnSet.has("branch");
   const showRouteColumn = routeColumnAvailable && visibleColumnSet.has("route");
   const showDeliveryDateColumn =

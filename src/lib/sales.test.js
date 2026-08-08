@@ -394,13 +394,44 @@ describe("resolveSalesOrderQueue", () => {
     expect(config?.fixedStatusFilter).toBeNull();
   });
 
-  it("retail unpaid queue filters by workflow stage only", () => {
+  it("retail unpaid queue filters by payment amounts, not workflow stage alone", () => {
     const config = resolveSalesOrderQueue("unpaid", pipeline, {
       capabilities: { modules: { sales: true } },
     });
 
-    expect(config?.fixedStatusFilter).toBe("unpaid");
-    expect(config?.fixedPaymentStatusFilter).toBeUndefined();
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
+    expect(config?.requireOutstandingBalance).toBe(true);
+    expect(config?.excludeStatuses).toEqual(["cancelled", "expired"]);
+  });
+
+  it("retail pending_payment queue filters by partial amounts", () => {
+    const config = resolveSalesOrderQueue("pending_payment", pipeline, {
+      capabilities: { modules: { sales: true } },
+    });
+
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.fixedPaymentStatusFilter).toBe("partial");
+    expect(config?.requireOutstandingBalance).toBe(true);
+  });
+
+  it("retail paid queue filters by fully paid amounts (matches X/Z ORDTTL)", () => {
+    const pipelineWithPaid = {
+      pipeline: [
+        { key: "booked", label: "Booked" },
+        { key: "unpaid", label: "Unpaid" },
+        { key: "pending_payment", label: "Partially paid" },
+        { key: "paid", label: "Paid" },
+        { key: "processed", label: "Processed" },
+      ],
+    };
+    const config = resolveSalesOrderQueue("paid", pipelineWithPaid, {
+      capabilities: { modules: { sales: true } },
+    });
+
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.fixedPaymentStatusFilter).toBe("paid");
+    expect(config?.requireOutstandingBalance).toBe(false);
   });
 });
 
