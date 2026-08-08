@@ -205,7 +205,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
       window.removeEventListener("resize", updateBox);
       window.removeEventListener("scroll", updateBox, true);
     };
-  }, [classic, open, disabled, query, results.length, searching]);
+  }, [classic, open, disabled, results.length, searching]);
 
   useEffect(() => {
     function onDocClick(e) {

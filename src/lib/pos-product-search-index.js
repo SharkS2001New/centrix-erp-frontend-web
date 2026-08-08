@@ -262,14 +262,16 @@ export function hasPosSearchCatalog() {
 
 /**
  * Upsert a few products into the live index (cart enrich / API hit).
+ * New codes get incremental prefix postings — avoids full catalog rebuild on every search.
  * @param {object[]} products
  */
 export function upsertPosSearchProducts(products) {
   if (!Array.isArray(products) || !products.length) return;
-  if (!catalogByCode || !indexedEntries || !entryByCode) {
+  if (!catalogByCode || !indexedEntries || !entryByCode || !prefixIndex || !exactCodeIndex) {
     setPosSearchCatalog(products);
     return;
   }
+  let touched = false;
   for (const product of products) {
     const code = String(product?.product_code ?? "");
     if (!code) continue;
@@ -280,15 +282,45 @@ export function upsertPosSearchProducts(products) {
     const existing = entryByCode.get(code);
     if (existing) {
       const idx = indexedEntries.indexOf(existing);
-      if (idx >= 0) indexedEntries[idx] = entry;
-      else indexedEntries.push(entry);
+      if (idx >= 0) {
+        // Replace in place — existing prefix buckets still point at this index.
+        indexedEntries[idx] = entry;
+      } else {
+        const newIdx = indexedEntries.length;
+        indexedEntries.push(entry);
+        indexEntryPostings(entry, newIdx);
+      }
+      entryByCode.set(code, entry);
+      touched = true;
     } else {
+      const newIdx = indexedEntries.length;
       indexedEntries.push(entry);
+      entryByCode.set(code, entry);
+      indexEntryPostings(entry, newIdx);
+      touched = true;
     }
-    entryByCode.set(code, entry);
   }
-  rebuildIndexes(indexedEntries);
-  catalogVersion += 1;
+  if (touched) catalogVersion += 1;
+}
+
+/** @param {object} entry @param {number} idx */
+function indexEntryPostings(entry, idx) {
+  addPrefixKeys(prefixIndex, entry.codeCompact, idx);
+  addPrefixKeys(prefixIndex, entry.nameCompact, idx);
+  addPrefixKeys(prefixIndex, entry.skuCompact, idx);
+  addPrefixKeys(prefixIndex, entry.barcodeCompact, idx);
+  addPrefixKeys(prefixIndex, entry.shortCompact, idx);
+  for (const word of entry.words ?? []) addPrefixKeys(prefixIndex, word, idx);
+  addExactKey(exactCodeIndex, entry.codeCompact, idx);
+  addExactKey(exactCodeIndex, entry.skuCompact, idx);
+  addExactKey(exactCodeIndex, entry.barcodeCompact, idx);
+  addExactKey(exactCodeIndex, entry.shortCompact, idx);
+}
+
+/** True when the in-memory catalog already has this product code. */
+export function posSearchCatalogHasCode(productCode) {
+  const code = String(productCode ?? "");
+  return Boolean(code && catalogByCode?.has(code));
 }
 
 /**
