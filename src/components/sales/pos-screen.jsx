@@ -215,6 +215,8 @@ import {
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
+  cacheServerSaleForOfflineEdit,
+  prefetchServerSalesForOfflineEdit,
   listFailedOutboxSales,
   loadOrCreateLocalPosCart,
   loadPreviousOrderEditDraft,
@@ -2443,6 +2445,11 @@ export function PosScreen({ standalone = false }) {
   function rememberCompletedPosOrder(sale) {
     if (!sale?.id) return;
     rememberPosLastReceipt(user?.id, user?.branch_id, sale);
+    // Online checkouts must land in IndexedDB too — offline previous-order edit
+    // only opens receipts that have cached line items on this till.
+    if (Array.isArray(sale.items) && sale.items.length > 0 && !sale.offline_pending_sync) {
+      void cacheServerSaleForOfflineEdit(sale);
+    }
     if (!enablePosOrderEdit) return;
     if (
       !isCheckoutCompleteStatus(sale.status, channelWorkflow, "pos") &&
@@ -2723,6 +2730,14 @@ export function PosScreen({ standalone = false }) {
       ]).slice(0, 15);
 
       setSessionPosOrders(orders);
+      // Server list fetch succeeded — mirror recent receipts so offline edit can reopen them.
+      if (serverOrders.length > 0) {
+        void prefetchServerSalesForOfflineEdit(serverOrders, {
+          fetchSale: (id) =>
+            apiRequest(`/sales/${id}`, { loading: false, reportIssues: false }),
+          limit: 15,
+        });
+      }
       // Restore Reprint target after remount when React state was wiped.
       setCompletedSale((prev) => {
         if (prev?.id) return prev;
@@ -11589,6 +11604,7 @@ export function PosScreen({ standalone = false }) {
       }
       void apiRequest(`/sales/${saleId}`)
         .then((sale) => {
+          void cacheServerSaleForOfflineEdit(sale);
           if (paintedOptimistic) {
             hydrateSaleTenders(sale);
             return;
@@ -11613,6 +11629,41 @@ export function PosScreen({ standalone = false }) {
       });
       restoreActive = false;
       const applied = applyAuthoritativeRestoredCart(restoredRaw);
+      // Cache lines from the restored cart so this receipt stays editable offline.
+      void cacheServerSaleForOfflineEdit({
+        ...(applied.sourceSale && typeof applied.sourceSale === "object"
+          ? applied.sourceSale
+          : {}),
+        id: saleId,
+        order_num: applied.orderNum ?? applied.sourceSale?.order_num ?? null,
+        pos_order_num: applied.clean?.pos_order_num ?? applied.sourceSale?.pos_order_num ?? null,
+        pos_order_date: applied.clean?.pos_order_date ?? applied.sourceSale?.pos_order_date ?? null,
+        float_session_id:
+          applied.clean?.float_session_id ??
+          applied.sourceSale?.float_session_id ??
+          floatSessionId ??
+          null,
+        payment_method_code:
+          applied.clean?.payment_method_code ?? applied.sourceSale?.payment_method_code ?? null,
+        order_total:
+          applied.sourceSale?.order_total ??
+          applied.clean?.original_order_total ??
+          null,
+        items: (applied.clean?.lines ?? []).map((line) => ({
+          product_code: line.product_code,
+          product_name: line.product_name ?? line.product_code,
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          display_unit_price: line.display_unit_price,
+          amount: line.amount,
+          uom: line.uom,
+          unit: line.unit,
+          unit_id: line.unit_id,
+          on_wholesale_retail: line.on_wholesale_retail,
+          discount_given: line.discount_given,
+          product_vat: line.product_vat,
+        })),
+      });
       const label = applied.browseNum;
       const restoredSummary = summarizeLocalPosCart(applied.clean);
       const kraFiscalize = shouldSubmitKraOnCheckout(
@@ -11649,6 +11700,45 @@ export function PosScreen({ standalone = false }) {
       }
     } catch (e) {
       restoreActive = false;
+      // API failed (drop / timeout) — still open from the on-device mirror when present.
+      try {
+        const localFallback = await findLocalSyncedSaleForOfflineEdit({
+          saleId,
+          ticketNum: saleSnapshot?.pos_order_num ?? null,
+        });
+        if (localFallback?.items?.length) {
+          const applied = applyLocalPreviousOrderEditCart(localFallback);
+          if (applied) {
+            const label = applied.browseNum;
+            const kraFiscalize = shouldSubmitKraOnCheckout(
+              capabilities?.module_settings,
+              capabilities,
+              summarizeLocalPosCart(applied.clean)?.total,
+            );
+            const editHint = previousOrderEditWorkspaceHint({
+              kraFiscalize,
+              offline: true,
+            });
+            setOrderEditError(null);
+            setStatusMessage(
+              label != null
+                ? `Cash Sales #${label} loaded from this till — ${editHint}`
+                : `Order loaded from this till — ${editHint}`,
+            );
+            if (standalone) {
+              notifySuccess(
+                previousOrderEditModeMessages(label, {
+                  kraFiscalize,
+                  offline: true,
+                }).loaded,
+              );
+            }
+            return;
+          }
+        }
+      } catch {
+        /* keep original error */
+      }
       if (paintedOptimistic) {
         cartRef.current = previousCartSnapshot;
         setCart(previousCartSnapshot);

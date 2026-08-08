@@ -2415,6 +2415,128 @@ export async function findLocalSyncedSaleForOfflineEdit({
   };
 }
 
+/** Stable IndexedDB key for online POS sales mirrored for offline previous-order edit. */
+export function onlineSaleMirrorClientUuid(serverSaleId) {
+  const id = Number(serverSaleId);
+  if (!(id > 0)) return null;
+  return `online-mirror-${id}`;
+}
+
+/**
+ * Keep a completed server POS sale on-device (synced outbox mirror) so previous-order
+ * edit works offline — same path as sales that were written while offline then uploaded.
+ * Safe no-op when items are missing or the row is mid-upload.
+ */
+export async function cacheServerSaleForOfflineEdit(sale) {
+  if (!sale || typeof sale !== "object") return false;
+  const serverId = Number(sale.id ?? 0);
+  if (!(serverId > 0)) return false;
+  if (String(sale.id).startsWith("offline:")) return false;
+
+  const items = Array.isArray(sale.items)
+    ? sale.items.filter((row) => row?.product_code && Number(row.quantity ?? 0) > 0)
+    : [];
+  if (!items.length) return false;
+
+  const uuid = onlineSaleMirrorClientUuid(serverId);
+  if (!uuid) return false;
+
+  try {
+    const existing = await idbGetOutboxSale(uuid);
+    const status = String(existing?.sync_status ?? "");
+    // Never clobber a live upload/edit queue (should not happen for online-mirror-* keys).
+    if (status === "pending" || status === "syncing" || status === "editing") {
+      return false;
+    }
+
+    const lines = items.map((item) => ({
+      product_code: item.product_code,
+      product_name: item.product_name ?? item.description ?? item.product_code,
+      quantity: Number(item.quantity ?? 0),
+      unit_price: Number(item.unit_price ?? item.selling_price ?? item.price ?? 0),
+      display_unit_price:
+        item.display_unit_price != null ? Number(item.display_unit_price) : undefined,
+      amount: item.amount != null ? Number(item.amount) : undefined,
+      uom: item.uom ?? null,
+      unit_id: item.unit_id ?? item.product?.unit_id ?? null,
+      unit: item.unit ?? item.product?.unit ?? item.product?.uom ?? null,
+      on_wholesale_retail: Number(item.on_wholesale_retail ?? 0) === 1 ? 1 : 0,
+      discount_given: Number(item.discount_given ?? 0),
+      product_vat: item.product_vat != null ? Number(item.product_vat) : undefined,
+    }));
+
+    const payload = {
+      ...sale,
+      id: serverId,
+      offline_pending_sync: false,
+      items: lines,
+    };
+
+    await idbPutOutboxSale({
+      ...(existing && typeof existing === "object" ? existing : {}),
+      client_sale_uuid: uuid,
+      sync_status: "synced",
+      sync_kind: "online_mirror",
+      sync_error: null,
+      sync_started_at_ms: null,
+      revision_at_sync: null,
+      server_sale_id: serverId,
+      server_order_num: Number(sale.order_num ?? existing?.server_order_num ?? 0) || null,
+      order_num: Number(sale.order_num ?? existing?.order_num ?? 0) || serverId,
+      created_at_ms: existing?.created_at_ms ?? Date.now(),
+      updated_at_ms: Date.now(),
+      synced_at_ms: Date.now(),
+      sale_payload: payload,
+      prior_sale_snapshot: payload,
+      checkout_body: {
+        ...(existing?.checkout_body && typeof existing.checkout_body === "object"
+          ? existing.checkout_body
+          : {}),
+        pos_order_num: sale.pos_order_num ?? null,
+        pos_order_date: sale.pos_order_date ?? null,
+        float_session_id: sale.float_session_id ?? null,
+        payment_method_code: sale.payment_method_code ?? null,
+      },
+      cart_seed: {
+        branch_id: sale.branch_id ?? existing?.cart_seed?.branch_id ?? null,
+        float_session_id:
+          sale.float_session_id ?? existing?.cart_seed?.float_session_id ?? null,
+        channel: "pos",
+      },
+      lines,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * While online, backfill recent server POS receipts into the offline edit cache
+ * so a later outage can still reopen them.
+ */
+export async function prefetchServerSalesForOfflineEdit(
+  serverOrders,
+  { fetchSale, limit = 15 } = {},
+) {
+  if (typeof fetchSale !== "function") return 0;
+  const rows = Array.isArray(serverOrders) ? serverOrders : [];
+  let cached = 0;
+  for (const row of rows.slice(0, Math.max(0, Number(limit) || 15))) {
+    const saleId = Number(row?.id ?? 0);
+    if (!(saleId > 0)) continue;
+    try {
+      const existing = await findLocalSyncedSaleForOfflineEdit({ saleId });
+      if (existing?.items?.length) continue;
+      const sale = await fetchSale(saleId);
+      if (await cacheServerSaleForOfflineEdit(sale)) cached += 1;
+    } catch {
+      /* skip individual failures */
+    }
+  }
+  return cached;
+}
+
 /**
  * Load a pending offline sale into the local cart for edit (same order #).
  * Marks the outbox row as `editing` so sync will not replay it mid-edit.
