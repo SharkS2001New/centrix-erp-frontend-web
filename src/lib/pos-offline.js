@@ -1863,9 +1863,13 @@ function mapOutboxLinesForPut(row) {
   const lines =
     Array.isArray(row.lines) && row.lines.length > 0
       ? row.lines
-      : Array.isArray(row.sale_payload?.items)
+      : Array.isArray(row.sale_payload?.items) && row.sale_payload.items.length > 0
         ? row.sale_payload.items
-        : [];
+        : // Recover rows corrupted by an old abandonOfflineSaleEdit bug (sale
+          // snapshot written over the outbox record — items live at the top level).
+          Array.isArray(row.items) && row.items.length > 0
+          ? row.items
+          : [];
   return lines.map((line) => buildOutboxLineBody(line));
 }
 
@@ -2222,6 +2226,49 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
 }
 
 async function checkoutOutboxRow(row, orderNum, extras = {}) {
+  // Heal rows corrupted by an old abandonOfflineSaleEdit bug before upload.
+  const recovered = mapOutboxLinesForPut(row);
+  if (
+    recovered.length > 0 &&
+    (!Array.isArray(row.lines) || row.lines.length === 0 || !row.sale_payload?.items?.length)
+  ) {
+    const healed = {
+      ...row,
+      lines: recovered.map((line) => ({
+        product_code: line.product_code,
+        quantity: line.quantity,
+        unit_price: line.unit_price,
+        display_unit_price: line.display_unit_price,
+        uom: line.uom,
+        unit_id: line.unit_id ?? null,
+        unit: line.unit ?? null,
+        on_wholesale_retail: line.on_wholesale_retail,
+        discount_given: line.discount_given,
+        product_name: line.product_name,
+        product_vat: line.product_vat,
+        amount: line.amount,
+      })),
+      sale_payload: {
+        ...(row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {}),
+        ...(Array.isArray(row.items) ? row : {}),
+        client_sale_uuid: row.client_sale_uuid,
+        items:
+          Array.isArray(row.sale_payload?.items) && row.sale_payload.items.length
+            ? row.sale_payload.items
+            : Array.isArray(row.items) && row.items.length
+              ? row.items
+              : recovered,
+      },
+      updated_at_ms: Date.now(),
+    };
+    try {
+      await idbPutOutboxSale(healed);
+    } catch {
+      /* upload still uses healed in-memory */
+    }
+    row = healed;
+  }
+
   if (row.sync_kind === "previous_order_edit") {
     return checkoutPreviousOrderEditOutboxRow(row, orderNum);
   }
@@ -2557,8 +2604,22 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
     );
   }
 
-  const sale = row.sale_payload ?? {};
-  const lines = (row.lines?.length ? row.lines : sale.items ?? []).map((line) => {
+  // Prefer a real outbox shape. Older abandonOfflineSaleEdit bugs overwrote the
+  // row with a bare sale_payload (items at top level, no nested sale_payload).
+  const saleFromPayload =
+    row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : null;
+  const saleLooksEmbedded =
+    !saleFromPayload &&
+    (Array.isArray(row.items) || row.product_code || row.client_sale_uuid);
+  const sale = saleFromPayload ?? (saleLooksEmbedded ? row : {});
+  const lines = (row.lines?.length
+    ? row.lines
+    : Array.isArray(sale.items)
+      ? sale.items
+      : Array.isArray(row.items)
+        ? row.items
+        : []
+  ).map((line) => {
     const clientLineId = line.client_line_id ?? newClientSaleUuid();
     return {
       ...line,
@@ -2566,71 +2627,189 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
       product_code: line.product_code,
       product_name: line.product_name ?? line.description ?? line.product_code,
       quantity: Number(line.quantity),
-      unit_price: Number(line.unit_price),
+      unit_price: Number(line.unit_price ?? line.selling_price ?? line.price ?? 0),
       uom: line.uom ?? null,
       on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) === 1,
       discount_given: Number(line.discount_given ?? 0),
     };
   });
 
+  if (!lines.length) {
+    throw new Error(
+      "That offline sale has no line items stored on this till. Reconnect and sync, or recreate the sale.",
+    );
+  }
+
+  // Self-heal corrupted outbox rows so a later sync / abandon keeps line items.
+  const repairedOutbox =
+    !row.sale_payload || !Array.isArray(row.lines) || row.lines.length === 0
+      ? {
+          ...row,
+          client_sale_uuid: row.client_sale_uuid ?? uuid,
+          order_num: Number(row.order_num ?? sale.order_num ?? 0) || null,
+          sale_payload: {
+            ...(saleFromPayload ?? {}),
+            ...sale,
+            id: sale.id ?? `offline:${uuid}`,
+            client_sale_uuid: uuid,
+            items: lines.map((line, index) => ({
+              id: line.id ?? index + 1,
+              product_code: line.product_code,
+              product_name: line.product_name,
+              quantity: Number(line.quantity),
+              unit_price: Number(line.unit_price),
+              amount: line.amount != null ? Number(line.amount) : undefined,
+              uom: line.uom ?? null,
+              unit_id: line.unit_id ?? null,
+              unit: line.unit ?? null,
+              on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) === 1,
+              discount_given: Number(line.discount_given ?? 0),
+              display_unit_price:
+                line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+              product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+            })),
+          },
+          lines: lines.map((line) => ({
+            product_code: line.product_code,
+            product_name: line.product_name,
+            quantity: Number(line.quantity),
+            unit_price: Number(line.unit_price),
+            amount: line.amount != null ? Number(line.amount) : undefined,
+            uom: line.uom ?? null,
+            unit_id: line.unit_id ?? null,
+            unit: line.unit ?? null,
+            on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) === 1 ? 1 : 0,
+            discount_given: Number(line.discount_given ?? 0),
+            display_unit_price:
+              line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+            product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+            client_line_id: line.client_line_id,
+          })),
+          sync_status: "editing",
+          updated_at_ms: Date.now(),
+        }
+      : { ...row, sync_status: "editing", updated_at_ms: Date.now() };
+
   const localCart = {
     id: "active",
     offline: true,
     channel: "pos",
-    held_order_num: Number(row.order_num),
+    held_order_num: Number(repairedOutbox.order_num ?? sale.order_num),
     ...(sale.pos_order_num != null && Number(sale.pos_order_num) > 0
       ? { pos_order_num: Number(sale.pos_order_num) }
       : {}),
     ...(sale.pos_order_date ? { pos_order_date: sale.pos_order_date } : {}),
     superseded_sale_id:
-      row.sync_kind === "previous_order_edit"
-        ? Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null
+      repairedOutbox.sync_kind === "previous_order_edit"
+        ? Number(repairedOutbox.superseded_sale_id ?? repairedOutbox.server_sale_id ?? 0) || null
         : null,
-    offline_client_sale_uuid: row.client_sale_uuid,
+    offline_client_sale_uuid: uuid,
     // Original sale tenders only — never the rebuilt outbox sale_payload (would 2× M-Pesa).
     offline_edit_snapshot:
-      row.prior_sale_snapshot && typeof row.prior_sale_snapshot === "object"
-        ? row.prior_sale_snapshot
-        : row.sync_kind === "previous_order_edit"
+      repairedOutbox.prior_sale_snapshot && typeof repairedOutbox.prior_sale_snapshot === "object"
+        ? repairedOutbox.prior_sale_snapshot
+        : repairedOutbox.sync_kind === "previous_order_edit"
           ? null
-          : sale,
+          : repairedOutbox.sale_payload,
     original_order_total: (() => {
       const prior =
-        row.prior_sale_snapshot && typeof row.prior_sale_snapshot === "object"
-          ? row.prior_sale_snapshot
+        repairedOutbox.prior_sale_snapshot && typeof repairedOutbox.prior_sale_snapshot === "object"
+          ? repairedOutbox.prior_sale_snapshot
           : null;
       const total = Number(
         prior?.order_total ?? sale.original_order_total ?? sale.order_total ?? 0,
       );
       return total > 0 ? Math.round(total * 100) / 100 : null;
     })(),
-    branch_id: row.cart_seed?.branch_id ?? sale.branch_id ?? seed.branch_id ?? null,
-    till_id: row.cart_seed?.till_id ?? sale.till_id ?? seed.till_id ?? null,
+    branch_id: repairedOutbox.cart_seed?.branch_id ?? sale.branch_id ?? seed.branch_id ?? null,
+    till_id: repairedOutbox.cart_seed?.till_id ?? sale.till_id ?? seed.till_id ?? null,
     float_session_id:
-      row.cart_seed?.float_session_id ?? sale.float_session_id ?? seed.float_session_id ?? null,
+      repairedOutbox.cart_seed?.float_session_id ??
+      sale.float_session_id ??
+      seed.float_session_id ??
+      null,
     customer_num: sale.customer_num ?? null,
     customer_name_override: sale.customer_name_override ?? null,
     lines,
     updated_at_ms: Date.now(),
   };
 
-  await idbPutOutboxSale({ ...row, sync_status: "editing" });
+  await idbPutOutboxSale(repairedOutbox);
   await idbPutLocalCart(localCart);
-  return { cart: localCart, sale: { ...sale, id: `offline:${uuid}`, order_num: row.order_num } };
+  return {
+    cart: localCart,
+    sale: {
+      ...repairedOutbox.sale_payload,
+      id: `offline:${uuid}`,
+      order_num: repairedOutbox.order_num,
+    },
+  };
 }
 
-/** Put a mid-edit offline sale back on the sync queue without applying cart changes. */
+/**
+ * Put a mid-edit offline sale back on the sync queue without applying cart changes.
+ * Never overwrite the outbox row with a bare sale_payload snapshot — that wiped
+ * `lines` / `sale_payload` and made sync fail with empty line validation.
+ */
 export async function abandonOfflineSaleEdit(cart) {
-  const snapshot = cart?.offline_edit_snapshot;
-  if (snapshot?.client_sale_uuid) {
-    await idbPutOutboxSale({
-      ...snapshot,
-      sync_status: "pending",
-    });
-  } else if (cart?.offline_client_sale_uuid) {
-    const existing = await idbGetOutboxSale(cart.offline_client_sale_uuid);
+  const uuid =
+    (cart?.offline_client_sale_uuid != null && String(cart.offline_client_sale_uuid).trim()) ||
+    (cart?.offline_edit_snapshot?.client_sale_uuid != null &&
+      String(cart.offline_edit_snapshot.client_sale_uuid).trim()) ||
+    null;
+  if (uuid) {
+    const existing = await idbGetOutboxSale(uuid);
     if (existing) {
-      await idbPutOutboxSale({ ...existing, sync_status: "pending" });
+      // Keep the real outbox record; only flip status back to pending.
+      // If a prior bug left items only on the top-level sale shape, rebuild lines.
+      const recoveredLines = mapOutboxLinesForPut(existing);
+      const next = {
+        ...existing,
+        sync_status: "pending",
+        sync_started_at_ms: null,
+        revision_at_sync: null,
+        updated_at_ms: Date.now(),
+      };
+      if (
+        recoveredLines.length > 0 &&
+        (!Array.isArray(existing.lines) || existing.lines.length === 0)
+      ) {
+        next.lines = recoveredLines.map((line) => ({
+          product_code: line.product_code,
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          display_unit_price: line.display_unit_price,
+          uom: line.uom,
+          unit_id: line.unit_id ?? null,
+          unit: line.unit ?? null,
+          on_wholesale_retail: line.on_wholesale_retail,
+          discount_given: line.discount_given,
+          product_name: line.product_name,
+          product_vat: line.product_vat,
+          amount: line.amount,
+        }));
+      }
+      if (
+        recoveredLines.length > 0 &&
+        (!existing.sale_payload ||
+          !Array.isArray(existing.sale_payload.items) ||
+          existing.sale_payload.items.length === 0)
+      ) {
+        const baseSale =
+          existing.sale_payload && typeof existing.sale_payload === "object"
+            ? existing.sale_payload
+            : Array.isArray(existing.items)
+              ? existing
+              : {};
+        next.sale_payload = {
+          ...baseSale,
+          client_sale_uuid: uuid,
+          items: Array.isArray(baseSale.items) && baseSale.items.length
+            ? baseSale.items
+            : next.lines ?? recoveredLines,
+        };
+      }
+      await idbPutOutboxSale(next);
     }
   }
   await clearLocalPosCart();

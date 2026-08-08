@@ -2517,6 +2517,30 @@ export function PosScreen({ standalone = false }) {
     // No bill change → never prompt (even if a no-op keystroke left the cart dirty).
     if (!delta.type || !(Number(delta.amount) > 0)) return cartNow;
     if (previousOrderAdjustmentsMatchDelta(cartNow.payment_adjustments, delta)) return cartNow;
+
+    // Background autosave / offline queue: never open the payment dialog mid-edit.
+    // Stash a provisional cash adjustment; Alt+P / F10 still collect the real tender.
+    if (options.provisional) {
+      const methodRaw = String(
+        cartNow.payment_method_code ?? editSourceSale?.payment_method_code ?? "CASH",
+      )
+        .trim()
+        .toUpperCase();
+      const method_code = !methodRaw || methodRaw === "CREDIT" ? "CASH" : methodRaw;
+      const adjustments = [
+        {
+          adjustment_type: delta.type,
+          method_code,
+          amount: Math.round(Number(delta.amount) * 100) / 100,
+        },
+      ];
+      const next = withEditDraftDirty({ ...cartNow, payment_adjustments: adjustments });
+      cartRef.current = next;
+      setCart(next);
+      void savePreviousOrderEditDraft(next).catch(() => {});
+      return next;
+    }
+
     const adjustments = await promptPreviousOrderPaymentAdjustment(
       delta,
       cartNow.held_order_num ?? resolvePosBrowseNumber(cartNow),
@@ -3546,29 +3570,79 @@ export function PosScreen({ standalone = false }) {
     void ensureRetailPackages(cartCodes);
     if (!missing.length) return;
     let cancelled = false;
-    mapWithConcurrency(
-      missing,
-      (code) =>
-        apiRequest(`/products/${encodeURIComponent(code)}`, {
-          searchParams: productBranchParams,
-        }).catch(() => null),
-      4,
-    ).then((rows) => {
+
+    async function hydrateMissingProducts() {
+      const fromOffline = {};
+      // Previous-order / offline carts: fill from IndexedDB first so qty/swap work
+      // without waiting on product GETs that fail when the link is down.
+      if (
+        standalone &&
+        (offlineMode ||
+          usesPosLocalDraftLineEdits(cart) ||
+          usesLocalPosCartWorkspace(cart))
+      ) {
+        for (const code of missing) {
+          if (cancelled) return;
+          try {
+            const row = await getPosOfflineProduct(code);
+            if (row?.product_code && isSellableCatalogProduct(row)) {
+              fromOffline[row.product_code] = enrichProductForLpo(row, uomById, vatById);
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (cancelled) return;
+        if (Object.keys(fromOffline).length) {
+          for (const [code, product] of Object.entries(fromOffline)) {
+            productByCodeRef.current[code] = productByCodeRef.current[code] ?? product;
+          }
+          setProductByCode((prev) => ({ ...fromOffline, ...prev }));
+        }
+      }
+
+      const stillMissing = missing.filter((code) => !productByCodeRef.current[code]);
+      if (!stillMissing.length || cancelled) return;
+
+      const rows = await mapWithConcurrency(
+        stillMissing,
+        (code) =>
+          apiRequest(`/products/${encodeURIComponent(code)}`, {
+            searchParams: productBranchParams,
+          }).catch(() => null),
+        4,
+      );
       if (cancelled) return;
       setProductByCode((prev) => {
         const next = { ...prev };
         for (const row of rows) {
           if (row?.product_code) {
-            next[row.product_code] = enrichProductForLpo(row, uomById, vatById);
+            const enriched = enrichProductForLpo(row, uomById, vatById);
+            next[row.product_code] = enriched;
+            productByCodeRef.current[row.product_code] = enriched;
           }
         }
         return next;
       });
-    });
+    }
+
+    void hydrateMissingProducts();
     return () => {
       cancelled = true;
     };
-  }, [cart?.lines, uomById, vatById, productBranchParams, ensureRetailPackages]);
+  }, [
+    cart?.lines,
+    cart?.offline,
+    cart?.offline_client_sale_uuid,
+    cart?.held_order_num,
+    cart?.superseded_sale_id,
+    uomById,
+    vatById,
+    productBranchParams,
+    ensureRetailPackages,
+    standalone,
+    offlineMode,
+  ]);
 
   const loadCashierCart = useCallback(async (options = {}) => {
     const skipEditDraftRestore = Boolean(options.skipEditDraftRestore);
@@ -4068,11 +4142,20 @@ export function PosScreen({ standalone = false }) {
   }
 
   function persistPreviousOrderLocalDraft(nextCart, { immediate = false } = {}) {
-    if (
-      !isPreviousOrderEditSession(nextCart) ||
-      nextCart.offline ||
-      nextCart.offline_client_sale_uuid
-    ) {
+    if (!isPreviousOrderEditSession(nextCart)) {
+      return;
+    }
+    // Offline / queued-edit carts persist via saveLocalPosCart — not the online draft id.
+    if (nextCart.offline || nextCart.offline_client_sale_uuid) {
+      void saveLocalPosCart({
+        ...nextCart,
+        id: "active",
+        offline: true,
+        lines: (nextCart.lines ?? []).map((l) => ({
+          ...l,
+          client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+        })),
+      }).catch(() => {});
       return;
     }
     void savePreviousOrderEditDraft(nextCart).catch(() => {});
@@ -4708,6 +4791,31 @@ export function PosScreen({ standalone = false }) {
       await ensureRetailPackageForProduct(fromResults);
       return fromResults;
     }
+
+    // Offline / previous-order edit: use the warmed IndexedDB catalog before any GET.
+    // Without this, qty Enter and swap reprice fail with "Product not found".
+    if (
+      standalone &&
+      (offlineMode ||
+        usesPosLocalDraftLineEdits(cartRef.current) ||
+        usesLocalPosCartWorkspace(cartRef.current))
+    ) {
+      try {
+        const local = await getPosOfflineProduct(trimmed);
+        if (local && isSellableCatalogProduct(local)) {
+          const enriched = enrichProductForLpo(local, uomById, vatById);
+          productByCodeRef.current[enriched.product_code] = enriched;
+          setProductByCode((prev) =>
+            prev[enriched.product_code] ? prev : { ...prev, [enriched.product_code]: enriched },
+          );
+          await ensureRetailPackageForProduct(enriched);
+          return enriched;
+        }
+      } catch {
+        /* fall through to API */
+      }
+    }
+
     try {
       const row = await apiRequest(`/products/${encodeURIComponent(trimmed)}`, {
         searchParams: { status: "active", ...productBranchParams },
@@ -4719,6 +4827,23 @@ export function PosScreen({ standalone = false }) {
       await ensureRetailPackageForProduct(enriched);
       return enriched;
     } catch {
+      // Last resort after a failed GET (drop mid-edit while still "online").
+      if (standalone) {
+        try {
+          const local = await getPosOfflineProduct(trimmed);
+          if (local && isSellableCatalogProduct(local)) {
+            const enriched = enrichProductForLpo(local, uomById, vatById);
+            productByCodeRef.current[enriched.product_code] = enriched;
+            setProductByCode((prev) =>
+              prev[enriched.product_code] ? prev : { ...prev, [enriched.product_code]: enriched },
+            );
+            await ensureRetailPackageForProduct(enriched);
+            return enriched;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       return null;
     }
   }
@@ -9049,7 +9174,8 @@ export function PosScreen({ standalone = false }) {
     if (!lines.length && !allowEmptyRevision) return null;
 
     let cartForSync = cartNow;
-    cartForSync = await ensurePreviousOrderPaymentAdjustment(cartNow);
+    // Background queue — never interrupt qty/swap with the payment breakdown dialog.
+    cartForSync = await ensurePreviousOrderPaymentAdjustment(cartNow, { provisional: true });
 
     const local = {
       ...cartForSync,
@@ -11338,11 +11464,20 @@ export function PosScreen({ standalone = false }) {
         ...cleanBase,
         id: held != null ? `edit:${held}` : `edit:${saleId}`,
         superseded_sale_id: Number(saleId),
+        // Stay on the local workspace while offline — never paint a TemporaryCart id.
+        ...(offlineMode
+          ? {
+              offline: true,
+              id: "active",
+            }
+          : {}),
       };
       cartRef.current = clean;
       setCart(clean);
       persistPreviousOrderLocalDraft(clean, { immediate: false });
-      void savePreviousOrderEditDraft(clean).catch(() => {});
+      if (!offlineMode) {
+        void savePreviousOrderEditDraft(clean).catch(() => {});
+      }
       setEditSourceSale(sourceSale);
       setSelectedLineId(null);
       setEditingLineId(null);
@@ -11387,6 +11522,36 @@ export function PosScreen({ standalone = false }) {
         return next;
       });
       return { clean, browseNum, orderNum };
+    };
+
+    const hydrateOfflineProductsForEditCart = (editCart) => {
+      const codes = [
+        ...new Set(
+          (editCart?.lines ?? [])
+            .map((l) => l.product_code)
+            .filter((code) => code && !productByCodeRef.current[code]),
+        ),
+      ];
+      if (!codes.length) return;
+      void (async () => {
+        const found = {};
+        for (const code of codes) {
+          try {
+            const row = await getPosOfflineProduct(code);
+            if (row?.product_code && isSellableCatalogProduct(row)) {
+              found[row.product_code] = enrichProductForLpo(row, uomById, vatById);
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!Object.keys(found).length) return;
+        for (const [code, product] of Object.entries(found)) {
+          productByCodeRef.current[code] = productByCodeRef.current[code] ?? product;
+        }
+        setProductByCode((prev) => ({ ...found, ...prev }));
+        void ensureRetailPackages(Object.keys(found));
+      })();
     };
 
     const applyAuthoritativeRestoredCart = (restoredRaw) => {
@@ -11516,6 +11681,7 @@ export function PosScreen({ standalone = false }) {
           if (standalone) notifyError(message);
           return;
         }
+        hydrateOfflineProductsForEditCart(applied.clean);
         const label = applied.browseNum;
         const kraFiscalize = shouldSubmitKraOnCheckout(
           capabilities?.module_settings,
@@ -11709,6 +11875,7 @@ export function PosScreen({ standalone = false }) {
         if (localFallback?.items?.length) {
           const applied = applyLocalPreviousOrderEditCart(localFallback);
           if (applied) {
+            hydrateOfflineProductsForEditCart(applied.clean);
             const label = applied.browseNum;
             const kraFiscalize = shouldSubmitKraOnCheckout(
               capabilities?.module_settings,
