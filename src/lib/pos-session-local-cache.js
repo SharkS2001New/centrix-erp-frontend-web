@@ -1,6 +1,9 @@
 /**
  * Reset External POS IndexedDB after Z print only.
  * Incomplete wipes are retried on the next POS boot via wipe_pending.
+ *
+ * After the first verified Z wipe on a device, per-cashier IndexedDB mode is
+ * enabled so later cashiers do not inherit each other's local sales.
  */
 
 import {
@@ -8,6 +11,10 @@ import {
   idbVerifyOfflineStoresEmpty,
   idbWipeDatabaseCompletely,
   idbClearAllStores,
+  idbDeleteLegacyOfflineDatabase,
+  setPosOfflineDbOwner,
+  enablePosOfflinePerCashierDb,
+  isPosOfflinePerCashierEnabled,
   POS_OFFLINE_OWNER_META_KEY,
 } from "@/lib/pos-offline-db";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
@@ -48,13 +55,12 @@ export function isPosOfflineWipePending() {
 }
 
 /**
- * Wipe External POS IndexedDB completely (carts, holds, catalog, outbox, meta).
+ * Wipe the active External POS IndexedDB completely (carts, holds, catalog, outbox, meta).
  * Call only after a successful Z report print (or to finish a prior Z wipe).
  *
- * Truncate is verified empty (not just deleteDatabase success). If verification
- * fails, a localStorage flag forces another wipe on the next POS boot.
+ * On verified wipe, enables per-cashier DB mode for the next session on this device.
  *
- * @returns {Promise<{ wiped: true, verified: boolean, mode: "delete" | "clear", preservedOutbox: number, attempts: number }>}
+ * @returns {Promise<{ wiped: true, verified: boolean, mode: "delete" | "clear", preservedOutbox: number, attempts: number, perCashierEnabled: boolean }>}
  */
 export async function clearPosSessionLocalCache() {
   markWipePending();
@@ -78,8 +84,18 @@ export async function clearPosSessionLocalCache() {
     }
   }
 
+  let perCashierEnabled = isPosOfflinePerCashierEnabled();
   if (result.verified) {
     clearWipePending();
+    // Cutover: from the next POS open, each cashier gets their own IndexedDB.
+    enablePosOfflinePerCashierDb();
+    perCashierEnabled = true;
+    // Drop the legacy shared file so old shared sales cannot be reopened.
+    try {
+      await idbDeleteLegacyOfflineDatabase();
+    } catch (err) {
+      console.warn("Could not delete legacy POS IndexedDB after Z", err);
+    }
   } else {
     markWipePending();
     console.warn(
@@ -93,6 +109,7 @@ export async function clearPosSessionLocalCache() {
     mode: result.mode === "delete" ? "delete" : "clear",
     preservedOutbox: 0,
     attempts: Number(result.attempts) || 0,
+    perCashierEnabled,
   };
 }
 
@@ -109,11 +126,13 @@ export async function settlePendingPosOfflineWipe() {
 }
 
 /**
- * Record who owns this browser's POS IndexedDB. Does not wipe on cashier change —
- * local data is cleared only when Z is printed (or when finishing a pending Z wipe).
+ * Bind this browser tab to the logged-in cashier's IndexedDB.
+ * Does not wipe on cashier change — local data is cleared only when Z is printed
+ * (or when finishing a pending Z wipe). After per-cashier cutover, each cashier
+ * opens a separate DB so they never see each other's local sales.
  *
  * @param {{ organizationId?: number|string|null, userId?: number|string|null }} owner
- * @returns {Promise<{ wiped: boolean, owner: { organization_id: number, user_id: number } | null }>}
+ * @returns {Promise<{ wiped: boolean, owner: { organization_id: number, user_id: number } | null, dbName?: string }>}
  */
 export async function ensurePosOfflineOwnerIsolation(owner = {}) {
   const next = ownerFingerprint(owner.organizationId, owner.userId);
@@ -121,16 +140,27 @@ export async function ensurePosOfflineOwnerIsolation(owner = {}) {
     return { wiped: false, owner: null };
   }
 
+  // Route IDB opens to this cashier (no-op name change until per-cashier is enabled).
+  const routed = await setPosOfflineDbOwner({
+    organizationId: next.organization_id,
+    userId: next.user_id,
+  });
+
   let wiped = false;
 
   // Finish an incomplete Z wipe — never wipe solely because the cashier changed.
   if (isPosOfflineWipePending()) {
     await clearPosSessionLocalCache();
     wiped = true;
+    // Re-bind after wipe (legacy delete + per-cashier enable may change the target name).
+    await setPosOfflineDbOwner({
+      organizationId: next.organization_id,
+      userId: next.user_id,
+    });
   }
 
   return withPosOfflineExclusiveLock(async () => {
     await idbSetMeta(POS_OFFLINE_OWNER_META_KEY, next);
-    return { wiped, owner: next };
+    return { wiped, owner: next, dbName: routed.dbName };
   }, { timeoutMs: 12_000 });
 }

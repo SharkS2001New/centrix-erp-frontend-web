@@ -1,22 +1,97 @@
 /**
  * IndexedDB helpers for External POS short-outage sell (~1.5 hours).
  * Not a full offline app — no service worker; bridge while the till stays open.
+ *
+ * Cutover: until the first verified Z wipe on a device, all cashiers share the
+ * legacy DB. After that Z, each cashier gets `…-o{org}-u{user}` isolation.
  */
 
 import { APP_TIMEZONE, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
+/** Shared DB used until the first post-deploy Z wipe enables per-cashier mode. */
 export const POS_OFFLINE_DB_NAME = "centrix-pos-offline-v1";
-const DB_NAME = POS_OFFLINE_DB_NAME;
+export const POS_OFFLINE_DB_NAME_LEGACY = POS_OFFLINE_DB_NAME;
+
+/** localStorage flag — set only after a verified Z wipe. */
+export const POS_OFFLINE_PER_CASHIER_LS_KEY = "centrix.pos.offline.per_cashier_db";
+
 const DB_VERSION = 3;
 
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
+/** @type {string | null} */
+let openDbName = null;
 
 /** True while Z-print wipe is in progress — blocks reopen races with outbox sync. */
 let wipingOfflineDb = false;
 
+/**
+ * Logged-in cashier for per-cashier DB routing.
+ * @type {{ organization_id: number, user_id: number } | null}
+ */
+let activeOfflineOwner = null;
+
 /** Meta key: which cashier/org last owned this device IndexedDB. */
 export const POS_OFFLINE_OWNER_META_KEY = "pos_device_owner";
+
+function ownerFingerprint(organizationId, userId) {
+  const organization_id = Number(organizationId);
+  const user_id = Number(userId);
+  if (!Number.isFinite(organization_id) || organization_id <= 0) return null;
+  if (!Number.isFinite(user_id) || user_id <= 0) return null;
+  return { organization_id, user_id };
+}
+
+export function isPosOfflinePerCashierEnabled() {
+  try {
+    return localStorage.getItem(POS_OFFLINE_PER_CASHIER_LS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Call only after a verified Z wipe — next session uses per-cashier DBs. */
+export function enablePosOfflinePerCashierDb() {
+  try {
+    localStorage.setItem(POS_OFFLINE_PER_CASHIER_LS_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
+export function posOfflineDbNameForOwner(owner) {
+  const fp = ownerFingerprint(owner?.organization_id ?? owner?.organizationId, owner?.user_id ?? owner?.userId);
+  if (!fp) return POS_OFFLINE_DB_NAME_LEGACY;
+  return `${POS_OFFLINE_DB_NAME_LEGACY}-o${fp.organization_id}-u${fp.user_id}`;
+}
+
+export function resolveActivePosOfflineDbName() {
+  if (isPosOfflinePerCashierEnabled() && activeOfflineOwner) {
+    return posOfflineDbNameForOwner(activeOfflineOwner);
+  }
+  return POS_OFFLINE_DB_NAME_LEGACY;
+}
+
+export function getPosOfflineDbOwner() {
+  return activeOfflineOwner;
+}
+
+/**
+ * Bind IndexedDB routing to the logged-in cashier. Closes the open connection
+ * when the resolved DB name changes (cashier switch after per-cashier mode).
+ *
+ * @param {{ organizationId?: number|string|null, userId?: number|string|null }} owner
+ */
+export async function setPosOfflineDbOwner(owner = {}) {
+  const next = ownerFingerprint(owner.organizationId, owner.userId);
+  const prevName = resolveActivePosOfflineDbName();
+  activeOfflineOwner = next;
+  const nextName = resolveActivePosOfflineDbName();
+  if (prevName !== nextName || (openDbName != null && openDbName !== nextName)) {
+    await closeOpenOfflineDb();
+  }
+  return { owner: next, dbName: nextName };
+}
 
 function openDb() {
   if (typeof indexedDB === "undefined") {
@@ -25,11 +100,28 @@ function openDb() {
   if (wipingOfflineDb) {
     return Promise.reject(new Error("POS IndexedDB is being reset after Z."));
   }
+
+  const name = resolveActivePosOfflineDbName();
+  if (dbPromise && openDbName != null && openDbName !== name) {
+    const stale = dbPromise;
+    dbPromise = null;
+    openDbName = null;
+    void stale.then((db) => {
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+    }).catch(() => {});
+  }
+
   if (!dbPromise) {
+    openDbName = name;
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      const req = indexedDB.open(name, DB_VERSION);
       req.onerror = () => {
         dbPromise = null;
+        openDbName = null;
         reject(req.error ?? new Error("Failed to open offline DB."));
       };
       req.onsuccess = () => {
@@ -40,6 +132,7 @@ function openDb() {
             /* ignore */
           }
           dbPromise = null;
+          openDbName = null;
           reject(new Error("POS IndexedDB is being reset after Z."));
           return;
         }
@@ -141,9 +234,13 @@ export async function idbClearStore(storeName) {
 }
 
 async function closeOpenOfflineDb() {
-  if (!dbPromise) return;
+  if (!dbPromise) {
+    openDbName = null;
+    return;
+  }
   const pending = dbPromise;
   dbPromise = null;
+  openDbName = null;
   try {
     const db = await pending;
     try {
@@ -156,7 +253,7 @@ async function closeOpenOfflineDb() {
   }
 }
 
-/** Object stores that must be empty after Z / cashier switch. */
+/** Object stores that must be empty after Z wipe. */
 export const POS_OFFLINE_STORE_NAMES = [
   "held_parks",
   "local_cart",
@@ -171,8 +268,13 @@ export const POS_OFFLINE_STORE_NAMES = [
  * Attempt indexedDB.deleteDatabase. Resolves true only on real onsuccess.
  * Blocked / timed-out deletes resolve false so the caller can clear stores instead
  * of pretending the DB was wiped (that left Cash Sales seq / outbox intact after Z).
+ *
+ * @param {string} [dbName]
  */
-function tryDeleteOfflineDatabase({ blockedMs = 1_500, timeoutMs = 4_000 } = {}) {
+function tryDeleteOfflineDatabase(dbName = resolveActivePosOfflineDbName(), {
+  blockedMs = 1_500,
+  timeoutMs = 4_000,
+} = {}) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (ok) => {
@@ -181,7 +283,7 @@ function tryDeleteOfflineDatabase({ blockedMs = 1_500, timeoutMs = 4_000 } = {})
       resolve(ok);
     };
 
-    const req = indexedDB.deleteDatabase(DB_NAME);
+    const req = indexedDB.deleteDatabase(String(dbName || POS_OFFLINE_DB_NAME_LEGACY));
     req.onsuccess = () => finish(true);
     req.onerror = () => finish(false);
     const schedule =
@@ -236,18 +338,25 @@ export async function idbClearAllStores() {
 }
 
 /**
- * Close the open connection and wipe External POS IndexedDB.
+ * Close the open connection and wipe the *active* External POS IndexedDB
+ * (legacy shared DB until per-cashier cutover, then this cashier's DB only).
  * Strategy (in order): clear all stores → verify empty → deleteDatabase → re-verify.
  * Truncate (clear) is what must never silently fail; deleteDatabase is best-effort.
  *
  * @param {{ attempts?: number }} [options]
- * @returns {Promise<{ mode: "delete" | "clear", verified: boolean, attempts: number }>}
+ * @returns {Promise<{ mode: "delete" | "clear", verified: boolean, attempts: number, dbName: string }>}
  */
 export async function idbWipeDatabaseCompletely({ attempts = 3 } = {}) {
   if (typeof indexedDB === "undefined") {
-    return { mode: "clear", verified: true, attempts: 0 };
+    return {
+      mode: "clear",
+      verified: true,
+      attempts: 0,
+      dbName: resolveActivePosOfflineDbName(),
+    };
   }
 
+  const targetName = resolveActivePosOfflineDbName();
   const maxAttempts = Math.max(1, Number(attempts) || 3);
   let mode = "clear";
   let verified = false;
@@ -262,7 +371,7 @@ export async function idbWipeDatabaseCompletely({ attempts = 3 } = {}) {
       wipingOfflineDb = true;
       await closeOpenOfflineDb();
 
-      const deleted = await tryDeleteOfflineDatabase({
+      const deleted = await tryDeleteOfflineDatabase(targetName, {
         blockedMs: attempt === 1 ? 1_200 : 800,
         timeoutMs: attempt === 1 ? 3_000 : 2_000,
       });
@@ -275,15 +384,29 @@ export async function idbWipeDatabaseCompletely({ attempts = 3 } = {}) {
       verified = check.empty;
       if (verified) {
         await closeOpenOfflineDb();
-        return { mode, verified: true, attempts: attempt };
+        return { mode, verified: true, attempts: attempt, dbName: targetName };
       }
     } finally {
       wipingOfflineDb = false;
       dbPromise = null;
+      openDbName = null;
     }
   }
 
-  return { mode, verified: false, attempts: maxAttempts };
+  return { mode, verified: false, attempts: maxAttempts, dbName: targetName };
+}
+
+/**
+ * Best-effort delete of the legacy shared DB after per-cashier cutover so a
+ * later open cannot fall back into pre-Z shared sales.
+ */
+export async function idbDeleteLegacyOfflineDatabase() {
+  if (typeof indexedDB === "undefined") return false;
+  await closeOpenOfflineDb();
+  return tryDeleteOfflineDatabase(POS_OFFLINE_DB_NAME_LEGACY, {
+    blockedMs: 1_000,
+    timeoutMs: 3_000,
+  });
 }
 
 export async function idbPutCatalogProducts(products) {

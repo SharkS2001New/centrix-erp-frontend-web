@@ -33,6 +33,14 @@ function ClassicLineQtyCell({
   }
 
   useEffect(() => {
+    // Never clobber in-progress typing (or the value just committed) while focused —
+    // parent cart can briefly still show the old qty and snapped the field back to 2.
+    if (
+      typeof document !== "undefined" &&
+      document.activeElement === inputElRef.current
+    ) {
+      return;
+    }
     setDraft(committed);
   }, [line?.id, committed]);
 

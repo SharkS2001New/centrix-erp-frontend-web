@@ -152,6 +152,7 @@ import {
   buildOptimisticCartLine,
   cartHasOptimisticLines,
   cartLineRef,
+  findCartLineIndexByRef,
   findMergeableCartLine,
   looksLikeProductCodeQuery,
   mergePreservedOptimisticLines,
@@ -4623,6 +4624,8 @@ export function PosScreen({ standalone = false }) {
     clearEntry = true,
     unlockUiEarly = false,
     lineRetailStockFlagOverride = null,
+    /** When true, a failed TemporaryCart PATCH keeps the painted edit (classic qty). */
+    keepOptimisticOnFailure = false,
   }) {
     const liveCart = cartRef.current ?? cart;
     const retailPackage = getRetailPackage(product.product_code);
@@ -4897,7 +4900,16 @@ export function PosScreen({ standalone = false }) {
       clearClassicEntryFields();
     }
 
-    const activeCart = await ensureCart();
+    // Classic line qty/swap edits already have a TemporaryCart id on the workspace.
+    // Calling ensureCart here rematerialized the server cart and snapped the qty
+    // back (e.g. typed 1 → briefly/always 2) before PATCH could land.
+    const activeCart =
+      intendedEdit &&
+      unlockUiEarly &&
+      isServerPosCartId(liveCart?.id) &&
+      !isFreshWorkspacePlaceholder(liveCart)
+        ? liveCart
+        : await ensureCart();
     // ensureCart may replace pending-fresh — re-paint so the row never blanks.
     if (
       activeCart?.id &&
@@ -4905,7 +4917,7 @@ export function PosScreen({ standalone = false }) {
         String(cartRef.current?.id) !== String(activeCart.id) ||
         !(cartRef.current?.lines ?? []).some((line) => line?._optimistic))
     ) {
-      painted = paintOptimisticOn(activeCart) ?? painted;
+      painted = paintOptimisticOn(cartRef.current ?? activeCart) ?? painted;
     }
     if (painted && unlockUiEarly && clearEntry) {
       clearClassicEntryFields();
@@ -5062,7 +5074,10 @@ export function PosScreen({ standalone = false }) {
           method: "PATCH",
           body: {
             ...lineBody,
-            update_no: serverUpdateNo ?? activeCart.update_no,
+            // Prefer the live cart's update_no — a stale snapshot caused
+            // "Cart was updated elsewhere" and snapped qty edits back.
+            update_no:
+              cartRef.current?.update_no ?? serverUpdateNo ?? activeCart.update_no,
           },
           ...POS_CART_REQUEST,
         });
@@ -5169,6 +5184,18 @@ export function PosScreen({ standalone = false }) {
       }
 
       setCart((current) => {
+        if (keepOptimisticOnFailure && intendedEdit) {
+          // Keep cashier's painted qty/price; only drop the optimistic flag.
+          const kept = {
+            ...current,
+            lines: (current?.lines ?? []).map((line) => {
+              const { _optimistic: _drop, ...rest } = line;
+              return rest;
+            }),
+          };
+          cartRef.current = kept;
+          return kept;
+        }
         const reverted = revertOptimisticCartMutation(current, {
           previousLineSnapshot:
             previousLineSnapshot?.product_code != null ? previousLineSnapshot : null,
@@ -6666,13 +6693,7 @@ export function PosScreen({ standalone = false }) {
         sameLineId(swapDraft.line?.update_code, line.id) ||
         sameLineId(swapDraft.lineId, line.update_code) ||
         sameLineId(swapDraft.line?.client_line_id, line.id) ||
-        sameLineId(swapDraft.line?.client_line_id, line.update_code) ||
-        // Reminted TemporaryCart ids: still finish the swap when this row is the
-        // original SKU that was being replaced.
-        (swapDraft.line?.product_code != null &&
-          String(swapDraft.line.product_code) === String(line.product_code) &&
-          Number(swapDraft.line.on_wholesale_retail ?? 0) ===
-            Number(line.on_wholesale_retail ?? 0)));
+        sameLineId(swapDraft.line?.client_line_id, line.update_code));
     if (swapTargetsThisLine) {
       if (swapDraft?.product) {
         void completeSwapFromDraft(entryQtyRaw);
@@ -6784,8 +6805,6 @@ export function PosScreen({ standalone = false }) {
       const retailPackage = getRetailPackage(liveLine.product_code);
 
       // Always price from the cashier-facing number in the qty field.
-      // F12 wholesale↔retail must NOT ×/÷ conversion_factor to "preserve stock"
-      // (1 bag became 50 retail units). Typed qty stays as entered in the new mode.
       const pricingEntryQty = entryQty;
 
       // When F12 session differs from the line's mode, reprice from catalog —
@@ -6850,6 +6869,135 @@ export function PosScreen({ standalone = false }) {
           );
           return;
         }
+      }
+
+      // Classic / previous-order / offline: paint the typed qty immediately so Enter
+      // never snaps back to the old number while TemporaryCart is still catching up.
+      if (classicLayout || localDraftEdit) {
+        const live = cartRef.current ?? activeCart;
+        const lines = [...(live?.lines ?? [])];
+        let idx = findCartLineIndexByRef(lines, lineRef);
+        if (idx < 0) {
+          idx = lines.findIndex((row) => sameLineId(row.id, liveLine.id));
+        }
+        if (idx < 0) {
+          setStatusMessage("Could not resolve the cart line to update.");
+          return;
+        }
+        const existing = lines[idx];
+        lines[idx] = {
+          ...existing,
+          quantity: computed.baseQty,
+          unit_price: computed.unitPricePerBase,
+          display_unit_price: computed.displayUnitPrice,
+          amount: computed.lineAmount,
+          on_wholesale_retail: sessionIsRetail ? 1 : 0,
+          discount_given:
+            allowDiscounts || discountApprovalActive ? computed.discountApplied : 0,
+          product_vat: lineProductVat(product, computed.lineAmount),
+          uom: computed.uomLabel || existing.uom || product.package_name,
+        };
+        const nextCart = isPreviousOrderEditSession(live)
+          ? withEditDraftDirty({ ...live, lines })
+          : { ...live, lines };
+        cartRef.current = nextCart;
+        setCart(nextCart);
+
+        if (isPreviousOrderEditSession(nextCart)) {
+          persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+          if (qtyActuallyChanged) notePreviousOrderEditSuccess("qty");
+          setSelectedLineId(null);
+          focusScanAfterItemAdded();
+          return;
+        }
+
+        if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
+          if (usesLocalPosCartWorkspace(nextCart)) {
+            try {
+              const saved = await saveLocalPosCart({
+                ...nextCart,
+                lines: (nextCart.lines ?? []).map((l) => ({
+                  ...l,
+                  client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+                })),
+              });
+              const presented = presentLocalOfflineCart(saved);
+              cartRef.current = presented;
+              setCart(presented);
+            } catch {
+              /* keep in-memory qty */
+            }
+          }
+          if (qtyActuallyChanged) {
+            notifySuccess("Quantity updated successfully");
+            setStatusMessage("Quantity updated successfully");
+          }
+          setSelectedLineId(null);
+          focusScanAfterItemAdded();
+          return;
+        }
+
+        // Live TemporaryCart: UI already shows the new qty — sync in the background.
+        // Never revert the painted qty if PATCH fails (stale update_no used to snap 1→2).
+        try {
+          const ok = await commitCartLine({
+            product,
+            computed,
+            incrementBaseQty: computed.baseQty,
+            editingId: existing.id,
+            editingRef: cartLineRef(existing) ?? lineRef,
+            discount: perUnitDiscount,
+            clearEntry: false,
+            successMessage: null,
+            unlockUiEarly: true,
+            lineRetailStockFlagOverride: sessionIsRetail,
+            keepOptimisticOnFailure: true,
+          });
+          const after = (cartRef.current?.lines ?? []).find(
+            (row) =>
+              sameLineId(row.id, existing.id) ||
+              String(cartLineRef(row)) === String(cartLineRef(existing) ?? lineRef),
+          );
+          if (
+            after &&
+            Math.abs(Number(after.quantity ?? 0) - Number(computed.baseQty)) > 0.0001
+          ) {
+            // Server response lost the edit — re-apply the cashier's qty.
+            const repaired = cartRef.current ?? nextCart;
+            const repairedLines = [...(repaired.lines ?? [])];
+            const repairIdx = findCartLineIndexByRef(
+              repairedLines,
+              cartLineRef(existing) ?? lineRef,
+            );
+            if (repairIdx >= 0) {
+              repairedLines[repairIdx] = {
+                ...repairedLines[repairIdx],
+                quantity: computed.baseQty,
+                unit_price: computed.unitPricePerBase,
+                display_unit_price: computed.displayUnitPrice,
+                amount: computed.lineAmount,
+                on_wholesale_retail: sessionIsRetail ? 1 : 0,
+              };
+              const fixed = { ...repaired, lines: repairedLines };
+              cartRef.current = fixed;
+              setCart(fixed);
+            }
+          }
+          if (ok && qtyActuallyChanged) {
+            notifySuccess("Quantity updated successfully");
+            setStatusMessage("Quantity updated successfully");
+          }
+        } catch (e) {
+          // Qty already painted — keep it; tell the cashier sync can retry.
+          setStatusMessage(
+            e instanceof ApiError
+              ? e.message
+              : "Quantity updated on screen — save may still be syncing.",
+          );
+        }
+        setSelectedLineId(null);
+        focusScanAfterItemAdded();
+        return;
       }
 
       const ok = await commitCartLine({
