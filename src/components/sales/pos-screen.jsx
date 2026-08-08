@@ -412,14 +412,16 @@ function isFreshWorkspacePlaceholder(cart) {
   return String(cart?.id ?? "") === "pending-fresh";
 }
 
-/** True when the cashier is actively editing a queued offline sale or previous-order session. */
+/** True when the cashier is actively editing a queued offline sale or previous-order session.
+ * A completed sale that failed sync must NOT count — that outbox stays in Pending sync only.
+ */
 function isActiveOfflineEditSession(cart) {
   if (!cart) return false;
   if (cart.held_order_num && cart.superseded_sale_id) return true;
-  if (
-    cart.offline_client_sale_uuid &&
-    (cart.offline_edit_snapshot || (cart.lines?.length ?? 0) > 0)
-  ) {
+  // Explicit reopen from Pending sync / offline edit overlay.
+  if (cart.offline_client_sale_uuid && cart.offline_edit_snapshot) return true;
+  // Mid-sale offline draft (not yet checked out to outbox).
+  if (cart.offline && (cart.lines?.length ?? 0) > 0 && !cart.offline_client_sale_uuid) {
     return true;
   }
   return false;
@@ -2052,6 +2054,8 @@ export function PosScreen({ standalone = false }) {
   const [pendingSyncOpen, setPendingSyncOpen] = useState(false);
   const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
   const pendingSyncAlertRef = useRef(false);
+  /** Prevents repeat workspace clears while syncProgress stays on the same failed complete. */
+  const failedSyncDetachKeyRef = useRef(null);
   const [autoHeldPrompt, setAutoHeldPrompt] = useState(null);
   const [autoHeldBusy, setAutoHeldBusy] = useState(false);
   const [orderDialogMode, setOrderDialogMode] = useState("save");
@@ -2910,8 +2914,14 @@ export function PosScreen({ standalone = false }) {
     if (!standalone) return;
     if (syncProgress?.phase !== "complete" || !(Number(syncProgress?.failed ?? 0) > 0)) return;
 
+    const failKey = `fail:${Number(syncProgress.failed)}:${String(syncProgress.message ?? "")}`;
+    if (failedSyncDetachKeyRef.current === failKey) return;
+    failedSyncDetachKeyRef.current = failKey;
+
     const current = cartRef.current;
-    if (isActiveOfflineEditSession(current) && (current?.lines?.length ?? 0) > 0) {
+    // Keep an explicit reopen-for-edit (has offline_edit_snapshot). Everything else
+    // attached to a failed outbox must release the till for the next sale.
+    if (isActiveOfflineEditSession(current) && current?.offline_edit_snapshot) {
       return;
     }
     if (current?.held_order_num && current?.superseded_sale_id && editedOrderHasLocalDraftChanges(current)) {
@@ -2927,15 +2937,32 @@ export function PosScreen({ standalone = false }) {
       current.held_order_num ||
       current.offline_client_sale_uuid ||
       current.offline ||
-      current.superseded_sale_id
+      current.superseded_sale_id ||
+      (current.lines?.length ?? 0) > 0
     ) {
-      const cleaned = stripOfflineSaleMarkers(
-        stripPreviousOrderEditSession(stripPreviousOrderDraftMarkers(current)),
+      // Failed sync residue often leaves TemporaryCart lines on the "new order"
+      // workspace — clear them so the next scan cannot merge into the failed sale.
+      if (isServerPosCartId(current.id)) {
+        markServerCartConsumed(current.id);
+        void apiRequest(`/sales/carts/${current.id}/lines`, {
+          method: "DELETE",
+          loading: false,
+          reportIssues: false,
+        }).catch(() => {});
+      }
+      const nextPos = resolveFreshWorkspacePosNum(
+        stripOfflineSaleMarkers(current),
+        sessionPosOrders,
+        null,
+        null,
+        floatSessionId,
       );
-      cartRef.current = cleaned;
-      setCart(cleaned);
+      applyFreshWorkspacePlaceholder(current, nextPos);
+      setStatusMessage(
+        "Sync failed for a queued sale — workspace cleared for a new order. Use Sync failed to retry.",
+      );
     }
-  }, [standalone, syncProgress?.phase, syncProgress?.failed]);
+  }, [standalone, syncProgress?.phase, syncProgress?.failed, syncProgress?.message, sessionPosOrders, floatSessionId]);
 
   // When the offline catalog refreshes, apply new prices to open cart lines.
   // Pause while offline, and also while a continued offline / queued-edit cart is open
@@ -3789,9 +3816,23 @@ export function PosScreen({ standalone = false }) {
       current &&
       (await cartHasStaleFailedOutboxAttachment(current))
     ) {
-      const cleaned = stripOfflineSaleMarkers(stripPreviousOrderEditSession(current));
-      cartRef.current = cleaned;
-      setCart(cleaned);
+      await clearLocalPosCart().catch(() => {});
+      if (isServerPosCartId(current.id)) {
+        markServerCartConsumed(current.id);
+        void apiRequest(`/sales/carts/${current.id}/lines`, {
+          method: "DELETE",
+          loading: false,
+          reportIssues: false,
+        }).catch(() => {});
+      }
+      const nextPos = resolveFreshWorkspacePosNum(
+        stripOfflineSaleMarkers(current),
+        sessionPosOrders,
+        null,
+        null,
+        floatSessionId,
+      );
+      applyFreshWorkspacePlaceholder(current, nextPos);
       return loadCashierCart({ skipEditDraftRestore: true });
     }
     if (standalone && offlineMode) {
@@ -3893,6 +3934,7 @@ export function PosScreen({ standalone = false }) {
     user?.branch_id,
     tillId,
     floatSessionId,
+    sessionPosOrders,
     materializeOfflineCartOnServer,
   ]);
 
@@ -4627,6 +4669,42 @@ export function PosScreen({ standalone = false }) {
     /** When true, a failed TemporaryCart PATCH keeps the painted edit (classic qty). */
     keepOptimisticOnFailure = false,
   }) {
+    // Failed sync must never own the till — detach before merge/add so old lines
+    // cannot be recopied into the next Cash Sales #.
+    if (
+      standalone &&
+      cartRef.current &&
+      (await cartHasStaleFailedOutboxAttachment(cartRef.current))
+    ) {
+      await clearLocalPosCart().catch(() => {});
+      const stale = cartRef.current;
+      if (isServerPosCartId(stale?.id)) {
+        markServerCartConsumed(stale.id);
+        void apiRequest(`/sales/carts/${stale.id}/lines`, {
+          method: "DELETE",
+          loading: false,
+          reportIssues: false,
+        }).catch(() => {});
+      }
+      const nextPos = resolveFreshWorkspacePosNum(
+        stripOfflineSaleMarkers(stale),
+        sessionPosOrders,
+        null,
+        null,
+        floatSessionId,
+      );
+      applyFreshWorkspacePlaceholder(stale, nextPos);
+      const bootstrapped = await loadCashierCart({ skipEditDraftRestore: true }).catch(() => null);
+      if (bootstrapped) {
+        const merged = mergeFreshWorkspaceCart(
+          stripOfflineSaleMarkers(stripPreviousOrderEditSession(bootstrapped)),
+          nextPos,
+        );
+        cartRef.current = merged;
+        setCart(merged);
+      }
+    }
+
     const liveCart = cartRef.current ?? cart;
     const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
@@ -8893,6 +8971,17 @@ export function PosScreen({ standalone = false }) {
         cartForSync.payment_method_code ??
         editSourceSale?.payment_method_code ??
         null,
+      is_credit_sale: Boolean(
+        cartForSync.is_credit_sale ??
+          editSourceSale?.is_credit_sale ??
+          String(
+            cartForSync.payment_method_code ??
+              editSourceSale?.payment_method_code ??
+              "",
+          )
+            .trim()
+            .toUpperCase() === "CREDIT",
+      ),
     };
     await upsertPreviousOrderEditOutbox({
       cart: local,
@@ -9941,12 +10030,20 @@ export function PosScreen({ standalone = false }) {
     // feel like it needed two presses. Outbox already holds the edit payload.
     const deleteCartId =
       isServerPosCartId(activeCart?.id) &&
-      (hasLines || Boolean(activeCart?.held_order_num) || editingPrevious)
+      (hasLines || Boolean(activeCart?.held_order_num) || editingPrevious || Boolean(activeCart?.offline_client_sale_uuid))
         ? Number(activeCart.id)
         : null;
     const abandonCart =
       editingQueuedOfflineSale && activeCart?.offline_edit_snapshot ? activeCart : null;
-    const clearOfflineCart = Boolean(activeCart?.offline && !editingQueuedOfflineSale);
+    // Failed-sync residue often has offline_client_sale_uuid without a snapshot —
+    // always clear IndexedDB so F8 cannot leave the failed sale's lines behind.
+    const clearOfflineCart = Boolean(
+      abandonCart
+        ? false
+        : activeCart?.offline ||
+            activeCart?.offline_client_sale_uuid ||
+            (hasLines && hasPendingOutbox),
+    );
     // Mark abandoned before placeholder/bootstrap so late line saves cannot repaint it.
     if (deleteCartId) markServerCartConsumed(deleteCartId);
     const immediateNextPos = resolveFreshWorkspacePosNum(

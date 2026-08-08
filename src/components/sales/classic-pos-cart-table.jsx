@@ -3,7 +3,18 @@
 import { isPosClassicAltShortcut, isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
+/** Assign a value to a React ref object or callback without mutating props in a ref callback. */
+function assignRef(ref, value) {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref != null && typeof ref === "object") {
+    ref.current = value;
+  }
+}
 
 function ClassicLineQtyCell({
   line,
@@ -23,14 +34,12 @@ function ClassicLineQtyCell({
   const skipBlurCommitRef = useRef(false);
   const inputElRef = useRef(null);
 
-  function setInputRef(node) {
-    inputElRef.current = node;
-    if (typeof inputRef === "function") {
-      inputRef(node);
-    } else if (inputRef && typeof inputRef === "object") {
-      inputRef.current = node;
-    }
-  }
+  // Keep parent swapLineQtyRef in sync without mutating props during a ref callback
+  // (react-hooks/immutability).
+  useLayoutEffect(() => {
+    assignRef(inputRef, inputElRef.current);
+    return () => assignRef(inputRef, null);
+  }, [inputRef]);
 
   useEffect(() => {
     // Never clobber in-progress typing (or the value just committed) while focused —
@@ -68,7 +77,7 @@ function ClassicLineQtyCell({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <input
-        ref={setInputRef}
+        ref={inputElRef}
         type="text"
         inputMode="decimal"
         className="classic-pos-line-qty-input"

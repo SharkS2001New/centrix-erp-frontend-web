@@ -331,6 +331,19 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
     const hasLines = (existing.lines?.length ?? 0) > 0;
     const isQueuedEdit = Boolean(existing.offline_client_sale_uuid);
     const isPreviousOrderEdit = Boolean(existing.superseded_sale_id && existing.held_order_num);
+
+    // Failed / synced / missing outbox must not seed the next sale's lines.
+    if (existing.offline_client_sale_uuid) {
+      const outbox = await idbGetOutboxSale(String(existing.offline_client_sale_uuid));
+      const status = outbox?.sync_status ?? null;
+      if (!outbox || status === "error" || status === "synced") {
+        await idbClearLocalCart("active");
+        const cart = emptyLocalPosCart(seed);
+        await idbPutLocalCart(cart);
+        return cart;
+      }
+    }
+
     // Abandoned shells from a completed/failed sale must not hijack the next ticket.
     if (!hasLines && !isQueuedEdit && !isPreviousOrderEdit && existing.held_order_num) {
       await idbClearLocalCart("active");
@@ -1079,7 +1092,26 @@ export async function completeOfflineCashSale({
   const soldAtMs = existingOutbox?.created_at_ms ?? Date.now();
   const soldAtIso = new Date(soldAtMs).toISOString();
 
-  const isCreditSale = Boolean(isCreditSaleOpt) && !isPreviousOrderEdit;
+  // Previous-order edits preserve the original tender method (often CREDIT). Never force
+  // is_credit_sale=false in that case — checkout rejects CREDIT without the credit flag.
+  const priorMethodHint = String(
+    cart.payment_method_code ??
+      existingOutbox?.sale_payload?.payment_method_code ??
+      existingOutbox?.checkout_body?.payment_method_code ??
+      cart.offline_edit_snapshot?.payment_method_code ??
+      "",
+  )
+    .trim()
+    .toUpperCase();
+  const priorWasCreditSale = Boolean(
+    cart.is_credit_sale ??
+      existingOutbox?.sale_payload?.is_credit_sale ??
+      existingOutbox?.checkout_body?.is_credit_sale ??
+      cart.offline_edit_snapshot?.is_credit_sale,
+  );
+  const isCreditSale = isPreviousOrderEdit
+    ? priorWasCreditSale || priorMethodHint === "CREDIT"
+    : Boolean(isCreditSaleOpt);
   const requestedPay = Math.max(0, Number(cashAmount ?? 0));
 
   const paymentSplits = Array.isArray(paymentSplitsOpt)
@@ -1964,6 +1996,24 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   if (Number.isFinite(openFloatSessionId) && openFloatSessionId > 0) {
     body.float_session_id = openFloatSessionId;
   }
+
+  // Repair stuck previous-order edits that preserved CREDIT method but cleared is_credit_sale.
+  const methodCode = String(body.payment_method_code ?? "").trim().toUpperCase();
+  const priorCredit = Boolean(
+    row.sale_payload?.is_credit_sale ??
+      row.prior_sale_snapshot?.is_credit_sale ??
+      row.checkout_body?.is_credit_sale,
+  );
+  if (
+    (row.sync_kind === "previous_order_edit" || methodCode === "CREDIT") &&
+    (priorCredit || methodCode === "CREDIT")
+  ) {
+    body.is_credit_sale = true;
+    if (!body.payment_method_code) {
+      body.payment_method_code = "CREDIT";
+    }
+  }
+
   return body;
 }
 
@@ -2412,14 +2462,18 @@ export async function discardAllPendingOutboxSales() {
   });
 }
 
-/** True when the workspace cart still points at a failed/discarded outbox row. */
+/** True when the workspace cart still points at a failed/discarded/synced outbox row.
+ * Failed sync must never own the live till — cashier continues on a fresh order.
+ * Explicit `editing` (reopened from Pending sync) stays attached.
+ */
 export async function cartHasStaleFailedOutboxAttachment(cart) {
   const uuid = cart?.offline_client_sale_uuid;
   if (!uuid) return false;
   const row = await idbGetOutboxSale(uuid);
   if (!row) return true;
-  if (row.sync_status !== "error") return false;
-  return !(cart.lines?.length > 0);
+  if (row.sync_status === "editing") return false;
+  if (row.sync_status === "error" || row.sync_status === "synced") return true;
+  return false;
 }
 
 export async function getPosOfflineFailedCount() {
