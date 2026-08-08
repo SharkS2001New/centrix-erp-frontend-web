@@ -351,12 +351,19 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       Array.isArray(sale.items) &&
       sale.items.length > 0 &&
       !sale.items.some((line) => line?.product_code && !saleLineProductName(line));
-    // Always run ensureSaleForPrint — it no-ops when lines + eTIMS link are already present,
-    // but refreshes when signature_link was saved and the list/cache payload omitted it.
+    // POS checkout / previous-order draft: skipSaleRefresh with complete in-memory
+    // lines. Never require eTIMS QR — that forced a GET of the pre-edit sale and
+    // reprinted the old items after swap/qty changes.
+    const skipSaleRefresh =
+      options.skipNetworkLookups ||
+      offlineSale ||
+      isOfflineSalePrint(sale, options) ||
+      (options.skipSaleRefresh && hasCompleteItems) ||
+      Boolean(sale?._skip_kra_qr) ||
+      Boolean(sale?.offline_pending_sync) ||
+      String(sale?.id ?? "").startsWith("offline:");
     const loadedSale = withPosReceiptTicket(
-      options.skipSaleRefresh && hasCompleteItems && extractKraReceiptData(sale)?.signatureLink
-        ? sale
-        : await ensureSaleForPrint(sale),
+      skipSaleRefresh ? sale : await ensureSaleForPrint(sale),
       sale,
     );
 

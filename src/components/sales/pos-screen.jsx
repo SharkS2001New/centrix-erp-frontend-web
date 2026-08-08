@@ -63,6 +63,7 @@ import {
 } from "@/lib/product-discount";
 import { lineProductVat } from "@/lib/sales-vat";
 import {
+  formatCashSalesNumber,
   formatPosBrowseLabel,
   formatSaleKes,
   resolvePosBrowseNumber,
@@ -540,6 +541,10 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
           ) / 100,
         }
       : {}),
+    // Keep original tender mix for receipt rebuild (never use rebuilt outbox payload).
+    ...(mergedSource?.id
+      ? { offline_edit_snapshot: base.offline_edit_snapshot ?? mergedSource }
+      : {}),
   };
 
   if ((withPosTicket.lines?.length ?? 0) > 0) {
@@ -580,9 +585,37 @@ function resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId) {
       ? restoredRaw.restored_from_sale
       : null;
   if (saleSnapshot?.id) {
+    // Browse snapshots are thin — prefer restore/API tenders & totals over missing zeros.
+    const preferNum = (a, b) => {
+      const av = Number(a);
+      const bv = Number(b);
+      if (Number.isFinite(av) && av > 0) return av;
+      if (Number.isFinite(bv) && bv > 0) return bv;
+      return a ?? b ?? null;
+    };
     return {
-      ...fromRestore,
       ...saleSnapshot,
+      ...fromRestore,
+      id: saleSnapshot.id ?? fromRestore?.id ?? saleId,
+      order_num: saleSnapshot.order_num ?? fromRestore?.order_num ?? null,
+      order_total: preferNum(fromRestore?.order_total, saleSnapshot.order_total),
+      amount_paid: preferNum(fromRestore?.amount_paid, saleSnapshot.amount_paid),
+      cash: preferNum(fromRestore?.cash, saleSnapshot.cash) ?? fromRestore?.cash ?? saleSnapshot.cash,
+      mpesa_amount:
+        preferNum(fromRestore?.mpesa_amount, saleSnapshot.mpesa_amount) ??
+        fromRestore?.mpesa_amount ??
+        saleSnapshot.mpesa_amount,
+      equity_amount:
+        preferNum(fromRestore?.equity_amount, saleSnapshot.equity_amount) ??
+        fromRestore?.equity_amount ??
+        saleSnapshot.equity_amount,
+      kcb_amount:
+        preferNum(fromRestore?.kcb_amount, saleSnapshot.kcb_amount) ??
+        fromRestore?.kcb_amount ??
+        saleSnapshot.kcb_amount,
+      payments: Array.isArray(fromRestore?.payments) && fromRestore.payments.length
+        ? fromRestore.payments
+        : saleSnapshot.payments,
       customer_num: saleSnapshot.customer_num ?? fromRestore?.customer_num ?? null,
       customer_name_override:
         saleSnapshot.customer_name_override ?? fromRestore?.customer_name_override ?? null,
@@ -591,7 +624,7 @@ function resolveRestoredSourceSale(restoredRaw, saleSnapshot, saleId) {
       pos_order_num: saleSnapshot.pos_order_num ?? fromRestore?.pos_order_num ?? null,
       pos_order_date: saleSnapshot.pos_order_date ?? fromRestore?.pos_order_date ?? null,
       payment_method_code:
-        saleSnapshot.payment_method_code ?? fromRestore?.payment_method_code ?? null,
+        fromRestore?.payment_method_code ?? saleSnapshot.payment_method_code ?? null,
     };
   }
   if (fromRestore?.id) return fromRestore;
@@ -988,7 +1021,7 @@ function previousOrderEditModeMessages(orderNum, { kraFiscalize = false, offline
   };
 }
 
-/** Prefer the revised cart while editing; otherwise the last completed sale. */
+/** Prefer the revised cart while editing; never fall back to the pre-edit source sale. */
 function resolvePosReprintSale({
   isCartEditSession,
   editSourceSale,
@@ -998,7 +1031,9 @@ function resolvePosReprintSale({
   editCartSnapshot = null,
 }) {
   if (isCartEditSession && editCartSnapshot?.items?.length) return editCartSnapshot;
-  if (isCartEditSession && editSourceSale?.id) return editSourceSale;
+  // editSourceSale still has the original lines — printing it after a swap/qty change
+  // is exactly the "screen shows new, receipt shows old" bug. Prefer nothing over that.
+  if (isCartEditSession) return editCartSnapshot?.items?.length ? editCartSnapshot : null;
   if (completedSale?.id) return completedSale;
   if (sessionPosOrders?.[0]?.id) return sessionPosOrders[0];
   if (lastReceiptFallback?.id) return lastReceiptFallback;
@@ -1689,6 +1724,29 @@ export function PosScreen({ standalone = false }) {
     setStatusMessage(null);
   }
 
+  /** Ask before wiping local POS data when unsynced offline sales still exist. */
+  async function confirmWipeLocalPosDataIfNeeded() {
+    let pending = Number(pendingSync ?? 0);
+    try {
+      pending = await getPosOfflinePendingCount();
+    } catch {
+      /* use state count */
+    }
+    const failed = Array.isArray(failedSyncOrders) ? failedSyncOrders.length : 0;
+    const total = Math.max(pending, failed);
+    if (total <= 0) return true;
+    return confirm({
+      title: "Wipe local POS data?",
+      message:
+        `There ${total === 1 ? "is 1 pending offline order" : `are ${total} pending offline orders`} ` +
+        "that have not synced to the server. Signing out after Z will wipe them from this device. " +
+        "Cancel to keep them, then open Pending sync to upload or delete first.",
+      confirmLabel: "Wipe and sign out",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+  }
+
   function leavePosAfterZ() {
     floatModalDismissedRef.current = true;
     setFloatModalOpen(false);
@@ -1699,6 +1757,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleZReportPrinted() {
+    if (!(await confirmWipeLocalPosDataIfNeeded())) {
+      return;
+    }
     try {
       await Promise.race([
         resetPosLocalStateAfterZPrint(),
@@ -1711,6 +1772,9 @@ export function PosScreen({ standalone = false }) {
 
   async function handleZReportSignOut() {
     // Sign out without print — still wipe so the next cashier cannot inherit this shift.
+    if (!(await confirmWipeLocalPosDataIfNeeded())) {
+      return;
+    }
     try {
       await Promise.race([
         clearPosSessionLocalCache(),
@@ -4905,7 +4969,6 @@ export function PosScreen({ standalone = false }) {
 
   async function quickAddOrIncrementProduct(product) {
     if (busy || !product) return;
-    if (!classicLayout && lineBusy) return;
     if (!assertRouteReadyForAdd()) return;
 
     setProductByCode((prev) =>
@@ -4919,63 +4982,32 @@ export function PosScreen({ standalone = false }) {
     const computed = applyComputedPrice(product, "1", 0);
     if (computed.baseQty <= 0) return;
 
-    if (classicLayout || usesPosLocalDraftLineEdits(cartRef.current)) {
-      // Do not clear the entry row here — commitCartLine paints the cart line first,
-      // then clears (unlockUiEarly) so the item never disappears mid-add.
-      if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
-      void enqueueCartCommit(async () => {
-        const mergeTarget = findMergeableCartLine(
-          cartRef.current?.lines,
-          product.product_code,
-          computed,
-          posSalesConfig,
-          sellWholesale,
-          null,
-          product,
-          { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
-        );
-        try {
-          await commitCartLine({
-            product,
-            computed,
-            incrementBaseQty: computed.baseQty,
-            mergeTarget,
-            successMessage: null,
-            unlockUiEarly: true,
-          });
-        } catch (e) {
-          setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
-        }
-      });
-      return;
-    }
-
-    const mergeTarget = findMergeableCartLine(
-      cart?.lines,
-      product.product_code,
-      computed,
-      posSalesConfig,
-      sellWholesale,
-      null,
-      product,
-      { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
-    );
-
-    setLineBusy(true);
-    try {
-      const ok = await commitCartLine({
-        product,
+    // Always serialize adds — rapid scan/click must merge qty, never duplicate lines.
+    if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
+    void enqueueCartCommit(async () => {
+      const mergeTarget = findMergeableCartLine(
+        cartRef.current?.lines,
+        product.product_code,
         computed,
-        incrementBaseQty: computed.baseQty,
-        mergeTarget,
-        successMessage: null,
-      });
-      if (ok) focusScanAfterItemAdded();
-    } catch (e) {
-      setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
-    } finally {
-      setLineBusy(false);
-    }
+        posSalesConfig,
+        sellWholesale,
+        null,
+        product,
+        { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
+      );
+      try {
+        await commitCartLine({
+          product,
+          computed,
+          incrementBaseQty: computed.baseQty,
+          mergeTarget,
+          successMessage: null,
+          unlockUiEarly: true,
+        });
+      } catch (e) {
+        setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
+      }
+    });
   }
 
   async function handleBarcodeEnter(code) {
@@ -5280,6 +5312,9 @@ export function PosScreen({ standalone = false }) {
     if (after && String(after.product_code) !== String(product.product_code)) {
       setStatusMessage("Could not swap this line — try again.");
       return false;
+    }
+    if (isPreviousOrderEditSession(cartRef.current ?? activeCart)) {
+      markPreviousOrderDraftDirtyNow();
     }
     return true;
   }
@@ -5832,17 +5867,8 @@ export function PosScreen({ standalone = false }) {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
         }
       };
-      if (usesPosLocalDraftLineEdits(cartRef.current)) {
-        if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
-        void enqueueCartCommit(runReplace);
-        return;
-      }
-      setLineBusy(true);
-      try {
-        await runReplace();
-      } finally {
-        setLineBusy(false);
-      }
+      if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
+      void enqueueCartCommit(runReplace);
       return;
     }
 
@@ -5884,10 +5910,10 @@ export function PosScreen({ standalone = false }) {
         discount,
         override,
         successMessage: null,
-        unlockUiEarly: classicLayout,
+        unlockUiEarly: true,
       });
       if (!ok) return;
-      if (!classicLayout) focusScanAfterItemAdded();
+      focusScanAfterItemAdded();
     } catch (e) {
       setStatusMessage(
         e instanceof ApiError
@@ -5899,20 +5925,10 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    // Previous-order / classic: local queue — never freeze F10 behind lineBusy.
-    if (classicLayout || usesPosLocalDraftLineEdits(cartRef.current)) {
-      // commitCartLine paints then clears entry (unlockUiEarly) — do not clear first.
-      if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
-      void enqueueCartCommit(run);
-      return;
-    }
-
-    setLineBusy(true);
-    try {
-      await run();
-    } finally {
-      setLineBusy(false);
-    }
+    // Always serialize line adds — rapid Enter/click must not create duplicate rows.
+    // commitCartLine paints then clears entry (unlockUiEarly) — do not clear first.
+    if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
+    void enqueueCartCommit(run);
   }
 
   function canEditManualLineDiscount(product = selectedProduct) {
@@ -7699,12 +7715,16 @@ export function PosScreen({ standalone = false }) {
             cart: local,
             user,
             organization,
-            cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local, {
-              cashRound: enablePosCashRounding,
-            }).amountDue,
+            cashAmount: isLocalFirstCredit
+              ? cashPay
+              : cashPay > 0
+                ? cashPay
+                : summarizeLocalPosCart(local, {
+                    cashRound: enablePosCashRounding,
+                  }).amountDue,
             paymentMethodCode: body?.payment_method_code || "CASH",
             paymentSplits: Array.isArray(body?.payment_splits) ? body.payment_splits : null,
-            isCreditSale: false,
+            isCreditSale: isLocalFirstCredit,
             paymentReference: body?.payment_reference ?? null,
             paymentDate: body?.payment_date ?? null,
             workflowStatus: body?.status ?? null,
@@ -9230,7 +9250,13 @@ export function PosScreen({ standalone = false }) {
     if (receiptPrintStatus === "pending") return;
 
     setReceiptPrintStatus("pending");
-    const orderLabel = sale.order_num ? `#${sale.order_num}` : "";
+    const cashSalesLabel = formatCashSalesNumber(sale);
+    const orderLabel =
+      cashSalesLabel !== "—"
+        ? cashSalesLabel
+        : sale.order_num
+          ? `#${sale.order_num}`
+          : "";
     const loadingToastId = toast.loading(
       orderLabel ? `Printing receipt ${orderLabel}…` : "Printing receipt…",
     );
@@ -9804,24 +9830,68 @@ export function PosScreen({ standalone = false }) {
     setOrderEditError(null);
 
     try {
+      // Always hydrate full sale tenders (browse rows omit cash/mpesa columns).
+      // Paint lines ASAP from snapshot when present; merge payment columns when GET returns.
+      const hydrateSaleTenders = (sale) => {
+        if (!sale || typeof sale !== "object") return;
+        // GET often finishes after restore-to-cart; still merge tenders if this edit is open.
+        setEditSourceSale((prev) => {
+          const live = cartRef.current;
+          if (live && Number(live.superseded_sale_id) !== Number(saleId)) {
+            return prev;
+          }
+          const merged = { ...(prev ?? {}), ...sale };
+          const priorTotal = Math.round(
+            Number(merged.order_total ?? merged.amount_paid ?? 0) * 100,
+          ) / 100;
+          if (live && Number(live.superseded_sale_id) === Number(saleId)) {
+            const next = {
+              ...live,
+              original_order_total:
+                live.original_order_total != null && Number(live.original_order_total) > 0.009
+                  ? live.original_order_total
+                  : priorTotal > 0.009
+                    ? priorTotal
+                    : live.original_order_total,
+              offline_edit_snapshot: {
+                ...(live.offline_edit_snapshot && typeof live.offline_edit_snapshot === "object"
+                  ? live.offline_edit_snapshot
+                  : {}),
+                ...merged,
+              },
+              ...(merged.payment_method_code && !live.payment_method_code
+                ? { payment_method_code: String(merged.payment_method_code).toUpperCase() }
+                : {}),
+            };
+            cartRef.current = next;
+            setCart(next);
+            persistPreviousOrderLocalDraft(next, { immediate: false });
+          }
+          return merged;
+        });
+      };
+
       if (saleSnapshot?.items?.length) {
         paintOptimisticFromSale(saleSnapshot);
       } else {
         beginLoadingIfNeeded();
-        // Fetch line items in parallel with restore so the till can paint sooner.
-        void apiRequest(`/sales/${saleId}`)
-          .then((sale) => {
-            if (!restoreActive) return;
-            if (paintedOptimistic) {
-              if (sale) setEditSourceSale((prev) => ({ ...(prev ?? {}), ...sale }));
-              return;
-            }
-            paintOptimisticFromSale(sale);
-          })
-          .catch(() => {
-            /* restore-to-cart still provides the authoritative cart */
-          });
       }
+      void apiRequest(`/sales/${saleId}`)
+        .then((sale) => {
+          if (paintedOptimistic) {
+            hydrateSaleTenders(sale);
+            return;
+          }
+          if (!restoreActive) {
+            hydrateSaleTenders(sale);
+            return;
+          }
+          paintOptimisticFromSale(sale);
+          hydrateSaleTenders(sale);
+        })
+        .catch(() => {
+          /* restore-to-cart still provides the authoritative cart */
+        });
 
       if (!paintedOptimistic) beginLoadingIfNeeded();
 
@@ -9912,7 +9982,13 @@ export function PosScreen({ standalone = false }) {
     const compact = trimmed.replace(/[\s#\-]+/g, "");
     const isCashSalesTicket = /^\d+$/.test(compact);
     const orgOrderMatch = compact.match(/^S0*(\d+)$/i);
-    const ticketNum = isCashSalesTicket ? compact : null;
+    // External POS: cashiers think in Cash Sales #. "12" and "S0012" both try
+    // pos_order_num first — S-prefix used to load the wrong org S00xx sale.
+    const ticketNum = isCashSalesTicket
+      ? compact
+      : orgOrderMatch
+        ? orgOrderMatch[1]
+        : null;
     const orgOrderNum = orgOrderMatch ? orgOrderMatch[1] : null;
 
     try {
@@ -9922,7 +9998,8 @@ export function PosScreen({ standalone = false }) {
           offlineOrders.find(
             (row) =>
               (ticketNum != null && String(row.pos_order_num) === ticketNum) ||
-              sessionOrderMatchesBrowseNum(row, trimmed),
+              sessionOrderMatchesBrowseNum(row, trimmed) ||
+              (ticketNum != null && sessionOrderMatchesBrowseNum(row, ticketNum)),
           ) ??
           (orgOrderNum != null
             ? offlineOrders.find((row) => String(row.order_num) === orgOrderNum)
@@ -9952,14 +10029,13 @@ export function PosScreen({ standalone = false }) {
       const today = todayPosOrderDate();
       const TOMBSTONE_MIN = 9_000_000;
 
-      async function fetchPosEditRows(extra) {
+      async function fetchPosEditRows(extra = {}, { q = "" } = {}) {
         const res = await apiRequest("/sales", {
           searchParams: buildPageParams({
             page: 1,
             perPage: 25,
-            // Do not send digit `q` for Cash Sales # — it also matches org order_num /
-            // product codes and can return the wrong fiscalized sale (KRA void then fails).
-            q: orgOrderNum != null ? `S${orgOrderNum}` : "",
+            // Never send digit `q` for Cash Sales # — it also matches org order_num.
+            q: q || undefined,
             extra: {
               for_pos_order_edit: 1,
               channel: "pos",
@@ -9973,19 +10049,19 @@ export function PosScreen({ standalone = false }) {
         return Array.isArray(res?.data) ? res.data : [];
       }
 
-      function pickEditableRow(rows) {
+      function pickEditableRow(rows, { matchPos = false, matchOrg = false } = {}) {
         const eligible = rows.filter(
           (row) =>
             row?.id != null &&
             Number(row.order_num) < TOMBSTONE_MIN &&
             !row?.fulfillment_meta?.superseded_by_edit,
         );
-        if (ticketNum != null) {
+        if (matchPos && ticketNum != null) {
           return (
             eligible.find((row) => String(row.pos_order_num) === ticketNum) ?? null
           );
         }
-        if (orgOrderNum != null) {
+        if (matchOrg && orgOrderNum != null) {
           return eligible.find((row) => String(row.order_num) === orgOrderNum) ?? null;
         }
         return eligible.find((row) => sessionOrderMatchesBrowseNum(row, trimmed)) ?? null;
@@ -10001,12 +10077,21 @@ export function PosScreen({ standalone = false }) {
             to_date: today,
             date_field: "placed",
           }),
+          { matchPos: true },
         );
         if (!match) {
           match = pickEditableRow(
             await fetchPosEditRows({
               filter_pos_order: ticketNum,
             }),
+            { matchPos: true },
+          );
+        }
+        // S0012 typed but meant org S# (rare) — only after Cash Sales miss.
+        if (!match && orgOrderNum != null && !isCashSalesTicket) {
+          match = pickEditableRow(
+            await fetchPosEditRows({}, { q: `S${orgOrderNum}` }),
+            { matchOrg: true },
           );
         }
       } else {
@@ -10014,7 +10099,7 @@ export function PosScreen({ standalone = false }) {
       }
 
       if (!match?.id) {
-        const message = `No POS order found with number ${trimmed}.`;
+        const message = `No POS order found with Cash Sales #${ticketNum ?? trimmed}.`;
         setOrderEditError(message);
         setStatusMessage(message);
         return;

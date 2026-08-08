@@ -40,7 +40,7 @@ import {
   THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
 } from "@/lib/thermal-receipt-layout";
-import { resolveSaleReceiptChangeGiven } from "@/lib/checkout-payment-splits";
+import { resolveSaleReceiptChangeGiven, sumSalePaymentAdjustments } from "@/lib/checkout-payment-splits";
 import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 
@@ -291,6 +291,10 @@ export function buildSaleReceiptHtml(
   // stored on the server. Previous-order edit return/top-up use payment_adjustments — return
   // change is exact; top-up must not appear as "Change Given".
   const changeGiven = resolveSaleReceiptChangeGiven(sale, { totalPaid, orderTotal });
+  const topupAmount = Math.max(
+    Number(sale?._topup_amount ?? 0),
+    sumSalePaymentAdjustments(sale, "topup"),
+  );
   const totalDiscount = discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
   const showDiscountTotal =
     (showDiscountColumn || orderDiscountEnabled) && totalDiscount > 0.0001;
@@ -330,6 +334,7 @@ export function buildSaleReceiptHtml(
   const usedPaymentRows = buildUsedPaymentRows(sale, orderTotal, { showAllMethods: showAllPaymentMethods });
   const paymentDetailsHtml = [
     ...usedPaymentRows.map((entry) => paymentDetailRow(entry.label, entry.value)),
+    ...(topupAmount > 0.0001 ? [paymentDetailRow("Top-up amount", topupAmount)] : []),
     ...(changeGiven > 0.0001 ? [paymentDetailRow("Change Given", changeGiven)] : []),
   ].join("");
 

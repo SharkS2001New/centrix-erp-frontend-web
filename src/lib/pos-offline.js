@@ -51,7 +51,7 @@ import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
-import { rebuildPreviousOrderEditTenders } from "@/lib/pos-edit-payment-adjustment";
+import { rebuildPreviousOrderEditTenders, paymentRowsFromPreviousOrderEditTenders } from "@/lib/pos-edit-payment-adjustment";
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
@@ -188,22 +188,24 @@ export async function ensurePosOfflineOrderNumbers({
   force = false,
   floatSessionId = null,
 } = {}) {
+  void force;
+  // count=0 → peek only (no org S00xx reserve). Cash Sales # stays local-first.
+  // Do NOT hold the exclusive lock across this API call — reconnect warm-up must
+  // not block cashiers completing the next offline sale ("Saving…" hang).
+  const body = { count: 0 };
+  const sessionId = Number(floatSessionId);
+  if (Number.isFinite(sessionId) && sessionId > 0) {
+    body.float_session_id = sessionId;
+  }
+  const res = await apiRequest("/sales/order-numbers/reserve", {
+    method: "POST",
+    body,
+    loading: false,
+    reportIssues: false,
+  });
+  // Raise-only seed from server. Local pending 7,8,9… stay ahead of last synced #6.
+  const nextPos = Number(res?.next_pos_order_num ?? 0);
   return withPosOfflineExclusiveLock(async () => {
-    void force;
-    // count=0 → peek only (no org S00xx reserve). Cash Sales # stays local-first.
-    const body = { count: 0 };
-    const sessionId = Number(floatSessionId);
-    if (Number.isFinite(sessionId) && sessionId > 0) {
-      body.float_session_id = sessionId;
-    }
-    const res = await apiRequest("/sales/order-numbers/reserve", {
-      method: "POST",
-      body,
-      loading: false,
-      reportIssues: false,
-    });
-    // Raise-only seed from server. Local pending 7,8,9… stay ahead of last synced #6.
-    const nextPos = Number(res?.next_pos_order_num ?? 0);
     if (Number.isFinite(nextPos) && nextPos > 0) {
       const scoped = Number.isFinite(sessionId) && sessionId > 0;
       await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date, scoped ? sessionId : null, {
@@ -1190,9 +1192,15 @@ export async function completeOfflineCashSale({
     if (amountPaidForStatus > 0.01) return "partial";
     return "unpaid";
   })();
+  // Match online checkout: fully paid → workflow "paid" (not "completed").
+  // Offline outbox must be an exact copy of what sync will create.
   const saleWorkflowStatus =
     String(workflowStatus ?? "").trim() ||
-    (paymentStatus === "paid" ? "completed" : paymentStatus === "partial" ? "pending_payment" : "unpaid");
+    (paymentStatus === "paid"
+      ? "paid"
+      : paymentStatus === "partial"
+        ? "pending_payment"
+        : "unpaid");
 
   // Prefer the cart customer. When revising a queued offline sale, trust the cart
   // only — never resurrect Customer A after the cashier cleared to Walk-in.
@@ -1205,6 +1213,11 @@ export async function completeOfflineCashSale({
       null);
   const customerNum =
     customerNumRaw != null && Number(customerNumRaw) > 0 ? Number(customerNumRaw) : null;
+  if (isCreditSale && !(customerNum > 0)) {
+    throw new Error(
+      "Credit sales require a registered customer. Walk-in sales cannot be charged to accounts receivable.",
+    );
+  }
   const customerNameOverride = revisingQueuedOffline
     ? (String(cart.customer_name_override ?? "").trim() || null)
     : (
@@ -1272,15 +1285,39 @@ export async function completeOfflineCashSale({
   const editAdjustments = Array.isArray(cart.payment_adjustments)
     ? cart.payment_adjustments.filter((row) => Number(row?.amount) > 0)
     : [];
-  const editSourceSale =
+  // Always rebuild from the ORIGINAL sale snapshot — never from a prior outbox
+  // sale_payload (that already includes prior+topup and would double M-Pesa).
+  const editSourceSaleRaw =
     cart.offline_edit_snapshot && typeof cart.offline_edit_snapshot === "object"
       ? cart.offline_edit_snapshot
-      : existingOutbox?.sale_payload && existingOutbox?.sync_kind === "previous_order_edit"
-        ? existingOutbox.sale_payload
+      : existingOutbox?.prior_sale_snapshot &&
+          typeof existingOutbox.prior_sale_snapshot === "object"
+        ? existingOutbox.prior_sale_snapshot
         : null;
+  const editSourceSale = editSourceSaleRaw
+    ? {
+        ...editSourceSaleRaw,
+        order_total:
+          Number(
+            editSourceSaleRaw.order_total ??
+              cart.original_order_total ??
+              editSourceSaleRaw.amount_paid ??
+              0,
+          ) || editSourceSaleRaw.order_total,
+      }
+    : Number(cart.original_order_total) > 0
+      ? {
+          order_total: Number(cart.original_order_total),
+          amount_paid: Number(cart.original_order_total),
+          payment_method_code: cart.payment_method_code ?? "CASH",
+        }
+      : null;
   const editTenders = isPreviousOrderEdit
     ? rebuildPreviousOrderEditTenders(editSourceSale, editAdjustments, summary.total)
     : null;
+  const reconciledEditAdjustments = Array.isArray(editTenders?.adjustments)
+    ? editTenders.adjustments
+    : editAdjustments;
 
   const sale = {
     id: `offline:${clientSaleUuid}`,
@@ -1323,13 +1360,19 @@ export async function completeOfflineCashSale({
     customer_name_override: customerNameOverride,
     offline_pending_sync: true,
     superseded_sale_id: supersededSaleId,
-    ...(editAdjustments.length ? { payment_adjustments: editAdjustments } : {}),
+    ...(reconciledEditAdjustments.length
+      ? { payment_adjustments: reconciledEditAdjustments }
+      : {}),
     ...(editTenders?.returnGiven > 0.0001
       ? { _change_given: editTenders.returnGiven, order_change: editTenders.returnGiven }
       : {}),
+    ...(editTenders?.topupAmount > 0.0001
+      ? { _topup_amount: editTenders.topupAmount }
+      : {}),
     items: saleItems,
-    payments:
-      paymentSplits.length > 0 && !editTenders
+    payments: editTenders
+      ? paymentRowsFromPreviousOrderEditTenders(editTenders)
+      : paymentSplits.length > 0
         ? paymentSplits.map((part, index) => ({
             id: index + 1,
             payment_method_code: part.method_code,
@@ -1341,7 +1384,7 @@ export async function completeOfflineCashSale({
             {
               id: 1,
               payment_method_code: paymentMethodCode,
-              amount: editTenders ? editTenders.amountPaid : payNow,
+              amount: payNow,
               payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
             },
           ],
@@ -1379,6 +1422,11 @@ export async function completeOfflineCashSale({
     order_discount: Number(cart.order_discount ?? 0) || 0,
     created_at_ms: existingOutbox?.created_at_ms ?? Date.now(),
     updated_at_ms: Date.now(),
+    // Original tenders before this edit — never overwritten with rebuilt sale_payload.
+    prior_sale_snapshot:
+      editSourceSale ??
+      existingOutbox?.prior_sale_snapshot ??
+      null,
     sale_payload: sale,
     checkout_body: {
       ...(deferOrgOrderNum ? {} : { order_num: orderNum }),
@@ -1406,8 +1454,8 @@ export async function completeOfflineCashSale({
       ...(customerKraPin ? { customer_kra_pin: customerKraPin } : {}),
       total_vat: sale.total_vat,
       sales_workspace: "pos",
-      ...(Array.isArray(cart.payment_adjustments) && cart.payment_adjustments.length
-        ? { payment_adjustments: cart.payment_adjustments }
+      ...(reconciledEditAdjustments.length
+        ? { payment_adjustments: reconciledEditAdjustments }
         : {}),
     },
     cart_seed: {
@@ -1544,21 +1592,61 @@ export function buildPreviousOrderEditPrintSale(
 
   const isEmptyCancel = !items.length && returnGivenPreview > 0.0001;
   const revisedTotal = isEmptyCancel ? 0 : summary.total;
-  const tenders = rebuildPreviousOrderEditTenders(sourceSale, adjustments, revisedTotal);
-  const { cash, mpesa: mpesaAmount, equity: equityAmount, kcb: kcbAmount, returnGiven } =
-    tenders;
+  const snapshot =
+    cart.offline_edit_snapshot && typeof cart.offline_edit_snapshot === "object"
+      ? cart.offline_edit_snapshot
+      : null;
+  const effectiveSource = {
+    ...(snapshot ?? {}),
+    ...(sourceSale && typeof sourceSale === "object" ? sourceSale : {}),
+    order_total:
+      Number(
+        sourceSale?.order_total ??
+          cart.original_order_total ??
+          snapshot?.order_total ??
+          sourceSale?.amount_paid ??
+          snapshot?.amount_paid ??
+          0,
+      ) || 0,
+    ...(Number(cart.original_order_total) > 0
+      ? { original_order_total: Number(cart.original_order_total) }
+      : {}),
+  };
+  const tenders = rebuildPreviousOrderEditTenders(
+    effectiveSource,
+    adjustments,
+    revisedTotal,
+  );
+  const {
+    cash,
+    mpesa: mpesaAmount,
+    equity: equityAmount,
+    kcb: kcbAmount,
+    returnGiven,
+    topupAmount,
+  } = tenders;
+  const reconciledAdjustments = Array.isArray(tenders.adjustments)
+    ? tenders.adjustments
+    : adjustments;
 
-  const paymentMethodCode = String(
-    cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH",
-  )
-    .trim()
-    .toUpperCase() || "CASH";
-  const paymentMethodLabel =
-    paymentMethodCode === "CASH"
-      ? "Cash"
-      : paymentMethodCode === "MPESA"
-        ? "M-Pesa"
-        : paymentMethodCode;
+  const paymentMethodCode = (() => {
+    if (
+      mpesaAmount >= cash &&
+      mpesaAmount >= equityAmount &&
+      mpesaAmount >= kcbAmount &&
+      mpesaAmount > 0
+    ) {
+      return "MPESA";
+    }
+    if (equityAmount >= cash && equityAmount >= kcbAmount && equityAmount > 0) return "EQUITY";
+    if (kcbAmount >= cash && kcbAmount > 0) return "KCB";
+    if (cash > 0) return "CASH";
+    return (
+      String(cart.payment_method_code ?? sourceSale?.payment_method_code ?? "CASH")
+        .trim()
+        .toUpperCase() || "CASH"
+    );
+  })();
 
   const receiptAt =
     sourceSale?.completed_at ??
@@ -1601,19 +1689,21 @@ export function buildPreviousOrderEditPrintSale(
     customer_name_override:
       cart.customer_name_override ?? sourceSale?.customer_name_override ?? null,
     superseded_sale_id: cart.superseded_sale_id ?? null,
-    payment_adjustments: adjustments,
+    payment_adjustments: reconciledAdjustments,
     ...(returnGiven > 0.0001 ? { _change_given: returnGiven, order_change: returnGiven } : {}),
-    // Draft reprint — never block on / wait for eTIMS QR; KRA balances on outbox sync.
+    ...(topupAmount > 0.0001 ? { _topup_amount: topupAmount } : {}),
+    // Draft reprint — never block on eTIMS / never GET pre-edit sale (old lines + tenders).
     _skip_kra_qr: true,
+    offline_pending_sync: true,
+    _preserve_print_items: true,
     items,
-    payments: [
-      {
-        id: 1,
-        payment_method_code: paymentMethodCode,
-        amount: Math.max(amountPaid, 0),
-        payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
-      },
-    ],
+    // One row per tender — never a single amountPaid lump (that doubled M-Pesa on print).
+    payments: paymentRowsFromPreviousOrderEditTenders({
+      cash,
+      mpesa: mpesaAmount,
+      equity: equityAmount,
+      kcb: kcbAmount,
+    }),
     created_by_user: sourceSale?.created_by_user ?? sourceSale?.cashier ?? null,
     cashier: sourceSale?.cashier ?? null,
     cashier_name: sourceSale?.cashier_name ?? null,
@@ -1829,6 +1919,9 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   if (customerKraPin) {
     body.customer_kra_pin = customerKraPin;
   }
+  // Offline outbox sync uploads the sale only — never fiscalize (receipt already printed).
+  body.submit_kra = false;
+  body.offline_order = true;
   // After Z/reopen, attach the currently open float session so checkout does not
   // reject the closed session id stamped when the sale was sold offline.
   const openFloatSessionId = Number(extras.float_session_id ?? 0);
@@ -2036,7 +2129,23 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
         ? Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null
         : null,
     offline_client_sale_uuid: row.client_sale_uuid,
-    offline_edit_snapshot: row,
+    // Original sale tenders only — never the rebuilt outbox sale_payload (would 2× M-Pesa).
+    offline_edit_snapshot:
+      row.prior_sale_snapshot && typeof row.prior_sale_snapshot === "object"
+        ? row.prior_sale_snapshot
+        : row.sync_kind === "previous_order_edit"
+          ? null
+          : sale,
+    original_order_total: (() => {
+      const prior =
+        row.prior_sale_snapshot && typeof row.prior_sale_snapshot === "object"
+          ? row.prior_sale_snapshot
+          : null;
+      const total = Number(
+        prior?.order_total ?? sale.original_order_total ?? sale.order_total ?? 0,
+      );
+      return total > 0 ? Math.round(total * 100) / 100 : null;
+    })(),
     branch_id: row.cart_seed?.branch_id ?? sale.branch_id ?? seed.branch_id ?? null,
     till_id: row.cart_seed?.till_id ?? sale.till_id ?? seed.till_id ?? null,
     float_session_id:
@@ -2126,14 +2235,14 @@ export async function listPendingOutboxSalesForManage() {
  * Does not undo a sale that already reached the server — use only for stuck local rows.
  */
 export async function discardOutboxSale(clientSaleUuid) {
-  return withPosOfflineExclusiveLock(async () => {
-    const uuid = String(clientSaleUuid ?? "").trim();
-    if (!uuid) {
-      throw new Error("Missing offline sale id.");
-    }
+  const uuid = String(clientSaleUuid ?? "").trim();
+  if (!uuid) {
+    throw new Error("Missing offline sale id.");
+  }
+  const floatSessionId = await withPosOfflineExclusiveLock(async () => {
     const existing = await idbGetOutboxSale(uuid);
     if (!existing) {
-      return false;
+      return { missing: true };
     }
     if (existing.sync_status === "syncing") {
       throw new Error("Cannot remove this sale while sync is in progress. Wait a moment and try again.");
@@ -2153,19 +2262,75 @@ export async function discardOutboxSale(clientSaleUuid) {
     if (Number.isFinite(discardedPos) && discardedPos > 0) {
       await seedLocalPosTicketSeq(discardedPos, discardedDate).catch(() => {});
     }
-    // Refresh reserved S00xx + Cash Sales sequence from server (includes cancelled max).
-    try {
-      await ensurePosOfflineOrderNumbers({
-        force: true,
-        floatSessionId:
-          existing.sale_payload?.float_session_id ??
-          existing.checkout_body?.float_session_id ??
-          null,
-      });
-    } catch {
-      /* ignore when offline */
+    return {
+      floatSessionId:
+        existing.sale_payload?.float_session_id ??
+        existing.checkout_body?.float_session_id ??
+        null,
+    };
+  });
+  if (floatSessionId?.missing) {
+    return false;
+  }
+  // Refresh reserved S00xx + Cash Sales sequence from server (includes cancelled max).
+  // Outside the lock so discard cannot stall new offline checkouts.
+  try {
+    await ensurePosOfflineOrderNumbers({
+      force: true,
+      floatSessionId: floatSessionId?.floatSessionId ?? null,
+    });
+  } catch {
+    /* ignore when offline */
+  }
+  return true;
+}
+
+/**
+ * Remove every pending/failed offline sale from the local outbox.
+ * Skips rows currently marked syncing. Does not undo server sales.
+ *
+ * @returns {Promise<{ deleted: number, skippedSyncing: number }>}
+ */
+export async function discardAllPendingOutboxSales() {
+  return withPosOfflineExclusiveLock(async () => {
+    const rows = await idbListPendingOutbox({ includeErrors: true });
+    let deleted = 0;
+    let skippedSyncing = 0;
+    let maxPos = 0;
+    let maxPosDate = null;
+    const local = await idbGetLocalCart("active");
+    const attachedUuid = local?.offline_client_sale_uuid
+      ? String(local.offline_client_sale_uuid)
+      : null;
+
+    for (const row of rows) {
+      if (row.sync_status === "syncing") {
+        skippedSyncing += 1;
+        continue;
+      }
+      const uuid = String(row.client_sale_uuid ?? "").trim();
+      if (!uuid) continue;
+      await idbDeleteOutboxSale(uuid);
+      deleted += 1;
+      const discardedPos = Number(
+        row.sale_payload?.pos_order_num ?? row.checkout_body?.pos_order_num ?? 0,
+      );
+      if (Number.isFinite(discardedPos) && discardedPos > maxPos) {
+        maxPos = discardedPos;
+        maxPosDate =
+          normalizePosOrderDate(row.sale_payload?.pos_order_date) ??
+          normalizePosOrderDate(row.checkout_body?.pos_order_date);
+      }
+      if (attachedUuid && attachedUuid === uuid) {
+        await idbClearLocalCart("active");
+      }
     }
-    return true;
+
+    if (maxPos > 0) {
+      await seedLocalPosTicketSeq(maxPos, maxPosDate).catch(() => {});
+    }
+
+    return { deleted, skippedSyncing };
   });
 }
 
@@ -2494,36 +2659,40 @@ export async function syncPosOfflineOutbox({
   clientSaleUuid = null,
   floatSessionId = null,
 } = {}) {
-  return withPosOfflineExclusiveLock(async () => {
+  // Exclusive lock is only for short IndexedDB critical sections.
+  // Holding it across checkoutOutboxRow / findExisting network calls blocked
+  // cashiers on "Saving…" while reconnect flush ran (often 30s+).
+  await withPosOfflineExclusiveLock(async () => {
     await idbReclaimStuckSyncingOutbox({ olderThanMs: 5 * 60_000 });
-    let pending = await idbListPendingOutbox({ includeErrors });
-    const onlyUuid = String(clientSaleUuid ?? "").trim();
-    if (onlyUuid) {
-      pending = pending.filter((row) => String(row.client_sale_uuid) === onlyUuid);
-    }
-    const openFloatSessionId =
-      Number(floatSessionId ?? 0) > 0 ? Number(floatSessionId) : null;
-    const total = pending.length;
-    const results = [];
-    let done = 0;
-    let failed = 0;
+  });
+  let pending = await idbListPendingOutbox({ includeErrors });
+  const onlyUuid = String(clientSaleUuid ?? "").trim();
+  if (onlyUuid) {
+    pending = pending.filter((row) => String(row.client_sale_uuid) === onlyUuid);
+  }
+  const openFloatSessionId =
+    Number(floatSessionId ?? 0) > 0 ? Number(floatSessionId) : null;
+  const total = pending.length;
+  const results = [];
+  let done = 0;
+  let failed = 0;
 
-    onProgress?.({
-      phase: "start",
-      current: 0,
-      total,
-      done: 0,
-      failed: 0,
-      order_num: null,
-      message: total === 0 ? "No offline orders waiting to sync." : `Syncing ${total} order(s)…`,
-    });
+  onProgress?.({
+    phase: "start",
+    current: 0,
+    total,
+    done: 0,
+    failed: 0,
+    order_num: null,
+    message: total === 0 ? "No offline orders waiting to sync." : `Syncing ${total} order(s)…`,
+  });
 
-    for (let index = 0; index < pending.length; index += 1) {
-      const listedRow = pending[index];
-      const printedOrderNum = Number(listedRow.order_num);
-      const claimed = await idbMarkOutboxSyncing(listedRow.client_sale_uuid);
-      if (!claimed) continue;
-
+  for (let index = 0; index < pending.length; index += 1) {
+    const listedRow = pending[index];
+    const printedOrderNum = Number(listedRow.order_num);
+    const claimed = await withPosOfflineExclusiveLock(async () => {
+      const ok = await idbMarkOutboxSyncing(listedRow.client_sale_uuid);
+      if (!ok) return null;
       // Always upload the latest IndexedDB payload — not the stale list snapshot.
       const row = (await idbGetOutboxSale(listedRow.client_sale_uuid)) ?? listedRow;
       if (row.sync_status === "editing") {
@@ -2535,160 +2704,165 @@ export async function syncPosOfflineOutbox({
           revision_at_sync: null,
           updated_at_ms: Date.now(),
         });
-        continue;
+        return { skip: true };
       }
+      return { row };
+    });
+    if (!claimed || claimed.skip) continue;
+    const row = claimed.row;
 
-      const current = index + 1;
-      onProgress?.({
-        phase: "syncing",
-        current,
-        total,
-        done,
-        failed,
-        order_num: printedOrderNum,
-        sync_kind: row.sync_kind ?? "sale",
-        message:
-          row.sync_kind === "previous_order_edit"
-            ? `Updating ${current} of ${total} — order #${printedOrderNum}…`
-            : `Syncing ${current} of ${total} — order #${printedOrderNum}…`,
-      });
+    const current = index + 1;
+    onProgress?.({
+      phase: "syncing",
+      current,
+      total,
+      done,
+      failed,
+      order_num: printedOrderNum,
+      sync_kind: row.sync_kind ?? "sale",
+      message:
+        row.sync_kind === "previous_order_edit"
+          ? `Updating ${current} of ${total} — order #${printedOrderNum}…`
+          : `Syncing ${current} of ${total} — order #${printedOrderNum}…`,
+    });
 
-      try {
-        let sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
-        let usedOrderNum = printedOrderNum;
-        let needsReprint = false;
+    try {
+      let sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+      let usedOrderNum = printedOrderNum;
+      let needsReprint = false;
 
-        if (sale && outboxNeedsSupersedeOfServerSale(row, sale)) {
-          // Older revision already on server; upload this edit as a superseding checkout
-          // under the same order number (not a second unrelated sale).
-          sale = await checkoutOutboxRow(
-            {
-              ...row,
-              sync_kind: "previous_order_edit",
-              superseded_sale_id: Number(sale.id),
-              server_cart_id: null,
-              server_sale_id: Number(sale.id),
-              checkout_body: {
-                ...(row.checkout_body ?? {}),
-                pay_now: 0,
-                offline_order: true,
-                content_revision: Number(row.content_revision ?? 0),
-                client_sale_uuid: row.client_sale_uuid,
-              },
+      if (sale && outboxNeedsSupersedeOfServerSale(row, sale)) {
+        // Older revision already on server; upload this edit as a superseding checkout
+        // under the same order number (not a second unrelated sale).
+        sale = await checkoutOutboxRow(
+          {
+            ...row,
+            sync_kind: "previous_order_edit",
+            superseded_sale_id: Number(sale.id),
+            server_cart_id: null,
+            server_sale_id: Number(sale.id),
+            checkout_body: {
+              ...(row.checkout_body ?? {}),
+              pay_now: 0,
+              offline_order: true,
+              content_revision: Number(row.content_revision ?? 0),
+              client_sale_uuid: row.client_sale_uuid,
             },
+          },
+          printedOrderNum,
+          openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
+        );
+      } else if (!sale) {
+        try {
+          sale = await checkoutOutboxRow(
+            row,
             printedOrderNum,
             openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
           );
-        } else if (!sale) {
-          try {
-            sale = await checkoutOutboxRow(
-              row,
-              printedOrderNum,
-              openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
-            );
-          } catch (firstErr) {
-            // Previous-order edit updates an existing online sale — the order # is
-            // supposed to exist. Recover / re-restore instead of treating it as a
-            // duplicate new upload.
-            const prevEditRecoverable =
-              row.sync_kind === "previous_order_edit"
-              && (
-                isDuplicateOrderNumError(firstErr)
-                || isCashSalesTicketCollisionError(firstErr)
-                || isOpaqueSalesServerError(firstErr)
-                || isMissingTemporaryCartError(firstErr)
-              );
-
-            if (prevEditRecoverable) {
-              sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
-              if (!sale) {
-                try {
-                  sale = await checkoutOutboxRow(
-                    { ...row, server_cart_id: null },
-                    printedOrderNum,
-                    openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
-                  );
-                } catch (retryErr) {
-                  if (isCashSalesTicketCollisionError(retryErr)) {
-                    sale = await checkoutOutboxRow(
-                      { ...row, server_cart_id: null },
-                      printedOrderNum,
-                      {
-                        clear_pos_order_num: true,
-                        ...(openFloatSessionId
-                          ? { float_session_id: openFloatSessionId }
-                          : {}),
-                      },
-                    );
-                    needsReprint = true;
-                  } else {
-                    throw retryErr;
-                  }
-                }
-              }
-            } else if (
-              isCashSalesTicketCollisionError(firstErr)
+        } catch (firstErr) {
+          // Previous-order edit updates an existing online sale — the order # is
+          // supposed to exist. Recover / re-restore instead of treating it as a
+          // duplicate new upload.
+          const prevEditRecoverable =
+            row.sync_kind === "previous_order_edit"
+            && (
+              isDuplicateOrderNumError(firstErr)
+              || isCashSalesTicketCollisionError(firstErr)
               || isOpaqueSalesServerError(firstErr)
-            ) {
-              // Cash Sales # already taken — or opaque 500 that often hides that collision.
-              // Retry without locking the printed ticket so the API allocates the next free #.
-              sale = await checkoutOutboxRow(row, printedOrderNum, {
-                clear_pos_order_num: true,
-                ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
-              });
-              needsReprint = true;
-            } else if (isDuplicateOrderNumError(firstErr)) {
-              sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
-              if (!sale) {
-                // Do not delete the outbox — leave an error so the cashier can retry /
-                // investigate. Deleting caused silent loss when recovery missed the uuid.
-                throw firstErr;
-              }
-              // Older revision may already own this order # — apply the latest payload.
-              if (outboxNeedsSupersedeOfServerSale(row, sale)) {
+              || isMissingTemporaryCartError(firstErr)
+            );
+
+          if (prevEditRecoverable) {
+            sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+            if (!sale) {
+              try {
                 sale = await checkoutOutboxRow(
-                  {
-                    ...row,
-                    sync_kind: "previous_order_edit",
-                    superseded_sale_id: Number(sale.id),
-                    server_cart_id: null,
-                    server_sale_id: Number(sale.id),
-                    checkout_body: {
-                      ...(row.checkout_body ?? {}),
-                      pay_now: 0,
-                      offline_order: true,
-                      content_revision: Number(row.content_revision ?? 0),
-                      client_sale_uuid: row.client_sale_uuid,
-                    },
-                  },
+                  { ...row, server_cart_id: null },
                   printedOrderNum,
                   openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
                 );
+              } catch (retryErr) {
+                if (isCashSalesTicketCollisionError(retryErr)) {
+                  sale = await checkoutOutboxRow(
+                    { ...row, server_cart_id: null },
+                    printedOrderNum,
+                    {
+                      clear_pos_order_num: true,
+                      ...(openFloatSessionId
+                        ? { float_session_id: openFloatSessionId }
+                        : {}),
+                    },
+                  );
+                  needsReprint = true;
+                } else {
+                  throw retryErr;
+                }
               }
-            } else {
+            }
+          } else if (
+            isCashSalesTicketCollisionError(firstErr)
+            || isOpaqueSalesServerError(firstErr)
+          ) {
+            // Cash Sales # already taken — or opaque 500 that often hides that collision.
+            // Retry without locking the printed ticket so the API allocates the next free #.
+            sale = await checkoutOutboxRow(row, printedOrderNum, {
+              clear_pos_order_num: true,
+              ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
+            });
+            needsReprint = true;
+          } else if (isDuplicateOrderNumError(firstErr)) {
+            sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
+            if (!sale) {
+              // Do not delete the outbox — leave an error so the cashier can retry /
+              // investigate. Deleting caused silent loss when recovery missed the uuid.
               throw firstErr;
             }
+            // Older revision may already own this order # — apply the latest payload.
+            if (outboxNeedsSupersedeOfServerSale(row, sale)) {
+              sale = await checkoutOutboxRow(
+                {
+                  ...row,
+                  sync_kind: "previous_order_edit",
+                  superseded_sale_id: Number(sale.id),
+                  server_cart_id: null,
+                  server_sale_id: Number(sale.id),
+                  checkout_body: {
+                    ...(row.checkout_body ?? {}),
+                    pay_now: 0,
+                    offline_order: true,
+                    content_revision: Number(row.content_revision ?? 0),
+                    client_sale_uuid: row.client_sale_uuid,
+                  },
+                },
+                printedOrderNum,
+                openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
+              );
+            }
+          } else {
+            throw firstErr;
           }
         }
+      }
 
-        const originalPosTicket = outboxRowPosTicket(row).posNum;
-        const salePosTicket =
-          sale?.pos_order_num != null ? Number(sale.pos_order_num) : null;
-        if (
-          originalPosTicket != null
-          && salePosTicket != null
-          && originalPosTicket !== salePosTicket
-        ) {
-          needsReprint = true;
-        }
-        if (
-          sale?.order_num != null
-          && Number(sale.order_num) !== Number(printedOrderNum)
-        ) {
-          needsReprint = true;
-          usedOrderNum = Number(sale.order_num);
-        }
+      const originalPosTicket = outboxRowPosTicket(row).posNum;
+      const salePosTicket =
+        sale?.pos_order_num != null ? Number(sale.pos_order_num) : null;
+      if (
+        originalPosTicket != null
+        && salePosTicket != null
+        && originalPosTicket !== salePosTicket
+      ) {
+        needsReprint = true;
+      }
+      if (
+        sale?.order_num != null
+        && Number(sale.order_num) !== Number(printedOrderNum)
+      ) {
+        needsReprint = true;
+        usedOrderNum = Number(sale.order_num);
+      }
 
+      await withPosOfflineExclusiveLock(async () => {
         await idbMarkOutboxSynced(row.client_sale_uuid, sale, {
           needs_reprint: needsReprint,
           order_num_changed: needsReprint,
@@ -2697,89 +2871,84 @@ export async function syncPosOfflineOutbox({
         if (sale) {
           await seedLocalPosTicketSeqFromSale(sale, openFloatSessionId).catch(() => {});
         }
-        done += 1;
-        results.push({
-          ok: true,
-          order_num: Number(sale?.order_num ?? usedOrderNum),
-          printed_order_num: printedOrderNum,
-          pos_order_num: salePosTicket,
-          printed_pos_order_num: originalPosTicket,
-          needs_reprint: needsReprint,
-          client_sale_uuid: row.client_sale_uuid,
-          sync_kind: row.sync_kind ?? "sale",
-          sale,
-        });
-        onProgress?.({
-          phase: "item_done",
-          current,
-          total,
-          done,
-          failed,
-          ok: true,
-          order_num: printedOrderNum,
-          message: needsReprint
-            ? `Synced ${done} of ${total} — Cash Sales #${originalPosTicket ?? "?"}→#${salePosTicket ?? "?"} (reprint)…`
-            : `Synced ${done} of ${total}…`,
-        });
-      } catch (err) {
-        const message = outboxSyncErrorMessage(err);
+      });
+      done += 1;
+      results.push({
+        ok: true,
+        order_num: Number(sale?.order_num ?? usedOrderNum),
+        printed_order_num: printedOrderNum,
+        pos_order_num: salePosTicket,
+        printed_pos_order_num: originalPosTicket,
+        needs_reprint: needsReprint,
+        client_sale_uuid: row.client_sale_uuid,
+        sync_kind: row.sync_kind ?? "sale",
+        sale,
+      });
+      onProgress?.({
+        phase: "item_done",
+        current,
+        total,
+        done,
+        failed,
+        ok: true,
+        order_num: printedOrderNum,
+        message: needsReprint
+          ? `Synced ${done} of ${total} — Cash Sales #${originalPosTicket ?? "?"}→#${salePosTicket ?? "?"} (reprint)…`
+          : `Synced ${done} of ${total}…`,
+      });
+    } catch (err) {
+      const message = outboxSyncErrorMessage(err);
+      await withPosOfflineExclusiveLock(async () => {
         await idbMarkOutboxError(row.client_sale_uuid, message);
-        reportPosOutboxSyncFailure(row, err, printedOrderNum);
-        failed += 1;
-        results.push({
-          ok: false,
-          order_num: printedOrderNum,
-          client_sale_uuid: row.client_sale_uuid,
-          sync_kind: row.sync_kind ?? "sale",
-          error: message,
-        });
-        onProgress?.({
-          phase: "item_done",
-          current,
-          total,
-          done,
-          failed,
-          ok: false,
-          order_num: printedOrderNum,
-          error: message,
-          message: `Failed order #${printedOrderNum} (${failed} failed)…`,
-        });
-      }
+      });
+      reportPosOutboxSyncFailure(row, err, printedOrderNum);
+      failed += 1;
+      results.push({
+        ok: false,
+        order_num: printedOrderNum,
+        client_sale_uuid: row.client_sale_uuid,
+        sync_kind: row.sync_kind ?? "sale",
+        error: message,
+      });
+      onProgress?.({
+        phase: "item_done",
+        current,
+        total,
+        done,
+        failed,
+        ok: false,
+        order_num: printedOrderNum,
+        error: message,
+        message: `Failed order #${printedOrderNum} (${failed} failed)…`,
+      });
     }
+  }
 
-    onProgress?.({
-      phase: "complete",
-      current: total,
-      total,
-      done,
-      failed,
-      order_num: null,
-      message:
-        total === 0
-          ? "No offline orders waiting to sync."
-          : failed
-            ? `Synced ${done} of ${total}; ${failed} failed.`
-            : `Synced ${done} of ${total} order(s).`,
-    });
-    return results;
+  onProgress?.({
+    phase: "complete",
+    current: total,
+    total,
+    done,
+    failed,
+    order_num: null,
+    message:
+      total === 0
+        ? "No offline orders waiting to sync."
+        : failed
+          ? `Synced ${done} of ${total}; ${failed} failed.`
+          : `Synced ${done} of ${total} order(s).`,
   });
+  return results;
 }
 
-/** True when checkout should use sell→print→local→background sync (cash only).
- * Caller must also skip this when KRA fiscalization is active — the eTIMS QR only
+/** True when External POS should sell→save local→print→background sync.
+ * Caller must skip this when KRA fiscalization is active — the eTIMS QR only
  * exists after the device responds, so those sales stay server-first.
+ * Cash / M-Pesa / bank / credit all use local-first when KRA is off.
  */
 export function isLocalFirstCashCheckout(body) {
-  if (body?.is_credit_sale) return false;
-  const method = String(body?.payment_method_code ?? "CASH").toUpperCase();
-  if (method && method !== "CASH") return false;
-  const payments = Array.isArray(body?.payments) ? body.payments : [];
-  if (payments.length > 0) {
-    return payments.every((p) => {
-      const code = String(p?.payment_method_code ?? p?.code ?? "CASH").toUpperCase();
-      return code === "CASH";
-    });
-  }
+  // Name kept for callers; method no longer limited to Cash — KRA gating is external.
+  void body;
   return true;
 }
 

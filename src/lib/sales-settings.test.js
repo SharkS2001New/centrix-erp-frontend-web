@@ -442,6 +442,21 @@ describe("collect small / partial payments on order payment", () => {
     expect(cfg.allowPartialPayment).toBe(true);
   });
 
+  it("allows unpaid/partial on External POS only when credit payment is enabled", () => {
+    const withCredit = getCheckoutPaymentConfig(
+      { sales: { enable_credit_payment: true } },
+      { checkoutContext: "pos", capabilities: caps },
+    );
+    expect(withCredit.allowPartialPayment).toBe(true);
+    expect(withCredit.enableCreditPayment).toBe(true);
+
+    const withoutCredit = getCheckoutPaymentConfig(
+      { sales: { enable_credit_payment: false } },
+      { checkoutContext: "pos", capabilities: caps },
+    );
+    expect(withoutCredit.allowPartialPayment).toBe(false);
+  });
+
   it("does not force credit checkout off when both settings are on", () => {
     const merged = mergeSalesSettings({
       sales: {

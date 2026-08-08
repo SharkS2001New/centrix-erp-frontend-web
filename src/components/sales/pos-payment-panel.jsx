@@ -265,6 +265,8 @@ export function PosPaymentPanel({
   const prevOpenRef = useRef(false);
   const stkPollRef = useRef(null);
   const lastStkAmountRef = useRef(null);
+  /** Last tender field the cashier focused (C/M/E/K) — drives payment_method_code when mixed. */
+  const preferredMethodRef = useRef("CASH");
 
   const cfg = paymentConfig ?? {};
   const adjustmentMode = Boolean(previousOrderEditAdjustment);
@@ -297,6 +299,7 @@ export function PosPaymentPanel({
     setCreditSearchOptions([]);
     setSessionBillTotal(total);
     setPaymentDate(todayDateString());
+    preferredMethodRef.current = "CASH";
     const cashPrefill = Math.max(0, Number(prefillCashAmount) || 0);
     setCashAmount(
       adjustmentMode && total > 0
@@ -534,6 +537,11 @@ export function PosPaymentPanel({
       if (cfg.showKcbBank) parts.push({ code: "KCB", amount: parseDecimalInput(kcbAmount) });
       if (cfg.showOtherBank) parts.push({ code: "OTHER", amount: parseDecimalInput(otherBankAmount) });
     }
+    const preferred = String(preferredMethodRef.current ?? "").trim().toUpperCase();
+    const preferredPart = parts.find(
+      (p) => p.code === preferred && Number(p.amount) > 0.009,
+    );
+    if (preferredPart) return preferredPart.code;
     const top = parts.sort((a, b) => b.amount - a.amount).find((p) => p.amount > 0);
     return top?.code ?? "CASH";
   }
@@ -759,7 +767,10 @@ export function PosPaymentPanel({
     return next;
   }
 
-  function handlePaymentAmountFocus(e) {
+  function handlePaymentAmountFocus(e, methodCode = null) {
+    if (methodCode) {
+      preferredMethodRef.current = String(methodCode).trim().toUpperCase();
+    }
     e.target.select?.();
   }
 
@@ -781,13 +792,17 @@ export function PosPaymentPanel({
     setOtherBankAmount("0");
     setBankAmount("0");
     setChequeAmount("0");
+    preferredMethodRef.current = "CREDIT";
     setLocalError(null);
     window.requestAnimationFrame(() => {
       creditSelectRef.current?.openAndFocus?.();
     });
   }
 
-  function focusPaymentField(ref) {
+  function focusPaymentField(ref, methodCode = null) {
+    if (methodCode) {
+      preferredMethodRef.current = String(methodCode).trim().toUpperCase();
+    }
     if (!ref?.current) return;
     ref.current.focus();
     ref.current.select?.();
@@ -818,27 +833,27 @@ export function PosPaymentPanel({
 
     if (key === "c") {
       e.preventDefault();
-      focusPaymentField(cashAmountRef);
+      focusPaymentField(cashAmountRef, "CASH");
       return true;
     }
     if (key === "m" && cfg.enableMpesaAmount) {
       e.preventDefault();
-      focusPaymentField(mpesaAmountRef);
+      focusPaymentField(mpesaAmountRef, "MPESA");
       return true;
     }
     if (key === "e" && !cfg.useBankSelect && cfg.showEquityBank) {
       e.preventDefault();
-      focusPaymentField(equityAmountRef);
+      focusPaymentField(equityAmountRef, "EQUITY");
       return true;
     }
     if (key === "k" && !cfg.useBankSelect && cfg.showKcbBank) {
       e.preventDefault();
-      focusPaymentField(kcbAmountRef);
+      focusPaymentField(kcbAmountRef, "KCB");
       return true;
     }
     if (key === "b" && cfg.useBankSelect && cfg.showBankAmount) {
       e.preventDefault();
-      focusPaymentField(bankAmountRef);
+      focusPaymentField(bankAmountRef, bankType || "BANK");
       return true;
     }
     if (key === "i" && showCreditPaymentField) {
@@ -861,8 +876,12 @@ export function PosPaymentPanel({
     handleRequestComplete();
   }
 
-  function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false } = {}) {
+  function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false, methodCode = null } = {}) {
     if (step !== "payment" || saving) return;
+
+    if (methodCode) {
+      preferredMethodRef.current = String(methodCode).trim().toUpperCase();
+    }
 
     if (e.key === "PageDown") {
       e.preventDefault();
@@ -879,6 +898,9 @@ export function PosPaymentPanel({
       const remaining = remainingForPaymentField(currentAmount);
 
       if (current <= 0 && remaining > 0.009) {
+        if (methodCode) {
+          preferredMethodRef.current = String(methodCode).trim().toUpperCase();
+        }
         setAmount(formatPaymentFillAmount(remaining, { ceil }));
         setLocalError(null);
         return;
@@ -1057,7 +1079,7 @@ export function PosPaymentPanel({
         setStkInfo(
           `M-Pesa ${formatSaleKes(applied)}${who}${txn} applied. Collect balance ${formatSaleKes(remaining)} then complete to print.`,
         );
-        window.requestAnimationFrame(() => focusPaymentField(cashAmountRef));
+        window.requestAnimationFrame(() => focusPaymentField(cashAmountRef, "CASH"));
       }
       return true;
     } catch (e) {
@@ -1290,7 +1312,7 @@ export function PosPaymentPanel({
 
   useEffect(() => {
     if (!open || step !== "payment") return;
-    const t = window.setTimeout(() => focusPaymentField(cashAmountRef), 0);
+    const t = window.setTimeout(() => focusPaymentField(cashAmountRef, "CASH"), 0);
     return () => window.clearTimeout(t);
   }, [open, step]);
 
@@ -2057,9 +2079,14 @@ export function PosPaymentPanel({
               step="any"
               className={inputCls}
               value={cashAmount}
-              onFocus={handlePaymentAmountFocus}
+              onFocus={(e) => handlePaymentAmountFocus(e, "CASH")}
               onChange={(e) => handlePaymentAmountChange(setCashAmount, e.target.value, cashAmount)}
-              onKeyDown={(e) => handlePaymentAmountKeyDown(e, cashAmount, setCashAmount, { ceil: true })}
+              onKeyDown={(e) =>
+                handlePaymentAmountKeyDown(e, cashAmount, setCashAmount, {
+                  ceil: true,
+                  methodCode: "CASH",
+                })
+              }
             />
           </PosField>
           {cfg.enableMpesaAmount ? (
@@ -2073,9 +2100,13 @@ export function PosPaymentPanel({
                 value={mpesaAmount}
                 readOnly={mpesaFieldsLocked}
                 disabled={mpesaFieldsLocked}
-                onFocus={handlePaymentAmountFocus}
+                onFocus={(e) => handlePaymentAmountFocus(e, "MPESA")}
                 onChange={(e) => handlePaymentAmountChange(setMpesaAmount, e.target.value, mpesaAmount)}
-                onKeyDown={(e) => handlePaymentAmountKeyDown(e, mpesaAmount, setMpesaAmount)}
+                onKeyDown={(e) =>
+                  handlePaymentAmountKeyDown(e, mpesaAmount, setMpesaAmount, {
+                    methodCode: "MPESA",
+                  })
+                }
               />
             </PosField>
           ) : null}
@@ -2130,9 +2161,13 @@ export function PosPaymentPanel({
                       step="any"
                       className={inputCls}
                       value={bankAmount}
-                      onFocus={handlePaymentAmountFocus}
+                      onFocus={(e) => handlePaymentAmountFocus(e, bankType || "BANK")}
                       onChange={(e) => handlePaymentAmountChange(setBankAmount, e.target.value, bankAmount)}
-                      onKeyDown={(e) => handlePaymentAmountKeyDown(e, bankAmount, setBankAmount)}
+                      onKeyDown={(e) =>
+                        handlePaymentAmountKeyDown(e, bankAmount, setBankAmount, {
+                          methodCode: bankType || "BANK",
+                        })
+                      }
                     />
                   </PosField>
                   <PosField label="Bank ref number">
@@ -2158,9 +2193,13 @@ export function PosPaymentPanel({
                 step="any"
                 className={inputCls}
                 value={equityAmount}
-                onFocus={handlePaymentAmountFocus}
+                onFocus={(e) => handlePaymentAmountFocus(e, "EQUITY")}
                 onChange={(e) => handlePaymentAmountChange(setEquityAmount, e.target.value, equityAmount)}
-                onKeyDown={(e) => handlePaymentAmountKeyDown(e, equityAmount, setEquityAmount)}
+                onKeyDown={(e) =>
+                  handlePaymentAmountKeyDown(e, equityAmount, setEquityAmount, {
+                    methodCode: "EQUITY",
+                  })
+                }
               />
             </PosField>
           ) : null}
@@ -2173,9 +2212,13 @@ export function PosPaymentPanel({
                 step="any"
                 className={inputCls}
                 value={kcbAmount}
-                onFocus={handlePaymentAmountFocus}
+                onFocus={(e) => handlePaymentAmountFocus(e, "KCB")}
                 onChange={(e) => handlePaymentAmountChange(setKcbAmount, e.target.value, kcbAmount)}
-                onKeyDown={(e) => handlePaymentAmountKeyDown(e, kcbAmount, setKcbAmount)}
+                onKeyDown={(e) =>
+                  handlePaymentAmountKeyDown(e, kcbAmount, setKcbAmount, {
+                    methodCode: "KCB",
+                  })
+                }
               />
             </PosField>
           ) : null}
@@ -2187,11 +2230,15 @@ export function PosPaymentPanel({
                 step="any"
                 className={inputCls}
                 value={otherBankAmount}
-                onFocus={handlePaymentAmountFocus}
+                onFocus={(e) => handlePaymentAmountFocus(e, "OTHER")}
                 onChange={(e) =>
                   handlePaymentAmountChange(setOtherBankAmount, e.target.value, otherBankAmount)
                 }
-                onKeyDown={(e) => handlePaymentAmountKeyDown(e, otherBankAmount, setOtherBankAmount)}
+                onKeyDown={(e) =>
+                  handlePaymentAmountKeyDown(e, otherBankAmount, setOtherBankAmount, {
+                    methodCode: "OTHER",
+                  })
+                }
               />
             </PosField>
           ) : null}
@@ -2205,9 +2252,13 @@ export function PosPaymentPanel({
                   step="any"
                   className={inputCls}
                   value={chequeAmount}
-                  onFocus={handlePaymentAmountFocus}
+                  onFocus={(e) => handlePaymentAmountFocus(e, "CHEQUE")}
                   onChange={(e) => handlePaymentAmountChange(setChequeAmount, e.target.value, chequeAmount)}
-                  onKeyDown={(e) => handlePaymentAmountKeyDown(e, chequeAmount, setChequeAmount)}
+                  onKeyDown={(e) =>
+                    handlePaymentAmountKeyDown(e, chequeAmount, setChequeAmount, {
+                      methodCode: "CHEQUE",
+                    })
+                  }
                 />
               </PosField>
               {cfg.showChequeNumber ? (

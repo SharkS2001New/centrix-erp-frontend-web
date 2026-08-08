@@ -17,6 +17,7 @@ import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
   discardOutboxSale,
+  discardAllPendingOutboxSales,
   listPendingOutboxSalesForManage,
 } from "@/lib/pos-offline";
 
@@ -197,6 +198,37 @@ export function PosPendingSyncOverlay({
     }
   }
 
+  async function handleDiscardAll() {
+    if (rows.length <= 0) return;
+    const ok = await confirm({
+      title: "Delete all pending offline orders",
+      message: `Remove all ${rows.length} pending offline order${rows.length === 1 ? "" : "s"} from this device? Receipts already printed stay local only — they will not upload to the server. This cannot be undone.`,
+      confirmLabel: "Delete all",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusyKey("__all__");
+    setActionError(null);
+    try {
+      const result = await discardAllPendingOutboxSales();
+      await loadPendingSales({ refresh: true });
+      onDiscarded?.({ deleted: result?.deleted ?? 0 });
+      if ((result?.deleted ?? 0) > 0 && (result?.skippedSyncing ?? 0) <= 0) {
+        onClose?.();
+      } else if ((result?.skippedSyncing ?? 0) > 0) {
+        setActionError(
+          `Removed ${result.deleted}. ${result.skippedSyncing} still syncing — try again in a moment.`,
+        );
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to remove pending offline orders");
+      await loadPendingSales({ refresh: true }).catch(() => {});
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
@@ -244,6 +276,14 @@ export function PosPendingSyncOverlay({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              disabled={Boolean(busyKey) || loading || refreshing || rows.length === 0 || syncing}
+              onClick={() => void handleDiscardAll()}
+              className="rounded-lg border border-red-300/80 bg-red-600/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-red-600 disabled:opacity-50"
+            >
+              {busyKey === "__all__" ? "Deleting…" : "Delete all"}
+            </button>
             <button
               type="button"
               disabled={Boolean(busyKey) || loading || refreshing}

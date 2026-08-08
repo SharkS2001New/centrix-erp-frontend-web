@@ -1662,13 +1662,17 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
       hasPosSales &&
       hasCustomers &&
       Boolean(sales.enable_credit_payment),
-    // Partial / small payments on Collect payment: explicit setting, or any credit-sales path
-    // (POS inline credit checkout / save-then-pay debtors).
+    // POS credit (I + registered customer) may leave unpaid/partial; walk-up tenders cannot.
+    // Collect-payment screen: same when credit / allow_credit_pay_now is on.
     allowPartialPayment:
-      checkoutContext === "order_payment" &&
-      Boolean(modules.sales) &&
-      (Boolean(sales.allow_credit_pay_now) ||
-        (hasCustomers && Boolean(sales.enable_credit_payment))),
+      (checkoutContext === "pos" &&
+        hasPosSales &&
+        hasCustomers &&
+        Boolean(sales.enable_credit_payment)) ||
+      (checkoutContext === "order_payment" &&
+        Boolean(modules.sales) &&
+        (Boolean(sales.allow_credit_pay_now) ||
+          (hasCustomers && Boolean(sales.enable_credit_payment)))),
     /** Collecting against an existing sale — never accept more than balance due. */
     rejectOverpayment: checkoutContext === "order_payment",
     enableCheckoutCustomerName:

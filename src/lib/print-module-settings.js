@@ -65,6 +65,18 @@ export function resolvePrintProcurementSettings(moduleSettings) {
 export async function ensureSaleForPrint(sale) {
   if (!sale?.id) return sale;
 
+  const saleId = String(sale.id ?? "");
+  // Local / pending-sync / previous-order draft reprints are already complete in memory —
+  // never replace revised items with a GET of the pre-edit server sale.
+  if (
+    saleId.startsWith("offline:") ||
+    saleId.startsWith("edit:") ||
+    Boolean(sale.offline_pending_sync) ||
+    Boolean(sale._skip_kra_qr)
+  ) {
+    return sale;
+  }
+
   const items = Array.isArray(sale.items) ? sale.items : [];
   const missingProductNames =
     items.length > 0 &&
@@ -72,10 +84,13 @@ export async function ensureSaleForPrint(sale) {
   const missingPackaging =
     items.length > 0 &&
     items.some((line) => line?.product_code && !saleLineUom(line, null));
-  // Only chase a saved eTIMS link when fiscalization may still succeed.
-  // Failed / skipped KRA must not delay print with extra sale fetches.
+  // Only chase a saved eTIMS link when fiscalization actually ran and may still succeed.
+  // KRA off (no kra_response) and failed/skipped must not delay print with extra fetches.
+  const hasKraPayload = Boolean(sale.kra_response ?? sale.kraResponse);
   const needsKraRefresh =
-    !saleHasKraVerificationLink(sale) && !kraFailedWithoutVerificationLink(sale);
+    hasKraPayload &&
+    !saleHasKraVerificationLink(sale) &&
+    !kraFailedWithoutVerificationLink(sale);
 
   if (
     items.length > 0 &&
@@ -93,6 +108,8 @@ export async function ensureSaleForPrint(sale) {
 
   const existingKra = sale.kra_response ?? sale.kraResponse ?? null;
   const existingHasLink = saleHasKraVerificationLink(sale);
+  const preserveRevisedItems =
+    items.length > 0 && !missingProductNames && Boolean(sale._preserve_print_items);
 
   const preserveCheckoutSnapshot = (loaded) => {
     if (!loaded) return loaded;
@@ -105,6 +122,8 @@ export async function ensureSaleForPrint(sale) {
       loaded.pos_order_date ?? sale.pos_order_date ?? sale.next_pos_order_date ?? null;
     return {
       ...loaded,
+      // Keep caller line list when reprinting a local revision (swap/qty) before sync.
+      ...(preserveRevisedItems ? { items } : {}),
       ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
       ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
       channel: loaded.channel ?? sale.channel,

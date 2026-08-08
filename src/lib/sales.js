@@ -264,9 +264,8 @@ export function resolvePosSessionTicketNumber(saleOrCart) {
 
 /**
  * Number shown in classic POS ← / → box and previous-order captions.
- * Prefers daily POS ticket; falls back to held_order_num only on active edit sessions.
- * Never uses org order_num or next_order_num — callers that need “next ticket” must use
- * {@link resolvePosNextBrowseNumber} so External POS does not flash the org S00xx digit.
+ * Prefers daily POS ticket only. Never uses org order_num / held_order_num —
+ * those are S00xx system numbers and made cashiers search the wrong receipt.
  */
 export function resolvePosBrowseNumber(saleOrCart) {
   if (saleOrCart == null || saleOrCart === "") return null;
@@ -276,19 +275,6 @@ export function resolvePosBrowseNumber(saleOrCart) {
   }
   const posTicket = resolvePosSessionTicketNumber(saleOrCart);
   if (posTicket != null) return posTicket;
-  const isPosEditSession =
-    saleOrCart.superseded_sale_id != null ||
-    saleOrCart.offline_client_sale_uuid != null ||
-    saleOrCart.offline_pending_sync;
-  if (
-    isPosEditSession &&
-    saleOrCart.held_order_num != null &&
-    saleOrCart.held_order_num !== ""
-  ) {
-    // Legacy edit rows before pos_order_num was hydrated — last resort only.
-    const n = Number(saleOrCart.held_order_num);
-    if (Number.isFinite(n) && n > 0 && n < 9_000_000) return n;
-  }
   if (saleOrCart.next_pos_order_num != null && saleOrCart.next_pos_order_num !== "") {
     const n = Number(saleOrCart.next_pos_order_num);
     if (Number.isFinite(n) && n > 0) return n;

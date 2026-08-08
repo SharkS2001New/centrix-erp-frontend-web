@@ -145,12 +145,72 @@ describe("normalizePreviousOrderEditTenders / rebuildPreviousOrderEditTenders", 
       "@/lib/pos-edit-payment-adjustment"
     );
     const tenders = rebuildPreviousOrderEditTenders(
-      { cash: 0, mpesa_amount: 10000, equity_amount: 0, kcb_amount: 0 },
+      { cash: 0, mpesa_amount: 10000, equity_amount: 0, kcb_amount: 0, order_total: 10000 },
       [{ adjustment_type: "topup", method_code: "MPESA", amount: 3160 }],
       13160,
     );
     expect(tenders.mpesa).toBe(13160);
+    expect(tenders.topupAmount).toBe(3160);
     expect(tenders.returnGiven).toBe(0);
+  });
+
+  it("never doubles M-Pesa when a bogus full-bill top-up is stored", async () => {
+    const { rebuildPreviousOrderEditTenders, paymentRowsFromPreviousOrderEditTenders } =
+      await import("@/lib/pos-edit-payment-adjustment");
+    const prior = {
+      order_total: 13160,
+      amount_paid: 13160,
+      cash: 0,
+      mpesa_amount: 13160,
+      equity_amount: 0,
+      kcb_amount: 0,
+      payment_method_code: "MPESA",
+    };
+    // Bug: cashier/UI recorded the whole revised total as a top-up with no real delta.
+    const tenders = rebuildPreviousOrderEditTenders(
+      prior,
+      [{ adjustment_type: "topup", method_code: "MPESA", amount: 13160 }],
+      13160,
+    );
+    expect(tenders.mpesa).toBe(13160);
+    expect(tenders.topupAmount).toBe(0);
+    expect(tenders.amountPaid).toBe(13160);
+    const rows = paymentRowsFromPreviousOrderEditTenders(tenders);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ payment_method_code: "MPESA", amount: 13160 });
+  });
+
+  it("uses prior tender sum when order_total is missing so top-up is not the full bill", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      { cash: 0, mpesa_amount: 10000, equity_amount: 0, kcb_amount: 0 },
+      [{ adjustment_type: "topup", method_code: "MPESA", amount: 10000 }],
+      10000,
+    );
+    expect(tenders.mpesa).toBe(10000);
+    expect(tenders.topupAmount).toBe(0);
+  });
+
+  it("records return change without inflating M-Pesa", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      {
+        order_total: 10000,
+        cash: 0,
+        mpesa_amount: 10000,
+        equity_amount: 0,
+        kcb_amount: 0,
+      },
+      [{ adjustment_type: "return", method_code: "CASH", amount: 2000 }],
+      8000,
+    );
+    expect(tenders.mpesa).toBe(8000);
+    expect(tenders.returnGiven).toBe(2000);
+    expect(tenders.topupAmount).toBe(0);
   });
 });
 
