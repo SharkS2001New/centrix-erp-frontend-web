@@ -7,6 +7,7 @@ import {
   MAX_POS_CASH_CHANGE,
   posCashChangeDue,
   resolveSaleReceiptChangeGiven,
+  resolveSaleReceiptTopupAmount,
 } from "@/lib/checkout-payment-splits";
 
 describe("alignPaymentSplitsToPayNow", () => {
@@ -195,5 +196,38 @@ describe("resolveSaleReceiptChangeGiven", () => {
       { totalPaid: 1200, orderTotal: 1000 },
     );
     expect(change).toBe(200);
+  });
+});
+
+describe("resolveSaleReceiptTopupAmount", () => {
+  it("hides top-up when Cash already shows the full revised total", () => {
+    // Previous-order edit: prior 145 + top-up 160 → Cash 305, Total 305.
+    // Printing Top-up 160 on top looks like the customer paid 465.
+    const topup = resolveSaleReceiptTopupAmount(
+      {
+        order_total: 305,
+        cash: 305,
+        _topup_amount: 160,
+        payment_adjustments: [
+          { adjustment_type: "topup", method_code: "CASH", amount: 160 },
+        ],
+      },
+      { totalPaid: 305, orderTotal: 305 },
+    );
+    expect(topup).toBe(0);
+  });
+
+  it("still surfaces top-up when tenders do not yet cover the bill", () => {
+    const topup = resolveSaleReceiptTopupAmount(
+      {
+        order_total: 1100,
+        cash: 900,
+        payment_adjustments: [
+          { adjustment_type: "topup", method_code: "CASH", amount: 200 },
+        ],
+      },
+      { totalPaid: 900, orderTotal: 1100 },
+    );
+    expect(topup).toBe(200);
   });
 });

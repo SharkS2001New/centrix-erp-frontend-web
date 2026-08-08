@@ -41,7 +41,7 @@ import {
   THERMAL_PAPER_WIDTH_MM,
 } from "@/lib/thermal-receipt-layout";
 import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
-import { resolveSaleReceiptChangeGiven, sumSalePaymentAdjustments } from "@/lib/checkout-payment-splits";
+import { resolveSaleReceiptChangeGiven, resolveSaleReceiptTopupAmount } from "@/lib/checkout-payment-splits";
 
 function tendersFromSalePayments(sale) {
   const payments = Array.isArray(sale?.payments) ? sale.payments : [];
@@ -289,10 +289,9 @@ export function buildSaleReceiptHtml(
   // stored on the server. Previous-order edit return/top-up use payment_adjustments — return
   // change is exact; top-up must not appear as "Change Given".
   const changeGiven = resolveSaleReceiptChangeGiven(sale, { totalPaid, orderTotal });
-  const topupAmount = Math.max(
-    Number(sale?._topup_amount ?? 0),
-    sumSalePaymentAdjustments(sale, "topup"),
-  );
+  // Previous-order edit: Cash/M-Pesa already include prior + top-up. Never print a
+  // separate Top-up row on top of a fully settled tender total (looks like double pay).
+  const topupAmount = resolveSaleReceiptTopupAmount(sale, { totalPaid, orderTotal });
   const totalDiscount = discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
   const showDiscountTotal =
     (showDiscountColumn || orderDiscountEnabled) && totalDiscount > 0.0001;

@@ -271,7 +271,9 @@ export async function peekIssuedPosTicketMax(posOrderDate = null, floatSessionId
       if (!(num > maxIssued) || (date && date !== today)) continue;
       const rowSession = outboxRowFloatSessionId(row);
       if (scopedSession) {
-        if (rowSession !== scopedSession) continue;
+        // Count rows with no session stamp — offline sales often omit it, and
+        // skipping them rewinds the next Cash Sales # onto an already-printed ticket.
+        if (rowSession != null && rowSession !== scopedSession) continue;
       } else if (rowSession) {
         continue;
       }
@@ -922,7 +924,7 @@ async function allocateLocalPosTicketNumber(floatSessionId = null) {
       if (!(num > current) || (date && date !== today)) continue;
       const rowSession = outboxRowFloatSessionId(row);
       if (scopedSession) {
-        if (rowSession !== scopedSession) continue;
+        if (rowSession != null && rowSession !== scopedSession) continue;
       } else if (rowSession) {
         continue;
       }
@@ -1078,6 +1080,22 @@ export async function completeOfflineCashSale({
     posOrderDate = localTicket.pos_order_date ?? posOrderDate;
   }
   posOrderDate = clampPosOrderBusinessDate(posOrderDate);
+
+  // Always raise the on-device Cash Sales counter when a ticket is issued from the
+  // cart's next_pos_order_num (allocateLocalPosTicketNumber already writes the seq).
+  // Skipping this left seq stuck on the prior receipt so F8 / clear workspace could
+  // rewind onto an already-printed number (e.g. sold #27 offline, next showed #26).
+  if (posOrderNum != null && !isPreviousOrderEdit) {
+    try {
+      await seedLocalPosTicketSeq(
+        Number(posOrderNum),
+        posOrderDate,
+        floatSessionId ?? cart.float_session_id ?? null,
+      );
+    } catch {
+      /* non-fatal — peek still consults pending outbox */
+    }
+  }
 
   // New offline sales (and their revisions): Cash Sales # is the till label.
   // Organization order_num is assigned by the server on sync — never pre-reserved.
@@ -1283,11 +1301,13 @@ export async function completeOfflineCashSale({
         line.product_code,
       quantity: Number(line.quantity),
       unit_price: Number(line.unit_price),
+      display_unit_price:
+        line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
       amount: lineAmount,
       uom: line.uom ?? null,
       unit_id: unitId,
       unit,
-      on_wholesale_retail: Boolean(line.on_wholesale_retail),
+      on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) === 1,
       discount_given: Number(line.discount_given ?? 0),
       vat_rate: Number(line.vat_rate ?? line.tax_rate ?? catalog?.vat_rate ?? catalog?.vat?.vat_percentage ?? 0),
       product_vat: (() => {
@@ -1377,25 +1397,33 @@ export async function completeOfflineCashSale({
     ? editTenders.adjustments
     : editAdjustmentsForCheckout;
 
+  // Empty previous-order revise = cancel online (print path uses cancelled / refunded).
+  const isEmptyPreviousOrderCancel =
+    isPreviousOrderEdit && Number(summary.lineCount ?? 0) === 0;
+
   // Prefer rebuilt edit tenders for credit unpaid/partial; never force "paid" on edit.
-  const amountPaidFinal = editTenders
-    ? Math.max(0, Number(editTenders.amountPaid) || 0)
-    : isCreditSale
-      ? payNow
-      : summary.total;
+  const amountPaidFinal = isEmptyPreviousOrderCancel
+    ? 0
+    : editTenders
+      ? Math.max(0, Number(editTenders.amountPaid) || 0)
+      : isCreditSale
+        ? payNow
+        : summary.total;
   const paymentStatusFinal = (() => {
+    if (isEmptyPreviousOrderCancel) return "refunded";
     if (!isCreditSale) return "paid";
     if (amountPaidFinal + 0.01 >= summary.total && summary.total > 0) return "paid";
     if (amountPaidFinal > 0.01) return "partial";
     return "unpaid";
   })();
-  const saleWorkflowStatusFinal =
-    String(workflowStatus ?? "").trim() ||
-    (paymentStatusFinal === "paid"
-      ? "paid"
-      : paymentStatusFinal === "partial"
-        ? "pending_payment"
-        : "unpaid");
+  const saleWorkflowStatusFinal = isEmptyPreviousOrderCancel
+    ? "cancelled"
+    : String(workflowStatus ?? "").trim() ||
+      (paymentStatusFinal === "paid"
+        ? "paid"
+        : paymentStatusFinal === "partial"
+          ? "pending_payment"
+          : "unpaid");
 
   const sale = {
     id: `offline:${clientSaleUuid}`,
@@ -1416,8 +1444,8 @@ export async function completeOfflineCashSale({
     payment_status: paymentStatusFinal,
     payment_method_code: paymentMethodCode,
     is_credit_sale: isCreditSale,
-    order_total: summary.total,
-    total_vat: summary.vat,
+    order_total: isEmptyPreviousOrderCancel ? 0 : summary.total,
+    total_vat: isEmptyPreviousOrderCancel ? 0 : summary.vat,
     amount_paid: amountPaidFinal,
     cash: editTenders
       ? editTenders.cash
@@ -1616,7 +1644,7 @@ export async function upsertPreviousOrderEditOutbox({
  */
 export function buildPreviousOrderEditPrintSale(
   cart,
-  { user = null, organization = null, sourceSale = null } = {},
+  { user = null, organization = null, sourceSale = null, productByCode = null } = {},
 ) {
   if (!cart?.held_order_num) return null;
   const summary = summarizeLocalPosCart(cart);
@@ -1633,28 +1661,49 @@ export function buildPreviousOrderEditPrintSale(
   const items = (cart.lines ?? [])
     .filter((line) => Number(line.quantity ?? 0) > 0 && line.product_code)
     .map((line, index) => {
+      const catalog = productByCode?.[line.product_code] ?? null;
+      const unit =
+        snapshotUomForPrint(line.unit) ??
+        snapshotUomForPrint(line.product?.unit ?? line.product?.uom) ??
+        snapshotUomForPrint(catalog?.uom ?? catalog?.unit) ??
+        null;
+      const unitId =
+        line.unit_id ??
+        line.product?.unit_id ??
+        catalog?.unit_id ??
+        unit?.id ??
+        null;
       const lineAmount =
         line.amount != null && Number.isFinite(Number(line.amount))
           ? Math.round(Number(line.amount) * 100) / 100
           : Math.round(Number(line.quantity) * Number(line.unit_price) * 100) / 100;
+      const isRetail = Number(line.on_wholesale_retail ?? 0) === 1;
       return {
         id: line.id ?? index + 1,
         product_code: line.product_code,
-        product_name: line.product_name ?? line.description ?? line.product_code,
+        product_name:
+          line.product_name ??
+          catalog?.product_name ??
+          line.description ??
+          line.product_code,
         quantity: Number(line.quantity),
         unit_price: Number(line.unit_price ?? 0),
+        display_unit_price:
+          line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
         amount: lineAmount,
         uom: line.uom ?? null,
-        unit: snapshotUomForPrint(line.unit),
-        unit_id: line.unit_id ?? null,
-        on_wholesale_retail: Boolean(line.on_wholesale_retail),
+        unit,
+        unit_id: unitId,
+        // Number()===1 — Boolean("0") is true and wrongly printed as retail kg.
+        on_wholesale_retail: isRetail,
         discount_given: Number(line.discount_given ?? 0),
         product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
         product: {
           product_code: line.product_code,
-          product_name: line.product_name ?? line.product_code,
-          unit: snapshotUomForPrint(line.unit),
-          unit_id: line.unit_id ?? null,
+          product_name:
+            line.product_name ?? catalog?.product_name ?? line.product_code,
+          unit,
+          unit_id: unitId,
         },
       };
     });
@@ -1818,6 +1867,60 @@ function mapOutboxLinesForPut(row) {
         ? row.sale_payload.items
         : [];
   return lines.map((line) => buildOutboxLineBody(line));
+}
+
+/** True when a previous-order edit outbox has no lines — sync must cancel online. */
+export function isPreviousOrderEditEmptyCancel(row) {
+  if (!row || row.sync_kind !== "previous_order_edit") return false;
+  if (String(row.sale_payload?.status ?? row.checkout_body?.status ?? "")
+    .trim()
+    .toLowerCase() === "cancelled") {
+    return true;
+  }
+  return mapOutboxLinesForPut(row).length === 0;
+}
+
+/**
+ * Empty previous-order edit: cancel the live sale online.
+ * PUT /carts/{id}/lines rejects an empty `lines` array ("The lines field is required").
+ */
+async function cancelPreviousOrderEditOutboxRow(row, orderNum) {
+  const saleId = await findLiveSaleIdForPreviousOrderEdit(row);
+  if (!saleId) {
+    throw new Error("Missing sale for empty previous-order cancel.");
+  }
+
+  try {
+    const existing = await apiRequest(`/sales/${saleId}`, {
+      loading: false,
+      reportIssues: false,
+    });
+    if (String(existing?.status ?? "").toLowerCase() === "cancelled") {
+      return existing;
+    }
+  } catch {
+    /* continue — transition will surface a real missing-sale error */
+  }
+
+  // Match Sales & Orders cancel — status only (extra fields can 422 on transition).
+  const cancelled = await apiRequest(`/sales/orders/${saleId}/transition`, {
+    method: "POST",
+    body: { status: "cancelled" },
+    loading: false,
+    reportIssues: false,
+  });
+
+  // Drop any TemporaryCart left from the edit session so F8 / next restore stays clean.
+  const cartId = row.server_cart_id ? Number(row.server_cart_id) : null;
+  if (cartId) {
+    void apiRequest(`/sales/carts/${cartId}/lines`, {
+      method: "DELETE",
+      loading: false,
+      reportIssues: false,
+    }).catch(() => {});
+  }
+
+  return cancelled ?? { id: saleId, order_num: orderNum, status: "cancelled", payment_status: "refunded" };
 }
 
 function buildOutboxLineBody(line) {
@@ -2054,6 +2157,11 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
 }
 
 async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
+  // Cleared receipt → cancel online. Never PUT an empty lines array (API rejects it).
+  if (isPreviousOrderEditEmptyCancel(row)) {
+    return cancelPreviousOrderEditOutboxRow(row, orderNum);
+  }
+
   let cartId = await resolvePreviousOrderEditCartId(row);
 
   if (!cartId) {
@@ -2244,6 +2352,70 @@ export async function listLocalSyncedSalesForBrowse() {
 }
 
 /**
+ * Full local sale snapshot (with line items) for editing a previous receipt while offline.
+ * Returns null when the till has no cached lines for that server sale / Cash Sales #.
+ */
+export async function findLocalSyncedSaleForOfflineEdit({
+  saleId = null,
+  ticketNum = null,
+} = {}) {
+  const rows = await idbListSyncedOutboxForBrowse({
+    maxAgeMs: 7 * 24 * 60 * 60 * 1000,
+    limit: 100,
+  });
+  const ticket = ticketNum != null ? Number(ticketNum) : null;
+  const targetId = saleId != null ? Number(saleId) : null;
+
+  const row =
+    (targetId > 0
+      ? rows.find((r) => Number(r.server_sale_id ?? 0) === targetId)
+      : null) ??
+    (Number.isFinite(ticket) && ticket > 0
+      ? rows.find((r) => {
+          const pos =
+            r.sale_payload?.pos_order_num ??
+            r.checkout_body?.pos_order_num ??
+            null;
+          return pos != null && Number(pos) === ticket;
+        })
+      : null);
+
+  if (!row) return null;
+
+  const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
+  const serverId = Number(row.server_sale_id ?? sale.id ?? 0);
+  if (!(serverId > 0)) return null;
+
+  const items = Array.isArray(row.lines) && row.lines.length
+    ? row.lines
+    : Array.isArray(sale.items)
+      ? sale.items
+      : [];
+  if (!items.length) return null;
+
+  return {
+    ...sale,
+    id: serverId,
+    order_num: Number(row.server_order_num ?? sale.order_num ?? row.order_num ?? 0) || null,
+    pos_order_num:
+      sale.pos_order_num != null && Number(sale.pos_order_num) > 0
+        ? Number(sale.pos_order_num)
+        : row.checkout_body?.pos_order_num != null
+          ? Number(row.checkout_body.pos_order_num)
+          : null,
+    pos_order_date: sale.pos_order_date ?? row.checkout_body?.pos_order_date ?? null,
+    float_session_id:
+      sale.float_session_id ??
+      row.checkout_body?.float_session_id ??
+      row.cart_seed?.float_session_id ??
+      null,
+    status: sale.status ?? "paid",
+    items,
+    _local_synced_mirror: true,
+  };
+}
+
+/**
  * Load a pending offline sale into the local cart for edit (same order #).
  * Marks the outbox row as `editing` so sync will not replay it mid-edit.
  */
@@ -2274,7 +2446,7 @@ export async function beginOfflineSaleEdit(saleId, { seed = {} } = {}) {
       quantity: Number(line.quantity),
       unit_price: Number(line.unit_price),
       uom: line.uom ?? null,
-      on_wholesale_retail: Boolean(line.on_wholesale_retail),
+      on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) === 1,
       discount_given: Number(line.discount_given ?? 0),
     };
   });

@@ -67,6 +67,19 @@ export function formatThermalPrintAmount(value) {
   return formatPrintAmount(value, { decimals: 0 });
 }
 
+/**
+ * Thermal unit-price column — keep cents when needed so qty × price can match amount
+ * (e.g. 152.50 × 2 = 305; rounding to 153 alone looked wrong).
+ */
+export function formatThermalPrintUnitPrice(value) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return formatThermalPrintAmount(0);
+  if (Math.abs(n - Math.round(n)) < 0.001) {
+    return formatThermalPrintAmount(n);
+  }
+  return formatPrintAmount(n, { decimals: 2 });
+}
+
 /** Line Disc column — only when discounts are enabled in sales settings. */
 export function shouldShowPrintDiscountColumn({
   allowDiscounts = false,
@@ -298,7 +311,7 @@ export function buildSaleDocumentLineRows(
           return `<tr>
           <td class="desc">${description}</td>
           <td class="qty">${qtyCell}</td>
-          <td class="price">${escapeHtml(formatThermalPrintAmount(unitPrice))}</td>
+          <td class="price">${escapeHtml(formatThermalPrintUnitPrice(unitPrice))}</td>
           <td class="disc">${escapeHtml(formatThermalPrintAmount(discount))}</td>
           <td class="amount">${escapeHtml(formatThermalPrintAmount(amount))}</td>
         </tr>`;
@@ -307,7 +320,7 @@ export function buildSaleDocumentLineRows(
         return `<tr>
           <td class="desc">${description}</td>
           <td class="qty">${qtyCell}</td>
-          <td class="price">${escapeHtml(formatThermalPrintAmount(unitPrice))}</td>
+          <td class="price">${escapeHtml(formatThermalPrintUnitPrice(unitPrice))}</td>
           <td class="amount">${escapeHtml(formatThermalPrintAmount(amount))}</td>
         </tr>`;
       }

@@ -299,8 +299,9 @@ function saleLineRetailPackage(line) {
 }
 
 /**
- * Receipt / thermal print columns — unit price is reverse-computed from line amount ÷ qty
- * so wholesale line markups (on total, not per unit) display correctly.
+ * Receipt / thermal print columns — unit price prefers stored display_unit_price
+ * (matches POS), else amount ÷ sold qty. Keep cents so qty × price can match amount
+ * (Math.round to whole shillings made 152.5 → 153 while amount stayed 305).
  */
 export function resolveSaleLinePrintColumns(
   line,
@@ -312,7 +313,7 @@ export function resolveSaleLinePrintColumns(
     const amountAfterDisc = Number(line?.amount ?? 0);
     const amountBeforeDisc = amountAfterDisc + discount;
     const qty = baseQty > 0 ? baseQty : 0;
-    const unitPrice = qty > 0 ? Math.round(amountBeforeDisc / qty) : 0;
+    const unitPrice = qty > 0 ? Math.round((amountBeforeDisc / qty) * 100) / 100 : 0;
 
     return {
       qty,
@@ -346,8 +347,13 @@ export function resolveSaleLinePrintColumns(
         ? baseQty
         : 0;
 
+  const storedDisplay = Number(line?.display_unit_price);
   const unitPrice =
-    qty > 0 ? Math.round(amountBeforeDisc / qty) : 0;
+    Number.isFinite(storedDisplay) && storedDisplay > 0
+      ? Math.round(storedDisplay * 100) / 100
+      : qty > 0
+        ? Math.round((amountBeforeDisc / qty) * 100) / 100
+        : 0;
 
   if (isRetail) {
     const basePrice =

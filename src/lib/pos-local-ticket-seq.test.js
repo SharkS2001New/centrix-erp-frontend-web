@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const meta = new Map();
+let pendingOutbox = [];
 
 vi.mock("@/lib/pos-offline-db", async () => {
   const actual = await vi.importActual("@/lib/pos-offline-db");
@@ -10,6 +11,7 @@ vi.mock("@/lib/pos-offline-db", async () => {
     idbSetMeta: async (key, value) => {
       meta.set(key, value);
     },
+    idbListPendingOutbox: async () => pendingOutbox,
   };
 });
 
@@ -26,6 +28,7 @@ vi.mock("@/lib/api", () => ({
 describe("seedLocalPosTicketSeq — local is source of truth", () => {
   beforeEach(() => {
     meta.clear();
+    pendingOutbox = [];
   });
 
   it("does not rewind local seq when server still sits at last synced #6", async () => {
@@ -58,5 +61,52 @@ describe("seedLocalPosTicketSeq — local is source of truth", () => {
     await seedLocalPosTicketSeq(0, "2026-08-08", sessionId, { force: true });
     // No issued tickets → peek returns null (next allocate starts at 1).
     expect(await peekLocalPosTicketNext("2026-08-08", sessionId)).toBeNull();
+  });
+});
+
+describe("peekIssuedPosTicketMax — pending offline tickets", () => {
+  beforeEach(() => {
+    meta.clear();
+    pendingOutbox = [];
+  });
+
+  it("counts pending outbox tickets even when float_session_id is missing", async () => {
+    const { seedLocalPosTicketSeq, peekIssuedPosTicketMax, peekNextPosTicketNumber } =
+      await import("@/lib/pos-offline");
+    const sessionId = 55;
+
+    await seedLocalPosTicketSeq(26, "2026-08-08", sessionId);
+    pendingOutbox = [
+      {
+        sale_payload: {
+          pos_order_num: 27,
+          pos_order_date: "2026-08-08",
+          // Missing float_session_id — previously skipped and rewound next to #26.
+        },
+        checkout_body: { pos_order_num: 27, pos_order_date: "2026-08-08" },
+      },
+    ];
+
+    expect(await peekIssuedPosTicketMax("2026-08-08", sessionId)).toBe(27);
+    expect(await peekNextPosTicketNumber("2026-08-08", sessionId)).toBe(28);
+  });
+
+  it("still ignores tickets stamped to a different float session", async () => {
+    const { seedLocalPosTicketSeq, peekIssuedPosTicketMax } = await import("@/lib/pos-offline");
+    const sessionId = 55;
+
+    await seedLocalPosTicketSeq(26, "2026-08-08", sessionId);
+    pendingOutbox = [
+      {
+        sale_payload: {
+          pos_order_num: 40,
+          pos_order_date: "2026-08-08",
+          float_session_id: 99,
+        },
+        cart_seed: { float_session_id: 99 },
+      },
+    ];
+
+    expect(await peekIssuedPosTicketMax("2026-08-08", sessionId)).toBe(26);
   });
 });

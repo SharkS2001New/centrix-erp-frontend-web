@@ -1,9 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
+  isPreviousOrderEditEmptyCancel,
   outboxNeedsSupersedeOfServerSale,
   outboxRowMatchesServerSale,
   outboxRowSharesClientSaleUuid,
 } from "@/lib/pos-offline";
+
+describe("isPreviousOrderEditEmptyCancel", () => {
+  it("detects empty previous-order edit rows that must cancel online", () => {
+    expect(
+      isPreviousOrderEditEmptyCancel({
+        sync_kind: "previous_order_edit",
+        lines: [],
+        sale_payload: { items: [], status: "cancelled" },
+      }),
+    ).toBe(true);
+    expect(
+      isPreviousOrderEditEmptyCancel({
+        sync_kind: "previous_order_edit",
+        lines: [],
+        sale_payload: { items: [] },
+      }),
+    ).toBe(true);
+    expect(
+      isPreviousOrderEditEmptyCancel({
+        sync_kind: "previous_order_edit",
+        lines: [{ product_code: "A", quantity: 1, unit_price: 10 }],
+      }),
+    ).toBe(false);
+    expect(
+      isPreviousOrderEditEmptyCancel({
+        sync_kind: "sale",
+        lines: [],
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("outboxRowMatchesServerSale", () => {
   const liveSale = {

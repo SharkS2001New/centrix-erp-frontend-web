@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   enrichSaleLinesForQtyPrint,
+  resolveSaleLinePrintColumns,
   saleLinePrintQtyPackage,
   saleLineQtyLabel,
   saleLineSoldUnitPrice,
@@ -290,5 +291,44 @@ describe("sale line receipt packaging qty", () => {
     expect(saleLineQtyLabel(line, uoms, { showFullPackageUomOnDocuments: true })).toBe(
       "1 bale",
     );
+  });
+});
+
+describe("resolveSaleLinePrintColumns", () => {
+  const bagUom = {
+    id: 1,
+    conversion_factor: 50,
+    full_name: "bag",
+    small_packaging_label: "kg",
+    uses_small_packaging: true,
+    uom_type: "bag",
+  };
+
+  it("keeps cents on unit price so qty × price can match amount", () => {
+    const cols = resolveSaleLinePrintColumns(
+      {
+        quantity: 100,
+        amount: 305,
+        on_wholesale_retail: 0,
+        display_unit_price: 152.5,
+      },
+      { uom: bagUom },
+    );
+    expect(cols.qty).toBe(2);
+    expect(cols.unitPrice).toBe(152.5);
+    expect(cols.amount).toBe(305);
+  });
+
+  it("derives unit price from amount ÷ pack qty when display_unit_price is missing", () => {
+    const cols = resolveSaleLinePrintColumns(
+      {
+        quantity: 100,
+        amount: 305,
+        on_wholesale_retail: 0,
+      },
+      { uom: bagUom },
+    );
+    expect(cols.qty).toBe(2);
+    expect(cols.unitPrice).toBe(152.5);
   });
 });

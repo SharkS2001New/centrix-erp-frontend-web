@@ -2131,11 +2131,6 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
           <PosField label="Cash amount (C)">
-            {cashOnlyOffline ? (
-              <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
-                Offline — enter Cash, M-Pesa, bank, or cheque amounts manually. STK push and KRA are skipped; receipt prints now and the sale syncs when online. Credit (I + customer) always saves as fully unpaid.
-              </p>
-            ) : null}
             <input
               ref={cashAmountRef}
               type="number"

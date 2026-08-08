@@ -214,6 +214,7 @@ import {
   isServerPosCartId,
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
+  findLocalSyncedSaleForOfflineEdit,
   listFailedOutboxSales,
   loadOrCreateLocalPosCart,
   loadPreviousOrderEditDraft,
@@ -573,21 +574,41 @@ function presentRestoredEditCart(restoredCart, sourceSale) {
     return withPosTicket;
   }
 
-  const lines = items.map((item, index) => ({
-    id: item.id ?? item.line_id ?? `restore-${index}`,
-    update_code: item.id ?? item.line_id ?? `restore-${index}`,
-    product_code: item.product_code,
-    product_name: item.product_name ?? item.description ?? item.product_code,
-    quantity: Number(item.quantity ?? 0),
-    unit_price: Number(item.selling_price ?? item.unit_price ?? 0),
-    display_unit_price:
-      item.display_unit_price != null ? Number(item.display_unit_price) : undefined,
-    uom: item.uom ?? undefined,
-    amount: Number(item.amount ?? 0),
-    discount_given: Number(item.discount_given ?? 0),
-    on_wholesale_retail: Number(item.on_wholesale_retail ?? 0),
-    product_vat: item.product_vat != null ? Number(item.product_vat) : undefined,
-  }));
+  const lines = items.map((item, index) => {
+    const unit =
+      snapshotUomForPrint(item.unit) ??
+      snapshotUomForPrint(item.product?.unit ?? item.product?.uom) ??
+      null;
+    const unitId =
+      item.unit_id ?? item.product?.unit_id ?? unit?.id ?? null;
+    return {
+      id: item.id ?? item.line_id ?? `restore-${index}`,
+      update_code: item.id ?? item.line_id ?? `restore-${index}`,
+      product_code: item.product_code,
+      product_name: item.product_name ?? item.description ?? item.product_code,
+      quantity: Number(item.quantity ?? 0),
+      unit_price: Number(item.selling_price ?? item.unit_price ?? 0),
+      display_unit_price:
+        item.display_unit_price != null ? Number(item.display_unit_price) : undefined,
+      uom: item.uom ?? undefined,
+      unit,
+      unit_id: unitId,
+      amount: Number(item.amount ?? 0),
+      discount_given: Number(item.discount_given ?? 0),
+      on_wholesale_retail: Number(item.on_wholesale_retail ?? 0),
+      product_vat: item.product_vat != null ? Number(item.product_vat) : undefined,
+      ...(unit || unitId != null
+        ? {
+            product: {
+              product_code: item.product_code,
+              product_name: item.product_name ?? item.product_code,
+              unit,
+              unit_id: unitId,
+            },
+          }
+        : {}),
+    };
+  });
 
   return { ...withPosTicket, lines };
 }
@@ -875,11 +896,12 @@ function resolveFreshWorkspacePosNum(
   const rows = [...(sessionOrders ?? [])];
   if (pendingSale) rows.unshift(pendingSale);
   for (const row of rows) {
-    // After Z/reopen, ignore tickets from a prior float session (or unsynced
-    // outbox still carrying the closed session id) so Cash Sales # restarts at 1.
+    // After Z/reopen, ignore tickets stamped to a *different* float session so
+    // Cash Sales # restarts at 1. Null/0 (legacy / offline stamp missing) still
+    // counts — same rule as the previous-order browse list.
     if (scopedSession != null) {
       const rowSession = Number(row?.float_session_id ?? 0);
-      if (rowSession !== scopedSession) continue;
+      if (rowSession > 0 && rowSession !== scopedSession) continue;
     }
     const n = Number(resolvePosSessionTicketNumber(row) ?? 0);
     if (n > maxPos) maxPos = n;
@@ -2086,6 +2108,8 @@ export function PosScreen({ standalone = false }) {
   const [receiptPrintStatus, setReceiptPrintStatus] = useState(null);
   const [orderEditError, setOrderEditError] = useState(null);
   const [sessionPosOrders, setSessionPosOrders] = useState([]);
+  const sessionPosOrdersRef = useRef([]);
+  sessionPosOrdersRef.current = sessionPosOrders;
   const [editOrderNo, setEditOrderNo] = useState("");
   const [editBrowseIndex, setEditBrowseIndex] = useState(0);
   const orderNoUserEditedRef = useRef(false);
@@ -2304,8 +2328,13 @@ export function PosScreen({ standalone = false }) {
   );
   const editCartPrintSnapshot = useMemo(() => {
     if (!isCartEditSession || !cart) return null;
-    return buildPreviousOrderEditPrintSale(cart, { user, organization, sourceSale: editSourceSale });
-  }, [isCartEditSession, cart, user, organization, editSourceSale]);
+    return buildPreviousOrderEditPrintSale(cart, {
+      user,
+      organization,
+      sourceSale: editSourceSale,
+      productByCode,
+    });
+  }, [isCartEditSession, cart, user, organization, editSourceSale, productByCode]);
   const reprintSale = useMemo(
     () =>
       resolvePosReprintSale({
@@ -2669,6 +2698,28 @@ export function PosScreen({ standalone = false }) {
           if (localSyncedIds.has(String(row.id))) return false;
           return true;
         }),
+        // Offline: keep already-browsed completed receipts in memory so a failed
+        // lookup does not wipe them and steal their Cash Sales # as the "next" ticket.
+        ...(serverOrders.length === 0
+          ? (sessionPosOrdersRef.current ?? [])
+              .filter((row) => {
+                if (row?.id == null || isOfflinePendingSaleId(row.id)) return false;
+                const ticket = resolvePosSessionTicketNumber(row);
+                if (ticket != null && offlineBrowseKeys.has(String(ticket))) return false;
+                if (ticket != null && localSyncedBrowseKeys.has(String(ticket))) return false;
+                if (localSyncedIds.has(String(row.id))) return false;
+                if (serverOrders.some((s) => String(s.id) === String(row.id))) return false;
+                return true;
+              })
+              .map((row) => ({
+                id: row.id,
+                order_num: row.order_num,
+                pos_order_num: row.pos_order_num ?? null,
+                pos_order_date: row.pos_order_date ?? null,
+                float_session_id: row.float_session_id ?? null,
+                status: row.status,
+              }))
+          : []),
       ]).slice(0, 15);
 
       setSessionPosOrders(orders);
@@ -2692,6 +2743,7 @@ export function PosScreen({ standalone = false }) {
           (!editingPrevious && !live?.offline_client_sale_uuid);
         if (onFreshNewOrder) {
           // Prefer session-scoped next ticket — never fall back to prior-session max.
+          // Include pending offline tickets even when float_session_id was omitted.
           const nextScoped = resolveFreshWorkspacePosNum(
             live,
             orders,
@@ -2699,9 +2751,11 @@ export function PosScreen({ standalone = false }) {
             null,
             activeFloatId,
           );
-          if (nextScoped != null) return String(nextScoped);
-          const next = resolvePosNextBrowseNumber(live);
-          if (next != null) return String(next);
+          const liveNext = resolvePosNextBrowseNumber(live);
+          const candidates = [nextScoped, liveNext]
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n) && n > 0);
+          if (candidates.length) return String(Math.max(...candidates));
           if (String(current ?? "").trim()) return current;
           return "1";
         } else if (String(current ?? "").trim()) {
@@ -6832,9 +6886,12 @@ export function PosScreen({ standalone = false }) {
         ),
       );
       const lineIsRetail = cartLineRetailStockFlag(liveLine);
+      // Always follow F12 — never the line's old retail flag. When retail pricing
+      // is off, sellWholesale is forced on; using lineIsRetail here treated bag
+      // entry as kg (e.g. QTY 2 + Bags(50) → receipt "2 kg" at bag price).
       const sessionIsRetail = posSalesConfig.enableRetailPricing
         ? isPosRetailSession(sellWholesaleRef.current)
-        : lineIsRetail;
+        : false;
       const qtyUnchanged =
         Number.isFinite(currentEntry) && Math.abs(currentEntry - entryQty) < 0.0001;
       qtyActuallyChanged = !qtyUnchanged;
@@ -6881,7 +6938,7 @@ export function PosScreen({ standalone = false }) {
       const lineIsRetail = cartLineRetailStockFlag(liveLine);
       const sessionIsRetail = posSalesConfig.enableRetailPricing
         ? isPosRetailSession(sellWholesaleRef.current)
-        : lineIsRetail;
+        : false;
       const switchingMode = sessionIsRetail !== lineIsRetail;
 
       // Retail markups/tiers live on retail_package — load whenever pricing retail,
@@ -8441,6 +8498,9 @@ export function PosScreen({ standalone = false }) {
           isPreviousOrderCashEdit ? null : body?.__receipt_tenders,
           isPreviousOrderCashEdit ? 0 : offlineCashTendered,
         );
+        if (sale?.pos_order_num != null) {
+          void seedLocalPosTicketSeqFromSale(sale, floatSessionId).catch(() => {});
+        }
         markSaleForReprint(sale);
         if (!(standalone && !options.skipAutoNextOrder)) {
           setCart(null);
@@ -9260,12 +9320,14 @@ export function PosScreen({ standalone = false }) {
             user,
             organization,
             sourceSale: editSourceSale,
+            productByCode: productByCodeRef.current,
           })
         : cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id
           ? buildPreviousOrderEditPrintSale(cartRef.current, {
               user,
               organization,
               sourceSale: editSourceSale,
+              productByCode: productByCodeRef.current,
             })
           : null;
     const sale = editSnapshot ?? saleLike;
@@ -10563,6 +10625,7 @@ export function PosScreen({ standalone = false }) {
             user,
             organization,
             sourceSale: editSourceSale,
+            productByCode: productByCodeRef.current,
           })
         : null;
     let sale = resolvePosReprintSale({
@@ -10818,6 +10881,60 @@ export function PosScreen({ standalone = false }) {
         }
       }
     })();
+  }
+
+  /**
+   * After a failed previous-order load, put Cash Sales # back to the blank next ticket
+   * (or the open edit). Never leave the searched receipt # as the "new" order number.
+   */
+  function restoreEditOrderNoAfterFailedLoad({
+    previousCart = cartRef.current,
+    previousEditOrderNo = null,
+    failedTicket = null,
+  } = {}) {
+    const live = previousCart;
+    const editingPrevious = Boolean(live?.held_order_num && live?.superseded_sale_id);
+    if (editingPrevious) {
+      const browse = resolvePosBrowseNumber(live);
+      if (browse != null) {
+        setEditOrderNo(String(browse));
+        orderNoUserEditedRef.current = false;
+        return;
+      }
+    }
+    const activeFloatId =
+      floatSessionId != null && Number(floatSessionId) > 0
+        ? Number(floatSessionId)
+        : null;
+    const nextScoped = resolveFreshWorkspacePosNum(
+      live,
+      sessionPosOrdersRef.current,
+      null,
+      null,
+      activeFloatId,
+    );
+    const liveNext = resolvePosNextBrowseNumber(live);
+    const candidates = [nextScoped, liveNext]
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (candidates.length) {
+      setEditOrderNo(String(Math.max(...candidates)));
+      orderNoUserEditedRef.current = false;
+      return;
+    }
+    if (String(previousEditOrderNo ?? "").trim()) {
+      if (
+        failedTicket == null ||
+        String(previousEditOrderNo).trim() !== String(failedTicket)
+      ) {
+        setEditOrderNo(String(previousEditOrderNo).trim());
+        orderNoUserEditedRef.current = false;
+        return;
+      }
+    }
+    // Last resort: never leave the failed receipt # as the blank next ticket.
+    setEditOrderNo("1");
+    orderNoUserEditedRef.current = false;
   }
 
   /** Resume a parked held sale into the till as a new in-progress order. */
@@ -11116,11 +11233,25 @@ export function PosScreen({ standalone = false }) {
 
     const previousCartSnapshot = cartRef.current;
     const previousEditSource = editSourceSale;
+    const previousEditOrderNo = editOrderNo;
     let paintedOptimistic = false;
     let restoreActive = true;
     let handoffToReplaceRetry = false;
     let unlockedEarly = false;
     let loadingBegun = false;
+
+    const restoreFailedTicketField = () => {
+      restoreEditOrderNoAfterFailedLoad({
+        previousCart: previousCartSnapshot,
+        previousEditOrderNo,
+        failedTicket:
+          saleSnapshot?.pos_order_num ??
+          resolvePosBrowseNumber({
+            pos_order_num: saleSnapshot?.pos_order_num,
+            held_order_num: saleSnapshot?.order_num,
+          }),
+      });
+    };
 
     const beginLoadingIfNeeded = () => {
       if (loadingBegun) return;
@@ -11180,6 +11311,67 @@ export function PosScreen({ standalone = false }) {
         );
       }
       return true;
+    };
+
+    const applyLocalPreviousOrderEditCart = (sourceSale) => {
+      const optimistic = buildOptimisticPreviousOrderCart(saleId, sourceSale, cartRef.current);
+      if (!optimistic || (optimistic.lines?.length ?? 0) === 0) return null;
+      const held =
+        Number(optimistic.held_order_num ?? sourceSale?.order_num ?? 0) || null;
+      const { _optimistic_restore: _omitOptimistic, ...cleanBase } = optimistic;
+      const clean = {
+        ...cleanBase,
+        id: held != null ? `edit:${held}` : `edit:${saleId}`,
+        superseded_sale_id: Number(saleId),
+      };
+      cartRef.current = clean;
+      setCart(clean);
+      persistPreviousOrderLocalDraft(clean, { immediate: false });
+      void savePreviousOrderEditDraft(clean).catch(() => {});
+      setEditSourceSale(sourceSale);
+      setSelectedLineId(null);
+      setEditingLineId(null);
+      setEditingLineRef(null);
+      setReplacingLineId(null);
+      setPaymentOpen(false);
+      orderNoUserEditedRef.current = false;
+      const browseNum = resolvePosBrowseNumber(clean);
+      const orderNum = clean?.held_order_num ?? sourceSale?.order_num ?? null;
+      if (browseNum != null) setEditOrderNo(String(browseNum));
+      setSessionPosOrders((prev) => {
+        const entry = {
+          id: saleId,
+          order_num: orderNum,
+          pos_order_num: clean.pos_order_num ?? sourceSale?.pos_order_num ?? null,
+          pos_order_date: clean.pos_order_date ?? sourceSale?.pos_order_date ?? null,
+          float_session_id:
+            clean.float_session_id ??
+            sourceSale?.float_session_id ??
+            floatSessionId ??
+            null,
+          status: sourceSale?.status ?? "paid",
+        };
+        const next = sortPosOrdersByNumberDesc([
+          entry,
+          ...prev.filter(
+            (row) =>
+              String(row.id) !== String(saleId) &&
+              (browseNum == null || !sessionOrderMatchesBrowseNum(row, browseNum)),
+          ),
+        ]);
+        setEditBrowseIndex(
+          Math.max(
+            0,
+            next.findIndex(
+              (row) =>
+                String(row.id) === String(saleId) ||
+                (browseNum != null && sessionOrderMatchesBrowseNum(row, browseNum)),
+            ),
+          ),
+        );
+        return next;
+      });
+      return { clean, browseNum, orderNum };
     };
 
     const applyAuthoritativeRestoredCart = (restoredRaw) => {
@@ -11276,6 +11468,77 @@ export function PosScreen({ standalone = false }) {
     };
 
     setOrderEditError(null);
+
+    // Offline / slow: never call restore-to-cart. Open from local synced outbox lines
+    // when present; otherwise fail without stealing the Cash Sales # as the next ticket.
+    if (offlineMode) {
+      beginLoadingIfNeeded();
+      try {
+        let localSale =
+          saleSnapshot?.items?.length > 0 ? saleSnapshot : null;
+        if (!localSale?.items?.length) {
+          localSale = await findLocalSyncedSaleForOfflineEdit({
+            saleId,
+            ticketNum: saleSnapshot?.pos_order_num ?? null,
+          });
+        }
+        if (!localSale?.items?.length) {
+          restoreFailedTicketField();
+          const message =
+            "Reconnect to edit this receipt — it isn’t cached on this till.";
+          setOrderEditError(message);
+          setStatusMessage(message);
+          if (standalone) notifyError(message);
+          return;
+        }
+        const applied = applyLocalPreviousOrderEditCart(localSale);
+        if (!applied) {
+          restoreFailedTicketField();
+          const message =
+            "Reconnect to edit this receipt — it isn’t cached on this till.";
+          setOrderEditError(message);
+          setStatusMessage(message);
+          if (standalone) notifyError(message);
+          return;
+        }
+        const label = applied.browseNum;
+        const kraFiscalize = shouldSubmitKraOnCheckout(
+          capabilities?.module_settings,
+          capabilities,
+          summarizeLocalPosCart(applied.clean)?.total,
+        );
+        const editHint = previousOrderEditWorkspaceHint({ kraFiscalize, offline: true });
+        setStatusMessage(
+          keepEditing
+            ? label != null
+              ? `Cash Sales #${label} updated — ${editHint}`
+              : `Order updated — ${editHint}`
+            : label != null
+              ? `Cash Sales #${label} loaded — ${editHint}`
+              : `Order loaded — ${editHint}`,
+        );
+        if (standalone) {
+          notifySuccess(
+            previousOrderEditModeMessages(label, { kraFiscalize, offline: true }).loaded,
+          );
+        }
+      } catch (e) {
+        restoreFailedTicketField();
+        const message =
+          e instanceof Error
+            ? dedupeErrorMessage(e.message)
+            : "Could not load order for editing";
+        setOrderEditError(message);
+        setStatusMessage(message);
+        if (standalone) notifyError(message);
+      } finally {
+        if (loadingBegun && !unlockedEarly) {
+          setBusy(false);
+          endPreviousOrderLoading();
+        }
+      }
+      return;
+    }
 
     try {
       // Always hydrate full sale tenders (browse rows omit cash/mpesa columns).
@@ -11410,6 +11673,7 @@ export function PosScreen({ standalone = false }) {
           handoffToReplaceRetry = true;
           return restoreOrderForEdit(saleId, { replace: true, saleSnapshot });
         }
+        restoreFailedTicketField();
         return;
       }
       // Rare: restore itself should not wait on KRA anymore; keep clear copy if device errors surface.
@@ -11418,6 +11682,7 @@ export function PosScreen({ standalone = false }) {
           `Could not complete KRA void for this receipt. ${message} ` +
           `Upload the order’s products to the device, then try again.`;
       }
+      restoreFailedTicketField();
       setOrderEditError(message);
       setStatusMessage(message);
       if (standalone) notifyError(message);
@@ -11437,6 +11702,7 @@ export function PosScreen({ standalone = false }) {
     if (!trimmed) return;
 
     setOrderEditError(null);
+    const previousEditOrderNoBeforeLookup = editOrderNo;
     const compact = trimmed.replace(/[\s#\-]+/g, "");
     const isCashSalesTicket = /^\d+$/.test(compact);
     const orgOrderMatch = compact.match(/^S0*(\d+)$/i);
@@ -11448,6 +11714,17 @@ export function PosScreen({ standalone = false }) {
         ? orgOrderMatch[1]
         : null;
     const orgOrderNum = orgOrderMatch ? orgOrderMatch[1] : null;
+
+    const failLookupKeepNextTicket = (message) => {
+      restoreEditOrderNoAfterFailedLoad({
+        previousCart: cartRef.current,
+        previousEditOrderNo: previousEditOrderNoBeforeLookup,
+        failedTicket: ticketNum,
+      });
+      setOrderEditError(message);
+      setStatusMessage(message);
+      if (standalone) notifyError(message);
+    };
 
     try {
       try {
@@ -11472,10 +11749,28 @@ export function PosScreen({ standalone = false }) {
 
       // Synced previous-order edits leave a local outbox row with the new server sale id.
       // Prefer that over a blind Cash Sales # search (old sale is cancelled / ticket moved).
+      // While offline, open from cached line items — never hit restore-to-cart.
       if (ticketNum != null) {
+        try {
+          const localSynced = await findLocalSyncedSaleForOfflineEdit({
+            ticketNum,
+          });
+          if (localSynced?.id && localSynced.items?.length) {
+            await restoreOrderForEdit(localSynced.id, { saleSnapshot: localSynced });
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
         try {
           const syncedSaleId = await idbFindSyncedServerSaleIdByPosTicket(ticketNum);
           if (syncedSaleId) {
+            if (offlineMode) {
+              failLookupKeepNextTicket(
+                "Reconnect to edit this receipt — it isn’t cached on this till.",
+              );
+              return;
+            }
             await restoreOrderForEdit(syncedSaleId);
             return;
           }
@@ -11493,9 +11788,32 @@ export function PosScreen({ standalone = false }) {
             !isOfflinePendingSaleId(row.id),
         );
         if (sessionMatch?.id) {
+          if (offlineMode) {
+            const localSynced = await findLocalSyncedSaleForOfflineEdit({
+              saleId: sessionMatch.id,
+              ticketNum,
+            }).catch(() => null);
+            if (localSynced?.items?.length) {
+              await restoreOrderForEdit(localSynced.id, { saleSnapshot: localSynced });
+              return;
+            }
+            failLookupKeepNextTicket(
+              "Reconnect to edit this receipt — it isn’t cached on this till.",
+            );
+            return;
+          }
           await restoreOrderForEdit(sessionMatch.id, { saleSnapshot: sessionMatch });
           return;
         }
+      }
+
+      if (offlineMode) {
+        failLookupKeepNextTicket(
+          ticketNum != null
+            ? `No cached POS order with Cash Sales #${ticketNum}. Reconnect to look it up.`
+            : `No cached POS order for “${trimmed}”. Reconnect to look it up.`,
+        );
+        return;
       }
 
       const today = todayPosOrderDate();
@@ -11571,17 +11889,15 @@ export function PosScreen({ standalone = false }) {
       }
 
       if (!match?.id) {
-        const message = `No POS order found with Cash Sales #${ticketNum ?? trimmed}.`;
-        setOrderEditError(message);
-        setStatusMessage(message);
+        failLookupKeepNextTicket(
+          `No POS order found with Cash Sales #${ticketNum ?? trimmed}.`,
+        );
         return;
       }
       await restoreOrderForEdit(match.id, { saleSnapshot: match });
     } catch (e) {
       const message = e instanceof ApiError ? dedupeErrorMessage(e.message) : "Order lookup failed";
-      setOrderEditError(message);
-      setStatusMessage(message);
-      if (standalone) notifyError(message);
+      failLookupKeepNextTicket(message);
     }
   }
 

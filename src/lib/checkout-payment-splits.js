@@ -202,6 +202,44 @@ export function resolveSaleReceiptChangeGiven(sale, { totalPaid, orderTotal } = 
 }
 
 /**
+ * Top-up line for thermal receipts after previous-order edit.
+ *
+ * Edit tenders are rebuilt as prior + top-up (= full Cash/M-Pesa on the receipt).
+ * Printing "Top-up amount" on top of that looks like the customer paid total + top-up.
+ * Only show the top-up row when payment methods do not already cover the bill.
+ *
+ * @param {object|null|undefined} sale
+ * @param {{ totalPaid?: number, orderTotal?: number }} [opts]
+ */
+export function resolveSaleReceiptTopupAmount(sale, { totalPaid, orderTotal } = {}) {
+  const rawTopup = roundMoney(
+    Math.max(
+      Number(sale?._topup_amount ?? 0),
+      sumSalePaymentAdjustments(sale, "topup"),
+    ),
+  );
+  if (rawTopup <= 0.0001) return 0;
+
+  const total = roundMoney(Number(orderTotal ?? sale?.order_total ?? 0));
+  const paid = roundMoney(
+    Number(
+      totalPaid ??
+        Number(sale?.cash ?? 0) +
+          Number(sale?.mpesa_amount ?? 0) +
+          Number(sale?.equity_amount ?? 0) +
+          Number(sale?.kcb_amount ?? 0) +
+          Number(sale?.voucher_payment_amount ?? 0) +
+          Number(sale?.points_payment_amount ?? 0),
+    ),
+  );
+
+  // Full settlement already shown in Cash / M-Pesa / bank rows — do not double-count.
+  if (total > 0.01 && paid + 0.05 >= total) return 0;
+
+  return rawTopup;
+}
+
+/**
  * Overlay cashier-entered tenders onto the sale for immediate receipt print.
  * Backend stores applied (post-change) cash; receipt should show what was typed
  * (cash tendered) and Change Given for real overpayment.
