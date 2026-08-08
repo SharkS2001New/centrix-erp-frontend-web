@@ -648,8 +648,11 @@ export function PosPaymentPanel({
       const receiptPin = String(linkedReceiptCustomer.kra_pin ?? "").trim();
       if (receiptPin) body.customer_kra_pin = receiptPin;
     } else {
-      const mpesaName = String(mpesaPayerName || walkInCustomerName || "").trim();
-      if (mpesaName) {
+      const walkIn = String(walkInCustomerName || "").trim();
+      const mpesaName = String(mpesaPayerName || "").trim();
+      if (walkIn) {
+        body.customer_name_override = walkIn.toUpperCase();
+      } else if (mpesaName) {
         body.customer_name_override = mpesaName;
       }
     }

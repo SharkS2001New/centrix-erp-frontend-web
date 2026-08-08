@@ -171,7 +171,7 @@ export function PosSaveOrderDialog({
 
   function handleSave(submitMode = "save") {
     if (customerMode === "walkin") {
-      const name = walkInName.trim();
+      const name = walkInName.trim().toUpperCase();
       if (!name) {
         setLocalError("Enter the walk-in customer's name.");
         walkInNameRef.current?.focus();

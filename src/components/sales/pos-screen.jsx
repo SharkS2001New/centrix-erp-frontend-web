@@ -1421,6 +1421,8 @@ export function PosScreen({ standalone = false }) {
   const qtyInputRef = useRef(null);
   const discountInputRef = useRef(null);
   const unitPriceRef = useRef(null);
+  /** Live qty from the input on Enter — avoids stale lineForm when the last digit has not re-rendered. */
+  const lineFormQtyCommitRef = useRef(null);
   const searchInputRef = useRef(null);
   const productSearchRef = useRef(null);
   const cartLinesScrollRef = useRef(null);
@@ -6177,6 +6179,19 @@ export function PosScreen({ standalone = false }) {
     }
     if (!assertRouteReadyForAdd()) return;
 
+    // Prefer qty captured from the input on Enter (last keystroke may not be in state yet).
+    const entryQtyRaw =
+      lineFormQtyCommitRef.current != null
+        ? lineFormQtyCommitRef.current
+        : lineForm.quantity;
+    lineFormQtyCommitRef.current = null;
+    if (
+      entryQtyRaw != null &&
+      String(entryQtyRaw) !== String(lineForm.quantity ?? "")
+    ) {
+      setLineForm((p) => ({ ...p, quantity: String(entryQtyRaw) }));
+    }
+
     await ensureRetailPackageForProduct(selectedProduct);
 
     const discount = parseDecimalInput(lineForm.discount);
@@ -6210,7 +6225,7 @@ export function PosScreen({ standalone = false }) {
         const ok = await replaceCartLineWithProduct(
           replaceLine,
           selectedProduct,
-          lineForm.quantity,
+          entryQtyRaw,
           discount,
           override,
         );
@@ -6233,7 +6248,7 @@ export function PosScreen({ standalone = false }) {
 
     const computed = applyComputedPrice(
       selectedProduct,
-      lineForm.quantity,
+      entryQtyRaw,
       discount,
       override,
     );
@@ -9317,9 +9332,12 @@ export function PosScreen({ standalone = false }) {
 
       // Hold stays on this till (IndexedDB) — offline-safe, no sale order_num.
       if (hold) {
+        const holdWalkInName = walkInName?.trim()
+          ? walkInName.trim().toUpperCase()
+          : "Walk-in";
         const park = await parkCartLocally(activeCart, {
           walkIn: Boolean(walkIn) || !customer,
-          walkInName: walkInName?.trim() || "Walk-in",
+          walkInName: holdWalkInName,
           customer: walkIn ? null : customer,
           cashierId: user?.id ?? null,
           branchId: activeCart.branch_id ?? user?.branch_id ?? null,
@@ -9336,7 +9354,7 @@ export function PosScreen({ standalone = false }) {
         setBusy(false);
         await clearWorkspaceAfterLocalHold(activeCart);
         const who = walkIn
-          ? walkInName?.trim() || "Walk-in"
+          ? holdWalkInName
           : customer?.customer_name;
         const whoSuffix = who ? ` for ${who}` : "";
         const successText = `Order held${whoSuffix} — ${park.hold_label}. Ready for next sale.`;
@@ -9359,7 +9377,9 @@ export function PosScreen({ standalone = false }) {
         save_only: true,
       };
       if (walkIn) {
-        body.customer_name_override = walkInName?.trim() || "Walk-in";
+        body.customer_name_override = walkInName?.trim()
+          ? walkInName.trim().toUpperCase()
+          : "Walk-in";
       } else if (customer) {
         body.customer_num = customer.customer_num;
         body.customer_name_override = customer.customer_name;
@@ -9398,7 +9418,9 @@ export function PosScreen({ standalone = false }) {
       void clearPreviousOrderEditDraft().catch(() => {});
 
       const who = walkIn
-        ? walkInName?.trim() || "Walk-in"
+        ? walkInName?.trim()
+          ? walkInName.trim().toUpperCase()
+          : "Walk-in"
         : customer?.customer_name;
       const whoSuffix = who ? ` for ${who}` : "";
       const successText = `Order saved${whoSuffix} — #${sale.order_num} (${sale.status}). Ready for next sale.`;
@@ -12555,6 +12577,7 @@ export function PosScreen({ standalone = false }) {
                   if (e.key === "Enter") {
                     if (e.repeat) return;
                     e.preventDefault();
+                    lineFormQtyCommitRef.current = e.currentTarget.value;
                     handleQuantityEnter();
                   }
                 }}
@@ -13056,6 +13079,9 @@ export function PosScreen({ standalone = false }) {
                   setLineForm((p) => ({ ...p, quantity: value }))
                 }
                 onEntryQtyCommit={() => {
+                  if (qtyInputRef.current?.value != null) {
+                    lineFormQtyCommitRef.current = qtyInputRef.current.value;
+                  }
                   handleQuantityEnter();
                 }}
                 onEntryQtyKeyDown={(e) => {
@@ -13069,6 +13095,7 @@ export function PosScreen({ standalone = false }) {
                   if (e.key === "Enter") {
                     if (e.repeat) return;
                     e.preventDefault();
+                    lineFormQtyCommitRef.current = e.currentTarget.value;
                     handleQuantityEnter();
                   }
                 }}

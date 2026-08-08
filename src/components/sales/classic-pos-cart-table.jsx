@@ -21,17 +21,34 @@ function ClassicLineQtyCell({
   const committed = String(entryQty ?? "");
   const [draft, setDraft] = useState(committed);
   const skipBlurCommitRef = useRef(false);
+  const inputElRef = useRef(null);
+
+  function setInputRef(node) {
+    inputElRef.current = node;
+    if (typeof inputRef === "function") {
+      inputRef(node);
+    } else if (inputRef && typeof inputRef === "object") {
+      inputRef.current = node;
+    }
+  }
 
   useEffect(() => {
     setDraft(committed);
   }, [line?.id, committed]);
 
-  function commit({ force = false } = {}) {
-    const trimmed = String(draft).trim();
+  function commit({ force = false, value } = {}) {
+    // Prefer the live DOM value — Enter can fire before React re-renders the
+    // last keystroke into `draft`, which left qty unchanged until a second try.
+    const raw =
+      value != null
+        ? value
+        : (inputElRef.current?.value ?? draft);
+    const trimmed = String(raw ?? "").trim();
     if (!trimmed) {
       setDraft(committed);
       return;
     }
+    if (trimmed !== draft) setDraft(trimmed);
     if (!force && !swapQtyCommit && !forceSameQtyCommit && trimmed === committed) return;
     onSetQty?.(line, trimmed);
   }
@@ -43,7 +60,7 @@ function ClassicLineQtyCell({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <input
-        ref={inputRef}
+        ref={setInputRef}
         type="text"
         inputMode="decimal"
         className="classic-pos-line-qty-input"
@@ -54,14 +71,14 @@ function ClassicLineQtyCell({
           setDraft(e.target.value);
           onDraftQtyChange?.(line, e.target.value);
         }}
-        onBlur={() => {
+        onBlur={(e) => {
           if (skipBlurCommitRef.current) {
             skipBlurCommitRef.current = false;
             return;
           }
           // Always notify parent on leave — unchanged qty+mode no-ops without dirty;
           // F12 mode flip still reprices even when the typed number is the same.
-          commit({ force: true });
+          commit({ force: true, value: e.currentTarget.value });
         }}
         onKeyDown={(e) => {
           if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
@@ -73,7 +90,7 @@ function ClassicLineQtyCell({
             skipBlurCommitRef.current = true;
             // Always notify parent on Enter so F12 wholesale↔retail with the same
             // number still reprices; parent no-ops (without dirty) when nothing changed.
-            commit({ force: true });
+            commit({ force: true, value: e.currentTarget.value });
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {
