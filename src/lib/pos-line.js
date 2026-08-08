@@ -642,8 +642,8 @@ export function cartLineLockedUnitOverride(line, uom, isRetailLine = false, { ca
 
 /**
  * Convert a qty-field number between wholesale packs and retail small units.
- * Used when F12 flips mode but the cashier did not retype qty — keeps the same
- * stock quantity (e.g. 2 bags ↔ 100 kg when conversion_factor is 50).
+ * Prefer keeping the typed qty as-is on F12 flips (POS qty Enter); only use this
+ * when an explicit stock-preserving conversion is required.
  */
 export function posEntryQtyForSessionMode(entryQty, uom, { fromRetail, toRetail }) {
   const qty = Number(entryQty);

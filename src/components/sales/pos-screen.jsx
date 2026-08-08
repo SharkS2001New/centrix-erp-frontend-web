@@ -6674,25 +6674,10 @@ export function PosScreen({ standalone = false }) {
       }
       const retailPackage = getRetailPackage(liveLine.product_code);
 
-      // F12 mode flip with the same typed number: keep the same stock qty from the
-      // line (base units), not a pack↔small conversion of the field (the field can
-      // briefly show base qty before product UOM loads and would over-convert).
-      let pricingEntryQty = entryQty;
-      if (switchingMode && !qtyActuallyChanged) {
-        pricingEntryQty = Number(
-          parseDecimalInput(
-            posEntryQtyFromCartLine(
-              {
-                ...liveLine,
-                on_wholesale_retail: sessionIsRetail ? 1 : 0,
-              },
-              product,
-              retailPackage,
-            ),
-          ),
-        );
-        if (!(pricingEntryQty > 0)) pricingEntryQty = entryQty;
-      }
+      // Always price from the cashier-facing number in the qty field.
+      // F12 wholesale↔retail must NOT ×/÷ conversion_factor to "preserve stock"
+      // (1 bag became 50 retail units). Typed qty stays as entered in the new mode.
+      const pricingEntryQty = entryQty;
 
       // When F12 session differs from the line's mode, reprice from catalog —
       // do not lock the old wholesale/retail unit.
