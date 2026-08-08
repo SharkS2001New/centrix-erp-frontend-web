@@ -40,9 +40,8 @@ import {
   THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
 } from "@/lib/thermal-receipt-layout";
-import { resolveSaleReceiptChangeGiven, sumSalePaymentAdjustments } from "@/lib/checkout-payment-splits";
 import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
-import { mergeSalesSettings } from "@/lib/sales-settings";
+import { resolveSaleReceiptChangeGiven, sumSalePaymentAdjustments } from "@/lib/checkout-payment-splits";
 
 function tendersFromSalePayments(sale) {
   const payments = Array.isArray(sale?.payments) ? sale.payments : [];
@@ -199,11 +198,10 @@ export function buildSaleReceiptHtml(
   const font = orgPrintFontFamilyFromSettings(generalSettings, "thermal");
 
   const rawItems = sale.items ?? [];
-  const mergedSales = mergeSalesSettings(moduleSettings ?? { sales: salesSettings ?? {} });
-  const items =
-    mergedSales.pos_combine_identical_lines === false
-      ? combineIdenticalSaleItemsForPrint(rawItems)
-      : rawItems;
+  // Always combine identical SKUs on the receipt. Cart "combine identical products"
+  // only controls the till screen — when off, separate markup lines still print as
+  // one row (qty and amounts summed, not re-priced).
+  const items = combineIdenticalSaleItemsForPrint(rawItems);
   const isPosSale = isPosChannelSale(sale);
   const cashSalesNo = formatCashSalesNumber(sale);
   const orderNo = formatOrderNumber(sale);

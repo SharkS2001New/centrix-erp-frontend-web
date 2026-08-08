@@ -15,12 +15,22 @@ export function combineIdenticalSaleItemsForPrint(items) {
   const order = [];
 
   for (const line of rows) {
-    const code = String(line?.product_code ?? "").trim();
+    const code = String(
+      line?.product_code ?? line?.product?.product_code ?? "",
+    ).trim();
     if (!code) {
       order.push({ key: `__solo_${order.length}`, line, solo: true });
       continue;
     }
-    const flag = Number(line?.on_wholesale_retail ?? 0) === 1 ? 1 : 0;
+    // Normalize 1 / true / "1" so offline boolean flags still group with server ints.
+    const wholesaleRetail = line?.on_wholesale_retail;
+    const flag =
+      wholesaleRetail === true ||
+      wholesaleRetail === 1 ||
+      wholesaleRetail === "1" ||
+      Number(wholesaleRetail) === 1
+        ? 1
+        : 0;
     const key = `${code.toLowerCase()}|${flag}`;
     if (!groups.has(key)) {
       groups.set(key, []);
@@ -53,6 +63,8 @@ export function combineIdenticalSaleItemsForPrint(items) {
       amount: Math.round(amount * 100) / 100,
       discount_given: Math.round(discount * 100) / 100,
       product_vat: Math.round(vat * 100) / 100,
+      product_code:
+        first.product_code ?? first.product?.product_code ?? codeFromKey(entry.key),
       // Force print helpers to derive unit price from amount ÷ qty (summed amounts).
       selling_price: null,
       unit_price: null,
@@ -62,4 +74,9 @@ export function combineIdenticalSaleItemsForPrint(items) {
   }
 
   return combined;
+}
+
+function codeFromKey(key) {
+  const raw = String(key ?? "").split("|")[0] ?? "";
+  return raw || null;
 }

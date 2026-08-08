@@ -77,6 +77,26 @@ describe("combineIdenticalSaleItemsForPrint", () => {
     expect(combined[1].amount).toBe(500);
   });
 
+  it("groups boolean wholesale flags with numeric ones", () => {
+    const combined = combineIdenticalSaleItemsForPrint([
+      {
+        product_code: "NJAHE",
+        quantity: 10,
+        amount: 1000,
+        on_wholesale_retail: true,
+      },
+      {
+        product_code: "NJAHE",
+        quantity: 4,
+        amount: 480,
+        on_wholesale_retail: 1,
+      },
+    ]);
+    expect(combined).toHaveLength(1);
+    expect(combined[0].quantity).toBe(14);
+    expect(combined[0].amount).toBe(1480);
+  });
+
   it("keeps retail and wholesale of the same SKU separate", () => {
     const combined = combineIdenticalSaleItemsForPrint([
       { product_code: "A", on_wholesale_retail: 1, quantity: 2, amount: 100 },

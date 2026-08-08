@@ -7159,18 +7159,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   function previousOrderLineRemoveConfirmMessage(count = 1) {
-    const itemLabel = count === 1 ? "this item" : `${count} items`;
-    let message =
-      `Remove ${itemLabel} from the revised order? Stock for removed lines is already back in inventory — it was restored when you opened this receipt.`;
-    if (isKraDeviceConfigured(capabilities?.module_settings, capabilities)) {
-      message +=
-        " If the original sale was sent to KRA, a credit note is issued in the background when you open the order; the revised sale is fiscalized when you finish checkout.";
-    } else if (instantAutoEditSync) {
-      message += " Changes save automatically — use Alt+P to reprint.";
-    } else {
-      message += " Use Alt+P to finish and print the revised order.";
-    }
-    return message;
+    return count === 1
+      ? "Remove this item from the order?"
+      : `Remove ${count} items from the order?`;
   }
 
   async function removeCartLinesByIds(rawIds) {
@@ -10095,11 +10086,19 @@ export function PosScreen({ standalone = false }) {
     // Always clear the TemporaryCart when leaving a previous-order / lined workspace.
     // Skipping DELETE while outbox was pending re-loaded the same cart lines and made F8
     // feel like it needed two presses. Outbox already holds the edit payload.
-    const deleteCartId =
-      isServerPosCartId(activeCart?.id) &&
-      (hasLines || Boolean(activeCart?.held_order_num) || editingPrevious || Boolean(activeCart?.offline_client_sale_uuid))
-        ? Number(activeCart.id)
-        : null;
+    // Optimistic / detached edit carts use non-server ids — still DELETE the live
+    // TemporaryCart when we know its id (server_cart_id) so F8 cannot reopen those lines.
+    const leavingLinedWorkspace =
+      hasLines ||
+      Boolean(activeCart?.held_order_num) ||
+      editingPrevious ||
+      Boolean(activeCart?.offline_client_sale_uuid);
+    const deleteCartId = (() => {
+      if (!leavingLinedWorkspace) return null;
+      if (isServerPosCartId(activeCart?.id)) return Number(activeCart.id);
+      if (isServerPosCartId(activeCart?.server_cart_id)) return Number(activeCart.server_cart_id);
+      return null;
+    })();
     const abandonCart =
       editingQueuedOfflineSale && activeCart?.offline_edit_snapshot ? activeCart : null;
     // Failed-sync residue often has offline_client_sale_uuid without a snapshot —
@@ -10109,6 +10108,7 @@ export function PosScreen({ standalone = false }) {
         ? false
         : activeCart?.offline ||
             activeCart?.offline_client_sale_uuid ||
+            editingPrevious ||
             (hasLines && hasPendingOutbox),
     );
     // Mark abandoned before placeholder/bootstrap so late line saves cannot repaint it.
@@ -10142,17 +10142,35 @@ export function PosScreen({ standalone = false }) {
       report(72);
       const next = cartPromise
         ? await cartPromise
-        : await loadCashierCart({ skipEditDraftRestore: true });
+        : await loadCashierCart({ skipEditDraftRestore: true, applyState: false });
       if (generation !== freshWorkspaceGenerationRef.current) return next;
+      // firstOrCreate can still return the TemporaryCart with previous-order lines when
+      // DELETE raced or the workspace was an optimistic/edit: id without a deleteCartId.
+      if (
+        leavingLinedWorkspace &&
+        isServerPosCartId(next?.id) &&
+        (next.lines?.length ?? 0) > 0
+      ) {
+        const wipeId = Number(next.id);
+        markServerCartConsumed(wipeId);
+        await apiRequest(`/sales/carts/${wipeId}/lines`, {
+          method: "DELETE",
+          loading: false,
+          reportIssues: false,
+        }).catch(() => {});
+      }
       const live = cartRef.current;
       const liveIsAbandoned =
         (deleteCartId != null && Number(live?.id) === Number(deleteCartId)) ||
-        (isServerPosCartId(live?.id) && isServerCartConsumed(live.id));
+        (isServerPosCartId(live?.id) && isServerCartConsumed(live.id)) ||
+        isFreshWorkspacePlaceholder(live);
       // Cashier already scanned into the *next* cart while bootstrap ran — keep their work.
       // Never restore the TemporaryCart F8 just abandoned (same race as post-checkout prepare).
+      // Never keep previous-order residue that lost its edit markers but still has lines.
       if (
         live &&
         !liveIsAbandoned &&
+        !leavingLinedWorkspace &&
         isServerPosCartId(live.id) &&
         (live.lines?.length ?? 0) > 0 &&
         !live?.held_order_num &&
@@ -10170,12 +10188,13 @@ export function PosScreen({ standalone = false }) {
         }
       }
       let cleaned = stripOfflineSaleMarkers(stripPreviousOrderEditSession(next));
-      // GET/POST cart often returns before DELETE finishes — never re-paint abandoned lines
-      // or previous-order markers into the new blank workspace.
+      // F8 / Start new order must always land on a blank cart. Previous-order TemporaryCart
+      // residue (or optimistic edit: ids that skipped DELETE) previously kept lines under
+      // the new Cash Sales # while only the order number advanced.
       if (
-        deleteCartId != null &&
-        (Number(cleaned?.id) === Number(deleteCartId) ||
-          (isServerPosCartId(cleaned?.id) && isServerCartConsumed(cleaned.id)))
+        leavingLinedWorkspace ||
+        deleteCartId != null ||
+        (isServerPosCartId(cleaned?.id) && isServerCartConsumed(cleaned.id))
       ) {
         cleaned = {
           ...cleaned,
@@ -10185,6 +10204,10 @@ export function PosScreen({ standalone = false }) {
           order_discount: 0,
           payment_adjustments: undefined,
           _editDraftDirty: undefined,
+          offline_client_sale_uuid: undefined,
+          offline: undefined,
+          offline_edit_snapshot: undefined,
+          server_cart_id: undefined,
         };
       }
       const merged = mergeFreshWorkspaceCart(cleaned, peekNextPos);
@@ -10246,7 +10269,7 @@ export function PosScreen({ standalone = false }) {
       await clearPromise;
       report(28);
 
-      const cartPromise = loadCashierCart({ skipEditDraftRestore: true });
+      const cartPromise = loadCashierCart({ skipEditDraftRestore: true, applyState: false });
       const peekNextPos = await resolveNextPosTicketForWorkspace(
         activeCart,
         sessionPosOrders,
@@ -10292,10 +10315,18 @@ export function PosScreen({ standalone = false }) {
                       null,
                       { floatSessionId },
                     );
-                    const merged = mergeFreshWorkspaceCart(
-                      stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
-                      peekNextPos,
-                    );
+                    const blank = leavingLinedWorkspace
+                      ? {
+                          ...stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
+                          lines: [],
+                          held_order_num: null,
+                          superseded_sale_id: null,
+                          order_discount: 0,
+                          payment_adjustments: undefined,
+                          _editDraftDirty: undefined,
+                        }
+                      : stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered));
+                    const merged = mergeFreshWorkspaceCart(blank, peekNextPos);
                     cartRef.current = merged;
                     setCart(merged);
                     report(100);
@@ -10366,10 +10397,18 @@ export function PosScreen({ standalone = false }) {
           try {
             const recovered = await recoverMissingServerCart();
             if (generation === freshWorkspaceGenerationRef.current && recovered) {
-              const merged = mergeFreshWorkspaceCart(
-                stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
-                peekNextPos,
-              );
+              const blank = leavingLinedWorkspace
+                ? {
+                    ...stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered)),
+                    lines: [],
+                    held_order_num: null,
+                    superseded_sale_id: null,
+                    order_discount: 0,
+                    payment_adjustments: undefined,
+                    _editDraftDirty: undefined,
+                  }
+                : stripOfflineSaleMarkers(stripPreviousOrderEditSession(recovered));
+              const merged = mergeFreshWorkspaceCart(blank, peekNextPos);
               cartRef.current = merged;
               setCart(merged);
               return merged;
