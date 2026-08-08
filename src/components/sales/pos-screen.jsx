@@ -5209,12 +5209,7 @@ export function PosScreen({ standalone = false }) {
           setSelectedProductCode(null);
           setSearchQuery("");
           setLineForm(EMPTY_LINE);
-          // replaceCartLineWithProduct notes previous-order swap success.
-          if (!isPreviousOrderEditSession(cartRef.current)) {
-            setStatusMessage(
-              `Swapped ${posProductDisplayName(draft.line)} with ${posProductDisplayName(draft.product)}.`,
-            );
-          }
+          // replaceCartLineWithProduct already notifies / sets status.
           // After swap qty Enter, focus Scan code for the next new line.
           focusScanAfterItemAdded();
         }
@@ -5430,9 +5425,9 @@ export function PosScreen({ standalone = false }) {
     }
     const isRetailLine = Boolean(computed.isRetail);
 
-    // Previous-order / offline drafts: swap in place on the local cart — never depend on
-    // TemporaryCart PATCH or ensureCart rematerializing mid-edit (that left the old SKU).
-    if (usesPosLocalDraftLineEdits(activeCart)) {
+    // Classic + previous-order / offline: swap in place on the cart first so the
+    // UI never depends on TemporaryCart PATCH timing (that left the old SKU).
+    if (usesPosLocalDraftLineEdits(activeCart) || classicLayout) {
       const stockAsRetail = Boolean(isRetailLine);
       const stockCheck = posStockAvailability({
         product,
@@ -5509,12 +5504,102 @@ export function PosScreen({ standalone = false }) {
         return false;
       }
       lines[idx] = nextLine;
-      const nextCart = withEditDraftDirty({ ...activeCart, lines });
+      const nextCart = isPreviousOrderEditSession(activeCart)
+        ? withEditDraftDirty({ ...activeCart, lines })
+        : { ...activeCart, lines };
       cartRef.current = nextCart;
       setCart(nextCart);
+
       if (isPreviousOrderEditSession(nextCart)) {
         persistPreviousOrderLocalDraft(nextCart, { immediate: true });
         notePreviousOrderEditSuccess("swap");
+        clearClassicEntryFields();
+        return true;
+      }
+
+      // Offline / local workspace — cart is already the source of truth.
+      if (usesLocalPosCartWorkspace(nextCart) || !isServerPosCartId(nextCart.id)) {
+        if (usesLocalPosCartWorkspace(nextCart)) {
+          try {
+            const saved = await saveLocalPosCart({
+              ...nextCart,
+              lines: (nextCart.lines ?? []).map((l) => ({
+                ...l,
+                client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+              })),
+            });
+            const presented = presentLocalOfflineCart(saved);
+            cartRef.current = presented;
+            setCart(presented);
+          } catch {
+            /* keep in-memory swap */
+          }
+        }
+        notifySuccess("Item changed successfully");
+        setStatusMessage("Item changed successfully");
+        clearClassicEntryFields();
+        return true;
+      }
+
+      // Classic live TemporaryCart: UI already swapped — sync with PATCH, keep local
+      // SKU even if the network round-trip fails (cashier must not see the old item).
+      const lineRef = cartLineRef(nextLine);
+      try {
+        const ok = await commitCartLine({
+          product,
+          computed,
+          incrementBaseQty: computed.baseQty,
+          editingId: nextLine.id,
+          editingRef: lineRef,
+          discount,
+          override,
+          clearEntry: true,
+          successMessage: null,
+          lineRetailStockFlagOverride: isRetailLine,
+        });
+        // Guard against a silent server no-op that reverts the SKU.
+        const after = (cartRef.current?.lines ?? []).find(
+          (row) =>
+            sameLineId(row.id, nextLine.id) ||
+            String(cartLineRef(row)) === String(lineRef),
+        );
+        if (
+          after &&
+          String(after.product_code) !== String(product.product_code)
+        ) {
+          // Re-apply local swap — TemporaryCart response lost the new SKU.
+          const live = cartRef.current ?? nextCart;
+          const repairedLines = [...(live.lines ?? [])];
+          const repairIdx = repairedLines.findIndex(
+            (row) =>
+              sameLineId(row.id, nextLine.id) ||
+              String(cartLineRef(row)) === String(lineRef),
+          );
+          if (repairIdx >= 0) {
+            repairedLines[repairIdx] = {
+              ...repairedLines[repairIdx],
+              ...nextLine,
+              id: repairedLines[repairIdx].id,
+              update_code:
+                repairedLines[repairIdx].update_code ?? nextLine.update_code,
+            };
+            const repaired = { ...live, lines: repairedLines };
+            cartRef.current = repaired;
+            setCart(repaired);
+          }
+          setStatusMessage(
+            "Item changed on screen — server sync lagged. Press Enter on qty again if needed.",
+          );
+        } else if (ok) {
+          notifySuccess("Item changed successfully");
+          setStatusMessage("Item changed successfully");
+        }
+      } catch (e) {
+        setStatusMessage(
+          e instanceof ApiError
+            ? e.message
+            : "Item changed on screen — could not sync. Try again if checkout fails.",
+        );
       }
       clearClassicEntryFields();
       return true;
@@ -5526,8 +5611,7 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
 
-    // Swap replaces this cart row in place (PATCH / local edit) — never delete + add,
-    // which duplicated lines when cartRef lagged behind setCart after DELETE.
+    // Non-classic modern layout: PATCH / local edit in place.
     const ok = await commitCartLine({
       product,
       computed,
@@ -5554,6 +5638,9 @@ export function PosScreen({ standalone = false }) {
     }
     if (isPreviousOrderEditSession(cartRef.current ?? activeCart)) {
       notePreviousOrderEditSuccess("swap");
+    } else {
+      notifySuccess("Item changed successfully");
+      setStatusMessage("Item changed successfully");
     }
     return true;
   }
@@ -6468,7 +6555,15 @@ export function PosScreen({ standalone = false }) {
         sameLineId(swapDraft.line?.id, line.id) ||
         sameLineId(swapDraft.line?.update_code, line.update_code) ||
         sameLineId(swapDraft.line?.update_code, line.id) ||
-        sameLineId(swapDraft.lineId, line.update_code));
+        sameLineId(swapDraft.lineId, line.update_code) ||
+        sameLineId(swapDraft.line?.client_line_id, line.id) ||
+        sameLineId(swapDraft.line?.client_line_id, line.update_code) ||
+        // Reminted TemporaryCart ids: still finish the swap when this row is the
+        // original SKU that was being replaced.
+        (swapDraft.line?.product_code != null &&
+          String(swapDraft.line.product_code) === String(line.product_code) &&
+          Number(swapDraft.line.on_wholesale_retail ?? 0) ===
+            Number(line.on_wholesale_retail ?? 0)));
     if (swapTargetsThisLine) {
       if (swapDraft?.product) {
         void completeSwapFromDraft(entryQtyRaw);

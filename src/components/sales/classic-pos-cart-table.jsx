@@ -48,7 +48,7 @@ function ClassicLineQtyCell({
         inputMode="decimal"
         className="classic-pos-line-qty-input"
         value={draft}
-        disabled={busy || lineBusy}
+        disabled={busy || (lineBusy && !swapQtyCommit)}
         aria-label={qtyUnit ? `Line quantity (${qtyUnit})` : "Line quantity"}
         onChange={(e) => {
           setDraft(e.target.value);
