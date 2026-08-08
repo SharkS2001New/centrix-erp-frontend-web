@@ -6583,7 +6583,7 @@ export function PosScreen({ standalone = false }) {
       // line (base units), not a pack↔small conversion of the field (the field can
       // briefly show base qty before product UOM loads and would over-convert).
       let pricingEntryQty = entryQty;
-      if (switchingMode && qtyUnchanged) {
+      if (switchingMode && !qtyActuallyChanged) {
         pricingEntryQty = Number(
           parseDecimalInput(
             posEntryQtyFromCartLine(
