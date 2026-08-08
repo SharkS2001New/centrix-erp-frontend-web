@@ -14,6 +14,8 @@ function ClassicLineQtyCell({
   onSetQty,
   onDraftQtyChange = null,
   swapQtyCommit = false,
+  /** True when F12 retail/wholesale differs from this line — Enter/blur must reprice. */
+  forceSameQtyCommit = false,
   inputRef = null,
 }) {
   const committed = String(entryQty ?? "");
@@ -30,7 +32,7 @@ function ClassicLineQtyCell({
       setDraft(committed);
       return;
     }
-    if (!force && !swapQtyCommit && trimmed === committed) return;
+    if (!force && !swapQtyCommit && !forceSameQtyCommit && trimmed === committed) return;
     onSetQty?.(line, trimmed);
   }
 
@@ -57,9 +59,9 @@ function ClassicLineQtyCell({
             skipBlurCommitRef.current = false;
             return;
           }
-          // Push edited qty when focus leaves (click Scan, mouse away). Unchanged
-          // values no-op so accidental focus/blur does not re-PATCH or steal focus.
-          commit({ force: swapQtyCommit });
+          // Always notify parent on leave — unchanged qty+mode no-ops without dirty;
+          // F12 mode flip still reprices even when the typed number is the same.
+          commit({ force: true });
         }}
         onKeyDown={(e) => {
           if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
@@ -69,9 +71,9 @@ function ClassicLineQtyCell({
             // Enter already commits — skip the blur commit that would fire next
             // (double swap/qty PATCH raced update_no and left the old SKU on the server).
             skipBlurCommitRef.current = true;
-            // Do not force-commit an unchanged qty — that marked previous-order edits
-            // dirty and triggered a bogus Payment Breakdown on Alt+P.
-            commit({ force: swapQtyCommit });
+            // Always notify parent on Enter so F12 wholesale↔retail with the same
+            // number still reprices; parent no-ops (without dirty) when nothing changed.
+            commit({ force: true });
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {
@@ -164,6 +166,8 @@ export function ClassicPosCartTable({
   lineEntryQty,
   lineQtyUnit,
   onSetQty,
+  /** When true for a line, qty Enter/blur commits even if the number is unchanged (F12 mode). */
+  lineForceSameQtyCommit = null,
   onSwapDraftQtyChange = null,
   scanSearch = null,
   qtyRef,
@@ -527,12 +531,21 @@ export function ClassicPosCartTable({
                         ? swapDraftQty
                         : lineEntryQty?.(line) ?? String(line.quantity ?? "")
                     }
-                    qtyUnit={lineQtyUnit?.(line) ?? ""}
+                    qtyUnit={
+                      swapPreviewActive
+                        ? swapLinePreview.qtyUnit || lineQtyUnit?.(line) || ""
+                        : lineQtyUnit?.(line) ?? ""
+                    }
                     busy={busy}
                     lineBusy={lineBusy}
                     onSetQty={onSetQty}
                     onDraftQtyChange={swapPreviewActive ? onSwapDraftQtyChange : null}
                     swapQtyCommit={swapPreviewActive}
+                    forceSameQtyCommit={
+                      swapPreviewActive
+                        ? false
+                        : Boolean(lineForceSameQtyCommit?.(line))
+                    }
                     inputRef={swapDraftActive ? swapLineQtyRef : null}
                   />
                 </td>

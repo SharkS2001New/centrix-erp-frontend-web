@@ -640,6 +640,22 @@ export function cartLineLockedUnitOverride(line, uom, isRetailLine = false, { ca
   return display > 0 ? display : null;
 }
 
+/**
+ * Convert a qty-field number between wholesale packs and retail small units.
+ * Used when F12 flips mode but the cashier did not retype qty — keeps the same
+ * stock quantity (e.g. 2 bags ↔ 100 kg when conversion_factor is 50).
+ */
+export function posEntryQtyForSessionMode(entryQty, uom, { fromRetail, toRetail }) {
+  const qty = Number(entryQty);
+  if (!(qty > 0) || Boolean(fromRetail) === Boolean(toRetail)) return qty;
+  const factor = uomConversionFactor(uom);
+  if (!(factor > 1)) return qty;
+  if (!fromRetail && toRetail) {
+    return Math.round(qty * factor * 10000) / 10000;
+  }
+  return Math.round((qty / factor) * 10000) / 10000;
+}
+
 /** Rebuild POS entry quantity from a saved cart line (base qty in DB). */
 export function posEntryQtyFromCartLine(line, product, retailPackage) {
   const uom = product?.uom ?? null;

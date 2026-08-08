@@ -249,7 +249,11 @@ import {
   resolvePosAltShortcutLetter,
   resolvePosShortcutKey,
 } from "@/lib/pos-keyboard-shortcuts";
-import { newClientSaleUuid, todayPosOrderDate } from "@/lib/pos-offline-db";
+import {
+  idbDeleteOutboxSale,
+  newClientSaleUuid,
+  todayPosOrderDate,
+} from "@/lib/pos-offline-db";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { isKraProductNotRegisteredError } from "@/lib/kra-device-errors";
 import {
@@ -352,16 +356,10 @@ function isLocalCartLineId(id) {
   return s.startsWith("pending-") || s.startsWith("opt-");
 }
 
-/** Previous-order edits with local line mutations not yet pushed on Complete/F10. */
+/** Previous-order edits with real cashier changes (qty / swap / add / remove) — not F12-only touch. */
 function editedOrderHasLocalDraftChanges(cart) {
   if (!cart?.held_order_num) return false;
-  if (cart._editDraftDirty) return true;
-  return (cart.lines ?? []).some(
-    (line) =>
-      line._draftEdit ||
-      isLocalCartLineId(line?.id) ||
-      isLocalCartLineId(line?.update_code),
-  );
+  return Boolean(cart._editDraftDirty);
 }
 
 function withEditDraftDirty(cart) {
@@ -1887,7 +1885,7 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   useEffect(() => {
-    if (!posSalesConfig.enableRetailPricing) setSellWholesale(true);
+    if (!posSalesConfig.enableRetailPricing) setSellWholesaleMode(true);
   }, [posSalesConfig.enableRetailPricing]);
 
   useEffect(() => {
@@ -1973,7 +1971,7 @@ export function PosScreen({ standalone = false }) {
       }
     }
     if (typeof value.sellFromShop === "boolean") setSellFromShop(value.sellFromShop);
-    if (typeof value.sellWholesale === "boolean") setSellWholesale(value.sellWholesale);
+    if (typeof value.sellWholesale === "boolean") setSellWholesaleMode(value.sellWholesale);
     if (typeof value.isRouteOrder === "boolean") setIsRouteOrder(value.isRouteOrder);
     if (value.selectedRouteId != null) setSelectedRouteId(String(value.selectedRouteId));
   }, []);
@@ -3859,7 +3857,7 @@ export function PosScreen({ standalone = false }) {
     return cartCommitChainRef.current;
   }
 
-  /** Previous-order edits: flip dirty before the queued commit so autosave/F10 work immediately. */
+  /** Flip dirty only after a real qty / swap / add / remove — never on F12-only reprice. */
   function markPreviousOrderDraftDirtyNow() {
     const current = cartRef.current;
     if (!isPreviousOrderEditSession(current) || current._editDraftDirty) return;
@@ -3868,6 +3866,28 @@ export function PosScreen({ standalone = false }) {
     setCart(next);
     if (current.superseded_sale_id) {
       scheduleEditedOrderAutosave();
+    }
+  }
+
+  /**
+   * @param {"qty" | "swap" | "add"} kind
+   */
+  function notePreviousOrderEditSuccess(kind) {
+    if (!isPreviousOrderEditSession(cartRef.current)) return;
+    markPreviousOrderDraftDirtyNow();
+    const dirty = cartRef.current;
+    if (dirty) {
+      void savePreviousOrderEditDraft(dirty).catch(() => {});
+    }
+    if (kind === "qty") {
+      notifySuccess("Quantity updated successfully");
+      setStatusMessage("Quantity updated successfully");
+    } else if (kind === "swap") {
+      notifySuccess("Item changed successfully");
+      setStatusMessage("Item changed successfully");
+    } else if (kind === "add") {
+      notifySuccess("Item added successfully");
+      setStatusMessage("Item added successfully");
     }
   }
 
@@ -4335,10 +4355,20 @@ export function PosScreen({ standalone = false }) {
 
   function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
     if (retailLine != null) return retailLine;
-    const sellMode = sellWholesaleOverride ?? sellWholesale;
+    const sellMode = sellWholesaleOverride ?? sellWholesaleRef.current;
     const retailPackage = getRetailPackage(product.product_code);
     const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellMode);
     return posLineRetailStockFlag(posSalesConfig, sellMode, resolved.isRetail, product);
+  }
+
+  /** Keep sellWholesaleRef in sync so F12 → Enter/scan prices the new mode immediately. */
+  function setSellWholesaleMode(nextOrUpdater) {
+    const next =
+      typeof nextOrUpdater === "function"
+        ? nextOrUpdater(sellWholesaleRef.current)
+        : nextOrUpdater;
+    sellWholesaleRef.current = Boolean(next);
+    setSellWholesale(Boolean(next));
   }
 
   function applyComputedPrice(
@@ -4349,7 +4379,9 @@ export function PosScreen({ standalone = false }) {
     retailLine = null,
     sellWholesaleOverride = null,
   ) {
-    const sellMode = sellWholesaleOverride ?? sellWholesale;
+    // Prefer the F12 ref — state can lag one frame after toggle, which priced
+    // the next Enter/scan at the previous wholesale/retail mode.
+    const sellMode = sellWholesaleOverride ?? sellWholesaleRef.current;
     const retailPackage = getRetailPackage(product.product_code);
     const lineRetailFlag = retailLineFlagFor(product, entryQty, retailLine, sellMode);
     const autoProductDiscount =
@@ -4900,7 +4932,13 @@ export function PosScreen({ standalone = false }) {
           }
         }
       }
-      const draftCart = withEditDraftDirty({ ...optimisticCart, lines: draftLines });
+      const draftCart = {
+        ...optimisticCart,
+        lines: draftLines,
+        // Keep dirty if already set by a real qty/swap/add — never mark dirty here
+        // (F12-only reprice and no-op commits must not open payment C/M).
+        ...(activeCart._editDraftDirty ? { _editDraftDirty: true } : {}),
+      };
       cartRef.current = draftCart;
       setCart(draftCart);
       persistPreviousOrderLocalDraft(draftCart);
@@ -5075,20 +5113,19 @@ export function PosScreen({ standalone = false }) {
     if (computed.baseQty <= 0) return;
 
     // Always serialize adds — rapid scan/click must merge qty, never duplicate lines.
-    if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
     void enqueueCartCommit(async () => {
       const mergeTarget = findMergeableCartLine(
         cartRef.current?.lines,
         product.product_code,
         computed,
         posSalesConfig,
-        sellWholesale,
+        sellWholesaleRef.current,
         null,
         product,
         { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
       );
       try {
-        await commitCartLine({
+        const ok = await commitCartLine({
           product,
           computed,
           incrementBaseQty: computed.baseQty,
@@ -5096,6 +5133,9 @@ export function PosScreen({ standalone = false }) {
           successMessage: null,
           unlockUiEarly: true,
         });
+        if (ok) {
+          notePreviousOrderEditSuccess(mergeTarget ? "qty" : "add");
+        }
       } catch (e) {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
       }
@@ -5169,9 +5209,12 @@ export function PosScreen({ standalone = false }) {
           setSelectedProductCode(null);
           setSearchQuery("");
           setLineForm(EMPTY_LINE);
-          setStatusMessage(
-            `Swapped ${posProductDisplayName(draft.line)} with ${posProductDisplayName(draft.product)}.`,
-          );
+          // replaceCartLineWithProduct notes previous-order swap success.
+          if (!isPreviousOrderEditSession(cartRef.current)) {
+            setStatusMessage(
+              `Swapped ${posProductDisplayName(draft.line)} with ${posProductDisplayName(draft.product)}.`,
+            );
+          }
           // After swap qty Enter, focus Scan code for the next new line.
           focusScanAfterItemAdded();
         }
@@ -5185,7 +5228,6 @@ export function PosScreen({ standalone = false }) {
     };
 
     if (usesPosLocalDraftLineEdits(cartRef.current) || classicLayout) {
-      if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(finishSwap);
       return true;
     }
@@ -5240,12 +5282,17 @@ export function PosScreen({ standalone = false }) {
         setStatusMessage("Choose a different product to swap onto this line.");
         return;
       }
-      const replaceRetail = cartLineRetailStockFlag(replaceLine);
-      const quantity = posEntryQtyFromBaseQty(
-        Number(replaceLine.quantity ?? 0),
-        product,
-        retailPackage,
-        Boolean(replaceRetail),
+      // Keep the cashier-facing qty on the line being replaced (e.g. "2"), applied
+      // as the new product's entry qty. Do NOT re-base old stock through the new UOM
+      // (1 base unit ÷ conversion 50 became 0.02 bags).
+      const oldProduct =
+        productByCodeRef.current[replaceLine.product_code] ??
+        productByCode[replaceLine.product_code] ??
+        null;
+      const quantity = posEntryQtyFromCartLine(
+        replaceLine,
+        oldProduct,
+        getRetailPackage(replaceLine.product_code),
       );
       const nextSwapDraft = {
         lineId: replaceLine.id,
@@ -5374,19 +5421,14 @@ export function PosScreen({ standalone = false }) {
       }) ??
       line;
 
-    const isRetailLine = cartLineRetailStockFlag(liveLine);
-    const computed = applyComputedPrice(
-      product,
-      entryQty,
-      discount,
-      override,
-      isRetailLine,
-      !isRetailLine,
-    );
+    // Price the replacement with the current F12 session — do not inherit the old
+    // line's retail flag (that forced "piece" UOM on bag products).
+    const computed = applyComputedPrice(product, entryQty, discount, override);
     if (computed.baseQty <= 0) {
       setStatusMessage("Enter a valid quantity.");
       return false;
     }
+    const isRetailLine = Boolean(computed.isRetail);
 
     // Previous-order / offline drafts: swap in place on the local cart — never depend on
     // TemporaryCart PATCH or ensureCart rematerializing mid-edit (that left the old SKU).
@@ -5415,8 +5457,12 @@ export function PosScreen({ standalone = false }) {
         return false;
       }
 
-      const onWholesaleRetailFlag =
-        Boolean(isRetailLine) && productSellsRetail(product);
+      const onWholesaleRetailFlag = posLineWholesaleRetailFlag(
+        product,
+        sellWholesale,
+        computed.isRetail,
+        posSalesConfig,
+      );
       const preservedId = liveLine.id;
       const preservedRef =
         liveLine.update_code ?? liveLine.client_line_id ?? liveLine.id;
@@ -5467,8 +5513,8 @@ export function PosScreen({ standalone = false }) {
       cartRef.current = nextCart;
       setCart(nextCart);
       if (isPreviousOrderEditSession(nextCart)) {
-        markPreviousOrderDraftDirtyNow();
         persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+        notePreviousOrderEditSuccess("swap");
       }
       clearClassicEntryFields();
       return true;
@@ -5507,7 +5553,7 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
     if (isPreviousOrderEditSession(cartRef.current ?? activeCart)) {
-      markPreviousOrderDraftDirtyNow();
+      notePreviousOrderEditSuccess("swap");
     }
     return true;
   }
@@ -5683,18 +5729,23 @@ export function PosScreen({ standalone = false }) {
     if (!swapDraft?.product || swapDraft.quantity == null || swapDraft.quantity === "") {
       return null;
     }
-    const isRetailLine = cartLineRetailStockFlag(swapDraft.line);
-    const computed = applyComputedPrice(
-      swapDraft.product,
-      swapDraft.quantity,
-      0,
-      null,
-      isRetailLine,
-      !isRetailLine,
-    );
+    const retailPackage = getRetailPackage(swapDraft.product.product_code);
+    // New product follows the current F12 session — not the old line's retail flag.
+    const computed = applyComputedPrice(swapDraft.product, swapDraft.quantity, 0);
     const amount = enablePosCashRounding
       ? roundLightStoresAmount(computed.lineAmount)
       : computed.lineAmount;
+    const qtyUnit =
+      posCartLineEntryUnitLabel(
+        {
+          on_wholesale_retail: computed.isRetail ? 1 : 0,
+        },
+        swapDraft.product,
+        retailPackage,
+      ) ||
+      posQuantityFieldMeta(swapDraft.product, sellWholesale, retailPackage, swapDraft.quantity)
+        .unit ||
+      "";
     return {
       lineId: swapDraft.lineId,
       productCode: swapDraft.product.product_code,
@@ -5705,6 +5756,7 @@ export function PosScreen({ standalone = false }) {
       package: swapDraft.product.uom
         ? uomCompactPackageLabel(swapDraft.product.uom)
         : computed.packagingLabel,
+      qtyUnit,
       unitPrice: computed.displayUnitPrice,
       vat: lineProductVat(swapDraft.product, computed.lineAmount),
       amount,
@@ -6053,15 +6105,17 @@ export function PosScreen({ standalone = false }) {
         );
         if (ok) {
           setReplacingLineId(null);
-          setStatusMessage(
+          // replaceCartLineWithProduct already notes previous-order swap success.
+          if (!isPreviousOrderEditSession(cartRef.current)) {
+            setStatusMessage(
               `Replaced ${posProductDisplayName(replaceLine)} with ${posProductDisplayName(selectedProduct)}.`,
-          );
+            );
+          }
         }
       } catch (e) {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
         }
       };
-      if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(runReplace);
       return;
     }
@@ -6107,6 +6161,13 @@ export function PosScreen({ standalone = false }) {
         unlockUiEarly: true,
       });
       if (!ok) return;
+      if (editingLineId) {
+        notePreviousOrderEditSuccess("qty");
+      } else if (mergeTarget) {
+        notePreviousOrderEditSuccess("qty");
+      } else {
+        notePreviousOrderEditSuccess("add");
+      }
       focusScanAfterItemAdded();
     } catch (e) {
       setStatusMessage(
@@ -6121,7 +6182,6 @@ export function PosScreen({ standalone = false }) {
 
     // Always serialize line adds — rapid Enter/click must not create duplicate rows.
     // commitCartLine paints then clears entry (unlockUiEarly) — do not clear first.
-    if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
     void enqueueCartCommit(run);
   }
 
@@ -6144,7 +6204,12 @@ export function PosScreen({ standalone = false }) {
   }
 
   function handleQuantityEnter() {
-    if (!selectedProduct || busy || lineBusy) return;
+    if (!selectedProduct) return;
+    // Classic / previous-order drafts enqueue without freezing on TemporaryCart lineBusy —
+    // Enter on qty must still add the item (same rule as swap / line qty edits).
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (busy) return;
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
     if (addLineBlocked) {
       if (classicLayout && lineStockMessage) setStatusMessage(lineStockMessage);
       return;
@@ -6169,7 +6234,10 @@ export function PosScreen({ standalone = false }) {
   function handleDiscountEnter(e) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (!selectedProduct || busy || lineBusy || addLineBlocked) return;
+    if (!selectedProduct || busy) return;
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
+    if (addLineBlocked) return;
     if (allowEditUnitPrice) {
       focusLineField(unitPriceRef);
       return;
@@ -6180,7 +6248,10 @@ export function PosScreen({ standalone = false }) {
   function handleUnitPriceEnter(e) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (!busy && !lineBusy && !addLineBlocked) void handleAddLine();
+    if (busy) return;
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
+    if (!addLineBlocked) void handleAddLine();
   }
 
   async function rebuildCart(remainingLines) {
@@ -6354,12 +6425,14 @@ export function PosScreen({ standalone = false }) {
         successMessage: null,
         lineRetailStockFlagOverride: isRetailLine,
       });
-      if (ok) setSelectedLineId(line.id);
+      if (ok) {
+        setSelectedLineId(line.id);
+        notePreviousOrderEditSuccess("qty");
+      }
     };
 
     // Match fast new-order adds: don't freeze the grid while a local draft updates.
     if (localDraftEdit) {
-      if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(async () => {
         try {
           await run();
@@ -6415,8 +6488,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    // Unchanged qty (e.g. Enter on the same value) must not mark a previous-order
-    // edit dirty — that wrongly opened Payment Breakdown on Alt+P.
+    // Unchanged qty + same retail/wholesale mode must not mark a previous-order
+    // edit dirty — that wrongly opened Payment Breakdown on Alt+P. After F12,
+    // session mode can differ while the typed number is the same — that must
+    // still reprice. Always park focus on new-line Scan (never stay on qty).
+    let qtyActuallyChanged = true;
     {
       const activeCart = cartRef.current ?? cart;
       const liveLine =
@@ -6439,25 +6515,18 @@ export function PosScreen({ standalone = false }) {
           ),
         ),
       );
-      if (
-        Number.isFinite(currentEntry) &&
-        Math.abs(currentEntry - entryQty) < 0.0001 &&
-        (!posSalesConfig.enableRetailPricing ||
-          cartLineRetailStockFlag(liveLine) ===
-            (posSalesConfig.enableRetailPricing
-              ? isPosRetailSession(sellWholesaleRef.current)
-              : cartLineRetailStockFlag(liveLine)))
-      ) {
-        setSelectedLineId(null);
-        focusScanAfterItemAdded();
-        return;
-      }
+      const lineIsRetail = cartLineRetailStockFlag(liveLine);
+      const sessionIsRetail = posSalesConfig.enableRetailPricing
+        ? isPosRetailSession(sellWholesaleRef.current)
+        : lineIsRetail;
+      const qtyUnchanged =
+        Number.isFinite(currentEntry) && Math.abs(currentEntry - entryQty) < 0.0001;
+      qtyActuallyChanged = !qtyUnchanged;
+      const modeUnchanged = lineIsRetail === sessionIsRetail;
+      setSelectedLineId(null);
+      focusScanAfterItemAdded();
+      if (qtyUnchanged && modeUnchanged) return;
     }
-
-    // Immediately park on new-line Scan (Enter or click-away blur). Do not leave
-    // focus on the same row's qty/scan cell.
-    setSelectedLineId(null);
-    focusScanAfterItemAdded();
 
     const run = async () => {
       const activeCart = cartRef.current ?? cart;
@@ -6499,10 +6568,9 @@ export function PosScreen({ standalone = false }) {
         : lineIsRetail;
       const switchingMode = sessionIsRetail !== lineIsRetail;
 
-      // Qty↔unit conversion uses product UOM only. Await retail package only on a
-      // true cache miss (hot path after a kg/bag sale already has it loaded).
+      // Retail markups/tiers live on retail_package — load whenever pricing retail,
+      // not only on a mode flip (otherwise retail amount missed markup).
       if (
-        switchingMode &&
         sessionIsRetail &&
         retailByCodeRef.current[liveLine.product_code] === undefined &&
         !product?.retail_package
@@ -6511,8 +6579,28 @@ export function PosScreen({ standalone = false }) {
       }
       const retailPackage = getRetailPackage(liveLine.product_code);
 
-      // Use the number in the qty field as-is in the F12 session mode (do not × conversion).
-      // When F12 session differs from the line's mode, reprice from catalog — do not lock old unit.
+      // F12 mode flip with the same typed number: keep the same stock qty from the
+      // line (base units), not a pack↔small conversion of the field (the field can
+      // briefly show base qty before product UOM loads and would over-convert).
+      let pricingEntryQty = entryQty;
+      if (switchingMode && qtyUnchanged) {
+        pricingEntryQty = Number(
+          parseDecimalInput(
+            posEntryQtyFromCartLine(
+              {
+                ...liveLine,
+                on_wholesale_retail: sessionIsRetail ? 1 : 0,
+              },
+              product,
+              retailPackage,
+            ),
+          ),
+        );
+        if (!(pricingEntryQty > 0)) pricingEntryQty = entryQty;
+      }
+
+      // When F12 session differs from the line's mode, reprice from catalog —
+      // do not lock the old wholesale/retail unit.
       const lockedUnit = !switchingMode
         ? cartLineLockedUnitOverride(liveLine, product.uom, lineIsRetail, {
             cashRound: enablePosCashRounding,
@@ -6520,7 +6608,7 @@ export function PosScreen({ standalone = false }) {
         : null;
       const computedPreview = applyComputedPrice(
         product,
-        entryQty,
+        pricingEntryQty,
         0,
         lockedUnit,
         sessionIsRetail,
@@ -6538,7 +6626,7 @@ export function PosScreen({ standalone = false }) {
       const perUnitDiscount = lineDiscountPerUnit(liveLine.discount_given, packQty);
       const computed = applyComputedPrice(
         product,
-        entryQty,
+        pricingEntryQty,
         perUnitDiscount,
         lockedUnit,
         sessionIsRetail,
@@ -6591,13 +6679,16 @@ export function PosScreen({ standalone = false }) {
         // After qty Enter/blur, park on new-line Scan code (not the same row).
         setSelectedLineId(null);
         focusScanAfterItemAdded();
+        // Real qty change only — F12-only same-number reprice stays clean (no C/M popup).
+        if (qtyActuallyChanged) {
+          notePreviousOrderEditSuccess("qty");
+        }
       }
     };
 
     // Classic (and previous-order local drafts): same as scan-add — optimistic paint,
     // do not freeze the qty grid behind lineBusy / PATCH.
     if (classicLayout || localDraftEdit) {
-      if (isPreviousOrderEditSession(cartRef.current)) markPreviousOrderDraftDirtyNow();
       void enqueueCartCommit(async () => {
         try {
           await run();
@@ -7180,7 +7271,7 @@ export function PosScreen({ standalone = false }) {
       setEditingLineId(line.id);
       setEditingLineRef(cartLineRef(line));
       setSelectedLineId(line.id);
-      setSellWholesale(!isRetailLine);
+      setSellWholesaleMode(!isRetailLine);
       setSelectedProductCode(line.product_code);
       setSelectedProduct(product);
       setSearchQuery(product.product_name ?? line.product_code);
@@ -9285,8 +9376,13 @@ export function PosScreen({ standalone = false }) {
     focusProductSearchRef.current();
   }, []);
 
-  /** F8 / empty-space double-click: clear workspace and focus scan for a new order. */
-  async function startFreshWorkspace() {
+  /**
+   * F8 / empty-space double-click: clear workspace and focus scan for a new order.
+   * Esc during previous-order edit: `{ discardPreviousOrderEdit: true }` — abandon the
+   * draft (no outbox sync), leave the original receipt as sold, open a blank workspace.
+   */
+  async function startFreshWorkspace(options = {}) {
+    const discardPreviousOrderEdit = Boolean(options.discardPreviousOrderEdit);
     if (paymentOpen) {
       const message = "Close the payment dialog first (complete or cancel), then start a new order.";
       setStatusMessage(message);
@@ -9302,7 +9398,8 @@ export function PosScreen({ standalone = false }) {
     try {
     // Finish in-flight line saves first (same as F10). A silent return while lineBusy
     // made F8 look like it needed two presses right after a scan.
-    if (lineBusyRef.current) {
+    // Discard-Esc skips waiting — TemporaryCart is deleted and autosave is suppressed.
+    if (lineBusyRef.current && !discardPreviousOrderEdit) {
       try {
         await runBlockingTask(waitForCartLineSavesToFinish, {
           message: "Saving cart changes…",
@@ -9322,6 +9419,11 @@ export function PosScreen({ standalone = false }) {
         activeCart?.offline_client_sale_uuid &&
         !activeCart?.superseded_sale_id,
     );
+
+    // Esc discard only applies while a previous-order edit is open.
+    if (discardPreviousOrderEdit && !editingPrevious) {
+      return;
+    }
 
     // Don't block "leave previous order / clear lines" on unrelated busy flags — that
     // forced cashiers to press F8 twice. Checkout already gates on paymentOpen above.
@@ -9372,7 +9474,42 @@ export function PosScreen({ standalone = false }) {
       }
     }
 
-    if (hasLines || editingPrevious || activeOfflineEdit) {
+    if (discardPreviousOrderEdit && editingPrevious) {
+      if (editedOrderHasLocalDraftChanges(activeCart)) {
+        const orderLabel = activeCart.held_order_num != null
+          ? String(activeCart.held_order_num)
+          : "";
+        const ok = await confirm({
+          title: "Cancel previous-order edit",
+          message: orderLabel
+            ? `Discard changes to order ${orderLabel}? Items and quantities stay as on the original receipt, and a new order workspace opens.`
+            : "Discard changes to this previous order? Items and quantities stay as on the original receipt, and a new order workspace opens.",
+          confirmLabel: "Discard edits",
+          cancelLabel: "Keep editing",
+          destructive: true,
+        });
+        if (!ok) {
+          skipEditAutosaveRef.current = false;
+          return;
+        }
+      }
+      // Drop local draft + any queued previous_order_edit so Esc never uploads the revise.
+      const orderNum = Number(activeCart.held_order_num);
+      const editUuid =
+        activeCart.offline_client_sale_uuid != null &&
+        String(activeCart.offline_client_sale_uuid).trim()
+          ? String(activeCart.offline_client_sale_uuid).trim()
+          : null;
+      const prevEditUuid =
+        Number.isFinite(orderNum) && orderNum > 0 ? `prev-edit-${orderNum}` : null;
+      if (editUuid) await idbDeleteOutboxSale(editUuid).catch(() => {});
+      if (prevEditUuid && prevEditUuid !== editUuid) {
+        await idbDeleteOutboxSale(prevEditUuid).catch(() => {});
+      }
+      await clearPreviousOrderEditDraft().catch(() => {});
+      setReplacingLineId(null);
+      replacingLineIdRef.current = null;
+    } else if (hasLines || editingPrevious || activeOfflineEdit) {
       const editSummary = summarizeLocalPosCart(activeCart);
       const kraFiscalize = editingPrevious
         ? shouldSubmitKraOnCheckout(
@@ -9568,9 +9705,11 @@ export function PosScreen({ standalone = false }) {
       setEditBrowseIndex(0);
       clearLineEntry();
       setStatusMessage(
-        editingPrevious && pendingSync > 0
-          ? "New order — previous edits keep syncing in the background."
-          : "New order — scan or search a product.",
+        discardPreviousOrderEdit
+          ? "Previous-order edit cancelled — original receipt unchanged. Scan for a new order."
+          : editingPrevious && pendingSync > 0
+            ? "New order — previous edits keep syncing in the background."
+            : "New order — scan or search a product.",
       );
       // Instant blank workspace — do not wait on network before the till looks cleared.
       applyFreshWorkspacePlaceholder(activeCart, immediateNextPos);
@@ -9614,9 +9753,11 @@ export function PosScreen({ standalone = false }) {
           try {
             await runFreshWorkspaceBootstrap(report);
             notifySuccess(
-              editingPrevious && pendingSync > 0
-                ? "Workspace cleared — ready for a new order (sync continues in background)."
-                : "Workspace cleared — ready for a new order.",
+              discardPreviousOrderEdit
+                ? "Edit cancelled — original receipt unchanged. Ready for a new order."
+                : editingPrevious && pendingSync > 0
+                  ? "Workspace cleared — ready for a new order (sync continues in background)."
+                  : "Workspace cleared — ready for a new order.",
             );
           } catch (e) {
             if (freshWorkspaceGenerationRef.current) {
@@ -9680,9 +9821,11 @@ export function PosScreen({ standalone = false }) {
     setEditBrowseIndex(0);
     clearLineEntry();
     setStatusMessage(
-      editingPrevious && pendingSync > 0
-        ? "New order — previous edits keep syncing in the background."
-        : "New order — scan or search a product.",
+      discardPreviousOrderEdit
+        ? "Previous-order edit cancelled — original receipt unchanged. Scan for a new order."
+        : editingPrevious && pendingSync > 0
+          ? "New order — previous edits keep syncing in the background."
+          : "New order — scan or search a product.",
     );
     applyFreshWorkspacePlaceholder(activeCart, peekNextPos);
     focusProductSearch();
@@ -11017,7 +11160,7 @@ export function PosScreen({ standalone = false }) {
       );
       return false;
     }
-    setSellWholesale((prev) => !prev);
+    setSellWholesaleMode((prev) => !prev);
     setUnitPriceTouched(false);
     return true;
   }
@@ -11114,6 +11257,18 @@ export function PosScreen({ standalone = false }) {
           flashPosShortcutMessage("Fix stock issues before completing this edit.");
           return;
         }
+        // C/M payment only when the bill actually changed (top-up or return).
+        const billDelta = computePreviousOrderEditSignedDelta(editSourceSale, activeCart, {
+          cashRound: enablePosCashRounding,
+        });
+        if (!billDelta.type || !(Number(billDelta.amount) > 0)) {
+          flashPosShortcutMessage(
+            "Order updated — no payment change. Printing revised receipt…",
+            { error: false },
+          );
+          void handlePrintReceipt();
+          return;
+        }
         setPaymentError(null);
         closeProductSearchDropdown();
         setPaymentOpen(true);
@@ -11132,6 +11287,20 @@ export function PosScreen({ standalone = false }) {
           { error: false },
         );
         return;
+      }
+
+      {
+        const billDelta = computePreviousOrderEditSignedDelta(editSourceSale, activeCart, {
+          cashRound: enablePosCashRounding,
+        });
+        if (!billDelta.type || !(Number(billDelta.amount) > 0)) {
+          flashPosShortcutMessage(
+            "Order updated — no payment change. Printing revised receipt…",
+            { error: false },
+          );
+          void handlePrintReceipt();
+          return;
+        }
       }
 
       setPaymentError(null);
@@ -11157,6 +11326,20 @@ export function PosScreen({ standalone = false }) {
           { error: false },
         );
         return;
+      }
+
+      {
+        const billDelta = computePreviousOrderEditSignedDelta(editSourceSale, activeCart, {
+          cashRound: enablePosCashRounding,
+        });
+        if (!billDelta.type || !(Number(billDelta.amount) > 0)) {
+          flashPosShortcutMessage(
+            "Order updated — no payment change. Printing revised receipt…",
+            { error: false },
+          );
+          void handlePrintReceipt();
+          return;
+        }
       }
 
       setPaymentError(null);
@@ -11211,6 +11394,7 @@ export function PosScreen({ standalone = false }) {
     enableRetailPricing: posSalesConfig.enableRetailPricing,
     showCheckoutOnCreate: posSalesConfig.showCheckoutOnCreate,
     isCartEditSession: Boolean(cart?.held_order_num && cart?.superseded_sale_id),
+    hasPendingLineEntry: Boolean(selectedProduct && lineForm.product_code),
     modernOrderEditLocked,
     lineCount: cart?.lines?.length ?? 0,
     cartStockBlocked,
@@ -11526,15 +11710,46 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
+        const escTarget = e.target;
+        const onLineQtyInput =
+          escTarget instanceof HTMLElement &&
+          escTarget.classList.contains("classic-pos-line-qty-input");
+        const onEntryQtyInput =
+          escTarget instanceof HTMLElement &&
+          (escTarget.classList.contains("classic-pos-cart-qty-input") ||
+            escTarget === qtyInputRef.current);
+
+        // Line qty Esc: restore the typed draft to the committed qty only —
+        // do not claim (cell handler runs) and do not abandon previous-order edit.
+        if (onLineQtyInput && !modalOpen) {
+          return;
+        }
+
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
+        // Mid-swap: Esc cancels the swap only (stay in previous-order edit if any).
         if (state.replacingLineId && !modalOpen) {
           actions.cancelReplaceCartLine();
+          focusScanAfterEsc(actions);
+          return;
         }
         // Payment has no reliable Esc handler under capture — close it ourselves.
         if (wasPaymentOpen) {
           actions.closePayment?.();
           focusScanAfterEsc(actions);
+          return;
+        }
+        // Pending add (product selected, focus on qty): Esc cancels the entry row only.
+        // The real previous-order edit is committed by Enter on qty — until then stay
+        // on the loaded receipt.
+        if ((onEntryQtyInput || state.hasPendingLineEntry) && !modalOpen) {
+          actions.cancelPendingLineEntry?.();
+          return;
+        }
+        // Previous-order edit already changed (or just browsing the restored cart):
+        // Esc discards the draft (original receipt unchanged) and opens a blank workspace.
+        if (state.isCartEditSession && !modalOpen) {
+          void actions.startFreshWorkspace?.({ discardPreviousOrderEdit: true });
           return;
         }
         if (state.standalone) {
@@ -12586,6 +12801,13 @@ export function PosScreen({ standalone = false }) {
                   );
                 }}
                 onSetQty={(line, value) => void setCartLineEntryQuantity(line, value)}
+                lineForceSameQtyCommit={(line) =>
+                  Boolean(
+                    posSalesConfig.enableRetailPricing &&
+                      cartLineRetailStockFlag(line) !==
+                        isPosRetailSession(sellWholesaleRef.current),
+                  )
+                }
                 onSwapDraftQtyChange={(line, value) => handleSwapDraftQtyChange(line, value)}
                 linePackage={(line) => {
                   const productMeta = productByCode[line.product_code];

@@ -4,6 +4,7 @@ import {
   cartLineDisplayUnitPrice,
   computePosLine,
   posEntryQtyFromCartLine,
+  posEntryQtyForSessionMode,
   posEntryToBaseQty,
   posLineWholesaleRetailFlag,
   posListUnitPrice,
@@ -254,6 +255,23 @@ describe("posEntryQtyFromCartLine retail lines", () => {
         null,
       ),
     ).toBe("25");
+  });
+});
+
+describe("posEntryQtyForSessionMode", () => {
+  it("converts wholesale packs to retail kg when F12 flips mode", () => {
+    expect(
+      posEntryQtyForSessionMode(2, sugarUom, { fromRetail: false, toRetail: true }),
+    ).toBe(100);
+    expect(
+      posEntryQtyForSessionMode(100, sugarUom, { fromRetail: true, toRetail: false }),
+    ).toBe(2);
+  });
+
+  it("leaves qty unchanged when mode does not flip", () => {
+    expect(
+      posEntryQtyForSessionMode(2, sugarUom, { fromRetail: false, toRetail: false }),
+    ).toBe(2);
   });
 });
 
