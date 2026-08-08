@@ -16,7 +16,20 @@ export const LOCAL_PRINTING_DEFAULTS = {
 
 const PRINT_AGENT_DEFAULT_BASE_URL = "http://127.0.0.1:9247";
 
+/** @type {Map<number, ReturnType<typeof normalizeLocalPrintingSettings>>} */
+const cachedSettingsByOrg = new Map();
+let cachedSettingsOrgId = 0;
 let cachedSettings = null;
+
+function resolveLocalPrintingOrgId(capabilities = null) {
+  return (
+    Number(capabilities?.organization_id ?? 0) ||
+    Number(capabilities?.organization?.id ?? 0) ||
+    cachedSettingsOrgId ||
+    0
+  );
+}
+let cachedSettingsOrganizationId = null;
 
 export function normalizeLocalPrintProviderKey(value) {
   const key = String(value ?? "").trim().toLowerCase();
@@ -54,18 +67,37 @@ export function mergeLocalPrintingSettings(moduleSettings) {
 }
 
 export function syncLocalPrintingFromCapabilities(capabilities) {
+  const orgId = resolveLocalPrintingOrgId(capabilities);
   cachedSettings = mergeLocalPrintingSettings(capabilities?.module_settings);
+  cachedSettingsOrgId = orgId;
+  if (orgId > 0) {
+    cachedSettingsByOrg.set(orgId, cachedSettings);
+  }
   clearLegacyLocalPrintStorage();
   return cachedSettings;
 }
 
 export function getCachedLocalPrintingSettings() {
-  return cachedSettings ?? normalizeLocalPrintingSettings(LOCAL_PRINTING_DEFAULTS);
+  if (cachedSettings) return cachedSettings;
+  if (cachedSettingsOrgId > 0 && cachedSettingsByOrg.has(cachedSettingsOrgId)) {
+    return cachedSettingsByOrg.get(cachedSettingsOrgId);
+  }
+  return normalizeLocalPrintingSettings(LOCAL_PRINTING_DEFAULTS);
 }
 
 export function setCachedLocalPrintingSettings(next) {
   cachedSettings = normalizeLocalPrintingSettings(next);
+  if (cachedSettingsOrgId > 0) {
+    cachedSettingsByOrg.set(cachedSettingsOrgId, cachedSettings);
+  }
   return cachedSettings;
+}
+
+/** Drop in-memory print settings when switching organizations. */
+export function clearLocalPrintingSettingsCache() {
+  cachedSettings = null;
+  cachedSettingsOrgId = 0;
+  cachedSettingsByOrg.clear();
 }
 
 /** QZ client config shape used by qz-tray-print.js */

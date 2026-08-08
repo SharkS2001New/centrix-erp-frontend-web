@@ -245,17 +245,16 @@ export function buildKraThermalQrHtml(kra, qrDataUrl, options = {}) {
   return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 100, layout: "thermal", ...options });
 }
 
-function saleLooksFiscalized(sale, kraData) {
-  if (kraData?.signatureLink || kraData?.invoiceNumber || kraData?.receiptSignature) {
-    return true;
-  }
-  const raw = sale?.kra_response ?? sale?.kraResponse ?? null;
-  if (!raw) return false;
-  const status = String(raw.status ?? "").toLowerCase();
-  if (status === "failed" || status === "error" || status === "skipped" || status === "bypassed") {
-    return false;
-  }
-  return status === "success" || Boolean(raw.invoice_number);
+function kraRawStatus(sale, kraReceipt = null) {
+  const raw = kraReceipt ?? sale?.kra_response ?? sale?.kraResponse ?? null;
+  return String(raw?.status ?? "").toLowerCase();
+}
+
+/** Failed / skipped fiscalization — print a normal receipt; do not wait on QR. */
+export function kraFailedWithoutVerificationLink(sale, kraReceipt = null) {
+  const status = kraRawStatus(sale, kraReceipt);
+  if (!["failed", "error", "skipped", "bypassed"].includes(status)) return false;
+  return !extractKraReceiptData(sale, kraReceipt)?.signatureLink;
 }
 
 /**
@@ -305,9 +304,8 @@ export async function resolveKraReceiptDataForSale(sale, kraReceipt = null) {
 
 /**
  * Resolve KRA fiscal data + QR image for print (best-effort).
- * When a verification link exists, build the QR. When KRA is on but the sale
- * has no eTIMS link yet (or QR generation fails), print a normal receipt —
- * never block print on missing KRA.
+ * When a verification link exists, build the QR. When KRA failed / has no
+ * eTIMS link / QR generation fails, print a normal receipt — never throw.
  */
 export async function ensureKraQrForPrint(
   sale,
@@ -317,61 +315,73 @@ export async function ensureKraQrForPrint(
     capabilities = null,
     allowNetwork = true,
     qrSize = 100,
-    /** @deprecated Ignored — missing QR no longer blocks print. */
+    /** @deprecated Ignored — missing QR never blocks print. */
     requireQrWhenFiscalized: _requireQrWhenFiscalized = false,
   } = {},
 ) {
-  const kraEnabled = isKraDeviceConfigured(moduleSettings, capabilities);
+  try {
+    // Soft-fail / skip / bypass — print immediately without QR or retries.
+    if (kraFailedWithoutVerificationLink(sale, kraReceipt)) {
+      return { kraData: null, kraQrDataUrl: null };
+    }
 
-  // KRA off: never contact the API — print from inline sale / kraReceipt only.
-  if (!kraEnabled) {
-    const kraData = extractKraReceiptData(sale, kraReceipt);
+    const kraEnabled = isKraDeviceConfigured(moduleSettings, capabilities);
+
+    // KRA off: never contact the API — print from inline sale / kraReceipt only.
+    if (!kraEnabled) {
+      const kraData = extractKraReceiptData(sale, kraReceipt);
+      let kraQrDataUrl = null;
+      if (kraData?.signatureLink) {
+        for (let attempt = 0; attempt < 3 && !kraQrDataUrl; attempt += 1) {
+          kraQrDataUrl = await kraReceiptQrDataUrl(kraData.signatureLink, { size: qrSize });
+        }
+      }
+      return { kraData, kraQrDataUrl };
+    }
+
+    const tryFetch =
+      isKraFiscalizationActive(moduleSettings, capabilities) &&
+      !isKraBypassedForOrderTotal(moduleSettings, sale?.order_total) &&
+      String(sale?.status ?? "").toLowerCase() !== "pending_approval";
+
+    let kraData = extractKraReceiptData(sale, kraReceipt);
+
+    if (allowNetwork && sale?.id && !kraData?.signatureLink) {
+      const attempts = tryFetch || kraEnabled ? 4 : 1;
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        kraData = await resolveKraReceiptDataForSale(sale, kraReceipt);
+        if (kraData?.signatureLink) break;
+        const resolvedStatus = String(kraData?.status ?? "").toLowerCase();
+        if (
+          ["failed", "error", "skipped", "bypassed"].includes(resolvedStatus) ||
+          kraFailedWithoutVerificationLink(sale, kraReceipt)
+        ) {
+          return { kraData: null, kraQrDataUrl: null };
+        }
+        if (!(tryFetch || kraEnabled) || attempt >= attempts - 1) break;
+        await sleep(300 * (attempt + 1));
+      }
+    }
+
     let kraQrDataUrl = null;
     if (kraData?.signatureLink) {
       for (let attempt = 0; attempt < 3 && !kraQrDataUrl; attempt += 1) {
         kraQrDataUrl = await kraReceiptQrDataUrl(kraData.signatureLink, { size: qrSize });
       }
     }
-    return { kraData, kraQrDataUrl };
-  }
 
-  const tryFetch =
-    isKraFiscalizationActive(moduleSettings, capabilities) &&
-    !isKraBypassedForOrderTotal(moduleSettings, sale?.order_total) &&
-    String(sale?.status ?? "").toLowerCase() !== "pending_approval";
-
-  let kraData = extractKraReceiptData(sale, kraReceipt);
-
-  if (allowNetwork && sale?.id && !kraData?.signatureLink) {
-    const attempts = tryFetch || kraEnabled ? 4 : 1;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      kraData = await resolveKraReceiptDataForSale(sale, kraReceipt);
-      if (kraData?.signatureLink) break;
-      if (!(tryFetch || kraEnabled) || attempt >= attempts - 1) break;
-      await sleep(300 * (attempt + 1));
+    // Link present but QR image failed — still print the receipt without the scan block.
+    if (kraData?.signatureLink && !kraQrDataUrl) {
+      return { kraData, kraQrDataUrl: null };
     }
-  }
 
-  let kraQrDataUrl = null;
-  if (kraData?.signatureLink) {
-    for (let attempt = 0; attempt < 3 && !kraQrDataUrl; attempt += 1) {
-      kraQrDataUrl = await kraReceiptQrDataUrl(kraData.signatureLink, { size: qrSize });
-    }
-  }
-
-  // Link present but QR image failed — still print the receipt without the scan block.
-  if (kraData?.signatureLink && !kraQrDataUrl) {
-    return { kraData, kraQrDataUrl: null };
-  }
-
-  // No verification link (not fiscalized yet / legacy) — normal receipt.
-  if (!kraQrDataUrl) {
-    if (!saleLooksFiscalized(sale, kraData)) {
+    // No verification link — normal receipt (never block).
+    if (!kraQrDataUrl) {
       return { kraData: null, kraQrDataUrl: null };
     }
-    // Fiscalized payload without a usable link/QR — print without the KRA block.
+
+    return { kraData, kraQrDataUrl };
+  } catch {
     return { kraData: null, kraQrDataUrl: null };
   }
-
-  return { kraData, kraQrDataUrl };
 }

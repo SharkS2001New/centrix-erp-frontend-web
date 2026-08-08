@@ -27,6 +27,7 @@ import {
   resolveOrderWorkflowActions,
   shouldShowPaymentStatusBadge,
   orderPaymentStatusHint,
+  resolvePaymentStatusFromAmounts,
   saleBalanceDue,
   canRecordOrderPayment,
   canConvertToPaid,
@@ -1018,7 +1019,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 </h1>
                 <SaleStatusBadge status={sale.status} workflow={saleWorkflow} />
                 {shouldShowPaymentStatusBadge(sale, totalPaid, capabilities) ? (
-                  <PaymentStatusBadge status={sale.payment_status} />
+                  <PaymentStatusBadge status={resolvePaymentStatusFromAmounts(sale, totalPaid)} />
                 ) : null}
               </div>
               <p className="theme-subtext mt-1 text-sm">

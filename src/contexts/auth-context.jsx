@@ -52,7 +52,7 @@ import {
   licenseFromAuthState,
 } from "@/lib/organization-license";
 import { resolveSecurityTimeouts } from "@/lib/security-settings";
-import { syncLocalPrintingFromCapabilities } from "@/lib/local-printing-settings";
+import { syncLocalPrintingFromCapabilities, clearLocalPrintingSettingsCache } from "@/lib/local-printing-settings";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
 const CAPABILITIES_REFRESH_MS = 90_000;
@@ -212,6 +212,11 @@ export function AuthProvider({ children }) {
   }, [capabilities]);
 
   const applyAuthPayload = useCallback(async (res, channel = WEB_LOGIN_CHANNEL) => {
+    // Drop prior-org capabilities refresh so a late org-1 response cannot overwrite org-2.
+    capabilitiesRefreshAt.current = 0;
+    capabilitiesRefreshPromise.current = null;
+    clearLocalPrintingSettingsCache();
+
     setSession(res.token, res.user, res.organization, res.memberships ?? [], channel);
     setStoredCompanyCode(res.organization?.company_code);
     setUser(res.user);
@@ -228,10 +233,12 @@ export function AuthProvider({ children }) {
       setCapabilities(caps);
       setStoredCapabilities(caps);
       syncLocalPrintingFromCapabilities(caps);
+      capabilitiesRefreshAt.current = Date.now();
       return caps;
     } catch (e) {
       await revokeServerAuthSession();
       clearSession();
+      clearLocalPrintingSettingsCache();
       setUser(null);
       setOrganization(null);
       setMemberships([]);
@@ -588,6 +595,7 @@ export function AuthProvider({ children }) {
     //    main thread and can stall the logout timeout / soft navigation for tens of seconds.
     clearSession();
     clearStoredActiveSession();
+    clearLocalPrintingSettingsCache();
     invalidateReferenceDataCache();
     invalidateReportBuilderTemplateCache();
     capabilitiesRefreshAt.current = 0;

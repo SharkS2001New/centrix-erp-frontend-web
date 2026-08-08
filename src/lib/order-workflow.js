@@ -1407,10 +1407,10 @@ export function isFieldFulfillmentOrder(sale, capabilities = null) {
  * does not already convey that (e.g. Booked + Unpaid, Delivered + Partial).
  */
 export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilities = null) {
-  if (!sale?.payment_status) return false;
+  if (!sale) return false;
 
   const workflowStatus = String(sale.status ?? "").toLowerCase();
-  const paymentStatus = String(sale.payment_status).toLowerCase();
+  const paymentStatus = resolveSalePaymentBucket(sale, totalPaid);
 
   if (WORKFLOW_ONLY_BADGE_STATUSES.has(workflowStatus)) return false;
   if (paymentStatus === "paid") return false;
@@ -1426,6 +1426,25 @@ export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilitie
   return FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE.has(workflowStatus);
 }
 
+function resolveSalePaymentBucket(sale, totalPaid = null) {
+  const status = String(sale?.status ?? "").toLowerCase();
+  if (status === "cancelled" || status === "expired") return "unpaid";
+  const total = Number(sale?.order_total ?? 0);
+  const paid =
+    totalPaid != null && Number.isFinite(Number(totalPaid))
+      ? Number(totalPaid)
+      : Number(sale?.amount_paid ?? 0);
+  const eps = 0.01;
+  if (total <= eps || paid + eps >= total) return "paid";
+  if (paid > eps) return "partial";
+  return "unpaid";
+}
+
+/** Amount-derived payment bucket — never trust a stale payment_status label. */
+export function resolvePaymentStatusFromAmounts(sale, totalPaid = null) {
+  return resolveSalePaymentBucket(sale, totalPaid);
+}
+
 /** Distribution route-order views are read-only; workflow moves happen in backoffice Sales only. */
 export function isDistributionOrderViewContext(context) {
   if (context === true) return true;
@@ -1439,9 +1458,9 @@ export function isDistributionOrderViewContext(context) {
  * Secondary payment hint for summary cards — only when workflow status alone does not convey payment.
  */
 export function orderPaymentStatusHint(sale, totalPaid = null, capabilities = null) {
-  if (!sale?.payment_status) return null;
+  if (!sale) return null;
   if (shouldShowPaymentStatusBadge(sale, totalPaid, capabilities)) {
-    const key = String(sale.payment_status).toLowerCase();
+    const key = resolveSalePaymentBucket(sale, totalPaid);
     if (key === "unpaid") return "Unpaid";
     if (key === "partial") return "Partially paid";
     return null;

@@ -712,6 +712,16 @@ export default function SalesOrdersListScreen({
         extra.exclude_statuses = queueConfig.excludeStatuses.join(",");
       } else if (queueConfig?.excludeTerminalStatuses) {
         extra.exclude_statuses = "cancelled,expired";
+      } else if (
+        (!queueConfig?.slug || queueConfig.slug === "all") &&
+        !statusParam &&
+        !normalizeSalesListSearchQuery(debouncedSearch)
+      ) {
+        // All Orders browse: keep Cancelled/Expired off this list (and out of pager
+        // totals). They live on their own queues; Status filter or search still finds them.
+        // Otherwise cancelled inflated "of N" while summary cards excluded them — then
+        // filtering to Paid looked like the cancel "was counting but not in the UI".
+        extra.exclude_statuses = "cancelled,expired";
       }
       if (queueConfig?.requireOutstandingBalance) {
         extra.outstanding_balance = 1;

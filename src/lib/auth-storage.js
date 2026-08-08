@@ -42,6 +42,34 @@ const SCREEN_LOCKED_KEY = "pos_erp_screen_locked";
 const CAPABILITIES_KEY = "pos_erp_capabilities";
 const LOGIN_WARNINGS_KEY = "pos_erp_login_warnings";
 
+function currentOrganizationId() {
+  return (
+    Number(getStoredOrganization()?.id ?? 0) ||
+    Number(getStoredUser()?.organization_id ?? 0) ||
+    0
+  );
+}
+
+function capabilitiesStorageKey(organizationId = currentOrganizationId()) {
+  const orgId = Number(organizationId);
+  if (Number.isFinite(orgId) && orgId > 0) {
+    return `${CAPABILITIES_KEY}:org:${orgId}`;
+  }
+  return CAPABILITIES_KEY;
+}
+
+function capabilitiesBelongToOrganization(capabilities, organizationId) {
+  if (!capabilities || typeof capabilities !== "object") return false;
+  const orgId = Number(organizationId);
+  if (!Number.isFinite(orgId) || orgId <= 0) return true;
+  const capsOrgId = Number(
+    capabilities.organization_id ?? capabilities.organization?.id ?? 0,
+  );
+  // Legacy payloads without organization_id are only trusted when no org is known.
+  if (!Number.isFinite(capsOrgId) || capsOrgId <= 0) return false;
+  return capsOrgId === orgId;
+}
+
 export function getToken() {
   if (typeof window === "undefined") return null;
   if (useCookieAuth) return null;
@@ -145,14 +173,44 @@ export function getStoredMemberships() {
 
 /**
  * Last capabilities payload (module_settings, permissions, etc.).
- * Written on login / ERP load; external POS prefers this cache until hard refresh.
+ * Written on login / ERP load; keyed by organization so org 1 KRA/finance
+ * settings never bleed into org 2 after a switch.
  */
 export function getStoredCapabilities() {
   if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(CAPABILITIES_KEY);
+  const orgId = currentOrganizationId();
+  const scopedKey = capabilitiesStorageKey(orgId);
+  let raw = localStorage.getItem(scopedKey);
+
+  // One-time migrate from the legacy unscoped key when it matches this org.
+  if (!raw && orgId > 0) {
+    const legacy = localStorage.getItem(CAPABILITIES_KEY);
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(legacy);
+        if (capabilitiesBelongToOrganization(parsed, orgId)) {
+          localStorage.setItem(scopedKey, legacy);
+          raw = legacy;
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        localStorage.removeItem(CAPABILITIES_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!capabilitiesBelongToOrganization(parsed, orgId)) {
+      localStorage.removeItem(scopedKey);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -161,7 +219,17 @@ export function getStoredCapabilities() {
 export function setStoredCapabilities(capabilities) {
   if (typeof window === "undefined" || !capabilities) return;
   try {
-    localStorage.setItem(CAPABILITIES_KEY, JSON.stringify(capabilities));
+    const orgId =
+      Number(capabilities.organization_id ?? capabilities.organization?.id ?? 0) ||
+      currentOrganizationId();
+    const scopedKey = capabilitiesStorageKey(orgId);
+    const payload =
+      orgId > 0 && !capabilities.organization_id
+        ? { ...capabilities, organization_id: orgId }
+        : capabilities;
+    localStorage.setItem(scopedKey, JSON.stringify(payload));
+    // Drop legacy global key so another org cannot read these settings.
+    localStorage.removeItem(CAPABILITIES_KEY);
   } catch {
     /* ignore quota errors */
   }
@@ -199,6 +267,16 @@ export function clearSession() {
   localStorage.removeItem(LOGIN_CHANNEL_KEY);
   localStorage.removeItem(WORKSPACE_KEY);
   localStorage.removeItem(CAPABILITIES_KEY);
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(`${CAPABILITIES_KEY}:org:`)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    /* ignore */
+  }
   clearLoginWarnings();
   clearWorkspaceRouteMemoryOnLogout();
   clearScreenLocked();

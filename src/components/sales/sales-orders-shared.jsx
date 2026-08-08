@@ -118,6 +118,17 @@ export function saleBranchLabel(sale, branchById) {
   return "—";
 }
 
+export function resolvePaymentStatus(sale) {
+  const status = String(sale?.status ?? "").toLowerCase();
+  if (status === "cancelled" || status === "expired") return "unpaid";
+  const total = Number(sale?.order_total ?? 0);
+  const amountPaid = Number(sale?.amount_paid ?? 0);
+  const eps = 0.01;
+  if (total <= eps || amountPaid + eps >= total) return "paid";
+  if (amountPaid > eps) return "partial";
+  return "unpaid";
+}
+
 export function summarizeOrders(rows) {
   const list = rows ?? [];
   let unpaid = 0;
@@ -140,10 +151,12 @@ export function summarizeOrders(rows) {
     }
 
     activeCount += 1;
-    revenue += Number(sale.order_total ?? 0);
-    const ps = String(sale.payment_status ?? "").toLowerCase();
-    if (ps === "paid") paid += 1;
-    else if (ps === "partial") partial += 1;
+    const total = Number(sale.order_total ?? 0);
+    revenue += total;
+    // Match API summary: amounts win over stale payment_status labels.
+    const bucket = resolvePaymentStatus(sale);
+    if (bucket === "paid") paid += 1;
+    else if (bucket === "partial") partial += 1;
     else unpaid += 1;
   }
 
@@ -194,16 +207,24 @@ export function formatOrderGroupDate(sale) {
 }
 
 export function OrderSummaryStats({ summary, hint = "Today" }) {
+  const cancelled = Number(summary.cancelled ?? 0);
+  const expired = Number(summary.expired ?? 0);
+  const ordersHintParts = [hint];
+  // Terminal counts only when the current result set still includes them
+  // (e.g. Status = Cancelled). All browse excludes them from the query.
+  if (cancelled > 0) ordersHintParts.push(`${cancelled} cancelled`);
+  if (expired > 0) ordersHintParts.push(`${expired} expired`);
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <StatCard label="Orders" value={String(summary.total)} hint={hint} />
+      <StatCard label="Orders" value={String(summary.total)} hint={ordersHintParts.join(" · ")} />
       <StatCard label="Revenue" value={formatSaleKes(summary.revenue)} hint={hint} />
       <StatCard
         label="Unpaid / partial"
         value={String(summary.unpaid + summary.partial)}
         hint={`${summary.unpaid} unpaid · ${summary.partial} partial`}
       />
-      <StatCard label="Paid" value={String(summary.paid)} hint={`${summary.cancelled} cancelled · ${summary.expired} expired`} />
+      <StatCard label="Paid" value={String(summary.paid)} hint={hint} />
     </div>
   );
 }
@@ -227,7 +248,7 @@ export function matchesOrderSourceFilter(sale, sourceFilter, capabilities = null
 
 export function matchesPaymentFilter(sale, paymentFilter) {
   if (paymentFilter === "all") return true;
-  return String(sale.payment_status ?? "unpaid").toLowerCase() === paymentFilter;
+  return resolvePaymentStatus(sale) === String(paymentFilter).toLowerCase();
 }
 
 export { shouldShowPaymentStatusBadge };
@@ -1307,7 +1328,7 @@ export function OrderListTableRow({
             ) : null}
             {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
               <div className="mt-1.5">
-                <PaymentStatusBadge status={sale.payment_status} />
+                <PaymentStatusBadge status={resolvePaymentStatus(sale)} />
               </div>
             ) : null}
             <div className="mt-1.5">
@@ -1397,7 +1418,7 @@ export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
         <div className="flex flex-wrap gap-2">
           <SaleStatusBadge status={sale.status} workflow={workflow} />
           {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
-            <PaymentStatusBadge status={sale.payment_status} />
+            <PaymentStatusBadge status={resolvePaymentStatus(sale)} />
           ) : null}
           <OrderSourceBadge
             source={sale.order_source}

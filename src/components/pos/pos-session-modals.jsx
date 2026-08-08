@@ -511,8 +511,8 @@ export function ZReportModal({
       embedded={embedded}
       title="Z report"
       subtitle={
-        signOutAfterFinish
-          ? "Print Z to wipe this till's local offline data, then sign out"
+          signOutAfterFinish
+          ? "Print Z to clear this till's local offline data, then sign out. Sync pending sales first if any are waiting."
           : "End-of-day report for the closed session"
       }
       footer={

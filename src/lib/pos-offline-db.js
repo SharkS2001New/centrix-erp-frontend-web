@@ -12,12 +12,18 @@ const DB_VERSION = 3;
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
 
+/** True while Z / cashier-switch wipe is in progress — blocks reopen races with outbox sync. */
+let wipingOfflineDb = false;
+
 /** Meta key: which cashier/org last owned this device IndexedDB. */
 export const POS_OFFLINE_OWNER_META_KEY = "pos_device_owner";
 
 function openDb() {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB is not available."));
+  }
+  if (wipingOfflineDb) {
+    return Promise.reject(new Error("POS IndexedDB is being reset after Z."));
   }
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
@@ -26,7 +32,19 @@ function openDb() {
         dbPromise = null;
         reject(req.error ?? new Error("Failed to open offline DB."));
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        if (wipingOfflineDb) {
+          try {
+            req.result.close();
+          } catch {
+            /* ignore */
+          }
+          dbPromise = null;
+          reject(new Error("POS IndexedDB is being reset after Z."));
+          return;
+        }
+        resolve(req.result);
+      };
       req.onupgradeneeded = (event) => {
         const db = req.result;
         const oldVersion = event.oldVersion;
@@ -122,74 +140,150 @@ export async function idbClearStore(storeName) {
   await withStore(storeName, "readwrite", (store) => store.clear());
 }
 
-/**
- * Close the open connection and delete the entire External POS IndexedDB.
- * Next openDb() recreates an empty database.
- */
-export async function idbWipeDatabaseCompletely() {
-  if (typeof indexedDB === "undefined") {
-    return;
-  }
-
-  if (dbPromise) {
+async function closeOpenOfflineDb() {
+  if (!dbPromise) return;
+  const pending = dbPromise;
+  dbPromise = null;
+  try {
+    const db = await pending;
     try {
-      const db = await dbPromise;
-      try {
-        db.close();
-      } catch {
-        /* already closed */
-      }
+      db.close();
     } catch {
-      /* open failed — still attempt delete */
+      /* already closed */
     }
-    dbPromise = null;
+  } catch {
+    /* open failed — nothing to close */
   }
+}
 
-  await new Promise((resolve, reject) => {
+/** Object stores that must be empty after Z / cashier switch. */
+export const POS_OFFLINE_STORE_NAMES = [
+  "held_parks",
+  "local_cart",
+  "order_slots",
+  "order_numbers",
+  "catalog",
+  "meta",
+  "outbox",
+];
+
+/**
+ * Attempt indexedDB.deleteDatabase. Resolves true only on real onsuccess.
+ * Blocked / timed-out deletes resolve false so the caller can clear stores instead
+ * of pretending the DB was wiped (that left Cash Sales seq / outbox intact after Z).
+ */
+function tryDeleteOfflineDatabase({ blockedMs = 1_500, timeoutMs = 4_000 } = {}) {
+  return new Promise((resolve) => {
     let settled = false;
-    const finish = (ok, err) => {
+    const finish = (ok) => {
       if (settled) return;
       settled = true;
-      if (ok) resolve();
-      else reject(err ?? new Error("Failed to delete POS offline database."));
+      resolve(ok);
     };
 
     const req = indexedDB.deleteDatabase(DB_NAME);
     req.onsuccess = () => finish(true);
-    req.onerror = () => finish(false, req.error);
+    req.onerror = () => finish(false);
     const schedule =
       typeof window !== "undefined" && typeof window.setTimeout === "function"
         ? window.setTimeout.bind(window)
         : setTimeout;
-    // Another connection can block delete forever — do not hang Z / cashier switch.
     req.onblocked = () => {
-      schedule(() => finish(true), 2_000);
+      schedule(() => finish(false), blockedMs);
     };
-    schedule(() => finish(true), 5_000);
+    schedule(() => finish(false), timeoutMs);
   });
+}
+
+async function countStoreRecords(storeName) {
+  try {
+    const db = await openDb();
+    if (!db.objectStoreNames.contains(storeName)) return 0;
+    return await withStore(storeName, "readonly", (store) => store.count());
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Confirm every POS offline store is empty (or the DB file is gone).
+ * @returns {Promise<{ empty: boolean, counts: Record<string, number> }>}
+ */
+export async function idbVerifyOfflineStoresEmpty() {
+  const counts = {};
+  let empty = true;
+  for (const name of POS_OFFLINE_STORE_NAMES) {
+    const n = await countStoreRecords(name);
+    counts[name] = n;
+    // -1 means open/count failed (often mid-wipe) — treat as not yet verified empty.
+    if (n !== 0) empty = false;
+  }
+  return { empty, counts };
 }
 
 /**
  * Clear every object store without deleting the database file.
- * Fallback when deleteDatabase is blocked.
+ * Primary reliability path when deleteDatabase is blocked by another tab/connection.
  */
 export async function idbClearAllStores() {
-  const names = [
-    "held_parks",
-    "local_cart",
-    "order_slots",
-    "order_numbers",
-    "catalog",
-    "meta",
-    "outbox",
-  ];
-  for (const name of names) {
+  for (const name of POS_OFFLINE_STORE_NAMES) {
     try {
       await idbClearStore(name);
     } catch {
       /* store may not exist yet */
     }
   }
+}
+
+/**
+ * Close the open connection and wipe External POS IndexedDB.
+ * Strategy (in order): clear all stores → verify empty → deleteDatabase → re-verify.
+ * Truncate (clear) is what must never silently fail; deleteDatabase is best-effort.
+ *
+ * @param {{ attempts?: number }} [options]
+ * @returns {Promise<{ mode: "delete" | "clear", verified: boolean, attempts: number }>}
+ */
+export async function idbWipeDatabaseCompletely({ attempts = 3 } = {}) {
+  if (typeof indexedDB === "undefined") {
+    return { mode: "clear", verified: true, attempts: 0 };
+  }
+
+  const maxAttempts = Math.max(1, Number(attempts) || 3);
+  let mode = "clear";
+  let verified = false;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    wipingOfflineDb = true;
+    try {
+      await closeOpenOfflineDb();
+      // Always truncate first — never rely on delete alone.
+      wipingOfflineDb = false;
+      await idbClearAllStores();
+      wipingOfflineDb = true;
+      await closeOpenOfflineDb();
+
+      const deleted = await tryDeleteOfflineDatabase({
+        blockedMs: attempt === 1 ? 1_200 : 800,
+        timeoutMs: attempt === 1 ? 3_000 : 2_000,
+      });
+      if (deleted) {
+        mode = "delete";
+      }
+
+      wipingOfflineDb = false;
+      const check = await idbVerifyOfflineStoresEmpty();
+      verified = check.empty;
+      if (verified) {
+        await closeOpenOfflineDb();
+        return { mode, verified: true, attempts: attempt };
+      }
+    } finally {
+      wipingOfflineDb = false;
+      dbPromise = null;
+    }
+  }
+
+  return { mode, verified: false, attempts: maxAttempts };
 }
 
 export async function idbPutCatalogProducts(products) {

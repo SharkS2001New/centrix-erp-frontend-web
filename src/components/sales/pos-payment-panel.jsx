@@ -204,6 +204,7 @@ export function PosPaymentPanel({
   receiptPrintStatus = null,
   onReprintReceipt,
   embedded = false,
+  /** Offline / outage: STK and network prompts off; cashier still enters all tender methods manually. */
   cashOnlyOffline = false,
   /** KRA-on previous-order edit: collect only the top-up / return delta. */
   previousOrderEditAdjustment = null,
@@ -274,8 +275,8 @@ export function PosPaymentPanel({
   const isTopupAdjustment = adjustmentMode && signedEditDelta > 0.01;
   const stkPushAvailable = Boolean(enableStkPush && cartId && !cashOnlyOffline && !adjustmentMode);
   const mpesaFieldsLocked = Boolean(lockMpesaFields || stkAppliedLock);
-  /** Credit customer field — hide offline (cash amount only). */
-  const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode && !cashOnlyOffline;
+  /** Credit can settle unpaid/partial; available offline when the cashier can pick a customer. */
+  const showCreditPaymentField = cfg.enableCreditPayment && !adjustmentMode;
 
   useEffect(() => setMounted(true), []);
 
@@ -1289,21 +1290,12 @@ export function PosPaymentPanel({
 
   useEffect(() => {
     if (!open || !cashOnlyOffline) return;
-    setCashAmount(String(Math.ceil(Number(billTotal) || 0)));
-    setMpesaAmount("0");
-    setMpesaCode("");
-    setMpesaPhone("");
+    // Offline: keep STK/network state clear, but do not wipe manual M-Pesa/bank/cheque amounts.
     setStkAppliedLock(false);
     setStkWatching(false);
     setStkInfo(null);
-    setBankAmount("0");
-    setBankRef("");
-    setEquityAmount("0");
-    setKcbAmount("0");
-    setOtherBankAmount("0");
-    setChequeAmount("0");
-    setChequeNo("");
-  }, [open, cashOnlyOffline, billTotal]);
+    setStkPhase("idle");
+  }, [open, cashOnlyOffline]);
 
   useEffect(() => {
     if (!open || step !== "confirm") return;
@@ -2051,7 +2043,7 @@ export function PosPaymentPanel({
           <PosField label="Cash amount (C)">
             {cashOnlyOffline ? (
               <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
-                Offline — enter cash amount manually. M-Pesa prompt and KRA are skipped; receipt prints now and orders sync when online.
+                Offline — enter Cash, M-Pesa, bank, or cheque amounts manually. STK push and KRA are skipped; receipt prints now and the sale syncs when online. Only credit sales may stay unpaid or partially paid.
               </p>
             ) : null}
             <input
@@ -2066,7 +2058,7 @@ export function PosPaymentPanel({
               onKeyDown={(e) => handlePaymentAmountKeyDown(e, cashAmount, setCashAmount, { ceil: true })}
             />
           </PosField>
-          {!cashOnlyOffline && cfg.enableMpesaAmount ? (
+          {cfg.enableMpesaAmount ? (
             <PosField label="M-Pesa amount (M)">
               <input
                 ref={mpesaAmountRef}
@@ -2100,7 +2092,7 @@ export function PosPaymentPanel({
               ) : null}
             </div>
           ) : null}
-          {cfg.enableMpesaAmount && cfg.enableMpesaCode && !cashOnlyOffline ? (
+          {cfg.enableMpesaAmount && cfg.enableMpesaCode ? (
             <PosField label="M-Pesa code">
               <input
                 className={`${inputCls} ${mpesaFieldsLocked ? "theme-input-readonly cursor-not-allowed" : ""}`}
@@ -2114,7 +2106,7 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
 
-          {!cashOnlyOffline && cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
+          {cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
             <>
               <PosField label="Bank type">
                 <SearchableSelect
@@ -2153,7 +2145,7 @@ export function PosPaymentPanel({
             </>
           ) : null}
 
-          {!cashOnlyOffline && !cfg.useBankSelect && cfg.showEquityBank ? (
+          {!cfg.useBankSelect && cfg.showEquityBank ? (
             <PosField label="Equity Bank amount (E)">
               <input
                 ref={equityAmountRef}
@@ -2168,7 +2160,7 @@ export function PosPaymentPanel({
               />
             </PosField>
           ) : null}
-          {!cashOnlyOffline && !cfg.useBankSelect && cfg.showKcbBank ? (
+          {!cfg.useBankSelect && cfg.showKcbBank ? (
             <PosField label="KCB amount (K)">
               <input
                 ref={kcbAmountRef}
@@ -2183,7 +2175,7 @@ export function PosPaymentPanel({
               />
             </PosField>
           ) : null}
-          {!cashOnlyOffline && !cfg.useBankSelect && cfg.showOtherBank ? (
+          {!cfg.useBankSelect && cfg.showOtherBank ? (
             <PosField label={`${cfg.otherBankLabel ?? "Other bank"} amount`}>
               <input
                 type="number"
@@ -2200,7 +2192,7 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
 
-          {!cashOnlyOffline && cfg.showCheque ? (
+          {cfg.showCheque ? (
             <>
               <PosField label="Cheque amount">
                 <input

@@ -1,5 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const memoryLocalStorage = (() => {
+  const map = new Map();
+  return {
+    getItem: (key) => (map.has(key) ? map.get(key) : null),
+    setItem: (key, value) => {
+      map.set(String(key), String(value));
+    },
+    removeItem: (key) => {
+      map.delete(String(key));
+    },
+    clear: () => map.clear(),
+  };
+})();
+
+vi.stubGlobal("localStorage", memoryLocalStorage);
+
 const stores = {
   held_parks: new Map(),
   local_cart: new Map(),
@@ -12,6 +28,7 @@ const stores = {
 
 let wipeCalls = 0;
 let clearAllCalls = 0;
+let wipeVerified = true;
 
 vi.mock("@/lib/pos-offline-lock", () => ({
   withPosOfflineExclusiveLock: async (fn) => fn(),
@@ -25,11 +42,23 @@ vi.mock("@/lib/pos-offline-db", () => ({
   },
   idbWipeDatabaseCompletely: async () => {
     wipeCalls += 1;
-    for (const store of Object.values(stores)) store.clear();
+    if (wipeVerified) {
+      for (const store of Object.values(stores)) store.clear();
+    }
+    return { mode: "delete", verified: wipeVerified, attempts: 1 };
   },
   idbClearAllStores: async () => {
     clearAllCalls += 1;
     for (const store of Object.values(stores)) store.clear();
+  },
+  idbVerifyOfflineStoresEmpty: async () => {
+    const counts = {};
+    let empty = true;
+    for (const [name, store] of Object.entries(stores)) {
+      counts[name] = store.size;
+      if (store.size !== 0) empty = false;
+    }
+    return { empty, counts };
   },
 }));
 
@@ -37,7 +66,9 @@ describe("clearPosSessionLocalCache", () => {
   beforeEach(() => {
     wipeCalls = 0;
     clearAllCalls = 0;
+    wipeVerified = true;
     for (const store of Object.values(stores)) store.clear();
+    localStorage.removeItem("centrix.pos.offline.wipe_pending");
   });
 
   it("wipes the entire IndexedDB including pending outbox after Z", async () => {
@@ -69,7 +100,17 @@ describe("clearPosSessionLocalCache", () => {
     expect(stores.meta.size).toBe(0);
     expect(stores.outbox.size).toBe(0);
     expect(result.wiped).toBe(true);
+    expect(result.verified).toBe(true);
     expect(result.preservedOutbox).toBe(0);
+    expect(localStorage.getItem("centrix.pos.offline.wipe_pending")).toBeNull();
+  });
+
+  it("keeps wipe_pending when truncate cannot be verified", async () => {
+    wipeVerified = false;
+    const { clearPosSessionLocalCache } = await import("@/lib/pos-session-local-cache");
+    const result = await clearPosSessionLocalCache();
+    expect(result.verified).toBe(false);
+    expect(localStorage.getItem("centrix.pos.offline.wipe_pending")).toBeTruthy();
   });
 });
 
@@ -77,7 +118,9 @@ describe("ensurePosOfflineOwnerIsolation", () => {
   beforeEach(() => {
     wipeCalls = 0;
     clearAllCalls = 0;
+    wipeVerified = true;
     for (const store of Object.values(stores)) store.clear();
+    localStorage.removeItem("centrix.pos.offline.wipe_pending");
   });
 
   it("does not wipe when the same cashier returns", async () => {
@@ -125,5 +168,21 @@ describe("ensurePosOfflineOwnerIsolation", () => {
       organization_id: 1,
       user_id: 42,
     });
+  });
+
+  it("retries wipe when wipe_pending is set from a prior Z", async () => {
+    localStorage.setItem("centrix.pos.offline.wipe_pending", "1");
+    stores.outbox.set("leftover", { client_sale_uuid: "leftover" });
+    const { ensurePosOfflineOwnerIsolation } = await import("@/lib/pos-session-local-cache");
+
+    const result = await ensurePosOfflineOwnerIsolation({
+      organizationId: 1,
+      userId: 9,
+    });
+
+    expect(result.wiped).toBe(true);
+    expect(wipeCalls).toBe(1);
+    expect(stores.outbox.size).toBe(0);
+    expect(localStorage.getItem("centrix.pos.offline.wipe_pending")).toBeNull();
   });
 });

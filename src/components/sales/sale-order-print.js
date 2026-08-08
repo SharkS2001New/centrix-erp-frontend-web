@@ -12,6 +12,7 @@ import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
   extractKraReceiptData,
   ensureKraQrForPrint,
+  kraFailedWithoutVerificationLink,
 } from "@/lib/kra-receipt-qr";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { resolveSaleDocumentBranding, resolveSaleOrderCreatorName } from "@/lib/sale-document-print-shared";
@@ -350,8 +351,10 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       Array.isArray(sale.items) &&
       sale.items.length > 0 &&
       !sale.items.some((line) => line?.product_code && !saleLineProductName(line));
+    // Always run ensureSaleForPrint — it no-ops when lines + eTIMS link are already present,
+    // but refreshes when signature_link was saved and the list/cache payload omitted it.
     const loadedSale = withPosReceiptTicket(
-      options.skipSaleRefresh && hasCompleteItems
+      options.skipSaleRefresh && hasCompleteItems && extractKraReceiptData(sale)?.signatureLink
         ? sale
         : await ensureSaleForPrint(sale),
       sale,
@@ -460,11 +463,6 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       String(saleForPrint?.id ?? "").startsWith("offline:") ||
       Boolean(saleForPrint?._skip_kra_qr);
     const kraConfigured = isKraDeviceConfigured(moduleSettings, options.capabilities);
-    // Missing eTIMS QR must never block print — include QR when available, else normal receipt.
-    const requireQrWhenFiscalized =
-      options.requireQrWhenFiscalized != null
-        ? Boolean(options.requireQrWhenFiscalized)
-        : false;
     // Only skip WAN when we already have a usable verification link. A success
     // kra_response without signature_link must still fetch — otherwise fast
     // checkout print fails intermittently when the device omits the QR URL.
@@ -472,13 +470,27 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       saleForPrint,
       saleForPrint?._skip_kra_qr ? null : options.kraReceipt,
     );
+    const kraAlreadyFailed = kraFailedWithoutVerificationLink(
+      saleForPrint,
+      saleForPrint?._skip_kra_qr ? null : options.kraReceipt,
+    );
+    const saleHasKraPayload = Boolean(
+      saleForPrint?.kra_response ||
+        saleForPrint?.kraResponse ||
+        kraInlineForGate?.signatureLink ||
+        kraInlineForGate?.invoiceNumber,
+    );
+    // Network fetch is org-scoped via /sales/{id}. Allow it when this org has KRA on,
+    // or when the sale already carries fiscal payload (so a stale cross-org caps cache
+    // cannot skip loading a saved signature_link). Never wait when KRA already failed.
     const kraAllowNetwork =
       options.allowKraNetwork != null
         ? Boolean(options.allowKraNetwork)
-        : kraConfigured &&
-          !saleIsOfflinePending &&
+        : !saleIsOfflinePending &&
+          !saleForPrint?._skip_kra_qr &&
+          !kraAlreadyFailed &&
           !(skipNetworkLookups && Boolean(kraInlineForGate?.signatureLink)) &&
-          !saleForPrint?._skip_kra_qr;
+          (kraConfigured || saleHasKraPayload);
 
     let kraData = null;
     let kraQrDataUrl = null;
@@ -490,11 +502,10 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
           capabilities: options.capabilities,
           allowNetwork: kraAllowNetwork,
           qrSize: documentType === "invoice" ? 140 : 100,
-          requireQrWhenFiscalized,
         }));
       } catch {
         // Best-effort only — always fall through to a normal receipt/invoice.
-        kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);
+        kraData = null;
         kraQrDataUrl = null;
       }
     }

@@ -179,9 +179,8 @@ export async function getPosOfflineCatalogMeta() {
   };
 }
 
-/** Reserve sequential org order numbers (S00xx) while online for offline selling.
- * Cash Sales # is NOT reserved — each float session (or cashier/day) stays on 1,2,3…
- * from sales only. Always refreshes the local Cash Sales sequence from the server peek.
+/** Peek Cash Sales # / warm session seq. Org S# pool is not used for offline selling —
+ * Cash Sales # is local source of truth; server assigns organization order_num on sync.
  *
  * @param {{ force?: boolean, floatSessionId?: number|null }} [options]
  */
@@ -190,16 +189,9 @@ export async function ensurePosOfflineOrderNumbers({
   floatSessionId = null,
 } = {}) {
   return withPosOfflineExclusiveLock(async () => {
-    const available = await idbCountOrderNumbers();
-    // Always hit the reserve endpoint (count may be 0) so Cash Sales # reseeds.
-    // Reserve more S00xx only when the pool is low — `force` must not burn slots
-    // just to refresh a session-scoped Cash Sales peek after Z/reopen.
-    const need =
-      available >= POS_OFFLINE_RESERVE_LOW
-        ? 0
-        : Math.max(POS_OFFLINE_RESERVE_COUNT - available, POS_OFFLINE_RESERVE_COUNT);
     void force;
-    const body = { count: Math.min(need, POS_OFFLINE_RESERVE_COUNT) };
+    // count=0 → peek only (no org S00xx reserve). Cash Sales # stays local-first.
+    const body = { count: 0 };
     const sessionId = Number(floatSessionId);
     if (Number.isFinite(sessionId) && sessionId > 0) {
       body.float_session_id = sessionId;
@@ -210,36 +202,16 @@ export async function ensurePosOfflineOrderNumbers({
       loading: false,
       reportIssues: false,
     });
-    const numbers = Array.isArray(res?.numbers) ? res.numbers : [];
-    const slots = Array.isArray(res?.slots)
-      ? res.slots.map((slot) => ({
-          order_num: Number(slot.order_num),
-          // Never bind Cash Sales # at reserve time (causes 6→27 jumps).
-          pos_order_num: null,
-          pos_order_date: slot.pos_order_date ?? res?.pos_order_date ?? null,
-        }))
-      : numbers.map((order_num) => ({
-          order_num: Number(order_num),
-          pos_order_num: null,
-          pos_order_date: res?.pos_order_date ?? null,
-        }));
-    if (slots.length) {
-      await idbAppendOrderSlots(slots);
-    } else if (numbers.length) {
-      await idbAppendOrderNumbers(numbers);
-    }
-    // Seed local Cash Sales sequence from server (cancelled #s stay consumed).
+    // Raise-only seed from server. Local pending 7,8,9… stay ahead of last synced #6.
     const nextPos = Number(res?.next_pos_order_num ?? 0);
     if (Number.isFinite(nextPos) && nextPos > 0) {
       const scoped = Number.isFinite(sessionId) && sessionId > 0;
       await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date, scoped ? sessionId : null, {
-        // New/open float session must take the session-scoped peek (usually #1),
-        // never keep a prior day-scoped floor.
-        force: scoped,
+        force: false,
       });
     }
     return {
-      reserved: slots.length || numbers.length,
+      reserved: 0,
       available: await idbCountOrderNumbers(),
       next_pos_order_num: Number.isFinite(nextPos) && nextPos > 0 ? nextPos : null,
       pos_order_date: res?.pos_order_date ?? null,
@@ -477,6 +449,8 @@ export async function clearPreviousOrderEditDraft() {
 export {
   clearPosSessionLocalCache,
   ensurePosOfflineOwnerIsolation,
+  settlePendingPosOfflineWipe,
+  isPosOfflineWipePending,
 } from "@/lib/pos-session-local-cache";
 
 export function isServerPosCartId(id) {
@@ -838,11 +812,15 @@ export async function peekNextPosOfflineOrderSlot() {
 }
 
 /**
- * Seed local Cash Sales counter so offline tickets continue from server sale max.
+ * Seed local Cash Sales counter.
+ * Local is source of truth for the open float session: never lower a positive counter
+ * (offline 7,8,9… must stay ahead of last synced #6). Server / sync may only raise.
+ * `force: true` with lastIssued 0 resets a brand-new session key after Z/reopen.
+ *
  * @param {number} lastIssued - highest Cash Sales # already issued (0 → next is 1)
  * @param {string|null} [posOrderDate]
  * @param {number|null} [floatSessionId] - when set, seq is scoped to this till session
- * @param {{ force?: boolean }} [options] - force=true replaces the counter (new float session)
+ * @param {{ force?: boolean }} [options]
  */
 export async function seedLocalPosTicketSeq(
   lastIssued,
@@ -854,8 +832,13 @@ export async function seedLocalPosTicketSeq(
   const key = localPosTicketSeqKey(today, floatSessionId);
   const current = Number((await idbGetMeta(key)) ?? 0);
   const floor = Math.max(0, Number(lastIssued) || 0);
-  if (force || floor > current) {
+  if (floor > current) {
     await idbSetMeta(key, floor);
+    return;
+  }
+  // New float session only — never rewind to an older positive watermark.
+  if (force && floor === 0 && current !== 0) {
+    await idbSetMeta(key, 0);
   }
 }
 
@@ -958,13 +941,15 @@ export function withPosReceiptTicket(sale, cartOrSource = null) {
 }
 
 /**
- * Complete a local cash sale: reserved order # (or reuse for edits), queue outbox, clear cart.
+ * Complete a local POS sale: reserved order # (or reuse for edits), queue outbox, clear cart.
+ * Supports Cash / M-Pesa / bank / cheque tenders (and credit unpaid/partial). Non-credit sales
+ * are always marked paid; only credit may stay unpaid or partially paid.
  * Supports:
  * - new sale (takes reserved order #)
  * - revising a pending offline sale (same client uuid + order #)
  * - previous-order edit (reuse held order #; sync updates the server record)
  *
- * @param {{ keepCart?: boolean, skipClearDraft?: boolean }} [options]
+ * @param {{ keepCart?: boolean, skipClearDraft?: boolean, paymentMethodCode?: string, paymentSplits?: object[], isCreditSale?: boolean, paymentReference?: string|null, paymentDate?: string|null, workflowStatus?: string|null }} [options]
  *   When keepCart is true (live previous-order edit session), do not clear the
  *   workspace cart/draft so the cashier can keep editing.
  * @returns {Promise<{ sale: object, outbox: object }>}
@@ -978,6 +963,12 @@ export async function completeOfflineCashSale({
   keepCart = false,
   skipClearDraft = false,
   cashRound = false,
+  paymentMethodCode: paymentMethodCodeOpt = null,
+  paymentSplits: paymentSplitsOpt = null,
+  isCreditSale: isCreditSaleOpt = false,
+  paymentReference = null,
+  paymentDate = null,
+  workflowStatus = null,
 }) {
   const summary = summarizeLocalPosCart(cart, { cashRound: Boolean(cashRound) });
   const reuseOrderNumEarly =
@@ -1017,7 +1008,7 @@ export async function completeOfflineCashSale({
   let posOrderDate = null;
 
   if (editingUuid && reuseOrderNum) {
-    // Revising a queued offline sale — keep printed order # and outbox identity.
+    // Revising a queued offline sale — keep printed Cash Sales # and outbox identity.
     orderNum = reuseOrderNum;
     clientSaleUuid = editingUuid;
   } else if (isPreviousOrderEdit) {
@@ -1028,29 +1019,11 @@ export async function completeOfflineCashSale({
   } else if (editingUuid || reuseOrderNum) {
     throw new Error("Offline edit is missing its original order number. Cancel and reopen the sale.");
   } else {
-    let slot = await takePosOfflineOrderSlot();
-    if (!slot?.order_num) {
-      try {
-        await ensurePosOfflineOrderNumbers({
-          force: true,
-          floatSessionId: floatSessionId ?? cart.float_session_id ?? null,
-        });
-      } catch {
-        /* still offline — fall through */
-      }
-      slot = await takePosOfflineOrderSlot();
-    }
-    if (!slot?.order_num) {
-      throw new Error(
-        "No reserved order numbers left for offline selling. Reconnect briefly to reserve more.",
-      );
-    }
-    orderNum = Number(slot.order_num);
-    // Cash Sales # is assigned locally in sequence — never from the org reserve slot.
+    // No org S# pool. Cash Sales # is allocated below; server assigns order_num on sync.
+    orderNum = null;
     posOrderNum = null;
     posOrderDate = todayPosOrderDate();
-    if (posOrderNum == null && cart.next_pos_order_num != null) {
-      // UI preview only; still allocate below unless editing an existing ticket.
+    if (cart.next_pos_order_num != null) {
       posOrderDate =
         clampPosOrderBusinessDate(cart.next_pos_order_date) ??
         posOrderDate ??
@@ -1060,7 +1033,6 @@ export async function completeOfflineCashSale({
     syncKind = "sale";
   }
 
-  const payNow = Math.max(Number(cashAmount ?? summary.amountDue), summary.amountDue);
   const existingOutbox = clientSaleUuid ? await idbGetOutboxSale(clientSaleUuid) : null;
   if (existingOutbox?.sync_kind === "previous_order_edit") {
     syncKind = "previous_order_edit";
@@ -1088,23 +1060,47 @@ export async function completeOfflineCashSale({
     posOrderDate = localTicket.pos_order_date ?? posOrderDate;
   }
   posOrderDate = clampPosOrderBusinessDate(posOrderDate);
+
+  // New offline sales (and their revisions): Cash Sales # is the till label.
+  // Organization order_num is assigned by the server on sync — never pre-reserved.
+  const deferOrgOrderNum = syncKind !== "previous_order_edit";
+  if (deferOrgOrderNum && (orderNum == null || !(Number(orderNum) > 0)) && posOrderNum != null) {
+    orderNum = Number(posOrderNum);
+  }
+  if (deferOrgOrderNum && !(Number(orderNum) > 0)) {
+    throw new Error("Could not allocate a Cash Sales # for this sale.");
+  }
+
   const soldAtMs = existingOutbox?.created_at_ms ?? Date.now();
   const soldAtIso = new Date(soldAtMs).toISOString();
+
+  const isCreditSale = Boolean(isCreditSaleOpt) && !isPreviousOrderEdit;
+  const requestedPay = Math.max(0, Number(cashAmount ?? 0));
+  // Non-credit tendered sales always settle in full offline (Cash/M-Pesa/bank/cheque).
+  // Credit may be unpaid (0) or partially paid.
+  const payNow = isCreditSale
+    ? Math.min(requestedPay, summary.total)
+    : Math.max(requestedPay, summary.amountDue);
 
   // Previous-order edits must keep the original tender method on the local sale /
   // checkout body. Hardcoding CASH caused synced sales to show Cash after edit.
   const paymentMethodCode = (() => {
-    if (!isPreviousOrderEdit) return "CASH";
-    const candidates = [
-      cart.payment_method_code,
-      existingOutbox?.sale_payload?.payment_method_code,
-      existingOutbox?.checkout_body?.payment_method_code,
-      cart.offline_edit_snapshot?.payment_method_code,
-    ];
-    for (const raw of candidates) {
-      const code = String(raw ?? "").trim().toUpperCase();
-      if (code) return code;
+    if (isPreviousOrderEdit) {
+      const candidates = [
+        cart.payment_method_code,
+        existingOutbox?.sale_payload?.payment_method_code,
+        existingOutbox?.checkout_body?.payment_method_code,
+        cart.offline_edit_snapshot?.payment_method_code,
+      ];
+      for (const raw of candidates) {
+        const code = String(raw ?? "").trim().toUpperCase();
+        if (code) return code;
+      }
+      return "CASH";
     }
+    const fromOpt = String(paymentMethodCodeOpt ?? "").trim().toUpperCase();
+    if (fromOpt) return fromOpt;
+    if (isCreditSale && payNow <= 0.01) return "CREDIT";
     return "CASH";
   })();
   const paymentMethodLabel =
@@ -1112,7 +1108,69 @@ export async function completeOfflineCashSale({
       ? "Cash"
       : paymentMethodCode === "MPESA"
         ? "M-Pesa"
-        : paymentMethodCode;
+        : paymentMethodCode === "CREDIT"
+          ? "Credit"
+          : paymentMethodCode === "EQUITY"
+            ? "Equity"
+            : paymentMethodCode === "KCB"
+              ? "KCB"
+              : paymentMethodCode;
+
+  const paymentSplits = Array.isArray(paymentSplitsOpt)
+    ? paymentSplitsOpt
+        .filter((part) => part && Number(part.amount) > 0)
+        .map((part) => ({
+          method_code: String(part.method_code ?? part.code ?? "").trim().toUpperCase(),
+          amount: Math.round(Number(part.amount) * 100) / 100,
+          ...(part.reference_number
+            ? { reference_number: String(part.reference_number).trim() }
+            : {}),
+        }))
+        .filter((part) => part.method_code)
+    : [];
+
+  const sumSplit = (code) =>
+    Math.round(
+      paymentSplits
+        .filter((part) => part.method_code === code)
+        .reduce((sum, part) => sum + Number(part.amount ?? 0), 0) * 100,
+    ) / 100;
+
+  const tenderCash =
+    paymentSplits.length > 0
+      ? sumSplit("CASH")
+      : paymentMethodCode === "CASH"
+        ? payNow
+        : 0;
+  const tenderMpesa =
+    paymentSplits.length > 0
+      ? sumSplit("MPESA")
+      : paymentMethodCode === "MPESA"
+        ? payNow
+        : 0;
+  const tenderEquity =
+    paymentSplits.length > 0
+      ? sumSplit("EQUITY")
+      : paymentMethodCode === "EQUITY"
+        ? payNow
+        : 0;
+  const tenderKcb =
+    paymentSplits.length > 0
+      ? sumSplit("KCB")
+      : paymentMethodCode === "KCB"
+        ? payNow
+        : 0;
+
+  const amountPaidForStatus = isCreditSale ? payNow : summary.total;
+  const paymentStatus = (() => {
+    if (!isCreditSale) return "paid";
+    if (amountPaidForStatus + 0.01 >= summary.total && summary.total > 0) return "paid";
+    if (amountPaidForStatus > 0.01) return "partial";
+    return "unpaid";
+  })();
+  const saleWorkflowStatus =
+    String(workflowStatus ?? "").trim() ||
+    (paymentStatus === "paid" ? "completed" : paymentStatus === "partial" ? "pending_payment" : "unpaid");
 
   // Prefer the cart customer. When revising a queued offline sale, trust the cart
   // only — never resurrect Customer A after the cashier cleared to Walk-in.
@@ -1217,25 +1275,25 @@ export async function completeOfflineCashSale({
     created_by: user?.id ?? null,
     channel: "pos",
     order_source: "pos",
-    status: "completed",
-    payment_status: "paid",
+    status: saleWorkflowStatus,
+    payment_status: editTenders ? "paid" : paymentStatus,
     payment_method_code: paymentMethodCode,
-    is_credit_sale: false,
+    is_credit_sale: isCreditSale,
     order_total: summary.total,
     total_vat: summary.vat,
-    amount_paid: editTenders ? editTenders.amountPaid : payNow,
+    amount_paid: editTenders
+      ? editTenders.amountPaid
+      : isCreditSale
+        ? payNow
+        : summary.total,
     cash: editTenders
       ? editTenders.cash
-      : paymentMethodCode === "CASH"
-        ? payNow
-        : 0,
+      : tenderCash,
     mpesa_amount: editTenders
       ? editTenders.mpesa
-      : paymentMethodCode === "MPESA"
-        ? payNow
-        : 0,
-    equity_amount: editTenders ? editTenders.equity : 0,
-    kcb_amount: editTenders ? editTenders.kcb : 0,
+      : tenderMpesa,
+    equity_amount: editTenders ? editTenders.equity : tenderEquity,
+    kcb_amount: editTenders ? editTenders.kcb : tenderKcb,
     completed_at: soldAtIso,
     created_at: soldAtIso,
     created_at_ms: soldAtMs,
@@ -1248,14 +1306,23 @@ export async function completeOfflineCashSale({
       ? { _change_given: editTenders.returnGiven, order_change: editTenders.returnGiven }
       : {}),
     items: saleItems,
-    payments: [
-      {
-        id: 1,
-        payment_method_code: paymentMethodCode,
-        amount: editTenders ? editTenders.amountPaid : payNow,
-        payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
-      },
-    ],
+    payments:
+      paymentSplits.length > 0 && !editTenders
+        ? paymentSplits.map((part, index) => ({
+            id: index + 1,
+            payment_method_code: part.method_code,
+            amount: part.amount,
+            reference_number: part.reference_number ?? null,
+            payment_method: { code: part.method_code, name: part.method_code },
+          }))
+        : [
+            {
+              id: 1,
+              payment_method_code: paymentMethodCode,
+              amount: editTenders ? editTenders.amountPaid : payNow,
+              payment_method: { code: paymentMethodCode, name: paymentMethodLabel },
+            },
+          ],
   };
 
   const wasSyncing = existingOutbox?.sync_status === "syncing";
@@ -1263,6 +1330,8 @@ export async function completeOfflineCashSale({
   const outbox = {
     client_sale_uuid: clientSaleUuid,
     order_num: orderNum,
+    // Cash Sales # is the till ticket; org S# is assigned on sync for new offline sales.
+    defer_org_order_num: deferOrgOrderNum,
     // Keep syncing if mid-flight so we don't double-claim; revision bump re-queues after.
     sync_status: wasSyncing ? "syncing" : "pending",
     sync_started_at_ms: wasSyncing ? existingOutbox.sync_started_at_ms : null,
@@ -1290,12 +1359,19 @@ export async function completeOfflineCashSale({
     updated_at_ms: Date.now(),
     sale_payload: sale,
     checkout_body: {
-      order_num: orderNum,
+      ...(deferOrgOrderNum ? {} : { order_num: orderNum }),
+      ...(deferOrgOrderNum ? { defer_org_order_num: true } : {}),
       ...(posOrderNum != null ? { pos_order_num: posOrderNum } : {}),
       ...(posOrderDate ? { pos_order_date: posOrderDate } : {}),
       payment_method_code: paymentMethodCode,
       pay_now: isPreviousOrderEdit ? 0 : payNow,
-      is_credit_sale: false,
+      is_credit_sale: isCreditSale,
+      ...(saleWorkflowStatus ? { status: saleWorkflowStatus } : {}),
+      ...(paymentReference ? { payment_reference: String(paymentReference).trim() } : {}),
+      ...(paymentDate ? { payment_date: paymentDate } : {}),
+      ...(paymentSplits.length > 0 && !isPreviousOrderEdit
+        ? { payment_splits: paymentSplits }
+        : {}),
       submit_kra: false,
       offline_order: true,
       client_completed_at: soldAtIso,
@@ -1672,10 +1748,20 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
 
   const body = {
     ...row.checkout_body,
-    order_num: orderNum,
     offline_order: true,
     client_sale_uuid: row.client_sale_uuid,
   };
+  const deferOrgOrderNum = Boolean(
+    row.defer_org_order_num ?? row.checkout_body?.defer_org_order_num,
+  );
+  // New offline sales: let the server allocate organization order_num on sync.
+  // Cash Sales # (pos_order_num) is the till ticket printed on the receipt.
+  if (deferOrgOrderNum || !(Number(orderNum) > 0)) {
+    delete body.order_num;
+    delete body.defer_org_order_num;
+  } else {
+    body.order_num = orderNum;
+  }
   // Always stamp content_revision for offline uploads so uuid:revision idempotency
   // matches the latest queued payload (edits before sync are not frozen at rev 1).
   const revision =
@@ -2189,9 +2275,12 @@ export function outboxRowMatchesServerSale(row, sale, orderNum) {
     return true;
   }
 
-  // Last-resort recovery for new sales after a lost checkout response: reserved org #
-  // plus same-day POS ticket plus matching total. Require both dates when a POS ticket
-  // is present so yesterday's Cash Sales #1 cannot swallow today's reserved #1.
+  // Last-resort recovery for legacy rows that still carried a reserved org order_num.
+  // When defer_org_order_num is set, row.order_num is only the Cash Sales # label — never
+  // match it against sales.order_num (that would collide with unrelated S#s).
+  if (row.defer_org_order_num || row.checkout_body?.defer_org_order_num) {
+    return false;
+  }
   if (Number(sale.order_num) !== Number(orderNum)) {
     return false;
   }
@@ -2253,7 +2342,12 @@ export function outboxNeedsSupersedeOfServerSale(row, sale) {
  */
 async function findExistingSyncedSaleForOutboxRow(row, orderNum) {
   const queries = new Set();
-  if (orderNum) queries.add(String(orderNum));
+  const deferOrgOrderNum = Boolean(
+    row.defer_org_order_num ?? row.checkout_body?.defer_org_order_num,
+  );
+  // When org S# is deferred, row.order_num is only the Cash Sales # label — do not
+  // search sales by that number (it is not an organization order_num).
+  if (orderNum && !deferOrgOrderNum) queries.add(String(orderNum));
   const { posNum, posDate } = outboxRowPosTicket(row);
   if (posNum != null) queries.add(String(posNum));
   // UUID search only helps new sales (prev-edit uuids are not unique across revisions).
@@ -2667,10 +2761,10 @@ export function isLocalFirstCashCheckout(body) {
   return true;
 }
 
-/** Prepare for offline: catalog + order number pool + Cash Sales seq from server. */
+/** Prepare for offline: catalog + Cash Sales seq peek (no org S# pool). */
 export async function preparePosOfflineReady({ floatSessionId = null } = {}) {
   const catalog = await warmPosOfflineCatalog({ force: false });
-  // Always hit reserve (count may be 0) so Ctrl+R reseeds Cash Sales past cancelled #s.
+  // Peek only — Cash Sales # is local; org order_num is assigned on sync.
   const numbers = await ensurePosOfflineOrderNumbers({
     force: false,
     floatSessionId,

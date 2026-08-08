@@ -213,7 +213,6 @@ import {
   loadOrCreateLocalPosCart,
   loadPreviousOrderEditDraft,
   parseOfflineSaleUuid,
-  peekPosOfflineOrderNumberCount,
   posTicketFieldsFromCart,
   peekNextPosOfflineOrderSlot,
   peekNextPosTicketNumber,
@@ -818,15 +817,14 @@ function resolveFreshWorkspacePosNum(
   return serverNext;
 }
 
-/** Prefer local/server Cash Sales seq (includes cancelled) over a stale session peek. */
+/** Prefer local Cash Sales seq (source of truth) over session browse / server peek. */
 async function resolveNextPosTicketForWorkspace(
   activeCart,
   sessionOrders,
   pendingSale = null,
   { skipServerReseed = false, floatSessionId = null } = {},
 ) {
-  // Ctrl+R / new order: reseed from server so cancelled Cash Sales #s are skipped (274→275).
-  // Post-checkout prepare uses session/local peek only — server reseed runs in background.
+  // Server may raise the floor (cancelled tickets). It must not rewind local issues.
   // Pass floatSessionId so a new till session after Z starts at receipt 1.
   if (skipServerReseed) {
     void ensurePosOfflineOrderNumbers({ force: false, floatSessionId }).catch(() => {});
@@ -838,11 +836,12 @@ async function resolveNextPosTicketForWorkspace(
     }
   }
 
+  const issuedPosMax = await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null);
   const sessionNext = resolveFreshWorkspacePosNum(
     activeCart,
     sessionOrders,
     pendingSale,
-    await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null),
+    issuedPosMax,
     floatSessionId,
   );
   const emptyFresh =
@@ -851,16 +850,28 @@ async function resolveNextPosTicketForWorkspace(
     !activeCart?.offline_client_sale_uuid;
   const alreadyShowing = resolvePosNextBrowseNumber(activeCart);
 
-  // Already on the blank next ticket after F10 / prepare — keep it (do not +1 again),
-  // unless the on-device/server seq has moved past a cancelled ticket (274 → 275).
+  // Local seq includes pending outbox tickets — authoritative while offline sync lags.
   const localNext = await peekLocalPosTicketNext(null, floatSessionId).catch(() => null);
+  const localFloorNext =
+    issuedPosMax != null && Number(issuedPosMax) > 0
+      ? Number(issuedPosMax) + 1
+      : localNext;
+
+  if (
+    emptyFresh &&
+    alreadyShowing != null &&
+    localFloorNext != null &&
+    Number(alreadyShowing) === Number(localFloorNext)
+  ) {
+    return Number(alreadyShowing);
+  }
 
   if (
     emptyFresh &&
     alreadyShowing != null &&
     sessionNext != null &&
     Number(alreadyShowing) === Number(sessionNext) &&
-    (localNext == null || Number(alreadyShowing) >= Number(localNext))
+    (localFloorNext == null || Number(alreadyShowing) >= Number(localFloorNext))
   ) {
     return Number(alreadyShowing);
   }
@@ -871,19 +882,8 @@ async function resolveNextPosTicketForWorkspace(
       ? Number(slot.pos_order_num)
       : null;
 
-  if (
-    emptyFresh &&
-    alreadyShowing != null &&
-    sessionNext != null &&
-    Number(alreadyShowing) === Number(sessionNext) &&
-    slotNum != null &&
-    slotNum > Number(sessionNext) &&
-    (localNext == null || Number(alreadyShowing) >= Number(localNext))
-  ) {
-    return Number(alreadyShowing);
-  }
-
-  const candidates = [sessionNext, localNext, slotNum].filter(
+  // Local / issued max always wins over a lagging server watermark.
+  const candidates = [localFloorNext, sessionNext, localNext, slotNum].filter(
     (n) => n != null && Number(n) > 0,
   );
   if (candidates.length) {
@@ -1106,7 +1106,7 @@ export function PosScreen({ standalone = false }) {
     networkStatus,
     canFlushOutbox,
     pendingSync,
-    orderNumbersLeft,
+    orderNumbersLeft: _orderNumbersLeft,
     nextPosOrderNum: offlineNextPosOrderNum,
     syncing: offlineSyncing,
     lastSyncMessage,
@@ -1657,20 +1657,14 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function resetPosLocalStateAfterZPrint() {
-    // Best-effort sync, then always wipe IndexedDB completely so the next cashier
-    // cannot see this shift's carts / holds / offline sales.
-    if (pendingSync > 0 || failedSyncOrders.length > 0) {
-      try {
-        await Promise.race([
-          syncOfflineOrders(),
-          new Promise((resolve) => window.setTimeout(resolve, 8_000)),
-        ]);
-      } catch {
-        /* wipe proceeds anyway */
-      }
-    }
+    // Do not await outbox sync here. Sync holds the IndexedDB exclusive lock and an
+    // open connection; racing it left wipe blocked, froze the till after Z print, and
+    // kept Cash Sales seq / carts for the next session. Wipe must win — then sign out.
     try {
-      await clearPosSessionLocalCache();
+      await Promise.race([
+        clearPosSessionLocalCache(),
+        new Promise((resolve) => window.setTimeout(resolve, 6_000)),
+      ]);
     } catch (e) {
       console.warn("Could not wipe POS IndexedDB after Z print", e);
       try {
@@ -1706,7 +1700,10 @@ export function PosScreen({ standalone = false }) {
 
   async function handleZReportPrinted() {
     try {
-      await resetPosLocalStateAfterZPrint();
+      await Promise.race([
+        resetPosLocalStateAfterZPrint(),
+        new Promise((resolve) => window.setTimeout(resolve, 8_000)),
+      ]);
     } finally {
       leavePosAfterZ();
     }
@@ -1715,7 +1712,10 @@ export function PosScreen({ standalone = false }) {
   async function handleZReportSignOut() {
     // Sign out without print — still wipe so the next cashier cannot inherit this shift.
     try {
-      await clearPosSessionLocalCache();
+      await Promise.race([
+        clearPosSessionLocalCache(),
+        new Promise((resolve) => window.setTimeout(resolve, 6_000)),
+      ]);
     } catch (e) {
       console.warn("Could not wipe POS IndexedDB on Z dismiss", e);
     }
@@ -4550,8 +4550,8 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(
         successMessage ??
           (offlineMode
-            ? `Added offline (will sync when online). ${orderNumbersLeft} order # left.`
-            : `Added. ${orderNumbersLeft} order # left.`),
+            ? `Added offline (will sync when online).`
+            : `Added.`),
       );
       if (clearEntry) clearClassicEntryFields();
       void refreshOfflineCounts();
@@ -7294,7 +7294,6 @@ export function PosScreen({ standalone = false }) {
           // Checkout returns kra_response for immediate thermal QR print.
           // Soft-failed KRA sales print a normal receipt without waiting for QR.
           kraReceipt: skipKraQr ? null : (sale.kra_response ?? sale.kraResponse ?? null),
-          requireQrWhenFiscalized: skipKraQr ? false : undefined,
           allowKraNetwork: skipKraQr ? false : undefined,
         }),
       )
@@ -7522,14 +7521,22 @@ export function PosScreen({ standalone = false }) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
       const offlineCashTendered = Number(body?.__cash_tendered ?? 0);
-        if (method && method !== "CASH") {
+      const isOfflineCredit = Boolean(body?.is_credit_sale);
+      // Non-credit tenders (Cash / M-Pesa / Equity / KCB / bank / cheque) must cover the bill.
+      // Only credit may complete unpaid or partially paid. Previous-order edits settle via
+      // payment_adjustments (pay_now is 0) — skip this gate for those.
+      if (
+        !isOfflineCredit &&
+        !isPreviousOrderCashEdit &&
+        cashPay + 0.01 < Number(summary?.amountDue ?? 0)
+      ) {
         setPaymentError(
-          "Offline — enter the cash amount manually. M-Pesa prompt and other network payments are disabled until you are back online.",
+          "Enter payment amounts that cover the full total, or select a credit customer for unpaid / partial payment.",
         );
         return null;
       }
-      if (body?.is_credit_sale) {
-        setPaymentError("Credit sales are not available offline.");
+      if (isOfflineCredit && !(Number(body?.customer_num) > 0)) {
+        setPaymentError("Credit sales require a registered customer.");
         return null;
       }
       setBusy(true);
@@ -7559,6 +7566,7 @@ export function PosScreen({ standalone = false }) {
           superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
           order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
           payment_method_code:
+            body?.payment_method_code ??
             checkoutCart.payment_method_code ??
             editSourceSale?.payment_method_code ??
             null,
@@ -7571,9 +7579,19 @@ export function PosScreen({ standalone = false }) {
           cart: local,
           user,
           organization,
-          cashAmount: cashPay > 0 ? cashPay : summarizeLocalPosCart(local, {
-            cashRound: enablePosCashRounding,
-          }).amountDue,
+          cashAmount: isOfflineCredit
+            ? cashPay
+            : cashPay > 0
+              ? cashPay
+              : summarizeLocalPosCart(local, {
+                  cashRound: enablePosCashRounding,
+                }).amountDue,
+          paymentMethodCode: method || body?.payment_method_code || "CASH",
+          paymentSplits: Array.isArray(body?.payment_splits) ? body.payment_splits : null,
+          isCreditSale: isOfflineCredit,
+          paymentReference: body?.payment_reference ?? null,
+          paymentDate: body?.payment_date ?? null,
+          workflowStatus: body?.status ?? null,
           floatSessionId,
           cashRound: enablePosCashRounding,
         });
@@ -7612,7 +7630,7 @@ export function PosScreen({ standalone = false }) {
     // immediate background sync. When KRA is on, skip this — the eTIMS QR only exists
     // after the fiscal device responds, so checkout stays server-first (wait → print with QR).
     // Includes previous-order cash edits (same order #; sync updates the server record).
-    // Falls back to server checkout when no reserved order numbers are left (new sales only).
+    // Org S# is not reserved locally — Cash Sales # is enough; server assigns order_num on sync.
     const kraFiscalizeOnCheckout = shouldSubmitKraOnCheckout(
       capabilities?.module_settings,
       capabilities,
@@ -7627,56 +7645,39 @@ export function PosScreen({ standalone = false }) {
       isLocalFirstCashCheckout(body) &&
       (!activeCart.held_order_num || isPreviousOrderCashEdit)
     ) {
-      let reservedLeft = isPreviousOrderCashEdit
-        ? 1
-        : await peekPosOfflineOrderNumberCount();
-      // Keep sell→print→sync local-first when online: refill the org # pool before
-      // falling back to TemporaryCart checkout (which breaks the offline-identical path).
-      if (reservedLeft <= 0 && !isPreviousOrderCashEdit) {
-        try {
-          await ensurePosOfflineOrderNumbers({
-            force: false,
-            floatSessionId: floatSessionId ?? null,
-          });
-          reservedLeft = await peekPosOfflineOrderNumberCount();
-        } catch {
-          /* fall through if reserve fails */
-        }
-      }
-      if (reservedLeft > 0) {
-        const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
-        const cashTendered = Number(body?.__cash_tendered ?? 0);
-        setBusy(true);
-        setPaymentError(null);
-        setReceiptPrintStatus(null);
-        try {
-          const checkoutCart = cartRef.current ?? activeCart;
-          const local = {
-            id: isPreviousOrderCashEdit && isServerPosCartId(checkoutCart.id)
-              ? checkoutCart.id
-              : "active",
-            lines: (checkoutCart.lines ?? []).map((l) => ({
-              ...l,
-              client_line_id: l.client_line_id ?? l.id,
-            })),
-            branch_id: checkoutCart.branch_id ?? user?.branch_id,
-            till_id: tillId ?? checkoutCart.till_id,
-            float_session_id: floatSessionId ?? checkoutCart.float_session_id,
-            customer_num: body?.customer_num ?? checkoutCart.customer_num,
-            customer_name_override:
-              body?.customer_name_override ?? checkoutCart.customer_name_override,
-            ...(String(body?.customer_kra_pin ?? "").trim()
-              ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
-              : {}),
-            held_order_num: checkoutCart.held_order_num ?? null,
-            superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
-            offline_edit_snapshot:
-              checkoutCart.offline_edit_snapshot ?? editSourceSale ?? null,
-            order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
-            payment_method_code:
-              checkoutCart.payment_method_code ??
-              editSourceSale?.payment_method_code ??
-              null,
+      const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
+      const cashTendered = Number(body?.__cash_tendered ?? 0);
+      setBusy(true);
+      setPaymentError(null);
+      setReceiptPrintStatus(null);
+      try {
+        const checkoutCart = cartRef.current ?? activeCart;
+        const local = {
+          id: isPreviousOrderCashEdit && isServerPosCartId(checkoutCart.id)
+            ? checkoutCart.id
+            : "active",
+          lines: (checkoutCart.lines ?? []).map((l) => ({
+            ...l,
+            client_line_id: l.client_line_id ?? l.id,
+          })),
+          branch_id: checkoutCart.branch_id ?? user?.branch_id,
+          till_id: tillId ?? checkoutCart.till_id,
+          float_session_id: floatSessionId ?? checkoutCart.float_session_id,
+          customer_num: body?.customer_num ?? checkoutCart.customer_num,
+          customer_name_override:
+            body?.customer_name_override ?? checkoutCart.customer_name_override,
+          ...(String(body?.customer_kra_pin ?? "").trim()
+            ? { customer_kra_pin: String(body.customer_kra_pin).trim() }
+            : {}),
+          held_order_num: checkoutCart.held_order_num ?? null,
+          superseded_sale_id: checkoutCart.superseded_sale_id ?? null,
+          offline_edit_snapshot:
+            checkoutCart.offline_edit_snapshot ?? editSourceSale ?? null,
+          order_discount: Number(checkoutCart.order_discount ?? 0) || 0,
+          payment_method_code:
+            checkoutCart.payment_method_code ??
+            editSourceSale?.payment_method_code ??
+            null,
             ...(Array.isArray(checkoutCart.payment_adjustments) && checkoutCart.payment_adjustments.length
               ? { payment_adjustments: checkoutCart.payment_adjustments }
               : {}),
@@ -7724,7 +7725,6 @@ export function PosScreen({ standalone = false }) {
         } finally {
           setBusy(false);
         }
-      }
     }
 
     setBusy(true);
@@ -9237,7 +9237,6 @@ export function PosScreen({ standalone = false }) {
           documentType:
             resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt",
           kraReceipt: skipKraQr ? null : (sale.kra_response ?? sale.kraResponse ?? null),
-          requireQrWhenFiscalized: skipKraQr ? false : undefined,
           allowKraNetwork: skipKraQr ? false : undefined,
         }),
       );
@@ -11212,9 +11211,8 @@ export function PosScreen({ standalone = false }) {
                 {offlineMode ? (
                   <p>
                     {networkStatus === "slow"
-                      ? "Slow connection — selling from local cache (cash only)."
-                      : "Connection dropped — selling from local cache (cash only)."}{" "}
-                    Order # left: {orderNumbersLeft}.
+                      ? "Slow connection — selling from local cache. Cash Sales # continues on this till."
+                      : "Connection dropped — selling from local cache. Cash Sales # continues on this till."}
                   </p>
                 ) : (
                   <p>

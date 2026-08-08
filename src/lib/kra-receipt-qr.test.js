@@ -170,6 +170,35 @@ describe("kra receipt QR", () => {
     expect(result.kraData).toBeNull();
   });
 
+  it("prints without QR immediately when KRA soft-failed", async () => {
+    const result = await ensureKraQrForPrint(
+      {
+        id: 7,
+        status: "completed",
+        order_total: 50,
+        kra_response: {
+          status: "failed",
+          error_message: "Device timeout",
+          invoice_number: null,
+        },
+      },
+      {
+        moduleSettings: {
+          finance: {
+            enable_kra_integration: true,
+            enable_kra_device: true,
+            default_submit_kra: true,
+          },
+        },
+        allowNetwork: true,
+      },
+    );
+
+    expect(apiRequest).not.toHaveBeenCalled();
+    expect(result.kraQrDataUrl).toBeNull();
+    expect(result.kraData).toBeNull();
+  });
+
   it("looks up kra_response from the sale when missing inline", async () => {
     vi.mocked(apiRequest).mockResolvedValueOnce({
       id: 4,
