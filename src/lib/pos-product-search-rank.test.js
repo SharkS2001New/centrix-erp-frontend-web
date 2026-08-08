@@ -35,6 +35,13 @@ describe("pos-product-search-rank", () => {
     }
   });
 
+  it("finds Post Man when the cashier types postman", () => {
+    const product = { product_code: "PM1", product_name: "Post Man Envelope" };
+    expect(productMatchesPosSearch(product, "postman")).toBe(true);
+    expect(productMatchesPosSearch(product, "post man")).toBe(true);
+    expect(productMatchesPosSearch(product, "Post-Man")).toBe(true);
+  });
+
   it("matches Kiss Kid with token and spacing variants", () => {
     const product = { product_code: "K1", product_name: "Kiss Kid Biscuit" };
     for (const q of [

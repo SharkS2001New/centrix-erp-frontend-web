@@ -323,6 +323,13 @@ export function posSearchCatalogHasCode(productCode) {
   return Boolean(code && catalogByCode?.has(code));
 }
 
+/** Product row from the warmed in-memory catalog (no network). */
+export function getPosSearchProduct(productCode) {
+  const code = String(productCode ?? "");
+  if (!code || !catalogByCode) return null;
+  return catalogByCode.get(code) ?? null;
+}
+
 /**
  * Resolve candidate entry indexes via exact / prefix postings.
  * @param {string} query
