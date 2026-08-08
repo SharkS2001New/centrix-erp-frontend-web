@@ -142,7 +142,7 @@ describe("ensurePosOfflineOwnerIsolation", () => {
     expect(stores.local_cart.size).toBe(1);
   });
 
-  it("wipes completely when a different cashier logs in", async () => {
+  it("does not wipe when a different cashier logs in", async () => {
     const { ensurePosOfflineOwnerIsolation } = await import("@/lib/pos-session-local-cache");
 
     stores.meta.set("pos_device_owner", {
@@ -160,10 +160,10 @@ describe("ensurePosOfflineOwnerIsolation", () => {
       userId: 42,
     });
 
-    expect(result.wiped).toBe(true);
-    expect(wipeCalls).toBe(1);
-    expect(stores.local_cart.size).toBe(0);
-    expect(stores.outbox.size).toBe(0);
+    expect(result.wiped).toBe(false);
+    expect(wipeCalls).toBe(0);
+    expect(stores.local_cart.size).toBe(1);
+    expect(stores.outbox.size).toBe(1);
     expect(stores.meta.get("pos_device_owner")?.value).toEqual({
       organization_id: 1,
       user_id: 42,

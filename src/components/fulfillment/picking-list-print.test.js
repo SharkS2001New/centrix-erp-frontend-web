@@ -44,7 +44,8 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toContain("10 Bag, 30 kg");
     expect(html).toContain("(12 kg, 10 kg, 8 kg)");
     expect(html).toContain("2,250 per bag, 48 per kg");
-    expect(html).toContain('<div class="main">KAMANDE</div>\n        </td>');
+    expect(html).toContain('<div class="main">KAMANDE</div>');
+    expect(html).toContain('class="pick-line"');
   });
 
   it("formats wholesale and retail prices from structured line fields", () => {
@@ -120,7 +121,8 @@ describe("buildPickingListHtml sales layout", () => {
     });
 
     expect(html).toMatch(/@page\s*\{\s*size:\s*A4/);
-    expect(html).toMatch(/tbody tr\s*\{[^}]*page-break-inside:\s*avoid/);
+    expect(html).toContain('class="pick-line"');
+    expect(html).toMatch(/table\.pick-line\s*\{[^}]*page-break-inside:\s*avoid/);
     expect(html).toContain('class="has-doc-print-edge-footer"');
   });
 

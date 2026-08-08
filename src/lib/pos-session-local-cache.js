@@ -1,9 +1,9 @@
 /**
- * Reset External POS IndexedDB after Z / till session end, and isolate by cashier.
+ * Reset External POS IndexedDB after Z print only.
+ * Incomplete wipes are retried on the next POS boot via wipe_pending.
  */
 
 import {
-  idbGetMeta,
   idbSetMeta,
   idbVerifyOfflineStoresEmpty,
   idbWipeDatabaseCompletely,
@@ -21,12 +21,6 @@ function ownerFingerprint(organizationId, userId) {
   if (!Number.isFinite(organization_id) || organization_id <= 0) return null;
   if (!Number.isFinite(user_id) || user_id <= 0) return null;
   return { organization_id, user_id };
-}
-
-function ownersMatch(a, b) {
-  if (!a || !b) return false;
-  return Number(a.organization_id) === Number(b.organization_id)
-    && Number(a.user_id) === Number(b.user_id);
 }
 
 function markWipePending() {
@@ -55,7 +49,7 @@ export function isPosOfflineWipePending() {
 
 /**
  * Wipe External POS IndexedDB completely (carts, holds, catalog, outbox, meta).
- * Used after Z print and when a different cashier takes over the device.
+ * Call only after a successful Z report print (or to finish a prior Z wipe).
  *
  * Truncate is verified empty (not just deleteDatabase success). If verification
  * fails, a localStorage flag forces another wipe on the next POS boot.
@@ -115,9 +109,8 @@ export async function settlePendingPosOfflineWipe() {
 }
 
 /**
- * If another cashier/org previously owned this browser's POS IndexedDB, wipe it
- * before the new cashier can see carts, holds, or offline sales.
- * Also completes any wipe that failed to verify after a previous Z.
+ * Record who owns this browser's POS IndexedDB. Does not wipe on cashier change —
+ * local data is cleared only when Z is printed (or when finishing a pending Z wipe).
  *
  * @param {{ organizationId?: number|string|null, userId?: number|string|null }} owner
  * @returns {Promise<{ wiped: boolean, owner: { organization_id: number, user_id: number } | null }>}
@@ -130,26 +123,13 @@ export async function ensurePosOfflineOwnerIsolation(owner = {}) {
 
   let wiped = false;
 
-  // Pending Z wipe must run even when the same cashier returns.
+  // Finish an incomplete Z wipe — never wipe solely because the cashier changed.
   if (isPosOfflineWipePending()) {
     await clearPosSessionLocalCache();
     wiped = true;
   }
 
   return withPosOfflineExclusiveLock(async () => {
-    let previous = null;
-    try {
-      previous = await idbGetMeta(POS_OFFLINE_OWNER_META_KEY);
-    } catch {
-      previous = null;
-    }
-
-    const mustWipe = previous != null && !ownersMatch(previous, next);
-    if (mustWipe) {
-      await clearPosSessionLocalCache();
-      wiped = true;
-    }
-
     await idbSetMeta(POS_OFFLINE_OWNER_META_KEY, next);
     return { wiped, owner: next };
   }, { timeoutMs: 12_000 });

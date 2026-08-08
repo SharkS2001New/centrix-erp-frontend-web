@@ -8,6 +8,8 @@ import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
+  DOCUMENT_PRINT_EDGE_BODY_SIDES,
+  DOCUMENT_PRINT_EDGE_BODY_TOP,
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
@@ -283,6 +285,27 @@ function normalizePickingLines(lines, uomByProductCode) {
   });
 }
 
+function salesPickingColgroup() {
+  return `<colgroup>
+    <col class="col-no" />
+    <col class="col-product" />
+    <col class="col-qty" />
+    <col class="col-price" />
+    <col class="col-total" />
+  </colgroup>`;
+}
+
+function distributionPickingColgroup(includeShelfLocation = true) {
+  return `<colgroup>
+    <col class="col-no" />
+    ${includeShelfLocation ? '<col class="col-shelf" />' : ""}
+    <col class="col-product" />
+    <col class="col-qty" />
+    <col class="col-picked" />
+    <col class="col-shortage" />
+  </colgroup>`;
+}
+
 function buildDistributionPickingLineRows(lines, includeShelfLocation = true) {
   return lines
     .map((line) => {
@@ -292,17 +315,24 @@ function buildDistributionPickingLineRows(lines, includeShelfLocation = true) {
         ? `<td class="col-shelf">${escapeHtml(line.shelf_location)}</td>`
         : "";
 
+      // One table per line so Chromium moves the whole row to the next page instead of
+      // clipping it at the footer (tr { break-inside: avoid } is unreliable on table-row).
       return `
-      <tr class="${shortageClass}">
-        <td class="col-no">${line.line_no}</td>
-        ${shelfCell}
-        <td class="col-product">
-          <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
-        </td>
-        <td class="col-qty">${escapeHtml(line.quantity_label)}</td>
-        <td class="col-picked">${escapeHtml(line.picked_label)}</td>
-        <td class="col-shortage">${line.shortage_qty > 0.0001 ? escapeHtml(line.shortage_label) : "—"}</td>
-      </tr>`;
+      <table class="pick-line ${shortageClass}">
+        ${distributionPickingColgroup(includeShelfLocation)}
+        <tbody>
+          <tr>
+            <td class="col-no">${line.line_no}</td>
+            ${shelfCell}
+            <td class="col-product">
+              <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
+            </td>
+            <td class="col-qty">${escapeHtml(line.quantity_label)}</td>
+            <td class="col-picked">${escapeHtml(line.picked_label)}</td>
+            <td class="col-shortage">${line.shortage_qty > 0.0001 ? escapeHtml(line.shortage_label) : "—"}</td>
+          </tr>
+        </tbody>
+      </table>`;
     })
     .join("");
 }
@@ -318,18 +348,23 @@ function buildSalesPickingLineRows(lines) {
         : `Ksh ${formatKes(line.unit_price ?? 0)}`;
 
       return `
-      <tr>
-        <td class="col-no">${line.line_no}</td>
-        <td class="col-product">
-          <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
-        </td>
-        <td class="col-qty">
-          <div class="main">${escapeHtml(line.quantity_label)}</div>
-          ${qtyGhost}
-        </td>
-        <td class="col-price">${priceMain}</td>
-        <td class="col-total">${formatKes(line.line_total)}</td>
-      </tr>`;
+      <table class="pick-line">
+        ${salesPickingColgroup()}
+        <tbody>
+          <tr>
+            <td class="col-no">${line.line_no}</td>
+            <td class="col-product">
+              <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
+            </td>
+            <td class="col-qty">
+              <div class="main">${escapeHtml(line.quantity_label)}</div>
+              ${qtyGhost}
+            </td>
+            <td class="col-price">${priceMain}</td>
+            <td class="col-total">${formatKes(line.line_total)}</td>
+          </tr>
+        </tbody>
+      </table>`;
     })
     .join("");
 }
@@ -341,12 +376,20 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
   const sharedPrintLayout = `
     @page { size: A4; margin: 0; }
     html { height: auto; }
-    .sheet { position: static; z-index: 1; }
-    table { page-break-inside: auto; }
-    thead { display: table-header-group; }
-    tbody tr {
-      page-break-inside: avoid;
+    /* Keep sheet static — position:relative ancestors break page-break-inside:avoid in Chromium. */
+    .page, .sheet { position: static; z-index: 1; overflow: visible; }
+    .pick-lines { width: 100%; }
+    table.pick-head,
+    table.pick-line {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      page-break-inside: auto;
+    }
+    table.pick-line {
       break-inside: avoid;
+      page-break-inside: avoid;
+      -webkit-column-break-inside: avoid;
     }
     .summary-box,
     .signatures,
@@ -370,9 +413,10 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .title-block { text-align: center; margin-bottom: ${px(16)}; }
     .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
     .meta-line { font-size: ${px(12)}; margin: ${px(2)} 0; color: #334155; }
-    table { width: 100%; border-collapse: collapse; font-size: ${px(12)}; }
-    thead th { border-bottom: 2px solid #0f172a; padding: ${px(8)} ${px(6)}; text-align: left; vertical-align: bottom; }
-    tbody td { border-bottom: 1px solid #cbd5e1; padding: ${px(8)} ${px(6)}; vertical-align: top; }
+    table.pick-head,
+    table.pick-line { font-size: ${px(12)}; }
+    table.pick-head thead th { border-bottom: 2px solid #0f172a; padding: ${px(8)} ${px(6)}; text-align: left; vertical-align: bottom; }
+    table.pick-line td { border-bottom: 1px solid #cbd5e1; padding: ${px(8)} ${px(6)}; vertical-align: top; }
     .col-no { width: 5%; text-align: center; }
     .col-product { width: 28%; }
     .col-qty { width: 24%; }
@@ -386,13 +430,17 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .summary-row { display: flex; justify-content: space-between; font-size: ${px(13)}; margin: ${px(4)} 0; font-weight: 600; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
+      body.has-doc-print-edge-footer {
+        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} 34mm ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
+      }
       body { font-size: ${px(12, true)}; }
       .page { padding: ${px(8, true)} ${px(4, true)} 0; }
-      thead th { font-size: ${px(11, true)}; }
-      tbody td { font-size: ${px(11, true)}; }
-      tbody tr {
-        page-break-inside: avoid !important;
+      table.pick-head thead th { font-size: ${px(11, true)}; }
+      table.pick-line td { font-size: ${px(11, true)}; }
+      table.pick-line {
         break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        -webkit-column-break-inside: avoid !important;
       }
     }
   `;
@@ -411,15 +459,16 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .title-block { text-align: center; margin-bottom: ${px(16)}; }
     .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
     .meta-line { font-size: ${px(12)}; margin: ${px(2)} 0; color: #334155; }
-    table { width: 100%; border-collapse: collapse; font-size: ${px(12)}; }
-    thead th { border-bottom: 2px solid #0f172a; padding: ${px(8)} ${px(6)}; text-align: left; }
-    tbody td { border-bottom: 1px solid #cbd5e1; padding: ${px(8)} ${px(6)}; vertical-align: top; }
+    table.pick-head,
+    table.pick-line { font-size: ${px(12)}; }
+    table.pick-head thead th { border-bottom: 2px solid #0f172a; padding: ${px(8)} ${px(6)}; text-align: left; }
+    table.pick-line td { border-bottom: 1px solid #cbd5e1; padding: ${px(8)} ${px(6)}; vertical-align: top; }
     .col-no { width: 5%; text-align: center; }
     ${includeShelfLocation ? ".col-shelf { width: 12%; }" : ""}
     .col-product { width: ${includeShelfLocation ? "34%" : "46%"}; }
     .col-qty, .col-picked, .col-shortage { width: 13%; text-align: right; }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; }
-    tr.shortage td { background: #fff7ed; }
+    table.pick-line.shortage td { background: #fff7ed; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
@@ -427,13 +476,17 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .summary-row { display: flex; justify-content: space-between; font-size: ${px(12)}; margin: ${px(4)} 0; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
+      body.has-doc-print-edge-footer {
+        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} 34mm ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
+      }
       body { font-size: ${px(12, true)}; }
       .page { padding: ${px(8, true)} ${px(4, true)} 0; }
-      thead th { font-size: ${px(11, true)}; }
-      tbody td { font-size: ${px(11, true)}; }
-      tbody tr {
-        page-break-inside: avoid !important;
+      table.pick-head thead th { font-size: ${px(11, true)}; }
+      table.pick-line td { font-size: ${px(11, true)}; }
+      table.pick-line {
         break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        -webkit-column-break-inside: avoid !important;
       }
     }
   `;
@@ -470,13 +523,15 @@ export function buildPickingListHtml({
     : `Picking List #${listNumber}`;
   const showRouteMetaLine = !meta.combined;
 
-  let columnCount;
   let tableHead;
   let rowHtml;
   let summaryHtml;
+  let headColgroup;
+  let emptyColspan;
 
   if (salesLayout) {
-    columnCount = 5;
+    emptyColspan = 5;
+    headColgroup = salesPickingColgroup();
     tableHead = `
           <tr>
             <th class="col-no">No.</th>
@@ -485,9 +540,7 @@ export function buildPickingListHtml({
             <th class="col-price">Price</th>
             <th class="col-total">Line amount</th>
           </tr>`;
-    rowHtml =
-      buildSalesPickingLineRows(lines) ||
-      `<tr><td colspan="${columnCount}" class="empty">No products to pick</td></tr>`;
+    rowHtml = buildSalesPickingLineRows(lines);
     const orderTotal =
       pickingList?.order_total_value != null
         ? Number(pickingList.order_total_value)
@@ -500,7 +553,8 @@ export function buildPickingListHtml({
     const totalRequired = lines.reduce((sum, line) => sum + Number(line.required_qty || 0), 0);
     const totalPicked = lines.reduce((sum, line) => sum + Number(line.picked_qty || 0), 0);
     const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
-    columnCount = includeShelfLocation ? 6 : 5;
+    emptyColspan = includeShelfLocation ? 6 : 5;
+    headColgroup = distributionPickingColgroup(includeShelfLocation);
     tableHead = `
           <tr>
             <th class="col-no">No.</th>
@@ -510,9 +564,7 @@ export function buildPickingListHtml({
             <th class="col-picked">Picked</th>
             <th class="col-shortage">Shortage</th>
           </tr>`;
-    rowHtml =
-      buildDistributionPickingLineRows(lines, includeShelfLocation) ||
-      `<tr><td colspan="${columnCount}" class="empty">No products to pick</td></tr>`;
+    rowHtml = buildDistributionPickingLineRows(lines, includeShelfLocation);
     summaryHtml = `
       <div class="summary-box">
         <div class="summary-row"><span>Total requested</span><strong>${formatQty(totalRequired)}</strong></div>
@@ -520,6 +572,10 @@ export function buildPickingListHtml({
         <div class="summary-row"><span>Total shortage</span><strong>${formatQty(totalShortage)}</strong></div>
       </div>`;
   }
+
+  const linesBlock = rowHtml
+    ? `<div class="pick-lines">${rowHtml}</div>`
+    : `<table class="pick-line"><tbody><tr><td colspan="${emptyColspan}" class="empty">No products to pick</td></tr></tbody></table>`;
 
   const footerText = documentFooterText ?? branding.documentFooterText ?? "";
   const footerHtml = footerText
@@ -547,11 +603,12 @@ export function buildPickingListHtml({
         ${meta.vehicle ? `<p class="meta-line">Vehicle: ${escapeHtml(meta.vehicle)}</p>` : ""}
         ${meta.driver ? `<p class="meta-line">Driver: ${escapeHtml(meta.driver)}</p>` : ""}
       </div>
-      <table>
+      <table class="pick-head">
+        ${headColgroup}
         <thead>${tableHead}
         </thead>
-        <tbody>${rowHtml}</tbody>
       </table>
+      ${linesBlock}
       ${summaryHtml}
       <div class="signatures">
         <div>

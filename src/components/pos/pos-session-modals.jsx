@@ -512,7 +512,7 @@ export function ZReportModal({
       title="Z report"
       subtitle={
           signOutAfterFinish
-          ? "Print Z to clear this till's local offline data, then sign out. Sync pending sales first if any are waiting."
+          ? "Print Z to clear this till's local offline data, then sign out. Closing without printing keeps local data. Sync pending sales first if any are waiting."
           : "End-of-day report for the closed session"
       }
       footer={

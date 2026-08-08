@@ -432,6 +432,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         disabled={disabled}
         placeholder={searchPlaceholder}
         onChange={(e) => {
+          if (disabled) return;
           onQueryChange(e.target.value);
           setOpen(true);
         }}

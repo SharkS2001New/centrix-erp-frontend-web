@@ -23,7 +23,7 @@ const inputCls = INPUT_CLASS;
  * (links customer_num + KRA PIN onto the sale for receipt / eTIMS).
  *
  * When `enableHeldAmountPaid` is on (hold mode), shows Amount Paid + payment method
- * (default Cash; shortcuts C/M/E/K). Enter: name → amount → hold.
+ * (default Cash; shortcuts C/M/E/K). Enter on name (or amount) holds the order.
  */
 export function PosSaveOrderDialog({
   open,
@@ -78,18 +78,24 @@ export function PosSaveOrderDialog({
     setPaymentMethodInput("CASH");
 
     // Hold: focus the name field so the cashier can type immediately.
-    // Save / existing customer: keep primary action focused for Enter.
-    const focusTimer = window.setTimeout(() => {
+    // Retry past any Scan-focus race from the parent screen.
+    const focusName = () => {
       if (!startExisting && isHold) {
-        walkInNameRef.current?.focus();
+        walkInNameRef.current?.focus({ preventScroll: true });
         walkInNameRef.current?.select?.();
         return;
       }
-      primaryActionRef.current?.focus();
-    }, 0);
+      primaryActionRef.current?.focus({ preventScroll: true });
+    };
+    focusName();
+    const focusTimer = window.setTimeout(focusName, 0);
+    const focusTimer2 = window.setTimeout(focusName, 50);
 
     if (!prefillNum) {
-      return () => window.clearTimeout(focusTimer);
+      return () => {
+        window.clearTimeout(focusTimer);
+        window.clearTimeout(focusTimer2);
+      };
     }
 
     let cancelled = false;
@@ -113,6 +119,7 @@ export function PosSaveOrderDialog({
     return () => {
       cancelled = true;
       window.clearTimeout(focusTimer);
+      window.clearTimeout(focusTimer2);
     };
   }, [open, prefillWalkInName, prefillCustomerNum, isHold]);
 
@@ -242,17 +249,14 @@ export function PosSaveOrderDialog({
         if (target.tagName === "TEXTAREA") return;
       }
 
-      // Hold + amount paid: Enter on name → amount; Enter on amount → save.
+      // Hold walk-in: Enter on name holds immediately (amount paid defaults to 0 if blank).
+      // Tab to Amount paid first when a deposit should be recorded before hold.
       if (capturePaid) {
         const el = target instanceof HTMLElement ? target : null;
         if (el === walkInNameRef.current || el?.dataset?.holdField === "name") {
           e.preventDefault();
           e.stopPropagation();
-          if (!walkInName.trim() && customerMode === "walkin") {
-            setLocalError("Enter the walk-in customer's name.");
-            return;
-          }
-          focusAmountPaid();
+          handleSaveRef.current("hold");
           return;
         }
         if (el === amountPaidRef.current || el?.dataset?.holdField === "amount") {
@@ -264,7 +268,7 @@ export function PosSaveOrderDialog({
         if (el === paymentMethodRef.current || el?.dataset?.holdField === "method") {
           e.preventDefault();
           e.stopPropagation();
-          focusAmountPaid();
+          handleSaveRef.current("hold");
           return;
         }
       }
@@ -275,7 +279,7 @@ export function PosSaveOrderDialog({
     }
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [open, saving, onClose, isHold, capturePaid, walkInName, customerMode]);
+  }, [open, saving, onClose, isHold, capturePaid]);
 
   if (!open || !mounted) return null;
 
@@ -435,7 +439,7 @@ export function PosSaveOrderDialog({
                   disabled={saving}
                 />
                 <span className="theme-text-muted mt-1 block text-[10px] leading-relaxed">
-                  Enter on name moves here · Enter here holds the order
+                  Optional · Enter on name holds now (0 if blank) · Tab here for a deposit
                 </span>
               </label>
               <label className="block">

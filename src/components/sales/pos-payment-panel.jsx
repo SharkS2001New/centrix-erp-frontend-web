@@ -1320,8 +1320,14 @@ export function PosPaymentPanel({
 
   useEffect(() => {
     if (!open || step !== "payment") return;
-    const t = window.setTimeout(() => focusPaymentField(cashAmountRef, "CASH"), 0);
-    return () => window.clearTimeout(t);
+    const focusCash = () => focusPaymentField(cashAmountRef, "CASH");
+    focusCash();
+    const t0 = window.setTimeout(focusCash, 0);
+    const t1 = window.setTimeout(focusCash, 50);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
   }, [open, step]);
 
   useEffect(() => {

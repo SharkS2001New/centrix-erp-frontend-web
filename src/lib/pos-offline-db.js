@@ -12,7 +12,7 @@ const DB_VERSION = 3;
 /** @type {Promise<IDBDatabase> | null} */
 let dbPromise = null;
 
-/** True while Z / cashier-switch wipe is in progress — blocks reopen races with outbox sync. */
+/** True while Z-print wipe is in progress — blocks reopen races with outbox sync. */
 let wipingOfflineDb = false;
 
 /** Meta key: which cashier/org last owned this device IndexedDB. */
@@ -498,23 +498,44 @@ export async function idbListEditableOutbox() {
 }
 
 /**
+ * Synced outbox rows kept on-device so Cash Sales # browse does not “lose” a sale
+ * between upload and the next server list refresh (and survives brief API gaps).
+ */
+export async function idbListSyncedOutboxForBrowse({
+  maxAgeMs = 36 * 60 * 60 * 1000,
+  limit = 30,
+} = {}) {
+  const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
+  const cutoff = Date.now() - Math.max(0, Number(maxAgeMs) || 0);
+  return rows
+    .filter((r) => r?.sync_status === "synced" && Number(r.server_sale_id ?? 0) > 0)
+    .filter((r) => {
+      const at = Number(r.synced_at_ms ?? r.updated_at_ms ?? r.created_at_ms ?? 0);
+      return !cutoff || at >= cutoff;
+    })
+    .sort(
+      (a, b) =>
+        Number(b.synced_at_ms ?? b.updated_at_ms ?? 0) -
+        Number(a.synced_at_ms ?? a.updated_at_ms ?? 0),
+    )
+    .slice(0, Math.max(1, Number(limit) || 30));
+}
+
+/**
  * After a previous-order edit syncs, the outbox row is marked synced (not pending).
  * Resolve the live server sale id so Cash Sales # reopen does not miss the revised receipt.
  */
 export async function idbFindSyncedServerSaleIdByPosTicket(ticketNum) {
   const ticket = Number(ticketNum);
   if (!Number.isFinite(ticket) || ticket <= 0) return null;
-  const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
-  const matches = rows
-    .filter((r) => r?.sync_status === "synced" && Number(r.server_sale_id ?? 0) > 0)
-    .filter((r) => {
-      const pos =
-        r.sale_payload?.pos_order_num ??
-        r.checkout_body?.pos_order_num ??
-        null;
-      return pos != null && Number(pos) === ticket;
-    })
-    .sort((a, b) => Number(b.synced_at_ms ?? b.updated_at_ms ?? 0) - Number(a.synced_at_ms ?? a.updated_at_ms ?? 0));
+  const rows = await idbListSyncedOutboxForBrowse({ maxAgeMs: 7 * 24 * 60 * 60 * 1000, limit: 100 });
+  const matches = rows.filter((r) => {
+    const pos =
+      r.sale_payload?.pos_order_num ??
+      r.checkout_body?.pos_order_num ??
+      null;
+    return pos != null && Number(pos) === ticket;
+  });
   return matches[0]?.server_sale_id ? Number(matches[0].server_sale_id) : null;
 }
 

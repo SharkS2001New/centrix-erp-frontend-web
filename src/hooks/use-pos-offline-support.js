@@ -487,7 +487,7 @@ export function usePosOfflineSupport({
     void refreshCounts();
   }, [enabled, prepare, refreshCounts]);
 
-  // Different cashier/org on the same browser must never inherit prior offline sales.
+  // Finish an incomplete Z wipe if needed; do not wipe solely on cashier change.
   useEffect(() => {
     if (!enabled || !userId || !organizationId) return undefined;
     let cancelled = false;

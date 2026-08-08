@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   NETWORK_DEGRADED_PING_INTERVAL_MS,
-  NETWORK_OUTAGE_REPORT_MIN_MS,
   NETWORK_PING_INTERVAL_MS,
   NETWORK_SLOW_THRESHOLD_MS,
   pingApiHealth,
@@ -52,19 +51,7 @@ export function useNetworkStatus({ enabled = true, reportOutages = true } = {}) 
       const issue = resolveNetworkStatus(browserOk, result.ok, result.latencyMs);
 
       if (issue === "online") {
-        if (offlineSinceRef.current && reportOutages) {
-          const durationMs = Date.now() - offlineSinceRef.current;
-          if (durationMs >= NETWORK_OUTAGE_REPORT_MIN_MS) {
-            void submitSystemIssueReport({
-              kind: "error",
-              message: `Connection lost for ${Math.round(durationMs / 1000)}s (browser or API unreachable)`,
-              api_path: "/health",
-              http_method: "GET",
-              duration_ms: durationMs,
-              context: { connectivity: "outage", recovered: true },
-            });
-          }
-        }
+        // Client-side outages are not platform errors — do not page admins.
         offlineSinceRef.current = null;
         slowReportedRef.current = false;
         setConnectionIssue(null);
@@ -88,11 +75,16 @@ export function useNetworkStatus({ enabled = true, reportOutages = true } = {}) 
         && result.latencyMs >= NETWORK_SLOW_THRESHOLD_MS
         && !slowReportedRef.current
       ) {
-        slowReportedRef.current = true;
         const split = classifyLatency({
           clientRttMs: result.latencyMs,
           serverMs: result.serverMs,
         });
+        // User/network RTT is not an API defect — skip admin issue noise.
+        if (split.likely === "network") {
+          slowReportedRef.current = true;
+          return;
+        }
+        slowReportedRef.current = true;
         void submitSystemIssueReport({
           kind: "slow",
           message: formatSlowLatencyMessage({

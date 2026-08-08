@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { apiRequest } from "@/lib/api";
 import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
@@ -105,10 +105,26 @@ export function PosHeldOrdersOverlay({
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [uomById, setUomById] = useState(() => new Map());
+  const searchInputRef = useRef(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const focusSearch = () => {
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select?.();
+    };
+    focusSearch();
+    const t0 = window.setTimeout(focusSearch, 0);
+    const t1 = window.setTimeout(focusSearch, 50);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [open]);
 
   const loadUoms = useCallback(async () => {
     try {
@@ -462,6 +478,7 @@ export function PosHeldOrdersOverlay({
 
         <div className="shrink-0 theme-table-head-row border-b border-[var(--theme-border)] px-4 py-2.5">
           <input
+            ref={searchInputRef}
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}

@@ -92,6 +92,7 @@ function isIgnoredIssuePath(path) {
     normalized.includes("/auth/")
     || normalized.includes("/system-issue-reports")
     || normalized.includes("/background-tasks/")
+    || normalized.includes("/notifications/unread-count")
   );
 }
 
@@ -100,6 +101,7 @@ function isClientNetworkIssueMessage(message, context = {}) {
   const parts = [
     String(message ?? ""),
     String(context?.user_message ?? ""),
+    String(context?.connectivity ?? ""),
   ];
   return parts.some((part) => {
     const normalized = part.trim().toLowerCase();
@@ -108,10 +110,13 @@ function isClientNetworkIssueMessage(message, context = {}) {
       normalized.includes("request timed out")
       || normalized.includes("check your connection")
       || normalized.includes("connection timed out")
+      || normalized.includes("connection lost")
       || normalized.includes("network request failed")
       || normalized.includes("failed to fetch")
       || normalized.includes("networkerror")
       || normalized.includes("load failed")
+      || normalized === "outage"
+      || normalized === "slow_ping"
     );
   });
 }
@@ -171,6 +176,10 @@ export async function logSlowRequestIssue({
   if (!shouldLogSlowRequest(path, durationMs)) return null;
 
   const split = classifyLatency({ clientRttMs: durationMs, serverMs });
+  // Client RTT / polling noise is not an API defect for platform admins.
+  if (split.likely === "network") {
+    return null;
+  }
 
   return submitSystemIssueReport({
     kind: "slow",

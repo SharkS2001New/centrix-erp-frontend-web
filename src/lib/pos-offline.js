@@ -30,6 +30,7 @@ import {
   idbGetOutboxSale,
   idbIsOutboxBlockingForCart,
   idbListEditableOutbox,
+  idbListSyncedOutboxForBrowse,
   idbListOrderSlots,
   idbListPendingOutbox,
   idbMarkOutboxError,
@@ -1314,12 +1315,45 @@ export async function completeOfflineCashSale({
           payment_method_code: cart.payment_method_code ?? "CASH",
         }
       : null;
+  // Empty previous-order cancel must carry a full return. If the cashier never
+  // finished the payment dialog, synthesize one from the prior tender method.
+  let editAdjustmentsForCheckout = editAdjustments;
+  if (isPreviousOrderEdit && summary.lineCount === 0) {
+    const priorTotal = Number(
+      editSourceSale?.order_total ??
+        editSourceSale?.amount_paid ??
+        cart.original_order_total ??
+        0,
+    );
+    const returnSum = editAdjustments
+      .filter((row) => row.adjustment_type === "return")
+      .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    if (priorTotal > 0.009 && Math.abs(returnSum - priorTotal) > 0.02) {
+      const method =
+        String(
+          editAdjustments.find((row) => row.adjustment_type === "return")?.method_code ??
+            cart.payment_method_code ??
+            editSourceSale?.payment_method_code ??
+            "CASH",
+        )
+          .trim()
+          .toUpperCase() || "CASH";
+      editAdjustmentsForCheckout = [
+        {
+          method_code: method,
+          amount: Math.round(priorTotal * 100) / 100,
+          adjustment_type: "return",
+          reference_number: null,
+        },
+      ];
+    }
+  }
   const editTenders = isPreviousOrderEdit
-    ? rebuildPreviousOrderEditTenders(editSourceSale, editAdjustments, summary.total)
+    ? rebuildPreviousOrderEditTenders(editSourceSale, editAdjustmentsForCheckout, summary.total)
     : null;
   const reconciledEditAdjustments = Array.isArray(editTenders?.adjustments)
     ? editTenders.adjustments
-    : editAdjustments;
+    : editAdjustmentsForCheckout;
 
   const sale = {
     id: `offline:${clientSaleUuid}`,
@@ -2074,6 +2108,48 @@ export async function listOfflinePendingSalesForEdit() {
         offline_pending_sync: true,
       };
     })
+    .sort(
+      (a, b) =>
+        Number(b.pos_order_num ?? 0) - Number(a.pos_order_num ?? 0) ||
+        Number(b.order_num ?? 0) - Number(a.order_num ?? 0),
+    );
+}
+
+/**
+ * Local mirrors of recently synced POS sales (still in IndexedDB — never deleted on sync).
+ * Uses the server sale id so ← / Cash Sales # reopen the live order.
+ */
+export async function listLocalSyncedSalesForBrowse() {
+  const synced = await idbListSyncedOutboxForBrowse();
+  return synced
+    .map((row) => {
+      const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
+      const serverId = Number(row.server_sale_id ?? sale.id ?? 0);
+      if (!(serverId > 0)) return null;
+      const posOrderNum =
+        sale.pos_order_num != null && Number(sale.pos_order_num) > 0
+          ? Number(sale.pos_order_num)
+          : row.checkout_body?.pos_order_num != null
+            ? Number(row.checkout_body.pos_order_num)
+            : null;
+      return {
+        ...sale,
+        id: serverId,
+        order_num: Number(row.server_order_num ?? sale.order_num ?? row.order_num ?? 0) || null,
+        pos_order_num: posOrderNum,
+        pos_order_date: sale.pos_order_date ?? row.checkout_body?.pos_order_date ?? null,
+        float_session_id:
+          sale.float_session_id ??
+          row.checkout_body?.float_session_id ??
+          row.cart_seed?.float_session_id ??
+          null,
+        status: sale.status ?? "paid",
+        offline_pending_sync: false,
+        offline_client_uuid: String(row.client_sale_uuid || "").trim() || null,
+        _local_synced_mirror: true,
+      };
+    })
+    .filter(Boolean)
     .sort(
       (a, b) =>
         Number(b.pos_order_num ?? 0) - Number(a.pos_order_num ?? 0) ||
