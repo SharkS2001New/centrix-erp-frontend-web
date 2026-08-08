@@ -480,7 +480,9 @@ export function ClassicPosCartTable({
                   }
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!replacing && !busy && !lineBusy) {
+                    // Do not gate on lineBusy — classic adds enqueue without blocking
+                    // swap; beginReplaceCartLine enforces hard busy itself.
+                    if (!replacing && !busy) {
                       onScanCodeClick?.(line.id);
                     }
                   }}
@@ -492,12 +494,12 @@ export function ClassicPosCartTable({
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             e.stopPropagation();
-                            if (!busy && !lineBusy) onScanCodeClick?.(line.id);
+                            if (!busy) onScanCodeClick?.(line.id);
                           }
                         }
                   }
                   role={replacing ? undefined : "button"}
-                  tabIndex={replacing || busy || lineBusy ? -1 : 0}
+                  tabIndex={replacing || busy ? -1 : 0}
                 >
                   {replacing ? (
                     swapPreviewActive ? (

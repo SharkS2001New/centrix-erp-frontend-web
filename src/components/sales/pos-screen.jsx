@@ -670,6 +670,46 @@ function sameLineId(a, b) {
   return String(a) === String(b);
 }
 
+/** Resolve a cart row for swap/qty even when TemporaryCart remints ids after restore. */
+function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
+  const list = Array.isArray(lines) ? lines : [];
+  if (!list.length || needle == null) return null;
+
+  const needleId = needle?.id ?? needle;
+  const needleRef =
+    needle && typeof needle === "object"
+      ? needle.update_code ?? needle.client_line_id ?? needle.id
+      : needle;
+  const needleCode =
+    preferProductCode ??
+    (needle && typeof needle === "object" ? needle.product_code : null);
+  const needleRetail =
+    needle && typeof needle === "object"
+      ? Number(needle.on_wholesale_retail ?? 0)
+      : null;
+
+  const byId = list.find(
+    (row) =>
+      sameLineId(row.id, needleId) ||
+      (needleRef != null &&
+        (sameLineId(row.update_code, needleRef) ||
+          sameLineId(row.client_line_id, needleRef) ||
+          sameLineId(row.id, needleRef))),
+  );
+  if (byId) return byId;
+
+  if (needleCode != null && String(needleCode).trim() !== "") {
+    const matches = list.filter(
+      (row) =>
+        String(row.product_code) === String(needleCode) &&
+        (needleRetail == null ||
+          Number(row.on_wholesale_retail ?? 0) === needleRetail),
+    );
+    if (matches.length === 1) return matches[0];
+  }
+  return null;
+}
+
 function posProductDisplayName(record) {
   if (!record) return "item";
   return record.product_name ?? record.description ?? record.product_code ?? "item";
@@ -3859,13 +3899,14 @@ export function PosScreen({ standalone = false }) {
     const active = cartRef.current;
     if (!active?.held_order_num || !active?.superseded_sale_id) return;
     if (isFreshWorkspacePlaceholder(active)) return;
-    if (Number(active.held_order_num) !== Number(sale.order_num)) return;
+    // Finish/print already moved on — never repaint the edited ticket.
     if (
       workspaceGeneration != null &&
       freshWorkspaceGenerationRef.current !== workspaceGeneration
     ) {
       return;
     }
+    if (Number(active.held_order_num) !== Number(sale.order_num)) return;
 
     if (String(sale.status ?? "").toLowerCase() === "cancelled") {
       skipEditAutosaveRef.current = true;
@@ -5262,8 +5303,11 @@ export function PosScreen({ standalone = false }) {
 
   function beginReplaceCartLine(lineId) {
     const line = findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, lineId);
-    if (!line || lineBusy) return;
-    // Soft previous-order loading must not block swap — only hard busy (checkout etc.).
+    if (!line) return;
+    // Classic / local drafts enqueue without freezing the grid — allow swap while a
+    // parallel line save finishes. Hard checkout busy still blocks.
+    const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
     if (busy && !previousOrderLoadingSoft) return;
     swapCommitInFlightRef.current = false;
     swapDraftRef.current = null;
@@ -5291,6 +5335,10 @@ export function PosScreen({ standalone = false }) {
     setStatusMessage(
       `Swap ${posProductDisplayName(line)}: search or scan the replacement product (Enter selects). Esc cancels.`,
     );
+    // Move keyboard to Scan so the replacement can be typed immediately.
+    window.requestAnimationFrame(() => {
+      focusPosScanInput({ selectAll: true });
+    });
   }
 
   function cancelReplaceCartLine() {
@@ -8587,28 +8635,38 @@ export function PosScreen({ standalone = false }) {
    * queuePreviousOrderEditOutboxNow) before invoking this — print alone does not persist.
    */
   async function printRevisedPreviousOrderAndFocusNewOrder(saleLike = null) {
+    // Capture edit identity up front — queue/detach/sync must not prevent the clear.
+    const editCartSnapshot = cartRef.current;
+    const wasPreviousOrderEdit = Boolean(
+      editCartSnapshot?.held_order_num && editCartSnapshot?.superseded_sale_id,
+    );
+    const finishGeneration = wasPreviousOrderEdit
+      ? ++freshWorkspaceGenerationRef.current
+      : freshWorkspaceGenerationRef.current;
+    if (wasPreviousOrderEdit) {
+      skipEditAutosaveRef.current = true;
+    }
+
     // Last-resort: if the workspace is still a dirty previous-order edit, persist
     // before printing/clearing so reopen cannot show the pre-edit receipt.
-    const liveBeforePrint = cartRef.current;
     if (
       standalone &&
-      liveBeforePrint?.held_order_num &&
-      liveBeforePrint?.superseded_sale_id &&
-      editedOrderHasLocalDraftChanges(liveBeforePrint)
+      wasPreviousOrderEdit &&
+      editedOrderHasLocalDraftChanges(editCartSnapshot)
     ) {
       try {
+        // Allow the forced outbox write even though skipEditAutosaveRef is latched.
         const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
         if (queuedHeldOrderNum == null) {
+          skipEditAutosaveRef.current = false;
           notifyError(
             "Could not save this order edit for sync. Receipt was not printed.",
           );
           return;
         }
-        flushPreviousOrderEditOutboxInBackground(
-          queuedHeldOrderNum,
-          freshWorkspaceGenerationRef.current,
-        );
+        flushPreviousOrderEditOutboxInBackground(queuedHeldOrderNum, finishGeneration);
       } catch (e) {
+        skipEditAutosaveRef.current = false;
         notifyError(
           e instanceof Error
             ? e.message
@@ -8619,13 +8677,19 @@ export function PosScreen({ standalone = false }) {
     }
 
     const editSnapshot =
-      cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id
-        ? buildPreviousOrderEditPrintSale(cartRef.current, {
+      editCartSnapshot?.held_order_num && editCartSnapshot?.superseded_sale_id
+        ? buildPreviousOrderEditPrintSale(editCartSnapshot, {
             user,
             organization,
             sourceSale: editSourceSale,
           })
-        : null;
+        : cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id
+          ? buildPreviousOrderEditPrintSale(cartRef.current, {
+              user,
+              organization,
+              sourceSale: editSourceSale,
+            })
+          : null;
     const sale = editSnapshot ?? saleLike;
     const cashSalesLabel = formatCashSalesNumber(sale);
     const orderLabel =
@@ -8687,8 +8751,13 @@ export function PosScreen({ standalone = false }) {
 
     setPaymentOpen(false);
     setPaymentError(null);
-    if (standalone) {
-      await clearWorkspaceAfterPreviousOrderPrint();
+    if (standalone && wasPreviousOrderEdit) {
+      await clearWorkspaceAfterPreviousOrderPrint({
+        force: true,
+        heldOrderNum: editCartSnapshot.held_order_num,
+        supersededSaleId: editCartSnapshot.superseded_sale_id,
+        workspaceGeneration: finishGeneration,
+      });
     } else if (classicLayout) {
       focusClassicProductSearch();
     } else {
@@ -8700,9 +8769,18 @@ export function PosScreen({ standalone = false }) {
    * After Alt+P finishes a previous-order edit: clear to a blank new order without
    * another confirm. Sync (already queued) continues in the background.
    */
-  async function clearWorkspaceAfterPreviousOrderPrint() {
+  async function clearWorkspaceAfterPreviousOrderPrint(options = {}) {
+    const {
+      force = false,
+      heldOrderNum = null,
+      supersededSaleId = null,
+      workspaceGeneration = null,
+    } = options;
     const activeCart = cartRef.current ?? cart;
-    if (!activeCart?.held_order_num || !activeCart?.superseded_sale_id) return;
+    const held = activeCart?.held_order_num ?? heldOrderNum;
+    const superseded = activeCart?.superseded_sale_id ?? supersededSaleId;
+    if (!force && (!held || !superseded)) return;
+    if (!held && !superseded && !force) return;
 
     skipEditAutosaveRef.current = true;
     if (editAutosaveTimerRef.current) {
@@ -8713,23 +8791,59 @@ export function PosScreen({ standalone = false }) {
     const deleteCartId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
     if (deleteCartId) markServerCartConsumed(deleteCartId);
 
-    const issuedPosMax = await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null);
-    const peekNextPos = resolveFreshWorkspacePosNum(
-      activeCart,
-      sessionPosOrders,
+    // Refresh today's session tickets before picking the next Cash Sales # — otherwise
+    // we land on last issued (e.g. 19) instead of last+1 (20) and cashiers must F8.
+    let ordersForSeq = sessionPosOrders;
+    try {
+      const refreshed = await loadCompletedPosOrders();
+      if (Array.isArray(refreshed) && refreshed.length) {
+        ordersForSeq = refreshed;
+      }
+    } catch {
+      /* keep current browse list */
+    }
+
+    // Sequence as a blank workspace — the edit cart's pos_order_num / TemporaryCart
+    // next_pos_order_num must not pin the next ticket to the wrong number.
+    const sequencingCart = {
+      id: "pending-fresh",
+      lines: [],
+      channel: activeCart?.channel,
+      order_source: activeCart?.order_source,
+      branch_id: activeCart?.branch_id,
+      till_id: activeCart?.till_id,
+      float_session_id: activeCart?.float_session_id ?? floatSessionId,
+    };
+    const peekNextPos = await resolveNextPosTicketForWorkspace(
+      sequencingCart,
+      ordersForSeq,
       null,
-      issuedPosMax,
-      floatSessionId,
+      { skipServerReseed: true, floatSessionId },
     );
-    const generation = ++freshWorkspaceGenerationRef.current;
+    const contextNext =
+      offlineNextPosOrderNum != null && Number(offlineNextPosOrderNum) > 0
+        ? Number(offlineNextPosOrderNum)
+        : null;
+    const nextPos =
+      [peekNextPos, contextNext]
+        .map((n) => Number(n))
+        .filter((n) => Number.isFinite(n) && n > 0)
+        .reduce((max, n) => (n > max ? n : max), 0) || peekNextPos;
+    // Invalidate in-flight previous-order sync refresh so it cannot repaint this edit.
+    const generation =
+      workspaceGeneration != null &&
+      Number(workspaceGeneration) === Number(freshWorkspaceGenerationRef.current)
+        ? Number(workspaceGeneration)
+        : ++freshWorkspaceGenerationRef.current;
 
     setEditSourceSale(null);
+    setCompletedSale(null);
     setOrderEditError(null);
     setEditBrowseIndex(0);
     clearClassicLineSelection();
     clearLineEntry();
     orderNoUserEditedRef.current = false;
-    applyFreshWorkspacePlaceholder(activeCart, peekNextPos);
+    applyFreshWorkspacePlaceholder(activeCart, nextPos);
     setStatusMessage("New order — previous edits sync in the background.");
     void clearPreviousOrderEditDraft().catch(() => {});
     void clearLocalPosCart().catch(() => {});
@@ -8745,14 +8859,12 @@ export function PosScreen({ standalone = false }) {
         : Promise.resolve(null);
 
     void flushOutboxNow();
-    if (enablePosOrderEdit && standalone) {
-      void loadCompletedPosOrders();
-    }
 
     // Soft bootstrap — do not block the till; first scan creates/loads a TemporaryCart.
     void (async () => {
       try {
         await clearPromise;
+        if (generation !== freshWorkspaceGenerationRef.current) return;
         const next = await loadCashierCart({
           skipEditDraftRestore: true,
           applyState: false,
@@ -8781,24 +8893,49 @@ export function PosScreen({ standalone = false }) {
           payment_adjustments: undefined,
           _editDraftDirty: undefined,
         });
-        if ((cleaned.lines?.length ?? 0) > 0 && deleteCartId != null) {
+        if ((cleaned.lines?.length ?? 0) > 0) {
           cleaned = { ...cleaned, lines: [] };
         }
         const live = cartRef.current;
-        if (live && !isFreshWorkspacePlaceholder(live) && (live.lines?.length ?? 0) > 0) {
-          return;
+        if (generation !== freshWorkspaceGenerationRef.current) return;
+        // Sync refresh may have repainted the old edit over the placeholder — wipe again.
+        if (
+          live &&
+          !isFreshWorkspacePlaceholder(live) &&
+          ((live.lines?.length ?? 0) > 0 ||
+            live.held_order_num ||
+            live.superseded_sale_id ||
+            live.offline_client_sale_uuid)
+        ) {
+          const stillSameEdit =
+            (held != null && Number(live.held_order_num) === Number(held)) ||
+            (superseded != null && Number(live.superseded_sale_id) === Number(superseded));
+          if (stillSameEdit || isPreviousOrderEditSession(live)) {
+            applyFreshWorkspacePlaceholder(live, nextPos);
+          } else if ((live.lines?.length ?? 0) > 0) {
+            // Cashier already started a real new order — leave it.
+            return;
+          }
         }
-        const merged = mergeFreshWorkspaceCart(cleaned, peekNextPos);
+        const merged = mergeFreshWorkspaceCart(
+          isFreshWorkspacePlaceholder(cartRef.current)
+            ? cleaned
+            : stripPreviousOrderEditSession({ ...cleaned, lines: [] }),
+          nextPos,
+        );
+        if (generation !== freshWorkspaceGenerationRef.current) return;
         cartRef.current = merged;
         setCart(merged);
         const displayPos =
           resolvePosNextBrowseNumber(merged) ??
-          (peekNextPos != null ? peekNextPos : null);
+          (nextPos != null ? nextPos : null);
         setEditOrderNo(displayPos != null ? String(displayPos) : "");
       } catch {
         /* placeholder remains — next scan will ensureCart */
       } finally {
-        skipEditAutosaveRef.current = false;
+        if (generation === freshWorkspaceGenerationRef.current) {
+          skipEditAutosaveRef.current = false;
+        }
       }
     })();
 
@@ -9653,18 +9790,19 @@ export function PosScreen({ standalone = false }) {
     // Untouched browse/reprint of a *completed* sale (not in edit session) must NOT
     // prompt for payment or queue a duplicate sale.
     //
-    // Important: after autosave/sync clears `_editDraftDirty`, the cart is still an
-    // edit session — Alt+P must still print the revised receipt and clear to a new
-    // order (same end state as F8). Gating clear on dirty alone left cashiers stuck
-    // on the edited ticket.
+    // Detect edit session from cartRef (not React state) so a stale render cannot
+    // skip the print→clear finish path.
     const activeEditCart = cartRef.current;
     const inPreviousOrderEdit = Boolean(
-      isCartEditSession &&
-        activeEditCart?.held_order_num &&
-        activeEditCart?.superseded_sale_id,
+      activeEditCart?.held_order_num && activeEditCart?.superseded_sale_id,
     );
     const dirtyPreviousOrderEdit =
       inPreviousOrderEdit && editedOrderHasLocalDraftChanges(activeEditCart);
+    // Invalidate stale sync refresh before queuing so background upload cannot
+    // repaint this edit after we clear to a new order.
+    const finishGeneration = inPreviousOrderEdit
+      ? ++freshWorkspaceGenerationRef.current
+      : freshWorkspaceGenerationRef.current;
     if (dirtyPreviousOrderEdit) {
       const editSummary = summarizeLocalPosCart(cartRef.current);
       const kraFiscalize = shouldSubmitKraOnCheckout(
@@ -9700,7 +9838,6 @@ export function PosScreen({ standalone = false }) {
       }
 
       // Await local outbox write only — network/KRA upload continues in the background.
-      const workspaceGeneration = freshWorkspaceGenerationRef.current;
       try {
         const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
         if (queuedHeldOrderNum == null) {
@@ -9709,7 +9846,7 @@ export function PosScreen({ standalone = false }) {
           );
           return;
         }
-        flushPreviousOrderEditOutboxInBackground(queuedHeldOrderNum, workspaceGeneration);
+        flushPreviousOrderEditOutboxInBackground(queuedHeldOrderNum, finishGeneration);
       } catch (e) {
         if (e instanceof Error && /cancel/i.test(e.message)) return;
         notifyError(
@@ -9722,7 +9859,7 @@ export function PosScreen({ standalone = false }) {
     }
 
     const editSnapshot =
-      isCartEditSession && cartRef.current
+      inPreviousOrderEdit && cartRef.current
         ? buildPreviousOrderEditPrintSale(cartRef.current, {
             user,
             organization,
@@ -9730,7 +9867,7 @@ export function PosScreen({ standalone = false }) {
           })
         : null;
     let sale = resolvePosReprintSale({
-      isCartEditSession,
+      isCartEditSession: inPreviousOrderEdit,
       editSourceSale,
       completedSale,
       sessionPosOrders,
@@ -9738,7 +9875,7 @@ export function PosScreen({ standalone = false }) {
       editCartSnapshot: editSnapshot,
     });
     if (!sale?.id && !sale?.order_num) {
-      const message = isCartEditSession
+      const message = inPreviousOrderEdit
         ? "Add items to this order before printing."
         : "No completed order to print. Complete payment first (F10).";
       notifyError(message);
