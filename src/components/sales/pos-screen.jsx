@@ -13003,9 +13003,7 @@ export function PosScreen({ standalone = false }) {
 
   // Offline External POS: refuse Ctrl+R / F5 so a reload cannot wipe the live cart
   // or break local-first selling until the connection returns.
-  const offlineModeRef = useRef(offlineMode);
   const networkStatusRef = useRef(networkStatus);
-  offlineModeRef.current = offlineMode;
   networkStatusRef.current = networkStatus;
 
   useEffect(() => {

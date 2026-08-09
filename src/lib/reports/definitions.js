@@ -88,7 +88,15 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["orders", "gross", "vat", "net"],
-    charts: [{ type: "bar", title: "Daily gross sales", labelKey: "sale_day", valueKey: "gross" }],
+    charts: [
+      {
+        type: "bar",
+        title: "Daily gross sales",
+        labelKey: "sale_day",
+        valueKey: "gross",
+        labelMode: "date",
+      },
+    ],
   },
 
   "sales-by-product": {
@@ -122,6 +130,22 @@ export const REPORT_DEFINITIONS = {
     ],
     kpis: vatReportKpis("total_revenue", "total_vat"),
     footerTotals: ["qty_sold", "net_ex_vat", "total_vat", "total_revenue", "total_discount"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top products by gross sales",
+        labelKey: "product_name",
+        valueKey: "total_revenue",
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Top product mix",
+        labelKey: "product_name",
+        valueKey: "total_revenue",
+        limit: 8,
+      },
+    ],
   },
 
   "sales-by-supplier": {
@@ -152,6 +176,22 @@ export const REPORT_DEFINITIONS = {
     ],
     kpis: vatReportKpis("total_revenue", "total_vat"),
     footerTotals: ["order_count", "qty_sold", "net_ex_vat", "total_vat", "total_revenue", "total_discount"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top suppliers by revenue",
+        labelKey: "supplier_name",
+        valueKey: "total_revenue",
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Supplier share of revenue",
+        labelKey: "supplier_name",
+        valueKey: "total_revenue",
+        limit: 8,
+      },
+    ],
   },
 
   "sales-by-channel": {
@@ -173,6 +213,25 @@ export const REPORT_DEFINITIONS = {
     ],
     kpis: vatReportKpis("gross_sales", "total_vat"),
     footerTotals: ["order_count", "net_sales", "total_vat", "gross_sales", "collected"],
+    charts: [
+      {
+        type: "donut",
+        title: "Gross sales by channel",
+        labelKey: "channel",
+        valueKey: "gross_sales",
+        labelMode: "channel",
+        limit: 8,
+      },
+      {
+        type: "hbar",
+        title: "Orders by channel",
+        labelKey: "channel",
+        valueKey: "order_count",
+        labelMode: "channel",
+        valueFormat: "count",
+        limit: 8,
+      },
+    ],
   },
 
   "sales-by-user": {
@@ -200,18 +259,53 @@ export const REPORT_DEFINITIONS = {
     ],
     kpis: vatReportKpis("gross_sales", "total_vat"),
     footerTotals: ["order_count", "net_ex_vat", "total_vat", "gross_sales", "amount_collected"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Gross sales by user",
+        labelKey: "salesperson",
+        valueKey: "gross_sales",
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Share of gross sales",
+        labelKey: "salesperson",
+        valueKey: "gross_sales",
+        limit: 8,
+      },
+      {
+        type: "hbar",
+        title: "Orders by user",
+        labelKey: "salesperson",
+        valueKey: "order_count",
+        valueFormat: "count",
+        limit: 12,
+      },
+    ],
   },
 
   "sales-by-customer": {
     title: "Sales by Customer",
-    subtitle: "Customer purchase totals and outstanding balances",
+    subtitle:
+      "Customer purchase totals and outstanding balances (includes Walk-in / cash sales without a registered customer)",
     section: "Sales",
     apiPath: "/reports/sales-by-customer",
     dateColumn: null,
     showDateRange: true,
     columns: [
-      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
-      { key: "customer_num", label: "Customer #", accessor: (r) => r.customer_num, link: "customer" },
+      {
+        key: "customer_name",
+        label: "Customer",
+        accessor: (r) => r.customer_name || (r.customer_num == null ? "Walk-in" : "—"),
+        link: "customer",
+      },
+      {
+        key: "customer_num",
+        label: "Customer #",
+        accessor: (r) => (r.customer_num != null && r.customer_num !== "" ? r.customer_num : "—"),
+        link: "customer",
+      },
       { key: "route_name", label: "Route", accessor: (r) => r.route_name ?? "—" },
       { key: "total_orders", label: "Orders", accessor: (r) => r.total_orders, align: "right", total: true },
       {
@@ -267,6 +361,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["total_orders", "total_purchased", "total_outstanding", "ar_balance"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top customers by purchases",
+        labelKey: "customer_name",
+        valueKey: "total_purchased",
+        limit: 12,
+      },
+      {
+        type: "hbar",
+        title: "Top outstanding balances",
+        labelKey: "customer_name",
+        valueKey: "total_outstanding",
+        limit: 12,
+      },
+    ],
   },
 
   "category-sales": {
@@ -295,6 +405,22 @@ export const REPORT_DEFINITIONS = {
     ],
     kpis: vatReportKpis("revenue", "vat"),
     footerTotals: ["qty_sold", "net_ex_vat", "vat", "revenue", "discounts"],
+    charts: [
+      {
+        type: "donut",
+        title: "Revenue by category",
+        labelKey: "category_name",
+        valueKey: "revenue",
+        limit: 8,
+      },
+      {
+        type: "hbar",
+        title: "Top categories by revenue",
+        labelKey: "category_name",
+        valueKey: "revenue",
+        limit: 12,
+      },
+    ],
   },
 
   "low-stock": {
@@ -393,6 +519,25 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: [],
+    charts: [
+      {
+        type: "donut",
+        title: "Alert mix",
+        labelFrom: (r) => stockStatus(r).label,
+        valueFrom: () => 1,
+        limit: 5,
+      },
+      {
+        type: "hbar",
+        title: "Lowest available quantities",
+        labelKey: "product_name",
+        valueFrom: (r) =>
+          Number(r.available_total_units ?? r.total_base_units ?? r.total_quantity) || 0,
+        valueFormat: "count",
+        sort: "asc",
+        limit: 12,
+      },
+    ],
   },
 
   "stock-chain": {
@@ -489,6 +634,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["total_received", "total_sold", "total_cost_value"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top products by stock value",
+        labelKey: "product_name",
+        valueKey: "total_cost_value",
+        limit: 12,
+      },
+      {
+        type: "hbar",
+        title: "Top products by sold value",
+        labelKey: "product_name",
+        valueKey: "total_sold",
+        limit: 12,
+      },
+    ],
   },
 
   "stock-valuation": {
@@ -552,6 +713,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["cost_value"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top products by stock value",
+        labelKey: "product_name",
+        valueFrom: (r) => Number(r.cost_value ?? r.stock_value) || 0,
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Stock value mix (top products)",
+        labelKey: "product_name",
+        valueFrom: (r) => Number(r.cost_value ?? r.stock_value) || 0,
+        limit: 8,
+      },
+    ],
   },
 
   "profit-loss-by-product": {
@@ -625,7 +802,22 @@ export const REPORT_DEFINITIONS = {
     ],
     useApiSummary: true,
     footerTotals: ["qty_sold", "net_revenue", "total_vat", "gross_revenue", "cogs", "gross_profit"],
-    charts: [{ type: "bar", title: "Top products by gross profit", labelKey: "product_name", valueKey: "gross_profit" }],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top products by gross profit",
+        labelKey: "product_name",
+        valueKey: "gross_profit",
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Profit mix (top products)",
+        labelKey: "product_name",
+        valueKey: "gross_profit",
+        limit: 8,
+      },
+    ],
   },
 
   "profit-loss": {
@@ -713,6 +905,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["pending_value"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Pending value by supplier",
+        labelKey: "supplier_name",
+        valueKey: "pending_value",
+        limit: 12,
+      },
+      {
+        type: "hbar",
+        title: "Top open lines by pending value",
+        labelKey: "product_name",
+        valueKey: "pending_value",
+        limit: 12,
+      },
+    ],
   },
 
   "purchases-by-supplier": {
@@ -818,6 +1026,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["pending_value", "total_amount"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Pending value by supplier",
+        labelKey: "supplier_name",
+        valueKey: "pending_value",
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Pending value share",
+        labelKey: "supplier_name",
+        valueKey: "pending_value",
+        limit: 8,
+      },
+    ],
   },
 
   "top-debtors": {
@@ -871,6 +1095,30 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["outstanding_balance", "open_invoices", "invoice_balance"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top outstanding balances",
+        labelKey: "customer_name",
+        valueFrom: (r) =>
+          Number(
+            r.outstanding_balance ??
+              Math.max(Number(r.current_balance) || 0, Number(r.invoice_balance) || 0),
+          ) || 0,
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Share of outstanding",
+        labelKey: "customer_name",
+        valueFrom: (r) =>
+          Number(
+            r.outstanding_balance ??
+              Math.max(Number(r.current_balance) || 0, Number(r.invoice_balance) || 0),
+          ) || 0,
+        limit: 8,
+      },
+    ],
   },
 
   "invoice-payments": {
@@ -907,6 +1155,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["amount_paid"],
+    charts: [
+      {
+        type: "donut",
+        title: "Collections by payment method",
+        labelKey: "method_name",
+        valueKey: "amount_paid",
+        limit: 8,
+      },
+      {
+        type: "hbar",
+        title: "Top customers by payments received",
+        labelKey: "customer_name",
+        valueKey: "amount_paid",
+        limit: 12,
+      },
+    ],
   },
 
   returns: {
@@ -937,6 +1201,23 @@ export const REPORT_DEFINITIONS = {
       { key: "returned_by", label: "Returned by", accessor: (r) => r.returned_by },
     ],
     footerTotals: ["quantity"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top returned products",
+        labelKey: "product_name",
+        valueFrom: (r) => Number(r.quantity) || 0,
+        valueFormat: "count",
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Returns by customer",
+        labelKey: "customer_name",
+        valueFrom: (r) => Number(r.quantity) || 0,
+        limit: 8,
+      },
+    ],
   },
 
   "stock-movement": {
@@ -1037,6 +1318,24 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["orders", "gross_sales", "vat_collected"],
+    charts: [
+      {
+        type: "bar",
+        title: "VAT collected by day",
+        labelKey: "sale_date",
+        valueKey: "vat_collected",
+        labelMode: "date",
+        limit: 31,
+      },
+      {
+        type: "donut",
+        title: "VAT by channel",
+        labelKey: "channel",
+        valueKey: "vat_collected",
+        labelMode: "channel",
+        limit: 8,
+      },
+    ],
   },
 
   "till-sessions": {
@@ -1081,6 +1380,22 @@ export const REPORT_DEFINITIONS = {
         compute: (rows, summary) => ({
           value: kes(summary?.gross_sales ?? sum(rows, "gross_sales")),
         }),
+      },
+    ],
+    charts: [
+      {
+        type: "hbar",
+        title: "Sales by cashier",
+        labelKey: "cashier",
+        valueKey: "gross_sales",
+        limit: 12,
+      },
+      {
+        type: "hbar",
+        title: "Cash variance by cashier (absolute)",
+        labelKey: "cashier",
+        valueFrom: (r) => Math.abs(Number(tillVariance(r)) || 0),
+        limit: 12,
       },
     ],
   },
@@ -1155,6 +1470,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["received_value", "return_value", "balance_due", "open_lpo_count"],
+    charts: [
+      {
+        type: "hbar",
+        title: "Top suppliers by balance due",
+        labelKey: "supplier_name",
+        valueKey: "balance_due",
+        limit: 12,
+      },
+      {
+        type: "donut",
+        title: "Share of payables",
+        labelKey: "supplier_name",
+        valueKey: "balance_due",
+        limit: 8,
+      },
+    ],
   },
 
   expenses: {
@@ -1192,6 +1523,22 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["expense_count", "total_amount"],
+    charts: [
+      {
+        type: "donut",
+        title: "Expenses by category",
+        labelKey: "group_name",
+        valueKey: "total_amount",
+        limit: 8,
+      },
+      {
+        type: "hbar",
+        title: "Top expense categories",
+        labelKey: "group_name",
+        valueKey: "total_amount",
+        limit: 12,
+      },
+    ],
   },
 
   "kra-receipts": {
@@ -1361,6 +1708,24 @@ export const REPORT_DEFINITIONS = {
       "failed_vat",
       "order_total",
       "total_vat",
+    ],
+    charts: [
+      {
+        type: "bar",
+        title: "Successful fiscalizations by day",
+        labelKey: "receipt_date",
+        valueKey: "success_count",
+        labelMode: "date",
+        limit: 31,
+      },
+      {
+        type: "donut",
+        title: "Failed submissions by channel",
+        labelKey: "channel",
+        valueKey: "failed_count",
+        labelMode: "channel",
+        limit: 8,
+      },
     ],
   },
 

@@ -329,9 +329,9 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
 }
 
 /**
- * Print a hospitality check receipt via Centrix Print Agent (thermal) or browser fallback.
+ * Print a hospitality check receipt via Centrix Print Agent only (no browser fallback).
  *
- * @returns {Promise<{ mode: "agent" | "browser", ok: boolean, printer?: string, jobId?: string } | null>}
+ * @returns {Promise<{ mode: "agent" | "browser", ok: boolean, printer?: string, jobId?: string, error?: string } | null>}
  */
 export async function printHospitalityCheckReceipt(check, options = {}) {
   if (!check || typeof window === "undefined") return null;
@@ -351,6 +351,7 @@ export async function printHospitalityCheckReceipt(check, options = {}) {
     documentId: check?.id ?? check?.check_number ?? null,
     printWindow: options.printWindow ?? null,
     windowFeatures: `width=420,height=720`,
+    allowBrowserFallback: false,
   });
 }
 

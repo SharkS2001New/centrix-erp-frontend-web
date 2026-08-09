@@ -23,7 +23,7 @@ import {
   ReportTable,
 } from "@/components/reports/report-screen-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
-import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
+import { ReportChartsSection, ReportViewModeToggle } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 
@@ -57,6 +57,7 @@ export function CustomReportScreen({ templateId }) {
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
   const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "" });
+  const [viewMode, setViewMode] = useState("table");
 
   useEffect(() => {
     apiRequest(`/reports/builder/templates/${templateId}`, {
@@ -194,6 +195,13 @@ export function CustomReportScreen({ templateId }) {
   }, [applied, definition?.showDateRange, workspaceId]);
 
   const chartRows = rows;
+  const hasCharts = Boolean(definition?.charts?.length);
+  const showCharts = hasCharts && (viewMode === "charts" || viewMode === "both");
+  const showTable = viewMode === "table" || viewMode === "both" || !hasCharts;
+
+  useEffect(() => {
+    setViewMode("table");
+  }, [templateId]);
 
   if (!definition && !error) {
     return <div className="p-6 text-sm text-slate-500">Loading report…</div>;
@@ -258,38 +266,31 @@ export function CustomReportScreen({ templateId }) {
 
       {!loading ? <ReportKpiGrid items={kpis} /> : null}
 
-      {!loading && definition.charts?.length ? (
-        <div className="mb-6 grid gap-4 lg:grid-cols-2">
-          {definition.charts.map((chart) => {
-            if (chart.type === "donut") {
-              return (
-                <DonutChart
-                  key={chart.title}
-                  title={chart.title}
-                  rows={chartRows}
-                  labelKey={chart.labelKey}
-                  valueKey={chart.valueKey}
-                  colors={CHART_COLORS}
-                />
-              );
-            }
-            return (
-              <ReportBarChart
-                key={chart.title}
-                title={chart.title}
-                rows={chartRows}
-                labelKey={chart.labelKey}
-                valueKey={chart.valueKey}
-                colors={CHART_COLORS}
-              />
-            );
-          })}
+      {!loading && hasCharts ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-800">
+              {viewMode === "charts"
+                ? "Graphs & charts"
+                : viewMode === "both"
+                  ? "Table with graphs"
+                  : "Data table"}
+            </p>
+            <p className="text-xs text-slate-500">
+              Switch views to compare the same filtered results as charts or a table.
+            </p>
+          </div>
+          <ReportViewModeToggle value={viewMode} onChange={setViewMode} disabled={loading} />
         </div>
+      ) : null}
+
+      {!loading && showCharts ? (
+        <ReportChartsSection charts={definition.charts} rows={chartRows} />
       ) : null}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading report…</p>
-      ) : (
+      ) : showTable ? (
         <>
           <ReportTable columns={columns} rows={rows} footerTotals={footerTotals} />
           <PaginationBar
@@ -301,7 +302,7 @@ export function CustomReportScreen({ templateId }) {
             onPageSizeChange={handlePageSizeChange}
           />
         </>
-      )}
+      ) : null}
     </ReportPageShell>
     </>
   );

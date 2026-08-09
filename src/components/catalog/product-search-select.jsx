@@ -150,7 +150,7 @@ export function ProductSearchSelect({
     return () => {
       cancelled = true;
     };
-  }, [value, disabled, lockedProduct?.product_code, lockedProduct?.product_name, onProductSelect, open, results, user?.organization_id]);
+  }, [value, disabled, lockedProduct, lockedProduct?.product_code, lockedProduct?.product_name, onProductSelect, open, results, user?.organization_id]);
 
   useEffect(() => {
     if (open) return;

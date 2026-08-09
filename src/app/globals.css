@@ -3911,6 +3911,19 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
   color: #fff !important;
 }
 
+.hotel-pos-chip-action {
+  border-style: dashed;
+}
+
+.hotel-pos-chip-badge {
+  background: var(--theme-primary);
+  color: #fff;
+}
+
+.hotel-pos-chip-action:disabled .hotel-pos-chip-badge {
+  opacity: 0.85;
+}
+
 .hotel-pos-header-context {
   max-width: min(28rem, 52vw);
 }

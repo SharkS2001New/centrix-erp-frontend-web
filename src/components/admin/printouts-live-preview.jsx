@@ -329,7 +329,7 @@ export function PrintoutsLivePreview({
     return () => {
       cancelled = true;
     };
-  }, [organization?.id, organization?.has_logo, organization?.logo, organization?.logo_file_path]);
+  }, [organization]);
 
   const html = useMemo(() => {
     try {

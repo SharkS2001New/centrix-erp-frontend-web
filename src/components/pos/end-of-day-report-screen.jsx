@@ -764,7 +764,7 @@ export function EndOfDayReportScreen() {
   }, [load, saleDate, saleMonth, reportMode]);
 
   const summary = report?.summary ?? {};
-  const payments = report?.payments ?? {};
+  const payments = useMemo(() => report?.payments ?? {}, [report?.payments]);
   const expectedNetSales = useMemo(
     () =>
       resolveExpectedNetSales({

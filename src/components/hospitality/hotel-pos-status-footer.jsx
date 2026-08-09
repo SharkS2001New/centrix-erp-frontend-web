@@ -70,7 +70,7 @@ export function HotelPosStatusFooter({
             }`}
           >
             {connectionLabel}
-            {offlineMode ? " · LOCAL" : ""}
+            {offlineMode ? " · LOCKED" : ""}
           </strong>
         </span>
         <span>

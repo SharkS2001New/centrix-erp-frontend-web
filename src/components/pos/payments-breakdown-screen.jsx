@@ -336,7 +336,7 @@ export function PaymentsBreakdownScreen({
   );
   const rows = data?.data ?? [];
   const summary = data?.summary ?? {};
-  const sessions = data?.sessions ?? [];
+  const sessions = useMemo(() => data?.sessions ?? [], [data?.sessions]);
 
   const sessionOptions = useMemo(() => {
     if (!cashierId) return sessions;

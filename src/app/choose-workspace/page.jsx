@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { AuthGuard } from "@/components/auth-guard";
@@ -17,6 +17,7 @@ function ChooseWorkspaceContent() {
   const { user, organization, capabilities, loading, isSuperAdmin, switchWorkspace, logout } = useAuth();
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState(null);
+  const autoOpenAttemptedRef = useRef(false);
 
   const ctx = buildAccessContext({
     user,
@@ -29,7 +30,8 @@ function ChooseWorkspaceContent() {
   const workspaces = resolveAccessibleWorkspaces(ctx, capabilities);
 
   useEffect(() => {
-    if (loading || workspaces.length !== 1 || switching) return;
+    if (loading || workspaces.length !== 1 || switching || autoOpenAttemptedRef.current) return;
+    autoOpenAttemptedRef.current = true;
     let cancelled = false;
     (async () => {
       setSwitching(true);
@@ -49,6 +51,7 @@ function ChooseWorkspaceContent() {
         if (!cancelled) router.replace(resumePath);
       } catch (err) {
         if (!cancelled) {
+          autoOpenAttemptedRef.current = false;
           setSwitchError(err instanceof Error ? err.message : "Could not open application");
           setSwitching(false);
         }
@@ -57,7 +60,17 @@ function ChooseWorkspaceContent() {
     return () => {
       cancelled = true;
     };
-  }, [loading, router, switchWorkspace, workspaces]);
+  }, [
+    loading,
+    router,
+    switchWorkspace,
+    workspaces,
+    switching,
+    capabilities,
+    ctx,
+    organization?.id,
+    user?.id,
+  ]);
 
   async function selectWorkspace(id) {
     const target = workspaces.find((w) => w.id === id);

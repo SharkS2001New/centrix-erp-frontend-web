@@ -127,8 +127,7 @@ export function TabPaneRouterFreeze({ href, children }) {
     [routeMatches, liveParams, frozenParams, hrefParams],
   );
 
-  const searchParamsKey = String(searchParams ?? "");
-  const searchParamsValue = useMemo(() => searchParams, [searchParamsKey, searchParams]);
+  const searchParamsValue = useMemo(() => searchParams, [searchParams]);
 
   return (
     <PathnameContext.Provider value={pathname}>

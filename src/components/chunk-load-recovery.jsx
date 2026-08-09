@@ -1,13 +1,14 @@
-import Script from "next/script";
-
 /**
  * After a deploy (or a brief 502 on `/_next/static/chunks/*`), open tabs can keep
  * an old document that references hashed chunks that no longer load. Reload with
  * a cache-bust so the browser fetches fresh HTML + matching assets.
  *
  * Also covers React.lazy failures when opening tab screens (e.g. payroll run).
+ *
+ * Inject via root `app/layout.jsx` with `beforeInteractive` (must live in the
+ * layout file — not a nested client component — for the Next.js Script rule).
  */
-const CHUNK_RELOAD_SCRIPT = `(function(){
+export const CHUNK_RELOAD_SCRIPT = `(function(){
   var k="centrix_chunk_reload";
   var max=2;
   function isChunk(m){
@@ -45,14 +46,6 @@ const CHUNK_RELOAD_SCRIPT = `(function(){
     }
   }catch(e){}
 })();`;
-
-export function ChunkLoadRecovery() {
-  return (
-    <Script id="chunk-load-recovery" strategy="beforeInteractive">
-      {CHUNK_RELOAD_SCRIPT}
-    </Script>
-  );
-}
 
 /** @param {unknown} error */
 export function isChunkLoadError(error) {

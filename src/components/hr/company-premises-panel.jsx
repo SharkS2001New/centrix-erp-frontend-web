@@ -46,7 +46,7 @@ export function CompanyPremisesPanel({ embedded = false }) {
   const [draftLat, setDraftLat] = useState("");
   const [draftLng, setDraftLng] = useState("");
 
-  const branches = premises?.branches ?? [];
+  const branches = useMemo(() => premises?.branches ?? [], [premises?.branches]);
   const multiBranch = branches.length > 1;
 
   const selectedBranch = useMemo(

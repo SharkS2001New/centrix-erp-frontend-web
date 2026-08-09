@@ -167,8 +167,11 @@ export async function voidHotelCheck(checkId) {
   });
 }
 
-export async function listCollectibleHotelChecks() {
-  return apiRequest("/hospitality/pos/checks/collectible", { loading: false });
+export async function listCollectibleHotelChecks(outletId = null) {
+  return apiRequest("/hospitality/pos/checks/collectible", {
+    loading: false,
+    searchParams: outletId ? { outlet_id: Number(outletId) } : undefined,
+  });
 }
 
 /** @deprecated use listCollectibleHotelChecks */

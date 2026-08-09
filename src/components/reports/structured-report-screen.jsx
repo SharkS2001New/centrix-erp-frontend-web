@@ -39,7 +39,7 @@ import { ExpensesReportScreen } from "@/components/reports/expenses-report-scree
 import { KraReceiptsReportScreen } from "@/components/reports/kra-receipts-report-screen";
 import { KraFailureReasonDialog } from "@/components/reports/kra-failure-reason-dialog";
 import { snippetKraErrorReason } from "@/lib/kra-device-errors";
-import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
+import { ReportChartsSection, ReportViewModeToggle } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
 import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
@@ -137,6 +137,9 @@ function StandardReportScreen({ definition }) {
   );
   const [aiOpen, setAiOpen] = useState(false);
   const [failureReasonRow, setFailureReasonRow] = useState(null);
+  const [viewMode, setViewMode] = useState("table");
+  const [chartRows, setChartRows] = useState([]);
+  const [chartLoading, setChartLoading] = useState(false);
   const [applied, setApplied] = useState(() =>
     cacheMatchesDefinition && cachedBundle.applied
       ? cachedBundle.applied
@@ -270,7 +273,9 @@ function StandardReportScreen({ definition }) {
 
   const totalPages = reportMeta?.last_page ?? 1;
   const displayRows = useMemo(() => rows, [rows]);
-  const chartRows = useMemo(() => rows, [rows]);
+  const hasCharts = Boolean(definition.charts?.length);
+  const showCharts = hasCharts && (viewMode === "charts" || viewMode === "both");
+  const showTable = viewMode === "table" || viewMode === "both" || !hasCharts;
   const reportRefresh = useReportRefreshUi({ loading, hasRows: rows.length > 0 });
 
   const kpis = useMemo(() => {
@@ -410,6 +415,32 @@ function StandardReportScreen({ definition }) {
     return combined;
   }, [applied.extraFilters, capabilities, definition, exportSearchParams]);
 
+  // Charts use the full filtered dataset (not just the current table page).
+  useEffect(() => {
+    if (!showCharts) return undefined;
+    let cancelled = false;
+    setChartLoading(true);
+    void (async () => {
+      try {
+        const all = await fetchAllReportRows();
+        if (!cancelled) setChartRows(all);
+      } catch {
+        if (!cancelled) setChartRows(rows);
+      } finally {
+        if (!cancelled) setChartLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showCharts, fetchAllReportRows, rows]);
+
+  // Reset to table when switching reports.
+  useEffect(() => {
+    setViewMode("table");
+    setChartRows([]);
+  }, [definition.key]);
+
   return (
     <>
       <ReportPageShell
@@ -481,56 +512,51 @@ function StandardReportScreen({ definition }) {
         <div className={reportRefresh.contentClassName}>
           <ReportKpiGrid items={kpis} />
 
-          {definition.charts?.length ? (
-        <div className="mb-6 grid gap-4 lg:grid-cols-2">
-          {definition.charts.map((chart) => {
-            if (chart.type === "bar") {
-              return (
-                <ReportBarChart
-                  key={chart.title ?? chart.valueKey}
-                  rows={chartRows}
-                  labelKey={chart.labelKey}
-                  valueKey={chart.valueKey}
-                  title={chart.title}
-                />
-              );
-            }
-            if (chart.type === "donut") {
-              const grouped = aggregateChartRows(chartRows, chart.labelKey, chart.valueKey);
-              const total = grouped.reduce((s, g) => s + g.value, 0);
-              const segments = grouped.slice(0, chart.limit ?? 5).map((g, i) => ({
-                label: g.label,
-                value: g.value,
-                sharePct: total > 0 ? Math.round((g.value / total) * 1000) / 10 : 0,
-                color: CHART_COLORS[i % CHART_COLORS.length],
-              }));
-              return (
-                <div key={chart.title ?? chart.valueKey} className="theme-panel rounded-xl border p-4 shadow-sm">
-                  {chart.title ? <h3 className="mb-3 text-sm font-medium text-slate-900">{chart.title}</h3> : null}
-                  <DonutChart segments={segments} />
-                </div>
-              );
-            }
-            return null;
-          })}
-        </div>
-      ) : null}
+          {hasCharts ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">
+                  {viewMode === "charts"
+                    ? "Graphs & charts"
+                    : viewMode === "both"
+                      ? "Table with graphs"
+                      : "Data table"}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Switch views to compare the same filtered results as charts or a table.
+                </p>
+              </div>
+              <ReportViewModeToggle value={viewMode} onChange={setViewMode} disabled={loading} />
+            </div>
+          ) : null}
 
-          <ReportTable
-            columns={columns}
-            rows={displayRows}
-            footerTotals={footerTotals}
-            groupBy={definition.groupBy ?? null}
-          />
-          <PaginationBar
-            page={page}
-            totalPages={totalPages}
-            total={reportMeta?.total ?? rows.length}
-            pageSize={pageSize}
-            onChange={setPage}
-            onPageSizeChange={handlePageSizeChange}
-            pageSizeOptions={[10, 20, 25, 50, 100]}
-          />
+          {showCharts ? (
+            <ReportChartsSection
+              charts={definition.charts}
+              rows={chartRows.length ? chartRows : rows}
+              loading={chartLoading && chartRows.length === 0}
+            />
+          ) : null}
+
+          {showTable ? (
+            <>
+              <ReportTable
+                columns={columns}
+                rows={displayRows}
+                footerTotals={footerTotals}
+                groupBy={definition.groupBy ?? null}
+              />
+              <PaginationBar
+                page={page}
+                totalPages={totalPages}
+                total={reportMeta?.total ?? rows.length}
+                pageSize={pageSize}
+                onChange={setPage}
+                onPageSizeChange={handlePageSizeChange}
+                pageSizeOptions={[10, 20, 25, 50, 100]}
+              />
+            </>
+          ) : null}
         </div>
       ) : null}
     </ReportPageShell>
@@ -557,16 +583,4 @@ function StandardReportScreen({ definition }) {
       />
     </>
   );
-}
-
-function aggregateChartRows(rows, labelKey, valueKey) {
-  const map = new Map();
-  for (const row of rows) {
-    const label = String(row[labelKey] ?? "—");
-    const val = Number(row[valueKey]) || 0;
-    map.set(label, (map.get(label) ?? 0) + val);
-  }
-  return [...map.entries()]
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
 }

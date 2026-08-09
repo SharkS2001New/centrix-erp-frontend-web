@@ -82,8 +82,7 @@ export default function CustomerLocationMap({
         }
       };
 
-      map.setView(hasPoint ? [lat, lng] : NAIROBI, hasPoint ? 16 : 12);
-      if (hasPoint) placeMarker(lat, lng);
+      map.setView(NAIROBI, 12);
 
       if (interactive) {
         map.on("click", (e) => {

@@ -22,6 +22,11 @@ import {
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { useConfirm } from "@/lib/use-confirm";
+import { addDaysToCalendarDate, todayCalendarDate } from "@/lib/datetime";
+
+function defaultWalkInDepartureDate() {
+  return addDaysToCalendarDate(todayCalendarDate(), 1);
+}
 
 export function HospitalityFrontDeskScreen() {
   const { capabilities } = useAuth();
@@ -48,7 +53,7 @@ function FrontDeskManager() {
     guest_name: "",
     guest_phone: "",
     room_id: "",
-    departure_date: "",
+    departure_date: defaultWalkInDepartureDate(),
   });
   /** reservationId → room_id chosen at the desk for check-in */
   const [arrivalRoomById, setArrivalRoomById] = useState({});
@@ -179,7 +184,7 @@ function FrontDeskManager() {
     e.preventDefault();
     setBusy(true);
     try {
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      const tomorrow = defaultWalkInDepartureDate();
       await apiRequest("/hospitality/front-desk/check-in", {
         method: "POST",
         body: {
@@ -194,7 +199,12 @@ function FrontDeskManager() {
           ? "Walk-in checked in — guest folio opened"
           : "Walk-in checked in — room occupied (collect payment at the desk)",
       );
-      setWalkIn({ guest_name: "", guest_phone: "", room_id: "", departure_date: "" });
+      setWalkIn({
+        guest_name: "",
+        guest_phone: "",
+        room_id: "",
+        departure_date: defaultWalkInDepartureDate(),
+      });
       setTab("departures");
       await load();
     } catch (err) {
@@ -588,10 +598,7 @@ function FrontDeskManager() {
               type="date"
               required
               className={inputClassName()}
-              value={
-                walkIn.departure_date ||
-                new Date(Date.now() + 86400000).toISOString().slice(0, 10)
-              }
+              value={walkIn.departure_date}
               onChange={(e) => setWalkIn((w) => ({ ...w, departure_date: e.target.value }))}
             />
           </Field>

@@ -1,6 +1,7 @@
 /**
- * Hotel & Bar POS short-outage sell: warm catalog + reserved check #s,
- * local cash tickets → outbox → POST /hospitality/pos/checks/offline-sync.
+ * Hotel & Bar POS local-first settle outbox:
+ * warm catalog + reserved check #s, queue paid checks → POST offline-sync.
+ * Selling while offline is locked in the UI (unlike External POS).
  */
 
 import { apiBaseOrigin, apiRequest, ApiError } from "@/lib/api";
@@ -428,7 +429,8 @@ export async function loadPersistedLocalHotelCheck() {
 }
 
 /**
- * Queue a cash-paid local check for sync + return printable snapshot.
+ * Queue a paid check for sync + return printable snapshot (sell → print → sync).
+ * Supports cash and other non-room tenders; room charge stays online settle-only.
  */
 export async function completeOfflineHotelCashCheck({
   check,
@@ -468,13 +470,16 @@ export async function completeOfflineHotelCashCheck({
         ];
 
   for (const row of payRows) {
-    if (row.method_code !== "CASH") {
-      throw new Error("Offline mode supports cash payments only. Reconnect for room charge or M-Pesa.");
+    if (row.method_code === "ROOM") {
+      throw new Error("Room charge must be settled online. Reconnect and charge to folio.");
     }
   }
 
+  const sourceCheckId =
+    !isLocalHotelCheckId(check?.id) && Number(check?.id) > 0 ? Number(check.id) : null;
+
   const snapshot = {
-    id: `offline:${clientCheckUuid}`,
+    id: sourceCheckId ? sourceCheckId : `offline:${clientCheckUuid}`,
     client_check_uuid: clientCheckUuid,
     check_number: String(check.check_number),
     status: "paid",
@@ -516,6 +521,25 @@ export async function completeOfflineHotelCashCheck({
     })),
   };
 
+  const syncBody = {
+    client_check_uuid: clientCheckUuid,
+    check_number: snapshot.check_number,
+    outlet_id: snapshot.outlet_id,
+    branch_id: snapshot.branch_id,
+    floor_table_id: snapshot.floor_table_id,
+    guest_name: snapshot.guest_name,
+    offline_order: true,
+    client_completed_at: soldAtIso,
+    lines: snapshot.lines.map((line) => ({
+      product_code: line.product_code,
+      qty: line.qty,
+    })),
+    payments: payRows,
+  };
+  if (sourceCheckId) {
+    syncBody.source_check_id = sourceCheckId;
+  }
+
   const outbox = {
     client_check_uuid: clientCheckUuid,
     check_number: snapshot.check_number,
@@ -524,26 +548,31 @@ export async function completeOfflineHotelCashCheck({
     created_at_ms: soldAtMs,
     updated_at_ms: Date.now(),
     check_payload: snapshot,
-    sync_body: {
-      client_check_uuid: clientCheckUuid,
-      check_number: snapshot.check_number,
-      outlet_id: snapshot.outlet_id,
-      branch_id: snapshot.branch_id,
-      floor_table_id: snapshot.floor_table_id,
-      guest_name: snapshot.guest_name,
-      offline_order: true,
-      client_completed_at: soldAtIso,
-      lines: snapshot.lines.map((line) => ({
-        product_code: line.product_code,
-        qty: line.qty,
-      })),
-      payments: payRows,
-    },
+    sync_body: syncBody,
   };
 
   await idbPutOutboxCheck(outbox);
   await idbClearLocalCheck();
   return { check: snapshot, outbox };
+}
+
+/** Full non-room payment → local-first (sell → print → sync). */
+export function isHotelLocalFirstCheckout({ payments, folioId = null, check = null } = {}) {
+  if (folioId) return false;
+  if (Number(check?.amount_paid ?? 0) > 0.001) return false;
+  const rows = Array.isArray(payments) ? payments : [];
+  if (!rows.length) return false;
+  let paySum = 0;
+  for (const p of rows) {
+    const code = String(p.method_code ?? "").toUpperCase();
+    if (!code || code === "ROOM") return false;
+    paySum += Number(p.amount ?? 0);
+  }
+  const due = Number(
+    check?.balance_due ??
+      Math.max(0, Number(check?.total ?? 0) - Number(check?.amount_paid ?? 0)),
+  );
+  return paySum + 0.01 >= due;
 }
 
 function isDuplicateHotelCheckError(err) {

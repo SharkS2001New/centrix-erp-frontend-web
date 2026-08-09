@@ -26,8 +26,8 @@ const EMPTY_SYNC_PROGRESS = {
 };
 
 /**
- * Hotel & Bar POS short-outage bridge (same idea as External POS offline).
- * Cash-only local tickets when offline/slow; flush outbox when API is reachable.
+ * Hotel & Bar POS connectivity: flush local-first outbox when API is reachable.
+ * Unlike External POS, selling is locked when offline (no offline tickets).
  */
 export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = {}) {
   const { status, browserOnline, apiOnline, refresh: refreshNetwork } = useNetworkStatus({
@@ -36,7 +36,10 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
   });
   const fullyOnline = status === "online";
   const canFlushOutbox = enabled && browserOnline && apiOnline;
-  const offlineMode = enabled && status !== "online";
+  /** No internet → lock the till (do not sell). */
+  const sellingLocked = enabled && (status === "offline" || browserOnline === false);
+  /** @deprecated alias — kept for callers that gated room charge / local catalog */
+  const offlineMode = sellingLocked;
   const [pendingSync, setPendingSync] = useState(0);
   const [failedSyncChecks, setFailedSyncChecks] = useState([]);
   const [checkNumbersLeft, setCheckNumbersLeft] = useState(0);
@@ -325,6 +328,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
     status,
     fullyOnline,
     canFlushOutbox,
+    sellingLocked,
     offlineMode,
     pendingSync,
     failedSyncChecks,

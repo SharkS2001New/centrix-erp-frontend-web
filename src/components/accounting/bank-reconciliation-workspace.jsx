@@ -97,10 +97,10 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
   }, [load]);
 
   const reconciliation = data?.reconciliation;
-  const statementLines = data?.statement_lines ?? [];
-  const bookItems = data?.book_items ?? [];
-  const suggestions = data?.suggestions ?? [];
-  const matches = data?.matches ?? [];
+  const statementLines = useMemo(() => data?.statement_lines ?? [], [data?.statement_lines]);
+  const bookItems = useMemo(() => data?.book_items ?? [], [data?.book_items]);
+  const suggestions = useMemo(() => data?.suggestions ?? [], [data?.suggestions]);
+  const matches = useMemo(() => data?.matches ?? [], [data?.matches]);
 
   const unmatchedStatements = useMemo(
     () => statementLines.filter((line) => line.match_status === "unmatched"),

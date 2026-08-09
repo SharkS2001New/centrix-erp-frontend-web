@@ -92,7 +92,7 @@ export function MergeDispatchTripsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, driversFromProps.length, vehiclesFromProps.length, user?.organization_id]);
+  }, [open, driversFromProps, vehiclesFromProps, user?.organization_id]);
 
   const drivers = useMemo(
     () => sortByName(dedupeById([...driversFromProps, ...driversLoaded])),

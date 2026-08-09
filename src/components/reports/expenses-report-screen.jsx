@@ -12,7 +12,7 @@ import {
 } from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
-import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
+import { formatReportCell, sumField } from "@/lib/reports/format";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import {
   ReportFilterBar,
@@ -20,10 +20,10 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
+import { ReportChartsSection, ReportViewModeToggle } from "@/components/reports/report-charts";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 
 const DEFAULT_PAGE_SIZE = 25;
-const CHART_COLORS = ["#185FA5", "#0F766E", "#B45309", "#7C3AED", "#BE123C", "#0369A1", "#4D7C0F"];
 
 export function ExpensesReportScreen({ definition }) {
   const { user, capabilities } = useAuth();
@@ -41,6 +41,7 @@ export function ExpensesReportScreen({ definition }) {
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
   const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "" });
+  const [viewMode, setViewMode] = useState("both");
 
   useEffect(() => {
     fetchBranchesCached()
@@ -101,31 +102,26 @@ export function ExpensesReportScreen({ definition }) {
   const byCategory = useMemo(() => {
     const groups = reportSummary?.by_group;
     if (Array.isArray(groups) && groups.length) {
-      const total = groups.reduce((s, g) => s + (Number(g.total_amount) || 0), 0);
-      return groups
-        .map((g) => ({
-          name: g.group_name ?? "Other",
-          amount: Number(g.total_amount) || 0,
-          pct: total > 0 ? ((Number(g.total_amount) || 0) / total) * 100 : 0,
-        }))
-        .sort((a, b) => b.amount - a.amount);
+      return groups.map((g) => ({
+        group_name: g.group_name ?? "Other",
+        total_amount: Number(g.total_amount) || 0,
+      }));
     }
     const map = new Map();
     for (const row of rows) {
       const key = row.group_name ?? "Other";
       map.set(key, (map.get(key) ?? 0) + (Number(row.total_amount) || 0));
     }
-    const total = [...map.values()].reduce((s, v) => s + v, 0);
-    return [...map.entries()]
-      .map(([name, amount]) => ({
-        name,
-        amount,
-        pct: total > 0 ? (amount / total) * 100 : 0,
-      }))
-      .sort((a, b) => b.amount - a.amount);
+    return [...map.entries()].map(([group_name, total_amount]) => ({
+      group_name,
+      total_amount,
+    }));
   }, [reportSummary, rows]);
 
   const totalPages = reportMeta?.last_page ?? 1;
+  const hasCharts = Boolean(definition.charts?.length);
+  const showCharts = hasCharts && (viewMode === "charts" || viewMode === "both");
+  const showTable = viewMode === "table" || viewMode === "both" || !hasCharts;
 
   const kpis = definition.kpis?.map((kpi) => {
     const result = kpi.compute(rows, reportSummary);
@@ -206,50 +202,48 @@ export function ExpensesReportScreen({ definition }) {
 
       {!loading ? <ReportKpiGrid items={kpis ?? []} /> : null}
 
+      {!loading && hasCharts ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-800">
+              {viewMode === "charts"
+                ? "Graphs & charts"
+                : viewMode === "both"
+                  ? "Table with graphs"
+                  : "Data table"}
+            </p>
+            <p className="text-xs text-slate-500">
+              Switch views to compare expense categories as charts or a table.
+            </p>
+          </div>
+          <ReportViewModeToggle value={viewMode} onChange={setViewMode} disabled={loading} />
+        </div>
+      ) : null}
+
       {loading ? (
         <p className="text-sm text-slate-500">Loading report…</p>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          <div className="theme-panel rounded-xl border p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">By category</h2>
-            <div className="mt-4 space-y-3">
-              {byCategory.map((item, idx) => (
-                <div key={item.name}>
-                  <div className="mb-1 flex justify-between text-xs text-slate-600">
-                    <span>{item.name}</span>
-                    <span>{item.pct.toFixed(1)}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${item.pct}%`,
-                        backgroundColor: CHART_COLORS[idx % CHART_COLORS.length],
-                      }}
-                    />
-                  </div>
-                  <p className="mt-0.5 text-right text-xs font-medium text-slate-800">
-                    {formatReportKes(item.amount)}
-                  </p>
-                </div>
-              ))}
-              {!byCategory.length ? (
-                <p className="text-xs text-slate-500">No expense categories in range.</p>
-              ) : null}
-            </div>
-          </div>
-          <div>
-            <ReportTable columns={definition.columns ?? []} rows={rows} footerTotals={footerTotals} />
-            <PaginationBar
-              page={page}
-              totalPages={totalPages}
-              total={reportMeta?.total ?? rows.length}
-              pageSize={pageSize}
-              onChange={setPage}
-              onPageSizeChange={handlePageSizeChange}
+        <>
+          {showCharts ? (
+            <ReportChartsSection
+              charts={definition.charts}
+              rows={byCategory.length ? byCategory : rows}
             />
-          </div>
-        </div>
+          ) : null}
+          {showTable ? (
+            <>
+              <ReportTable columns={definition.columns ?? []} rows={rows} footerTotals={footerTotals} />
+              <PaginationBar
+                page={page}
+                totalPages={totalPages}
+                total={reportMeta?.total ?? rows.length}
+                pageSize={pageSize}
+                onChange={setPage}
+                onPageSizeChange={handlePageSizeChange}
+              />
+            </>
+          ) : null}
+        </>
       )}
     </ReportPageShell>
   );

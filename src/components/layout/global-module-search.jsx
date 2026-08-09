@@ -123,7 +123,7 @@ export function GlobalModuleSearch() {
     }, 280);
 
     return () => window.clearTimeout(timer);
-  }, [adminPath, entityConfigs, query, workspaceId]);
+  }, [adminPath, entityConfigs, query, workspaceId, organization?.id, user?.organization_id]);
 
   const rows = useMemo(
     () => buildModuleSearchRows(navResults, entityGroups, query),
@@ -224,12 +224,14 @@ export function GlobalModuleSearch() {
         className="app-topbar-search-input w-full py-2 pl-9 pr-3 text-sm outline-none"
         aria-label={`Search records and pages in ${workspaceLabel}`}
         aria-expanded={open}
+        aria-controls="global-module-search-listbox"
         aria-autocomplete="list"
         role="combobox"
       />
 
       {showDropdown ? (
         <div
+          id="global-module-search-listbox"
           className="velzon-search-dropdown absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-96 overflow-y-auto rounded-lg border shadow-lg"
           role="listbox"
         >

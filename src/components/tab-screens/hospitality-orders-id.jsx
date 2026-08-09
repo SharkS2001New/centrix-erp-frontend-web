@@ -138,8 +138,8 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
 
   return (
     <CatalogPageShell
-      title={`Check ${check.check_number}`}
-      subtitle="Hotel F&B order details — view lines, totals, and print a receipt."
+      title={`Order ${check.check_number || check.order_num}`}
+      subtitle="Hotel POS order — same summary layout as backoffice: lines, totals, payments, and print."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <SecondaryButton onClick={() => router.push("/hospitality/orders")}>
@@ -158,19 +158,33 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
       <div className="space-y-6">
         <section className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4 sm:p-5">
           <h2 className="theme-heading text-sm font-semibold">Summary</h2>
-          <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+          <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <MetaRow label="Status">
               <span className="capitalize">{String(check.status ?? "").replace(/_/g, " ")}</span>
             </MetaRow>
+            <MetaRow label="Order #">{check.check_number || check.order_num || "—"}</MetaRow>
+            <MetaRow label="Source">
+              {String(check.order_source || "").includes("offline")
+                ? "Hotel POS (offline)"
+                : "Hotel POS"}
+            </MetaRow>
+            <MetaRow label="Method">{check.payment_method_label || "—"}</MetaRow>
+            <MetaRow label="Placed by">{check.opened_by_name || "—"}</MetaRow>
             <MetaRow label="Outlet">{outletLabel}</MetaRow>
             <MetaRow label="Table">{tableLabel}</MetaRow>
             <MetaRow label="Service">
               <span className="capitalize">{check.service_mode || "—"}</span>
             </MetaRow>
             {guestNameEnabled || check.guest_name ? (
-              <MetaRow label="Guest name">{check.guest_name || "—"}</MetaRow>
+              <MetaRow label="Guest">{check.guest_name || "—"}</MetaRow>
             ) : null}
-            <MetaRow label="Opened">{formatWhen(check.opened_at)}</MetaRow>
+            {check.folio?.folio_number ? (
+              <MetaRow label="Folio">
+                {check.folio.folio_number}
+                {check.folio.room_number ? ` · Rm ${check.folio.room_number}` : ""}
+              </MetaRow>
+            ) : null}
+            <MetaRow label="Opened">{formatWhen(check.opened_at || check.created_at)}</MetaRow>
             <MetaRow label="Closed">{formatWhen(check.closed_at)}</MetaRow>
             <MetaRow label="Updated">{formatWhen(check.updated_at)}</MetaRow>
           </dl>

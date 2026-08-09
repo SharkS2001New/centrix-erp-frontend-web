@@ -106,7 +106,7 @@ export function InventoryDashboardContent() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user?.branch_id, user?.access_scope, user?.is_admin, isOrgWide]);
+  }, [user?.branch_id, isOrgWide]);
 
   useTabAwareDataLoad(loadDashboard);
 
