@@ -2150,6 +2150,42 @@ async function resolvePreviousOrderEditCartId(row) {
   return restoreFromSale(liveSaleId);
 }
 
+/**
+ * Non-credit offline uploads must cover the bill. Pending-sync edits can raise
+ * order_total while leaving a stale pay_now — heal before checkout.
+ * @param {Record<string, unknown>} body
+ * @param {{ sync_kind?: string, sale_payload?: Record<string, unknown> }} row
+ */
+export function healOfflineCheckoutPayNow(body, row) {
+  if (!body || body.is_credit_sale || row?.sync_kind === "previous_order_edit") {
+    return body;
+  }
+  const billTotal = Math.max(
+    0,
+    Number(row?.sale_payload?.order_total ?? body.pay_now ?? 0) || 0,
+  );
+  const payNow = Math.max(0, Number(body.pay_now ?? 0) || 0);
+  const amountPaid = Math.max(
+    0,
+    Number(row?.sale_payload?.amount_paid ?? payNow) || 0,
+  );
+  const paymentStatus = String(
+    row?.sale_payload?.payment_status ?? body.payment_status ?? "",
+  )
+    .trim()
+    .toLowerCase();
+  const shouldBeFullyPaid =
+    paymentStatus === "paid" ||
+    paymentStatus === "" ||
+    amountPaid + 0.01 >= billTotal ||
+    payNow + 0.01 >= billTotal * 0.5;
+  if (billTotal > 0.01 && shouldBeFullyPaid && payNow + 0.01 < billTotal) {
+    body.pay_now = billTotal;
+    delete body.payment_splits;
+  }
+  return body;
+}
+
 async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   const posDate =
     normalizePosOrderDate(extras.pos_order_date) ??
@@ -2265,6 +2301,10 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
       body.payment_method_code = "CASH";
     }
   }
+
+  // Non-credit offline uploads must cover the bill. Pending-sync edits can raise
+  // order_total while leaving a stale pay_now — heal before checkout.
+  healOfflineCheckoutPayNow(body, row);
 
   return body;
 }
@@ -2764,6 +2804,31 @@ export async function syncOutboxSaleFromLocalEditCart(cart) {
   }));
 
   const orderDiscount = Number(cart.order_discount ?? existing.order_discount ?? 0) || 0;
+  const isCreditSale = Boolean(
+    cart.is_credit_sale ??
+      priorPayload.is_credit_sale ??
+      existing.checkout_body?.is_credit_sale,
+  );
+  const paymentMethodCode = String(
+    cart.payment_method_code ??
+      priorPayload.payment_method_code ??
+      existing.checkout_body?.payment_method_code ??
+      "CASH",
+  )
+    .trim()
+    .toUpperCase() || "CASH";
+  // Non-credit pending sales stay fully paid when lines/totals change mid-edit.
+  const amountPaid = isCreditSale
+    ? Math.max(0, Number(priorPayload.amount_paid ?? existing.checkout_body?.pay_now ?? 0) || 0)
+    : summary.total;
+  const paymentStatus = isCreditSale
+    ? amountPaid + 0.01 >= summary.total && summary.total > 0.01
+      ? "paid"
+      : amountPaid > 0.01
+        ? "partial"
+        : "unpaid"
+    : "paid";
+
   const salePayload = {
     ...priorPayload,
     id: priorPayload.id ?? `offline:${uuid}`,
@@ -2783,6 +2848,10 @@ export async function syncOutboxSaleFromLocalEditCart(cart) {
     order_total: summary.total,
     amount_due: summary.amountDue,
     total_vat: summary.vat,
+    amount_paid: amountPaid,
+    payment_status: paymentStatus,
+    payment_method_code: paymentMethodCode,
+    is_credit_sale: isCreditSale,
     items: saleItems,
   };
 
@@ -2793,9 +2862,22 @@ export async function syncOutboxSaleFromLocalEditCart(cart) {
           customer_num: salePayload.customer_num,
           customer_name_override: salePayload.customer_name_override,
           total_vat: salePayload.total_vat,
+          payment_method_code: paymentMethodCode,
+          is_credit_sale: isCreditSale,
+          payment_status: paymentStatus,
+          // Keep tenders aligned with the revised bill for non-credit offline sales.
+          ...(isCreditSale
+            ? {}
+            : {
+                pay_now: summary.total,
+                payment_splits: undefined,
+              }),
           content_revision: Number(existing.content_revision ?? 0) + 1,
         }
       : existing.checkout_body;
+  if (checkoutBody && !isCreditSale && "payment_splits" in checkoutBody && checkoutBody.payment_splits == null) {
+    delete checkoutBody.payment_splits;
+  }
 
   const next = {
     ...existing,
@@ -3095,6 +3177,8 @@ export async function listFailedOutboxSales() {
 
 function mapOutboxRowForDisplay(row) {
   const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
+  const checkout =
+    row.checkout_body && typeof row.checkout_body === "object" ? row.checkout_body : {};
   const items =
     Array.isArray(row.lines) && row.lines.length
       ? row.lines
@@ -3107,15 +3191,34 @@ function mapOutboxRowForDisplay(row) {
     sale.order_total != null
       ? Number(sale.order_total)
       : items.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
+  const amountPaid =
+    sale.amount_paid != null
+      ? Number(sale.amount_paid)
+      : checkout.pay_now != null
+        ? Number(checkout.pay_now)
+        : null;
+  const paymentMethodCode = String(
+    sale.payment_method_code ?? checkout.payment_method_code ?? "",
+  )
+    .trim()
+    .toUpperCase();
+  const paymentStatus = String(sale.payment_status ?? checkout.payment_status ?? "")
+    .trim()
+    .toLowerCase();
   return {
     ...sale,
     client_sale_uuid: row.client_sale_uuid,
     id: `offline:${row.client_sale_uuid}`,
     order_num: row.order_num,
-    pos_order_num: sale.pos_order_num ?? row.checkout_body?.pos_order_num ?? null,
-    pos_order_date: sale.pos_order_date ?? row.checkout_body?.pos_order_date ?? null,
+    pos_order_num: sale.pos_order_num ?? checkout.pos_order_num ?? null,
+    pos_order_date: sale.pos_order_date ?? checkout.pos_order_date ?? null,
     customer_name: sale.customer_name ?? sale.customer_name_override ?? "Walk-in",
     order_total: orderTotal,
+    amount_paid: amountPaid,
+    payment_method_code: paymentMethodCode || null,
+    payment_status: paymentStatus || null,
+    is_credit_sale: Boolean(sale.is_credit_sale ?? checkout.is_credit_sale),
+    payments: Array.isArray(sale.payments) ? sale.payments : [],
     offline_pending_sync: true,
     sync_status: row.sync_status,
     sync_error: row.sync_error ?? null,
@@ -3564,6 +3667,92 @@ function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
 }
 
 /**
+ * Rows eligible for upload. Mid-edit (`editing`) is skipped while that sale is
+ * still open on the till; stale edits (cashier left the ticket) are re-queued.
+ *
+ * @param {{ includeErrors?: boolean, clientSaleUuid?: string|null }} [options]
+ * @returns {Promise<{ rows: object[], skippedActiveEdit: boolean }>}
+ */
+async function collectOutboxRowsForSync({
+  includeErrors = true,
+  clientSaleUuid = null,
+} = {}) {
+  const onlyUuid = String(clientSaleUuid ?? "").trim();
+  const activeCart = await idbGetLocalCart("active").catch(() => null);
+  const cartUuid =
+    activeCart?.offline_client_sale_uuid != null &&
+    String(activeCart.offline_client_sale_uuid).trim()
+      ? String(activeCart.offline_client_sale_uuid).trim()
+      : null;
+
+  async function promoteEditingIfStale(row) {
+    if (!row || row.sync_status !== "editing") return row;
+    const uuid = String(row.client_sale_uuid ?? "").trim();
+    // Still open on the ticket — do not upload mid-edit.
+    if (cartUuid && uuid === cartUuid) {
+      return null;
+    }
+    const next = {
+      ...row,
+      sync_status: "pending",
+      sync_started_at_ms: null,
+      revision_at_sync: null,
+      updated_at_ms: Date.now(),
+    };
+    await idbPutOutboxSale(next);
+    return next;
+  }
+
+  if (onlyUuid) {
+    const existing = await idbGetOutboxSale(onlyUuid);
+    if (!existing || existing.sync_kind === "online_mirror") {
+      return { rows: [], skippedActiveEdit: false };
+    }
+    if (existing.sync_status === "synced") {
+      return { rows: [], skippedActiveEdit: false };
+    }
+    if (existing.sync_status === "editing") {
+      const promoted = await promoteEditingIfStale(existing);
+      if (!promoted) {
+        return { rows: [], skippedActiveEdit: true };
+      }
+      return { rows: [promoted], skippedActiveEdit: false };
+    }
+    if (existing.sync_status === "pending") {
+      return { rows: [existing], skippedActiveEdit: false };
+    }
+    if (includeErrors && existing.sync_status === "error") {
+      return { rows: [existing], skippedActiveEdit: false };
+    }
+    return { rows: [], skippedActiveEdit: false };
+  }
+
+  const pending = await idbListPendingOutbox({ includeErrors });
+  const byUuid = new Map(
+    pending.map((row) => [String(row.client_sale_uuid ?? ""), row]),
+  );
+  let skippedActiveEdit = false;
+
+  const unsynced = await idbListUnsyncedOutbox();
+  for (const row of unsynced) {
+    if (row.sync_status !== "editing") continue;
+    const uuid = String(row.client_sale_uuid ?? "").trim();
+    if (!uuid || byUuid.has(uuid)) continue;
+    const promoted = await promoteEditingIfStale(row);
+    if (!promoted) {
+      skippedActiveEdit = true;
+      continue;
+    }
+    byUuid.set(uuid, promoted);
+  }
+
+  const rows = [...byUuid.values()].sort(
+    (a, b) => Number(a.created_at_ms ?? 0) - Number(b.created_at_ms ?? 0),
+  );
+  return { rows, skippedActiveEdit };
+}
+
+/**
  * Replay pending offline cash sales to the server (oldest first).
  * Marks each row `syncing` while in flight so concurrent flushes cannot double-post.
  * Never creates a second server sale for the same POS ticket / client uuid — recovers
@@ -3587,11 +3776,9 @@ export async function syncPosOfflineOutbox({
   await withPosOfflineExclusiveLock(async () => {
     await idbReclaimStuckSyncingOutbox({ olderThanMs: 5 * 60_000 });
   });
-  let pending = await idbListPendingOutbox({ includeErrors });
-  const onlyUuid = String(clientSaleUuid ?? "").trim();
-  if (onlyUuid) {
-    pending = pending.filter((row) => String(row.client_sale_uuid) === onlyUuid);
-  }
+  const { rows: pending, skippedActiveEdit } = await withPosOfflineExclusiveLock(async () =>
+    collectOutboxRowsForSync({ includeErrors, clientSaleUuid }),
+  );
   const openFloatSessionId =
     Number(floatSessionId ?? 0) > 0 ? Number(floatSessionId) : null;
   const total = pending.length;
@@ -3606,7 +3793,12 @@ export async function syncPosOfflineOutbox({
     done: 0,
     failed: 0,
     order_num: null,
-    message: total === 0 ? "No offline orders waiting to sync." : `Syncing ${total} order(s)…`,
+    message:
+      total === 0
+        ? skippedActiveEdit
+          ? "Finish or clear the open edit on the ticket, then sync."
+          : "No offline orders waiting to sync."
+        : `Syncing ${total} order(s)…`,
   });
 
   for (let index = 0; index < pending.length; index += 1) {

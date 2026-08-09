@@ -235,11 +235,14 @@ export function usePosOfflineSupport({
             // Keep the pending badge accurate while a long flush runs.
             // Failed rows remain in the outbox — do not subtract them from pending
             // or the pending-sync popup closes/reopens (and reloads) in a loop.
+            // When total is 0 (e.g. only mid-edit rows), do not force pending to 0 —
+            // refreshCounts after the flush is authoritative.
             if (progress.phase === "start" || progress.phase === "item_done") {
-              const remaining = Math.max(
-                0,
-                Number(progress.total ?? 0) - Number(progress.done ?? 0),
-              );
+              const total = Number(progress.total ?? 0);
+              if (progress.phase === "start" && total === 0) {
+                return;
+              }
+              const remaining = Math.max(0, total - Number(progress.done ?? 0));
               setPendingSync(remaining);
             }
           },

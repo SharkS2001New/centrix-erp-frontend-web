@@ -41,6 +41,68 @@ function syncStatusLabel(order) {
   return String(order.sync_status ?? "Queued");
 }
 
+function paymentStatusLabel(order) {
+  const status = String(order.payment_status ?? "").trim().toLowerCase();
+  if (status === "paid") return "Paid";
+  if (status === "partial") return "Partially paid";
+  if (status === "unpaid") return "Unpaid";
+  if (status === "refunded") return "Refunded";
+  const total = Number(order.order_total ?? 0);
+  const paid = Number(order.amount_paid ?? 0);
+  if (order.is_credit_sale) {
+    if (total > 0.01 && paid + 0.01 >= total) return "Paid";
+    if (paid > 0.01) return "Partially paid";
+    return "Unpaid";
+  }
+  // Non-credit offline sales are cash/bank tenders — treat as paid when status missing.
+  if (total > 0.01 && paid + 0.01 < total && paid >= 0) {
+    if (paid > 0.01) return "Partially paid";
+    return "Unpaid";
+  }
+  return "Paid";
+}
+
+function paymentMethodLabel(order) {
+  const labels = {
+    CASH: "Cash",
+    MPESA: "M-Pesa",
+    CREDIT: "Credit",
+    EQUITY: "Equity",
+    KCB: "KCB",
+    BANK: "Bank",
+    CHEQUE: "Cheque",
+  };
+  const payments = Array.isArray(order.payments) ? order.payments.filter((p) => Number(p?.amount) > 0) : [];
+  if (payments.length > 1) {
+    return payments
+      .map((part) => {
+        const code = String(part.payment_method_code ?? part.method_code ?? "")
+          .trim()
+          .toUpperCase();
+        return labels[code] ?? code ?? "—";
+      })
+      .filter(Boolean)
+      .join(" + ");
+  }
+  const code = String(
+    order.payment_method_code ??
+      payments[0]?.payment_method_code ??
+      payments[0]?.method_code ??
+      "",
+  )
+    .trim()
+    .toUpperCase();
+  if (!code) return "—";
+  return labels[code] ?? code;
+}
+
+function paymentStatusTone(label) {
+  if (label === "Paid") return "bg-emerald-100 text-emerald-900";
+  if (label === "Partially paid") return "bg-amber-100 text-amber-900";
+  if (label === "Unpaid") return "bg-rose-100 text-rose-900";
+  return "bg-slate-100 text-slate-700";
+}
+
 export function PosPendingSyncOverlay({
   open,
   onClose,
@@ -70,12 +132,18 @@ export function PosPendingSyncOverlay({
   const [printingAll, setPrintingAll] = useState(false);
   const [uomById, setUomById] = useState(() => new Map());
   const onCountChangeRef = useRef(onCountChange);
+  const onCloseRef = useRef(onClose);
   const loadedOnceRef = useRef(false);
   const wasSyncingRef = useRef(false);
+  const autoCloseWhenEmptyRef = useRef(false);
 
   useEffect(() => {
     onCountChangeRef.current = onCountChange;
   }, [onCountChange]);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     setMounted(true);
@@ -105,6 +173,10 @@ export function PosPendingSyncOverlay({
       const list = await listPendingOutboxSalesForManage();
       setRows(list);
       onCountChangeRef.current?.(list.length);
+      if (list.length <= 0 && autoCloseWhenEmptyRef.current) {
+        autoCloseWhenEmptyRef.current = false;
+        onCloseRef.current?.();
+      }
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load pending offline orders");
     } finally {
@@ -114,6 +186,9 @@ export function PosPendingSyncOverlay({
   }, []);
 
   useEffect(() => {
+    if (syncing && open) {
+      autoCloseWhenEmptyRef.current = true;
+    }
     if (wasSyncingRef.current && !syncing && open) {
       void loadPendingSales({ refresh: true });
     }
@@ -123,6 +198,7 @@ export function PosPendingSyncOverlay({
   useEffect(() => {
     if (!open) {
       loadedOnceRef.current = false;
+      autoCloseWhenEmptyRef.current = false;
       setSearch("");
       setListError(null);
       setActionError(null);
@@ -146,7 +222,16 @@ export function PosPendingSyncOverlay({
       const customer = String(order.customer_name ?? order.customer_name_override ?? "").toLowerCase();
       const posNum = String(order.pos_order_num ?? "");
       const err = String(order.sync_error ?? "").toLowerCase();
-      return ticket.includes(q) || customer.includes(q) || posNum.includes(q) || err.includes(q);
+      const payStatus = paymentStatusLabel(order).toLowerCase();
+      const payMethod = paymentMethodLabel(order).toLowerCase();
+      return (
+        ticket.includes(q) ||
+        customer.includes(q) ||
+        posNum.includes(q) ||
+        err.includes(q) ||
+        payStatus.includes(q) ||
+        payMethod.includes(q)
+      );
     });
   }, [rows, search]);
 
@@ -156,11 +241,16 @@ export function PosPendingSyncOverlay({
     const key = orderKey(order);
     setBusyKey(key);
     setActionError(null);
+    autoCloseWhenEmptyRef.current = true;
     try {
       const results = await onSyncOrder(uuid);
       const failed = (results ?? []).find((row) => !row.ok);
       if (failed?.error) {
         setActionError(failed.error);
+      } else if (!(results ?? []).length && order.sync_status === "editing") {
+        setActionError(
+          "This order is open on the ticket. Finish or clear the edit, then sync — or remove it from this list.",
+        );
       }
       await loadPendingSales({ refresh: true });
     } catch (e) {
@@ -389,7 +479,7 @@ export function PosPendingSyncOverlay({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search order #, customer, or error…"
+            placeholder="Search order #, customer, payment, or error…"
             className={INPUT_CLASS}
           />
         </div>
@@ -417,6 +507,8 @@ export function PosPendingSyncOverlay({
                 const isPrinting = printingKey === key;
                 const failed = order.sync_status === "error";
                 const canPrintOrder = Boolean(onPrintOrder || onPrintAll);
+                const payStatus = paymentStatusLabel(order);
+                const payMethod = paymentMethodLabel(order);
 
                 return (
                   <li
@@ -441,6 +533,14 @@ export function PosPendingSyncOverlay({
                             >
                               {syncStatusLabel(order)}
                             </span>
+                            <span
+                              className={`rounded px-1.5 py-0.5 font-semibold uppercase tracking-wide ${paymentStatusTone(payStatus)}`}
+                            >
+                              {payStatus}
+                            </span>
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-slate-700">
+                              {payMethod}
+                            </span>
                             {order.sync_kind === "previous_order_edit" ? (
                               <span className="rounded bg-sky-100 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-sky-900">
                                 Previous order edit
@@ -451,8 +551,17 @@ export function PosPendingSyncOverlay({
                             <span className="mt-1 block text-xs text-red-700">{order.sync_error}</span>
                           ) : null}
                         </span>
-                        <span className="shrink-0 text-sm font-semibold text-[var(--theme-accent-text)]">
-                          {formatSaleKes(order.order_total)}
+                        <span className="shrink-0 text-right">
+                          <span className="block text-sm font-semibold text-[var(--theme-accent-text)]">
+                            {formatSaleKes(order.order_total)}
+                          </span>
+                          {order.amount_paid != null &&
+                          Math.abs(Number(order.amount_paid) - Number(order.order_total ?? 0)) >
+                            0.01 ? (
+                            <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                              Paid {formatSaleKes(order.amount_paid)}
+                            </span>
+                          ) : null}
                         </span>
                       </summary>
 

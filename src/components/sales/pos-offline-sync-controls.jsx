@@ -50,6 +50,12 @@ export function PosOfflineSyncControls({
   // Never show Sync chrome when the queue is empty — even if syncing flag is sticky.
   const activelySyncingQueue = syncing && hasPending;
   const showSyncButton = hasPending;
+  // A prior empty flush can leave this message stuck while editing rows still show.
+  const usefulLastMessage =
+    lastSyncMessage &&
+    !(hasPending && /no offline orders waiting to sync/i.test(String(lastSyncMessage)))
+      ? lastSyncMessage
+      : null;
 
   if (!showSyncButton && !showBar) {
     return null;
@@ -64,8 +70,8 @@ export function PosOfflineSyncControls({
         : total > 0
           ? `Syncing ${positionLabel} · ${pct}%…`
           : "Syncing offline orders…"
-      : lastSyncMessage && hasPending
-        ? lastSyncMessage
+      : usefulLastMessage && hasPending
+        ? usefulLastMessage
         : hasPending
           ? `${pendingSync} offline order(s) waiting to sync`
           : null;

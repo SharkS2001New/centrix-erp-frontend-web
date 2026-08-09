@@ -14256,9 +14256,8 @@ export function PosScreen({ standalone = false }) {
                     </>
                   ) : (
                     <>
-                      Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edits save instantly —{" "}
-                      <strong>F10 is not required</strong>. When finished, print with Alt+P or
-                      Reprint.
+                      Revising Cash Sales #{formatPosBrowseLabel(cart)}. Edits save instantly.
+                      When finished, print with Alt+P or Reprint.
                       {editAutosaveBusy || pendingSync > 0
                         ? syncProgress?.message
                           ? ` ${syncProgress.message}`
