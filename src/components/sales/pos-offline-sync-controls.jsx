@@ -12,8 +12,6 @@ export function PosOfflineSyncControls({
   syncProgress = null,
   lastSyncMessage = null,
   onSync,
-  failedSyncOrders = [],
-  onPrintFailed,
   compact = false,
   className = "",
 }) {
@@ -30,19 +28,11 @@ export function PosOfflineSyncControls({
   const pct = total > 0 ? Math.min(100, Math.round(((done + failed) / total) * 100)) : 0;
 
   const hasPending = pendingSync > 0;
-  const failedOrders = Array.isArray(failedSyncOrders) ? failedSyncOrders : [];
-  const latestFailed = failedOrders[0] ?? null;
-  // External POS: Cash Sales # only — never fall back to org order_num / S#.
-  const failedBrowseNum =
-    latestFailed?.pos_order_num != null && latestFailed.pos_order_num !== ""
-      ? latestFailed.pos_order_num
-      : null;
-  const showPrintFailed = failedOrders.length > 0 && !syncing && typeof onPrintFailed === "function";
   // Never show Sync chrome when the queue is empty — even if syncing flag is sticky.
   const activelySyncingQueue = syncing && hasPending;
-  const showSyncButton = hasPending || failedOrders.length > 0;
+  const showSyncButton = hasPending;
 
-  if (!showSyncButton && !showPrintFailed && !showBar) {
+  if (!showSyncButton && !showBar) {
     return null;
   }
 
@@ -52,24 +42,20 @@ export function PosOfflineSyncControls({
         (total > 0
           ? `Syncing ${Math.max(current, done + failed)} of ${total}…`
           : "Syncing offline orders…")
-      : lastSyncMessage && (hasPending || failedOrders.length > 0)
+      : lastSyncMessage && hasPending
         ? lastSyncMessage
-        : failedOrders.length > 0
-          ? `${failedOrders.length} offline order(s) need a manual sync retry`
-          : hasPending
-            ? `${pendingSync} offline order(s) waiting to sync`
-            : null;
+        : hasPending
+          ? `${pendingSync} offline order(s) waiting to sync`
+          : null;
 
-  const disabled = syncing || !canFlush || (!hasPending && failedOrders.length === 0);
+  const disabled = syncing || !canFlush || !hasPending;
   const title = !canFlush
     ? "Reconnect to sync offline orders"
     : syncing
       ? "Sync in progress…"
       : hasPending
         ? `Sync ${pendingSync} pending offline order(s)`
-        : failedOrders.length > 0
-          ? `Retry sync for ${failedOrders.length} failed offline order(s)`
-          : "No offline orders waiting to sync";
+        : "No offline orders waiting to sync";
 
   return (
     <div
@@ -80,27 +66,6 @@ export function PosOfflineSyncControls({
       <div className={`flex flex-wrap items-center gap-2 ${compact ? "" : "justify-between"}`}>
         {!compact && label ? (
           <p className="min-w-0 flex-1 text-xs font-medium leading-snug">{label}</p>
-        ) : null}
-        {showPrintFailed ? (
-          <button
-            type="button"
-            disabled={syncing}
-            title={
-              failedBrowseNum != null
-                ? `Print receipt for failed offline order #${failedBrowseNum}`
-                : "Print receipt for the failed offline order"
-            }
-            onClick={() => void onPrintFailed?.(latestFailed)}
-            className={
-              compact
-                ? "pos-header-action-btn inline-flex items-center gap-1 rounded-md border border-amber-400 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-50"
-                : "shrink-0 rounded-md border border-amber-400 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-950 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-            }
-          >
-            {failedBrowseNum != null
-              ? `Print failed #${failedBrowseNum}`
-              : "Print failed receipt"}
-          </button>
         ) : null}
         {showSyncButton ? (
           <button
@@ -122,15 +87,13 @@ export function PosOfflineSyncControls({
                   : "Syncing…"
                 : hasPending
                   ? `Sync offline (${pendingSync})`
-                  : failedOrders.length > 0
-                    ? `Retry sync (${failedOrders.length})`
-                    : "Sync offline"}
+                  : "Sync offline"}
             </span>
           </button>
         ) : null}
       </div>
-      {compact && label && (activelySyncingQueue || pendingSync > 0 || showPrintFailed) ? (
-        <p className="max-w-[14rem] truncate text-[10px] font-medium text-[var(--theme-text-muted)]">
+      {compact && label && (activelySyncingQueue || pendingSync > 0) ? (
+        <p className="max-w-[16rem] truncate text-[10px] font-medium leading-tight opacity-90">
           {label}
         </p>
       ) : null}

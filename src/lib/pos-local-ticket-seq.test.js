@@ -110,3 +110,36 @@ describe("peekIssuedPosTicketMax — pending offline tickets", () => {
     expect(await peekIssuedPosTicketMax("2026-08-08", sessionId)).toBe(26);
   });
 });
+
+describe("seedLocalPosTicketSeqFromSale — online checkout without float_session_id", () => {
+  beforeEach(() => {
+    meta.clear();
+    pendingOutbox = [];
+  });
+
+  it("raises the active float-session counter when the sale omits float_session_id", async () => {
+    const { seedLocalPosTicketSeqFromSale, peekLocalPosTicketNext } = await import(
+      "@/lib/pos-offline"
+    );
+    const sessionId = 12;
+
+    await seedLocalPosTicketSeqFromSale(
+      { pos_order_num: 31, pos_order_date: "2026-08-08" },
+      sessionId,
+    );
+    expect(await peekLocalPosTicketNext("2026-08-08", sessionId)).toBe(32);
+  });
+
+  it("after UI next 32 is seeded as lastIssued 31, allocate path peeks 32", async () => {
+    const { seedLocalPosTicketSeq, peekLocalPosTicketNext, peekNextPosTicketNumber } =
+      await import("@/lib/pos-offline");
+    const sessionId = 12;
+
+    // Stale day/session counter left from an older till session.
+    await seedLocalPosTicketSeq(13, "2026-08-08", sessionId);
+    // Going offline with New Order 32 → seed lastIssued = 31.
+    await seedLocalPosTicketSeq(31, "2026-08-08", sessionId);
+    expect(await peekLocalPosTicketNext("2026-08-08", sessionId)).toBe(32);
+    expect(await peekNextPosTicketNumber("2026-08-08", sessionId)).toBe(32);
+  });
+});

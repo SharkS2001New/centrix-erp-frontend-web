@@ -67,6 +67,7 @@ export function ClassicPosStatusFooter({
   user,
   totals = 0,
   heldCount = 0,
+  pendingSync = 0,
   version = "1.0.0",
   currencySettings = GENERAL_DEFAULTS,
   statusMessage = null,
@@ -90,6 +91,7 @@ export function ClassicPosStatusFooter({
       : connectionStatus === "slow"
         ? "SLOW"
         : "ONLINE";
+  const pendingCount = Math.max(0, Number(pendingSync) || 0);
 
   return (
     <footer className="classic-pos-footer">
@@ -125,6 +127,10 @@ export function ClassicPosStatusFooter({
         <span>
           <span className="classic-pos-footer-label">HELD:</span>{" "}
           <strong className="classic-pos-footer-value">{Number(heldCount) || 0}</strong>
+        </span>
+        <span>
+          <span className="classic-pos-footer-label">PENDING SYNC:</span>{" "}
+          <strong className="classic-pos-footer-value">{pendingCount}</strong>
         </span>
         <span>
           <span className="classic-pos-footer-label">RUN DATE:</span>{" "}

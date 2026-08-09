@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/pos-offline-db", () => {
+vi.mock("@/lib/pos-offline-db", async (importOriginal) => {
+  const actual = await importOriginal();
   /** @type {Map<string, any>} */
   const carts = new Map();
   let seq = 0;
   return {
+    ...actual,
     newClientSaleUuid: () => `uuid-${++seq}`,
     idbPutLocalCart: async (cart) => {
       carts.set(String(cart.id), cart);
@@ -136,5 +138,52 @@ describe("continueOpenCartThroughOutage", () => {
     expect(cart.lines).toHaveLength(1);
     expect(cart.lines[0].quantity).toBe(2);
     expect(cart.lines[0].amount).toBe(7200);
+  });
+
+  it("preserves next_pos_order_num from the open cart through an outage", async () => {
+    const open = {
+      id: 88,
+      channel: "pos",
+      next_pos_order_num: 32,
+      next_pos_order_date: "2026-08-08",
+      lines: [
+        {
+          id: 1,
+          update_code: "L1",
+          product_code: "P1",
+          quantity: 1,
+          unit_price: 10,
+          amount: 10,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const local = await continueOpenCartThroughOutage(open, { branch_id: 1 });
+    expect(local.next_pos_order_num).toBe(32);
+    expect(local.next_pos_order_date).toBe("2026-08-08");
+  });
+
+  it("accepts next_pos_order_num from the seed when the TemporaryCart lacks it", async () => {
+    const open = {
+      id: 89,
+      channel: "pos",
+      lines: [
+        {
+          id: 1,
+          update_code: "L1",
+          product_code: "P1",
+          quantity: 1,
+          unit_price: 10,
+          amount: 10,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const local = await continueOpenCartThroughOutage(open, {
+      branch_id: 1,
+      next_pos_order_num: 32,
+      next_pos_order_date: "2026-08-08",
+    });
+    expect(local.next_pos_order_num).toBe(32);
   });
 });

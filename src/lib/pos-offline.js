@@ -21,6 +21,7 @@ import {
   idbCountOrderNumbers,
   idbCountAutoRetryOutbox,
   idbCountPendingOutbox,
+  idbCountUnsyncedOutbox,
   idbDeleteOutboxSale,
   idbFindSyncedServerSaleIdByPosTicket,
   idbGetAllCatalog,
@@ -33,6 +34,7 @@ import {
   idbListSyncedOutboxForBrowse,
   idbListOrderSlots,
   idbListPendingOutbox,
+  idbListUnsyncedOutbox,
   idbMarkOutboxError,
   idbMarkOutboxSynced,
   idbMarkOutboxSyncing,
@@ -621,6 +623,19 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
   const migratedFrom =
     isServerPosCartId(openCart.id) ? openCart.id : openCart.migrated_from_online_cart_id ?? null;
 
+  const seedPosNum =
+    openCart.pos_order_num != null && Number(openCart.pos_order_num) > 0
+      ? Number(openCart.pos_order_num)
+      : seed.pos_order_num != null && Number(seed.pos_order_num) > 0
+        ? Number(seed.pos_order_num)
+        : null;
+  const seedNextPos =
+    openCart.next_pos_order_num != null && Number(openCart.next_pos_order_num) > 0
+      ? Number(openCart.next_pos_order_num)
+      : seed.next_pos_order_num != null && Number(seed.next_pos_order_num) > 0
+        ? Number(seed.next_pos_order_num)
+        : null;
+
   const local = {
     id: "active",
     offline: true,
@@ -637,6 +652,26 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
     offline_client_sale_uuid: openCart.offline_client_sale_uuid ?? null,
     offline_edit_snapshot: openCart.offline_edit_snapshot ?? null,
     migrated_from_online_cart_id: migratedFrom,
+    // Keep the Cash Sales # the till was already showing — otherwise the first
+    // offline add falls through to a stale IndexedDB seq (e.g. UI #32 → print #14).
+    ...(seedPosNum != null
+      ? {
+          pos_order_num: seedPosNum,
+          pos_order_date:
+            normalizePosOrderDate(openCart.pos_order_date) ??
+            normalizePosOrderDate(seed.pos_order_date) ??
+            todayPosOrderDate(),
+        }
+      : {}),
+    ...(seedNextPos != null
+      ? {
+          next_pos_order_num: seedNextPos,
+          next_pos_order_date:
+            normalizePosOrderDate(openCart.next_pos_order_date) ??
+            normalizePosOrderDate(seed.next_pos_order_date) ??
+            todayPosOrderDate(),
+        }
+      : {}),
     updated_at_ms: Date.now(),
   };
 
@@ -721,7 +756,10 @@ export async function upsertLocalPosCartLine(cart, line) {
 }
 
 export async function removeLocalPosCartLine(cart, clientLineId) {
-  const lines = (cart.lines ?? []).filter((l) => l.client_line_id !== clientLineId);
+  const key = String(clientLineId ?? "");
+  const lines = (cart.lines ?? []).filter(
+    (l) => String(l.client_line_id ?? l.update_code ?? l.id ?? "") !== key,
+  );
   return saveLocalPosCart({ ...cart, lines });
 }
 
@@ -868,9 +906,10 @@ export async function seedLocalPosTicketSeqFromSale(sale, activeFloatSessionId =
   if (!Number.isFinite(num) || num <= 0) return;
   const saleSession = Number(sale?.float_session_id ?? 0) || null;
   const activeSession = Number(activeFloatSessionId ?? 0) || null;
-  // Never raise the new session counter from a prior-session (or day-scoped) ticket.
+  // Never raise the new session counter from a prior-session ticket.
   if (activeSession && saleSession && saleSession !== activeSession) return;
-  if (activeSession && !saleSession) return;
+  // Online checkout often omits float_session_id on the sale payload — still raise
+  // the active session counter so an outage continues from the last printed #.
   await seedLocalPosTicketSeq(num, sale?.pos_order_date, activeSession ?? saleSession);
 }
 
@@ -2816,7 +2855,8 @@ export async function abandonOfflineSaleEdit(cart) {
 }
 
 export async function getPosOfflinePendingCount() {
-  return idbCountPendingOutbox();
+  // Badge / sync box: every offline sale not yet on the server (1, 2, 3…).
+  return idbCountUnsyncedOutbox();
 }
 
 /** Rows background flush may retry (excludes failed — those need manual Sync). */
@@ -2836,7 +2876,14 @@ export async function listFailedOutboxSales() {
 
 function mapOutboxRowForDisplay(row) {
   const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
-  const items = Array.isArray(row.lines) && row.lines.length ? row.lines : sale.items ?? [];
+  const items =
+    Array.isArray(row.lines) && row.lines.length
+      ? row.lines
+      : Array.isArray(sale.items) && sale.items.length
+        ? sale.items
+        : Array.isArray(row.items)
+          ? row.items
+          : [];
   const orderTotal =
     sale.order_total != null
       ? Number(sale.order_total)
@@ -2859,12 +2906,16 @@ function mapOutboxRowForDisplay(row) {
   };
 }
 
-/** Pending + failed offline sales for the POS management overlay. */
+/** Pending + failed + mid-edit offline sales for the POS management overlay. */
 export async function listPendingOutboxSalesForManage() {
-  const rows = await idbListPendingOutbox();
+  const rows = await idbListUnsyncedOutbox();
   return rows
     .map((row) => mapOutboxRowForDisplay(row))
-    .sort((a, b) => Number(b.order_num ?? 0) - Number(a.order_num ?? 0));
+    .sort(
+      (a, b) =>
+        Number(b.pos_order_num ?? 0) - Number(a.pos_order_num ?? 0) ||
+        Number(b.order_num ?? 0) - Number(a.order_num ?? 0),
+    );
 }
 
 /**

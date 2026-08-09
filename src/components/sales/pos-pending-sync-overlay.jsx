@@ -35,6 +35,8 @@ function pendingSyncTitle(order) {
 
 function syncStatusLabel(order) {
   if (order.sync_status === "error") return "Sync failed";
+  if (order.sync_status === "editing") return "Open for edit";
+  if (order.sync_status === "syncing") return "Uploading…";
   if (order.sync_status === "pending") return "Waiting to sync";
   return String(order.sync_status ?? "Queued");
 }
@@ -51,6 +53,7 @@ export function PosPendingSyncOverlay({
   lastSyncMessage = null,
   onSyncAll,
   onSyncOrder,
+  onPrintAll,
 }) {
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -62,6 +65,7 @@ export function PosPendingSyncOverlay({
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
+  const [printingAll, setPrintingAll] = useState(false);
   const [uomById, setUomById] = useState(() => new Map());
   const onCountChangeRef = useRef(onCountChange);
   const loadedOnceRef = useRef(false);
@@ -231,6 +235,21 @@ export function PosPendingSyncOverlay({
     }
   }
 
+  async function handlePrintAll() {
+    if (!onPrintAll || rows.length <= 0 || printingAll) return;
+    setPrintingAll(true);
+    setActionError(null);
+    try {
+      // Prefer the visible filtered list when searching; otherwise all pending rows.
+      const toPrint = filtered.length > 0 && search.trim() ? filtered : rows;
+      await onPrintAll(toPrint);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to print pending receipts");
+    } finally {
+      setPrintingAll(false);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
@@ -280,7 +299,27 @@ export function PosPendingSyncOverlay({
             <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              disabled={Boolean(busyKey) || loading || refreshing || rows.length === 0 || syncing}
+              disabled={
+                Boolean(busyKey) ||
+                loading ||
+                refreshing ||
+                printingAll ||
+                rows.length === 0 ||
+                !onPrintAll
+              }
+              onClick={() => void handlePrintAll()}
+              className="rounded-lg border border-white/30 bg-white/15 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/25 disabled:opacity-50"
+              title="Print receipts for all pending offline orders"
+            >
+              {printingAll
+                ? "Printing…"
+                : rows.length > 0
+                  ? `Print all (${rows.length})`
+                  : "Print all"}
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(busyKey) || loading || refreshing || printingAll || rows.length === 0 || syncing}
               onClick={() => void handleDiscardAll()}
               className="rounded-lg border border-red-300/80 bg-red-600/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-red-600 disabled:opacity-50"
             >
@@ -288,7 +327,7 @@ export function PosPendingSyncOverlay({
             </button>
             <button
               type="button"
-              disabled={Boolean(busyKey) || loading || refreshing}
+              disabled={Boolean(busyKey) || loading || refreshing || printingAll}
               onClick={() => void loadPendingSales({ refresh: true })}
               className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-50"
             >

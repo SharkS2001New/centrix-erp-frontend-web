@@ -103,6 +103,7 @@ export function PosHeldOrdersOverlay({
   const [busyOrderId, setBusyOrderId] = useState(null);
   const [restoreStatus, setRestoreStatus] = useState(null);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [uomById, setUomById] = useState(() => new Map());
   const searchInputRef = useRef(null);
@@ -180,6 +181,7 @@ export function PosHeldOrdersOverlay({
         return next;
       });
       setSelectedOrderId(null);
+      setCheckedIds(new Set());
       setExpandedIds(new Set());
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load held orders");
@@ -200,6 +202,7 @@ export function PosHeldOrdersOverlay({
       setBusyOrderId(null);
       setRestoreStatus(null);
       setSelectedOrderId(null);
+      setCheckedIds(new Set());
       setExpandedIds(new Set());
       return;
     }
@@ -228,9 +231,27 @@ export function PosHeldOrdersOverlay({
       next.delete(key);
       return next;
     });
+    setCheckedIds((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
     if (String(selectedOrderId) === key) {
       setSelectedOrderId(null);
     }
+  }
+
+  function toggleChecked(order, event) {
+    event?.stopPropagation?.();
+    const key = orderKey(order);
+    if (!key) return;
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   const filtered = useMemo(() => {
@@ -244,10 +265,39 @@ export function PosHeldOrdersOverlay({
     });
   }, [rows, search]);
 
+  function toggleCheckAllVisible() {
+    const visibleKeys = filtered.map((order) => orderKey(order)).filter(Boolean);
+    if (visibleKeys.length === 0) return;
+    setCheckedIds((prev) => {
+      const allChecked = visibleKeys.every((key) => prev.has(key));
+      const next = new Set(prev);
+      if (allChecked) {
+        for (const key of visibleKeys) next.delete(key);
+      } else {
+        for (const key of visibleKeys) next.add(key);
+      }
+      return next;
+    });
+  }
+
   const selectedOrder = useMemo(
     () => filtered.find((row) => orderKey(row) === String(selectedOrderId ?? "")) ?? null,
     [filtered, selectedOrderId],
   );
+
+  const checkedOrders = useMemo(
+    () => rows.filter((row) => checkedIds.has(orderKey(row))),
+    [rows, checkedIds],
+  );
+
+  const visibleCheckedCount = useMemo(
+    () => filtered.filter((row) => checkedIds.has(orderKey(row))).length,
+    [filtered, checkedIds],
+  );
+
+  const allVisibleChecked =
+    filtered.length > 0 && visibleCheckedCount === filtered.length;
+  const someVisibleChecked = visibleCheckedCount > 0 && !allVisibleChecked;
 
   async function loadOrderDetail(order) {
     const key = orderKey(order);
@@ -360,6 +410,15 @@ export function PosHeldOrdersOverlay({
     }
   }
 
+  async function deleteHeldOrder(order) {
+    if (order?.local_held || isLocalHeldId(order.id)) {
+      await deleteLocalHeldOrder(order.id);
+    } else {
+      await apiRequest(`/sales/orders/${order.id}/cancel-held`, { method: "POST" });
+    }
+    removeHeldOrderFromMemory(order);
+  }
+
   async function handleDelete(order) {
     if (!order?.id) return;
     const label = `${heldOrderLabel(order)} - ${heldCustomerName(order)}`;
@@ -374,14 +433,55 @@ export function PosHeldOrdersOverlay({
     setBusyOrderId(order.id);
     setActionError(null);
     try {
-      if (order?.local_held || isLocalHeldId(order.id)) {
-        await deleteLocalHeldOrder(order.id);
-      } else {
-        await apiRequest(`/sales/orders/${order.id}/cancel-held`, { method: "POST" });
-      }
-      removeHeldOrderFromMemory(order);
+      await deleteHeldOrder(order);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to delete held order");
+    } finally {
+      setBusyOrderId(null);
+    }
+  }
+
+  async function handleDeleteChecked() {
+    const targets =
+      checkedOrders.length > 0
+        ? checkedOrders
+        : selectedOrder
+          ? [selectedOrder]
+          : [];
+    if (targets.length === 0 || busyOrderId) return;
+
+    if (targets.length === 1) {
+      await handleDelete(targets[0]);
+      return;
+    }
+
+    const ok = await confirm({
+      title: "Delete held orders",
+      message: `Delete ${targets.length} selected held orders? This cannot be undone.`,
+      confirmLabel: `Delete ${targets.length}`,
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusyOrderId("__bulk__");
+    setActionError(null);
+    let failed = 0;
+    try {
+      for (const order of targets) {
+        try {
+          await deleteHeldOrder(order);
+        } catch (e) {
+          console.error("Failed to delete held order", e);
+          failed += 1;
+        }
+      }
+      if (failed > 0) {
+        setActionError(
+          failed === targets.length
+            ? "Failed to delete the selected held orders."
+            : `Deleted some held orders; ${failed} could not be removed.`,
+        );
+      }
     } finally {
       setBusyOrderId(null);
     }
@@ -398,7 +498,9 @@ export function PosHeldOrdersOverlay({
 
   if (!open || !mounted) return null;
 
-  const actionsDisabled = Boolean(busyOrderId) || !selectedOrder;
+  const deleteCount = checkedOrders.length > 0 ? checkedOrders.length : selectedOrder ? 1 : 0;
+  const restoreDisabled = Boolean(busyOrderId) || !selectedOrder;
+  const deleteDisabled = Boolean(busyOrderId) || deleteCount === 0;
 
   return renderPosModalPortal(
     <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
@@ -442,13 +544,13 @@ export function PosHeldOrdersOverlay({
                 ) : null}
               </div>
               <p className="classic-pos-themed-dialog-sub mt-0.5 text-xs opacity-80">
-                Click an order to view its items, then Restore or Delete.
+                Check orders to delete several at once. Click a row to restore one.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={actionsDisabled}
+                disabled={restoreDisabled}
                 onClick={() => void handleRestore(selectedOrder)}
                 className="theme-primary-btn rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -458,11 +560,15 @@ export function PosHeldOrdersOverlay({
               </button>
               <button
                 type="button"
-                disabled={actionsDisabled}
-                onClick={() => void handleDelete(selectedOrder)}
+                disabled={deleteDisabled}
+                onClick={() => void handleDeleteChecked()}
                 className="rounded-lg border border-red-300/80 bg-red-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Delete
+                {busyOrderId === "__bulk__"
+                  ? "Deleting…"
+                  : deleteCount > 1
+                    ? `Delete (${deleteCount})`
+                    : "Delete"}
               </button>
               <button
                 type="button"
@@ -477,17 +583,57 @@ export function PosHeldOrdersOverlay({
         </header>
 
         <div className="shrink-0 theme-table-head-row border-b border-[var(--theme-border)] px-4 py-2.5">
-          <input
-            ref={searchInputRef}
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by customer name or HOLD #…"
-            autoFocus
-            aria-label="Search held orders by customer name"
-            className={INPUT_CLASS}
-          />
-          {selectedOrder ? (
+          <div className="flex items-center gap-3">
+            {filtered.length > 0 ? (
+              <label
+                className="inline-flex shrink-0 items-center gap-2 text-xs font-medium text-[var(--theme-text)]"
+                title="Select all visible held orders"
+              >
+                <input
+                  type="checkbox"
+                  checked={allVisibleChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someVisibleChecked;
+                  }}
+                  onChange={() => toggleCheckAllVisible()}
+                  disabled={Boolean(busyOrderId)}
+                  className="h-4 w-4 rounded border-[var(--theme-border)] accent-[var(--theme-primary)]"
+                  aria-label="Select all visible held orders"
+                />
+                <span className="theme-text-muted whitespace-nowrap">
+                  {visibleCheckedCount > 0
+                    ? `${visibleCheckedCount} selected`
+                    : "Select all"}
+                </span>
+              </label>
+            ) : null}
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by customer name or HOLD #…"
+              autoFocus
+              aria-label="Search held orders by customer name"
+              className={INPUT_CLASS}
+            />
+          </div>
+          {checkedOrders.length > 0 ? (
+            <p className="theme-text-muted mt-1.5 text-xs">
+              {checkedOrders.length} held order{checkedOrders.length === 1 ? "" : "s"} checked
+              for delete.
+              {selectedOrder ? (
+                <>
+                  {" "}
+                  Restore target:{" "}
+                  <span className="theme-heading font-semibold">
+                    {heldCustomerName(selectedOrder)}
+                  </span>
+                  <span className="theme-text-subtle"> · {heldOrderLabel(selectedOrder)}</span>
+                </>
+              ) : null}
+            </p>
+          ) : selectedOrder ? (
             <p className="theme-text-muted mt-1.5 truncate text-xs">
               Selected:{" "}
               <span className="theme-heading font-semibold">{heldCustomerName(selectedOrder)}</span>
@@ -495,7 +641,7 @@ export function PosHeldOrdersOverlay({
             </p>
           ) : filtered.length > 0 ? (
             <p className="theme-text-muted mt-1.5 text-xs">
-              Click a row to select it and show line items.
+              Check rows to delete, or click a row to restore.
             </p>
           ) : null}
         </div>
@@ -539,6 +685,7 @@ export function PosHeldOrdersOverlay({
                 const detail = detailsById[key] ?? order;
                 const items = detail?.items ?? detail?.lines ?? [];
                 const isSelected = String(selectedOrderId) === key;
+                const isChecked = checkedIds.has(key);
                 const isExpanded = expandedIds.has(key);
                 const isLoadingItems = detailLoadingId === key;
 
@@ -573,6 +720,15 @@ export function PosHeldOrdersOverlay({
                           : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => toggleChecked(order, e)}
+                        onClick={(e) => e.stopPropagation()}
+                        disabled={Boolean(busyOrderId)}
+                        className="h-4 w-4 shrink-0 rounded border-[var(--theme-border)] accent-[var(--theme-primary)]"
+                        aria-label={`Select held order ${heldOrderLabel(order)} for ${heldCustomerName(order)}`}
+                      />
                       <OrderExpandButton
                         expanded={isExpanded}
                         onClick={(e) => toggleExpand(order, e)}

@@ -97,7 +97,9 @@ export function usePosOfflineSupport({
         peekPosOfflineOrderNumberCount(),
         getPosOfflinePendingCount(),
         listFailedOutboxSales(),
-        peekNextPosTicketNumber(),
+        // Must match allocateLocalPosTicketNumber session scope — day-only peek
+        // lagged the float-session counter and showed e.g. 14 while the till was on 32.
+        peekNextPosTicketNumber(null, floatSessionId),
       ]);
       setOrderNumbersLeft(left);
       setPendingSync(pending);
@@ -125,7 +127,7 @@ export function usePosOfflineSupport({
     } catch {
       /* ignore */
     }
-  }, [enabled]);
+  }, [enabled, floatSessionId]);
 
   /**
    * Optimistic outbox count from Pending sync UI (e.g. after Remove).

@@ -595,11 +595,38 @@ export async function idbListPendingOutbox({ includeErrors = true } = {}) {
   const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
   return rows
     .filter((r) => {
+      // Local mirrors of already-uploaded server sales are not pending uploads.
+      if (r?.sync_kind === "online_mirror") return false;
       if (r.sync_status === "pending") return true;
       if (includeErrors && r.sync_status === "error") return true;
       return false;
     })
     .sort((a, b) => Number(a.created_at_ms ?? 0) - Number(b.created_at_ms ?? 0));
+}
+
+/**
+ * Every offline sale still waiting on this till (queued, failed, mid-edit, or mid-upload).
+ * Used for the Pending sync badge so cashiers see 1, 2, 3… as they sell offline.
+ */
+export async function idbListUnsyncedOutbox() {
+  const rows = (await withStore("outbox", "readonly", (store) => store.getAll())) ?? [];
+  return rows
+    .filter((r) => {
+      if (r?.sync_kind === "online_mirror") return false;
+      const status = String(r?.sync_status ?? "");
+      return (
+        status === "pending" ||
+        status === "error" ||
+        status === "editing" ||
+        status === "syncing"
+      );
+    })
+    .sort((a, b) => Number(a.created_at_ms ?? 0) - Number(b.created_at_ms ?? 0));
+}
+
+export async function idbCountUnsyncedOutbox() {
+  const rows = await idbListUnsyncedOutbox();
+  return rows.length;
 }
 
 /** Rows that background flush may retry (excludes failed — those need manual Sync). */
