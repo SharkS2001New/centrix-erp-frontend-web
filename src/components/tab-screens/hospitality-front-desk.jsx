@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { resolveHotelPosPaymentConfig } from "@/lib/hotel-pos-settings";
+import { postFolioPaymentsFromPanel } from "@/lib/hospitality-folio-payments";
 import {
   CatalogPageShell,
   Field,
@@ -18,6 +20,7 @@ import {
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { useConfirm } from "@/lib/use-confirm";
 
 export function HospitalityFrontDeskScreen() {
@@ -41,11 +44,47 @@ function FrontDeskManager() {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [walkIn, setWalkIn] = useState({ guest_name: "", guest_phone: "", room_id: "" });
+  const [walkIn, setWalkIn] = useState({
+    guest_name: "",
+    guest_phone: "",
+    room_id: "",
+    departure_date: "",
+  });
   /** reservationId → room_id chosen at the desk for check-in */
   const [arrivalRoomById, setArrivalRoomById] = useState({});
   /** stay row id → room_id for reassignment while in house */
   const [inHouseRoomById, setInHouseRoomById] = useState({});
+  const [checkoutPayRow, setCheckoutPayRow] = useState(null);
+  const [paymentError, setPaymentError] = useState(null);
+  const [activePaymentMethods, setActivePaymentMethods] = useState([]);
+
+  const paymentConfig = useMemo(
+    () =>
+      resolveHotelPosPaymentConfig(capabilities?.module_settings, {
+        capabilities,
+        activePaymentMethods,
+      }),
+    [capabilities, activePaymentMethods],
+  );
+
+  useEffect(() => {
+    if (!foliosEnabled) return undefined;
+    let cancelled = false;
+    apiRequest("/payment-methods", {
+      searchParams: { per_page: 50, "filter[is_active]": 1 },
+      loading: false,
+      reportIssues: false,
+    })
+      .then((res) => {
+        if (!cancelled) setActivePaymentMethods(res?.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setActivePaymentMethods([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [foliosEnabled]);
 
   const load = useCallback(async () => {
     try {
@@ -140,12 +179,14 @@ function FrontDeskManager() {
     e.preventDefault();
     setBusy(true);
     try {
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
       await apiRequest("/hospitality/front-desk/check-in", {
         method: "POST",
         body: {
           guest_name: walkIn.guest_name,
           guest_phone: walkIn.guest_phone || null,
           room_id: Number(walkIn.room_id),
+          departure_date: walkIn.departure_date || tomorrow,
         },
       });
       notifySuccess(
@@ -153,7 +194,8 @@ function FrontDeskManager() {
           ? "Walk-in checked in — guest folio opened"
           : "Walk-in checked in — room occupied (collect payment at the desk)",
       );
-      setWalkIn({ guest_name: "", guest_phone: "", room_id: "" });
+      setWalkIn({ guest_name: "", guest_phone: "", room_id: "", departure_date: "" });
+      setTab("departures");
       await load();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Check-in failed");
@@ -196,23 +238,13 @@ function FrontDeskManager() {
     }
   }
 
-  async function checkOut(row) {
-    const bal = Number(row.balance ?? 0);
-    if (foliosEnabled && Math.abs(bal) > 0.009) {
-      const ok = await confirm({
-        title: "Folio still has a balance",
-        message: `Balance is ${bal.toFixed(2)}. Check out anyway? Prefer collecting payment on the Folios screen first.`,
-        confirmLabel: "Check out with balance",
-        destructive: true,
-      });
-      if (!ok) return;
-    }
+  async function finishCheckOut(row, { allowBalance = false } = {}) {
     setBusy(true);
     try {
       if (foliosEnabled) {
         await apiRequest(`/hospitality/front-desk/folios/${row.id}/check-out`, {
           method: "POST",
-          body: { allow_balance: Math.abs(bal) > 0.009 },
+          body: { allow_balance: allowBalance },
         });
       } else {
         await apiRequest(`/hospitality/front-desk/rooms/${stayRoomId(row)}/check-out`, {
@@ -221,6 +253,8 @@ function FrontDeskManager() {
         });
       }
       notifySuccess("Checked out");
+      setCheckoutPayRow(null);
+      setPaymentError(null);
       await load();
     } catch (e) {
       notifyError(
@@ -233,6 +267,52 @@ function FrontDeskManager() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function checkOut(row) {
+    const bal = Number(row.balance ?? 0);
+    if (foliosEnabled && Math.abs(bal) > 0.009) {
+      setPaymentError(null);
+      setCheckoutPayRow(row);
+      return;
+    }
+    await finishCheckOut(row);
+  }
+
+  async function handleCheckoutPaymentComplete(payload) {
+    if (!checkoutPayRow?.id) return;
+    setBusy(true);
+    setPaymentError(null);
+    try {
+      const folio = await postFolioPaymentsFromPanel(checkoutPayRow.id, payload);
+      const nextBal = Number(folio?.balance ?? 0);
+      if (Math.abs(nextBal) > 0.009) {
+        setCheckoutPayRow({ ...checkoutPayRow, balance: nextBal });
+        notifySuccess(`Payment recorded — balance ${nextBal.toFixed(2)} remaining`);
+        await load();
+        return;
+      }
+      await finishCheckOut({ ...checkoutPayRow, balance: 0 });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : err?.message || "Payment failed";
+      setPaymentError(message);
+      throw err instanceof Error ? err : new Error(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkOutWithBalanceAnyway() {
+    if (!checkoutPayRow) return;
+    const bal = Number(checkoutPayRow.balance ?? 0);
+    const ok = await confirm({
+      title: "Check out with balance",
+      message: `Balance is ${bal.toFixed(2)}. Check out without collecting the rest?`,
+      confirmLabel: "Check out with balance",
+      destructive: true,
+    });
+    if (!ok) return;
+    await finishCheckOut(checkoutPayRow, { allowBalance: true });
   }
 
   return (
@@ -503,11 +583,46 @@ function FrontDeskManager() {
               ]}
             />
           </Field>
+          <Field label="Expected departure">
+            <input
+              type="date"
+              required
+              className={inputClassName()}
+              value={
+                walkIn.departure_date ||
+                new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+              }
+              onChange={(e) => setWalkIn((w) => ({ ...w, departure_date: e.target.value }))}
+            />
+          </Field>
           <PrimaryButton showIcon={false} type="submit" disabled={busy}>
             Check in walk-in
           </PrimaryButton>
         </form>
       ) : null}
+
+      <HotelPosPaymentPanel
+        open={Boolean(checkoutPayRow)}
+        onClose={() => {
+          if (!busy) {
+            setCheckoutPayRow(null);
+            setPaymentError(null);
+          }
+        }}
+        title="Checkout payment"
+        footerHint="Tap Full for the folio balance, or Amount → Keypad. Methods are from Admin → Payment methods."
+        billTotal={Math.max(0, Number(checkoutPayRow?.balance ?? 0))}
+        paymentConfig={paymentConfig}
+        saving={busy}
+        error={paymentError}
+        allowPartial={false}
+        roomChargeEnabled={false}
+        secondaryAction={{
+          label: "Check out with balance (no payment)",
+          onClick: () => void checkOutWithBalanceAnyway(),
+        }}
+        onComplete={handleCheckoutPaymentComplete}
+      />
     </CatalogPageShell>
   );
 }

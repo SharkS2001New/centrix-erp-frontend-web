@@ -88,6 +88,8 @@ export function PosHeldOrdersOverlay({
   cartSeed = null,
   classicTheme = false,
   themeStyle = null,
+  /** When false, hide Paid / Balance (hold amount-paid capture is off). */
+  showHeldAmountPaid = false,
 }) {
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -734,8 +736,12 @@ export function PosHeldOrdersOverlay({
                         onClick={(e) => toggleExpand(order, e)}
                         label={isExpanded ? "Hide line items" : "Show line items"}
                       />
-                      {/* One row · three equal columns */}
-                      <div className="grid min-w-0 flex-1 grid-cols-3 items-start gap-3">
+                      {/* Customer · optional Paid/Balance · total */}
+                      <div
+                        className={`grid min-w-0 flex-1 items-start gap-3 ${
+                          showHeldAmountPaid ? "grid-cols-3" : "grid-cols-2"
+                        }`}
+                      >
                         <div className="min-w-0">
                           <div className="theme-heading truncate text-base font-bold leading-tight">
                             {heldCustomerName(order)}
@@ -744,14 +750,16 @@ export function PosHeldOrdersOverlay({
                             {heldOrderLabel(order)}
                           </div>
                         </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold leading-tight tabular-nums text-[var(--theme-text)]">
-                            Paid {formatSaleKes(heldOrderPaidAmount(order))}
+                        {showHeldAmountPaid ? (
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold leading-tight tabular-nums text-[var(--theme-text)]">
+                              Paid {formatSaleKes(heldOrderPaidAmount(order))}
+                            </div>
+                            <div className="theme-text-muted mt-0.5 truncate text-xs leading-tight tabular-nums">
+                              Balance {formatSaleKes(heldOrderBalanceRemaining(order))}
+                            </div>
                           </div>
-                          <div className="theme-text-muted mt-0.5 truncate text-xs leading-tight tabular-nums">
-                            Balance {formatSaleKes(heldOrderBalanceRemaining(order))}
-                          </div>
-                        </div>
+                        ) : null}
                         <div className="min-w-0 text-right">
                           <div className="truncate text-sm font-bold leading-tight tabular-nums text-[var(--theme-accent-text)]">
                             {formatSaleKes(order.order_total)}

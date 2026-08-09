@@ -5,6 +5,22 @@
  * Hidden when the outbox is empty and idle so sync stays silent until
  * something is waiting, failing, or actively syncing.
  */
+
+/** @param {{ total?: number, done?: number, failed?: number, current?: number, phase?: string } | null} progress */
+export function syncProgressPercent(progress) {
+  const total = Number(progress?.total ?? 0);
+  if (!(total > 0)) return 0;
+  const done = Math.max(0, Number(progress?.done ?? 0));
+  const failed = Math.max(0, Number(progress?.failed ?? 0));
+  const current = Math.max(0, Number(progress?.current ?? 0));
+  const phase = progress?.phase ?? "idle";
+  const completed = done + failed;
+  // Credit half an item while one is uploading so % moves before the last finishes.
+  const inFlight =
+    (phase === "start" || phase === "syncing") && current > completed ? 0.5 : 0;
+  return Math.min(100, Math.round(((completed + inFlight) / total) * 100));
+}
+
 export function PosOfflineSyncControls({
   pendingSync = 0,
   syncing = false,
@@ -25,7 +41,10 @@ export function PosOfflineSyncControls({
     pendingSync > 0 &&
     total > 0 &&
     (phase === "start" || phase === "syncing" || phase === "item_done");
-  const pct = total > 0 ? Math.min(100, Math.round(((done + failed) / total) * 100)) : 0;
+  const pct = syncProgressPercent(syncProgress);
+  const finishedCount = done + failed;
+  const positionLabel =
+    total > 0 ? `${Math.max(current, finishedCount)}/${total}` : null;
 
   const hasPending = pendingSync > 0;
   // Never show Sync chrome when the queue is empty — even if syncing flag is sticky.
@@ -38,10 +57,13 @@ export function PosOfflineSyncControls({
 
   const label =
     activelySyncingQueue
-      ? syncProgress?.message ||
-        (total > 0
-          ? `Syncing ${Math.max(current, done + failed)} of ${total}…`
-          : "Syncing offline orders…")
+      ? syncProgress?.message
+        ? total > 0
+          ? `${syncProgress.message.replace(/\s*…\s*$/, "")} · ${pct}%`
+          : syncProgress.message
+        : total > 0
+          ? `Syncing ${positionLabel} · ${pct}%…`
+          : "Syncing offline orders…"
       : lastSyncMessage && hasPending
         ? lastSyncMessage
         : hasPending
@@ -80,10 +102,19 @@ export function PosOfflineSyncControls({
             }
             aria-busy={syncing}
           >
-            <span className="pos-header-btn-label" data-short={activelySyncingQueue ? "Syncing…" : "Sync"}>
+            <span
+              className="pos-header-btn-label"
+              data-short={
+                activelySyncingQueue
+                  ? total > 0
+                    ? `${positionLabel} · ${pct}%`
+                    : "Syncing…"
+                  : "Sync"
+              }
+            >
               {activelySyncingQueue
                 ? total > 0
-                  ? `Syncing ${done + failed}/${total}`
+                  ? `Syncing ${positionLabel} · ${pct}%`
                   : "Syncing…"
                 : hasPending
                   ? `Sync offline (${pendingSync})`

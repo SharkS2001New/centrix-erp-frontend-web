@@ -77,7 +77,7 @@ function NightAuditManager() {
   return (
     <CatalogPageShell
       title="Night audit"
-      subtitle="Post room nights and review the manager flash for the business date."
+      subtitle="Post room nights and review the manager flash. Auto-runs daily at 00:30 for orgs with night audit enabled (yesterday’s business date)."
     >
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <Field label="Business date">

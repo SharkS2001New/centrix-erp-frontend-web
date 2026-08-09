@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { resolveHotelPosPaymentConfig } from "@/lib/hotel-pos-settings";
+import { postFolioPaymentsFromPanel } from "@/lib/hospitality-folio-payments";
 import {
   CatalogPageShell,
   Field,
@@ -20,6 +22,8 @@ import {
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
+import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
+import { printHospitalityFolioStatement } from "@/components/hospitality/hospitality-folio-statement-print";
 
 export function HospitalityFoliosScreen() {
   const { capabilities } = useAuth();
@@ -32,13 +36,45 @@ export function HospitalityFoliosScreen() {
 }
 
 function FoliosManager() {
+  const { capabilities, user, organization } = useAuth();
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("open");
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
   const [charge, setCharge] = useState({ charge_type: "other", description: "", amount: "" });
-  const [payment, setPayment] = useState({ method_code: "CASH", amount: "", reference: "" });
   const [saving, setSaving] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
+  const [activePaymentMethods, setActivePaymentMethods] = useState([]);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReference, setRefundReference] = useState("");
+
+  const paymentConfig = useMemo(
+    () =>
+      resolveHotelPosPaymentConfig(capabilities?.module_settings, {
+        capabilities,
+        activePaymentMethods,
+      }),
+    [capabilities, activePaymentMethods],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest("/payment-methods", {
+      searchParams: { per_page: 50, "filter[is_active]": 1 },
+      loading: false,
+      reportIssues: false,
+    })
+      .then((res) => {
+        if (!cancelled) setActivePaymentMethods(res?.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setActivePaymentMethods([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -60,7 +96,10 @@ function FoliosManager() {
       const res = await apiRequest(`/hospitality/folios/${id}`);
       setDetail(res?.folio ?? null);
       setCharge({ charge_type: "other", description: "", amount: "" });
-      setPayment({ method_code: "CASH", amount: "", reference: "" });
+      setPaymentOpen(false);
+      setPaymentError(null);
+      setRefundAmount("");
+      setRefundReference("");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load folio");
     }
@@ -89,28 +128,78 @@ function FoliosManager() {
     }
   }
 
-  async function postPayment(e) {
+  async function handlePaymentComplete(payload) {
+    if (!detail?.id) return;
+    setSaving(true);
+    setPaymentError(null);
+    try {
+      const folio = await postFolioPaymentsFromPanel(detail.id, payload);
+      setDetail(folio);
+      setPaymentOpen(false);
+      notifySuccess("Payment recorded");
+      await load();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : err?.message || "Payment failed";
+      setPaymentError(message);
+      throw err instanceof Error ? err : new Error(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function printStatement() {
+    if (!detail) return;
+    try {
+      await printHospitalityFolioStatement(detail, {
+        organization,
+        user,
+        printSettings: capabilities?.module_settings?.print ?? null,
+        generalSettings: capabilities?.module_settings?.general ?? null,
+      });
+      notifySuccess("Statement sent to printer");
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Print failed");
+    }
+  }
+
+  async function refundDeposit(e) {
     e.preventDefault();
     if (!detail?.id) return;
+    const amount = Number(refundAmount);
+    if (!(amount > 0)) {
+      notifyError("Enter a refund amount");
+      return;
+    }
     setSaving(true);
     try {
       const res = await apiRequest(`/hospitality/folios/${detail.id}/payments`, {
         method: "POST",
         body: {
-          method_code: payment.method_code,
-          amount: Number(payment.amount),
-          reference: payment.reference || null,
+          method_code: "REFUND",
+          amount,
+          reference: refundReference.trim() || "Deposit refund",
         },
       });
       setDetail(res?.folio ?? null);
-      notifySuccess("Payment recorded");
+      setRefundAmount("");
+      setRefundReference("");
+      notifySuccess("Refund recorded");
       await load();
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Payment failed");
+      notifyError(err instanceof ApiError ? err.message : "Refund failed");
     } finally {
       setSaving(false);
     }
   }
+
+  const balance = Number(detail?.balance ?? 0);
+  const depositPaid = (detail?.payments || [])
+    .filter((p) => String(p.method_code).toUpperCase() === "DEPOSIT")
+    .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const refunded = (detail?.payments || [])
+    .filter((p) => String(p.method_code).toUpperCase() === "REFUND")
+    .reduce((s, p) => s + Math.abs(Number(p.amount) || 0), 0);
+  const refundableDeposit = Math.max(0, depositPaid - refunded);
 
   return (
     <CatalogPageShell title="Guest folios" subtitle="Charges, payments, and guest balances.">
@@ -173,7 +262,12 @@ function FoliosManager() {
               <span className="font-medium">{detail.guest_name}</span>
               <span className="theme-subtext"> · Room {detail.room_number || "—"}</span>
             </p>
-            <p className="text-lg font-semibold tabular-nums">Balance {Number(detail.balance).toFixed(2)}</p>
+            <p className="text-lg font-semibold tabular-nums">Balance {balance.toFixed(2)}</p>
+            <div className="flex flex-wrap gap-2">
+              <SecondaryButton type="button" disabled={saving} onClick={() => void printStatement()}>
+                Print statement
+              </SecondaryButton>
+            </div>
 
             <div>
               <p className="mb-1 text-xs font-semibold uppercase">Charges</p>
@@ -195,7 +289,12 @@ function FoliosManager() {
               <ul className="space-y-1">
                 {(detail.payments || []).map((p) => (
                   <li key={p.id} className="flex justify-between gap-2 border-b border-[var(--theme-border)] py-1">
-                    <span>{p.method_code}</span>
+                    <span>
+                      {p.method_code}
+                      {p.reference ? (
+                        <span className="theme-subtext text-xs"> · {p.reference}</span>
+                      ) : null}
+                    </span>
                     <span className="tabular-nums">{Number(p.amount).toFixed(2)}</span>
                   </li>
                 ))}
@@ -205,6 +304,53 @@ function FoliosManager() {
 
             {detail.status === "open" ? (
               <>
+                {refundableDeposit > 0.009 ? (
+                  <form
+                    className="space-y-2 rounded-lg border border-[var(--theme-border)] p-3"
+                    onSubmit={refundDeposit}
+                  >
+                    <p className="text-xs font-semibold uppercase">Deposit refund</p>
+                    <p className="theme-subtext text-xs">
+                      Deposit on folio: {depositPaid.toFixed(2)}
+                      {refunded > 0 ? ` · already refunded ${refunded.toFixed(2)}` : ""} · refundable{" "}
+                      {refundableDeposit.toFixed(2)}
+                    </p>
+                    <Field label="Refund amount">
+                      <input
+                        required
+                        type="number"
+                        min="0.01"
+                        step="any"
+                        max={refundableDeposit}
+                        className={inputClassName()}
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        placeholder={String(refundableDeposit)}
+                      />
+                    </Field>
+                    <Field label="Reference">
+                      <input
+                        className={inputClassName()}
+                        value={refundReference}
+                        onChange={(e) => setRefundReference(e.target.value)}
+                        placeholder="Deposit refund"
+                      />
+                    </Field>
+                    <div className="flex flex-wrap gap-2">
+                      <SecondaryButton
+                        type="button"
+                        disabled={saving}
+                        onClick={() => setRefundAmount(String(refundableDeposit))}
+                      >
+                        Full deposit
+                      </SecondaryButton>
+                      <PrimaryButton showIcon={false} type="submit" disabled={saving}>
+                        Record refund
+                      </PrimaryButton>
+                    </div>
+                  </form>
+                ) : null}
+
                 <form className="space-y-2 rounded-lg border border-[var(--theme-border)] p-3" onSubmit={postCharge}>
                   <p className="text-xs font-semibold uppercase">Post charge</p>
                   <Field label="Type">
@@ -241,42 +387,51 @@ function FoliosManager() {
                     Add charge
                   </PrimaryButton>
                 </form>
-                <form className="space-y-2 rounded-lg border border-[var(--theme-border)] p-3" onSubmit={postPayment}>
-                  <p className="text-xs font-semibold uppercase">Take payment</p>
-                  <Field label="Method">
-                    <input
-                      className={inputClassName()}
-                      value={payment.method_code}
-                      onChange={(e) => setPayment((p) => ({ ...p, method_code: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Amount">
-                    <input
-                      required
-                      type="number"
-                      min="0.01"
-                      step="any"
-                      className={inputClassName()}
-                      value={payment.amount}
-                      onChange={(e) => setPayment((p) => ({ ...p, amount: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Reference">
-                    <input
-                      className={inputClassName()}
-                      value={payment.reference}
-                      onChange={(e) => setPayment((p) => ({ ...p, reference: e.target.value }))}
-                    />
-                  </Field>
-                  <PrimaryButton showIcon={false} type="submit" disabled={saving}>
-                    Record payment
-                  </PrimaryButton>
-                </form>
+
+                {balance > 0.009 ? (
+                  <div className="space-y-2 rounded-lg border border-[var(--theme-border)] p-3">
+                    <p className="text-xs font-semibold uppercase">Take payment</p>
+                    <p className="theme-subtext text-xs">
+                      Methods come from Admin → Payment methods. Use Full for the folio balance, or Amount →
+                      Keypad to enter a partial.
+                    </p>
+                    <PrimaryButton
+                      showIcon={false}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => {
+                        setPaymentError(null);
+                        setPaymentOpen(true);
+                      }}
+                    >
+                      Collect payment
+                    </PrimaryButton>
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>
         ) : null}
       </FormDrawer>
+
+      <HotelPosPaymentPanel
+        open={paymentOpen && Boolean(detail)}
+        onClose={() => {
+          if (!saving) {
+            setPaymentOpen(false);
+            setPaymentError(null);
+          }
+        }}
+        title="Folio payment"
+        footerHint="Tap Full for the folio balance, or Amount → Keypad. Methods are from Admin → Payment methods."
+        billTotal={Math.max(0, balance)}
+        paymentConfig={paymentConfig}
+        saving={saving}
+        error={paymentError}
+        allowPartial
+        roomChargeEnabled={false}
+        onComplete={handlePaymentComplete}
+      />
     </CatalogPageShell>
   );
 }

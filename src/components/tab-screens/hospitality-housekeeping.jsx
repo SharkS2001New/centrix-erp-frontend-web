@@ -6,7 +6,12 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
-import { CatalogPageShell, SecondaryButton } from "@/components/catalog/catalog-shared";
+import {
+  CatalogPageShell,
+  inputClassName,
+  SearchableSelect,
+  SecondaryButton,
+} from "@/components/catalog/catalog-shared";
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
 
 const NEXT = {
@@ -30,6 +35,7 @@ export function HospitalityHousekeepingScreen() {
 function HousekeepingBoard() {
   const [rooms, setRooms] = useState([]);
   const [counts, setCounts] = useState({});
+  const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
 
@@ -38,6 +44,7 @@ function HousekeepingBoard() {
       const res = await apiRequest("/hospitality/housekeeping");
       setRooms(res?.rooms ?? []);
       setCounts(res?.counts ?? {});
+      setStaff(res?.staff ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load housekeeping");
     } finally {
@@ -63,8 +70,29 @@ function HousekeepingBoard() {
     }
   }
 
+  async function assign(roomId, userId) {
+    const room = rooms.find((r) => Number(r.id) === Number(roomId));
+    if (!room) return;
+    setBusyId(roomId);
+    try {
+      await apiRequest(`/hospitality/housekeeping/rooms/${roomId}`, {
+        method: "PATCH",
+        body: {
+          status: room.status,
+          housekeeping_assigned_to: userId ? Number(userId) : null,
+        },
+      });
+      notifySuccess(userId ? "Assignee updated" : "Assignee cleared");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Assign failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
-    <CatalogPageShell title="Housekeeping" subtitle="Update room cleanliness and availability after checkout.">
+    <CatalogPageShell title="Housekeeping" subtitle="Update room cleanliness, assign cleaners, and free rooms after checkout.">
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
         {Object.entries(counts).map(([k, v]) => (
           <span key={k} className="rounded-full border border-[var(--theme-border)] px-2 py-1 capitalize">
@@ -89,10 +117,27 @@ function HousekeepingBoard() {
                     {room.room_type_name || "Room"}
                     {room.floor ? ` · Floor ${room.floor}` : ""}
                   </p>
+                  {room.occupancy_source ? (
+                    <p className="theme-subtext mt-0.5 text-[10px] uppercase tracking-wide">
+                      {room.occupancy_source === "pos_room_sale" ? "POS prepaid stay" : "PMS folio stay"}
+                    </p>
+                  ) : null}
                 </div>
                 <span className="rounded-full bg-[var(--theme-page-bg)] px-2 py-0.5 text-[10px] font-bold uppercase">
                   {room.status}
                 </span>
+              </div>
+              <div className="mt-2">
+                <SearchableSelect
+                  className={`${inputClassName()} text-xs`}
+                  value={room.housekeeping_assigned_to ? String(room.housekeeping_assigned_to) : ""}
+                  disabled={busyId === room.id}
+                  onChange={(v) => void assign(room.id, v)}
+                  options={[
+                    { value: "", label: "Unassigned" },
+                    ...staff.map((u) => ({ value: String(u.id), label: u.name })),
+                  ]}
+                />
               </div>
               <div className="mt-3 flex flex-wrap gap-1">
                 {(NEXT[room.status] || []).map((s) => (

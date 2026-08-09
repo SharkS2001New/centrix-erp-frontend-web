@@ -11,6 +11,7 @@ import {
   searchPosCatalogIndexAsync,
   serializePosSearchIndex,
   setPosSearchCatalog,
+  upsertPosSearchProducts,
 } from "@/lib/pos-product-search-index";
 import { rankPosProductSearchResults } from "@/lib/pos-product-search-rank";
 import {
@@ -145,6 +146,68 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
   setPosSearchCatalog(products, { warmedAt });
   void persistPosSearchIndexSnapshot(warmedAt);
   return { skipped: false, count: products.length };
+}
+
+/**
+ * Pull latest catalogue pricing into IndexedDB + in-memory search after ERP
+ * broadcasts a price/markup change (or when POS polls without realtime).
+ *
+ * @param {{
+ *   product_code?: string|null,
+ *   reason?: string|null,
+ *   forceFull?: boolean,
+ * }} [payload]
+ * @returns {Promise<{ products: object[], forcedFull: boolean }>}
+ */
+export async function refreshPosOfflineCatalogPricing(payload = {}) {
+  const productCode =
+    payload?.product_code != null && String(payload.product_code).trim() !== ""
+      ? String(payload.product_code).trim()
+      : null;
+  const reason = String(payload?.reason ?? "");
+  const forceFull =
+    Boolean(payload?.forceFull) ||
+    !productCode ||
+    reason === "route_markup";
+
+  if (forceFull) {
+    const warm = await warmPosOfflineCatalog({ force: true });
+    const all = await idbGetAllCatalog();
+    return { products: all, forcedFull: true, warm };
+  }
+
+  try {
+    const raw = await apiRequest(`/products/${encodeURIComponent(productCode)}`, {
+      searchParams: { fields: "lean" },
+      loading: false,
+      reportIssues: false,
+    });
+    const row =
+      raw?.product_code != null
+        ? raw
+        : raw?.data?.product_code != null
+          ? raw.data
+          : raw;
+    const product = stripProductStockFields(row);
+    if (!product?.product_code || !isSellableCatalogProduct(product)) {
+      const warm = await warmPosOfflineCatalog({ force: true });
+      return {
+        products: await idbGetAllCatalog(),
+        forcedFull: true,
+        warm,
+      };
+    }
+    await idbPutCatalogProducts([product]);
+    upsertPosSearchProducts([product]);
+    // Keep warm timestamp so background TTL refresh still runs later.
+    const warmedAt = Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || Date.now();
+    await idbSetMeta("catalog_warmed_at", warmedAt);
+    return { products: [product], forcedFull: false };
+  } catch (e) {
+    console.warn("[pos] single-product catalog refresh failed; forcing full warm", e);
+    const warm = await warmPosOfflineCatalog({ force: true });
+    return { products: await idbGetAllCatalog(), forcedFull: true, warm };
+  }
 }
 
 export async function searchPosOfflineCatalog(query, { limit = 50 } = {}) {
@@ -382,6 +445,13 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
 export async function saveLocalPosCart(cart) {
   const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
   await idbPutLocalCart(next);
+  // Revising a pending-sync sale: keep the outbox row in lockstep with the till
+  // so Pending sync / IndexedDB show the edited lines (not the original sale).
+  if (next.offline_client_sale_uuid) {
+    await syncOutboxSaleFromLocalEditCart(next).catch((e) => {
+      console.error("Failed to mirror offline edit into outbox", e);
+    });
+  }
   return next;
 }
 
@@ -2621,6 +2691,155 @@ export async function prefetchServerSalesForOfflineEdit(
     }
   }
   return cached;
+}
+
+/**
+ * While revising a queued offline sale, mirror the live local cart into the
+ * outbox row so Pending sync / IndexedDB show the edited lines immediately.
+ * Keeps sync_status as `editing` (or leaves pending/error alone if somehow not editing).
+ */
+export async function syncOutboxSaleFromLocalEditCart(cart) {
+  const uuid =
+    cart?.offline_client_sale_uuid != null && String(cart.offline_client_sale_uuid).trim()
+      ? String(cart.offline_client_sale_uuid).trim()
+      : null;
+  if (!uuid) return null;
+
+  const existing = await idbGetOutboxSale(uuid);
+  if (!existing) return null;
+  if (existing.sync_status === "syncing" || existing.sync_status === "synced") {
+    return null;
+  }
+
+  const summary = summarizeLocalPosCart(cart);
+  const outboxLines = (cart.lines ?? [])
+    .map((line) => {
+      const qty = Number(line.quantity ?? 0);
+      if (!line?.product_code || !(qty > 0)) return null;
+      const unitPrice = Number(line.unit_price ?? line.price ?? 0);
+      const amount =
+        line.amount != null && Number.isFinite(Number(line.amount))
+          ? Math.round(Number(line.amount) * 100) / 100
+          : Math.round(qty * unitPrice * 100) / 100;
+      return {
+        product_code: line.product_code,
+        product_name: line.product_name ?? line.description ?? line.product_code,
+        quantity: qty,
+        unit_price: unitPrice,
+        amount,
+        uom: line.uom ?? null,
+        unit_id: line.unit_id ?? null,
+        unit: line.unit ?? null,
+        on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) === 1 ? 1 : 0,
+        discount_given: Number(line.discount_given ?? 0),
+        display_unit_price:
+          line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+        product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+        client_line_id: String(
+          line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
+        ),
+      };
+    })
+    .filter(Boolean);
+
+  const priorPayload =
+    existing.sale_payload && typeof existing.sale_payload === "object"
+      ? existing.sale_payload
+      : {};
+  const saleItems = outboxLines.map((line, index) => ({
+    id: index + 1,
+    product_code: line.product_code,
+    product_name: line.product_name,
+    quantity: line.quantity,
+    unit_price: line.unit_price,
+    amount: line.amount,
+    uom: line.uom,
+    unit_id: line.unit_id,
+    unit: line.unit,
+    on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) === 1,
+    discount_given: line.discount_given,
+    display_unit_price: line.display_unit_price,
+    product_vat: line.product_vat,
+    client_line_id: line.client_line_id,
+  }));
+
+  const orderDiscount = Number(cart.order_discount ?? existing.order_discount ?? 0) || 0;
+  const salePayload = {
+    ...priorPayload,
+    id: priorPayload.id ?? `offline:${uuid}`,
+    client_sale_uuid: uuid,
+    order_num: Number(cart.held_order_num ?? existing.order_num ?? priorPayload.order_num) || null,
+    pos_order_num:
+      cart.pos_order_num != null
+        ? Number(cart.pos_order_num)
+        : priorPayload.pos_order_num != null
+          ? Number(priorPayload.pos_order_num)
+          : null,
+    pos_order_date: cart.pos_order_date ?? priorPayload.pos_order_date ?? null,
+    customer_num: cart.customer_num ?? priorPayload.customer_num ?? null,
+    customer_name_override:
+      cart.customer_name_override ?? priorPayload.customer_name_override ?? null,
+    order_discount: orderDiscount,
+    order_total: summary.total,
+    amount_due: summary.amountDue,
+    total_vat: summary.vat,
+    items: saleItems,
+  };
+
+  const checkoutBody =
+    existing.checkout_body && typeof existing.checkout_body === "object"
+      ? {
+          ...existing.checkout_body,
+          customer_num: salePayload.customer_num,
+          customer_name_override: salePayload.customer_name_override,
+          total_vat: salePayload.total_vat,
+          content_revision: Number(existing.content_revision ?? 0) + 1,
+        }
+      : existing.checkout_body;
+
+  const next = {
+    ...existing,
+    order_num: salePayload.order_num ?? existing.order_num,
+    order_discount: orderDiscount,
+    lines: outboxLines,
+    sale_payload: salePayload,
+    checkout_body: checkoutBody,
+    content_revision: Number(existing.content_revision ?? 0) + 1,
+    sync_status: existing.sync_status === "pending" ? "editing" : existing.sync_status,
+    updated_at_ms: Date.now(),
+  };
+
+  await idbPutOutboxSale(next);
+  return next;
+}
+
+/**
+ * Finish revising a pending-sync sale: keep mirrored lines/totals and put the
+ * outbox row back on the sync queue (editing → pending) without rewriting tenders.
+ */
+export async function finalizeQueuedOfflineSaleEdit(cart) {
+  const uuid =
+    cart?.offline_client_sale_uuid != null && String(cart.offline_client_sale_uuid).trim()
+      ? String(cart.offline_client_sale_uuid).trim()
+      : null;
+  if (!uuid) {
+    throw new Error("Not a queued offline sale edit.");
+  }
+  const mirrored = await syncOutboxSaleFromLocalEditCart(cart);
+  const existing = mirrored ?? (await idbGetOutboxSale(uuid));
+  if (!existing) {
+    throw new Error("That offline sale is no longer in the local queue.");
+  }
+  const next = {
+    ...existing,
+    sync_status: "pending",
+    sync_started_at_ms: null,
+    revision_at_sync: null,
+    last_error: null,
+    updated_at_ms: Date.now(),
+  };
+  await idbPutOutboxSale(next);
+  return next;
 }
 
 /**

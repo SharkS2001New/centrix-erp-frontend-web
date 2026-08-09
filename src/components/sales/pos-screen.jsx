@@ -173,6 +173,7 @@ import { ClassicPosAutoHeldDialog } from "./classic-pos-auto-held-dialog";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosPendingSyncOverlay } from "./pos-pending-sync-overlay";
+import { syncProgressPercent } from "./pos-offline-sync-controls";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
@@ -237,8 +238,10 @@ import {
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
   upsertPreviousOrderEditOutbox,
+  finalizeQueuedOfflineSaleEdit,
   withPosReceiptTicket,
   warmPosOfflineCatalog,
+  refreshPosOfflineCatalogPricing,
 } from "@/lib/pos-offline";
 import { isSellableCatalogProduct } from "@/lib/catalog-cache";
 import {
@@ -430,9 +433,12 @@ function isActiveOfflineEditSession(cart) {
   return false;
 }
 
-/** Revising a booked/completed receipt — local draft until F10/sync (not a restored held park). */
+/** Revising a booked/completed receipt — or a Cash Sales # still waiting in Pending sync. */
 function isPreviousOrderEditSession(cart) {
-  return Boolean(cart?.held_order_num && cart?.superseded_sale_id);
+  if (!cart?.held_order_num) return false;
+  if (cart.superseded_sale_id) return true;
+  // Queued offline sale reopened from Pending sync (no server sale id yet).
+  return Boolean(cart.offline_client_sale_uuid);
 }
 
 /** Line edits stay local-only for previous-order revisions and offline carts — not restored held parks. */
@@ -1371,55 +1377,6 @@ export function PosScreen({ standalone = false }) {
   );
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
 
-  // Live snackbar when ERP / managers app updates product prices or markups.
-  useEffect(() => {
-    if (!standalone || !organizationId || !isRealtimeConfigured()) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    /** @type {import('laravel-echo').default | null} */
-    let echo = null;
-    let channel = null;
-    const channelName = `organization.${organizationId}`;
-    let lastToastAt = 0;
-
-    (async () => {
-      try {
-        echo = await createNotificationEcho();
-        if (cancelled || !echo) return;
-
-        channel = echo.private(channelName);
-        channel.listen(".catalog.pricing.updated", (payload) => {
-          const now = Date.now();
-          // Avoid toast spam when several products are saved in quick succession.
-          if (now - lastToastAt < 2500) return;
-          lastToastAt = now;
-          const message =
-            typeof payload?.message === "string" && payload.message.trim()
-              ? payload.message.trim()
-              : "Product prices or markups were updated.";
-          notifySuccess(message);
-        });
-      } catch (error) {
-        if (process.env.NODE_ENV === "development") {
-          console.warn("[pos] pricing realtime unavailable", error);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      try {
-        channel?.stopListening(".catalog.pricing.updated");
-        echo?.leave(channelName);
-      } catch {
-        /* ignore */
-      }
-      disconnectNotificationEcho(echo);
-    };
-  }, [standalone, organizationId]);
-
   const productBranchParams = useMemo(
     () => (user?.branch_id ? { branch_id: user.branch_id } : {}),
     [user?.branch_id],
@@ -2160,6 +2117,12 @@ export function PosScreen({ standalone = false }) {
   const productByCodeRef = useRef({});
   const retailByCodeRef = useRef({});
   const applyLiveCartCatalogPricesRef = useRef(null);
+  const uomByIdRef = useRef(uomById);
+  const vatByIdRef = useRef(vatById);
+  const offlineModeRef = useRef(offlineMode);
+  uomByIdRef.current = uomById;
+  vatByIdRef.current = vatById;
+  offlineModeRef.current = offlineMode;
   const sellWholesaleRef = useRef(false);
   function markServerCartConsumed(cartId) {
     if (!isServerPosCartId(cartId)) return;
@@ -2332,7 +2295,10 @@ export function PosScreen({ standalone = false }) {
   }, [cart?.customer_num, cart?.held_order_num, cart?.pos_order_num]);
 
   /** True only while revising a previous booked/completed receipt (not a restored held park). */
-  const isCartEditSession = Boolean(cart?.held_order_num && cart?.superseded_sale_id);
+  const isCartEditSession = Boolean(
+    cart?.held_order_num &&
+      (cart?.superseded_sale_id || cart?.offline_client_sale_uuid),
+  );
   const isEditableResubmit = Boolean(cart?.discount_resubmit && isCartEditSession);
   /** Modern POS: revising a completed order (hold disabled; Complete saves + prints). */
   const modernOrderEditLocked = Boolean(
@@ -2522,7 +2488,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function ensurePreviousOrderPaymentAdjustment(cartNow, options = {}) {
-    if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return cartNow;
+    if (!cartNow?.held_order_num) return cartNow;
+    if (!cartNow?.superseded_sale_id && !cartNow?.offline_client_sale_uuid) {
+      return cartNow;
+    }
     // Payment method / top-up / return only when the cashier actually changed the order.
     if (!options.force && !editedOrderHasLocalDraftChanges(cartNow)) {
       return cartNow;
@@ -4133,21 +4102,24 @@ export function PosScreen({ standalone = false }) {
     const next = withEditDraftDirty(current);
     cartRef.current = next;
     setCart(next);
-    if (current.superseded_sale_id) {
+    // Online previous-order edits debounce into the outbox; queued offline sales
+    // mirror into the outbox on every saveLocalPosCart.
+    if (current.superseded_sale_id && !current.offline_client_sale_uuid) {
       scheduleEditedOrderAutosave();
     }
   }
 
   /**
    * @param {"qty" | "swap" | "add"} kind
+   * @returns {Promise<void>}
    */
   function notePreviousOrderEditSuccess(kind) {
-    if (!isPreviousOrderEditSession(cartRef.current)) return;
+    if (!isPreviousOrderEditSession(cartRef.current)) return Promise.resolve();
     markPreviousOrderDraftDirtyNow();
     const dirty = cartRef.current;
-    if (dirty) {
-      void savePreviousOrderEditDraft(dirty).catch(() => {});
-    }
+    const persistPromise = dirty
+      ? persistPreviousOrderLocalDraft(dirty, { immediate: true })
+      : Promise.resolve();
     if (kind === "qty") {
       notifySuccess("Quantity updated successfully");
       setStatusMessage("Quantity updated successfully");
@@ -4158,29 +4130,47 @@ export function PosScreen({ standalone = false }) {
       notifySuccess("Item added successfully");
       setStatusMessage("Item added successfully");
     }
+    return persistPromise;
   }
 
-  function persistPreviousOrderLocalDraft(nextCart, { immediate = false } = {}) {
+  async function persistPreviousOrderLocalDraft(nextCart, { immediate = false } = {}) {
     if (!isPreviousOrderEditSession(nextCart)) {
       return;
     }
-    // Offline / queued-edit carts persist via saveLocalPosCart — not the online draft id.
+    // Offline / queued-edit carts persist via saveLocalPosCart (mirrors outbox).
     if (nextCart.offline || nextCart.offline_client_sale_uuid) {
-      void saveLocalPosCart({
-        ...nextCart,
-        id: "active",
-        offline: true,
-        lines: (nextCart.lines ?? []).map((l) => ({
-          ...l,
-          client_line_id: l.client_line_id ?? l.update_code ?? l.id,
-        })),
-      }).catch(() => {});
+      try {
+        await saveLocalPosCart({
+          ...nextCart,
+          id: "active",
+          offline: true,
+          lines: (nextCart.lines ?? []).map((l) => ({
+            ...l,
+            client_line_id: l.client_line_id ?? l.update_code ?? l.id,
+          })),
+        });
+      } catch (e) {
+        console.error("Failed to persist offline previous-order draft", e);
+      }
       return;
     }
-    void savePreviousOrderEditDraft(nextCart).catch(() => {});
-    if (editedOrderHasLocalDraftChanges(nextCart)) {
-      scheduleEditedOrderAutosave({ immediate });
+    // Online previous-order edit: local draft + outbox upsert (immediate for qty/swap).
+    try {
+      await savePreviousOrderEditDraft(nextCart);
+    } catch (e) {
+      console.error("Failed to save previous-order edit draft", e);
     }
+    if (!editedOrderHasLocalDraftChanges(nextCart)) return;
+    if (immediate) {
+      try {
+        await queuePreviousOrderEditOutboxNow({ force: true });
+      } catch (e) {
+        console.error("Failed to upsert previous-order outbox after edit", e);
+        scheduleEditedOrderAutosave({ immediate: true });
+      }
+      return;
+    }
+    scheduleEditedOrderAutosave({ immediate: false });
   }
 
   /**
@@ -5416,7 +5406,7 @@ export function PosScreen({ standalone = false }) {
       };
       cartRef.current = draftCart;
       setCart(draftCart);
-      persistPreviousOrderLocalDraft(draftCart);
+      await persistPreviousOrderLocalDraft(draftCart);
       setCartLineSaveFailed(false);
       if (successMessage) setStatusMessage(successMessage);
       if (clearEntry && !unlockUiEarly) {
@@ -6001,8 +5991,13 @@ export function PosScreen({ standalone = false }) {
       setCart(nextCart);
 
       if (isPreviousOrderEditSession(nextCart)) {
-        persistPreviousOrderLocalDraft(nextCart, { immediate: true });
-        notePreviousOrderEditSuccess("swap");
+        // Clear swap chrome here — callers may also clear, but previous-order
+        // must not leave replacingLineId stuck after a successful SKU change.
+        swapDraftRef.current = null;
+        setSwapDraft(null);
+        setReplacingLineId(null);
+        replacingLineIdRef.current = null;
+        await notePreviousOrderEditSuccess("swap");
         clearClassicEntryFields();
         return true;
       }
@@ -7242,8 +7237,11 @@ export function PosScreen({ standalone = false }) {
         setCart(nextCart);
 
         if (isPreviousOrderEditSession(nextCart)) {
-          persistPreviousOrderLocalDraft(nextCart, { immediate: true });
-          if (qtyActuallyChanged) notePreviousOrderEditSuccess("qty");
+          if (qtyActuallyChanged) {
+            await notePreviousOrderEditSuccess("qty");
+          } else {
+            await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+          }
           setSelectedLineId(null);
           focusScanAfterItemAdded();
           return;
@@ -7490,7 +7488,7 @@ export function PosScreen({ standalone = false }) {
         );
       }
       if (onlinePreviousOrderDraft) {
-        persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+        await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
         return;
       }
     }
@@ -7651,7 +7649,7 @@ export function PosScreen({ standalone = false }) {
     });
 
     if (onlinePreviousOrderDraft) {
-      persistPreviousOrderLocalDraft(nextCart, { immediate: true });
+      await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
       return;
     }
 
@@ -8183,6 +8181,147 @@ export function PosScreen({ standalone = false }) {
     return updatedCount;
   }
   applyLiveCartCatalogPricesRef.current = applyLiveCartCatalogPrices;
+
+  // Live snackbar + IndexedDB catalog refresh when ERP updates product prices/markups.
+  // Kept below uom/vat/product refs so the effect does not hit a TDZ crash on mount.
+  useEffect(() => {
+    if (!standalone || !organizationId) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    /** @type {import('laravel-echo').default | null} */
+    let echo = null;
+    let channel = null;
+    const channelName = `organization.${organizationId}`;
+    let lastToastAt = 0;
+    let refreshInFlight = null;
+
+    async function applyPricingUpdate(payload = {}, { announce = true } = {}) {
+      if (cancelled) return;
+      const message =
+        typeof payload?.message === "string" && payload.message.trim()
+          ? payload.message.trim()
+          : "Product prices or markups were updated.";
+
+      // Always refresh local catalogue — do not tie this to toast debounce.
+      try {
+        if (refreshInFlight) await refreshInFlight;
+        refreshInFlight = refreshPosOfflineCatalogPricing(payload)
+          .then(async (result) => {
+            if (cancelled) return result;
+            const uomMap = uomByIdRef.current;
+            const vatMap = vatByIdRef.current;
+            const updatedProducts = Array.isArray(result?.products) ? result.products : [];
+            if (updatedProducts.length && !result?.forcedFull) {
+              const nextMeta = {};
+              for (const row of updatedProducts) {
+                if (!row?.product_code) continue;
+                const enriched = enrichProductForLpo(row, uomMap, vatMap);
+                nextMeta[row.product_code] = enriched;
+                productByCodeRef.current[row.product_code] = enriched;
+                delete retailByCodeRef.current[row.product_code];
+              }
+              setProductByCode((prev) => ({ ...prev, ...nextMeta }));
+              setRetailByCode({ ...retailByCodeRef.current });
+              applyLiveCartCatalogPricesRef.current?.(nextMeta, { announce: false });
+            } else if (result?.forcedFull || updatedProducts.length) {
+              // Full warm — refresh in-memory productByCode for open cart lines.
+              const codes = [
+                ...new Set(
+                  (cartRef.current?.lines ?? []).map((l) => l.product_code).filter(Boolean),
+                ),
+              ];
+              const nextMeta = {};
+              for (const code of codes) {
+                const row = await getPosOfflineProduct(code);
+                if (!row?.product_code) continue;
+                const enriched = enrichProductForLpo(row, uomMap, vatMap);
+                nextMeta[code] = enriched;
+                productByCodeRef.current[code] = enriched;
+                delete retailByCodeRef.current[code];
+              }
+              if (Object.keys(nextMeta).length) {
+                setProductByCode((prev) => ({ ...prev, ...nextMeta }));
+                setRetailByCode({ ...retailByCodeRef.current });
+                applyLiveCartCatalogPricesRef.current?.(nextMeta, { announce: false });
+              }
+            }
+            return result;
+          })
+          .finally(() => {
+            refreshInFlight = null;
+          });
+        await refreshInFlight;
+      } catch (e) {
+        console.warn("[pos] catalog pricing refresh failed", e);
+      }
+
+      if (cancelled || !announce) return;
+      const now = Date.now();
+      // Debounce toast only — catalogue refresh already ran above.
+      if (now - lastToastAt >= 1200) {
+        lastToastAt = now;
+        notifySuccess(message);
+        setStatusMessage(message);
+      }
+    }
+
+    // Fallback when Reverb is not configured: quiet refresh on focus / periodically.
+    function onWindowFocus() {
+      if (document.visibilityState && document.visibilityState !== "visible") return;
+      if (offlineModeRef.current) return;
+      void applyPricingUpdate({ forceFull: true }, { announce: false });
+    }
+
+    if (!isRealtimeConfigured()) {
+      const focusHandler = () => onWindowFocus();
+      window.addEventListener("focus", focusHandler);
+      document.addEventListener("visibilitychange", focusHandler);
+      const poll = window.setInterval(() => {
+        if (offlineModeRef.current) return;
+        void refreshPosOfflineCatalogPricing({ forceFull: true }).catch(() => {});
+      }, 3 * 60 * 1000);
+      return () => {
+        cancelled = true;
+        window.removeEventListener("focus", focusHandler);
+        document.removeEventListener("visibilitychange", focusHandler);
+        window.clearInterval(poll);
+      };
+    }
+
+    (async () => {
+      try {
+        echo = await createNotificationEcho();
+        if (cancelled || !echo) return;
+
+        channel = echo.private(channelName);
+        channel.listen(".catalog.pricing.updated", (payload) => {
+          void applyPricingUpdate(payload ?? {});
+        });
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[pos] pricing realtime unavailable", error);
+        }
+        // Realtime failed — still allow focus refresh.
+        window.addEventListener("focus", onWindowFocus);
+        document.addEventListener("visibilitychange", onWindowFocus);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        channel?.stopListening(".catalog.pricing.updated");
+        echo?.leave(channelName);
+      } catch {
+        /* ignore */
+      }
+      disconnectNotificationEcho(echo);
+      window.removeEventListener("focus", onWindowFocus);
+      document.removeEventListener("visibilitychange", onWindowFocus);
+    };
+  }, [standalone, organizationId]);
 
   async function handleRefresh() {
     setBusy(true);
@@ -9345,10 +9484,25 @@ export function PosScreen({ standalone = false }) {
     if (!standalone) return null;
     if (!force && skipEditAutosaveRef.current) return null;
     const cartNow = cartRef.current;
-    if (!cartNow?.held_order_num || !cartNow?.superseded_sale_id) return null;
+    if (!cartNow?.held_order_num) return null;
     if (isFreshWorkspacePlaceholder(cartNow)) return null;
-    if (cartNow.offline || cartNow.offline_client_sale_uuid) return null;
-    if (!editedOrderHasLocalDraftChanges(cartNow)) return null;
+
+    const queuedOfflineUuid =
+      cartNow.offline_client_sale_uuid != null &&
+      String(cartNow.offline_client_sale_uuid).trim()
+        ? String(cartNow.offline_client_sale_uuid).trim()
+        : null;
+
+    // Mid-sale offline draft (not a reopened pending sale) — nothing to upsert here.
+    if (cartNow.offline && !queuedOfflineUuid && !cartNow.superseded_sale_id) {
+      return null;
+    }
+    if (!queuedOfflineUuid && !cartNow.superseded_sale_id) return null;
+    if (!editedOrderHasLocalDraftChanges(cartNow) && !queuedOfflineUuid) return null;
+    if (!editedOrderHasLocalDraftChanges(cartNow) && queuedOfflineUuid && !force) {
+      return null;
+    }
+
     const lines = (cartNow.lines ?? []).filter(
       (l) => Number(l.quantity ?? 0) > 0 && l.product_code,
     );
@@ -9357,8 +9511,12 @@ export function PosScreen({ standalone = false }) {
     if (!lines.length && !allowEmptyRevision) return null;
 
     let cartForSync = cartNow;
-    // Background queue — never interrupt qty/swap with the payment breakdown dialog.
-    cartForSync = await ensurePreviousOrderPaymentAdjustment(cartNow, { provisional: true });
+    if (cartNow.superseded_sale_id) {
+      // Background queue — never interrupt qty/swap with the payment breakdown dialog.
+      cartForSync = await ensurePreviousOrderPaymentAdjustment(cartNow, {
+        provisional: true,
+      });
+    }
 
     const local = {
       ...cartForSync,
@@ -9373,6 +9531,9 @@ export function PosScreen({ standalone = false }) {
       till_id: cartForSync.till_id ?? tillId,
       float_session_id: floatSessionId ?? cartForSync.float_session_id,
       order_discount: Number(cartForSync.order_discount ?? 0) || 0,
+      offline_client_sale_uuid: queuedOfflineUuid,
+      offline_edit_snapshot:
+        cartForSync.offline_edit_snapshot ?? editSourceSale ?? null,
       customer_num:
         cartForSync.customer_num ??
         editSourceSale?.customer_num ??
@@ -9401,6 +9562,14 @@ export function PosScreen({ standalone = false }) {
             .toUpperCase() === "CREDIT",
       ),
     };
+
+    if (queuedOfflineUuid) {
+      // Reopened pending-sync sale: mirror lines and flip editing → pending.
+      await finalizeQueuedOfflineSaleEdit(local);
+      void refreshOfflineCounts();
+      return cartNow.held_order_num;
+    }
+
     await upsertPreviousOrderEditOutbox({
       cart: local,
       user,
@@ -9600,7 +9769,8 @@ export function PosScreen({ standalone = false }) {
     // Capture edit identity up front — queue/detach/sync must not prevent the clear.
     const editCartSnapshot = cartRef.current;
     const wasPreviousOrderEdit = Boolean(
-      editCartSnapshot?.held_order_num && editCartSnapshot?.superseded_sale_id,
+      editCartSnapshot?.held_order_num &&
+        (editCartSnapshot?.superseded_sale_id || editCartSnapshot?.offline_client_sale_uuid),
     );
     const finishGeneration = wasPreviousOrderEdit
       ? ++freshWorkspaceGenerationRef.current
@@ -9639,14 +9809,16 @@ export function PosScreen({ standalone = false }) {
     }
 
     const editSnapshot =
-      editCartSnapshot?.held_order_num && editCartSnapshot?.superseded_sale_id
+      editCartSnapshot?.held_order_num &&
+      (editCartSnapshot?.superseded_sale_id || editCartSnapshot?.offline_client_sale_uuid)
         ? buildPreviousOrderEditPrintSale(editCartSnapshot, {
             user,
             organization,
             sourceSale: editSourceSale,
             productByCode: productByCodeRef.current,
           })
-        : cartRef.current?.held_order_num && cartRef.current?.superseded_sale_id
+        : cartRef.current?.held_order_num &&
+            (cartRef.current?.superseded_sale_id || cartRef.current?.offline_client_sale_uuid)
           ? buildPreviousOrderEditPrintSale(cartRef.current, {
               user,
               organization,
@@ -10914,7 +11086,8 @@ export function PosScreen({ standalone = false }) {
     // skip the print→clear finish path.
     const activeEditCart = cartRef.current;
     const inPreviousOrderEdit = Boolean(
-      activeEditCart?.held_order_num && activeEditCart?.superseded_sale_id,
+      activeEditCart?.held_order_num &&
+        (activeEditCart?.superseded_sale_id || activeEditCart?.offline_client_sale_uuid),
     );
     const dirtyPreviousOrderEdit =
       inPreviousOrderEdit && editedOrderHasLocalDraftChanges(activeEditCart);
@@ -14884,6 +15057,7 @@ export function PosScreen({ standalone = false }) {
         }}
         classicTheme={classicLayout}
         themeStyle={classicThemeBridgeVars}
+        showHeldAmountPaid={Boolean(posSalesConfig.enableHeldOrderAmountPaid)}
         onRestored={async (restoredCart, sourceSale, meta = {}) => {
           setHeldOrdersOpen(false);
           setSaveOrderOpen(false);
@@ -14957,6 +15131,7 @@ export function PosScreen({ standalone = false }) {
         onSyncAll={syncOfflineOrders}
         onSyncOrder={syncSingleOfflineOrder}
         onPrintAll={handlePrintPendingOfflineReceipts}
+        onPrintOrder={handlePrintPendingOfflineReceipts}
         onDiscarded={() => {
           // Count already applied via onCountChange; refresh in case ticket seq changed.
           void refreshOfflineCounts();
@@ -15051,7 +15226,9 @@ export function PosScreen({ standalone = false }) {
                   </p>
                 ) : offlineSyncing && pendingSync > 0 ? (
                   <p className="text-xs font-medium text-sky-950">
-                    {syncProgress?.message || "Syncing offline orders…"}
+                    {syncProgress?.message
+                      ? `${String(syncProgress.message).replace(/\s*…\s*$/, "")} · ${syncProgressPercent(syncProgress)}%`
+                      : `Syncing offline orders · ${syncProgressPercent(syncProgress)}%`}
                   </p>
                 ) : (
                   <p className="text-xs font-medium text-sky-950">
@@ -15076,8 +15253,10 @@ export function PosScreen({ standalone = false }) {
               version="1.0.0"
               currencySettings={classicCurrencySettings}
               statusMessage={
-                offlineSyncing && pendingSync > 0 && syncProgress?.message
-                  ? syncProgress.message
+                offlineSyncing && pendingSync > 0
+                  ? syncProgress?.message
+                    ? `${String(syncProgress.message).replace(/\s*…\s*$/, "")} · ${syncProgressPercent(syncProgress)}%`
+                    : `Syncing offline orders · ${syncProgressPercent(syncProgress)}%`
                   : cartBridgeStatus || statusMessage
               }
               connectionStatus={networkStatus}

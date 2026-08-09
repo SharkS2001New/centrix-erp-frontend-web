@@ -1854,7 +1854,7 @@ export function HotelBarPosScreen() {
                       Math.max(1, Number(roomStayDraft.nights) || 1),
                   )}
                 </strong>
-                . Room stays occupied until checkout time, then frees automatically.
+                . Room stays occupied until checkout time, then go to housekeeping (dirty). Do not sell a room that already has an open PMS folio stay — use Front desk for folio guests.
               </p>
             </div>
             <div className="mt-5 flex gap-2">

@@ -90,6 +90,9 @@ export function HotelPosPaymentPanel({
   openFolios = [],
   preferRoomCharge = false,
   initialFolioId = "",
+  title = "Collect payment",
+  footerHint = null,
+  secondaryAction = null,
 }) {
   const cfg = paymentConfig ?? {};
   const total = round2(billTotal);
@@ -335,7 +338,7 @@ export function HotelPosPaymentPanel({
       <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/45 p-3 sm:items-center">
         <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] shadow-2xl">
           <div className="shrink-0 border-b border-[var(--theme-border)] px-4 py-3">
-            <h2 className="text-center text-sm font-bold uppercase tracking-wide">Collect payment</h2>
+            <h2 className="text-center text-sm font-bold uppercase tracking-wide">{title}</h2>
             <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
               <div className="rounded-xl bg-[var(--theme-page-bg)] px-2 py-2">
                 <dt className="theme-subtext">Bill</dt>
@@ -352,6 +355,7 @@ export function HotelPosPaymentPanel({
                 </dd>
               </div>
             </dl>
+            {footerHint ? <p className="theme-subtext mt-2 text-center text-[11px]">{footerHint}</p> : null}
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
@@ -509,23 +513,39 @@ export function HotelPosPaymentPanel({
             ) : null}
           </div>
 
-          <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-[var(--theme-border)] p-3">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={onClose}
-              className="theme-secondary-btn rounded-xl py-3.5 text-xs font-bold uppercase"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={saving || amountPaid + 0.001 < total}
-              onClick={() => void handleConfirm()}
-              className="theme-primary-btn rounded-xl py-3.5 text-xs font-bold uppercase disabled:opacity-40"
-            >
-              {saving ? "Saving…" : "Complete payment"}
-            </button>
+          <div className="shrink-0 space-y-2 border-t border-[var(--theme-border)] p-3">
+            {secondaryAction ? (
+              <button
+                type="button"
+                disabled={saving || secondaryAction.disabled}
+                onClick={() => secondaryAction.onClick?.()}
+                className="theme-secondary-btn w-full rounded-xl py-2.5 text-[10px] font-bold uppercase"
+              >
+                {secondaryAction.label}
+              </button>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={onClose}
+                className="theme-secondary-btn rounded-xl py-3.5 text-xs font-bold uppercase"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  saving ||
+                  amountPaid <= 0 ||
+                  (!allowPartial && amountPaid + 0.001 < total)
+                }
+                onClick={() => void handleConfirm()}
+                className="theme-primary-btn rounded-xl py-3.5 text-xs font-bold uppercase disabled:opacity-40"
+              >
+                {saving ? "Saving…" : allowPartial && amountPaid + 0.001 < total ? "Record payment" : "Complete payment"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

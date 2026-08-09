@@ -54,6 +54,7 @@ export function PosPendingSyncOverlay({
   onSyncAll,
   onSyncOrder,
   onPrintAll,
+  onPrintOrder,
 }) {
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -65,6 +66,7 @@ export function PosPendingSyncOverlay({
   const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
+  const [printingKey, setPrintingKey] = useState(null);
   const [printingAll, setPrintingAll] = useState(false);
   const [uomById, setUomById] = useState(() => new Map());
   const onCountChangeRef = useRef(onCountChange);
@@ -125,6 +127,7 @@ export function PosPendingSyncOverlay({
       setListError(null);
       setActionError(null);
       setBusyKey(null);
+      setPrintingKey(null);
       setLoading(false);
       setRefreshing(false);
       return;
@@ -250,6 +253,21 @@ export function PosPendingSyncOverlay({
     }
   }
 
+  async function handlePrintOrder(order) {
+    const printOne = onPrintOrder ?? onPrintAll;
+    if (!printOne || !order) return;
+    const key = orderKey(order);
+    setPrintingKey(key);
+    setActionError(null);
+    try {
+      await printOne([order]);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to print offline receipt");
+    } finally {
+      setPrintingKey(null);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
@@ -301,6 +319,7 @@ export function PosPendingSyncOverlay({
               type="button"
               disabled={
                 Boolean(busyKey) ||
+                Boolean(printingKey) ||
                 loading ||
                 refreshing ||
                 printingAll ||
@@ -319,7 +338,15 @@ export function PosPendingSyncOverlay({
             </button>
             <button
               type="button"
-              disabled={Boolean(busyKey) || loading || refreshing || printingAll || rows.length === 0 || syncing}
+              disabled={
+                Boolean(busyKey) ||
+                Boolean(printingKey) ||
+                loading ||
+                refreshing ||
+                printingAll ||
+                rows.length === 0 ||
+                syncing
+              }
               onClick={() => void handleDiscardAll()}
               className="rounded-lg border border-red-300/80 bg-red-600/90 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-red-600 disabled:opacity-50"
             >
@@ -327,7 +354,7 @@ export function PosPendingSyncOverlay({
             </button>
             <button
               type="button"
-              disabled={Boolean(busyKey) || loading || refreshing || printingAll}
+              disabled={Boolean(busyKey) || Boolean(printingKey) || loading || refreshing || printingAll}
               onClick={() => void loadPendingSales({ refresh: true })}
               className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-50"
             >
@@ -387,7 +414,9 @@ export function PosPendingSyncOverlay({
                 const key = orderKey(order);
                 const items = order.items ?? [];
                 const isBusy = busyKey === key;
+                const isPrinting = printingKey === key;
                 const failed = order.sync_status === "error";
+                const canPrintOrder = Boolean(onPrintOrder || onPrintAll);
 
                 return (
                   <li
@@ -465,10 +494,17 @@ export function PosPendingSyncOverlay({
                         )}
                       </div>
 
-                      <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-3 py-2">
+                      <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-3 py-2">
                         <button
                           type="button"
-                          disabled={Boolean(busyKey) || syncing || !canFlush || !onSyncOrder}
+                          disabled={
+                            Boolean(busyKey) ||
+                            Boolean(printingKey) ||
+                            printingAll ||
+                            syncing ||
+                            !canFlush ||
+                            !onSyncOrder
+                          }
                           onClick={(e) => {
                             e.preventDefault();
                             void handleSyncOrder(order);
@@ -479,7 +515,24 @@ export function PosPendingSyncOverlay({
                         </button>
                         <button
                           type="button"
-                          disabled={Boolean(busyKey) || syncing}
+                          disabled={
+                            Boolean(busyKey) ||
+                            Boolean(printingKey) ||
+                            printingAll ||
+                            !canPrintOrder
+                          }
+                          onClick={(e) => {
+                            e.preventDefault();
+                            void handlePrintOrder(order);
+                          }}
+                          className="rounded-md border border-slate-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          title="Print this offline receipt"
+                        >
+                          {isPrinting ? "Printing…" : "Print"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(busyKey) || Boolean(printingKey) || printingAll || syncing}
                           onClick={(e) => {
                             e.preventDefault();
                             void handleDiscard(order);
