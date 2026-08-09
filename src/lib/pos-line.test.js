@@ -169,11 +169,11 @@ describe("sell_on_retail gate", () => {
 });
 
 describe("computePosLine retail amount vs unit", () => {
-  it("keeps wholesale unit and adds markup on amount for 25/50/75 kg", () => {
+  it("shows marked-up unit price (amount ÷ qty) for 25/50/75 kg", () => {
     const cases = [
-      { qty: "25", amount: 3155, unit: 125 },
-      { qty: "50", amount: 6310, unit: 125 },
-      { qty: "75", amount: 9465, unit: 125 },
+      { qty: "25", amount: 3155, unit: 126.2 },
+      { qty: "50", amount: 6310, unit: 126.2 },
+      { qty: "75", amount: 9465, unit: 126.2 },
     ];
     for (const { qty, amount, unit } of cases) {
       const line = computePosLine({
@@ -184,12 +184,11 @@ describe("computePosLine retail amount vs unit", () => {
       });
       expect(line.displayUnitPrice).toBe(unit);
       expect(line.lineAmount).toBe(amount);
-      // Must not be “markup inside unit” × qty (e.g. 130×25)
-      expect(line.displayUnitPrice * Number(qty)).toBeLessThan(amount);
+      expect(Math.round(line.displayUnitPrice * Number(qty) * 100) / 100).toBe(amount);
     }
   });
 
-  it("applies cashier unit override as wholesale/kg then adds amount markup", () => {
+  it("applies cashier unit override as wholesale/kg then shows marked-up unit", () => {
     const line = computePosLine({
       product: sugarProduct,
       entryQty: "25",
@@ -198,7 +197,7 @@ describe("computePosLine retail amount vs unit", () => {
       unitPriceOverride: 125,
     });
     expect(line.lineAmount).toBe(3155);
-    expect(line.displayUnitPrice).toBe(125);
+    expect(line.displayUnitPrice).toBe(126.2);
   });
 
   it("prices legacy retail package settings for 25kg sugar", () => {
@@ -214,7 +213,7 @@ describe("computePosLine retail amount vs unit", () => {
       retailPackage: legacyPackage,
     });
     expect(line.lineAmount).toBe(3155);
-    expect(line.displayUnitPrice).toBe(125);
+    expect(line.displayUnitPrice).toBe(126.2);
   });
 
   it("rounds unit price and amount together when cash rounding is on", () => {
@@ -289,7 +288,7 @@ describe("applyCatalogPricesToCart per-line mode", () => {
       sellWholesale: true,
     });
     expect(updatedCount).toBe(2);
-    expect(priced.lines[0].display_unit_price).toBe(125);
+    expect(priced.lines[0].display_unit_price).toBe(126.2);
     expect(priced.lines[1].display_unit_price).toBe(6280);
   });
 

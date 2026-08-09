@@ -2193,8 +2193,8 @@ export function OrganizationUsersPanel({
       title="Users & logins"
       description={
         companyCode
-          ? `Sign-in accounts for this tenant (company code ${companyCode}). ${detailed ? "Shows last login and active sessions." : ""}`
-          : "Sign-in accounts for this tenant."
+          ? `Sign-in accounts for this tenant (company code ${companyCode}). Promote or remove organization administrators here — at least one org admin must remain.${detailed ? " Shows last login and active sessions." : ""}`
+          : "Sign-in accounts for this tenant. Promote or remove organization administrators here — at least one org admin must remain."
       }
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -2244,6 +2244,7 @@ export function OrganizationUsersPanel({
                   organizationId={organizationId}
                   onUpdated={loadUsers}
                   detailed={detailed}
+                  orgAdminCount={users.filter((u) => u.is_admin).length}
                 />
               ))}
             </tbody>
@@ -2266,7 +2267,7 @@ function userIsPasswordLocked(user) {
   return Boolean(user?.password_locked ?? user?.must_change_password);
 }
 
-function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false }) {
+function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false, orgAdminCount = 0 }) {
   const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -2278,6 +2279,9 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
+  const isSoleOrgAdmin = Boolean(user.is_admin) && orgAdminCount <= 1;
+  const canRemoveOrgAdmin = Boolean(user.is_admin) && orgAdminCount > 1;
+  const canMakeOrgAdmin = !user.is_admin;
 
   useEffect(() => {
     setFullName(user.full_name ?? "");
@@ -2314,6 +2318,19 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
       username: username.trim(),
       email: email.trim(),
     });
+  }
+
+  async function setOrgAdmin(makeAdmin) {
+    const ok = await confirm({
+      title: makeAdmin ? "Make organization administrator?" : "Remove organization administrator?",
+      message: makeAdmin
+        ? `Make "${user.full_name}" an organization administrator? They get the Administrator role and full tenant access. Existing sessions will be signed out.`
+        : `Remove organization administrator from "${user.full_name}"? They keep a staff role and can still sign in. At least one org admin must remain.`,
+      confirmLabel: makeAdmin ? "Make org admin" : "Remove org admin",
+      destructive: !makeAdmin,
+    });
+    if (!ok) return;
+    await updateUser({ is_admin: makeAdmin });
   }
 
   async function clearPasswordLock() {
@@ -2370,10 +2387,14 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
   }
 
   async function deleteUser() {
+    if (isSoleOrgAdmin) {
+      setError("Cannot delete the only organization administrator. Promote another user first.");
+      return;
+    }
     const ok = await confirm({
       title: "Delete user",
       message: user.is_admin
-        ? `Delete organization administrator "${user.full_name}"? Prefer changing their role first if this is not a test account. Users with sales history are archived.`
+        ? `Delete organization administrator "${user.full_name}"? Other org admins will remain. Users with sales history are archived.`
         : `Delete "${user.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
       confirmLabel: "Delete",
       destructive: true,
@@ -2384,7 +2405,7 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
     setError(null);
     setSaved(false);
     try {
-      const { apiRequest, ApiError } = await import("@/lib/api");
+      const { apiRequest } = await import("@/lib/api");
       await apiRequest(`/admin/organizations/${organizationId}/users/${user.id}`, {
         method: "DELETE",
       });
@@ -2481,6 +2502,26 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
             >
               {editing ? "Cancel edit" : "Edit details"}
             </button>
+            {canMakeOrgAdmin ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void setOrgAdmin(true)}
+                className="rounded border border-[#185FA5]/40 px-2 py-1 text-xs font-medium text-[#185FA5] hover:bg-[#185FA5]/5 disabled:opacity-50"
+              >
+                Make org admin
+              </button>
+            ) : null}
+            {canRemoveOrgAdmin ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void setOrgAdmin(false)}
+                className="rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+              >
+                Remove org admin
+              </button>
+            ) : null}
             <div className="w-36">
               <PasswordInput
                 className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
@@ -2509,7 +2550,12 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
             </button>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || (user.is_admin && isSoleOrgAdmin && user.is_active)}
+              title={
+                user.is_admin && isSoleOrgAdmin && user.is_active
+                  ? "Cannot disable login for the only organization administrator"
+                  : undefined
+              }
               onClick={() => void updateUser({ is_active: !user.is_active })}
               className="rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
             >
@@ -2517,7 +2563,12 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
             </button>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || isSoleOrgAdmin}
+              title={
+                isSoleOrgAdmin
+                  ? "Cannot delete the only organization administrator — promote another user first"
+                  : undefined
+              }
               onClick={() => void deleteUser()}
               className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
             >

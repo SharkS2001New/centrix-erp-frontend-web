@@ -349,10 +349,10 @@ export function resolveSaleLinePrintColumns(
 
   const storedDisplay = Number(line?.display_unit_price);
   const unitPrice =
-    Number.isFinite(storedDisplay) && storedDisplay > 0
-      ? Math.round(storedDisplay * 100) / 100
-      : qty > 0
-        ? Math.round((amountBeforeDisc / qty) * 100) / 100
+    qty > 0 && (amountBeforeDisc > 0 || discount > 0)
+      ? Math.round((amountBeforeDisc / qty) * 100) / 100
+      : Number.isFinite(storedDisplay) && storedDisplay > 0
+        ? Math.round(storedDisplay * 100) / 100
         : 0;
 
   if (isRetail) {

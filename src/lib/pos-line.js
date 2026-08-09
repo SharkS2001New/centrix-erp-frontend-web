@@ -304,8 +304,8 @@ export function reversePosDisplayUnitPrice(
 }
 
 /**
- * Cashier-facing retail unit price: catalog wholesale per small unit only.
- * Tier / route markups stay on the line amount — never folded into this unit.
+ * Catalog wholesale per small unit (no package/route markup).
+ * Used in unit-price field hints — the sold line price itself is amount÷qty.
  */
 export function retailDisplayWholesaleUnitPrice(catalogUnitPrice, uom) {
   return Math.round(wholesalePricePerSmallUnit(catalogUnitPrice, uom) * 100) / 100;
@@ -493,20 +493,15 @@ export function computePosLine({
   const discountNum = Math.max(0, Number(discount ?? 0));
   lineAmount = Math.max(0, lineAmount - discountNum);
 
-  // Retail Price field: wholesale per kg only. Markup lives on amount.
-  // Wholesale: pack unit from priced amount (includes flat line markup).
-  let displayUnitPrice =
-    retailSession && pricingRetail
-      ? retailPerSmallOverride != null
-        ? Math.round(retailPerSmallOverride * 100) / 100
-        : retailDisplayWholesaleUnitPrice(catalogUnitPrice, uom)
-      : reversePosDisplayUnitPrice(lineAmountBeforeDiscount, uom, {
-          retailSession,
-          factor,
-          baseQty,
-          packQty,
-          measureLevel: resolved.measureLevel,
-        });
+  // Sold-unit price always comes from the priced line (includes retail/wholesale/
+  // route markups). Do not show bare catalog wholesale while amount already has markup.
+  let displayUnitPrice = reversePosDisplayUnitPrice(lineAmountBeforeDiscount, uom, {
+    retailSession,
+    factor,
+    baseQty,
+    packQty,
+    measureLevel: resolved.measureLevel,
+  });
   displayUnitPrice = finalizePosDisplayUnitPrice(displayUnitPrice, { cashRound });
   const roundedLineAmount = finalizePosLineAmount(lineAmount, { cashRound });
   // Per-base average for API trust path (amount ÷ qty); includes markup share.
@@ -598,11 +593,6 @@ export function cartLineDisplayUnitPrice(
   isRetailLine = false,
   { cashRound = false } = {},
 ) {
-  const storedDisplay = Number(line?.display_unit_price);
-  if (Number.isFinite(storedDisplay) && storedDisplay > 0) {
-    return finalizePosDisplayUnitPrice(storedDisplay, { cashRound });
-  }
-
   const amount = Number(line?.amount ?? 0);
   const discount = Math.max(0, Number(line?.discount_given ?? 0));
   const baseQty = Number(line?.quantity ?? 0);
@@ -612,8 +602,14 @@ export function cartLineDisplayUnitPrice(
       ? baseToDisplayQty(baseQty, factor)
       : baseQty;
 
+  // Prefer amount ÷ sold qty so retail/route markups on the line show in Price.
   if (soldQty > 0 && (amount > 0 || discount > 0)) {
     return finalizePosDisplayUnitPrice((amount + discount) / soldQty, { cashRound });
+  }
+
+  const storedDisplay = Number(line?.display_unit_price);
+  if (Number.isFinite(storedDisplay) && storedDisplay > 0) {
+    return finalizePosDisplayUnitPrice(storedDisplay, { cashRound });
   }
 
   // Offline/optimistic lines may still hold per-base unit_price before display is set.
@@ -632,10 +628,12 @@ export function cartLineDisplayUnitPrice(
 
 /**
  * Cashier-facing unit to lock when editing/merging a cart line.
- * Always use display (per bag / per kg) — never API amortized `unit_price`, which
- * retail override paths would multiply by conversion_factor again (e.g. 3600×25).
+ * Wholesale: lock sold-unit display (already includes flat line markup).
+ * Retail: do not lock — recompute from package settings so markup is not doubled
+ * when override is treated as wholesale-per-small inside computePosLine.
  */
 export function cartLineLockedUnitOverride(line, uom, isRetailLine = false, { cashRound = false } = {}) {
+  if (isRetailLine) return null;
   const display = cartLineDisplayUnitPrice(line, uom, isRetailLine, { cashRound });
   return display > 0 ? display : null;
 }
