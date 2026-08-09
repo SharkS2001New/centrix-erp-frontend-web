@@ -229,7 +229,7 @@ export function AdminUsersScreen() {
       }
       const hospitalityOutletReqIndex = hospitalityPosEnabled ? requests.length : -1;
       if (hospitalityPosEnabled) {
-        requests.push(apiRequest("/hospitality/outlets"));
+        requests.push(apiRequest("/hospitality/outlets", { reportIssues: false }));
       }
 
       const results = await Promise.allSettled(requests);

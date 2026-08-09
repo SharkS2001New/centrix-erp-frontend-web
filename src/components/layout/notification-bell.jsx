@@ -157,7 +157,9 @@ export function NotificationBell() {
       });
       const rows = Array.isArray(res?.data) ? res.data : [];
       const latestOutcome = filterNotificationsForWorkspace(rows, workspaceId).find(
-        (item) => isDiscountApprovalOutcomeNotification(item) && !item.is_read,
+        (item) =>
+          (isDiscountApprovalOutcomeNotification(item) || item?.type === "catalog_pricing") &&
+          !item.is_read,
       );
       if (!latestOutcome) return;
       if (latestOutcome.severity === "danger") {

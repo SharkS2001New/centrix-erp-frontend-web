@@ -129,10 +129,14 @@ export function useTabAwareDataLoad(loadFn, options) {
       }
       let cancelled = false;
       void (async () => {
-        await loadFnRef.current();
-        if (!cancelled) {
-          loadedDepsByPane.set(paneKey, depsKey);
-          loadedOnceRef.current = true;
+        try {
+          await loadFnRef.current();
+          if (!cancelled) {
+            loadedDepsByPane.set(paneKey, depsKey);
+            loadedOnceRef.current = true;
+          }
+        } catch {
+          // Loaders should handle errors; never leave an unhandledrejection.
         }
       })();
       return () => {
@@ -150,8 +154,12 @@ export function useTabAwareDataLoad(loadFn, options) {
     if (lastLoadedFnRef.current === loadFn) return undefined;
     lastLoadedFnRef.current = loadFn;
     void (async () => {
-      await loadFn();
-      loadedOnceRef.current = true;
+      try {
+        await loadFn();
+        loadedOnceRef.current = true;
+      } catch {
+        // Loaders should handle errors; never leave an unhandledrejection.
+      }
     })();
     return undefined;
   }, [isActive, loadFn, paneKey, depsKey, hasData]);

@@ -2120,10 +2120,23 @@ export function PosScreen({ standalone = false }) {
   const uomByIdRef = useRef(uomById);
   const vatByIdRef = useRef(vatById);
   const offlineModeRef = useRef(offlineMode);
+  const combineIdenticalLinesRef = useRef(true);
   uomByIdRef.current = uomById;
   vatByIdRef.current = vatById;
   offlineModeRef.current = offlineMode;
+  combineIdenticalLinesRef.current = posSalesConfig.combineIdenticalLines !== false;
   const sellWholesaleRef = useRef(false);
+
+  /** Seed for switching a TemporaryCart into the local offline workspace. */
+  function offlineOutageSeed(extra = {}) {
+    return {
+      branch_id: user?.branch_id,
+      till_id: tillId,
+      float_session_id: floatSessionId,
+      combineIdenticalLines: combineIdenticalLinesRef.current,
+      ...extra,
+    };
+  }
   function markServerCartConsumed(cartId) {
     if (!isServerPosCartId(cartId)) return;
     consumedServerCartIdsRef.current.add(Number(cartId));
@@ -3645,11 +3658,7 @@ export function PosScreen({ standalone = false }) {
         (current.lines?.length > 0 || current.held_order_num)
       ) {
         if (current.offline) return current;
-        const local = await continueOpenCartThroughOutage(current, {
-          branch_id: user.branch_id,
-          till_id: tillId,
-          float_session_id: floatSessionId,
-        });
+        const local = await continueOpenCartThroughOutage(current, offlineOutageSeed());
         const presented = presentLocalOfflineCart(local);
         if (applyState) {
           cartRef.current = presented;
@@ -3983,11 +3992,7 @@ export function PosScreen({ standalone = false }) {
     if (standalone && offlineMode) {
       if (current?.offline && Array.isArray(current.lines)) return current;
       if (current && (current.lines?.length > 0 || current.held_order_num)) {
-        const local = await continueOpenCartThroughOutage(current, {
-          branch_id: user?.branch_id,
-          till_id: tillId,
-          float_session_id: floatSessionId,
-        });
+        const local = await continueOpenCartThroughOutage(current, offlineOutageSeed());
         const presented = presentLocalOfflineCart(local);
         cartRef.current = presented;
         setCart(presented);
@@ -4411,17 +4416,17 @@ export function PosScreen({ standalone = false }) {
           Number(offlineNextPosOrderNum) || 0,
           Number(current?.next_pos_order_num) || 0,
         );
-        const local = await continueOpenCartThroughOutage(current, {
-          branch_id: user?.branch_id,
-          till_id: tillId,
-          float_session_id: floatSessionId,
-          ...(uiNext > 0
-            ? {
-                next_pos_order_num: uiNext,
-                next_pos_order_date: todayPosOrderDate(),
-              }
-            : {}),
-        });
+        const local = await continueOpenCartThroughOutage(
+          current,
+          offlineOutageSeed(
+            uiNext > 0
+              ? {
+                  next_pos_order_num: uiNext,
+                  next_pos_order_date: todayPosOrderDate(),
+                }
+              : {},
+          ),
+        );
         if (cancelled) return;
         // Only flip the working cart if a line-add has not already continued locally.
         if (cartRef.current?.offline) return;
@@ -5060,23 +5065,23 @@ export function PosScreen({ standalone = false }) {
         usesLocalPosCartWorkspace(live) && Array.isArray(live.lines)
           ? live
           : presentLocalOfflineCart(
-              await continueOpenCartThroughOutage(live ?? (await ensureCart()), {
-                branch_id: user?.branch_id,
-                till_id: tillId,
-                float_session_id: floatSessionId,
-                ...(Number(editOrderNo) > 0 ||
-                Number(offlineNextPosOrderNum) > 0 ||
-                Number(live?.next_pos_order_num) > 0
-                  ? {
-                      next_pos_order_num: Math.max(
-                        Number(editOrderNo) || 0,
-                        Number(offlineNextPosOrderNum) || 0,
-                        Number(live?.next_pos_order_num) || 0,
-                      ),
-                      next_pos_order_date: todayPosOrderDate(),
-                    }
-                  : {}),
-              }),
+              await continueOpenCartThroughOutage(
+                live ?? (await ensureCart()),
+                offlineOutageSeed(
+                  Number(editOrderNo) > 0 ||
+                    Number(offlineNextPosOrderNum) > 0 ||
+                    Number(live?.next_pos_order_num) > 0
+                    ? {
+                        next_pos_order_num: Math.max(
+                          Number(editOrderNo) || 0,
+                          Number(offlineNextPosOrderNum) || 0,
+                          Number(live?.next_pos_order_num) || 0,
+                        ),
+                        next_pos_order_date: todayPosOrderDate(),
+                      }
+                    : {},
+                ),
+              ),
             );
       if (activeCart && !usesLocalPosCartWorkspace(cartRef.current)) {
         cartRef.current = activeCart;
@@ -5187,6 +5192,7 @@ export function PosScreen({ standalone = false }) {
               : {}),
         },
         localLine,
+        { combineIdenticalLines: combineIdenticalLinesRef.current },
       );
       const presented = presentLocalOfflineCart(nextLocal);
       cartRef.current = presented;
@@ -5521,11 +5527,7 @@ export function PosScreen({ standalone = false }) {
             return rest;
           }),
         };
-        const local = await continueOpenCartThroughOutage(committed, {
-          branch_id: user?.branch_id,
-          till_id: tillId,
-          float_session_id: floatSessionId,
-        });
+        const local = await continueOpenCartThroughOutage(committed, offlineOutageSeed());
         const presented = presentLocalOfflineCart(local);
         cartRef.current = presented;
         setCart(presented);
@@ -7549,11 +7551,7 @@ export function PosScreen({ standalone = false }) {
               if (!current || !standalone) break;
               try {
                 const local = presentLocalOfflineCart(
-                  await continueOpenCartThroughOutage(current, {
-                    branch_id: user?.branch_id,
-                    till_id: tillId,
-                    float_session_id: floatSessionId,
-                  }),
+                  await continueOpenCartThroughOutage(current, offlineOutageSeed()),
                 );
                 if (cartRef.current && String(cartRef.current.id) === String(current.id)) {
                   cartRef.current = local;
@@ -7685,11 +7683,7 @@ export function PosScreen({ standalone = false }) {
       ) {
         const current = cartRef.current ?? nextCart;
         if (!standalone) return;
-        void continueOpenCartThroughOutage(current, {
-          branch_id: user?.branch_id,
-          till_id: tillId,
-          float_session_id: floatSessionId,
-        })
+        void continueOpenCartThroughOutage(current, offlineOutageSeed())
           .then((local) => {
             const presented = presentLocalOfflineCart(local);
             cartRef.current = presented;

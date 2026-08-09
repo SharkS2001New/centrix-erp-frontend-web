@@ -140,6 +140,106 @@ describe("continueOpenCartThroughOutage", () => {
     expect(cart.lines[0].amount).toBe(7200);
   });
 
+  it("keeps separate local lines when combine identical products is off", async () => {
+    let cart = {
+      id: "active",
+      offline: true,
+      lines: [],
+    };
+    cart = await upsertLocalPosCartLine(
+      cart,
+      {
+        product_code: "BANJAB",
+        quantity: 1,
+        unit_price: 2000,
+        amount: 3600,
+        on_wholesale_retail: false,
+        client_line_id: "c1",
+      },
+      { combineIdenticalLines: false },
+    );
+    cart = await upsertLocalPosCartLine(
+      cart,
+      {
+        product_code: "BANJAB",
+        quantity: 1,
+        unit_price: 2000,
+        amount: 3600,
+        on_wholesale_retail: false,
+        client_line_id: "c2",
+      },
+      { combineIdenticalLines: false },
+    );
+    expect(cart.lines).toHaveLength(2);
+    expect(cart.lines.map((l) => l.client_line_id)).toEqual(["c1", "c2"]);
+  });
+
+  it("still updates the same client_line_id when combine is off", async () => {
+    let cart = {
+      id: "active",
+      offline: true,
+      lines: [],
+    };
+    cart = await upsertLocalPosCartLine(
+      cart,
+      {
+        product_code: "BANJAB",
+        quantity: 1,
+        unit_price: 2000,
+        amount: 3600,
+        on_wholesale_retail: false,
+        client_line_id: "c1",
+      },
+      { combineIdenticalLines: false },
+    );
+    cart = await upsertLocalPosCartLine(
+      cart,
+      {
+        product_code: "BANJAB",
+        quantity: 3,
+        unit_price: 2000,
+        amount: 10800,
+        on_wholesale_retail: false,
+        client_line_id: "c1",
+      },
+      { combineIdenticalLines: false },
+    );
+    expect(cart.lines).toHaveLength(1);
+    expect(cart.lines[0].quantity).toBe(3);
+  });
+
+  it("does not collapse duplicate SKUs on outage when combine is off", async () => {
+    const open = {
+      id: 55,
+      channel: "pos",
+      lines: [
+        {
+          id: 1,
+          update_code: "A",
+          product_code: "YABAL",
+          quantity: 1,
+          unit_price: 100,
+          amount: 100,
+          on_wholesale_retail: 0,
+        },
+        {
+          id: 2,
+          update_code: "B",
+          product_code: "YABAL",
+          quantity: 1,
+          unit_price: 100,
+          amount: 100,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const local = await continueOpenCartThroughOutage(open, {
+      branch_id: 1,
+      combineIdenticalLines: false,
+    });
+    expect(local.lines).toHaveLength(2);
+  });
+
   it("preserves next_pos_order_num from the open cart through an outage", async () => {
     const open = {
       id: 88,

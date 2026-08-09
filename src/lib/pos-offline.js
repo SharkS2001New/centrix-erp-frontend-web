@@ -638,11 +638,28 @@ export function serverCartLinesToLocal(lines) {
  * POS adds and spawned duplicate rows when the link flapped. Persist a snapshot
  * for crash recovery only; completed-sale sync stays in the outbox.
  */
+/**
+ * Continue an open TemporaryCart (or mid-sale workspace) as a local offline cart.
+ * @param {object|null} openCart
+ * @param {{
+ *   branch_id?: number|null,
+ *   till_id?: number|null,
+ *   float_session_id?: number|null,
+ *   pos_order_num?: number|null,
+ *   pos_order_date?: string|null,
+ *   next_pos_order_num?: number|null,
+ *   next_pos_order_date?: string|null,
+ *   combineIdenticalLines?: boolean,
+ * }} [seed]
+ */
 export async function continueOpenCartThroughOutage(openCart, seed = {}) {
   if (!openCart) return null;
+  const combineIdenticalLines = seed.combineIdenticalLines !== false;
 
   if (openCart.offline && Array.isArray(openCart.lines)) {
-    const collapsed = collapseCombineableLocalLines(openCart.lines);
+    const collapsed = collapseCombineableLocalLines(openCart.lines, {
+      combineIdenticalLines,
+    });
     const next =
       collapsed.length === openCart.lines.length
         ? openCart
@@ -656,7 +673,8 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
   }
 
   // Classic Enter-repeat / stale merge during a link flap can leave several
-  // optimistic rows for the same SKU — collapse them so offline sell stays normal.
+  // optimistic rows for the same SKU — collapse them so offline sell stays normal
+  // when "combine identical products" is enabled.
   const lines = collapseCombineableLocalLines(
     (openCart.lines ?? [])
       .map((line) => {
@@ -688,6 +706,7 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
         };
       })
       .filter(Boolean),
+    { combineIdenticalLines },
   );
 
   const migratedFrom =
@@ -766,8 +785,10 @@ function lineKey(line) {
 /**
  * Collapse duplicate SKU (+ retail/wholesale) rows into one line.
  * Used when adopting a TemporaryCart that grew duplicate optimistic rows mid-outage.
+ * Honours External POS "Combine identical products on POS cart".
  */
-export function collapseCombineableLocalLines(lines) {
+export function collapseCombineableLocalLines(lines, { combineIdenticalLines = true } = {}) {
+  if (combineIdenticalLines === false) return Array.isArray(lines) ? [...lines] : [];
   if (!Array.isArray(lines) || lines.length < 2) return lines ?? [];
   const byKey = new Map();
   for (const line of lines) {
@@ -801,10 +822,33 @@ export function collapseCombineableLocalLines(lines) {
   return [...byKey.values()];
 }
 
-export async function upsertLocalPosCartLine(cart, line) {
+/**
+ * Upsert a line into the local offline cart.
+ * When combine is on: merge by SKU + retail/wholesale (classic POS).
+ * When combine is off: only update the same client_line_id (edits); otherwise append.
+ */
+export async function upsertLocalPosCartLine(
+  cart,
+  line,
+  { combineIdenticalLines = true } = {},
+) {
   const lines = [...(cart.lines ?? [])];
-  const key = lineKey(line);
-  const idx = lines.findIndex((l) => lineKey(l) === key);
+  const clientId =
+    line?.client_line_id != null && String(line.client_line_id).trim() !== ""
+      ? String(line.client_line_id)
+      : null;
+
+  let idx = -1;
+  if (clientId) {
+    idx = lines.findIndex(
+      (row) => String(row.client_line_id ?? row.update_code ?? row.id ?? "") === clientId,
+    );
+  }
+  if (idx < 0 && combineIdenticalLines !== false) {
+    const key = lineKey(line);
+    idx = lines.findIndex((row) => lineKey(row) === key);
+  }
+
   if (idx >= 0) {
     lines[idx] = {
       ...lines[idx],
