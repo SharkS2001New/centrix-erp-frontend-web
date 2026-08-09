@@ -1037,7 +1037,9 @@ export function AdminUsersScreen() {
                 ? " Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
                 : posEnabled
                   ? " External POS and backoffice are available; mobile orders are disabled."
-                  : " Backoffice web sign-in is available; external POS and mobile are disabled for this organization."}
+                  : hospitalityPosEnabled
+                    ? " Backoffice web sign-in covers Hotel Backoffice and Hotel POS. Retail external POS and mobile are not used for this hospitality organization."
+                    : " Backoffice web sign-in is available; external POS and mobile are disabled for this organization."}
             </p>
           </Field>
           {mobileAppEnabled && userHasMobileChannel(form.login_channels) ? (
