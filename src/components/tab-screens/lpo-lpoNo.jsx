@@ -26,6 +26,7 @@ import { LpoAttachmentsPanel } from "@/components/lpo/lpo-attachments-panel";
 import { PaymentStatusBadge } from "@/components/suppliers/suppliers-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
+import { useTabTitle } from "@/contexts/tab-workspace-context";
 
 export function LpoLpoNoScreen() {
   const params = useParams();
@@ -72,8 +73,15 @@ export function LpoLpoNoScreen() {
   useTabAwareDataLoad(load);
 
   async function deleteLpo() {
+    const statusCode = Number(data?.lpo?.lpo_status_code ?? 0);
+    const receivedOrSent = statusCode >= 3;
     const ok = await confirm(
-      confirmDeleteOptions("this purchase order", "Delete this purchase order? This cannot be undone."),
+      confirmDeleteOptions(
+        "this purchase order",
+        receivedOrSent
+          ? "Delete this purchase order? It has already been sent or received. Stock receipts and supplier payments are not reversed — use only for mistakes or test data."
+          : "Delete this purchase order? This cannot be undone.",
+      ),
     );
     if (!ok) return;
     setDeletingLpo(true);
@@ -103,6 +111,8 @@ export function LpoLpoNoScreen() {
 
   const lpo = data?.lpo;
   const lines = data?.lines ?? [];
+  const lpoTabNumber = lpo ? lpoDisplayNumber(lpo) : lpoNo != null ? String(lpoNo) : "";
+  useTabTitle(lpoTabNumber ? `LPO - ${lpoTabNumber}` : "LPO");
   const invoices = useMemo(
     () =>
       (data?.supplier_invoices ?? []).filter(

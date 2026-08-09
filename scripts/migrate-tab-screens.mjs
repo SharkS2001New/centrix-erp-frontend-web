@@ -41,6 +41,12 @@ const PREFERRED_SCREENS = {
   "hr-payroll-runs-id": {
     title: "Payroll run",
   },
+  "lpo-lpoNo": {
+    title: "LPO",
+  },
+  lpo: {
+    title: "LPO",
+  },
 };
 
 function walkPages(dir, out = []) {

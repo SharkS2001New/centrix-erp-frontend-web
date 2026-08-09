@@ -68,16 +68,21 @@ function ReportAsyncSearchSelect({
     };
   }, [optionsKey, value]);
 
+  const placeholder = reportFilterPlaceholder(optionsKey, label);
+  const clearOption = useMemo(
+    () => ({ value: "", label: placeholder }),
+    [placeholder],
+  );
+
   const loadOptions = useCallback(
     async (query) => {
       const rows = await searchReportFilterOptions(optionsKey, query);
-      setPinnedOptions((prev) => mergeOptions(prev, rows));
-      return rows;
+      const withClear = [clearOption, ...rows.filter((row) => String(row.value) !== "")];
+      setPinnedOptions((prev) => mergeOptions(prev, withClear));
+      return withClear;
     },
-    [optionsKey],
+    [clearOption, optionsKey],
   );
-
-  const placeholder = reportFilterPlaceholder(optionsKey, label);
 
   return (
     <ReportSearchFieldWrap>
@@ -89,12 +94,12 @@ function ReportAsyncSearchSelect({
             setPinnedOptions((prev) => mergeOptions(prev, [option]));
           }
         }}
-        options={pinnedOptions}
+        options={pinnedOptions.length ? pinnedOptions : [clearOption]}
         loadOptions={loadOptions}
-        minSearchLength={1}
+        minSearchLength={0}
         placeholder={placeholder}
         searchPlaceholder={`Search ${String(label ?? "options").toLowerCase()}…`}
-        idleSearchLabel={`Type to search ${String(label ?? "options").toLowerCase()}`}
+        idleSearchLabel={`Loading ${String(label ?? "options").toLowerCase()}…`}
         emptyLabel="No matches"
         inputClassName={controlClassName}
         required={required}
@@ -146,7 +151,7 @@ export function ReportFilterSearchSelect({ filter, value, onChange, options, con
 
   const optionCount = options.filter((row) => row.value !== "").length;
 
-  if (reportFilterUsesLocalSearch(optionsKey, optionCount)) {
+  if (reportFilterUsesLocalSearch(optionsKey, optionCount) || optionCount > 0 || options.length > 0) {
     return (
       <ReportSearchFieldWrap>
         <HrSearchableSelect

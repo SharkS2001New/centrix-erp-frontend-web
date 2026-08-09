@@ -1,7 +1,10 @@
 "use client";
 
-import { Field, FILTER_CONTROL_CLASS, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
-import { reportFilterSearchControlClass } from "@/components/reports/report-filter-search-select";
+import { Field, FILTER_CONTROL_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
+import {
+  ReportFilterSearchSelect,
+  reportFilterSearchControlClass,
+} from "@/components/reports/report-filter-search-select";
 import { REPORT_EXTRA_FILTERS } from "@/lib/reports/report-filter-config";
 
 /**
@@ -56,11 +59,12 @@ export function ReportQueryFilterFields({
 
       return (
         <Field key={filter.id} label={filter.label}>
-          <SearchableSelect
-            className={controlClassName}
+          <ReportFilterSearchSelect
+            filter={filter}
             value={values[filter.id] ?? ""}
             onChange={(nextValue) => onChange(filter.id, nextValue)}
             options={options}
+            controlClassName={controlClassName}
           />
         </Field>
       );

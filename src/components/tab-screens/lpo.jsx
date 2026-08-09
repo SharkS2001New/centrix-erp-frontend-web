@@ -30,7 +30,7 @@ import {
 import { LpoApprovalStripRow } from "@/components/lpo/lpo-workflow";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
-import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
+import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge, LPO_STATUS } from "@/components/lpo/lpo-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { fetchSuppliersCached } from "@/lib/reference-data-cache";
@@ -227,9 +227,12 @@ export function LpoScreen() {
 
   async function deleteLpo(row) {
     if (!row?.lpo_no || !canDelete || !row.can_delete) return;
+    const receivedOrSent = Number(row.lpo_status_code ?? 0) >= LPO_STATUS.AWAITING_RECEIVE;
     const ok = await confirm({
       title: "Delete purchase order",
-      message: "Delete this purchase order? This cannot be undone.",
+      message: receivedOrSent
+        ? "Delete this purchase order? It has already been sent or received. Stock receipts and supplier payments are not reversed — use only for mistakes or test data."
+        : "Delete this purchase order? This cannot be undone.",
       confirmLabel: "Delete",
       destructive: true,
     });

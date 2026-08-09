@@ -106,6 +106,11 @@ export function titleFromPathname(pathname) {
     return lookupReportLabel(segments[1]);
   }
 
+  // LPO detail: "LPO - 37" (refined to display/PO number once the screen loads).
+  if (segments[0] === "lpo" && segments.length === 2 && /^\d+$/.test(segments[1])) {
+    return `LPO - ${segments[1]}`;
+  }
+
   const last = segments[segments.length - 1];
   if (/^\d+$/.test(last) && segments.length > 1) {
     return humanizeSegment(segments[segments.length - 2]);

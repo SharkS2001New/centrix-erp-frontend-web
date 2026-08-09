@@ -2372,7 +2372,9 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
   async function deleteUser() {
     const ok = await confirm({
       title: "Delete user",
-      message: `Delete "${user.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
+      message: user.is_admin
+        ? `Delete organization administrator "${user.full_name}"? Prefer changing their role first if this is not a test account. Users with sales history are archived.`
+        : `Delete "${user.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
       confirmLabel: "Delete",
       destructive: true,
     });
@@ -2513,16 +2515,14 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
             >
               {user.is_active ? "Disable login" : "Enable login"}
             </button>
-            {!user.is_admin ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void deleteUser()}
-                className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                Delete user
-              </button>
-            ) : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void deleteUser()}
+              className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              Delete user
+            </button>
           </div>
           {saved ? <p className="text-xs text-emerald-700">User details saved.</p> : null}
           {error ? <p className="text-xs text-red-600">{error}</p> : null}

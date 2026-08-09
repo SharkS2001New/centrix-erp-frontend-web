@@ -11,7 +11,7 @@ import { saleLineProductName } from "@/lib/sale-line-items";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
-import { fetchBranchesCached, fetchRoutesAndUomsCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached, fetchRoutesAndUomsCached, fetchSalesCapableUsersCached } from "@/lib/reference-data-cache";
 import { filterByOrganization } from "@/lib/admin";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
@@ -552,7 +552,7 @@ export default function SalesOrdersListScreen({
       setSellers([]);
       return;
     }
-    fetchUsersCached(orgId)
+    fetchSalesCapableUsersCached(orgId)
       .then((list) => {
         const scoped = filterByOrganization(list ?? [], orgId).filter(
           (u) => u.is_active !== false,

@@ -77,8 +77,18 @@ const EMPTY_FORM = {
 };
 
 
-function isProtectedUserAccount(row, currentUserId) {
-  return row.id === currentUserId || Boolean(row.is_admin);
+function isProtectedUserAccount(row, currentUserId, { allowDeleteOrgAdmin = false } = {}) {
+  if (row?.id === currentUserId) return true;
+  if (Boolean(row?.is_admin) && !allowDeleteOrgAdmin) return true;
+  return false;
+}
+
+function userDeleteBlockReason(row, currentUserId, { allowDeleteOrgAdmin = false } = {}) {
+  if (row?.id === currentUserId) return "You cannot delete your own account.";
+  if (Boolean(row?.is_admin) && !allowDeleteOrgAdmin) {
+    return "Organization administrator — change role away from Administrator first, or ask a platform admin to remove them.";
+  }
+  return null;
 }
 
 function userIsPasswordLocked(row) {
@@ -95,6 +105,7 @@ export function AdminUsersScreen() {
   const { adminPath, organizationId: platformOrgId, isPlatformManaged, tenantCapabilities } = useAdminApi();
   const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
+  const allowDeleteOrgAdmin = Boolean(user?.is_super_admin || isPlatformManaged);
 
   const [users, setUsers] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
@@ -508,17 +519,16 @@ export function AdminUsersScreen() {
   }
 
   async function softDeleteUser(row) {
-    if (isProtectedUserAccount(row, user?.id)) {
-      notifyError(
-        row.id === user?.id
-          ? "You cannot delete your own account."
-          : "Organization administrator accounts cannot be deleted.",
-      );
+    const blockReason = userDeleteBlockReason(row, user?.id, { allowDeleteOrgAdmin });
+    if (blockReason) {
+      notifyError(blockReason);
       return;
     }
     const ok = await confirm({
       title: "Delete user",
-      message: `Delete "${row.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
+      message: row.is_admin
+        ? `Delete organization administrator "${row.full_name}"? Prefer demoting their role first if this is not a test account. Users with sales or activity history are archived.`
+        : `Delete "${row.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
       confirmLabel: "Delete",
       destructive: true,
     });
@@ -543,8 +553,11 @@ export function AdminUsersScreen() {
         entityName: "user",
         deleteItem: async (id) => {
           const row = userByIdOnPage.get(String(id));
-          if (row && isProtectedUserAccount(row, user?.id)) {
-            throw new Error(`Cannot delete ${row.full_name}`);
+          const blockReason = row
+            ? userDeleteBlockReason(row, user?.id, { allowDeleteOrgAdmin })
+            : null;
+          if (blockReason) {
+            throw new Error(blockReason);
           }
           await apiRequest(adminPath(`/users/${id}`), { method: "DELETE" });
         },
@@ -806,7 +819,19 @@ export function AdminUsersScreen() {
                       onChange={() => toggleOne(row.id)}
                       label={`Select ${row.full_name}`}
                     />
-                    <td className="px-4 py-3 font-medium text-slate-900">{row.full_name}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{row.full_name}</span>
+                        {row.is_admin ? (
+                          <span
+                            className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-sky-900"
+                            title="Organization administrator (is_admin) — protected from delete unless you are a platform admin"
+                          >
+                            Org admin
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{row.email ?? "—"}</td>
                     <td className="px-4 py-3 text-slate-600">
                       {branchById.get(row.branch_id)?.branch_name ?? "—"}
@@ -854,7 +879,8 @@ export function AdminUsersScreen() {
                         <IconButton label="Edit" onClick={() => openEdit(row)}>
                           <PencilIcon />
                         </IconButton>
-                        {row.is_active !== false && !isProtectedUserAccount(row, user?.id) ? (
+                        {row.is_active !== false &&
+                        !isProtectedUserAccount(row, user?.id, { allowDeleteOrgAdmin }) ? (
                           <button
                             type="button"
                             onClick={() => deactivateUser(row)}
@@ -864,10 +890,13 @@ export function AdminUsersScreen() {
                           </button>
                         ) : null}
                         <IconButton
-                          label="Delete user"
+                          label={
+                            userDeleteBlockReason(row, user?.id, { allowDeleteOrgAdmin }) ??
+                            "Delete user"
+                          }
                           danger
                           onClick={() => softDeleteUser(row)}
-                          disabled={isProtectedUserAccount(row, user?.id)}
+                          disabled={isProtectedUserAccount(row, user?.id, { allowDeleteOrgAdmin })}
                         >
                           <TrashIcon />
                         </IconButton>

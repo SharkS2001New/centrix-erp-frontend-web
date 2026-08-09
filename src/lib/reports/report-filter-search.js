@@ -18,9 +18,11 @@ export const REPORT_SHORT_SELECT_KEYS = new Set([
   "orderStatuses",
   "attendanceStatuses",
   "kraStatuses",
+  "kraDocumentTypes",
   "latenessWaiverStatuses",
   "stockLocations",
   "inventoryLocations",
+  "transactionTypes",
 ]);
 
 export function reportFilterUsesAsyncSearch(optionsKey) {
@@ -47,6 +49,12 @@ export function reportFilterPlaceholder(optionsKey, label) {
   return map[optionsKey] ?? `All ${String(label ?? "options").toLowerCase()}`;
 }
 
+function sortOptionsByLabel(options) {
+  return [...options].sort((a, b) =>
+    String(a.label).localeCompare(String(b.label), undefined, { sensitivity: "base" }),
+  );
+}
+
 /**
  * @param {string} optionsKey
  * @param {string} query
@@ -54,52 +62,74 @@ export function reportFilterPlaceholder(optionsKey, label) {
  */
 export async function searchReportFilterOptions(optionsKey, query) {
   const q = String(query ?? "").trim();
-  if (!q) return [];
+  // Empty query loads a default first page so opening the select shows options
+  // (users, routes, etc.) without requiring a keystroke.
+  const searchParams = { per_page: 50, ...(q ? { q } : {}) };
 
   switch (optionsKey) {
     case "routes": {
-      const res = await apiRequest("/routes", { searchParams: { per_page: 50, q } });
-      return (res.data ?? []).map((row) => ({
-        value: row.route_name ?? String(row.id),
-        label: row.route_name ?? `Route #${row.id}`,
-      }));
+      const res = await apiRequest("/reference/routes", {
+        searchParams: { ...searchParams, is_active: 1 },
+      });
+      return sortOptionsByLabel(
+        (res.data ?? []).map((row) => ({
+          value: row.route_name ?? String(row.id),
+          label: row.route_name ?? `Route #${row.id}`,
+        })),
+      );
     }
     case "subcategories": {
-      const res = await apiRequest("/sub-categories", { searchParams: { per_page: 50, q } });
-      return (res.data ?? []).map((row) => ({
-        value: String(row.id),
-        label: row.subcategory_name ?? `Subcategory #${row.id}`,
-      }));
+      const res = await apiRequest("/reference/sub-categories", { searchParams });
+      return sortOptionsByLabel(
+        (res.data ?? []).map((row) => ({
+          value: String(row.id),
+          label: row.subcategory_name ?? `Subcategory #${row.id}`,
+        })),
+      );
     }
     case "suppliers": {
-      const res = await apiRequest("/suppliers", { searchParams: { per_page: 50, q } });
-      return (res.data ?? []).map((row) => ({
-        value: String(row.id),
-        label: row.supplier_name ?? `Supplier #${row.id}`,
-      }));
+      const res = await apiRequest("/reference/suppliers", {
+        searchParams: { ...searchParams, is_active: 1 },
+      });
+      return sortOptionsByLabel(
+        (res.data ?? []).map((row) => ({
+          value: String(row.id),
+          label: row.supplier_name ?? `Supplier #${row.id}`,
+        })),
+      );
     }
     case "cashiers": {
-      const res = await apiRequest("/reports/filter-cashiers", { searchParams: { per_page: 50, q } });
-      return (res.data ?? []).map((row) => ({
-        value: String(row.id),
-        label: row.full_name ?? row.username ?? `User #${row.id}`,
-        searchText: `${row.full_name ?? ""} ${row.username ?? ""} ${row.id}`,
-      }));
+      const res = await apiRequest("/reports/filter-cashiers", { searchParams });
+      return sortOptionsByLabel(
+        (res.data ?? []).map((row) => ({
+          value: String(row.id),
+          label: row.full_name ?? row.username ?? `User #${row.id}`,
+          searchText: `${row.full_name ?? ""} ${row.username ?? ""} ${row.id}`,
+        })),
+      );
     }
     case "paymentMethods": {
-      const res = await apiRequest("/payment-methods", { searchParams: { per_page: 50, q } });
-      return (res.data ?? []).map((row) => ({
-        value: row.method_code ?? String(row.id),
-        label: row.method_name ?? row.method_code ?? `Method #${row.id}`,
-      }));
+      const res = await apiRequest("/reference/payment-methods", {
+        searchParams: { ...searchParams, is_active: 1 },
+      });
+      return sortOptionsByLabel(
+        (res.data ?? []).map((row) => ({
+          value: row.method_code ?? String(row.id),
+          label: row.method_name ?? row.method_code ?? `Method #${row.id}`,
+        })),
+      );
     }
     case "customers": {
-      const res = await apiRequest("/customers", { searchParams: { per_page: 50, q } });
-      return (res.data ?? []).map((row) => ({
-        value: String(row.customer_num ?? ""),
-        label: `${row.customer_name ?? row.customer_num} (#${row.customer_num})`,
-        searchText: `${row.customer_name ?? ""} ${row.customer_num ?? ""} ${row.phone_number ?? ""}`,
-      }));
+      const res = await apiRequest("/customers", {
+        searchParams: { ...searchParams, status: "active" },
+      });
+      return sortOptionsByLabel(
+        (res.data ?? []).map((row) => ({
+          value: String(row.customer_num ?? ""),
+          label: `${row.customer_name ?? row.customer_num} (#${row.customer_num})`,
+          searchText: `${row.customer_name ?? ""} ${row.customer_num ?? ""} ${row.phone_number ?? ""}`,
+        })),
+      );
     }
     default:
       return [];
@@ -120,25 +150,37 @@ export async function resolveReportFilterSelection(optionsKey, value) {
       return { value: raw, label: raw };
     case "subcategories": {
       try {
-        const row = await apiRequest(`/sub-categories/${encodeURIComponent(raw)}`);
-        return {
-          value: String(row.id ?? raw),
-          label: row.subcategory_name ?? `Subcategory #${raw}`,
-        };
+        const res = await apiRequest("/reference/sub-categories", {
+          searchParams: { per_page: 500 },
+        });
+        const row = (res.data ?? []).find((item) => String(item.id) === raw);
+        if (row) {
+          return {
+            value: String(row.id),
+            label: row.subcategory_name ?? `Subcategory #${raw}`,
+          };
+        }
       } catch {
-        return { value: raw, label: `Subcategory #${raw}` };
+        // fall through
       }
+      return { value: raw, label: `Subcategory #${raw}` };
     }
     case "suppliers": {
       try {
-        const row = await apiRequest(`/suppliers/${encodeURIComponent(raw)}`);
-        return {
-          value: String(row.id ?? raw),
-          label: row.supplier_name ?? `Supplier #${raw}`,
-        };
+        const res = await apiRequest("/reference/suppliers", {
+          searchParams: { per_page: 200, is_active: 1 },
+        });
+        const row = (res.data ?? []).find((item) => String(item.id) === raw);
+        if (row) {
+          return {
+            value: String(row.id),
+            label: row.supplier_name ?? `Supplier #${raw}`,
+          };
+        }
       } catch {
-        return { value: raw, label: `Supplier #${raw}` };
+        // fall through
       }
+      return { value: raw, label: `Supplier #${raw}` };
     }
     case "cashiers": {
       try {
@@ -152,17 +194,23 @@ export async function resolveReportFilterSelection(optionsKey, value) {
       }
     }
     case "paymentMethods": {
-      const res = await apiRequest("/payment-methods", {
-        searchParams: { per_page: 100, q: raw },
-      });
-      const row = (res.data ?? []).find(
-        (m) => String(m.method_code ?? "") === raw || String(m.id) === raw,
-      );
-      if (!row) return { value: raw, label: raw };
-      return {
-        value: row.method_code ?? String(row.id),
-        label: row.method_name ?? row.method_code ?? raw,
-      };
+      try {
+        const res = await apiRequest("/reference/payment-methods", {
+          searchParams: { per_page: 100, q: raw, is_active: 1 },
+        });
+        const row = (res.data ?? []).find(
+          (m) => String(m.method_code ?? "") === raw || String(m.id) === raw,
+        );
+        if (row) {
+          return {
+            value: row.method_code ?? String(row.id),
+            label: row.method_name ?? row.method_code ?? raw,
+          };
+        }
+      } catch {
+        // fall through
+      }
+      return { value: raw, label: raw };
     }
     case "customers": {
       const row = await fetchCreditCustomerByNum(raw);

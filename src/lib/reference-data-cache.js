@@ -172,15 +172,27 @@ export async function fetchRetailPackagesForProductCodes(productCodes) {
   return res.data ?? [];
 }
 
-export function fetchUsersCached(organizationId, { path = "/reference/users" } = {}) {
+export function fetchUsersCached(organizationId, { path = "/reference/users", searchParams = {} } = {}) {
   const orgId = resolveOrgId(organizationId);
-  const key = orgCacheKey(orgId, "users", path === "/reference/users" ? "" : path);
+  const paramsKey = Object.keys(searchParams).length
+    ? JSON.stringify(searchParams, Object.keys(searchParams).sort())
+    : path === "/reference/users"
+      ? ""
+      : path;
+  const key = orgCacheKey(orgId, "users", paramsKey);
   return fetchOrgCached(key, async () => {
     const res = await apiRequest(path, {
-      searchParams: { per_page: 200 },
+      searchParams: { per_page: 200, ...searchParams },
       loading: false,
     });
     return res.data ?? [];
+  });
+}
+
+/** Users who can sell: POS, backoffice sales create, or mobile field sales. */
+export function fetchSalesCapableUsersCached(organizationId) {
+  return fetchUsersCached(organizationId, {
+    searchParams: { sales_capable: 1 },
   });
 }
 

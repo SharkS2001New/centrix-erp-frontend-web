@@ -1804,7 +1804,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "lpo-lpoNo",
-    title: "Lpo",
+    title: "LPO",
     route: "/lpo/[lpoNo]",
     match: match_lpo_lpoNo,
   },
@@ -1900,7 +1900,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "lpo",
-    title: "Lpo",
+    title: "LPO",
     route: "/lpo",
     match: match_lpo,
   },
