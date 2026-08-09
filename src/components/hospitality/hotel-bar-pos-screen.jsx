@@ -68,7 +68,13 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { EntityPhotoDisplay, productPhotoFileUrl } from "@/components/media/entity-photo-display";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
-import { isPrintAgentEnabled, warmPrintAgentHealth } from "@/lib/print-agent";
+import { disposePrintWindow, openBlankPrintWindow } from "@/lib/open-print-window";
+import { shouldUsePrintAgentForDocument } from "@/lib/print-dispatch";
+import {
+  isPrintAgentEnabled,
+  isPrintAgentRecentlyHealthy,
+  warmPrintAgentHealth,
+} from "@/lib/print-agent";
 
 const MENU_FILTER_CHIPS = [
   { id: "", label: "All", short: "All" },
@@ -94,27 +100,55 @@ function localDatetimeToIso(localValue) {
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
 }
-async function printCheckReceiptSafe(check, { title, organization, capabilities, user, checkPrintSettings }) {
+/**
+ * Open a blank print window while still in the click gesture (before await settle/save).
+ * Skip when Print Agent is warm — passing a window forces browser mode and skips the agent.
+ */
+function openHotelReceiptPrintWindow() {
+  if (shouldUsePrintAgentForDocument("receipt") && isPrintAgentRecentlyHealthy()) {
+    return null;
+  }
+  return openBlankPrintWindow("width=420,height=720");
+}
+
+async function printCheckReceiptSafe(
+  check,
+  { title, organization, capabilities, user, checkPrintSettings, printWindow = null } = {},
+) {
   try {
-    const result = await printHospitalityCheckReceipt(
-      check,
-      buildHospitalityCheckPrintOptions({
+    if (!check) {
+      disposePrintWindow(printWindow);
+      notifyError("Receipt could not be printed — order data was missing after payment.");
+      return { ok: false };
+    }
+    const result = await printHospitalityCheckReceipt(check, {
+      ...buildHospitalityCheckPrintOptions({
         checkPrintSettings,
         organization,
         capabilities,
         user,
         title,
       }),
-    );
-    if (result && result.ok === false) {
+      printWindow,
+    });
+    // Unused pre-opened window when agent handled the job.
+    if (printWindow && result?.mode === "agent") {
+      disposePrintWindow(printWindow);
+    }
+    if (!result || result.ok === false) {
+      disposePrintWindow(printWindow);
       notifyError(
-        result.error ||
-          "Receipt could not be printed. Start Centrix Print Agent, then use Reprint.",
+        result?.error ||
+          "Receipt could not be printed. Start Centrix Print Agent (or allow the browser print dialog), then use Reprint.",
       );
     }
     return result;
   } catch (e) {
-    notifyError(dedupeError(e) || "Receipt print failed. Start Centrix Print Agent, then use Reprint.");
+    disposePrintWindow(printWindow);
+    notifyError(
+      dedupeError(e) ||
+        "Receipt print failed. Start Centrix Print Agent (or allow the browser print dialog), then use Reprint.",
+    );
     return { ok: false };
   }
 }
@@ -887,6 +921,7 @@ export function HotelBarPosScreen() {
       return;
     }
     setBusy(true);
+    const printWindow = openHotelReceiptPrintWindow();
     try {
       await ensureTableAssigned(check);
       let active = await ensureGuestAssigned(check);
@@ -900,12 +935,14 @@ export function HotelBarPosScreen() {
         capabilities,
         user,
         checkPrintSettings,
+        printWindow,
       });
       if (printed) setLastReceiptCheck(printed);
       notifySuccess(`Order ${check.check_number} saved unpaid — receipt printed.`);
       await startFreshCheck();
       void refreshHeldCount();
     } catch (e) {
+      disposePrintWindow(printWindow);
       notifyError(dedupeError(e));
     } finally {
       setBusy(false);
@@ -1032,6 +1069,8 @@ export function HotelBarPosScreen() {
     }
     setBusy(true);
     setPayError(null);
+    // Open while still in the Complete payment click — after await settle, popups are often blocked.
+    const printWindow = openHotelReceiptPrintWindow();
     try {
       const useLocalFirst =
         isLocalHotelCheckId(check.id) ||
@@ -1059,6 +1098,7 @@ export function HotelBarPosScreen() {
           capabilities,
           user,
           checkPrintSettings,
+          printWindow,
         });
         if (paid) setLastReceiptCheck(paid);
         notifySuccess(
@@ -1087,6 +1127,7 @@ export function HotelBarPosScreen() {
           capabilities,
           user,
           checkPrintSettings,
+          printWindow,
         });
         if (next) setLastReceiptCheck(next);
         const roomLabel = next?.folio?.room_number
@@ -1114,6 +1155,7 @@ export function HotelBarPosScreen() {
           capabilities,
           user,
           checkPrintSettings,
+          printWindow,
         });
         if (next) setLastReceiptCheck(next);
         notifySuccess(
@@ -1124,6 +1166,7 @@ export function HotelBarPosScreen() {
       }
       void loadCatalog(debouncedSearch, { offset: 0, append: false });
     } catch (e) {
+      disposePrintWindow(printWindow);
       const message = dedupeError(e);
       setPayError(message);
       if (/stock|recipe|ingredient|inventory/i.test(message)) {

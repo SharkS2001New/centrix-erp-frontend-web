@@ -153,7 +153,9 @@ export async function dispatchPrintJob({
     }
   }
 
-  if (!allowBrowserFallback) {
+  // Explicit browser provider always uses the dialog. Agent-only mode may disable fallback
+  // (e.g. batch thermal queue) — but never block when the till chose browser printing.
+  if (!allowBrowserFallback && activeProvider !== "browser") {
     return {
       mode: "agent",
       ok: false,

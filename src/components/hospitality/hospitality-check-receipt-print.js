@@ -329,7 +329,9 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
 }
 
 /**
- * Print a hospitality check receipt via Centrix Print Agent only (no browser fallback).
+ * Print a hospitality check receipt via Centrix Print Agent (thermal) or browser fallback.
+ * Browser fallback keeps Hotel POS "Pay now" receipts working when the agent is offline
+ * (same behavior as retail POS).
  *
  * @returns {Promise<{ mode: "agent" | "browser", ok: boolean, printer?: string, jobId?: string, error?: string } | null>}
  */
@@ -351,7 +353,7 @@ export async function printHospitalityCheckReceipt(check, options = {}) {
     documentId: check?.id ?? check?.check_number ?? null,
     printWindow: options.printWindow ?? null,
     windowFeatures: `width=420,height=720`,
-    allowBrowserFallback: false,
+    allowBrowserFallback: options.allowBrowserFallback !== false,
   });
 }
 
