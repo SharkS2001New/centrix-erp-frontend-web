@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession, getStoredUser, readCachedAuthSnapshot } from "@/lib/auth-storage";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
-import { ApiError, apiRequest, isSessionConflictError } from "@/lib/api";
+import { ApiError, apiRequest, isSessionConflictError, userFacingNetworkErrorMessage } from "@/lib/api";
 import {
   isLicenseExpiredApiError,
   licenseExpiredMessage,
@@ -211,11 +211,10 @@ function LoginForm() {
           );
         } else {
           setError(
-            err instanceof ApiError
-              ? err.message
-              : err instanceof Error
-                ? err.message
-                : "Login failed. Check that the API is reachable and try again.",
+            userFacingNetworkErrorMessage(
+              err,
+              "Login failed. Check that the API is reachable and try again.",
+            ),
           );
         }
       }
@@ -248,7 +247,7 @@ function LoginForm() {
       completeSignInProgress();
     } catch (err) {
       abortSignInProgress();
-      setError(err instanceof ApiError ? err.message : "Invalid verification code.");
+      setError(userFacingNetworkErrorMessage(err, "Invalid verification code."));
     }
   }
 
@@ -266,7 +265,7 @@ function LoginForm() {
       abortSignInProgress();
     } catch (err) {
       abortSignInProgress();
-      setError(err instanceof ApiError ? err.message : "Could not resend code.");
+      setError(userFacingNetworkErrorMessage(err, "Could not resend code."));
     }
   }
 
@@ -310,7 +309,12 @@ function LoginForm() {
         setSessionConflict(true);
         setError(err instanceof ApiError ? err.message : "Already signed in elsewhere.");
       } else {
-        setError(err instanceof ApiError ? err.message : err?.message || "Passkey sign-in failed.");
+        setError(
+          userFacingNetworkErrorMessage(
+            err,
+            err instanceof ApiError ? err.message : err?.message || "Passkey sign-in failed.",
+          ),
+        );
       }
     }
   }
@@ -335,7 +339,12 @@ function LoginForm() {
       if (err?.name === "NotAllowedError") {
         setError("Passkey verification was cancelled.");
       } else {
-        setError(err instanceof ApiError ? err.message : err?.message || "Passkey verification failed.");
+        setError(
+          userFacingNetworkErrorMessage(
+            err,
+            err instanceof ApiError ? err.message : err?.message || "Passkey verification failed.",
+          ),
+        );
       }
     }
   }

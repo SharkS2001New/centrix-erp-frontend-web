@@ -276,6 +276,10 @@ export function resolveSubmitErrorMessage(error, options = {}) {
   const moduleLabel = moduleName || (apiPath ? apiModuleLabel(apiPath) : "this module");
   const technicalViewer = isSuperAdmin || canSeeServerErrorDetail();
 
+  if (isNetworkFetchError(error) || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+    return NETWORK_CONNECTIVITY_MESSAGE;
+  }
+
   if (error instanceof ApiError) {
     if (error.systemIssuePrompted && !technicalViewer) {
       return `An error occurred in ${moduleLabel}. Please report this to your system administrator.`;
@@ -306,6 +310,10 @@ export function resolveSubmitErrorMessage(error, options = {}) {
 /** Prefer this over notifyError for API failures — skips toast when the system popup already opened. */
 export function notifyActionError(error, fallback = "Request failed") {
   if (error instanceof ApiError && error.systemIssuePrompted) {
+    return;
+  }
+  if (isNetworkFetchError(error) || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+    showErrorToast(NETWORK_CONNECTIVITY_MESSAGE);
     return;
   }
   const message =
@@ -355,6 +363,50 @@ export function isAbortError(error) {
   return /signal is aborted|aborted without a reason|The user aborted a request/i.test(
     String(error.message ?? ""),
   );
+}
+
+/** Shown instead of browser noise like "Failed to fetch" when the device is offline. */
+export const NETWORK_CONNECTIVITY_MESSAGE =
+  "Please check your internet connection and try again.";
+
+/**
+ * True for browser/network connectivity failures (offline, DNS, CORS-as-network, etc.).
+ * @param {unknown} error
+ */
+export function isNetworkFetchError(error) {
+  if (!error) return false;
+  if (error instanceof ApiError && error.body?.code === "network_unavailable") {
+    return true;
+  }
+  const message = String(
+    error instanceof Error ? error.message : typeof error === "string" ? error : "",
+  );
+  if (
+    /failed to fetch|networkerror|load failed|network request failed|fetch failed|internet connection|network is offline|err_internet_disconnected|err_network_changed|err_connection_timed_out|err_name_not_resolved/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  // Offline TypeErrors without a useful message (some WebViews).
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.onLine === false &&
+    (error instanceof TypeError || (error instanceof Error && error.name === "TypeError"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Replace raw fetch/network failures with a clear connectivity message. */
+export function userFacingNetworkErrorMessage(error, fallback = NETWORK_CONNECTIVITY_MESSAGE) {
+  if (isNetworkFetchError(error)) return NETWORK_CONNECTIVITY_MESSAGE;
+  if (error instanceof Error && error.message?.trim()) return error.message.trim();
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return NETWORK_CONNECTIVITY_MESSAGE;
+  }
+  return fallback;
 }
 
 export async function apiRequest(path, options = {}) {
@@ -556,6 +608,10 @@ async function performApiRequest(path, url, options = {}) {
   } catch (error) {
     if (isAbortError(error) || options.signal?.aborted) {
       throw error;
+    }
+    // Don't surface browser "Failed to fetch" — tell the user to check connectivity.
+    if (!(error instanceof ApiError) && isNetworkFetchError(error)) {
+      throw new ApiError(NETWORK_CONNECTIVITY_MESSAGE, 0, { code: "network_unavailable" });
     }
     if (trackIssues && !(error instanceof ApiError)) {
       const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
