@@ -5,7 +5,7 @@ function roundMoney(value) {
 }
 
 /** Max change (KES) allowed on POS cash tender — blocks accidental double-entry overpays. */
-export const MAX_POS_CASH_CHANGE = 5000;
+export const MAX_POS_CASH_CHANGE = 10000;
 
 /**
  * @param {number} amountPaid

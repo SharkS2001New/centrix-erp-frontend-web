@@ -150,14 +150,14 @@ describe("annotateSaleWithReceiptTenders", () => {
 
 describe("isPosCashChangeExcessive", () => {
   it("allows change up to the max", () => {
-    expect(isPosCashChangeExcessive(45000, 40000, 5000)).toBe(false);
-    expect(isPosCashChangeExcessive(45000, 40000)).toBe(false);
+    expect(isPosCashChangeExcessive(50000, 40000, 10000)).toBe(false);
+    expect(isPosCashChangeExcessive(50000, 40000)).toBe(false);
   });
 
   it("blocks change above the max (e.g. accidental 2× tender)", () => {
     expect(isPosCashChangeExcessive(79340, 39670)).toBe(true);
     expect(posCashChangeDue(79340, 39670)).toBe(39670);
-    expect(MAX_POS_CASH_CHANGE).toBe(5000);
+    expect(MAX_POS_CASH_CHANGE).toBe(10000);
   });
 });
 
