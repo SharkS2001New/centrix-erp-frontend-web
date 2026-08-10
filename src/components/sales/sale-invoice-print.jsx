@@ -1,7 +1,8 @@
 import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
 import { buildKraDocumentQrHtml } from "@/lib/kra-receipt-qr";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
-import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
+import { fillPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import {
   buildSaleDocumentLineRows,
   buildSaleDocumentOrgHeaderHtml,
@@ -758,12 +759,16 @@ export function buildSaleInvoiceHtml(sale, options = {}) {
   return buildClassicTaxInvoiceHtml(sale, options);
 }
 
-export function printSaleInvoice(sale, options = {}) {
+export async function printSaleInvoice(sale, options = {}) {
   const html = buildSaleInvoiceHtml(sale, options);
-  if (!html) return;
+  if (!html) return { mode: "browser", ok: false, error: "Nothing to print." };
   if (options.printWindow) {
-    fillPrintWindow(options.printWindow, html);
-    return;
+    await fillPrintWindow(options.printWindow, html);
+    return { mode: "browser", ok: true };
   }
-  openPrintWindow(html, "width=860,height=960");
+  return printHtmlDocument(html, {
+    jobType: options.documentType === "proforma" ? "proforma" : "invoice",
+    documentId: sale?.id ?? sale?.sale_id ?? null,
+    windowFeatures: "width=860,height=960",
+  });
 }

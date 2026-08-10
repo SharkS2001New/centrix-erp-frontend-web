@@ -1,8 +1,8 @@
 "use client";
 
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { openPrintWindow } from "@/lib/open-print-window";
-export function printLoyaltyCard(card, organizationName = DEFAULT_PRINT_ORG_NAME) {
+import { printHtmlDocument } from "@/lib/print-dispatch";
+export async function printLoyaltyCard(card, organizationName = DEFAULT_PRINT_ORG_NAME) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -36,5 +36,9 @@ export function printLoyaltyCard(card, organizationName = DEFAULT_PRINT_ORG_NAME
 </body>
 </html>`;
 
-  openPrintWindow(html, "width=420,height=320");
+  return printHtmlDocument(html, {
+    jobType: "loyalty_card",
+    documentId: card?.id ?? card?.card_number ?? null,
+    windowFeatures: "width=420,height=320",
+  });
 }

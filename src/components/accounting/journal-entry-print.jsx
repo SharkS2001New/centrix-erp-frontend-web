@@ -1,6 +1,6 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { accountOptionLabel, formatAccountingAmount, journalStatusLabel } from "@/lib/accounting-shared";
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 
 function escapeHtml(value) {
@@ -11,7 +11,7 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-export function printJournalEntry(entry, { organizationName = DEFAULT_PRINT_ORG_NAME } = {}) {
+export async function printJournalEntry(entry, { organizationName = DEFAULT_PRINT_ORG_NAME } = {}) {
   if (!entry) return;
 
   const lines = entry.lines ?? [];
@@ -79,5 +79,9 @@ export function printJournalEntry(entry, { organizationName = DEFAULT_PRINT_ORG_
 </body>
 </html>`;
 
-  openPrintWindow(html, "width=820,height=720");
+  return printHtmlDocument(html, {
+    jobType: "journal_entry",
+    documentId: entry.id ?? entry.entry_number ?? null,
+    windowFeatures: "width=820,height=720",
+  });
 }

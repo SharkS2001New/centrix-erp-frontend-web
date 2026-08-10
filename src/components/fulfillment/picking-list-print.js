@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
   buildReportOrgHeaderHtml,
@@ -8,6 +8,7 @@ import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
+  DOCUMENT_PRINT_EDGE_BODY_BOTTOM,
   DOCUMENT_PRINT_EDGE_BODY_SIDES,
   DOCUMENT_PRINT_EDGE_BODY_TOP,
   documentPrintEdgeFooterStyles,
@@ -285,54 +286,61 @@ function normalizePickingLines(lines, uomByProductCode) {
   });
 }
 
-function salesPickingColgroup() {
-  return `<colgroup>
-    <col class="col-no" />
-    <col class="col-product" />
-    <col class="col-qty" />
-    <col class="col-price" />
-    <col class="col-total" />
-  </colgroup>`;
+/** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid. */
+function salesPickingGridColumns() {
+  return "5% 28% 24% 26% 17%";
 }
 
-function distributionPickingColgroup(includeShelfLocation = true) {
-  return `<colgroup>
-    <col class="col-no" />
-    ${includeShelfLocation ? '<col class="col-shelf" />' : ""}
-    <col class="col-product" />
-    <col class="col-qty" />
-    <col class="col-picked" />
-    <col class="col-shortage" />
-  </colgroup>`;
+function distributionPickingGridColumns(includeShelfLocation = true) {
+  return includeShelfLocation ? "5% 12% 34% 13% 13% 13%" : "5% 46% 13% 13% 13%";
+}
+
+function buildSalesPickingHead() {
+  return `
+    <div class="pick-head" role="row">
+      <div class="col-no">No.</div>
+      <div class="col-product">Product Name</div>
+      <div class="col-qty">Quantity</div>
+      <div class="col-price">Price</div>
+      <div class="col-total">Line amount</div>
+    </div>`;
+}
+
+function buildDistributionPickingHead(includeShelfLocation = true) {
+  return `
+    <div class="pick-head" role="row">
+      <div class="col-no">No.</div>
+      ${includeShelfLocation ? '<div class="col-shelf">Shelf</div>' : ""}
+      <div class="col-product">Product</div>
+      <div class="col-qty">Requested</div>
+      <div class="col-picked">Picked</div>
+      <div class="col-shortage">Shortage</div>
+    </div>`;
 }
 
 function buildDistributionPickingLineRows(lines, includeShelfLocation = true) {
   return lines
     .map((line) => {
       const hasShortage = Number(line.shortage_qty) > 0.0001;
-      const shortageClass = hasShortage ? "shortage" : "";
+      const shortageClass = hasShortage ? " shortage" : "";
       const shelfCell = includeShelfLocation
-        ? `<td class="col-shelf">${escapeHtml(line.shelf_location)}</td>`
+        ? `<div class="col-shelf">${escapeHtml(line.shelf_location)}</div>`
         : "";
 
-      // One table per line so Chromium moves the whole row to the next page instead of
-      // clipping it at the footer (tr { break-inside: avoid } is unreliable on table-row).
+      // Block wrapper: Chromium clips <table>/<tr> at page edges even with break-inside:avoid.
       return `
-      <table class="pick-line ${shortageClass}">
-        ${distributionPickingColgroup(includeShelfLocation)}
-        <tbody>
-          <tr>
-            <td class="col-no">${line.line_no}</td>
-            ${shelfCell}
-            <td class="col-product">
-              <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
-            </td>
-            <td class="col-qty">${escapeHtml(line.quantity_label)}</td>
-            <td class="col-picked">${escapeHtml(line.picked_label)}</td>
-            <td class="col-shortage">${line.shortage_qty > 0.0001 ? escapeHtml(line.shortage_label) : "—"}</td>
-          </tr>
-        </tbody>
-      </table>`;
+      <div class="pick-line-wrap">
+        <div class="pick-line${shortageClass}" role="row">
+          <div class="col-no">${line.line_no}</div>
+          ${shelfCell}
+          <div class="col-product">
+            <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
+          </div>
+          <div class="col-qty">${escapeHtml(line.quantity_label)}</div>
+          <div class="col-picked">${escapeHtml(line.picked_label)}</div>
+          <div class="col-shortage">${line.shortage_qty > 0.0001 ? escapeHtml(line.shortage_label) : "—"}</div>
+        </div>
+      </div>`;
     })
     .join("");
 }
@@ -348,48 +356,65 @@ function buildSalesPickingLineRows(lines) {
         : `Ksh ${formatKes(line.unit_price ?? 0)}`;
 
       return `
-      <table class="pick-line">
-        ${salesPickingColgroup()}
-        <tbody>
-          <tr>
-            <td class="col-no">${line.line_no}</td>
-            <td class="col-product">
-              <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
-            </td>
-            <td class="col-qty">
-              <div class="main">${escapeHtml(line.quantity_label)}</div>
-              ${qtyGhost}
-            </td>
-            <td class="col-price">${priceMain}</td>
-            <td class="col-total">${formatKes(line.line_total)}</td>
-          </tr>
-        </tbody>
-      </table>`;
+      <div class="pick-line-wrap">
+        <div class="pick-line" role="row">
+          <div class="col-no">${line.line_no}</div>
+          <div class="col-product">
+            <div class="main">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</div>
+          </div>
+          <div class="col-qty">
+            <div class="main">${escapeHtml(line.quantity_label)}</div>
+            ${qtyGhost}
+          </div>
+          <div class="col-price">${priceMain}</div>
+          <div class="col-total">${formatKes(line.line_total)}</div>
+        </div>
+      </div>`;
     })
     .join("");
 }
 
-function pickingListPrintStyles(generalSettings, { salesLayout = false, includeShelfLocation = true } = {}) {
+function pickingListPrintStyles(
+  generalSettings,
+  { salesLayout = false, includeShelfLocation = true } = {},
+) {
   const printPx = createOrgPrintPx(generalSettings, "picking_list");
   const px = printPx.body;
   const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "picking_list");
+  const gridColumns = salesLayout
+    ? salesPickingGridColumns()
+    : distributionPickingGridColumns(includeShelfLocation);
   const sharedPrintLayout = `
     @page { size: A4; margin: 0; }
     html { height: auto; }
     /* Keep sheet static — position:relative ancestors break page-break-inside:avoid in Chromium. */
     .page, .sheet { position: static; z-index: 1; overflow: visible; }
-    .pick-lines { width: 100%; }
-    table.pick-head,
-    table.pick-line {
+    .pick-lines {
       width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      page-break-inside: auto;
+      display: block;
     }
-    table.pick-line {
+    .pick-head,
+    .pick-line {
+      display: grid;
+      grid-template-columns: ${gridColumns};
+      width: 100%;
+      column-gap: 0;
+      align-items: start;
+      box-sizing: border-box;
+    }
+    /* Block wraps beat <table>/<tr> for Chromium print fragmentation. */
+    .pick-line-wrap {
+      display: block;
+      width: 100%;
+      overflow: visible;
       break-inside: avoid;
       page-break-inside: avoid;
+      break-inside: avoid-page;
       -webkit-column-break-inside: avoid;
+    }
+    .pick-head {
+      break-after: avoid;
+      page-break-after: avoid;
     }
     .summary-box,
     .signatures,
@@ -413,15 +438,21 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .title-block { text-align: center; margin-bottom: ${px(16)}; }
     .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
     .meta-line { font-size: ${px(12)}; margin: ${px(2)} 0; color: #334155; }
-    table.pick-head,
-    table.pick-line { font-size: ${px(12)}; }
-    table.pick-head thead th { border-bottom: 2px solid #0f172a; padding: ${px(8)} ${px(6)}; text-align: left; vertical-align: bottom; }
-    table.pick-line td { border-bottom: 1px solid #cbd5e1; padding: ${px(8)} ${px(6)}; vertical-align: top; }
-    .col-no { width: 5%; text-align: center; }
-    .col-product { width: 28%; }
-    .col-qty { width: 24%; }
-    .col-price { width: 26%; }
-    .col-total { width: 17%; text-align: right; }
+    .pick-head,
+    .pick-line { font-size: ${px(12)}; }
+    .pick-head {
+      border-bottom: 2px solid #0f172a;
+      padding: ${px(8)} 0;
+      font-weight: 700;
+    }
+    .pick-head > div { padding: 0 ${px(6)}; }
+    .pick-line {
+      border-bottom: 1px solid #cbd5e1;
+      padding: ${px(8)} 0;
+    }
+    .pick-line > div { padding: 0 ${px(6)}; }
+    .col-no { text-align: center; }
+    .col-total { text-align: right; }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: ${px(220)}; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
@@ -431,15 +462,16 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
       body.has-doc-print-edge-footer {
-        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} 34mm ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
+        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
       }
       body { font-size: ${px(12, true)}; }
       .page { padding: ${px(8, true)} ${px(4, true)} 0; }
-      table.pick-head thead th { font-size: ${px(11, true)}; }
-      table.pick-line td { font-size: ${px(11, true)}; }
-      table.pick-line {
+      .pick-head { font-size: ${px(11, true)}; }
+      .pick-line { font-size: ${px(11, true)}; }
+      .pick-line-wrap {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+        break-inside: avoid-page !important;
         -webkit-column-break-inside: avoid !important;
       }
     }
@@ -459,16 +491,23 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .title-block { text-align: center; margin-bottom: ${px(16)}; }
     .doc-title { font-size: ${px(15)}; font-weight: 700; margin: 0 0 ${px(4)}; }
     .meta-line { font-size: ${px(12)}; margin: ${px(2)} 0; color: #334155; }
-    table.pick-head,
-    table.pick-line { font-size: ${px(12)}; }
-    table.pick-head thead th { border-bottom: 2px solid #0f172a; padding: ${px(8)} ${px(6)}; text-align: left; }
-    table.pick-line td { border-bottom: 1px solid #cbd5e1; padding: ${px(8)} ${px(6)}; vertical-align: top; }
-    .col-no { width: 5%; text-align: center; }
-    ${includeShelfLocation ? ".col-shelf { width: 12%; }" : ""}
-    .col-product { width: ${includeShelfLocation ? "34%" : "46%"}; }
-    .col-qty, .col-picked, .col-shortage { width: 13%; text-align: right; }
+    .pick-head,
+    .pick-line { font-size: ${px(12)}; }
+    .pick-head {
+      border-bottom: 2px solid #0f172a;
+      padding: ${px(8)} 0;
+      font-weight: 700;
+    }
+    .pick-head > div { padding: 0 ${px(6)}; }
+    .pick-line {
+      border-bottom: 1px solid #cbd5e1;
+      padding: ${px(8)} 0;
+    }
+    .pick-line > div { padding: 0 ${px(6)}; }
+    .col-no { text-align: center; }
+    .col-qty, .col-picked, .col-shortage { text-align: right; }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; }
-    table.pick-line.shortage td { background: #fff7ed; }
+    .pick-line.shortage { background: #fff7ed; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
     .signatures .line { font-size: ${px(11)}; margin: ${px(6)} 0; }
@@ -477,15 +516,16 @@ function pickingListPrintStyles(generalSettings, { salesLayout = false, includeS
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
       body.has-doc-print-edge-footer {
-        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} 34mm ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
+        padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
       }
       body { font-size: ${px(12, true)}; }
       .page { padding: ${px(8, true)} ${px(4, true)} 0; }
-      table.pick-head thead th { font-size: ${px(11, true)}; }
-      table.pick-line td { font-size: ${px(11, true)}; }
-      table.pick-line {
+      .pick-head { font-size: ${px(11, true)}; }
+      .pick-line { font-size: ${px(11, true)}; }
+      .pick-line-wrap {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+        break-inside: avoid-page !important;
         -webkit-column-break-inside: avoid !important;
       }
     }
@@ -526,20 +566,9 @@ export function buildPickingListHtml({
   let tableHead;
   let rowHtml;
   let summaryHtml;
-  let headColgroup;
-  let emptyColspan;
 
   if (salesLayout) {
-    emptyColspan = 5;
-    headColgroup = salesPickingColgroup();
-    tableHead = `
-          <tr>
-            <th class="col-no">No.</th>
-            <th class="col-product">Product Name</th>
-            <th class="col-qty">Quantity</th>
-            <th class="col-price">Price</th>
-            <th class="col-total">Line amount</th>
-          </tr>`;
+    tableHead = buildSalesPickingHead();
     rowHtml = buildSalesPickingLineRows(lines);
     const orderTotal =
       pickingList?.order_total_value != null
@@ -553,17 +582,7 @@ export function buildPickingListHtml({
     const totalRequired = lines.reduce((sum, line) => sum + Number(line.required_qty || 0), 0);
     const totalPicked = lines.reduce((sum, line) => sum + Number(line.picked_qty || 0), 0);
     const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
-    emptyColspan = includeShelfLocation ? 6 : 5;
-    headColgroup = distributionPickingColgroup(includeShelfLocation);
-    tableHead = `
-          <tr>
-            <th class="col-no">No.</th>
-            ${includeShelfLocation ? '<th class="col-shelf">Shelf</th>' : ""}
-            <th class="col-product">Product</th>
-            <th class="col-qty">Requested</th>
-            <th class="col-picked">Picked</th>
-            <th class="col-shortage">Shortage</th>
-          </tr>`;
+    tableHead = buildDistributionPickingHead(includeShelfLocation);
     rowHtml = buildDistributionPickingLineRows(lines, includeShelfLocation);
     summaryHtml = `
       <div class="summary-box">
@@ -575,7 +594,7 @@ export function buildPickingListHtml({
 
   const linesBlock = rowHtml
     ? `<div class="pick-lines">${rowHtml}</div>`
-    : `<table class="pick-line"><tbody><tr><td colspan="${emptyColspan}" class="empty">No products to pick</td></tr></tbody></table>`;
+    : `<div class="pick-line-wrap"><div class="pick-line empty">No products to pick</div></div>`;
 
   const footerText = documentFooterText ?? branding.documentFooterText ?? "";
   const footerHtml = footerText
@@ -603,11 +622,7 @@ export function buildPickingListHtml({
         ${meta.vehicle ? `<p class="meta-line">Vehicle: ${escapeHtml(meta.vehicle)}</p>` : ""}
         ${meta.driver ? `<p class="meta-line">Driver: ${escapeHtml(meta.driver)}</p>` : ""}
       </div>
-      <table class="pick-head">
-        ${headColgroup}
-        <thead>${tableHead}
-        </thead>
-      </table>
+      ${tableHead}
       ${linesBlock}
       ${summaryHtml}
       <div class="signatures">
@@ -635,7 +650,7 @@ export function buildPickingListHtml({
 </html>`;
 }
 
-export function printPickingList({
+export async function printPickingList({
   organization = null,
   generalSettings = null,
   organizationName = "Picking List",
@@ -659,7 +674,11 @@ export function printPickingList({
     uomByProductCode,
     layout,
   });
-  openPrintWindow(html, "width=900,height=800");
+  return printHtmlDocument(html, {
+    jobType: "picking_list",
+    documentId: pickingList?.id ?? pickingList?.list_number ?? null,
+    windowFeatures: "width=900,height=800",
+  });
 }
 
 /** Sample picking list for Admin → Printouts live preview. */

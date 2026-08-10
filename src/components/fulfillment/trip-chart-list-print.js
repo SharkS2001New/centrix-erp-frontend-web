@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
   buildReportOrgHeaderHtml,
@@ -303,9 +303,13 @@ export function buildTripChartListHtml({
 </html>`;
 }
 
-export function printTripChartList(options = {}) {
+export async function printTripChartList(options = {}) {
   const html = buildTripChartListHtml(options);
-  openPrintWindow(html, "width=900,height=800");
+  return printHtmlDocument(html, {
+    jobType: "trip_chart",
+    documentId: options.trip?.id ?? options.trip?.trip_code ?? null,
+    windowFeatures: "width=900,height=800",
+  });
 }
 
 /** Sample trip chart list for Admin → Printouts live preview. */

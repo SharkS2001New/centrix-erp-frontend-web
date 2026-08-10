@@ -112,7 +112,7 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).not.toContain("Totals Value of Order");
   });
 
-  it("defaults to A4 and avoids cutting table rows across pages", () => {
+  it("defaults to A4 and avoids cutting line rows across pages", () => {
     const sample = samplePickingListPreviewData({ salesLayout: true });
     const html = buildPickingListHtml({
       pickingList: sample.pickingList,
@@ -121,8 +121,10 @@ describe("buildPickingListHtml sales layout", () => {
     });
 
     expect(html).toMatch(/@page\s*\{\s*size:\s*A4/);
+    expect(html).toContain('class="pick-line-wrap"');
     expect(html).toContain('class="pick-line"');
-    expect(html).toMatch(/table\.pick-line\s*\{[^}]*page-break-inside:\s*avoid/);
+    expect(html).toMatch(/\.pick-line-wrap\s*\{[^}]*page-break-inside:\s*avoid/);
+    expect(html).toMatch(/display:\s*grid/);
     expect(html).toContain('class="has-doc-print-edge-footer"');
   });
 

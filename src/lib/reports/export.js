@@ -1,6 +1,7 @@
 import { formatOrgDate } from "@/lib/format";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
-import { openPrintWindow, PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
+import { PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import {
   buildReportOrgHeaderHtml,
   buildReportWatermarkHtml,
@@ -162,11 +163,15 @@ ${footerText ? `<div class="doc-footer">${escapeHtml(footerText)}</div>` : ""}
 </body></html>`;
 }
 
-export function printReportTable(options) {
-  const win = openPrintWindow(buildReportPrintHtml(options), "width=900,height=720");
-  if (!win) {
-    throw new Error(PRINT_BLOCKED_MESSAGE);
+export async function printReportTable(options) {
+  const result = await printHtmlDocument(buildReportPrintHtml(options), {
+    jobType: "report",
+    windowFeatures: "width=900,height=720",
+  });
+  if (!result?.ok) {
+    throw new Error(result?.error || PRINT_BLOCKED_MESSAGE);
   }
+  return result;
 }
 
 export function downloadReportCsv(filename, meta, columns, rows, footerRow = null) {

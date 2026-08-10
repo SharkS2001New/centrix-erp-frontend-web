@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import {
   composeEmployeeDisplayName,
   formatHrKesFull,
@@ -503,7 +503,7 @@ function normalizeReceiptInput({ line, employee, run, period }) {
 }
 
 /** Print all employee receipts for a payroll run (2 per A4 page). */
-export function printPayrollReceipts({
+export async function printPayrollReceipts({
   lines,
   run,
   period,
@@ -513,7 +513,7 @@ export function printPayrollReceipts({
   const items = (lines ?? []).map((line) =>
     normalizeReceiptInput({ line, employee: line.employee, run, period }),
   );
-  if (items.length === 0) return;
+  if (items.length === 0) return { mode: "browser", ok: false, error: "Nothing to print." };
 
   const html = buildPayrollReceiptDocument({
     receipts: items,
@@ -521,11 +521,15 @@ export function printPayrollReceipts({
     generalSettings,
     single: false,
   });
-  openPrintWindow(html, "width=900,height=1000");
+  return printHtmlDocument(html, {
+    jobType: "payroll_receipt",
+    documentId: run?.id ?? null,
+    windowFeatures: "width=900,height=1000",
+  });
 }
 
 /** Print a single employee payroll receipt (full page). */
-export function printPayrollReceipt({
+export async function printPayrollReceipt({
   line,
   employee,
   run,
@@ -533,7 +537,7 @@ export function printPayrollReceipt({
   organization,
   generalSettings,
 }) {
-  if (!line) return;
+  if (!line) return { mode: "browser", ok: false, error: "Nothing to print." };
 
   const html = buildPayrollReceiptDocument({
     receipts: [normalizeReceiptInput({ line, employee, run, period })],
@@ -541,5 +545,9 @@ export function printPayrollReceipt({
     generalSettings,
     single: true,
   });
-  openPrintWindow(html, "width=560,height=780");
+  return printHtmlDocument(html, {
+    jobType: "payroll_receipt",
+    documentId: line?.id ?? employee?.id ?? run?.id ?? null,
+    windowFeatures: "width=560,height=780",
+  });
 }

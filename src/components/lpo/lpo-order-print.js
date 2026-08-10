@@ -7,11 +7,14 @@ import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { buildLpoPrintHtml } from "@/components/lpo/lpo-print-html";
 import {
   disposePrintWindow,
-  fillPrintWindow,
   openBlankPrintWindow,
   printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
+import {
+  printHtmlDocument,
+  shouldUsePrintAgentForDocument,
+} from "@/lib/print-dispatch";
 
 async function loadLpoPrintPayload(lpoNo, options = {}) {
   const prefetched = options.lpoSummary;
@@ -86,7 +89,8 @@ async function loadLpoPrintPayload(lpoNo, options = {}) {
 }
 
 /**
- * Print an LPO or delivery note via the browser print dialog (no app navigation).
+ * Print an LPO or delivery note via Centrix Print Agent when available,
+ * otherwise the browser print dialog (no app navigation).
  * @param {string|number} lpoNo
  * @param {{ variant?: "lpo"|"delivery_note", printWindow?: Window, capabilities?: object, user?: object, moduleSettings?: object }} options
  */
@@ -94,9 +98,11 @@ export async function printLpoOrder(lpoNo, options = {}) {
   if (lpoNo == null) return null;
 
   const variant = options.variant === "delivery_note" ? "delivery_note" : "lpo";
+  const jobType = variant === "delivery_note" ? "delivery_note" : "lpo";
 
   let printWindow = options.printWindow ?? null;
-  if (!printWindow) {
+  const preferAgent = !printWindow && shouldUsePrintAgentForDocument(jobType);
+  if (!printWindow && !preferAgent) {
     printWindow = openBlankPrintWindow(printWindowFeatures("invoice"));
     if (!printWindow) {
       throw new Error(PRINT_BLOCKED_MESSAGE);
@@ -109,7 +115,15 @@ export async function printLpoOrder(lpoNo, options = {}) {
       ...payload,
       variant,
     });
-    fillPrintWindow(printWindow, html);
+    const result = await printHtmlDocument(html, {
+      jobType,
+      documentId: lpoNo,
+      printWindow,
+      windowFeatures: printWindowFeatures("invoice"),
+    });
+    if (!result?.ok) {
+      throw new Error(result?.error || PRINT_BLOCKED_MESSAGE);
+    }
     return variant;
   } catch (error) {
     disposePrintWindow(printWindow);

@@ -1271,7 +1271,8 @@ export default function SalesOrdersListScreen({
         const receiptNo = from + jobIndex;
         try {
           const result = await dispatchPreparedSalePrintJob(job, {
-            allowBrowserFallback: !useAgentQueue,
+            // Agent preferred; if offline/unreachable, open the browser dialog instead of failing.
+            allowBrowserFallback: true,
           });
           if (result?.ok !== false) {
             printed += 1;

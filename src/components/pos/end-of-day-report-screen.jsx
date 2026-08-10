@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { filterByOrganization } from "@/lib/admin";
 import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { formatTillKes, formatTillKesExact, resolveExpectedNetSales } from "@/lib/pos-till";
 import { buildExpensesHref, expenseSummaryRowLabel } from "@/lib/expenses-link";
 import {
@@ -240,7 +240,7 @@ function printKpiCard(label, value, hint) {
 /**
  * Print / PDF layout that mirrors the on-screen End of Day report, sized for A4.
  */
-function printEodReport(report, meta) {
+async function printEodReport(report, meta) {
   const s = report?.summary ?? {};
   const payments = report?.payments ?? {};
   const showFloat = Boolean(meta.showFloat);
@@ -680,7 +680,11 @@ ${closingHtml}
 <p class="footer">Report generated on ${escapeHtml(meta.printedAt ?? formatAppDateTime(new Date()))} by ${escapeHtml(meta.userName ?? "—")}</p>
 </body></html>`;
 
-  openPrintWindow(html, "width=860,height=1100");
+  return printHtmlDocument(html, {
+    jobType: "end_of_day",
+    documentId: report?.date ?? meta?.date ?? null,
+    windowFeatures: "width=860,height=1100",
+  });
 }
 
 export function EndOfDayReportScreen() {
@@ -876,7 +880,7 @@ export function EndOfDayReportScreen() {
     const periodLabel = isMonthly
       ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
       : formatReportDate(saleDate);
-    printEodReport(report, {
+    void printEodReport(report, {
       organizationName: organization?.org_name ?? organization?.name ?? "",
       branchName,
       cashierName: cashierName ?? "All cashiers",

@@ -409,7 +409,7 @@ export function FulfillmentRoutesScreen() {
           <div className={listRefresh.contentClassName}>
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[820px] border-collapse text-sm">
+              <table className="w-full min-w-[920px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <TableSelectAllHeader
@@ -420,6 +420,7 @@ export function FulfillmentRoutesScreen() {
                     <th className="w-[70px] px-4 py-2.5">ID</th>
                     <th className="px-4 py-2.5">Route name</th>
                     <th className="px-4 py-2.5">Region</th>
+                    <th className="px-4 py-2.5 text-right">Markup price</th>
                     <th className="px-4 py-2.5">Customers</th>
                     <th className="px-4 py-2.5 text-right">
                       Sales ({periodLabel})
@@ -432,7 +433,7 @@ export function FulfillmentRoutesScreen() {
                 <tbody>
                   {routes.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
                         No routes found.
                       </td>
                     </tr>
@@ -460,6 +461,9 @@ export function FulfillmentRoutesScreen() {
                             </Link>
                           </td>
                           <td className="px-4 py-3 text-slate-700">{route.direction || "—"}</td>
+                          <td className="px-4 py-3 text-right font-medium tabular-nums text-slate-800">
+                            {formatRouteKes(route.route_markup_price)}
+                          </td>
                           <td className="px-4 py-3 text-slate-700">
                             {routeSales?.customers ?? 0}
                           </td>

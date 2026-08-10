@@ -1,5 +1,6 @@
 import { organizationLogoFileUrl } from "@/lib/api";
-import { openPrintWindow, printWindowFeatures } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
+import { printWindowFeatures } from "@/lib/open-print-window";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
   organizationHasLogo,
@@ -358,8 +359,12 @@ export function buildLpoPrintHtml({
 }
 
 /** Open compact A4 LPO or delivery note print. */
-export function printLpoDocument(options) {
+export async function printLpoDocument(options) {
   const html = buildLpoPrintHtml(options);
-  if (!html) return;
-  openPrintWindow(html, printWindowFeatures.a4);
+  if (!html) return { mode: "browser", ok: false, error: "Nothing to print." };
+  return printHtmlDocument(html, {
+    jobType: options.variant === "delivery_note" ? "delivery_note" : "lpo",
+    documentId: options.lpo?.lpo_no ?? options.lpo?.id ?? null,
+    windowFeatures: printWindowFeatures("invoice"),
+  });
 }

@@ -18,7 +18,7 @@ export const LOCAL_PRINT_PROVIDERS = [
     id: "agent",
     label: "Centrix Print Agent (Windows)",
     description:
-      "Recommended on Windows tills: a small .NET service (~15 MB) for silent receipt printing. Falls back to the browser print dialog if offline.",
+      "Recommended on Windows: Centrix Print Agent for silent printing of receipts and all ERP documents. Falls back to the browser print dialog if offline.",
   },
 ];
 

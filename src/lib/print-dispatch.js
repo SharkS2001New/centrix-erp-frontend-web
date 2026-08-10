@@ -31,16 +31,19 @@ function preparePrintHtml(html, jobType = "receipt") {
 }
 
 /**
- * Thermal receipts use Centrix Print Agent when configured.
- * A4 invoice / proforma still use the browser print dialog.
+ * Prefer Centrix Print Agent for every ERP document when the agent is enabled.
+ * Browser print dialog is only the offline / popup fallback.
  */
 export function shouldUsePrintAgentForDocument(documentType = "receipt") {
-  return isPrintAgentEnabled() && documentType === "receipt";
+  if (!isPrintAgentEnabled()) return false;
+  // "both" means dual print (receipt + invoice) — each half decides separately.
+  if (documentType == null || documentType === "both") return false;
+  return true;
 }
 
 /**
  * Pre-open a blank browser print window only when needed (popup-blocker safe).
- * Returns null when Centrix Print Agent will handle the thermal receipt — passing a
+ * Returns null when Centrix Print Agent will handle the job — passing a
  * printWindow into dispatchPrintJob forces browser printing and skips the agent.
  */
 export function openSaleOrderPrintWindow(documentType) {
@@ -55,11 +58,46 @@ export function isSaleOrderBrowserPrintWindowRequired(documentType) {
   return !shouldUsePrintAgentForDocument(documentType);
 }
 
-async function tryAgentPrint({ preparedHtml, copies, jobType, config }) {
+function resolveAllowBrowserFallback(allowBrowserFallback, agentConfig) {
+  // Org setting is always true today; never hard-fail print when the agent is missing.
+  if (allowBrowserFallback === false && agentConfig?.fallbackToBrowser === false) {
+    return false;
+  }
+  // Default and org policy: agent offline → browser dialog.
+  return true;
+}
+
+/**
+ * Print prepared HTML through Centrix Print Agent when available, otherwise the browser dialog.
+ * Use this for picking lists, LPOs, invoices, and other ERP documents — not admin live preview.
+ * Always falls back to the browser when the agent is offline or unreachable.
+ */
+export async function printHtmlDocument(html, options = {}) {
+  const {
+    jobType = "document",
+    copies = 1,
+    documentId = null,
+    printWindow = null,
+    windowFeatures = "width=900,height=800",
+  } = options;
+  return dispatchPrintJob({
+    html,
+    copies,
+    jobType,
+    documentId,
+    printWindow,
+    windowFeatures,
+    // Documents must never fail silently when the agent is down.
+    allowBrowserFallback: true,
+  });
+}
+
+async function tryAgentPrint({ preparedHtml, copies, jobType, documentId = null, config }) {
   const result = await printViaAgent({
     html: preparedHtml,
     copies,
     jobType,
+    documentId,
     config: { ...config, enabled: true },
   });
   return {
@@ -70,9 +108,43 @@ async function tryAgentPrint({ preparedHtml, copies, jobType, config }) {
   };
 }
 
+async function printViaBrowserFallback({
+  preparedHtml,
+  copies,
+  windowFeatures,
+  settleTimeoutMs,
+  agentError = null,
+}) {
+  let opened = 0;
+  for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
+    const win = openBlankPrintWindow(windowFeatures);
+    if (win) {
+      await fillPrintWindow(win, preparedHtml, { skipBaseline: true, settleTimeoutMs });
+      opened += 1;
+    }
+  }
+
+  if (opened === 0) {
+    return {
+      mode: "browser",
+      ok: false,
+      error: agentError
+        ? `Print agent unavailable (${agentError}). ${PRINT_BLOCKED_MESSAGE}`
+        : PRINT_BLOCKED_MESSAGE,
+    };
+  }
+
+  return {
+    mode: "browser",
+    ok: true,
+    ...(agentError ? { agentFallback: true, agentError } : {}),
+  };
+}
+
 /**
  * Route a print job to Centrix Print Agent or the browser dialog (org settings).
- * Agent falls back to the browser dialog when offline (unless allowBrowserFallback is false).
+ * When the agent is offline, missing, or errors, falls back to the browser dialog
+ * (unless allowBrowserFallback is false and org fallback is also disabled).
  *
  * @returns {Promise<{ mode: "agent" | "browser", ok: boolean, error?: string, printer?: string, jobId?: string }>}
  */
@@ -80,11 +152,12 @@ export async function dispatchPrintJob({
   html,
   copies = 1,
   jobType = "receipt",
+  documentId = null,
   printWindow = null,
   windowFeatures = "width=420,height=720",
   agentConfig = getPrintAgentConfig(),
   provider = getLocalPrintProvider(),
-  /** When false, batch thermal printing stays on the agent (no popup-blocker fallback). */
+  /** When false with org fallback disabled, batch thermal may stay agent-only. */
   allowBrowserFallback = true,
 }) {
   if (!html?.trim()) {
@@ -102,6 +175,7 @@ export async function dispatchPrintJob({
   }
 
   const activeProvider = provider;
+  const canFallbackToBrowser = resolveAllowBrowserFallback(allowBrowserFallback, agentConfig);
   let agentError = null;
 
   if (activeProvider === "agent" || (activeProvider === "browser" && isPrintAgentEnabled())) {
@@ -111,7 +185,7 @@ export async function dispatchPrintJob({
         // Warm path: skip /v1/health when the agent answered recently (POS after first ping).
         if (isPrintAgentRecentlyHealthy({ ...config, enabled: true })) {
           try {
-            return await tryAgentPrint({ preparedHtml, copies, jobType, config });
+            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config });
           } catch (err) {
             invalidatePrintAgentHealth({ ...config, enabled: true });
             agentError = err instanceof Error ? err.message : "Print agent failed.";
@@ -132,30 +206,29 @@ export async function dispatchPrintJob({
         }
         if (health?.ok) {
           try {
-            return await tryAgentPrint({ preparedHtml, copies, jobType, config });
+            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config });
           } catch (err) {
             invalidatePrintAgentHealth({ ...config, enabled: true });
             agentError = err instanceof Error ? err.message : "Print agent failed.";
             // One retry after a failed warm/hot print (agent briefly busy).
             try {
               await new Promise((resolve) => setTimeout(resolve, 250));
-              return await tryAgentPrint({ preparedHtml, copies, jobType, config });
+              return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config });
             } catch (retryErr) {
               agentError =
                 retryErr instanceof Error ? retryErr.message : agentError;
             }
           }
+        } else {
+          agentError = agentError || "Print agent is offline or not found.";
         }
       } catch (err) {
         agentError = err instanceof Error ? err.message : "Print agent unreachable.";
-        // Agent missing/offline → browser dialog (fallback always on in org settings)
       }
     }
   }
 
-  // Explicit browser provider always uses the dialog. Agent-only mode may disable fallback
-  // (e.g. batch thermal queue) — but never block when the till chose browser printing.
-  if (!allowBrowserFallback && activeProvider !== "browser") {
+  if (!canFallbackToBrowser && activeProvider !== "browser") {
     return {
       mode: "agent",
       ok: false,
@@ -165,30 +238,13 @@ export async function dispatchPrintJob({
     };
   }
 
-  let opened = 0;
-  for (let copy = 0; copy < Math.max(1, copies); copy += 1) {
-    const win = openBlankPrintWindow(windowFeatures);
-    if (win) {
-      await fillPrintWindow(win, preparedHtml, { skipBaseline: true, settleTimeoutMs });
-      opened += 1;
-    }
-  }
-
-  if (opened === 0) {
-    return {
-      mode: "browser",
-      ok: false,
-      error: agentError
-        ? `Print agent failed (${agentError}). ${PRINT_BLOCKED_MESSAGE}`
-        : PRINT_BLOCKED_MESSAGE,
-    };
-  }
-
-  return {
-    mode: "browser",
-    ok: true,
-    ...(agentError ? { agentFallback: true, agentError } : {}),
-  };
+  return printViaBrowserFallback({
+    preparedHtml,
+    copies,
+    windowFeatures,
+    settleTimeoutMs,
+    agentError,
+  });
 }
 
 /** Keep in-memory org cache in sync when the admin picks a mode (persist via Save). */

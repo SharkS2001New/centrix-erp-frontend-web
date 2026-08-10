@@ -1,3 +1,5 @@
+import { printHtmlDocument } from "@/lib/print-dispatch";
+import { printWindowFeatures } from "@/lib/open-print-window";
 import { escapeHtml } from "@/lib/sale-document-print-shared";
 import {
   contractKindLabel,
@@ -10,7 +12,6 @@ import {
   workspaceLabels,
 } from "@/lib/platform-billing";
 import { DEFAULT_PLATFORM_SELLER, normalizeSeller } from "@/lib/platform-invoices";
-import { fillPrintWindow, openBlankPrintWindow, printWindowFeatures } from "@/lib/open-print-window";
 
 function partyLines(party) {
   return [
@@ -146,19 +147,13 @@ export function buildPlatformContractHtml(contract, { seller: sellerOverride } =
 </html>`;
 }
 
-export function printPlatformContract(contract, options) {
+export async function printPlatformContract(contract, options) {
   const html = buildPlatformContractHtml(contract, options);
-  const win = openBlankPrintWindow();
-  if (!win) return;
-  fillPrintWindow(win, html);
-  win.focus();
-  setTimeout(() => {
-    try {
-      win.print();
-    } catch {
-      /* ignore */
-    }
-  }, 250);
+  return printHtmlDocument(html, {
+    jobType: "contract",
+    documentId: contract?.id ?? contract?.reference ?? null,
+    windowFeatures: printWindowFeatures("invoice"),
+  });
 }
 
 export function downloadPlatformContractHtml(contract, options) {

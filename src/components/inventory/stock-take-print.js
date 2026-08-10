@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { escapeHtml } from "@/lib/sale-document-print-shared";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { uomHierarchyChain } from "@/lib/uom-packaging";
@@ -137,9 +137,13 @@ export function buildStockTakePrintHtml({
 </html>`;
 }
 
-export function printStockTakeSheet(options) {
+export async function printStockTakeSheet(options) {
   const html = buildStockTakePrintHtml(options);
-  openPrintWindow(html, "width=900,height=960");
+  return printHtmlDocument(html, {
+    jobType: "stock_take",
+    documentId: options?.session?.id ?? options?.session?.session_code ?? null,
+    windowFeatures: "width=900,height=960",
+  });
 }
 
 export function stockTakePrintRowsFromLines(lines, productByCode, uomById) {

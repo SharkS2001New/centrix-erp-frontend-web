@@ -37,8 +37,7 @@ import {
   showPrintPreparing,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
-import { isPrintAgentEnabled } from "@/lib/print-agent";
-import { dispatchPrintJob } from "@/lib/print-dispatch";
+import { dispatchPrintJob, shouldUsePrintAgentForDocument } from "@/lib/print-dispatch";
 
 function ensureBatchPrintCache(cache = null) {
   if (cache && typeof cache === "object") {
@@ -332,11 +331,11 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
   }
 
   let printWindow = options.printWindow ?? null;
-  // Prefer Centrix Print Agent for thermal receipts — avoid opening a blank iframe
+  // Prefer Centrix Print Agent for all document types — avoid opening a blank iframe
   // before enrichment (passing printWindow forces browser printing in dispatchPrintJob).
   const offlineSale = isOfflineSalePrint(sale, options);
   const deferPrintWindow =
-    !printWindow && isPrintAgentEnabled() && documentType === "receipt";
+    !printWindow && shouldUsePrintAgentForDocument(documentType);
   if (!printWindow && !deferPrintWindow && !options.deferBrowserWindow) {
     printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
     if (!printWindow) {
@@ -624,10 +623,15 @@ export async function dispatchPreparedSalePrintJob(job, dispatchOptions = {}) {
 
   if (job.mode === "invoice" || job.mode === "proforma") {
     const copies = Math.max(1, Number(job.copies ?? 1) || 1);
+    let lastResult = { mode: "browser", ok: true };
     for (let copy = 0; copy < copies; copy += 1) {
-      printSaleInvoice(job.saleForPrint, job.printOptions);
+      lastResult = await printSaleInvoice(job.saleForPrint, {
+        ...job.printOptions,
+        printWindow: copy === 0 ? job.printWindow ?? null : null,
+      });
+      if (!lastResult?.ok) return lastResult;
     }
-    return { mode: "browser", ok: true };
+    return lastResult;
   }
 
   return dispatchPrintJob({

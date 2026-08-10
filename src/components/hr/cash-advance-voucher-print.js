@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
 import {
   buildReportOrgHeaderHtml,
@@ -188,7 +188,7 @@ function nameLine(label, value) {
 /**
  * Printable cash-advance voucher for wet-ink signature / stamp by the approving manager.
  */
-export function printCashAdvanceVoucher({
+export async function printCashAdvanceVoucher({
   advance,
   employee,
   organization,
@@ -280,5 +280,9 @@ export function printCashAdvanceVoucher({
 </body>
 </html>`;
 
-  openPrintWindow(html, "width=820,height=900");
+  return printHtmlDocument(html, {
+    jobType: "cash_advance",
+    documentId: advance?.id ?? advance?.voucher_no ?? null,
+    windowFeatures: "width=820,height=900",
+  });
 }

@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
   buildReportWatermarkHtml,
@@ -957,7 +957,7 @@ export function buildLoadingListHtml({
  *   printedBy?: string | null,
  * }} options
  */
-export function printLoadingList({
+export async function printLoadingList({
   organization = null,
   generalSettings = null,
   organizationName = "Loading List",
@@ -983,5 +983,9 @@ export function printLoadingList({
     distributionEnabled,
     uomByProductCode,
   });
-  openPrintWindow(html, "width=900,height=800");
+  return printHtmlDocument(html, {
+    jobType: "loading_list",
+    documentId: loadingList?.id ?? loadingList?.list_number ?? null,
+    windowFeatures: "width=900,height=800",
+  });
 }

@@ -339,7 +339,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           <h2 className="theme-heading text-lg font-medium">{LOCAL_PRINTING_ADMIN_LABEL}</h2>
           <p className="theme-subtext mt-1 text-sm">
             Organization-wide print method for tills using this company. Choose browser print or the Centrix
-            Print Agent for silent Windows printing.
+            Print Agent for silent Windows printing of receipts and all ERP documents.
           </p>
         </div>
         <span
@@ -423,8 +423,8 @@ export function PrintAgentSettingsPanel({ compact = false }) {
             </div>
           ) : null}
           <p className="theme-subtext text-xs">
-            The agent listens on <code className="text-[11px]">http://127.0.0.1:9247</code>. If it is offline,
-            Centrix opens the browser print dialog instead.
+            The agent listens on <code className="text-[11px]">http://127.0.0.1:9247</code>. If it is offline
+            or not installed, Centrix opens the browser print dialog instead so printing still works.
           </p>
           <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
             <p className="theme-heading font-medium">Install Centrix Print Agent (Windows)</p>

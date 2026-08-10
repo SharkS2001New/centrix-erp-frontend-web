@@ -7,7 +7,8 @@ import {
   normalizeInvoiceOptions,
   normalizeSeller,
 } from "@/lib/platform-invoices";
-import { fillPrintWindow, openBlankPrintWindow, printWindowFeatures } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
+import { printWindowFeatures } from "@/lib/open-print-window";
 
 function stripUrlsFromPrintText(text) {
   if (!text) return "";
@@ -378,10 +379,12 @@ export function buildPlatformInvoiceHtml(invoice) {
 </html>`;
 }
 
-export function printPlatformInvoice(invoice) {
+export async function printPlatformInvoice(invoice) {
   if (typeof window === "undefined") return;
   const html = buildPlatformInvoiceHtml(invoice);
-  const win = openBlankPrintWindow(printWindowFeatures("invoice"));
-  if (!win) return;
-  fillPrintWindow(win, html);
+  return printHtmlDocument(html, {
+    jobType: "invoice",
+    documentId: invoice?.id ?? invoice?.invoice_number ?? null,
+    windowFeatures: printWindowFeatures("invoice"),
+  });
 }

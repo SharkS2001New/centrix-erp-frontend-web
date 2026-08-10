@@ -21,7 +21,7 @@ import {
   priceSheetColumnVisibility,
   priceSheetPriceWithMargin,
 } from "@/lib/product-price-sheet";
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import {
   CatalogPageShell,
   Field,
@@ -386,7 +386,10 @@ export function ProductPriceSheetScreen() {
         showCost: printHasCost && printColumns.unitCost,
         showMargins: printHasCost && printCols.wholesale,
     });
-    openPrintWindow(html, "width=1100,height=800");
+    await printHtmlDocument(html, {
+      jobType: "price_sheet",
+      windowFeatures: "width=1100,height=800",
+    });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to prepare price sheet for print");
     } finally {

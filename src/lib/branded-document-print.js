@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
@@ -195,8 +195,12 @@ export function buildBrandedA4DocumentHtml({
 </html>`;
 }
 
-export function printBrandedA4Document(options) {
-  openPrintWindow(buildBrandedA4DocumentHtml(options), "width=860,height=960");
+export async function printBrandedA4Document(options) {
+  return printHtmlDocument(buildBrandedA4DocumentHtml(options), {
+    jobType: options.jobType ?? "document",
+    documentId: options.documentId ?? null,
+    windowFeatures: "width=860,height=960",
+  });
 }
 
 export function buildMetaFieldRows(rows) {

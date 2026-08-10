@@ -1,4 +1,4 @@
-import { openPrintWindow } from "@/lib/open-print-window";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 import {
@@ -109,7 +109,7 @@ function buildDeliveryNoteLineRows(items, { showFullPackageUomOnDocuments = fals
  * Printable delivery note for a single order/stop on a trip.
  * @param {{ organization?: object, organizationName?: string, sale: object, trip?: object, stopNumber?: number, printedBy?: string | null, generalSettings?: object | null, documentFooterText?: string, salesSettings?: object | null }} options
  */
-export function printDeliveryNote({
+export async function printDeliveryNote({
   organization = null,
   organizationName = "",
   sale,
@@ -204,5 +204,9 @@ export function printDeliveryNote({
 </body>
 </html>`;
 
-  openPrintWindow(html, "width=900,height=800");
+  return printHtmlDocument(html, {
+    jobType: "delivery_note",
+    documentId: sale?.id ?? orderNum ?? null,
+    windowFeatures: "width=900,height=800",
+  });
 }
