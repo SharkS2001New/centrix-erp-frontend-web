@@ -132,6 +132,29 @@ describe("previous-order edit till isolation", () => {
     );
   });
 
+  it("clears stale live occupancy when IDB is empty and sticky is not mid-sale", async () => {
+    const {
+      setLiveTemporaryCartOccupancy,
+      clearLiveTemporaryCartOccupancy,
+      assertPosTillAvailableForSync,
+      isLiveTemporaryCartOccupied,
+    } = await import("@/lib/pos-offline");
+    clearLiveTemporaryCartOccupancy();
+    setLiveTemporaryCartOccupancy({
+      id: 55,
+      lines: [{ product_code: "A", quantity: 1 }],
+    });
+    expect(isLiveTemporaryCartOccupied()).toBe(true);
+
+    const result = await assertPosTillAvailableForSync({
+      stickyCart: { id: 55, lines: [] },
+      allowWipeOrphans: true,
+    });
+
+    expect(result.wipedOrphans).toBe(false);
+    expect(isLiveTemporaryCartOccupied()).toBe(false);
+  });
+
   it("wipes orphan sticky lines only when till is idle (no occupancy, empty IDB)", async () => {
     apiRequest.mockResolvedValueOnce({ ok: true });
     const {

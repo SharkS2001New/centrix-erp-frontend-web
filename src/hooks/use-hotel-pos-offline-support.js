@@ -264,7 +264,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
       lastResults = await flushOutboxNow({ includeErrors: false });
       await refreshCounts();
       const pending = await getHotelPosOfflinePendingCount();
-      const failed = lastResults.filter((row) => !row.ok);
+      const failed = lastResults.filter((row) => !row.ok && !row.deferred);
       if (pending === 0 && failed.length === 0) {
         pendingFlushRef.current = false;
         return { ok: true, results: lastResults, pending: 0 };
@@ -277,7 +277,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
     }
 
     const pending = await getHotelPosOfflinePendingCount();
-    const failed = lastResults.filter((row) => !row.ok);
+    const failed = lastResults.filter((row) => !row.ok && !row.deferred);
     return {
       ok: pending === 0 && failed.length === 0,
       results: lastResults,

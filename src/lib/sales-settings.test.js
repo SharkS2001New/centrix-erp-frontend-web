@@ -23,6 +23,8 @@ import {
   shouldShowSalesDiscountColumn,
   showBackofficeLineDiscountEdit,
   showPosLineDiscountField,
+  salesCartChannelForWorkspace,
+  posChannelFromStockSource,
 } from "@/lib/sales-settings";
 
 describe("sales-settings discount approvals", () => {
@@ -466,5 +468,38 @@ describe("collect small / partial payments on order payment", () => {
     });
     expect(merged.enable_credit_payment).toBe(true);
     expect(merged.allow_credit_pay_now).toBe(true);
+  });
+});
+
+describe("salesCartChannelForWorkspace", () => {
+  const storeOnly = {
+    allowShop: false,
+    allowStore: true,
+    perLineStockRouting: false,
+    retailShopWholesaleStoreStock: false,
+  };
+
+  it("keeps External POS on pos TemporaryCart even for store-stock tills", () => {
+    expect(
+      salesCartChannelForWorkspace({
+        standalone: true,
+        sellFromShop: false,
+        config: storeOnly,
+      }),
+    ).toBe("pos");
+  });
+
+  it("keeps backoffice Create order on backend TemporaryCart", () => {
+    expect(
+      salesCartChannelForWorkspace({
+        standalone: false,
+        sellFromShop: false,
+        config: storeOnly,
+      }),
+    ).toBe("backend");
+  });
+
+  it("still maps store-only stock source helper to backend for callers that need it", () => {
+    expect(posChannelFromStockSource(false, storeOnly)).toBe("backend");
   });
 });

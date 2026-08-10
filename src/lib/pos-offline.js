@@ -381,7 +381,7 @@ export function outboxClientUuidForCart(cart) {
 export function emptyLocalPosCart(seed = {}) {
   return {
     id: "active",
-    channel: "pos",
+    channel: seed.channel ?? "pos",
     lines: [],
     branch_id: seed.branch_id ?? null,
     till_id: seed.till_id ?? null,
@@ -559,7 +559,8 @@ let backgroundPreviousOrderEditSyncCartId = null;
  * defer instead of wiping / PUT-replacing the cashier's open sale.
  */
 const LIVE_TEMPORARY_CART_LS_KEY = "centrix.pos.live_temporary_cart_v1";
-const LIVE_TEMPORARY_CART_TTL_MS = 2 * 60 * 60 * 1000;
+/** Heartbeat refreshes every 60s while the till is open; after crash, sync unblocks quickly. */
+const LIVE_TEMPORARY_CART_TTL_MS = 5 * 60 * 1000;
 
 let liveTemporaryCartOccupancy = null;
 
@@ -710,7 +711,19 @@ export async function assertPosTillAvailableForSync({
     throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
   }
   if (isLiveTemporaryCartOccupied()) {
-    throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
+    const occ = readLiveTemporaryCartOccupancy();
+    // Crash leftover: occupancy still points at a TemporaryCart that is now empty.
+    const stickyEmpty =
+      stickyCart != null && (stickyCart.lines?.length ?? 0) === 0;
+    const occPointsAtEmptySticky =
+      stickyEmpty &&
+      occ &&
+      Number(stickyCart.id) === Number(occ.cartId);
+    if (occPointsAtEmptySticky) {
+      clearLiveTemporaryCartOccupancy();
+    } else {
+      throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
+    }
   }
 
   if (
@@ -975,7 +988,7 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
   const local = {
     id: "active",
     offline: true,
-    channel: "pos",
+    channel: openCart.channel ?? seed.channel ?? "pos",
     lines,
     branch_id: openCart.branch_id ?? seed.branch_id ?? null,
     till_id: openCart.till_id ?? seed.till_id ?? null,

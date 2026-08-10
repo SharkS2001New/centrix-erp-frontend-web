@@ -3,6 +3,7 @@ import {
   buildPaymentAdjustmentsFromCheckoutBody,
   computePreviousOrderEditPaymentDelta,
   computePreviousOrderEditSignedDelta,
+  previousOrderAdjustmentsAreProvisional,
   previousOrderAdjustmentsMatchDelta,
   resolvePosPaymentMethodCode,
 } from "@/lib/pos-edit-payment-adjustment";
@@ -286,6 +287,28 @@ describe("previousOrderAdjustmentsMatchDelta", () => {
         [{ adjustment_type: "return", amount: 1000, method_code: "CASH" }],
         delta,
       ),
+    ).toBe(true);
+  });
+
+  it("does not treat autosave provisional rows as cashier-confirmed", () => {
+    const delta = { amount: 500, type: "topup" };
+    expect(
+      previousOrderAdjustmentsMatchDelta(
+        [
+          {
+            adjustment_type: "topup",
+            amount: 500,
+            method_code: "CASH",
+            provisional: true,
+          },
+        ],
+        delta,
+      ),
+    ).toBe(false);
+    expect(
+      previousOrderAdjustmentsAreProvisional([
+        { adjustment_type: "topup", amount: 500, provisional: true },
+      ]),
     ).toBe(true);
   });
 });

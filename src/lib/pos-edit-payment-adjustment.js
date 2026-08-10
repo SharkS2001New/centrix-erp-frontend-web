@@ -519,12 +519,27 @@ export function paymentRowsFromPreviousOrderEditTenders(tenders) {
 }
 
 /**
- * @param {Array<{ adjustment_type?: string, amount?: number }>|null|undefined} adjustments
+ * True when payment_adjustments were only stashed for background autosave and
+ * the cashier has not yet confirmed method via Payment Breakdown (Alt+P / F8).
+ * @param {Array<{ provisional?: boolean, _provisional?: boolean }>|null|undefined} adjustments
+ */
+export function previousOrderAdjustmentsAreProvisional(adjustments) {
+  if (!Array.isArray(adjustments) || adjustments.length === 0) return false;
+  return adjustments.some(
+    (row) => Boolean(row?.provisional ?? row?._provisional),
+  );
+}
+
+/**
+ * @param {Array<{ adjustment_type?: string, amount?: number, provisional?: boolean, _provisional?: boolean }>|null|undefined} adjustments
  * @param {{ amount: number, type: string|null }} delta
  */
 export function previousOrderAdjustmentsMatchDelta(adjustments, delta) {
   if (!delta?.type || !(Number(delta.amount) > 0)) return true;
   if (!Array.isArray(adjustments) || adjustments.length === 0) return false;
+  // Autosave provisional cash rows must not satisfy Alt+P / F8 — cashier still
+  // needs the Payment Breakdown popup to pick top-up / return method.
+  if (previousOrderAdjustmentsAreProvisional(adjustments)) return false;
   const total = adjustments.reduce(
     (sum, row) =>
       row?.adjustment_type === delta.type ? sum + (Number(row.amount) || 0) : sum,

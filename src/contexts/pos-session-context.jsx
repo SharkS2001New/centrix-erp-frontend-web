@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, isNetworkFetchError } from "@/lib/api";
 import {
   clearStoredActiveSession,
   getStoredActiveSession,
@@ -70,9 +70,19 @@ export function PosSessionProvider({ children }) {
       }
       setStoredActiveSession(res);
       return res;
-    } catch {
-      clearStoredActiveSession();
-      return null;
+    } catch (err) {
+      // Keep the local float on transient network blips — only clear when the
+      // server says the session is gone / unauthorized.
+      if (isNetworkFetchError(err)) {
+        return session;
+      }
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403 || err.status === 404)) {
+        clearStoredActiveSession();
+        return null;
+      }
+      // Other API failures: keep stored session so Cash Sales # / outbox stay tied
+      // to the open float until a definitive closed/missing response arrives.
+      return session;
     }
   }, [tillFloatEnabled]);
 

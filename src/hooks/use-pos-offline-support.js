@@ -398,7 +398,8 @@ export function usePosOfflineSupport({
 
       const pending = await getPosOfflinePendingCount();
       const autoRetry = await getPosOfflineAutoRetryCount();
-      const failed = lastResults.filter((row) => !row.ok);
+      // Till-busy previous-order edits stay pending (deferred) — not Sync failed.
+      const failed = lastResults.filter((row) => !row.ok && !row.deferred);
 
       if (pending === 0 && failed.length === 0) {
         pendingFlushRef.current = false;
@@ -408,7 +409,7 @@ export function usePosOfflineSupport({
       if (autoRetry === 0) {
         pendingFlushRef.current = false;
         return {
-          ok: false,
+          ok: failed.length === 0,
           results: lastResults,
           pending,
           failed,
@@ -427,7 +428,7 @@ export function usePosOfflineSupport({
     }
 
     const pending = await getPosOfflinePendingCount();
-    const failed = lastResults.filter((row) => !row.ok);
+    const failed = lastResults.filter((row) => !row.ok && !row.deferred);
     const ok = pending === 0 && failed.length === 0;
     if (!ok) {
       pendingFlushRef.current = false;

@@ -1692,8 +1692,13 @@ export function posChannelFromStockSource(sellFromShop, config) {
   return sellFromShop ? "pos" : "backend";
 }
 
-/** Sales cart channel for the active workspace — backoffice create order always uses backend. */
-export function salesCartChannelForWorkspace({ standalone, sellFromShop, config }) {
+/**
+ * TemporaryCart channel for the active workspace.
+ * External POS always uses `pos` so sticky carts never share with backoffice Create order
+ * (keyed by user+channel). Stock source stays on sellFromShop / line routing — not channel.
+ * Backoffice create order always uses `backend`.
+ */
+export function salesCartChannelForWorkspace({ standalone, sellFromShop: _sellFromShop, config: _config }) {
   if (!standalone) return "backend";
-  return posChannelFromStockSource(sellFromShop, config);
+  return "pos";
 }

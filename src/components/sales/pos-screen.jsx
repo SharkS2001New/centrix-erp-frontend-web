@@ -1301,7 +1301,16 @@ export function PosScreen({ standalone = false }) {
         }
         return true;
       }
-      const failed = (results ?? []).filter((row) => !row.ok);
+      // Deferred till-busy edits are not sync failures for the sale that just completed.
+      const failed = (results ?? []).filter((row) => !row.ok && !row.deferred);
+      if (!failed.length) {
+        if (ticketLabel && !background) {
+          setStatusMessage(
+            `${ticketLabel} completed — previous-order sync waiting until the till is free.`,
+          );
+        }
+        return true;
+      }
       const detail =
         failed[0]?.error ??
         (pending > 0 ? `${pending} sale(s) still waiting to sync` : "Could not reach the server");
@@ -2522,7 +2531,8 @@ export function PosScreen({ standalone = false }) {
     if (previousOrderAdjustmentsMatchDelta(cartNow.payment_adjustments, delta)) return cartNow;
 
     // Background autosave / offline queue: never open the payment dialog mid-edit.
-    // Stash a provisional cash adjustment; Alt+P / F10 still collect the real tender.
+    // Stash a provisional cash adjustment; Alt+P / F8 still open Payment Breakdown
+    // because provisional rows do not satisfy previousOrderAdjustmentsMatchDelta.
     if (options.provisional) {
       const methodRaw = String(
         cartNow.payment_method_code ?? editSourceSale?.payment_method_code ?? "CASH",
@@ -2535,6 +2545,7 @@ export function PosScreen({ standalone = false }) {
           adjustment_type: delta.type,
           method_code,
           amount: Math.round(Number(delta.amount) * 100) / 100,
+          provisional: true,
         },
       ];
       const next = withEditDraftDirty({ ...cartNow, payment_adjustments: adjustments });
@@ -2544,11 +2555,16 @@ export function PosScreen({ standalone = false }) {
       return next;
     }
 
-    const adjustments = await promptPreviousOrderPaymentAdjustment(
-      delta,
-      cartNow.held_order_num ?? resolvePosBrowseNumber(cartNow),
-      options,
-    );
+    const adjustments = (
+      await promptPreviousOrderPaymentAdjustment(
+        delta,
+        cartNow.held_order_num ?? resolvePosBrowseNumber(cartNow),
+        options,
+      )
+    ).map((row) => {
+      const { provisional: _p, _provisional: _pp, ...rest } = row ?? {};
+      return rest;
+    });
     const next = withEditDraftDirty({ ...cartNow, payment_adjustments: adjustments });
     cartRef.current = next;
     setCart(next);
@@ -3891,7 +3907,7 @@ export function PosScreen({ standalone = false }) {
 
       const task = (async () => {
         const body = {
-          channel: "pos",
+          channel: localCart.channel ?? channel ?? "pos",
           order_source: "pos",
           branch_id: localCart.branch_id ?? user.branch_id,
         };
@@ -3995,7 +4011,7 @@ export function PosScreen({ standalone = false }) {
         }
       }
     },
-    [user?.branch_id, tillId, loadCashierCart],
+    [user?.branch_id, tillId, loadCashierCart, channel],
   );
 
   const applyAdvisedDiscountsToCart = useCallback(async () => {
