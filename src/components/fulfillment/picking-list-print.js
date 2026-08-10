@@ -374,6 +374,21 @@ function buildSalesPickingLineRows(lines) {
     .join("");
 }
 
+/** Max line items per A4 print page — leaves room for header/footer so the last row is not clipped. */
+export const PICKING_LIST_LINES_PER_PAGE = 24;
+
+/** Split picking lines into fixed-size page chunks for reliable A4 print pagination. */
+export function chunkPickingLinesForPrint(lines, perPage = PICKING_LIST_LINES_PER_PAGE) {
+  const rows = Array.isArray(lines) ? lines : [];
+  const size = Math.max(1, Number(perPage) || PICKING_LIST_LINES_PER_PAGE);
+  if (rows.length === 0) return [[]];
+  const chunks = [];
+  for (let i = 0; i < rows.length; i += size) {
+    chunks.push(rows.slice(i, i + size));
+  }
+  return chunks;
+}
+
 function pickingListPrintStyles(
   generalSettings,
   { salesLayout = false, includeShelfLocation = true } = {},
@@ -387,11 +402,26 @@ function pickingListPrintStyles(
   const sharedPrintLayout = `
     @page { size: A4; margin: 0; }
     html { height: auto; }
-    /* Keep sheet static — position:relative ancestors break page-break-inside:avoid in Chromium. */
-    .page, .sheet { position: static; z-index: 1; overflow: visible; }
+    /* One physical A4 sheet per .print-page — do not rely on browser auto-fragmentation alone. */
+    .print-page {
+      width: 210mm;
+      min-height: 297mm;
+      box-sizing: border-box;
+      padding: ${px(24)};
+      padding-bottom: 18mm;
+      overflow: visible;
+      page-break-after: always;
+      break-after: page;
+    }
+    .print-page:last-of-type {
+      page-break-after: auto;
+      break-after: auto;
+    }
+    .page, .sheet, .print-page { position: static; z-index: 1; overflow: visible; }
     .pick-lines {
       width: 100%;
       display: block;
+      overflow: visible;
     }
     .pick-head,
     .pick-line {
@@ -422,6 +452,11 @@ function pickingListPrintStyles(
       page-break-inside: avoid;
       break-inside: avoid;
     }
+    .continued-label {
+      font-size: ${px(11)};
+      color: #64748b;
+      margin: 0 0 ${px(8)};
+    }
   `;
 
   if (salesLayout) {
@@ -431,7 +466,6 @@ function pickingListPrintStyles(
     ${sharedPrintLayout}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
-    .page { padding: ${px(24)}; }
     .org-header { text-align: center; margin-bottom: ${px(12)}; }
     .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
     .org-name { font-size: ${px(16)}; font-weight: 700; letter-spacing: 0.04em; }
@@ -465,7 +499,17 @@ function pickingListPrintStyles(
         padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
       }
       body { font-size: ${px(12, true)}; }
-      .page { padding: ${px(8, true)} ${px(4, true)} 0; }
+      .print-page {
+        width: 210mm;
+        min-height: 297mm;
+        padding: ${px(8, true)} ${px(4, true)} 18mm;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      .print-page:last-of-type {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
       .pick-head { font-size: ${px(11, true)}; }
       .pick-line { font-size: ${px(11, true)}; }
       .pick-line-wrap {
@@ -484,7 +528,6 @@ function pickingListPrintStyles(
     ${sharedPrintLayout}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
-    .page { padding: ${px(24)}; }
     .org-header { text-align: center; margin-bottom: ${px(12)}; }
     .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
     .org-name { font-size: ${px(16)}; font-weight: 700; letter-spacing: 0.04em; }
@@ -519,7 +562,17 @@ function pickingListPrintStyles(
         padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} !important;
       }
       body { font-size: ${px(12, true)}; }
-      .page { padding: ${px(8, true)} ${px(4, true)} 0; }
+      .print-page {
+        width: 210mm;
+        min-height: 297mm;
+        padding: ${px(8, true)} ${px(4, true)} 18mm;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      .print-page:last-of-type {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
       .pick-head { font-size: ${px(11, true)}; }
       .pick-line { font-size: ${px(11, true)}; }
       .pick-line-wrap {
@@ -564,12 +617,10 @@ export function buildPickingListHtml({
   const showRouteMetaLine = !meta.combined;
 
   let tableHead;
-  let rowHtml;
   let summaryHtml;
 
   if (salesLayout) {
     tableHead = buildSalesPickingHead();
-    rowHtml = buildSalesPickingLineRows(lines);
     const orderTotal =
       pickingList?.order_total_value != null
         ? Number(pickingList.order_total_value)
@@ -583,7 +634,6 @@ export function buildPickingListHtml({
     const totalPicked = lines.reduce((sum, line) => sum + Number(line.picked_qty || 0), 0);
     const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
     tableHead = buildDistributionPickingHead(includeShelfLocation);
-    rowHtml = buildDistributionPickingLineRows(lines, includeShelfLocation);
     summaryHtml = `
       <div class="summary-box">
         <div class="summary-row"><span>Total requested</span><strong>${formatQty(totalRequired)}</strong></div>
@@ -592,10 +642,6 @@ export function buildPickingListHtml({
       </div>`;
   }
 
-  const linesBlock = rowHtml
-    ? `<div class="pick-lines">${rowHtml}</div>`
-    : `<div class="pick-line-wrap"><div class="pick-line empty">No products to pick</div></div>`;
-
   const footerText = documentFooterText ?? branding.documentFooterText ?? "";
   const footerHtml = footerText
     ? `<div class="doc-footer">${documentFooterHtmlFromText(footerText, { layout: "block", tag: "p" })}</div>`
@@ -603,17 +649,19 @@ export function buildPickingListHtml({
   const printedAt = new Date().toLocaleString("en-GB");
   const printedByName = resolvePrintedByUser(printedBy) ?? "—";
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(docTitle)}</title>
-  <style>${pickingListPrintStyles(generalSettings, { salesLayout, includeShelfLocation })}</style>
-</head>
-<body class="has-doc-print-edge-footer">
-  <div class="page">
-    <div class="sheet">
-      ${orgHeader}
+  const linesBlockForChunk = (chunkLines) => {
+    const chunkRows = salesLayout
+      ? buildSalesPickingLineRows(chunkLines)
+      : buildDistributionPickingLineRows(chunkLines, includeShelfLocation);
+    return chunkRows
+      ? `<div class="pick-lines">${chunkRows}</div>`
+      : `<div class="pick-line-wrap"><div class="pick-line empty">No products to pick</div></div>`;
+  };
+
+  const pageChunks = chunkPickingLinesForPrint(lines, PICKING_LIST_LINES_PER_PAGE);
+  const totalPages = pageChunks.length;
+
+  const titleBlockHtml = `
       <div class="title-block">
         <p class="doc-title">${escapeHtml(docTitle)}</p>
         <p class="meta-line">Date: ${escapeHtml(dateLabel)}</p>
@@ -621,11 +669,32 @@ export function buildPickingListHtml({
         ${showRouteMetaLine ? `<p class="meta-line">Route: ${escapeHtml(meta.routeNames)}</p>` : ""}
         ${meta.vehicle ? `<p class="meta-line">Vehicle: ${escapeHtml(meta.vehicle)}</p>` : ""}
         ${meta.driver ? `<p class="meta-line">Driver: ${escapeHtml(meta.driver)}</p>` : ""}
-      </div>
+      </div>`;
+
+  const pagesHtml = pageChunks
+    .map((chunk, pageIndex) => {
+      const isFirst = pageIndex === 0;
+      const isLast = pageIndex === totalPages - 1;
+      const pageLabel =
+        totalPages > 1
+          ? `<p class="continued-label">${
+              isFirst
+                ? `Page ${pageIndex + 1} of ${totalPages}`
+                : `${escapeHtml(docTitle)} — continued · Page ${pageIndex + 1} of ${totalPages}`
+            }</p>`
+          : "";
+      return `
+  <div class="print-page">
+    <div class="sheet">
+      ${isFirst ? orgHeader : ""}
+      ${isFirst ? titleBlockHtml : ""}
+      ${pageLabel}
       ${tableHead}
-      ${linesBlock}
-      ${summaryHtml}
-      <div class="signatures">
+      ${linesBlockForChunk(chunk)}
+      ${isLast ? summaryHtml : ""}
+      ${
+        isLast
+          ? `<div class="signatures">
         <div>
           <h3>Picked by</h3>
           <div class="line">Signature: _________________________</div>
@@ -638,10 +707,24 @@ export function buildPickingListHtml({
           <div class="line">Name: _________________________</div>
           <div class="line">Date: _________________________</div>
         </div>
-      </div>
-      ${footerHtml}
+      </div>`
+          : ""
+      }
+      ${isLast ? footerHtml : ""}
     </div>
-  </div>
+  </div>`;
+    })
+    .join("");
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(docTitle)}</title>
+  <style>${pickingListPrintStyles(generalSettings, { salesLayout, includeShelfLocation })}</style>
+</head>
+<body class="has-doc-print-edge-footer">
+  ${pagesHtml}
   ${buildDocumentPrintEdgeFooterHtml({
     printedBy: printedByName,
     printedAt,
