@@ -86,8 +86,9 @@ export function AttendanceClockDevicesSettings() {
         <div>
           <h4 className="text-sm font-medium text-slate-900">Clock devices</h4>
           <p className="mt-1 text-xs text-slate-500">
-            Register Hikvision (or compatible) fingerprint terminals. Use the same person ID on the
-            device as the employee code in Centrix (e.g. EMP#0001 or 0001).
+            Centrix is cloud-hosted and cannot reach a LAN device IP directly. Register the terminal
+            here, then run the local <strong>attendance agent</strong> on an office PC (same network
+            as the Hikvision) to push punches to Centrix.
           </p>
         </div>
         <button
@@ -95,7 +96,7 @@ export function AttendanceClockDevicesSettings() {
           onClick={() => setHelpOpen(true)}
           className="text-xs font-medium text-[#185FA5] hover:underline"
         >
-          Terminal setup guide
+          Cloud + LAN setup guide
         </button>
       </div>
 
@@ -116,14 +117,8 @@ export function AttendanceClockDevicesSettings() {
               <p className="text-xs text-slate-500">{device.location || "Location not set"}</p>
               {device.host ? (
                 <p className="mt-0.5 font-mono text-xs text-slate-500">
-                  {device.use_https ? "https" : "http"}://{device.host}
-                  {device.port ? `:${device.port}` : ""}
-                </p>
-              ) : null}
-              {device.last_synced_at ? (
-                <p className="mt-0.5 text-xs text-slate-400">
-                  Last sync {String(device.last_synced_at).replace("T", " ").slice(0, 16)}
-                  {device.last_sync_error ? ` · ${device.last_sync_error}` : ""}
+                  LAN {device.use_https ? "https" : "http"}://{device.host}
+                  {device.port ? `:${device.port}` : ""} (for local agent)
                 </p>
               ) : null}
             </li>
@@ -150,7 +145,7 @@ export function AttendanceClockDevicesSettings() {
             className={inputClassName()}
           />
         </Field>
-        <Field label="Device IP / host (Hikvision ISAPI)">
+        <Field label="Device LAN IP (for local agent notes)">
           <input
             type="text"
             value={form.host}
@@ -183,7 +178,7 @@ export function AttendanceClockDevicesSettings() {
             type="password"
             value={form.password}
             onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-            placeholder="Device admin password"
+            placeholder="Stored for admin reference / agent setup"
             className={inputClassName()}
             autoComplete="new-password"
           />
@@ -194,7 +189,7 @@ export function AttendanceClockDevicesSettings() {
             checked={form.use_https}
             onChange={(e) => setForm((p) => ({ ...p, use_https: e.target.checked }))}
           />
-          Use HTTPS
+          Device uses HTTPS on LAN
         </label>
         <div className="sm:col-span-2">
           <PrimaryButton
@@ -216,7 +211,7 @@ export function AttendanceClockDevicesSettings() {
 function AttendanceClockDeviceHelpModal({ open, onClose }) {
   return (
     <FormModal
-      title="Hikvision clock terminal setup"
+      title="Cloud Centrix + LAN Hikvision"
       open={open}
       onClose={onClose}
       onSubmit={onClose}
@@ -224,26 +219,27 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
     >
       <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
         <li>
-          Put the terminal on the LAN with a static IP. Enable <strong>ISAPI</strong> in the device
-          web UI (Network → Advanced → Integration protocol).
+          Centrix runs in the <strong>cloud</strong>. Your Hikvision has a <strong>local LAN IP</strong>{" "}
+          with internet — the cloud cannot poll that IP. A small{" "}
+          <strong>attendance agent</strong> on an office PC bridges them.
         </li>
         <li>
-          Enroll each person on the terminal using the same ID as Centrix{" "}
-          <strong>employee code</strong> (full <code>EMP#0001</code> or the numeric suffix).
+          On the terminal: static LAN IP, enable <strong>ISAPI</strong>, enroll staff with the same
+          ID as Centrix <strong>employee code</strong> (<code>EMP#0001</code> or <code>0001</code>).
         </li>
         <li>
-          Register the device here with a unique device number (e.g. <strong>TERMINAL-01</strong>)
-          plus the device IP, username, and password.
+          Register the device here with a unique <strong>device number</strong> (e.g.{" "}
+          <code>TERMINAL-01</code>). Note the LAN IP for the agent config.
         </li>
         <li>
-          Centrix pulls punches every 5 minutes via{" "}
-          <code>php artisan erp:sync-hikvision-attendance</code> (also scheduled). Live sessions
-          appear on HR → Attendance.
+          On a PC on the same LAN, run <code>attendance-agent/</code>: copy{" "}
+          <code>config.example.json</code> → <code>config.json</code>, set Centrix API URL + token,
+          device number, and Hikvision LAN IP, then <code>npm start</code> (or Task Scheduler every
+          5 minutes with <code>npm run once</code>).
         </li>
         <li>
-          Manual / middleware integrations can also POST to{" "}
-          <code>/api/v1/attendance/clock-punch</code> with{" "}
-          <code>employee_code</code>, <code>device_no</code>, and optional <code>punched_at</code>.
+          The agent polls the device locally and POSTs punches to{" "}
+          <code>/api/v1/attendance/clock-punch</code>. Sessions appear on HR → Attendance.
         </li>
       </ol>
     </FormModal>

@@ -1003,6 +1003,21 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
     superseded_sale_id: openCart.superseded_sale_id ?? null,
     offline_client_sale_uuid: openCart.offline_client_sale_uuid ?? null,
     offline_edit_snapshot: openCart.offline_edit_snapshot ?? null,
+    // Keep previous-order edit session markers so Alt+P / F8 still open Payment
+    // Breakdown for top-up / return after the till continues offline.
+    ...(openCart.original_order_total != null
+      ? { original_order_total: Number(openCart.original_order_total) }
+      : {}),
+    ...(Array.isArray(openCart.payment_adjustments) && openCart.payment_adjustments.length
+      ? { payment_adjustments: openCart.payment_adjustments }
+      : {}),
+    ...(openCart._editDraftDirty ? { _editDraftDirty: true } : {}),
+    ...(openCart.payment_method_code
+      ? { payment_method_code: openCart.payment_method_code }
+      : {}),
+    ...(openCart.is_credit_sale != null
+      ? { is_credit_sale: Boolean(openCart.is_credit_sale) }
+      : {}),
     migrated_from_online_cart_id: migratedFrom,
     // Keep the Cash Sales # the till was already showing — otherwise the first
     // offline add falls through to a stale IndexedDB seq (e.g. UI #32 → print #14).

@@ -377,6 +377,19 @@ function editedOrderHasLocalDraftChanges(cart) {
   return Boolean(cart._editDraftDirty);
 }
 
+/**
+ * True when Alt+P / F8 / F10 must collect top-up or return method.
+ * Recovers after offline outage migration drops `_editDraftDirty` while the bill still changed.
+ */
+function previousOrderEditNeedsPaymentBreakdown(cart, sourceSale, { cashRound = false } = {}) {
+  if (!isPreviousOrderEditSession(cart)) return false;
+  const delta = computePreviousOrderEditPaymentDelta(sourceSale, cart, { cashRound });
+  if (!delta.type || !(Number(delta.amount) > 0)) return false;
+  if (editedOrderHasLocalDraftChanges(cart)) return true;
+  // Offline continue / remount can lose the dirty flag — still prompt when totals differ.
+  return Boolean(cart?.offline || cart?.offline_client_sale_uuid);
+}
+
 function withEditDraftDirty(cart) {
   if (!cart?.held_order_num) return cart;
   return { ...cart, _editDraftDirty: true };
@@ -2519,8 +2532,14 @@ export function PosScreen({ standalone = false }) {
     if (!cartNow?.superseded_sale_id && !cartNow?.offline_client_sale_uuid) {
       return cartNow;
     }
-    // Payment method / top-up / return only when the cashier actually changed the order.
-    if (!options.force && !editedOrderHasLocalDraftChanges(cartNow)) {
+    // Payment method / top-up / return only when the bill actually changed.
+    // Offline outage can drop `_editDraftDirty` — still prompt from the delta.
+    if (
+      !options.force &&
+      !previousOrderEditNeedsPaymentBreakdown(cartNow, editSourceSale, {
+        cashRound: enablePosCashRounding,
+      })
+    ) {
       return cartNow;
     }
     const delta = computePreviousOrderEditPaymentDelta(editSourceSale, cartNow, {
@@ -3325,7 +3344,13 @@ export function PosScreen({ standalone = false }) {
     if (!isCartEditSession) return null;
     // Untouched previous orders must use the normal payment panel (or Alt+P reprint),
     // never top-up/return breakdown.
-    if (!editedOrderHasLocalDraftChanges(cart)) return null;
+    if (
+      !previousOrderEditNeedsPaymentBreakdown(cart, editSourceSale, {
+        cashRound: enablePosCashRounding,
+      })
+    ) {
+      return null;
+    }
     const delta = computePreviousOrderEditSignedDelta(editSourceSale, cart, {
       cashRound: enablePosCashRounding,
     });
@@ -10657,7 +10682,7 @@ export function PosScreen({ standalone = false }) {
 
     const hasLines = (cartRef.current?.lines?.length ?? cart?.lines?.length ?? 0) > 0;
     const activeCart = cartRef.current ?? cart;
-    const editingPrevious = Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id);
+    const editingPrevious = isPreviousOrderEditSession(activeCart);
     const activeOfflineEdit = isActiveOfflineEditSession(activeCart);
     const editingQueuedOfflineSale = Boolean(
       activeOfflineEdit &&
@@ -10786,7 +10811,12 @@ export function PosScreen({ standalone = false }) {
       }
 
       // Same finish step as Alt+P — only when this previous order was actually changed.
-      if (editingPrevious && editedOrderHasLocalDraftChanges(activeCart)) {
+      if (
+        editingPrevious &&
+        previousOrderEditNeedsPaymentBreakdown(activeCart, editSourceSale, {
+          cashRound: enablePosCashRounding,
+        })
+      ) {
         try {
           if (kraFiscalize || lineBusyRef.current) {
             await runBlockingTask(waitForCartLineSavesToFinish, {
@@ -10811,9 +10841,10 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        if (!activeOfflineEdit) {
+        if (!activeOfflineEdit || offlineMode || activeCart?.offline) {
           // skipEditAutosaveRef is already true — force-queue so F8 / double-click leave
           // still syncs (and background-fiscalizes) without requiring Alt+P.
+          // Also queue while offline so the revise is waiting when the link returns.
           try {
             const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
             flushPreviousOrderEditOutboxInBackground(
@@ -11276,7 +11307,10 @@ export function PosScreen({ standalone = false }) {
         (activeEditCart?.superseded_sale_id || activeEditCart?.offline_client_sale_uuid),
     );
     const dirtyPreviousOrderEdit =
-      inPreviousOrderEdit && editedOrderHasLocalDraftChanges(activeEditCart);
+      inPreviousOrderEdit &&
+      previousOrderEditNeedsPaymentBreakdown(activeEditCart, editSourceSale, {
+        cashRound: enablePosCashRounding,
+      });
     // Invalidate stale sync refresh before queuing so background upload cannot
     // repaint this edit after we clear to a new order.
     const finishGeneration = inPreviousOrderEdit
@@ -13009,9 +13043,7 @@ export function PosScreen({ standalone = false }) {
         activeCart = adoptCartWithoutOptimisticFlags(activeCart);
       }
 
-      const isPreviousOrderEdit = Boolean(
-        activeCart?.held_order_num && activeCart?.superseded_sale_id,
-      );
+      const isPreviousOrderEdit = isPreviousOrderEditSession(activeCart);
 
       if (isPreviousOrderEdit) {
         const summary = summarizeLocalPosCart(activeCart);
@@ -13067,15 +13099,12 @@ export function PosScreen({ standalone = false }) {
           return;
         }
 
-        flashPosShortcutMessage(
-          previousOrderEditModeMessages(formatPosBrowseLabel(activeCart), {
-            offline: true,
-          }).f10,
-          { error: false },
-        );
-
-        // Offline previous-order F10: payment panel only when the receipt was actually changed.
-        if (!editedOrderHasLocalDraftChanges(activeCart)) {
+        // Offline previous-order F10: Payment Breakdown (same as Alt+P) when the bill changed.
+        if (
+          !previousOrderEditNeedsPaymentBreakdown(activeCart, editSourceSale, {
+            cashRound: enablePosCashRounding,
+          })
+        ) {
           flashPosShortcutMessage(
             "No updates on this receipt — print with Alt+P, or edit qty/items first.",
             { error: false },
@@ -13097,9 +13126,20 @@ export function PosScreen({ standalone = false }) {
           }
         }
 
-        setPaymentError(null);
-        parkScanForOverlay();
-        setPaymentOpen(true);
+        try {
+          await ensurePreviousOrderPaymentAdjustment(activeCart, {
+            confirmLabel: "Save & continue",
+          });
+        } catch (e) {
+          if (e instanceof Error && /cancel/i.test(e.message)) return;
+          flashPosShortcutMessage(
+            e instanceof Error
+              ? e.message
+              : "Enter how the refund or top-up was paid before completing this edit.",
+          );
+          return;
+        }
+        void handlePrintReceipt();
         return;
       }
 
@@ -13149,7 +13189,10 @@ export function PosScreen({ standalone = false }) {
     selectedLineCount,
     enableRetailPricing: posSalesConfig.enableRetailPricing,
     showCheckoutOnCreate: posSalesConfig.showCheckoutOnCreate,
-    isCartEditSession: Boolean(cart?.held_order_num && cart?.superseded_sale_id),
+    isCartEditSession: Boolean(
+      cart?.held_order_num &&
+        (cart?.superseded_sale_id || cart?.offline_client_sale_uuid),
+    ),
     hasPendingLineEntry: Boolean(selectedProduct && lineForm.product_code),
     modernOrderEditLocked,
     lineCount: cart?.lines?.length ?? 0,

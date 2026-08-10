@@ -1,0 +1,15 @@
+{
+  "name": "centrix-attendance-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "On-LAN bridge: poll Hikvision fingerprint terminals and push punches to Centrix cloud",
+  "type": "module",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "once": "node agent.js --once"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

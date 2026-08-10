@@ -87,6 +87,43 @@ describe("continueOpenCartThroughOutage", () => {
     expect(second.lines).toHaveLength(1);
   });
 
+  it("keeps previous-order edit markers so Payment Breakdown still opens offline", async () => {
+    const open = {
+      id: 88,
+      channel: "pos",
+      held_order_num: 12,
+      superseded_sale_id: 501,
+      original_order_total: 5000,
+      _editDraftDirty: true,
+      payment_method_code: "MPESA",
+      payment_adjustments: [
+        { adjustment_type: "topup", method_code: "CASH", amount: 500, provisional: true },
+      ],
+      lines: [
+        {
+          id: 1,
+          update_code: "L1",
+          product_code: "P1",
+          quantity: 1,
+          unit_price: 5500,
+          amount: 5500,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+
+    const local = await continueOpenCartThroughOutage(open, { branch_id: 1 });
+    expect(local.offline).toBe(true);
+    expect(local.held_order_num).toBe(12);
+    expect(local.superseded_sale_id).toBe(501);
+    expect(local.original_order_total).toBe(5000);
+    expect(local._editDraftDirty).toBe(true);
+    expect(local.payment_method_code).toBe("MPESA");
+    expect(local.payment_adjustments).toEqual([
+      { adjustment_type: "topup", method_code: "CASH", amount: 500, provisional: true },
+    ]);
+  });
+
   it("collapses duplicate optimistic rows for the same SKU when continuing offline", async () => {
     const open = {
       id: 77,

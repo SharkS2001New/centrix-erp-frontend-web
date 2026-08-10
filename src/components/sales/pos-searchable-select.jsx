@@ -20,6 +20,8 @@ const LIST_MAX_HEIGHT = 240;
 const MENU_GAP = 4;
 const MIN_PANEL_WIDTH = 224; // 14rem — room for names; trigger can be narrower in toolbars
 const VIEWPORT_EDGE_PADDING = 8;
+/** Above POS/session dialogs (z-50…z-90) so the list is never clipped behind the modal. */
+const MENU_Z_INDEX = 200;
 
 function isSelectableOption(option) {
   return Boolean(option) && !option.isHeader && !option.groupHeader;
@@ -220,7 +222,7 @@ export const PosSearchableSelect = forwardRef(function PosSearchableSelect(
         position: "fixed",
         left,
         width: menuWidth,
-        zIndex: 60,
+        zIndex: MENU_Z_INDEX,
         height: panelHeight,
         ...(openUp
           ? { bottom: window.innerHeight - rect.top + MENU_GAP }

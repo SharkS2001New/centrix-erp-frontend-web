@@ -124,6 +124,18 @@ describe("computePreviousOrderEditPaymentDelta", () => {
     expect(delta.amount).toBe(6516.66);
     expect(delta.originalTotal).toBe(5993.34);
   });
+
+  it("detects top-up for offline pending-sync edits without superseded_sale_id", () => {
+    const cart = {
+      held_order_num: 42,
+      offline_client_sale_uuid: "uuid-offline-1",
+      original_order_total: 10000,
+      lines: [{ product_code: "A1", quantity: 1, unit_price: 12000, amount: 12000 }],
+    };
+    const delta = computePreviousOrderEditPaymentDelta({ order_total: 10000 }, cart);
+    expect(delta.type).toBe("topup");
+    expect(delta.amount).toBe(2000);
+  });
 });
 
 describe("normalizePreviousOrderEditTenders / rebuildPreviousOrderEditTenders", () => {

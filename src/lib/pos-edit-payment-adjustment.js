@@ -191,7 +191,13 @@ export function reconcilePreviousOrderEditAdjustments(
  * @param {{ cashRound?: boolean }} [options]
  */
 export function computePreviousOrderEditPaymentDelta(sourceSale, cart, options = {}) {
-  if (!cart?.held_order_num || !cart?.superseded_sale_id) {
+  // Online revise uses superseded_sale_id; offline / pending-sync revise uses
+  // offline_client_sale_uuid. Both need top-up / return Payment Breakdown.
+  const isPreviousOrderEdit = Boolean(
+    cart?.held_order_num &&
+      (cart?.superseded_sale_id || cart?.offline_client_sale_uuid),
+  );
+  if (!isPreviousOrderEdit) {
     return { amount: 0, type: null, originalTotal: 0, newTotal: 0 };
   }
   // Prefer the total locked when the edit session started — browse snapshots and
