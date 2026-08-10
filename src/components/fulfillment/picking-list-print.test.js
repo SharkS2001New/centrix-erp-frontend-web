@@ -25,18 +25,53 @@ describe("isSalesPickingLayout", () => {
 });
 
 describe("chunkPickingLinesForPrint", () => {
-  it("pages lines at 24 per sheet by default", () => {
-    const lines = Array.from({ length: 50 }, (_, i) => ({ line_no: i + 1 }));
-    const chunks = chunkPickingLinesForPrint(lines);
-    expect(PICKING_LIST_LINES_PER_PAGE).toBe(24);
-    expect(chunks).toHaveLength(3);
-    expect(chunks[0]).toHaveLength(24);
-    expect(chunks[1]).toHaveLength(24);
-    expect(chunks[2]).toHaveLength(2);
+  it("packs by estimated height so short rows fill the page denser than tall ones", () => {
+    const shortLines = Array.from({ length: 50 }, (_, i) => ({
+      line_no: i + 1,
+      product_name: `ITEM ${i + 1}`,
+      quantity_label: "1 Bag",
+    }));
+    const shortChunks = chunkPickingLinesForPrint(shortLines);
+    expect(shortChunks[0].length).toBeGreaterThan(24);
+    expect(shortChunks[0].length).toBeLessThanOrEqual(PICKING_LIST_LINES_PER_PAGE);
+
+    const tallLines = Array.from({ length: 40 }, (_, i) => ({
+      line_no: i + 1,
+      product_name: `VERY LONG PRODUCT NAME THAT WRAPS ON THE SHEET ${i + 1}`,
+      quantity_label: "10 Bag, 30 kg, 12 kg extras",
+      retail_breakdown: "20 kg, 20 kg, 10 kg, 10 kg",
+      price_label: "2,250 per bag, 48 per kg, 12 per piece",
+    }));
+    const tallChunks = chunkPickingLinesForPrint(tallLines);
+    expect(tallChunks[0].length).toBeGreaterThan(0);
+    expect(tallChunks[0].length).toBeLessThan(shortChunks[0].length);
   });
 
   it("returns one empty chunk when there are no lines", () => {
     expect(chunkPickingLinesForPrint([])).toEqual([[]]);
+  });
+
+  it("breaks before an item that would not fit the remaining page budget", () => {
+    const lines = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        product_name: `A${i}`,
+        quantity_label: "1 Bag",
+      })),
+      {
+        product_name: "TALL",
+        quantity_label: "10 Bag, 30 kg",
+        retail_breakdown: "20 kg, 20 kg, 10 kg, 10 kg",
+        price_label: "2,250 per bag, 48 per kg",
+      },
+    ];
+    const chunks = chunkPickingLinesForPrint(lines, {
+      firstBudgetMm: 50,
+      continuedBudgetMm: 50,
+      summaryReserveMm: 10,
+      bottomSafetyMm: 5,
+    });
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.flat()).toHaveLength(lines.length);
   });
 });
 
@@ -67,8 +102,8 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toContain('class="print-page"');
   });
 
-  it("splits long lists across multiple print pages of 24 lines", () => {
-    const lines = Array.from({ length: 30 }, (_, i) => ({
+  it("splits long lists across multiple print pages by height, not a fixed 24", () => {
+    const lines = Array.from({ length: 45 }, (_, i) => ({
       product_name: `ITEM ${i + 1}`,
       quantity_label: "1 Bag",
       wholesale_unit_prices: [100],
@@ -84,11 +119,12 @@ describe("buildPickingListHtml sales layout", () => {
       layout: "sales",
     });
 
-    expect(html.match(/class="print-page"/g)?.length).toBe(2);
-    expect(html).toContain("Page 1 of 2");
-    expect(html).toContain("continued · Page 2 of 2");
+    const pageCount = html.match(/class="print-page"/g)?.length ?? 0;
+    expect(pageCount).toBeGreaterThan(1);
+    expect(html).toContain("Page 1 of");
+    expect(html).toContain("continued · Page");
     expect(html).toContain("ITEM 1");
-    expect(html).toContain("ITEM 30");
+    expect(html).toContain("ITEM 45");
   });
 
   it("formats wholesale and retail prices from structured line fields", () => {

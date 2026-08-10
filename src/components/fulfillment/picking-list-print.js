@@ -374,19 +374,95 @@ function buildSalesPickingLineRows(lines) {
     .join("");
 }
 
-/** Max line items per A4 print page — leaves room for header/footer so the last row is not clipped. */
-export const PICKING_LIST_LINES_PER_PAGE = 24;
+/** Soft upper bound only — real paging uses estimated row height vs A4 usable space. */
+export const PICKING_LIST_LINES_PER_PAGE = 40;
 
-/** Split picking lines into fixed-size page chunks for reliable A4 print pagination. */
-export function chunkPickingLinesForPrint(lines, perPage = PICKING_LIST_LINES_PER_PAGE) {
+/**
+ * A4 line-area budgets (mm). Leave bottom safety so the last row is never clipped.
+ * First page has org header + title; continuation pages only need a continued label + column head.
+ */
+export const PICKING_LIST_PAGE_BUDGET_MM = {
+  /** Line area after org header + title + column head on page 1. */
+  first: 205,
+  /** Line area after continued label + column head on later pages. */
+  continued: 255,
+  /** Summary box + signature blocks reserved on the last page only. */
+  summaryReserve: 52,
+  /** Extra empty margin after the last item on a page. */
+  bottomSafety: 12,
+};
+
+/** Estimate print height of one picking row from its content (taller when multi-line). */
+export function estimatePickingLineHeightMm(line) {
+  let textLines = 1;
+  if (String(line?.retail_breakdown ?? "").trim()) textLines += 1;
+  const qty = String(line?.quantity_label ?? "").trim();
+  if (qty.length > 32) textLines += 1;
+  const price = String(line?.price_label ?? "").trim();
+  if (price.length > 40) textLines += 1;
+  const name = String(line?.product_name ?? "").trim();
+  if (name.length > 34) textLines += 1;
+  // Compact single-line row (~padding + 11pt text); extras for wrapped/ghost lines.
+  return 7.2 + Math.max(0, textLines - 1) * 4.0;
+}
+
+function sumEstimatedPickingHeightMm(lines) {
+  return (lines ?? []).reduce((sum, line) => sum + estimatePickingLineHeightMm(line), 0);
+}
+
+/**
+ * Pack lines onto A4 pages by estimated height: fill until the next item would not fit,
+ * then start a new page. Not a fixed item count — short rows pack denser than tall ones.
+ */
+export function chunkPickingLinesForPrint(lines, options = {}) {
   const rows = Array.isArray(lines) ? lines : [];
-  const size = Math.max(1, Number(perPage) || PICKING_LIST_LINES_PER_PAGE);
   if (rows.length === 0) return [[]];
-  const chunks = [];
-  for (let i = 0; i < rows.length; i += size) {
-    chunks.push(rows.slice(i, i + size));
+
+  const firstBudget = Number(options.firstBudgetMm ?? PICKING_LIST_PAGE_BUDGET_MM.first);
+  const continuedBudget = Number(options.continuedBudgetMm ?? PICKING_LIST_PAGE_BUDGET_MM.continued);
+  const summaryReserve = Number(options.summaryReserveMm ?? PICKING_LIST_PAGE_BUDGET_MM.summaryReserve);
+  const bottomSafety = Number(options.bottomSafetyMm ?? PICKING_LIST_PAGE_BUDGET_MM.bottomSafety);
+
+  const pages = [];
+  let index = 0;
+  let pageIndex = 0;
+
+  while (index < rows.length) {
+    const fullBudget =
+      (pageIndex === 0 ? firstBudget : continuedBudget) - bottomSafety;
+    const chunk = [];
+    let used = 0;
+
+    while (index < rows.length) {
+      const line = rows[index];
+      const height = estimatePickingLineHeightMm(line);
+      const remainingAfter = rows.slice(index + 1);
+      const remainingHeight = sumEstimatedPickingHeightMm(remainingAfter);
+      // If everything left (including this line) fits with summary, reserve summary space.
+      const restWithThis = height + remainingHeight;
+      const budget =
+        restWithThis + summaryReserve <= fullBudget
+          ? fullBudget - summaryReserve
+          : fullBudget;
+
+      if (chunk.length > 0 && used + height > budget) {
+        break;
+      }
+      chunk.push(line);
+      used += height;
+      index += 1;
+    }
+
+    if (chunk.length === 0) {
+      // Pathological oversized row — still emit it alone so printing never stalls.
+      chunk.push(rows[index]);
+      index += 1;
+    }
+    pages.push(chunk);
+    pageIndex += 1;
   }
-  return chunks;
+
+  return pages;
 }
 
 function pickingListPrintStyles(
@@ -405,10 +481,10 @@ function pickingListPrintStyles(
     /* One physical A4 sheet per .print-page — do not rely on browser auto-fragmentation alone. */
     .print-page {
       width: 210mm;
-      min-height: 297mm;
       box-sizing: border-box;
       padding: ${px(24)};
-      padding-bottom: 18mm;
+      /* Safety margin so the last row is not clipped by printer edges / footers. */
+      padding-bottom: 12mm;
       overflow: visible;
       page-break-after: always;
       break-after: page;
@@ -501,8 +577,7 @@ function pickingListPrintStyles(
       body { font-size: ${px(12, true)}; }
       .print-page {
         width: 210mm;
-        min-height: 297mm;
-        padding: ${px(8, true)} ${px(4, true)} 18mm;
+        padding: ${px(8, true)} ${px(4, true)} 12mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -564,8 +639,7 @@ function pickingListPrintStyles(
       body { font-size: ${px(12, true)}; }
       .print-page {
         width: 210mm;
-        min-height: 297mm;
-        padding: ${px(8, true)} ${px(4, true)} 18mm;
+        padding: ${px(8, true)} ${px(4, true)} 12mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -658,7 +732,7 @@ export function buildPickingListHtml({
       : `<div class="pick-line-wrap"><div class="pick-line empty">No products to pick</div></div>`;
   };
 
-  const pageChunks = chunkPickingLinesForPrint(lines, PICKING_LIST_LINES_PER_PAGE);
+  const pageChunks = chunkPickingLinesForPrint(lines);
   const totalPages = pageChunks.length;
 
   const titleBlockHtml = `
