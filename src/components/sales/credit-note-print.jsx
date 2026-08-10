@@ -43,8 +43,15 @@ function buildCustomerReturnLineRows(lines, uomById, customerReturn) {
 
   return (lines ?? []).map((line) => {
     const qty = customerReturnLineQtyLabel(line, uomById, "return_qty", legacyOptions);
-    const unitPrice = Number(line.unit_price ?? 0);
     const amount = Number(line.amount ?? 0);
+    const returnQty = Number(line.return_qty ?? line.quantity ?? 0);
+    const storedDisplay = Number(line.display_unit_price ?? line.unit_price ?? 0);
+    const unitPrice =
+      returnQty > 0 && amount > 0
+        ? Math.round((amount / returnQty) * 100) / 100
+        : Number.isFinite(storedDisplay)
+          ? storedDisplay
+          : 0;
     return {
       description: line.product_name ?? line.product_code ?? "—",
       qty,

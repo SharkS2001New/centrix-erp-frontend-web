@@ -10,6 +10,7 @@ import {
   ReturnStatusBadge,
   customerReturnLineQtyLabel,
   customerReturnReturnedByName,
+  customerReturnSoldUnitPrice,
   normalizeReturnStatus,
   refundMethodLabel,
   stockLocationLabel,
@@ -245,7 +246,9 @@ export function CustomerReturnDetailModal({
                           returnKind: row.return_kind,
                         })}
                       </td>
-                      <td className="px-3 py-2 text-right">{formatSaleKes(line.unit_price)}</td>
+                      <td className="px-3 py-2 text-right">
+                        {formatSaleKes(customerReturnSoldUnitPrice(line))}
+                      </td>
                       <td className="px-3 py-2 text-right font-medium">{formatSaleKes(line.amount)}</td>
                     </tr>
                   ))}

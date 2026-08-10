@@ -211,6 +211,8 @@ export function emptyReturnLineFromSaleItem(item) {
     max_return_qty: maxReturnQty,
     return_qty: 0,
     unit_price: unitPrice,
+    display_unit_price:
+      item.display_unit_price != null ? Number(item.display_unit_price) : undefined,
     line_total: Number(item.line_total ?? item.amount ?? 0),
     amount: 0,
     line_no: item.line_no ?? null,
@@ -218,6 +220,26 @@ export function emptyReturnLineFromSaleItem(item) {
     display_uom_mode: item.display_uom_mode ?? "centrix",
     full_return: Boolean(item.full_return),
   };
+}
+
+/** Cashier-facing sold unit for return tables — prefer display / amount÷qty over amortized base. */
+export function customerReturnSoldUnitPrice(line) {
+  const storedDisplay = Number(line?.display_unit_price);
+  if (Number.isFinite(storedDisplay) && storedDisplay > 0) return storedDisplay;
+
+  const returnQty = Number(line?.return_qty ?? 0);
+  const amount = Number(line?.amount ?? 0);
+  if (returnQty > 0 && amount > 0) {
+    return Math.round((amount / returnQty) * 100) / 100;
+  }
+
+  const soldQty = Number(line?.quantity_sold ?? line?.max_return_qty ?? 0);
+  const lineTotal = Number(line?.line_total ?? 0);
+  if (soldQty > 0 && lineTotal > 0) {
+    return Math.round((lineTotal / soldQty) * 100) / 100;
+  }
+
+  return Number(line?.unit_price ?? 0) || 0;
 }
 
 export function recalcReturnLine(line) {

@@ -19,6 +19,7 @@ import {
   resolveReturnReason,
   customerReturnLineQtyLabel,
   customerReturnLineUnitLabel,
+  customerReturnSoldUnitPrice,
   emptyReturnLineFromSaleItem,
   initReturnLineCounts,
   parseInvoiceNumber,
@@ -574,7 +575,9 @@ export function CustomerReturnForm({
                       </p>
                     ) : null}
                   </td>
-                  <td className="px-3 py-3 text-right text-slate-600">{formatSaleKes(line.unit_price)}</td>
+                  <td className="px-3 py-3 text-right text-slate-600">
+                    {formatSaleKes(customerReturnSoldUnitPrice(line))}
+                  </td>
                   <td className="px-3 py-3 text-right font-medium text-slate-900">
                     {formatSaleKes(line.amount)}
                   </td>

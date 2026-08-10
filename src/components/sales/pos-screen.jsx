@@ -6690,7 +6690,10 @@ export function PosScreen({ standalone = false }) {
         ...row,
         quantity: computed.baseQty,
         unit_price: computed.unitPricePerBase,
+        display_unit_price: computed.displayUnitPrice,
+        amount: computed.lineAmount,
         discount_given: computed.discountApplied,
+        product_vat: lineProductVat(product, computed.lineAmount),
       });
     }
 
@@ -6975,6 +6978,12 @@ export function PosScreen({ standalone = false }) {
 
   async function rebuildCart(remainingLines) {
     if (!cart?.id) return;
+    if (!isServerPosCartId(cart.id) || usesLocalPosCartWorkspace(cart)) {
+      const nextCart = { ...cart, lines: remainingLines };
+      cartRef.current = nextCart;
+      setCart(nextCart);
+      return;
+    }
     await apiRequest(`/sales/carts/${cart.id}/lines`, { method: "DELETE" });
     for (const row of remainingLines) {
       await apiRequest(`/sales/carts/${cart.id}/lines`, {
@@ -6983,9 +6992,13 @@ export function PosScreen({ standalone = false }) {
           product_code: row.product_code,
           quantity: row.quantity,
           unit_price: row.unit_price,
+          display_unit_price:
+            row.display_unit_price != null ? Number(row.display_unit_price) : undefined,
+          amount: row.amount != null ? Number(row.amount) : undefined,
           uom: row.uom,
           on_wholesale_retail: row.on_wholesale_retail,
           discount_given: Number(row.discount_given ?? 0),
+          product_vat: row.product_vat != null ? Number(row.product_vat) : undefined,
         },
       });
     }
@@ -8296,6 +8309,35 @@ export function PosScreen({ standalone = false }) {
     if (updatedCount <= 0) return 0;
     cartRef.current = pricedCart;
     setCart(pricedCart);
+    // Keep TemporaryCart in sync so F8 checkout saves the marked-up amounts shown.
+    if (
+      isServerPosCartId(pricedCart.id) &&
+      !usesLocalPosCartWorkspace(pricedCart) &&
+      !isServerCartConsumed(pricedCart.id)
+    ) {
+      const cartId = Number(pricedCart.id);
+      void apiRequest(`/sales/carts/${cartId}/lines`, {
+        method: "PUT",
+        body: {
+          lines: (pricedCart.lines ?? []).map((line) => ({
+            product_code: line.product_code,
+            quantity: Math.max(0.0001, Number(line.quantity) || 0),
+            unit_price: Number(line.unit_price ?? 0),
+            display_unit_price:
+              line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+            amount: line.amount != null ? Number(line.amount) : undefined,
+            uom: line.uom ?? undefined,
+            on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
+            discount_given: Number(line.discount_given ?? 0) || 0,
+            product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+          })),
+          order_discount: Number(pricedCart.order_discount ?? 0) || 0,
+        },
+        ...POS_CART_REQUEST,
+      }).catch(() => {
+        /* local cart already shows sold prices; next line edit will retry sync */
+      });
+    }
     const sample = changes
       .slice(0, 2)
       .map((c) => `${c.product_name}: ${formatSaleKes(c.from)} → ${formatSaleKes(c.to)}`)
