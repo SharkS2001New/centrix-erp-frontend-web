@@ -55,6 +55,7 @@ import {
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
+import { vatFromInclusiveGross, vatRateFromProduct } from "@/lib/sales-vat";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
 import { rebuildPreviousOrderEditTenders, paymentRowsFromPreviousOrderEditTenders } from "@/lib/pos-edit-payment-adjustment";
 
@@ -552,6 +553,19 @@ export function isServerPosCartId(id) {
 let backgroundPreviousOrderEditSyncDepth = 0;
 let backgroundPreviousOrderEditSyncCartId = null;
 
+/**
+ * Online TemporaryCart mid-sale occupancy (IDB often stays empty for live tills).
+ * Memory + localStorage so background outbox sync in this tab (and siblings) can
+ * defer instead of wiping / PUT-replacing the cashier's open sale.
+ */
+const LIVE_TEMPORARY_CART_LS_KEY = "centrix.pos.live_temporary_cart_v1";
+const LIVE_TEMPORARY_CART_TTL_MS = 2 * 60 * 60 * 1000;
+
+let liveTemporaryCartOccupancy = null;
+
+export const POS_TILL_BUSY_SYNC_MESSAGE =
+  "Cannot sync this previous-order edit while a new sale is open on the till. Clear or finish the current order, then open Sync failed and retry.";
+
 export function isBackgroundPreviousOrderEditSyncActive() {
   return backgroundPreviousOrderEditSyncDepth > 0;
 }
@@ -561,9 +575,157 @@ export function getBackgroundPreviousOrderEditSyncCartId() {
 }
 
 export function isPreviousOrderEditTillBusyError(err) {
-  return /Cannot sync this previous-order edit while a new sale is open/i.test(
+  return /Cannot sync .+ while a new sale is open on the till/i.test(
     String(err?.message ?? err ?? ""),
   );
+}
+
+/** True when the local IndexedDB active cart looks mid-sale / mid-edit. */
+export function isLocalPosCartBusy(local) {
+  return (
+    (local?.lines?.length ?? 0) > 0 ||
+    Boolean(local?.offline_client_sale_uuid) ||
+    Boolean(local?.held_order_num && local?.superseded_sale_id)
+  );
+}
+
+/**
+ * Sticky TemporaryCart has new-sale lines that do not belong to this previous-order edit.
+ * (Edit carts with superseded_sale_id are excluded — same rule as before.)
+ */
+export function stickyCartHasForeignNewSaleLines(
+  cart,
+  { editSaleId = 0, editOrderNum = 0 } = {},
+) {
+  if ((cart?.lines?.length ?? 0) === 0) return false;
+  const saleId = Number(editSaleId ?? 0);
+  const orderNum = Number(editOrderNum ?? 0);
+  const stickyIsThisEdit =
+    (saleId > 0 && Number(cart?.superseded_sale_id) === saleId) ||
+    (orderNum > 0 && Number(cart?.held_order_num) === orderNum);
+  if (stickyIsThisEdit) return false;
+  if (Number(cart?.superseded_sale_id) > 0) return false;
+  return true;
+}
+
+function writeLiveTemporaryCartOccupancy(next) {
+  liveTemporaryCartOccupancy = next;
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (!next) {
+      localStorage.removeItem(LIVE_TEMPORARY_CART_LS_KEY);
+      return;
+    }
+    localStorage.setItem(LIVE_TEMPORARY_CART_LS_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode / blocked storage */
+  }
+}
+
+/**
+ * Track when External POS is using an online TemporaryCart so outbox sync can defer.
+ * Call from the till whenever `cart` changes; pass null/empty to clear.
+ */
+export function setLiveTemporaryCartOccupancy(cart) {
+  const serverId = isServerPosCartId(cart?.id) ? Number(cart.id) : null;
+  const lineCount = Array.isArray(cart?.lines) ? cart.lines.length : 0;
+  const isEdit = Boolean(
+    cart?.held_order_num &&
+      (cart?.superseded_sale_id || cart?.offline_client_sale_uuid),
+  );
+  const offlineLocal =
+    Boolean(cart?.offline) ||
+    String(cart?.id ?? "") === "active" ||
+    String(cart?.id ?? "").startsWith("offline:") ||
+    String(cart?.id ?? "") === "pending-fresh";
+
+  if (!serverId || offlineLocal || (lineCount === 0 && !isEdit)) {
+    writeLiveTemporaryCartOccupancy(null);
+    return;
+  }
+
+  writeLiveTemporaryCartOccupancy({
+    cartId: serverId,
+    lineCount,
+    isEdit,
+    updatedAt: Date.now(),
+  });
+}
+
+export function clearLiveTemporaryCartOccupancy() {
+  writeLiveTemporaryCartOccupancy(null);
+}
+
+export function readLiveTemporaryCartOccupancy() {
+  const now = Date.now();
+  const fresh = (row) => {
+    if (!row?.updatedAt || now - Number(row.updatedAt) > LIVE_TEMPORARY_CART_TTL_MS) {
+      return null;
+    }
+    if ((row.lineCount ?? 0) > 0 || row.isEdit) return row;
+    return null;
+  };
+
+  const fromMemory = fresh(liveTemporaryCartOccupancy);
+  if (fromMemory) return fromMemory;
+
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(LIVE_TEMPORARY_CART_LS_KEY);
+    if (!raw) return null;
+    const parsed = fresh(JSON.parse(raw));
+    if (!parsed) {
+      localStorage.removeItem(LIVE_TEMPORARY_CART_LS_KEY);
+      return null;
+    }
+    liveTemporaryCartOccupancy = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the till UI owns an online TemporaryCart mid-sale / mid-edit. */
+export function isLiveTemporaryCartOccupied({ ignoreCartId = null } = {}) {
+  const occ = readLiveTemporaryCartOccupancy();
+  if (!occ) return false;
+  if (ignoreCartId != null && Number(occ.cartId) === Number(ignoreCartId)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Defer outbox sync when the till is mid-sale (local IDB and/or live TemporaryCart).
+ * Optionally wipe orphan sticky lines only when nothing claims the till.
+ */
+export async function assertPosTillAvailableForSync({
+  stickyCart = null,
+  editSaleId = 0,
+  editOrderNum = 0,
+  allowWipeOrphans = false,
+} = {}) {
+  const local = await idbGetLocalCart("active").catch(() => null);
+  if (isLocalPosCartBusy(local)) {
+    throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
+  }
+  if (isLiveTemporaryCartOccupied()) {
+    throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
+  }
+
+  if (
+    stickyCart &&
+    stickyCartHasForeignNewSaleLines(stickyCart, { editSaleId, editOrderNum })
+  ) {
+    // No live occupancy + empty IDB: leftover from a failed upload — safe to wipe
+    // when the caller is restoring a previous-order edit onto the sticky cart.
+    if (allowWipeOrphans) {
+      await wipeTemporaryCartLines(stickyCart);
+      return { wipedOrphans: true };
+    }
+  }
+
+  return { wipedOrphans: false };
 }
 
 /**
@@ -655,6 +817,14 @@ export function serverCartLinesToLocal(lines) {
     .map((line) => {
       const qty = Number(line.quantity ?? 0);
       if (!line?.product_code || !(qty > 0)) return null;
+      const amount =
+        line.amount != null && Number.isFinite(Number(line.amount))
+          ? Number(line.amount)
+          : undefined;
+      const productVatMoney =
+        line.product_vat != null && Number.isFinite(Number(line.product_vat))
+          ? Number(line.product_vat)
+          : undefined;
       return {
         client_line_id: String(
           line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
@@ -672,12 +842,40 @@ export function serverCartLinesToLocal(lines) {
           snapshotUomForPrint(line.product?.unit ?? line.product?.uom),
         on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
         discount_given: Number(line.discount_given ?? 0),
-        amount: line.amount != null ? Number(line.amount) : undefined,
-        product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
-        vat_rate: Number(line.vat_rate ?? line.tax_rate ?? line.product_vat ?? 0),
+        amount,
+        product_vat: productVatMoney,
+        // Never treat product_vat (money) as a percent — that inflated held-cart VAT.
+        vat_rate: resolveLocalLineVatRate(line, amount, productVatMoney),
       };
     })
     .filter(Boolean);
+}
+
+/**
+ * Percent VAT for a cart/sale line. Prefer explicit rate / nested product VAT;
+ * derive from inclusive amount + VAT money when needed. Never use product_vat as %.
+ */
+export function resolveLocalLineVatRate(line, amount = null, productVatMoney = null) {
+  const explicit = Number(line?.vat_rate ?? line?.tax_rate);
+  // Kenya rates are small percents (0/8/16). Values like 160 are VAT money, not rates.
+  if (Number.isFinite(explicit) && explicit >= 0 && explicit <= 100) {
+    return Math.round(explicit * 100) / 100;
+  }
+  const fromProduct = vatRateFromProduct(line?.product);
+  if (fromProduct > 0 && fromProduct <= 100) return Math.round(fromProduct * 100) / 100;
+
+  const gross =
+    amount != null && Number.isFinite(Number(amount))
+      ? Number(amount)
+      : Number(line?.amount ?? line?.line_total ?? 0);
+  const vatMoney =
+    productVatMoney != null && Number.isFinite(Number(productVatMoney))
+      ? Number(productVatMoney)
+      : Number(line?.product_vat ?? line?.vat_amount ?? 0);
+  if (vatMoney > 0.0001 && gross > vatMoney) {
+    return Math.round((vatMoney / (gross - vatMoney)) * 10000) / 100;
+  }
+  return 0;
 }
 
 /**
@@ -751,7 +949,7 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
           on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
           discount_given: Number(line.discount_given ?? 0),
           product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
-          vat_rate: Number(line.vat_rate ?? line.tax_rate ?? 0),
+          vat_rate: resolveLocalLineVatRate(line),
         };
       })
       .filter(Boolean),
@@ -785,6 +983,9 @@ export async function continueOpenCartThroughOutage(openCart, seed = {}) {
     customer_num: openCart.customer_num ?? null,
     customer_name_override: openCart.customer_name_override ?? null,
     order_discount: Number(openCart.order_discount ?? 0) || 0,
+    voucher_payment_amount: Number(openCart.voucher_payment_amount ?? 0) || 0,
+    points_payment_amount: Number(openCart.points_payment_amount ?? 0) || 0,
+    mpesa_payment_amount: Number(openCart.mpesa_payment_amount ?? 0) || 0,
     held_order_num: openCart.held_order_num ?? null,
     superseded_sale_id: openCart.superseded_sale_id ?? null,
     offline_client_sale_uuid: openCart.offline_client_sale_uuid ?? null,
@@ -940,9 +1141,15 @@ export function summarizeLocalPosCart(cart, { cashRound = false } = {}) {
         : Math.round(qty * price * 100) / 100;
     lineAmounts.push(amount);
     total += amount;
-    const rate = Number(line.vat_rate ?? line.tax_rate ?? 0);
-    if (rate > 0) {
-      vat += Math.round(((amount * rate) / (100 + rate)) * 100) / 100;
+
+    const storedVat = Number(line.product_vat ?? line.vat_amount ?? 0);
+    if (storedVat > 0.0001) {
+      vat += Math.round(storedVat * 100) / 100;
+    } else {
+      const rate = resolveLocalLineVatRate(line, amount, null);
+      if (rate > 0) {
+        vat += vatFromInclusiveGross(amount, rate);
+      }
     }
   }
   const orderDiscount = Math.min(
@@ -960,11 +1167,19 @@ export function summarizeLocalPosCart(cart, { cashRound = false } = {}) {
     total = Math.round(Math.max(0, total - orderDiscount) * 100) / 100;
   }
   vat = Math.round(vat * 100) / 100;
+  const voucherPayment = Math.max(0, Number(cart?.voucher_payment_amount ?? 0) || 0);
+  const pointsPayment = Math.max(0, Number(cart?.points_payment_amount ?? 0) || 0);
+  const mpesaPayment = Math.max(0, Number(cart?.mpesa_payment_amount ?? 0) || 0);
+  const prepaid = Math.round((voucherPayment + pointsPayment + mpesaPayment) * 100) / 100;
+  const amountDue = Math.max(0, Math.round((total - prepaid) * 100) / 100);
   return {
     total,
     vat,
-    amountDue: total,
+    amountDue,
     lineCount: lines.length,
+    voucherPayment,
+    pointsPayment,
+    mpesaPayment,
   };
 }
 
@@ -2220,17 +2435,6 @@ async function resolvePreviousOrderEditCartId(row) {
     // cashier's in-progress new sale — that left previous-order lines on the next ticket
     // when this sync later failed.
     try {
-      const local = await idbGetLocalCart("active").catch(() => null);
-      const localBusy =
-        (local?.lines?.length ?? 0) > 0 ||
-        Boolean(local?.offline_client_sale_uuid) ||
-        Boolean(local?.held_order_num && local?.superseded_sale_id);
-      if (localBusy) {
-        throw new Error(
-          "Cannot sync this previous-order edit while a new sale is open on the till. Clear or finish the current order, then open Sync failed and retry.",
-        );
-      }
-
       const seed = {
         channel: "pos",
         ...(row.cart_seed?.branch_id ? { branch_id: row.cart_seed.branch_id } : {}),
@@ -2244,19 +2448,12 @@ async function resolvePreviousOrderEditCartId(row) {
       });
       const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? saleId ?? 0);
       const editOrderNum = Number(row.order_num ?? 0);
-      const stickyIsThisEdit =
-        (editSaleId > 0 && Number(sticky?.superseded_sale_id) === editSaleId) ||
-        (editOrderNum > 0 && Number(sticky?.held_order_num) === editOrderNum);
-      const stickyHasForeignLines =
-        (sticky?.lines?.length ?? 0) > 0 &&
-        !stickyIsThisEdit &&
-        !(Number(sticky?.superseded_sale_id) > 0);
-      if (stickyHasForeignLines) {
-        // Till UI is free (local empty) but TemporaryCart still holds leftover lines
-        // from a failed upload — wipe then proceed. Never restore-to-cart over a
-        // live sale (localBusy already threw above).
-        await wipeTemporaryCartLines(sticky);
-      }
+      await assertPosTillAvailableForSync({
+        stickyCart: sticky,
+        editSaleId,
+        editOrderNum,
+        allowWipeOrphans: true,
+      });
     } catch (guardErr) {
       if (isPreviousOrderEditTillBusyError(guardErr)) {
         throw guardErr;
@@ -2275,32 +2472,18 @@ async function resolvePreviousOrderEditCartId(row) {
 
   if (cartId) {
     try {
-      const local = await idbGetLocalCart("active").catch(() => null);
-      const localBusy =
-        (local?.lines?.length ?? 0) > 0 ||
-        Boolean(local?.offline_client_sale_uuid) ||
-        Boolean(local?.held_order_num && local?.superseded_sale_id);
       const existing = await apiRequest(`/sales/carts/${cartId}`, {
         loading: false,
         reportIssues: false,
       });
       const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
       const editOrderNum = Number(row.order_num ?? 0);
-      const stickyIsThisEdit =
-        (editSaleId > 0 && Number(existing?.superseded_sale_id) === editSaleId) ||
-        (editOrderNum > 0 && Number(existing?.held_order_num) === editOrderNum);
-      const stickyHasForeignLines =
-        (existing?.lines?.length ?? 0) > 0 &&
-        !stickyIsThisEdit &&
-        !(Number(existing?.superseded_sale_id) > 0);
-      if (stickyHasForeignLines && localBusy) {
-        throw new Error(
-          "Cannot sync this previous-order edit while a new sale is open on the till. Clear or finish the current order, then open Sync failed and retry.",
-        );
-      }
-      if (stickyHasForeignLines && !localBusy) {
-        await wipeTemporaryCartLines(existing);
-      }
+      await assertPosTillAvailableForSync({
+        stickyCart: existing,
+        editSaleId,
+        editOrderNum,
+        allowWipeOrphans: true,
+      });
       return cartId;
     } catch (err) {
       if (isPreviousOrderEditTillBusyError(err)) {
@@ -2640,6 +2823,13 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
   const cartId = cart?.id;
   if (!cartId) throw new Error("Could not create sync cart.");
 
+  // Sticky TemporaryCart is shared with the live till. Never PUT-replace a cashier's
+  // open online sale (IDB is often empty for live TemporaryCart workspaces).
+  await assertPosTillAvailableForSync({
+    stickyCart: cart,
+    allowWipeOrphans: false,
+  });
+
   // Sticky TemporaryCart is reused per cashier+channel — REPLACE lines so leftover
   // draft/online lines are not appended onto the offline snapshot (extra items / qty blow-up).
   const orderDiscount = Number(row.order_discount ?? 0);
@@ -2665,7 +2855,10 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
     });
   } catch (err) {
     // Leave TemporaryCart blank so the next live till sale cannot inherit these lines.
-    await wipeTemporaryCartLines({ id: cartId, lines: [{}] }).catch(() => {});
+    // Do not wipe when the till was busy — that error is thrown before PUT.
+    if (!isPreviousOrderEditTillBusyError(err)) {
+      await wipeTemporaryCartLines({ id: cartId, lines: [{}] }).catch(() => {});
+    }
     throw err;
   }
 }
@@ -4248,7 +4441,7 @@ export async function syncPosOfflineOutbox({
           pos_order_num: listedPosTicket,
           message: cashSalesProgressLabel
             ? `Deferred ${cashSalesProgressLabel} — till is busy…`
-            : "Deferred previous-order edit — till is busy…",
+            : "Deferred sync — till is busy…",
         });
         continue;
       }

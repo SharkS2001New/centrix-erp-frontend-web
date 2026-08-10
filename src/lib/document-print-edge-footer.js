@@ -71,6 +71,11 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
     font-weight: var(--print-w-footer, 700);
     white-space: nowrap;
   }
+  /* Browser print page counters (Chromium / Safari). Fixed footers otherwise
+   * cannot show a different "Page X of Y" per sheet from static HTML. */
+  .doc-print-edge-footer .print-footer-page-counter::after {
+    content: counter(page) " of " counter(pages);
+  }
   @media print {
     .doc-print-edge-footer {
       font-size: ${footerPx(9, true)};
@@ -109,6 +114,11 @@ export function buildDocumentPrintEdgeFooterHtml({
     return `<div class="footer-notes">${styled}</div>`;
   })();
 
+  const useCssPageCounters = pageLabel === "auto" || pageLabel === "css";
+  const pageRightHtml = useCssPageCounters
+    ? `<span class="print-footer-right">Page <span class="print-footer-page-counter"></span></span>`
+    : `<span class="print-footer-right">${escapeHtml(pageLabel)}</span>`;
+
   return `
   <footer class="doc-print-edge-footer">
     ${footerNotesHtml}
@@ -122,7 +132,7 @@ export function buildDocumentPrintEdgeFooterHtml({
         }
         <p class="printed-by">By: ${escapeHtml(printedByName)}</p>
       </div>
-      <span class="print-footer-right">${escapeHtml(pageLabel)}</span>
+      ${pageRightHtml}
     </div>
   </footer>`;
 }

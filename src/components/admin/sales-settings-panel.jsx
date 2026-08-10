@@ -16,6 +16,7 @@ import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/setting
 import {
   isPlatformMpesaStkEnabled,
   isPlatformWhatsappEnabled,
+  isPlatformCheckoutOnCreateEnabled,
   isPlatformPosCheckoutOnCreateEnabled,
 } from "@/lib/platform-org-features";
 import { getSalesOrderQueueWorkflow } from "@/lib/order-workflow";
@@ -482,7 +483,9 @@ function TillsCheckoutSettingsTab({
   hasPosSales,
   hasCustomers,
   posCheckoutEnabled,
+  backofficeCheckoutEnabled,
 }) {
+  const creditCheckoutEnabled = posCheckoutEnabled || backofficeCheckoutEnabled;
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -524,26 +527,30 @@ function TillsCheckoutSettingsTab({
             checked={salesForm.enable_checkout_customer_name}
             onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
           />
-          {posCheckoutEnabled ? (
-            !hasCustomers ? (
-              <p className="text-xs text-slate-500">
-                Enable the Customers module to show a credit customer search field at POS checkout.
-              </p>
-            ) : (
-              <Toggle
-                label="Credit customer field at direct checkout"
-                description="Shows a searchable credit customer field on External POS and Sales → Create order checkout. Selecting a customer always saves a fully unpaid credit sale (cash and other tender amounts are ignored). Collect payment on existing orders still allows partial collect."
-                checked={salesForm.enable_credit_payment}
-                onChange={(v) =>
-                  setSalesForm((f) => ({
-                    ...f,
-                    enable_credit_payment: v,
-                    allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
-                  }))
-                }
-              />
-            )
-          ) : null}
+        </div>
+      ) : null}
+
+      {creditCheckoutEnabled ? (
+        <div className="space-y-3">
+          <h3 className="theme-heading text-sm font-medium">Direct checkout credit</h3>
+          {!hasCustomers ? (
+            <p className="text-xs text-slate-500">
+              Enable the Customers module to show a credit customer search field at checkout.
+            </p>
+          ) : (
+            <Toggle
+              label="Credit customer field at direct checkout"
+              description="Shows a searchable credit customer field on External POS and Sales → Create order checkout. Selecting a customer always saves a fully unpaid credit sale (cash and other tender amounts are ignored). Collect payment on existing orders still allows partial collect."
+              checked={salesForm.enable_credit_payment}
+              onChange={(v) =>
+                setSalesForm((f) => ({
+                  ...f,
+                  enable_credit_payment: v,
+                  allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
+                }))
+              }
+            />
+          )}
         </div>
       ) : null}
     </div>
@@ -570,6 +577,7 @@ export function SalesSettingsPanel({
   const hasCustomers = Boolean(modules.customers_suppliers);
   const mpesaPlatformEnabled = isPlatformMpesaStkEnabled(capabilities);
   const posCheckoutEnabled = isPlatformPosCheckoutOnCreateEnabled(capabilities);
+  const backofficeCheckoutEnabled = isPlatformCheckoutOnCreateEnabled(capabilities);
 
   const visibleTabs = useMemo(
     () => SALES_SETTINGS_TABS.filter((tab) => !tab.requiresPosSales || hasPosSales),
@@ -684,6 +692,7 @@ export function SalesSettingsPanel({
                 hasPosSales={hasPosSales}
                 hasCustomers={hasCustomers}
                 posCheckoutEnabled={posCheckoutEnabled}
+                backofficeCheckoutEnabled={backofficeCheckoutEnabled}
               />
             ) : null}
           </div>

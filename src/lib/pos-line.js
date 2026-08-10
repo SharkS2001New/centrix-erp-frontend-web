@@ -15,6 +15,7 @@ import {
   buildRouteFormulaVars,
 } from "@/lib/pricing-formula";
 import { formatSaleKes } from "@/lib/sale-currency";
+import { lineProductVat } from "@/lib/sales-vat";
 import {
   baseToDisplayQty,
   displayToBaseQty,
@@ -479,15 +480,20 @@ export function computePosLine({
     lineAmount = packQty * catalogUnitPrice + wholesaleMarkup;
   }
 
-  lineAmount = applyRouteMarkupToLine({
-    lineAmount,
-    routeMarkupPerUnit,
-    sellWholesale,
-    retailLine,
-    packQty,
-    baseQty,
-    formulas: pricingFormulas,
-  });
+  // unitPriceOverride is the cashier-facing sold unit (cart lock / typed price).
+  // It already includes route markup when taken from amount÷qty or list display —
+  // never add route again or merge/qty edits inflate the saved sale.
+  if (override == null) {
+    lineAmount = applyRouteMarkupToLine({
+      lineAmount,
+      routeMarkupPerUnit,
+      sellWholesale,
+      retailLine,
+      packQty,
+      baseQty,
+      formulas: pricingFormulas,
+    });
+  }
 
   const lineAmountBeforeDiscount = lineAmount;
   const discountNum = Math.max(0, Number(discount ?? 0));
@@ -628,9 +634,10 @@ export function cartLineDisplayUnitPrice(
 
 /**
  * Cashier-facing unit to lock when editing/merging a cart line.
- * Wholesale: lock sold-unit display (already includes flat line markup).
+ * Wholesale: lock sold-unit display (flat package + route markups already in).
  * Retail: do not lock — recompute from package settings so markup is not doubled
  * when override is treated as wholesale-per-small inside computePosLine.
+ * Callers pass the result as unitPriceOverride; computePosLine skips route re-add.
  */
 export function cartLineLockedUnitOverride(line, uom, isRetailLine = false, { cashRound = false } = {}) {
   if (isRetailLine) return null;
@@ -713,7 +720,15 @@ export function posCartLineTypeLabel(line) {
  */
 export function applyCatalogPricesToCart(
   cart,
-  { productByCode = {}, retailByCode = {}, sellWholesale = false, cashRound = false, lockExistingPrices = false } = {},
+  {
+    productByCode = {},
+    retailByCode = {},
+    sellWholesale = false,
+    cashRound = false,
+    lockExistingPrices = false,
+    routeMarkupPerUnit = 0,
+    formulas = null,
+  } = {},
 ) {
   if (!cart?.lines?.length) {
     return { cart, updatedCount: 0, changes: [] };
@@ -744,6 +759,9 @@ export function applyCatalogPricesToCart(
       retailPackage,
       discount: Number(line.discount_given ?? 0),
       cashRound,
+      routeMarkupPerUnit,
+      retailLine: isRetailLine,
+      formulas,
     });
     const nextUnit = computed.unitPricePerBase;
     const nextDisplay = computed.displayUnitPrice;
@@ -769,7 +787,7 @@ export function applyCatalogPricesToCart(
       unit_price: nextUnit,
       display_unit_price: nextDisplay,
       amount: computed.lineAmount,
-      product_vat: line.product_vat != null ? line.product_vat : undefined,
+      product_vat: lineProductVat(product, computed.lineAmount),
     };
   });
 

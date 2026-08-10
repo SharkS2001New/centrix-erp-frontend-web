@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError, isAbortError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
@@ -61,7 +61,7 @@ import {
   formatProductDiscountLabel,
   productHasConfiguredDiscount,
 } from "@/lib/product-discount";
-import { lineProductVat } from "@/lib/sales-vat";
+import { lineProductVat, vatRateFromProduct } from "@/lib/sales-vat";
 import {
   formatCashSalesNumber,
   formatPosBrowseLabel,
@@ -216,6 +216,8 @@ import {
   wipeTemporaryCartLines,
   isBackgroundPreviousOrderEditSyncActive,
   getBackgroundPreviousOrderEditSyncCartId,
+  setLiveTemporaryCartOccupancy,
+  clearLiveTemporaryCartOccupancy,
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
@@ -3247,6 +3249,28 @@ export function PosScreen({ standalone = false }) {
   productByCodeRef.current = productByCode;
   sellWholesaleRef.current = sellWholesale;
 
+  // Publish live TemporaryCart occupancy so outbox sync defers instead of wiping
+  // an online mid-sale (IDB active cart is often empty for TemporaryCart tills).
+  useLayoutEffect(() => {
+    if (!standalone) {
+      clearLiveTemporaryCartOccupancy();
+      return undefined;
+    }
+    setLiveTemporaryCartOccupancy(cart);
+    return undefined;
+  }, [standalone, cart]);
+
+  useEffect(() => {
+    if (!standalone) return undefined;
+    const heartbeat = window.setInterval(() => {
+      setLiveTemporaryCartOccupancy(cartRef.current);
+    }, 60_000);
+    return () => {
+      window.clearInterval(heartbeat);
+      clearLiveTemporaryCartOccupancy();
+    };
+  }, [standalone]);
+
   const kraFiscalizeOnPosCheckout = useMemo(
     () =>
       shouldSubmitKraOnCheckout(
@@ -5252,7 +5276,7 @@ export function PosScreen({ standalone = false }) {
         on_wholesale_retail: onWholesaleRetailFlag,
         discount_given:
           allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
-        vat_rate: Number(product.vat_rate ?? product.tax_rate ?? 0),
+        vat_rate: vatRateFromProduct(product),
         product_vat: lineProductVat(product, finalComputed.lineAmount),
       };
       const nextLocal = await upsertLocalPosCartLine(
@@ -6069,7 +6093,7 @@ export function PosScreen({ standalone = false }) {
         on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
         discount_given:
           allowDiscounts || discountApprovalActive ? computed.discountApplied : 0,
-        vat_rate: Number(product.vat_rate ?? product.tax_rate ?? 0),
+        vat_rate: vatRateFromProduct(product),
         product_vat: lineProductVat(product, computed.lineAmount),
         _draftEdit: true,
       };
@@ -8266,6 +8290,8 @@ export function PosScreen({ standalone = false }) {
       retailByCode: retailByCodeRef.current,
       sellWholesale: sellWholesaleRef.current,
       cashRound: enablePosCashRounding,
+      routeMarkupPerUnit,
+      formulas: pricingFormulas,
     });
     if (updatedCount <= 0) return 0;
     cartRef.current = pricedCart;

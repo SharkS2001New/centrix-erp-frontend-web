@@ -59,6 +59,10 @@ const REPORT_ROUTE_RULES = [
 const POS_ROUTE_RULES = [
   { prefix: "/pos", permission: P.pos.terminal.view },
   {
+    prefix: "/hotel-bar-pos",
+    permission: P.hotel_bar_pos.terminal.view,
+  },
+  {
     prefix: "/sales/pos",
     // Backoffice create order — cashiers use External POS (/pos), not this route.
     permission: P.sales.orders.create,

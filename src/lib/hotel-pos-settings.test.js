@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveHotelPosPaymentConfig } from "@/lib/hotel-pos-settings";
+import {
+  resolveHotelPosPaymentConfig,
+  resolveHotelPosSettings,
+} from "@/lib/hotel-pos-settings";
 
 describe("resolveHotelPosPaymentConfig", () => {
   it("shows only active org payment methods", () => {
@@ -80,5 +83,38 @@ describe("resolveHotelPosPaymentConfig", () => {
     expect(on.enableMpesaCode).toBe(true);
     expect(on.showCheque).toBe(true);
     expect(on.showChequeNumber).toBe(true);
+  });
+});
+
+describe("resolveHotelPosSettings", () => {
+  it("reads hotel_pos_* from sales when hospitality lacks them", () => {
+    const settings = resolveHotelPosSettings({
+      module_settings: {
+        hospitality: { stock_deduct_on_settle: true },
+        sales: {
+          hotel_pos_grid_columns: 5,
+          hotel_pos_catalog_limit: 40,
+          hotel_pos_collect_payment: false,
+          hotel_pos_theme_template: "ocean",
+        },
+      },
+    });
+
+    expect(settings.gridColumns).toBe(5);
+    expect(settings.catalogLimit).toBe(40);
+    expect(settings.collectPayment).toBe(false);
+    expect(settings.stockDeductOnSettle).toBe(true);
+    expect(settings.themeTemplate).toBe("ocean");
+  });
+
+  it("lets hospitality override sales hotel_pos_* values", () => {
+    const settings = resolveHotelPosSettings({
+      module_settings: {
+        sales: { hotel_pos_grid_columns: 5, hotel_pos_catalog_limit: 40 },
+        hospitality: { hotel_pos_grid_columns: 4, hotel_pos_catalog_limit: 20 },
+      },
+    });
+    expect(settings.gridColumns).toBe(4);
+    expect(settings.catalogLimit).toBe(20);
   });
 });

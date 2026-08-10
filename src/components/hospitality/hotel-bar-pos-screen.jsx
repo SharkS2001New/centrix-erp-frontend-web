@@ -68,11 +68,13 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { EntityPhotoDisplay, productPhotoFileUrl } from "@/components/media/entity-photo-display";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
-import { disposePrintWindow, openBlankPrintWindow } from "@/lib/open-print-window";
-import { shouldUsePrintAgentForDocument } from "@/lib/print-dispatch";
+import { disposePrintWindow } from "@/lib/open-print-window";
+import {
+  isSaleOrderBrowserPrintWindowRequired,
+  openSaleOrderPrintWindow,
+} from "@/lib/print-dispatch";
 import {
   isPrintAgentEnabled,
-  isPrintAgentRecentlyHealthy,
   warmPrintAgentHealth,
 } from "@/lib/print-agent";
 
@@ -101,14 +103,15 @@ function localDatetimeToIso(localValue) {
   return d.toISOString();
 }
 /**
- * Open a blank print window while still in the click gesture (before await settle/save).
- * Skip when Print Agent is warm — passing a window forces browser mode and skips the agent.
+ * Pre-open a browser print window only when Centrix Print Agent will not handle the job.
+ * Passing a window into dispatchPrintJob forces browser mode and skips the agent.
  */
 function openHotelReceiptPrintWindow() {
-  if (shouldUsePrintAgentForDocument("receipt") && isPrintAgentRecentlyHealthy()) {
+  const printWindow = openSaleOrderPrintWindow("receipt");
+  if (isSaleOrderBrowserPrintWindowRequired("receipt") && !printWindow) {
     return null;
   }
-  return openBlankPrintWindow("width=420,height=720");
+  return printWindow;
 }
 
 async function printCheckReceiptSafe(

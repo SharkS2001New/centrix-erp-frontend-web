@@ -20,6 +20,7 @@ import { hasValidCustomerLocation } from "@/lib/customer-location";
 import {
   indexProductsByCode,
   saleLineProductLabel,
+  saleLineSoldUnitPrice,
 } from "@/lib/sale-line-items";
 import { formatOrderNumber, orderSourceLabel } from "@/lib/sales";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
@@ -344,7 +345,7 @@ export function CustomersIdScreen() {
                                       <p className="text-xs text-slate-500">
                                         {line.quantity}
                                         {line.uom ? ` ${line.uom}` : ""} ×{" "}
-                                        {formatCustomerKes(line.selling_price)}
+                                        {formatCustomerKes(saleLineSoldUnitPrice(line))}
                                       </p>
                                     </div>
                                     <p className="shrink-0 font-medium text-slate-900">

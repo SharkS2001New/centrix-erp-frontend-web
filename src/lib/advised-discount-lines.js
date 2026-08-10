@@ -29,18 +29,18 @@ export function discountApprovalPackQty(line) {
   return qty > 0 ? qty : 1;
 }
 
-/** Gross unit price per sold pack — prefers cart-calculated display price. */
+/** Gross unit price per sold pack — reverse from amount so markups match Sales/Orders. */
 export function discountApprovalUnitPrice(line) {
-  if (line?.display_unit_price != null && line.display_unit_price !== "") {
-    const fromApi = Number(line.display_unit_price);
-    if (Number.isFinite(fromApi) && fromApi >= 0) return fromApi;
-  }
-
   const amount = Number(line?.amount ?? 0);
   const discount = Math.max(0, Number(line?.discount_given ?? 0));
   const packQty = discountApprovalPackQty(line);
   if (packQty > 0 && (amount > 0 || discount > 0)) {
     return Math.round(((amount + discount) / packQty) * 100) / 100;
+  }
+
+  if (line?.display_unit_price != null && line.display_unit_price !== "") {
+    const fromApi = Number(line.display_unit_price);
+    if (Number.isFinite(fromApi) && fromApi >= 0) return fromApi;
   }
 
   const stored = Number(line?.unit_price ?? line?.selling_price ?? 0);

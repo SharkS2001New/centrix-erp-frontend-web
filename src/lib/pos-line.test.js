@@ -316,6 +316,90 @@ describe("applyCatalogPricesToCart per-line mode", () => {
     expect(priced.lines[0].unit_price).toBe(6300);
     expect(priced.lines[0].display_unit_price).toBe(6300);
   });
+
+  it("keeps route markup when live-repricing an open cart", () => {
+    const cart = {
+      lines: [
+        {
+          product_code: "SUGAR",
+          quantity: 50,
+          on_wholesale_retail: 0,
+          unit_price: 100,
+          display_unit_price: 100,
+          amount: 100,
+        },
+      ],
+    };
+    const withoutRoute = applyCatalogPricesToCart(cart, {
+      productByCode: { SUGAR: sugarProduct },
+      retailByCode: { SUGAR: sugarRetailPackage },
+      sellWholesale: true,
+    });
+    const withRoute = applyCatalogPricesToCart(cart, {
+      productByCode: { SUGAR: sugarProduct },
+      retailByCode: { SUGAR: sugarRetailPackage },
+      sellWholesale: true,
+      routeMarkupPerUnit: 10,
+    });
+    expect(withRoute.updatedCount).toBeGreaterThan(0);
+    expect(withRoute.cart.lines[0].amount).toBe(withoutRoute.cart.lines[0].amount + 10);
+  });
+});
+
+describe("locked sold unit must not double route markup", () => {
+  it("skips route when unitPriceOverride is the already-marked-up sold unit", () => {
+    const withRoute = computePosLine({
+      product: sugarProduct,
+      entryQty: "1",
+      sellWholesale: true,
+      retailPackage: sugarRetailPackage,
+      routeMarkupPerUnit: 10,
+    });
+    // Catalog 6250 + wholesale tier markup 30 + route 10
+    expect(withRoute.lineAmount).toBe(6290);
+
+    // Qty merge/edit locks display_unit_price (includes the 10 route) and still
+    // passes routeMarkupPerUnit — must not become 6300 (route twice).
+    const locked = computePosLine({
+      product: sugarProduct,
+      entryQty: "2",
+      sellWholesale: true,
+      retailPackage: sugarRetailPackage,
+      unitPriceOverride: withRoute.displayUnitPrice,
+      routeMarkupPerUnit: 10,
+    });
+    expect(locked.lineAmount).toBe(withRoute.displayUnitPrice * 2);
+    expect(locked.displayUnitPrice).toBe(withRoute.displayUnitPrice);
+    expect(locked.lineAmount).not.toBe(withRoute.displayUnitPrice * 2 + 20);
+  });
+});
+
+describe("applyCatalogPricesToCart VAT", () => {
+  it("recomputes product_vat when amount changes", () => {
+    const product = { ...sugarProduct, vat_rate: 16 };
+    const cart = {
+      lines: [
+        {
+          product_code: "SUGAR",
+          quantity: 50,
+          on_wholesale_retail: 0,
+          unit_price: 100,
+          display_unit_price: 100,
+          amount: 100,
+          product_vat: 1,
+        },
+      ],
+    };
+    const next = applyCatalogPricesToCart(cart, {
+      productByCode: { SUGAR: product },
+      retailByCode: { SUGAR: sugarRetailPackage },
+      sellWholesale: true,
+    });
+    const amount = next.cart.lines[0].amount;
+    const expectedVat = Math.round(((amount * 16) / 116) * 100) / 100;
+    expect(next.cart.lines[0].product_vat).toBe(expectedVat);
+    expect(next.cart.lines[0].product_vat).not.toBe(1);
+  });
 });
 
 describe("cartLineDisplayUnitPrice wholesale", () => {

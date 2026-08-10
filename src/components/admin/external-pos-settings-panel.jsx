@@ -101,7 +101,7 @@ export function ExternalPosSettingsPanel({
               classic_pos_theme_colors: normalizeClassicPosThemeColors(
                 platformForm.classic_pos_theme_colors,
               ),
-              show_checkout_on_create_order: Boolean(platformForm.show_pos_checkout_on_create),
+              show_pos_checkout_on_create: Boolean(platformForm.show_pos_checkout_on_create),
               require_pos_till_float: Boolean(platformForm.require_pos_till_float),
               enable_pos_cash_rounding: Boolean(platformForm.enable_pos_cash_rounding),
               receipt_show_all_payment_methods: Boolean(

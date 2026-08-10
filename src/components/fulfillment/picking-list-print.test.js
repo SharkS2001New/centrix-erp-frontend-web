@@ -65,12 +65,30 @@ describe("chunkPickingLinesForPrint", () => {
       },
     ];
     const chunks = chunkPickingLinesForPrint(lines, {
-      firstBudgetMm: 50,
-      continuedBudgetMm: 50,
+      firstBudgetMm: 40,
+      continuedBudgetMm: 40,
       summaryReserveMm: 10,
       bottomSafetyMm: 5,
     });
     expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.flat()).toHaveLength(lines.length);
+  });
+
+  it("does not apply summary reserve until remaining lines fit with used height", () => {
+    // Reproduces the blank-page bug: remaining-from-here looked small enough for
+    // summary reserve, but used height was already past the reduced budget.
+    const lines = Array.from({ length: 20 }, (_, i) => ({
+      product_name: `ITEM ${i + 1}`,
+      quantity_label: "1 Bag",
+    }));
+    const chunks = chunkPickingLinesForPrint(lines, {
+      firstBudgetMm: 100,
+      continuedBudgetMm: 100,
+      summaryReserveMm: 40,
+      bottomSafetyMm: 0,
+    });
+    // Short rows are ~6.4mm → full first page should hold ~15 lines, not stop early (~12).
+    expect(chunks[0].length).toBeGreaterThanOrEqual(14);
     expect(chunks.flat()).toHaveLength(lines.length);
   });
 });
@@ -123,6 +141,7 @@ describe("buildPickingListHtml sales layout", () => {
     expect(pageCount).toBeGreaterThan(1);
     expect(html).toContain("Page 1 of");
     expect(html).toContain("continued · Page");
+    expect(html).toContain("print-footer-page-counter");
     expect(html).toContain("ITEM 1");
     expect(html).toContain("ITEM 45");
   });

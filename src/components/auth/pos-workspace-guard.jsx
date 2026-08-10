@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -22,16 +22,32 @@ export function PosWorkspaceGuard({ children }) {
   const router = useRouter();
   const { user, organization, capabilities, loading, isSuperAdmin, loginChannel, switchWorkspace } = useAuth();
 
-  const ctx = buildAccessContext({
-    user,
-    organization,
-    capabilities,
-    requireTillFloat: resolveTillFloatNavFlag(capabilities),
-    isSuperAdmin,
-  });
+  const ctx = useMemo(
+    () =>
+      buildAccessContext({
+        user,
+        organization,
+        capabilities,
+        requireTillFloat: resolveTillFloatNavFlag(capabilities),
+        isSuperAdmin,
+      }),
+    [user, organization, capabilities, isSuperAdmin],
+  );
 
   const storedWorkspace = getStoredWorkspace();
   const platformUser = isPlatformShellUser(ctx);
+
+  const accessState = useMemo(() => {
+    if (loading || platformUser) return "allow";
+    if (needsWorkspaceSelection(capabilities, storedWorkspace, ctx)) {
+      return "redirect-workspace";
+    }
+    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
+    if (!workspaceId) return "wait";
+    if (!isPosWorkspace(workspaceId)) return "redirect-landing";
+    if (!pathBelongsToWorkspace(pathname, workspaceId)) return "redirect-home";
+    return "allow";
+  }, [capabilities, ctx, loading, pathname, platformUser, storedWorkspace]);
 
   useEffect(() => {
     if (loading || platformUser) return;
@@ -44,7 +60,7 @@ export function PosWorkspaceGuard({ children }) {
       isSuperAdmin,
     });
 
-    if (needsWorkspaceSelection(capabilities, storedWorkspace, accessCtx)) {
+    if (accessState === "redirect-workspace") {
       if (pathname !== "/choose-workspace") {
         router.replace("/choose-workspace");
       }
@@ -54,14 +70,14 @@ export function PosWorkspaceGuard({ children }) {
     const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, accessCtx);
     if (!workspaceId) return;
 
-    if (!isPosWorkspace(workspaceId)) {
+    if (accessState === "redirect-landing") {
       router.replace(
         workspaceLandingPath(user?.id, organization?.id, workspaceId, capabilities, accessCtx),
       );
       return;
     }
 
-    if (!pathBelongsToWorkspace(pathname, workspaceId)) {
+    if (accessState === "redirect-home") {
       const landingPath = workspaceLandingPath(
         user?.id,
         organization?.id,
@@ -74,6 +90,7 @@ export function PosWorkspaceGuard({ children }) {
       }
     }
   }, [
+    accessState,
     capabilities,
     loading,
     organization?.id,
@@ -117,7 +134,17 @@ export function PosWorkspaceGuard({ children }) {
     organization,
   ]);
 
+  if (loading || accessState === "wait") {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-100 text-slate-600">
+        Loading…
+      </div>
+    );
+  }
+
   if (platformUser) return <>{children}</>;
+
+  if (accessState !== "allow") return null;
 
   return <>{children}</>;
 }

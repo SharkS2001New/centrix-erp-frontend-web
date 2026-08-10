@@ -65,8 +65,6 @@ import { canDirectCancelOrders } from "@/lib/approval-permissions";
 import { AppBreadcrumb, orderDetailBreadcrumbParent } from "@/components/layout/app-breadcrumb";
 import {
   disposePrintWindow,
-  openBlankPrintWindow,
-  printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import {
@@ -773,8 +771,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const handlePrintProforma = useCallback(async () => {
     if (!sale) return;
 
-    const printWindow = openBlankPrintWindow(printWindowFeatures("proforma"));
-    if (!printWindow) {
+    const printWindow = openSaleOrderPrintWindow("proforma");
+    if (isSaleOrderBrowserPrintWindowRequired("proforma") && !printWindow) {
       notifyError(PRINT_BLOCKED_MESSAGE);
       return;
     }

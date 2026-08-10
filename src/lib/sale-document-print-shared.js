@@ -330,11 +330,10 @@ export function buildSaleDocumentLineRows(
           ? saleLineQtyLabel(line, uomById, linePrintOptions)
           : formatPrintAmount(line.quantity),
       );
+      // Always derive from sold amount (markups included) — never bare catalog selling_price.
       const unitPrice = escapeHtml(
         formatPrintAmount(
-          legacyPrint || uom
-            ? resolveSaleLinePrintColumns(line, { uom, legacyPrint }).unitPrice
-            : (line.selling_price ?? line.unit_price ?? line.price ?? 0),
+          resolveSaleLinePrintColumns(line, { uom, legacyPrint }).unitPrice,
         ),
       );
       const discount = escapeHtml(formatPrintAmount(line.discount_given ?? 0));

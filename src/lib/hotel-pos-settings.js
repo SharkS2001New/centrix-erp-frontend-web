@@ -121,27 +121,27 @@ export function normalizeHotelPosCatalogLimit(value) {
 }
 
 export function resolveHotelPosSettings(moduleSettingsOrCapabilities = null) {
-  const hospitality =
-    moduleSettingsOrCapabilities?.module_settings?.hospitality ??
-    moduleSettingsOrCapabilities?.hospitality ??
-    moduleSettingsOrCapabilities?.module_settings ??
-    moduleSettingsOrCapabilities ??
-    {};
+  const root = moduleSettingsOrCapabilities ?? {};
+  const moduleSettings = root.module_settings ?? root;
+  const hospitality = moduleSettings?.hospitality ?? root.hospitality ?? {};
+  // Platform org config stores hotel_pos_* on sales_platform → module_settings.sales.
+  // Hospitality settings may override the same keys when present.
+  const sales = moduleSettings?.sales ?? root.sales ?? {};
+  const bag = { ...sales, ...hospitality };
 
   return {
-    gridColumns: normalizeHotelPosGridColumns(hospitality?.hotel_pos_grid_columns),
+    gridColumns: normalizeHotelPosGridColumns(bag?.hotel_pos_grid_columns),
     collectPayment:
-      hospitality?.hotel_pos_collect_payment === undefined
+      bag?.hotel_pos_collect_payment === undefined
         ? true
-        : Boolean(hospitality.hotel_pos_collect_payment),
+        : Boolean(bag.hotel_pos_collect_payment),
     catalogLimit: normalizeHotelPosCatalogLimit(
-      hospitality?.hotel_pos_catalog_limit ?? HOTEL_POS_CATALOG_LIMIT_DEFAULT,
+      bag?.hotel_pos_catalog_limit ?? HOTEL_POS_CATALOG_LIMIT_DEFAULT,
     ),
-    stockDeductOnSettle: Boolean(hospitality?.stock_deduct_on_settle),
-    blockSettleIfInsufficient: hospitality?.block_settle_if_insufficient !== false,
+    stockDeductOnSettle: Boolean(bag?.stock_deduct_on_settle),
+    blockSettleIfInsufficient: bag?.block_settle_if_insufficient !== false,
     themeTemplate: normalizeHotelPosThemeTemplate(
-      hospitality?.hotel_pos_theme_template ??
-        moduleSettingsOrCapabilities?.hotel_pos_theme_template,
+      bag?.hotel_pos_theme_template ?? root?.hotel_pos_theme_template,
     ),
   };
 }

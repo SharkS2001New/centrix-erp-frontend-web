@@ -331,4 +331,18 @@ describe("resolveSaleLinePrintColumns", () => {
     expect(cols.qty).toBe(2);
     expect(cols.unitPrice).toBe(152.5);
   });
+
+  it("still derives sold unit from amount when uom is missing (A4 fallback path)", () => {
+    const cols = resolveSaleLinePrintColumns(
+      {
+        quantity: 2,
+        amount: 305,
+        on_wholesale_retail: 0,
+        selling_price: 100,
+        unit_price: 100,
+      },
+      { uom: null },
+    );
+    expect(cols.unitPrice).toBe(152.5);
+  });
 });

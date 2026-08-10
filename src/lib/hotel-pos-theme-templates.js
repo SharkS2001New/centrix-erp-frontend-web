@@ -246,13 +246,12 @@ export function hotelPosThemeCssVars(id) {
 }
 
 export function resolveHotelPosThemeTemplate(moduleSettingsOrCapabilities = null) {
-  const hospitality =
-    moduleSettingsOrCapabilities?.module_settings?.hospitality ??
-    moduleSettingsOrCapabilities?.hospitality ??
-    moduleSettingsOrCapabilities?.module_settings ??
-    moduleSettingsOrCapabilities ??
-    {};
+  const root = moduleSettingsOrCapabilities ?? {};
+  const moduleSettings = root.module_settings ?? root;
+  const hospitality = moduleSettings?.hospitality ?? root.hospitality ?? {};
+  const sales = moduleSettings?.sales ?? root.sales ?? {};
+  const bag = { ...sales, ...hospitality };
   return normalizeHotelPosThemeTemplate(
-    hospitality?.hotel_pos_theme_template ?? moduleSettingsOrCapabilities?.hotel_pos_theme_template,
+    bag?.hotel_pos_theme_template ?? root?.hotel_pos_theme_template,
   );
 }

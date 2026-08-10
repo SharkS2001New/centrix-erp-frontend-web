@@ -192,7 +192,7 @@ export function recalcReturnLineFromCounts(line, counts, uomById) {
 
 export function emptyReturnLineFromSaleItem(item) {
   const qty = Number(item.quantity_sold ?? item.quantity ?? 0);
-  const unitPrice = Number(item.unit_price ?? item.display_unit_price ?? item.selling_price ?? 0);
+  const unitPrice = Number(item.display_unit_price ?? item.unit_price ?? item.selling_price ?? 0);
   const alreadyReturned = Number(item.already_returned ?? 0);
   const maxReturnQty =
     item.max_return_qty != null

@@ -5,7 +5,7 @@ import {
   extractKraReceiptData,
   kraReceiptQrDataUrl,
 } from "@/lib/kra-receipt-qr";
-import { openBlankPrintWindow, PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
+import { PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
 import { formatReportKes } from "@/lib/reports/format";
 import { formatKraReportOrderNo, saleCustomerLabel } from "@/lib/sales";
@@ -448,12 +448,14 @@ export async function printKraFiscalReceipts(rows, { orgName = DEFAULT_PRINT_ORG
     title: title ?? (documents.length === 1 ? "KRA fiscal receipt" : `KRA fiscal receipts (${documents.length})`),
   });
 
-  const printWindow = openBlankPrintWindow("width=420,height=720");
-  if (!printWindow) {
-    throw new Error(PRINT_BLOCKED_MESSAGE);
+  const result = await dispatchPrintJob({
+    html,
+    copies: 1,
+    jobType: "receipt",
+  });
+  if (!result?.ok) {
+    throw new Error(result?.error || PRINT_BLOCKED_MESSAGE);
   }
-
-  await dispatchPrintJob({ html, copies: 1, jobType: "receipt", printWindow });
 
   return true;
 }

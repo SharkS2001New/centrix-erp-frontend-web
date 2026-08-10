@@ -383,13 +383,13 @@ export const PICKING_LIST_LINES_PER_PAGE = 40;
  */
 export const PICKING_LIST_PAGE_BUDGET_MM = {
   /** Line area after org header + title + column head on page 1. */
-  first: 205,
+  first: 210,
   /** Line area after continued label + column head on later pages. */
-  continued: 255,
+  continued: 258,
   /** Summary box + signature blocks reserved on the last page only. */
   summaryReserve: 52,
   /** Extra empty margin after the last item on a page. */
-  bottomSafety: 12,
+  bottomSafety: 8,
 };
 
 /** Estimate print height of one picking row from its content (taller when multi-line). */
@@ -403,7 +403,7 @@ export function estimatePickingLineHeightMm(line) {
   const name = String(line?.product_name ?? "").trim();
   if (name.length > 34) textLines += 1;
   // Compact single-line row (~padding + 11pt text); extras for wrapped/ghost lines.
-  return 7.2 + Math.max(0, textLines - 1) * 4.0;
+  return 6.4 + Math.max(0, textLines - 1) * 3.4;
 }
 
 function sumEstimatedPickingHeightMm(lines) {
@@ -438,12 +438,12 @@ export function chunkPickingLinesForPrint(lines, options = {}) {
       const height = estimatePickingLineHeightMm(line);
       const remainingAfter = rows.slice(index + 1);
       const remainingHeight = sumEstimatedPickingHeightMm(remainingAfter);
-      // If everything left (including this line) fits with summary, reserve summary space.
+      // Reserve summary only when this page can finish the list — must include
+      // height already used. Ignoring `used` stopped packing early and left
+      // large blank regions on non-final pages.
       const restWithThis = height + remainingHeight;
-      const budget =
-        restWithThis + summaryReserve <= fullBudget
-          ? fullBudget - summaryReserve
-          : fullBudget;
+      const fitsAsLastPage = used + restWithThis + summaryReserve <= fullBudget;
+      const budget = fitsAsLastPage ? fullBudget - summaryReserve : fullBudget;
 
       if (chunk.length > 0 && used + height > budget) {
         break;
@@ -484,7 +484,7 @@ function pickingListPrintStyles(
       box-sizing: border-box;
       padding: ${px(24)};
       /* Safety margin so the last row is not clipped by printer edges / footers. */
-      padding-bottom: 12mm;
+      padding-bottom: 8mm;
       overflow: visible;
       page-break-after: always;
       break-after: page;
@@ -577,7 +577,7 @@ function pickingListPrintStyles(
       body { font-size: ${px(12, true)}; }
       .print-page {
         width: 210mm;
-        padding: ${px(8, true)} ${px(4, true)} 12mm;
+        padding: ${px(8, true)} ${px(4, true)} 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -639,7 +639,7 @@ function pickingListPrintStyles(
       body { font-size: ${px(12, true)}; }
       .print-page {
         width: 210mm;
-        padding: ${px(8, true)} ${px(4, true)} 12mm;
+        padding: ${px(8, true)} ${px(4, true)} 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -802,6 +802,8 @@ export function buildPickingListHtml({
   ${buildDocumentPrintEdgeFooterHtml({
     printedBy: printedByName,
     printedAt,
+    // Fixed footers repeat on every sheet — use CSS page counters when multi-page.
+    pageLabel: totalPages > 1 ? "auto" : "Page 1 of 1",
   })}
 </body>
 </html>`;

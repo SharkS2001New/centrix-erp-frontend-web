@@ -1691,12 +1691,6 @@ export function OrganizationModuleToggles({
       domainChildrenMap,
       mobileOrdersEnabled,
     );
-    if (workspaceId === "pos" && enable && typeof onSalesChange === "function") {
-      onSalesChange({
-        ...(salesPlatform ?? {}),
-        show_pos_checkout_on_create: true,
-      });
-    }
     if (onSetModules) {
       onSetModules(next);
       return;
