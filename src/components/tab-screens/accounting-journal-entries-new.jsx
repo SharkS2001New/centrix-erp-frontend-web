@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
-import { TabFormExitButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -91,14 +90,8 @@ export function AccountingJournalEntriesNewScreen() {
     <CatalogPageShell
       title="New Journal Entry"
       subtitle="Accounting > Journal Entries > New"
-      actions={
-        <TabFormExitButton
-          href="/accounting/journal-entries"
-          className="text-sm font-medium text-[#185FA5] hover:underline"
-        >
-          Back to list
-        </TabFormExitButton>
-      }
+      backHref="/accounting/journal-entries"
+      backLabel="Back to journal entries"
     >
       {loading ? (
         <p className="text-sm text-slate-500">Loading…</p>

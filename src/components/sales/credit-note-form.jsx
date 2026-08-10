@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
-import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormCancelButton, TabFormBackButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
@@ -401,17 +401,15 @@ export function CreditNoteForm({
 
   return (
     <form onSubmit={handleSubmit} className="theme-panel rounded-xl border p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
+      <div className="mb-4 flex flex-wrap items-start gap-3">
+        <TabFormBackButton href={backHref} label={backLabel} />
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold text-slate-900">Create credit note</h1>
           <p className="mt-1 text-sm text-slate-500">
             Issue a credit for billing errors or price adjustments without returning stock. Product
             lines are optional when the customer underpaid due to a price difference.
           </p>
         </div>
-        <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:underline">
-          {backLabel}
-        </TabFormExitButton>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

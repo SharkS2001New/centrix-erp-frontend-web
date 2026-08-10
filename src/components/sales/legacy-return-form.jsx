@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
-import { TabFormExitButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormBackButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
@@ -179,10 +179,8 @@ export function LegacyReturnForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <TabFormExitButton href={backHref} className="text-sm text-slate-600 hover:text-slate-900">
-          {backLabel}
-        </TabFormExitButton>
+      <div className="flex flex-wrap items-center gap-3">
+        <TabFormBackButton href={backHref} label={backLabel} />
         {!kraEnabled ? (
           <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             Enable the KRA device under Finance settings to process legacy returns.

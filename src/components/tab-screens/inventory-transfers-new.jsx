@@ -23,7 +23,6 @@ import {
   useInventoryCatalogMaps,
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
-import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   TRANSFER_FROM_OPTIONS,
   isLocationTransferTarget,
@@ -161,14 +160,9 @@ export function InventoryTransfersNewScreen() {
     <InventoryPageShell
       title="Transfer stock"
       subtitle="Move stock between shop and store, or issue stock for internal use, donations, and similar purposes"
+      backHref="/inventory/transactions"
+      backLabel="Back to stock movements"
     >
-      <AppBreadcrumb
-        items={[
-          { label: "Stock movements", href: "/inventory/transactions" },
-          { label: "New transfer" },
-        ]}
-      />
-
       <form
         onSubmit={submit}
         className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"

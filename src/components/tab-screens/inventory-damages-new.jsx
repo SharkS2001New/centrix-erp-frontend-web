@@ -3,7 +3,7 @@
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useEffect, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
-import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
@@ -142,13 +142,12 @@ export function InventoryDamagesNewScreen() {
   }
 
   return (
-    <InventoryPageShell title="Record damage" subtitle="Write off damaged, expired, or lost stock">
-      <div className="mb-4">
-        <TabFormExitButton href="/inventory/damages" className="text-sm text-[#185FA5] hover:underline">
-          ← Back to damages
-        </TabFormExitButton>
-      </div>
-
+    <InventoryPageShell
+      title="Record damage"
+      subtitle="Write off damaged, expired, or lost stock"
+      backHref="/inventory/damages"
+      backLabel="Back to damages"
+    >
       <form
         onSubmit={submit}
         className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"

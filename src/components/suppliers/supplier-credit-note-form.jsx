@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
-import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormCancelButton, TabFormBackButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchSuppliersCached } from "@/lib/reference-data-cache";
@@ -150,16 +150,14 @@ export function SupplierCreditNoteForm({
 
   return (
     <form onSubmit={handleSubmit} className="theme-panel rounded-xl border p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
+      <div className="mb-4 flex flex-wrap items-start gap-3">
+        <TabFormBackButton href={backHref} label={backLabel} />
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold text-slate-900">Create supplier credit note</h1>
           <p className="mt-1 text-sm text-slate-500">
             Record a credit from a supplier for overcharges or billing adjustments. Line items are optional.
           </p>
         </div>
-        <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:underline">
-          {backLabel}
-        </TabFormExitButton>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

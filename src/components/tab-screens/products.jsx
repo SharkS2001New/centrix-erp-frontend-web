@@ -1455,14 +1455,24 @@ function renderProductCell(product, columnId, onPriceSaved) {
       );
     case "unit_price":
       return (
-        <InlineUnitPriceCell
+        <InlineProductPriceCell
           productCode={product.product_code}
-          unitPrice={product.unit_price}
+          price={product.unit_price}
+          field="unit_price"
           onSaved={onPriceSaved}
+          title="Click to update selling price"
         />
       );
     case "cost_price":
-      return <span className="theme-text-muted">{formatMoneyAmount(product.last_cost_price)}</span>;
+      return (
+        <InlineProductPriceCell
+          productCode={product.product_code}
+          price={product.last_cost_price}
+          field="last_cost_price"
+          onSaved={onPriceSaved}
+          title="Click to update cost price"
+        />
+      );
     case "discount":
       return <span className="theme-text-muted">{formatDiscount(product)}</span>;
     case "weight":
@@ -1633,15 +1643,15 @@ function VatBadge({ treatment }) {
   );
 }
 
-function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
+function InlineProductPriceCell({ productCode, price, field, onSaved, title }) {
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(String(unitPrice ?? ""));
+  const [value, setValue] = useState(String(price ?? ""));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!editing) setValue(String(unitPrice ?? ""));
-  }, [unitPrice, editing]);
+    if (!editing) setValue(String(price ?? ""));
+  }, [price, editing]);
 
   async function save() {
     const next = Number(value);
@@ -1652,9 +1662,13 @@ function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
     setSaving(true);
     setError(null);
     try {
+      const body =
+        field === "unit_price"
+          ? { unit_price: next, last_selling_price: next }
+          : { [field]: next };
       await apiRequest(`/products/${encodeURIComponent(productCode)}`, {
         method: "PUT",
-        body: { unit_price: next },
+        body,
       });
       setEditing(false);
       onSaved?.();
@@ -1665,15 +1679,19 @@ function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
     }
   }
 
+  if (!onSaved) {
+    return <span className="theme-text-muted">{formatMoneyAmount(price)}</span>;
+  }
+
   if (!editing) {
     return (
       <button
         type="button"
         onClick={() => setEditing(true)}
         className="theme-text-muted rounded px-1 hover:bg-[var(--theme-hover)] hover:text-[var(--theme-link)]"
-        title="Click to update price"
+        title={title}
       >
-        {formatMoneyAmount(unitPrice)}
+        {formatMoneyAmount(price)}
       </button>
     );
   }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
-import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -898,13 +898,14 @@ export function RecordSupplierReturnForm({
 
   return (
     <div className="theme-workspace -m-6 flex min-h-[calc(100%+3rem)] w-full flex-col p-6 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
-      <div className="mb-4 shrink-0">
-        <TabFormExitButton href={backHref} className="theme-link text-sm hover:underline">
-          {backLabel}
-        </TabFormExitButton>
-        <h1 className="theme-heading mt-2 text-xl font-medium">{pageTitle}</h1>
-        <p className="theme-subtext mt-1 max-w-3xl text-sm">{pageSubtitle}</p>
-      </div>
+      <TabFormPageHeader
+        backHref={backHref}
+        backLabel={backLabel}
+        title={pageTitle}
+        subtitle={pageSubtitle}
+        titleClassName="theme-heading text-xl font-medium"
+        subtitleClassName="theme-subtext mt-1 max-w-3xl text-sm"
+      />
 
       {loadingMeta || loadingDocument ? (
         <p className="theme-subtext text-sm">Loading…</p>

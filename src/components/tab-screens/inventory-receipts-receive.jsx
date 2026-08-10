@@ -45,7 +45,6 @@ import { LpoReceiveSessionFooter } from "@/components/inventory/lpo-receive-sess
 import { LpoSupplierInvoicePicker } from "@/components/inventory/lpo-supplier-invoice-picker";
 import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
-import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
 import { baseToDisplayQty } from "@/lib/stock-uom";
 import { formDraftKey } from "@/stores/form-drafts";
@@ -418,14 +417,9 @@ export function InventoryReceiptsReceiveScreen() {
     <InventoryPageShell
       title="Receive stock"
       subtitle="Record goods received against a purchase order or as a manual delivery"
+      backHref="/inventory/receipts"
+      backLabel="Back to stock receipts"
     >
-      <AppBreadcrumb
-        items={[
-          { label: "Stock receipts", href: "/inventory/receipts" },
-          { label: "Receive stock" },
-        ]}
-      />
-
       <div className="mb-4 flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 max-w-md">
         <button
           type="button"

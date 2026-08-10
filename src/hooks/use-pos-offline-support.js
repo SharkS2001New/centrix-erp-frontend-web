@@ -250,7 +250,8 @@ export function usePosOfflineSupport({
         if (generation !== flushGenerationRef.current && results.length === 0) {
           return results;
         }
-        const failed = results.filter((r) => !r.ok);
+        // Till-busy previous-order edits stay pending (deferred) — not Sync failed.
+        const failed = results.filter((r) => !r.ok && !r.deferred);
         const ok = results.filter((r) => r.ok);
         const reprints = ok.filter((r) => r.needs_reprint);
         if (ok.length) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { TabFormExitButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 
 export const EMPTY_OTHER_CONTACT = {
@@ -305,13 +305,12 @@ export function SupplierFormPageShell({ backHref, backLabel, title, subtitle, ch
   return (
     <div className="theme-workspace min-h-full">
       <div className="w-full">
-        <div className="mb-6">
-          <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-            {backLabel}
-          </TabFormExitButton>
-          <h1 className="mt-2 text-xl font-medium text-slate-900">{title}</h1>
-          {subtitle ? <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p> : null}
-        </div>
+        <TabFormPageHeader
+          backHref={backHref}
+          backLabel={backLabel}
+          title={title}
+          subtitle={subtitle}
+        />
         {children}
       </div>
     </div>

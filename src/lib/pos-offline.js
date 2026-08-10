@@ -548,6 +548,55 @@ export function isServerPosCartId(id) {
   return id != null && String(id) !== "active" && /^\d+$/.test(String(id));
 }
 
+/** While > 0, background previous-order edit sync owns the sticky TemporaryCart. */
+let backgroundPreviousOrderEditSyncDepth = 0;
+let backgroundPreviousOrderEditSyncCartId = null;
+
+export function isBackgroundPreviousOrderEditSyncActive() {
+  return backgroundPreviousOrderEditSyncDepth > 0;
+}
+
+export function getBackgroundPreviousOrderEditSyncCartId() {
+  return backgroundPreviousOrderEditSyncCartId;
+}
+
+export function isPreviousOrderEditTillBusyError(err) {
+  return /Cannot sync this previous-order edit while a new sale is open/i.test(
+    String(err?.message ?? err ?? ""),
+  );
+}
+
+/**
+ * Awaited wipe of sticky TemporaryCart lines.
+ * Outbox sync reuses firstOrCreate(user+channel): a failed checkout leaves the
+ * failed sale's lines on that cart, and the next POST /sales/carts returns them —
+ * so new scans looked like they overwrote / merged into the failed order.
+ */
+export async function wipeTemporaryCartLines(cart) {
+  if (!cart) return cart;
+  if (!isServerPosCartId(cart.id)) {
+    return { ...cart, lines: [], order_discount: 0 };
+  }
+  const cartId = Number(cart.id);
+  try {
+    await apiRequest(`/sales/carts/${cartId}/lines`, {
+      method: "DELETE",
+      loading: false,
+      reportIssues: false,
+    });
+  } catch {
+    /* paint empty locally even if DELETE raced */
+  }
+  return {
+    ...cart,
+    id: cartId,
+    lines: [],
+    order_discount: 0,
+    held_order_num: null,
+    superseded_sale_id: null,
+  };
+}
+
 export {
   clampPosOrderBusinessDate,
   normalizePosOrderDate,
@@ -2167,6 +2216,54 @@ async function resolvePreviousOrderEditCartId(row) {
 
   async function restoreFromSale(saleId) {
     if (!saleId) return null;
+    // Sticky TemporaryCart is shared with the live till. Never restore-to-cart over a
+    // cashier's in-progress new sale — that left previous-order lines on the next ticket
+    // when this sync later failed.
+    try {
+      const local = await idbGetLocalCart("active").catch(() => null);
+      const localBusy =
+        (local?.lines?.length ?? 0) > 0 ||
+        Boolean(local?.offline_client_sale_uuid) ||
+        Boolean(local?.held_order_num && local?.superseded_sale_id);
+      if (localBusy) {
+        throw new Error(
+          "Cannot sync this previous-order edit while a new sale is open on the till. Clear or finish the current order, then open Sync failed and retry.",
+        );
+      }
+
+      const seed = {
+        channel: "pos",
+        ...(row.cart_seed?.branch_id ? { branch_id: row.cart_seed.branch_id } : {}),
+        ...(row.cart_seed?.till_id ? { till_id: row.cart_seed.till_id } : {}),
+      };
+      const sticky = await apiRequest("/sales/carts", {
+        method: "POST",
+        body: seed,
+        loading: false,
+        reportIssues: false,
+      });
+      const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? saleId ?? 0);
+      const editOrderNum = Number(row.order_num ?? 0);
+      const stickyIsThisEdit =
+        (editSaleId > 0 && Number(sticky?.superseded_sale_id) === editSaleId) ||
+        (editOrderNum > 0 && Number(sticky?.held_order_num) === editOrderNum);
+      const stickyHasForeignLines =
+        (sticky?.lines?.length ?? 0) > 0 &&
+        !stickyIsThisEdit &&
+        !(Number(sticky?.superseded_sale_id) > 0);
+      if (stickyHasForeignLines) {
+        // Till UI is free (local empty) but TemporaryCart still holds leftover lines
+        // from a failed upload — wipe then proceed. Never restore-to-cart over a
+        // live sale (localBusy already threw above).
+        await wipeTemporaryCartLines(sticky);
+      }
+    } catch (guardErr) {
+      if (isPreviousOrderEditTillBusyError(guardErr)) {
+        throw guardErr;
+      }
+      /* sticky probe failed — continue to restore */
+    }
+
     const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
       method: "POST",
       body: { replace: true },
@@ -2178,9 +2275,37 @@ async function resolvePreviousOrderEditCartId(row) {
 
   if (cartId) {
     try {
-      await apiRequest(`/sales/carts/${cartId}`, { loading: false, reportIssues: false });
+      const local = await idbGetLocalCart("active").catch(() => null);
+      const localBusy =
+        (local?.lines?.length ?? 0) > 0 ||
+        Boolean(local?.offline_client_sale_uuid) ||
+        Boolean(local?.held_order_num && local?.superseded_sale_id);
+      const existing = await apiRequest(`/sales/carts/${cartId}`, {
+        loading: false,
+        reportIssues: false,
+      });
+      const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
+      const editOrderNum = Number(row.order_num ?? 0);
+      const stickyIsThisEdit =
+        (editSaleId > 0 && Number(existing?.superseded_sale_id) === editSaleId) ||
+        (editOrderNum > 0 && Number(existing?.held_order_num) === editOrderNum);
+      const stickyHasForeignLines =
+        (existing?.lines?.length ?? 0) > 0 &&
+        !stickyIsThisEdit &&
+        !(Number(existing?.superseded_sale_id) > 0);
+      if (stickyHasForeignLines && localBusy) {
+        throw new Error(
+          "Cannot sync this previous-order edit while a new sale is open on the till. Clear or finish the current order, then open Sync failed and retry.",
+        );
+      }
+      if (stickyHasForeignLines && !localBusy) {
+        await wipeTemporaryCartLines(existing);
+      }
       return cartId;
     } catch (err) {
+      if (isPreviousOrderEditTillBusyError(err)) {
+        throw err;
+      }
       if (!isMissingTemporaryCartError(err)) {
         // Ownership/branch errors should surface; missing cart falls through to restore.
         const status = err instanceof ApiError ? err.status : null;
@@ -2365,6 +2490,9 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
     throw new Error("Missing edit cart for previous order sync.");
   }
 
+  backgroundPreviousOrderEditSyncDepth += 1;
+  backgroundPreviousOrderEditSyncCartId = Number(cartId);
+
   async function putLines(targetCartId) {
     await apiRequest(`/sales/carts/${targetCartId}/lines`, {
       method: "PUT",
@@ -2377,44 +2505,64 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
     });
   }
 
-  try {
-    await putLines(cartId);
-  } catch (putErr) {
-    // Stale cart id after a prior checkout — restore the sale and retry once.
-    if (!isMissingTemporaryCartError(putErr) && !(putErr instanceof ApiError && putErr.status === 404)) {
-      throw putErr;
-    }
-    const retryCartId = await resolvePreviousOrderEditCartId({
-      ...row,
-      server_cart_id: null,
-    });
-    if (!retryCartId) throw putErr;
-    cartId = retryCartId;
-    await putLines(cartId);
+  async function releaseEditCartIfNeeded(targetCartId) {
+    if (!targetCartId) return;
+    // Failed revise leaves restore-to-cart / PUT lines on the sticky TemporaryCart —
+    // wipe so the next till sale cannot inherit the previous order's items.
+    await wipeTemporaryCartLines({ id: targetCartId, lines: [{}] }).catch(() => {});
   }
 
   try {
-    return await apiRequest(`/sales/carts/${cartId}/checkout`, {
-      method: "POST",
-      body: await checkoutBodyForOutboxRow(row, orderNum),
-      loading: false,
-      reportIssues: false,
-    });
-  } catch (checkoutErr) {
-    // Cart vanished between PUT and checkout (concurrent sync) — restore and retry once.
-    if (!isMissingTemporaryCartError(checkoutErr)) throw checkoutErr;
-    const retryCartId = await resolvePreviousOrderEditCartId({
-      ...row,
-      server_cart_id: null,
-    });
-    if (!retryCartId) throw checkoutErr;
-    await putLines(retryCartId);
-    return apiRequest(`/sales/carts/${retryCartId}/checkout`, {
-      method: "POST",
-      body: await checkoutBodyForOutboxRow(row, orderNum),
-      loading: false,
-      reportIssues: false,
-    });
+    try {
+      await putLines(cartId);
+    } catch (putErr) {
+      // Stale cart id after a prior checkout — restore the sale and retry once.
+      if (!isMissingTemporaryCartError(putErr) && !(putErr instanceof ApiError && putErr.status === 404)) {
+        throw putErr;
+      }
+      const retryCartId = await resolvePreviousOrderEditCartId({
+        ...row,
+        server_cart_id: null,
+      });
+      if (!retryCartId) throw putErr;
+      cartId = retryCartId;
+      backgroundPreviousOrderEditSyncCartId = Number(cartId);
+      await putLines(cartId);
+    }
+
+    try {
+      return await apiRequest(`/sales/carts/${cartId}/checkout`, {
+        method: "POST",
+        body: await checkoutBodyForOutboxRow(row, orderNum),
+        loading: false,
+        reportIssues: false,
+      });
+    } catch (checkoutErr) {
+      // Cart vanished between PUT and checkout (concurrent sync) — restore and retry once.
+      if (!isMissingTemporaryCartError(checkoutErr)) throw checkoutErr;
+      const retryCartId = await resolvePreviousOrderEditCartId({
+        ...row,
+        server_cart_id: null,
+      });
+      if (!retryCartId) throw checkoutErr;
+      cartId = retryCartId;
+      backgroundPreviousOrderEditSyncCartId = Number(cartId);
+      await putLines(retryCartId);
+      return await apiRequest(`/sales/carts/${retryCartId}/checkout`, {
+        method: "POST",
+        body: await checkoutBodyForOutboxRow(row, orderNum),
+        loading: false,
+        reportIssues: false,
+      });
+    }
+  } catch (err) {
+    await releaseEditCartIfNeeded(cartId);
+    throw err;
+  } finally {
+    backgroundPreviousOrderEditSyncDepth = Math.max(0, backgroundPreviousOrderEditSyncDepth - 1);
+    if (backgroundPreviousOrderEditSyncDepth === 0) {
+      backgroundPreviousOrderEditSyncCartId = null;
+    }
   }
 }
 
@@ -2495,25 +2643,31 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
   // Sticky TemporaryCart is reused per cashier+channel — REPLACE lines so leftover
   // draft/online lines are not appended onto the offline snapshot (extra items / qty blow-up).
   const orderDiscount = Number(row.order_discount ?? 0);
-  await apiRequest(`/sales/carts/${cartId}/lines`, {
-    method: "PUT",
-    body: {
-      lines: mapOutboxLinesForPut(row),
-      order_discount: orderDiscount > 0 ? orderDiscount : 0,
-    },
-    loading: false,
-    reportIssues: false,
-  });
+  try {
+    await apiRequest(`/sales/carts/${cartId}/lines`, {
+      method: "PUT",
+      body: {
+        lines: mapOutboxLinesForPut(row),
+        order_discount: orderDiscount > 0 ? orderDiscount : 0,
+      },
+      loading: false,
+      reportIssues: false,
+    });
 
-  return apiRequest(`/sales/carts/${cartId}/checkout`, {
-    method: "POST",
-    body: await checkoutBodyForOutboxRow(row, orderNum, {
-      ...extras,
-      ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
-    }),
-    loading: false,
-    reportIssues: false,
-  });
+    return await apiRequest(`/sales/carts/${cartId}/checkout`, {
+      method: "POST",
+      body: await checkoutBodyForOutboxRow(row, orderNum, {
+        ...extras,
+        ...(openFloatSessionId ? { float_session_id: openFloatSessionId } : {}),
+      }),
+      loading: false,
+      reportIssues: false,
+    });
+  } catch (err) {
+    // Leave TemporaryCart blank so the next live till sale cannot inherit these lines.
+    await wipeTemporaryCartLines({ id: cartId, lines: [{}] }).catch(() => {});
+    throw err;
+  }
 }
 
 export function parseOfflineSaleUuid(saleId) {
@@ -4069,6 +4223,36 @@ export async function syncPosOfflineOutbox({
           : `Synced ${done} of ${total}…`,
       });
     } catch (err) {
+      // Till is selling — leave the edit pending and try again later. Do not mark
+      // sync_status=error or open Sync failed; that would look like sales are blocked.
+      if (isPreviousOrderEditTillBusyError(err)) {
+        results.push({
+          ok: false,
+          deferred: true,
+          order_num: printedOrderNum,
+          pos_order_num: listedPosTicket,
+          printed_pos_order_num: listedPosTicket,
+          client_sale_uuid: row.client_sale_uuid,
+          sync_kind: row.sync_kind ?? "sale",
+          error: outboxSyncErrorMessage(err),
+        });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: false,
+          deferred: true,
+          order_num: printedOrderNum,
+          pos_order_num: listedPosTicket,
+          message: cashSalesProgressLabel
+            ? `Deferred ${cashSalesProgressLabel} — till is busy…`
+            : "Deferred previous-order edit — till is busy…",
+        });
+        continue;
+      }
+
       const message = outboxSyncErrorMessage(err);
       await withPosOfflineExclusiveLock(async () => {
         await idbMarkOutboxError(row.client_sale_uuid, message);

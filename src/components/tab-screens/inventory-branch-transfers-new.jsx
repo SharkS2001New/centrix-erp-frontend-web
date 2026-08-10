@@ -18,7 +18,6 @@ import {
   uomMeasureLabel,
 } from "@/components/inventory/damage-measure-select";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
-import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { TRANSFER_FROM_OPTIONS } from "@/lib/inventory-transfer-routes";
 import { damageQtyToBase } from "@/lib/stock-uom";
 
@@ -128,14 +127,9 @@ export function InventoryBranchTransfersNewScreen() {
     <InventoryPageShell
       title="Inter-branch transfer"
       subtitle="Move stock between branches (depot to depot, warehouse to branch shop, etc.)"
+      backHref="/inventory/transfers"
+      backLabel="Back to branch transfers"
     >
-      <AppBreadcrumb
-        items={[
-          { label: "Branch transfers", href: "/inventory/transfers" },
-          { label: "New transfer" },
-        ]}
-      />
-
       <form onSubmit={submit} className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
           <div className="min-h-[380px] min-w-0 lg:sticky lg:top-6 lg:self-start">

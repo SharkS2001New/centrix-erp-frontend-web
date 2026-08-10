@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import { formatOrgCurrency, formatOrgCurrencyCompact } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
@@ -182,16 +183,39 @@ export function InventoryTrendChart({ points }) {
   );
 }
 
-export function InventoryPageShell({ title, subtitle, action, toolbar, children }) {
+export function InventoryPageShell({
+  title,
+  subtitle,
+  action,
+  toolbar,
+  children,
+  backHref,
+  backLabel,
+}) {
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
-          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+      {backHref ? (
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <TabFormPageHeader
+            backHref={backHref}
+            backLabel={backLabel ?? "Back"}
+            title={title}
+            subtitle={subtitle}
+            titleClassName="text-2xl font-semibold tracking-tight text-slate-900"
+            subtitleClassName="mt-1 text-sm text-slate-500"
+            className="flex min-w-0 flex-1 items-start gap-3"
+          />
+          {action ? <div className="shrink-0">{action}</div> : null}
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
+      ) : (
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+            {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+          </div>
+          {action ? <div className="shrink-0">{action}</div> : null}
+        </div>
+      )}
       {toolbar}
       {children}
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { TabFormExitButton, TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
@@ -250,12 +250,13 @@ export function EmployeeFormPageShell({ backHref, backLabel, title, subtitle, ch
   return (
     <div className="theme-workspace min-h-full">
       <div className="flex w-full min-h-[calc(100vh-8rem)] flex-col">
-        <div className="mb-6 shrink-0">
-          <TabFormExitButton href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-            {backLabel}
-          </TabFormExitButton>
-          <h1 className="mt-2 text-xl font-medium text-slate-900">{title}</h1>
-          {subtitle ? <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p> : null}
+        <div className="shrink-0">
+          <TabFormPageHeader
+            backHref={backHref}
+            backLabel={backLabel}
+            title={title}
+            subtitle={subtitle}
+          />
         </div>
         <div className="min-h-0 flex-1">{children}</div>
       </div>

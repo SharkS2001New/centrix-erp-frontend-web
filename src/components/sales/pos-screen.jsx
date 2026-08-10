@@ -213,6 +213,9 @@ import {
   isLocalFirstCashCheckout,
   isMissingTemporaryCartError,
   isServerPosCartId,
+  wipeTemporaryCartLines,
+  isBackgroundPreviousOrderEditSyncActive,
+  getBackgroundPreviousOrderEditSyncCartId,
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
@@ -3036,41 +3039,80 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    void clearLocalPosCart().catch(() => {});
+    void (async () => {
+      await clearLocalPosCart().catch(() => {});
 
-    if (!current) return;
-    if (isFreshWorkspacePlaceholder(current)) return;
+      const live = cartRef.current;
+      if (!live) return;
 
-    if (
-      current.held_order_num ||
-      current.offline_client_sale_uuid ||
-      current.offline ||
-      current.superseded_sale_id ||
-      (current.lines?.length ?? 0) > 0
-    ) {
-      // Failed sync residue often leaves TemporaryCart lines on the "new order"
-      // workspace — clear them so the next scan cannot merge into the failed sale.
-      if (isServerPosCartId(current.id)) {
-        markServerCartConsumed(current.id);
-        void apiRequest(`/sales/carts/${current.id}/lines`, {
-          method: "DELETE",
-          loading: false,
-          reportIssues: false,
-        }).catch(() => {});
+      // Even when the UI is already a blank pending-fresh shell, sticky TemporaryCart
+      // may still hold the failed upload's lines — wipe before the next scan.
+      const wipeStickyIfNeeded = async (maybeCart) => {
+        if (isServerPosCartId(maybeCart?.id)) {
+          markServerCartConsumed(maybeCart.id);
+          await wipeTemporaryCartLines(maybeCart).catch(() => {});
+          return;
+        }
+        if (!user?.branch_id) return;
+        try {
+          const sticky = await apiRequest("/sales/carts", {
+            method: "POST",
+            body: {
+              channel: "pos",
+              order_source: "pos",
+              branch_id: user.branch_id,
+              ...(tillId ? { till_id: tillId } : {}),
+            },
+            loading: false,
+            reportIssues: false,
+          });
+          if (isServerPosCartId(sticky?.id) && (sticky.lines?.length ?? 0) > 0) {
+            markServerCartConsumed(sticky.id);
+            await wipeTemporaryCartLines(sticky).catch(() => {});
+          }
+        } catch {
+          /* next scan forceEmpty will retry */
+        }
+      };
+
+      if (isFreshWorkspacePlaceholder(live)) {
+        await wipeStickyIfNeeded(live);
+        return;
       }
-      const nextPos = resolveFreshWorkspacePosNum(
-        stripOfflineSaleMarkers(current),
-        sessionPosOrders,
-        null,
-        null,
-        floatSessionId,
-      );
-      applyFreshWorkspacePlaceholder(current, nextPos);
-      setStatusMessage(
-        "Sync failed for a queued sale — workspace cleared for a new order. Use Sync failed to retry.",
-      );
-    }
-  }, [standalone, syncProgress?.phase, syncProgress?.failed, syncProgress?.message, sessionPosOrders, floatSessionId]);
+
+      if (
+        live.held_order_num ||
+        live.offline_client_sale_uuid ||
+        live.offline ||
+        live.superseded_sale_id ||
+        (live.lines?.length ?? 0) > 0
+      ) {
+        // Failed sync residue often leaves TemporaryCart lines on the "new order"
+        // workspace — clear them so the next scan cannot merge into the failed sale.
+        await wipeStickyIfNeeded(live);
+        const nextPos = resolveFreshWorkspacePosNum(
+          stripOfflineSaleMarkers(live),
+          sessionPosOrders,
+          null,
+          null,
+          floatSessionId,
+        );
+        applyFreshWorkspacePlaceholder(live, nextPos);
+        setStatusMessage(
+          "Sync failed for a queued sale — workspace cleared for a new order. Use Sync failed to retry.",
+        );
+      }
+    })();
+  }, [
+    standalone,
+    syncProgress?.phase,
+    syncProgress?.failed,
+    syncProgress?.message,
+    sessionPosOrders,
+    floatSessionId,
+    user?.branch_id,
+    tillId,
+  ]);
 
   // When the offline catalog refreshes, apply new prices to open cart lines.
   // Pause while offline, and also while a continued offline / queued-edit cart is open
@@ -3647,6 +3689,8 @@ export function PosScreen({ standalone = false }) {
 
   const loadCashierCart = useCallback(async (options = {}) => {
     const skipEditDraftRestore = Boolean(options.skipEditDraftRestore);
+    // Fresh till workspace: sticky TemporaryCart must not bring back failed-sync lines.
+    const forceEmpty = Boolean(options.forceEmpty);
     // When false, fetch/create only — caller decides whether to paint (hold/print clear).
     const applyState = options.applyState !== false;
     if (!user?.branch_id) return null;
@@ -3687,12 +3731,12 @@ export function PosScreen({ standalone = false }) {
       method: "POST",
       body,
     });
-    const full = Array.isArray(created?.lines)
+    let full = Array.isArray(created?.lines)
       ? created
       : await apiRequest(`/sales/carts/${created.id}`);
 
     // Resume a previous-order edit draft from local cache (lines edited before refresh).
-    if (!skipEditDraftRestore) {
+    if (!skipEditDraftRestore && !forceEmpty) {
       try {
         const draft = await loadPreviousOrderEditDraft();
         if (
@@ -3728,6 +3772,15 @@ export function PosScreen({ standalone = false }) {
       } catch {
         // Ignore draft restore failures — fall through to server cart.
       }
+    }
+
+    if (
+      forceEmpty &&
+      standalone &&
+      isServerPosCartId(full?.id) &&
+      ((full.lines?.length ?? 0) > 0 || full.held_order_num || full.superseded_sale_id)
+    ) {
+      full = await wipeTemporaryCartLines(full);
     }
 
     if (applyState) {
@@ -3965,6 +4018,51 @@ export function PosScreen({ standalone = false }) {
 
   const ensureCart = useCallback(async () => {
     const current = cartRef.current;
+    // Background previous-order edit briefly owns TemporaryCart. Keep selling on a
+    // local workspace so sync cannot merge old lines into the live till.
+    if (
+      standalone &&
+      isBackgroundPreviousOrderEditSyncActive() &&
+      !isPreviousOrderEditSession(current) &&
+      !isActiveOfflineEditSession(current)
+    ) {
+      if (current?.offline && Array.isArray(current.lines)) return current;
+      const local = await continueOpenCartThroughOutage(
+        current && (current.lines?.length > 0 || current.id === "pending-fresh")
+          ? current
+          : {
+              id: "pending-fresh",
+              channel,
+              lines: [],
+              branch_id: user?.branch_id,
+              till_id: tillId,
+              float_session_id: floatSessionId,
+            },
+        offlineOutageSeed(),
+      );
+      const presented = presentLocalOfflineCart(local);
+      cartRef.current = presented;
+      setCart(presented);
+      return presented;
+    }
+    if (
+      standalone &&
+      current &&
+      isServerPosCartId(current.id) &&
+      getBackgroundPreviousOrderEditSyncCartId() != null &&
+      Number(current.id) === Number(getBackgroundPreviousOrderEditSyncCartId()) &&
+      !isPreviousOrderEditSession(current)
+    ) {
+      // Same TemporaryCart id the background edit is using — do not POST into it.
+      const local = await continueOpenCartThroughOutage(
+        { ...current, lines: current.lines ?? [] },
+        offlineOutageSeed(),
+      );
+      const presented = presentLocalOfflineCart(local);
+      cartRef.current = presented;
+      setCart(presented);
+      return presented;
+    }
     if (
       standalone &&
       current &&
@@ -3973,11 +4071,7 @@ export function PosScreen({ standalone = false }) {
       await clearLocalPosCart().catch(() => {});
       if (isServerPosCartId(current.id)) {
         markServerCartConsumed(current.id);
-        void apiRequest(`/sales/carts/${current.id}/lines`, {
-          method: "DELETE",
-          loading: false,
-          reportIssues: false,
-        }).catch(() => {});
+        await wipeTemporaryCartLines(current).catch(() => {});
       }
       const nextPos = resolveFreshWorkspacePosNum(
         stripOfflineSaleMarkers(current),
@@ -3987,7 +4081,7 @@ export function PosScreen({ standalone = false }) {
         floatSessionId,
       );
       applyFreshWorkspacePlaceholder(current, nextPos);
-      return loadCashierCart({ skipEditDraftRestore: true });
+      return loadCashierCart({ skipEditDraftRestore: true, forceEmpty: true });
     }
     if (standalone && offlineMode) {
       if (current?.offline && Array.isArray(current.lines)) return current;
@@ -4023,7 +4117,12 @@ export function PosScreen({ standalone = false }) {
           bootstrapped = await freshCartBootstrapRef.current.catch(() => null);
         }
         if (!bootstrapped || !isServerPosCartId(bootstrapped.id)) {
-          bootstrapped = await loadCashierCart({ skipEditDraftRestore: true });
+          bootstrapped = await loadCashierCart({ skipEditDraftRestore: true, forceEmpty: true });
+        } else if ((bootstrapped.lines?.length ?? 0) > 0) {
+          // Sticky cart still held failed-sync / prior sale lines — wipe before first scan.
+          bootstrapped = await wipeTemporaryCartLines(bootstrapped);
+          cartRef.current = bootstrapped;
+          setCart(bootstrapped);
         }
         if (bootstrapped && pendingOptimistic.length) {
           // Keep the instantly painted rows while TemporaryCart finishes creating.
@@ -4923,6 +5022,16 @@ export function PosScreen({ standalone = false }) {
     /** When true, a failed TemporaryCart PATCH keeps the painted edit (classic qty). */
     keepOptimisticOnFailure = false,
   }) {
+    // Background previous-order edit owns TemporaryCart — sell on a local workspace
+    // so scans never merge into the edit being uploaded.
+    if (
+      standalone &&
+      isBackgroundPreviousOrderEditSyncActive() &&
+      !isPreviousOrderEditSession(cartRef.current) &&
+      !isActiveOfflineEditSession(cartRef.current)
+    ) {
+      await ensureCart();
+    }
     // Failed sync must never own the till — detach before merge/add so old lines
     // cannot be recopied into the next Cash Sales #.
     if (
@@ -4934,11 +5043,7 @@ export function PosScreen({ standalone = false }) {
       const stale = cartRef.current;
       if (isServerPosCartId(stale?.id)) {
         markServerCartConsumed(stale.id);
-        void apiRequest(`/sales/carts/${stale.id}/lines`, {
-          method: "DELETE",
-          loading: false,
-          reportIssues: false,
-        }).catch(() => {});
+        await wipeTemporaryCartLines(stale).catch(() => {});
       }
       const nextPos = resolveFreshWorkspacePosNum(
         stripOfflineSaleMarkers(stale),
@@ -4948,7 +5053,10 @@ export function PosScreen({ standalone = false }) {
         floatSessionId,
       );
       applyFreshWorkspacePlaceholder(stale, nextPos);
-      const bootstrapped = await loadCashierCart({ skipEditDraftRestore: true }).catch(() => null);
+      const bootstrapped = await loadCashierCart({
+        skipEditDraftRestore: true,
+        forceEmpty: true,
+      }).catch(() => null);
       if (bootstrapped) {
         const merged = mergeFreshWorkspaceCart(
           stripOfflineSaleMarkers(stripPreviousOrderEditSession(bootstrapped)),
@@ -8459,7 +8567,7 @@ export function PosScreen({ standalone = false }) {
       }
 
       const generation = ++freshWorkspaceGenerationRef.current;
-      const cartPromise = loadCashierCart({ skipEditDraftRestore: true });
+      const cartPromise = loadCashierCart({ skipEditDraftRestore: true, forceEmpty: true });
 
       const peekNextPos = await resolveNextPosTicketForWorkspace(
         cartRef.current,

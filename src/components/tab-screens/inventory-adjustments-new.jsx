@@ -21,7 +21,6 @@ import {
   useInventoryCatalogMaps,
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
-import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { damageQtyToBase } from "@/lib/stock-uom";
 
 function lineFromProduct(product) {
@@ -141,14 +140,9 @@ export function InventoryAdjustmentsNewScreen() {
     <InventoryPageShell
       title="Adjust stock"
       subtitle="Increase or decrease shop or store quantities without a purchase order or stock take"
+      backHref="/inventory/adjustments"
+      backLabel="Back to stock adjustments"
     >
-      <AppBreadcrumb
-        items={[
-          { label: "Stock adjustments", href: "/inventory/adjustments" },
-          { label: "New adjustment" },
-        ]}
-      />
-
       <form
         onSubmit={submit}
         className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
-import { TabFormCancelButton, TabFormExitButton } from "@/components/layout/tab-form-exit-button";
+import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
@@ -392,20 +392,15 @@ export function CustomerReturnForm({
 
   return (
     <form onSubmit={handleSubmit} className="theme-panel rounded-xl border p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <TabFormExitButton
-            href={backHref}
-            className="text-sm text-[var(--theme-primary)] hover:underline"
-          >
-            {backLabel}
-          </TabFormExitButton>
-          <h2 className="mt-2 text-xl font-semibold text-slate-900">
-            {editing ? `Edit ${editing.return_no}` : "Create new return"}
-          </h2>
-          <p className="text-sm text-slate-500">Enter an invoice number to load line items.</p>
-        </div>
-      </div>
+      <TabFormPageHeader
+        backHref={backHref}
+        backLabel={backLabel}
+        title={editing ? `Edit ${editing.return_no}` : "Create new return"}
+        subtitle="Enter an invoice number to load line items."
+        titleClassName="text-xl font-semibold text-slate-900"
+        subtitleClassName="text-sm text-slate-500"
+        className="mb-4 flex items-start gap-3"
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Invoice number">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Children, isValidElement, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanAccess } from "@/components/permission-gate";
+import { TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { activeGeneralSettings } from "@/lib/general-settings";
@@ -95,16 +96,30 @@ export function CatalogPageShell({
   toolbar,
   children,
   navigationReady = true,
+  backHref,
+  backLabel,
 }) {
   usePageNavigationReady(navigationReady);
 
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="theme-heading text-xl font-medium">{title}</h1>
-          {subtitle && <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p>}
-        </div>
+        {backHref ? (
+          <TabFormPageHeader
+            backHref={backHref}
+            backLabel={backLabel ?? "Back"}
+            title={title}
+            subtitle={subtitle}
+            titleClassName="theme-heading text-xl font-medium"
+            subtitleClassName="theme-subtext mt-0.5 text-sm"
+            className="flex min-w-0 flex-1 items-start gap-3"
+          />
+        ) : (
+          <div>
+            <h1 className="theme-heading text-xl font-medium">{title}</h1>
+            {subtitle && <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p>}
+          </div>
+        )}
         {action}
       </div>
       {banner}

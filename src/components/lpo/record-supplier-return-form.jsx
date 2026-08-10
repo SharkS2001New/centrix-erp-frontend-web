@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { TabFormCancelButton, TabFormPageHeader } from "@/components/layout/tab-form-exit-button";
 import { Field, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   lpoReturnableLines,
@@ -152,11 +153,12 @@ export function RecordSupplierReturnForm({
   return (
     <div className="theme-workspace min-h-full">
       <div className="mx-auto max-w-xl">
-        <Link href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-          {backLabel}
-        </Link>
-        <h1 className="mt-2 text-xl font-medium text-slate-900">{title}</h1>
-        <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+        <TabFormPageHeader
+          backHref={backHref}
+          backLabel={backLabel}
+          title={title}
+          subtitle={subtitle}
+        />
 
         {Number(lpoStatusCode) < 3 ? (
           <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -288,12 +290,7 @@ export function RecordSupplierReturnForm({
             ) : null}
 
             <div className="flex gap-2 border-t border-slate-100 pt-4">
-              <Link
-                href={backHref}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </Link>
+              <TabFormCancelButton href={backHref} />
               <button
                 type="submit"
                 disabled={saving}
