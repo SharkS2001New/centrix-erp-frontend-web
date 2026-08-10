@@ -145,7 +145,11 @@ export function AccountingCustomerInvoicesIdScreen() {
 
   if (loading) {
     return (
-      <CatalogPageShell title="Customer invoice">
+      <CatalogPageShell
+        title="Customer invoice"
+        backHref="/accounting/customer-invoices"
+        backLabel="Back to customer invoices"
+      >
         <p className="text-sm text-slate-500">Loading…</p>
       </CatalogPageShell>
     );
@@ -153,7 +157,11 @@ export function AccountingCustomerInvoicesIdScreen() {
 
   if (!invoice) {
     return (
-      <CatalogPageShell title="Customer invoice">
+      <CatalogPageShell
+        title="Customer invoice"
+        backHref="/accounting/customer-invoices"
+        backLabel="Back to customer invoices"
+      >
         <p className="text-sm text-red-600">{error ?? "Invoice not found"}</p>
       </CatalogPageShell>
     );
@@ -169,8 +177,11 @@ export function AccountingCustomerInvoicesIdScreen() {
           ? `${invoice.customer_name} · ${date(invoice.invoice_date)}`
           : `Customer #${invoice.customer_num} · ${date(invoice.invoice_date)}`
       }
+      backHref="/accounting/customer-invoices"
+      backLabel="Back to customer invoices"
     >
       <AppBreadcrumb
+        showBack={false}
         items={[
           { label: "Customer invoices", href: "/accounting/customer-invoices" },
           { label: invoice.invoice_number },

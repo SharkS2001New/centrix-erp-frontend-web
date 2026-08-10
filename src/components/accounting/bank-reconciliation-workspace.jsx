@@ -304,6 +304,8 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
     <CatalogPageShell
       title={title}
       subtitle={`${reconciliation.account_code} ${reconciliation.account_name ?? ""}`.trim()}
+      backHref="/accounting/bank-reconciliation"
+      backLabel="Back to bank reconciliation"
       action={
         <div className="flex flex-wrap items-center gap-2">
           {editable && !varianceOk ? (
@@ -340,6 +342,7 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
       }
     >
       <AppBreadcrumb
+        showBack={false}
         items={[
           { label: "Bank reconciliation", href: "/accounting/bank-reconciliation" },
           { label: title },

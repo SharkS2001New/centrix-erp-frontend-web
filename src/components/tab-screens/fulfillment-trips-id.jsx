@@ -403,7 +403,12 @@ export function FulfillmentTripsIdScreen() {
 
   if (loading) {
     return (
-      <CatalogPageShell title="Trip" subtitle="Loading…">
+      <CatalogPageShell
+        title="Trip"
+        subtitle="Loading…"
+        backHref="/fulfillment/trips"
+        backLabel="Back to trips"
+      >
         <p className="text-sm text-slate-500">Loading trip…</p>
       </CatalogPageShell>
     );
@@ -411,10 +416,12 @@ export function FulfillmentTripsIdScreen() {
 
   if (!trip) {
     return (
-      <CatalogPageShell title="Trip not found">
-        <Link href="/fulfillment/trips" className="text-[#185FA5] hover:underline">
-          Back to trips
-        </Link>
+      <CatalogPageShell
+        title="Trip not found"
+        backHref="/fulfillment/trips"
+        backLabel="Back to trips"
+      >
+        <p className="text-sm text-slate-500">This trip could not be loaded.</p>
       </CatalogPageShell>
     );
   }
@@ -548,6 +555,8 @@ export function FulfillmentTripsIdScreen() {
         </span>
       }
       subtitle={`${formatTripRoutesLabel(trip)} · ${trip.scheduled_date}`}
+      backHref="/fulfillment/trips"
+      backLabel="Back to trips"
       action={
         showCloseReconciliation ? (
           <Link
@@ -560,6 +569,7 @@ export function FulfillmentTripsIdScreen() {
       }
     >
       <AppBreadcrumb
+        showBack={false}
         items={[
           { label: "Distribution", href: "/fulfillment" },
           { label: "Trips", href: "/fulfillment/trips" },

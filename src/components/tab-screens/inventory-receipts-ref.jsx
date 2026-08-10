@@ -122,6 +122,8 @@ export function InventoryReceiptsRefScreen() {
     <InventoryPageShell
       title={ref}
       subtitle="Stock receipt details"
+      backHref="/inventory/receipts"
+      backLabel="Back to stock receipts"
       action={
         rows.length ? (
           <button
@@ -136,6 +138,7 @@ export function InventoryReceiptsRefScreen() {
       }
     >
       <AppBreadcrumb
+        showBack={false}
         items={[
           { label: "Stock receipts", href: "/inventory/receipts" },
           { label: ref },

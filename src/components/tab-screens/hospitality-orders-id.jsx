@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   CatalogPageShell,
   PrimaryButton,
-  SecondaryButton,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
@@ -49,7 +48,6 @@ function MetaRow({ label, children }) {
 
 export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {}) {
   const params = useParams();
-  const router = useRouter();
   const { organization, capabilities, user } = useAuth();
   const checkId = checkIdProp ?? params?.id;
 
@@ -119,7 +117,12 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
 
   if (loading) {
     return (
-      <CatalogPageShell title="F&B order" subtitle="Loading check details…">
+      <CatalogPageShell
+        title="F&B order"
+        subtitle="Loading check details…"
+        backHref="/hospitality/orders"
+        backLabel="Back to F&B orders"
+      >
         <p className="theme-subtext text-sm">Loading…</p>
       </CatalogPageShell>
     );
@@ -127,11 +130,13 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
 
   if (!check) {
     return (
-      <CatalogPageShell title="F&B order" subtitle="Order not found">
+      <CatalogPageShell
+        title="F&B order"
+        subtitle="Order not found"
+        backHref="/hospitality/orders"
+        backLabel="Back to F&B orders"
+      >
         <p className="theme-subtext text-sm">This check could not be loaded.</p>
-        <SecondaryButton className="mt-4" onClick={() => router.push("/hospitality/orders")}>
-          Back to F&B orders
-        </SecondaryButton>
       </CatalogPageShell>
     );
   }
@@ -140,11 +145,10 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
     <CatalogPageShell
       title={`Order ${check.check_number || check.order_num}`}
       subtitle="Hotel POS order — same summary layout as backoffice: lines, totals, payments, and print."
+      backHref="/hospitality/orders"
+      backLabel="Back to F&B orders"
       action={
         <div className="flex flex-wrap items-center gap-2">
-          <SecondaryButton onClick={() => router.push("/hospitality/orders")}>
-            Back
-          </SecondaryButton>
           <PrimaryButton
             showIcon={false}
             onClick={() => void handlePrint()}

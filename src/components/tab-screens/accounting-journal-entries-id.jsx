@@ -101,7 +101,12 @@ export function AccountingJournalEntriesIdScreen() {
 
   if (loading) {
     return (
-      <CatalogPageShell title="Journal Entry" subtitle="Loading…">
+      <CatalogPageShell
+        title="Journal Entry"
+        subtitle="Loading…"
+        backHref="/accounting/journal-entries"
+        backLabel="Back to journal entries"
+      >
         <p className="text-sm text-slate-500">Loading…</p>
       </CatalogPageShell>
     );
@@ -109,7 +114,12 @@ export function AccountingJournalEntriesIdScreen() {
 
   if (!entry) {
     return (
-      <CatalogPageShell title="Journal Entry" subtitle="Not found">
+      <CatalogPageShell
+        title="Journal Entry"
+        subtitle="Not found"
+        backHref="/accounting/journal-entries"
+        backLabel="Back to journal entries"
+      >
         <p className="text-sm text-red-600">Journal entry not found.</p>
       </CatalogPageShell>
     );
@@ -126,8 +136,11 @@ export function AccountingJournalEntriesIdScreen() {
     <CatalogPageShell
       title={`Journal Entry ${entry.entry_number}`}
       subtitle="Accounting > Journal Entries"
+      backHref="/accounting/journal-entries"
+      backLabel="Back to journal entries"
     >
       <AppBreadcrumb
+        showBack={false}
         items={[
           { label: "Journal entries", href: "/accounting/journal-entries" },
           { label: entry.entry_number },

@@ -546,6 +546,8 @@ export function InventoryStockTakeIdScreen() {
             })}`
           : "Count products and reconcile variances"
       }
+      backHref="/inventory/stock-take"
+      backLabel="Back to stock take"
       action={
         <div className="flex flex-wrap gap-2">
           <button
@@ -575,6 +577,7 @@ export function InventoryStockTakeIdScreen() {
       }
     >
       <AppBreadcrumb
+        showBack={false}
         items={[
           { label: "Stock take", href: "/inventory/stock-take" },
           { label: session?.session_code ?? "Session" },
