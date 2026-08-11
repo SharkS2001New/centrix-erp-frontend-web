@@ -1,7 +1,7 @@
 "use client";
 
 import { isPosClassicAltShortcut, isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
-import { cartLineMatchesRef } from "@/lib/pos-cart-merge";
+import { cartLineMatchesRef, cartLineRef } from "@/lib/pos-cart-merge";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
