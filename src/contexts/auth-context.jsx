@@ -617,6 +617,11 @@ export function AuthProvider({ children }) {
     router.replace(loginPath);
   }, [router]);
 
+  const isOrgWide = useCallback(
+    () => (capabilities?.access_scope ?? user?.access_scope) === "org" || Boolean(user?.is_admin),
+    [capabilities?.access_scope, user?.access_scope, user?.is_admin],
+  );
+
   const patchOrganization = useCallback((partial) => {
     setOrganization((prev) => {
       const next = { ...(prev ?? {}), ...(partial ?? {}) };
