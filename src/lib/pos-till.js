@@ -18,43 +18,6 @@ export function formatTillKesExact(value) {
   })}`;
 }
 
-/** Signed money for variance (+KES / −KES); balanced shows exact zero. */
-export function formatTillKesSigned(value) {
-  const n = Number(value ?? 0);
-  if (!Number.isFinite(n) || Math.abs(n) < 0.005) return formatTillKesExact(0);
-  if (n > 0) return `+${formatTillKesExact(n)}`;
-  return `-${formatTillKesExact(Math.abs(n))}`;
-}
-
-export function varianceAmountTone(variance) {
-  const v = Number(variance ?? 0);
-  if (!Number.isFinite(v) || Math.abs(v) < 0.01) return "default";
-  if (v > 0) return "success";
-  return "danger";
-}
-
-/** True when iso date (YYYY-MM-DD) is strictly before today in the app calendar. */
-export function isPastCalendarDate(isoDate, todayIso = null) {
-  if (!isoDate) return false;
-  const day = String(isoDate).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
-  const today = todayIso ?? new Date().toLocaleDateString("en-CA");
-  return day < today;
-}
-
-export function resolveSessionVariance(session) {
-  if (!session) return null;
-  if (session.variance != null && session.variance !== "") {
-    const parsed = Number(session.variance);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  if (session.closing_amount == null || session.closing_amount === "") return null;
-  const closing = Number(session.closing_amount);
-  if (!Number.isFinite(closing)) return null;
-  const expected = Number(session.expected_net_sales ?? session.expected_amount ?? 0);
-  return Math.round((closing - expected) * 100) / 100;
-}
-
 /** Cash movement options for float details (expenses cover petty cash outflows). */
 export const CASH_MOVEMENT_OPTIONS = [
   {

@@ -431,33 +431,6 @@ export async function idbGetCatalogProduct(code) {
   return withStore("catalog", "readonly", (store) => store.get(String(code)));
 }
 
-/** One transaction for many catalog lookups (same results as sequential gets). */
-export async function idbGetCatalogProducts(codes) {
-  const unique = [
-    ...new Set((codes ?? []).map((c) => String(c ?? "").trim()).filter(Boolean)),
-  ];
-  if (!unique.length) return [];
-  const db = await openDb();
-  const tx = db.transaction("catalog", "readonly");
-  const store = tx.objectStore("catalog");
-  const rows = await Promise.all(
-    unique.map(
-      (code) =>
-        new Promise((resolve, reject) => {
-          const req = store.get(code);
-          req.onsuccess = () => resolve(req.result ?? null);
-          req.onerror = () => reject(req.error ?? new Error("IndexedDB get failed."));
-        }),
-    ),
-  );
-  await new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed."));
-    tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted."));
-  });
-  return rows.filter(Boolean);
-}
-
 export async function idbReplaceOrderNumbers(numbers) {
   const db = await openDb();
   const tx = db.transaction(["order_slots", "order_numbers"], "readwrite");

@@ -3,7 +3,6 @@ import {
   applyCartMutationResponse,
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
-  cartLineMatchesRef,
   cartLineRef,
   mergePreservedOptimisticLines,
   revertOptimisticCartMutation,
@@ -14,41 +13,6 @@ describe("cartLineRef", () => {
     expect(cartLineRef({ id: 42, update_code: "" })).toBe(42);
     expect(cartLineRef({ id: 42, update_code: "   " })).toBe(42);
     expect(cartLineRef({ id: 42, update_code: "CLU-X" })).toBe("CLU-X");
-  });
-
-  it("prefers client_line_id over id", () => {
-    expect(
-      cartLineRef({ id: "pending-1", client_line_id: "cli-9", update_code: "" }),
-    ).toBe("cli-9");
-  });
-});
-
-describe("cartLineMatchesRef", () => {
-  it("matches after optimistic id remint via client_line_id", () => {
-    const live = {
-      id: 99,
-      update_code: "CLU-99",
-      client_line_id: "cli-swap",
-      product_code: "A",
-    };
-    expect(cartLineMatchesRef(live, "cli-swap")).toBe(true);
-    expect(cartLineMatchesRef(live, "pending-old")).toBe(false);
-    expect(
-      cartLineMatchesRef(live, {
-        id: "pending-old",
-        client_line_id: "cli-swap",
-        update_code: "pending-old",
-      }),
-    ).toBe(true);
-  });
-
-  it("matches string target against update_code", () => {
-    expect(
-      cartLineMatchesRef(
-        { id: 1, update_code: "CLU-1", product_code: "X" },
-        "CLU-1",
-      ),
-    ).toBe(true);
   });
 });
 

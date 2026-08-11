@@ -1,7 +1,6 @@
 "use client";
 
 import { isPosClassicAltShortcut, isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
-import { cartLineMatchesRef, cartLineRef } from "@/lib/pos-cart-merge";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -487,22 +486,17 @@ export function ClassicPosCartTable({
         </thead>
         <tbody>
           {lines.map((line, index) => {
-            const selected = cartLineMatchesRef(line, selectedLineId);
-            const checked =
-              (selectedLineIds?.has(String(line.id)) ?? false) ||
-              (line.update_code != null &&
-                (selectedLineIds?.has(String(line.update_code)) ?? false)) ||
-              (line.client_line_id != null &&
-                (selectedLineIds?.has(String(line.client_line_id)) ?? false));
-            const replacing = cartLineMatchesRef(line, replacingLineId);
-            const swapDraftActive = cartLineMatchesRef(line, swapDraftLineId);
+            const selected = String(selectedLineId) === String(line.id);
+            const checked = selectedLineIds?.has(String(line.id)) ?? false;
+            const replacing = String(replacingLineId) === String(line.id);
+            const swapDraftActive = String(swapDraftLineId) === String(line.id);
             const swapPreviewActive =
               swapDraftActive &&
               swapLinePreview &&
-              cartLineMatchesRef(line, swapLinePreview.lineId);
+              String(swapLinePreview.lineId) === String(line.id);
             return (
               <tr
-                key={String(cartLineRef(line) ?? line.id ?? index)}
+                key={line.id}
                 className={
                   replacing
                     ? "classic-pos-cart-row--replacing"
@@ -527,7 +521,7 @@ export function ClassicPosCartTable({
                     // Do not gate on lineBusy — classic adds enqueue without blocking
                     // swap; beginReplaceCartLine enforces hard busy itself.
                     if (!replacing && !busy) {
-                      onScanCodeClick?.(cartLineRef(line) ?? line.id);
+                      onScanCodeClick?.(line.id);
                     }
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
@@ -538,7 +532,7 @@ export function ClassicPosCartTable({
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             e.stopPropagation();
-                            if (!busy) onScanCodeClick?.(cartLineRef(line) ?? line.id);
+                            if (!busy) onScanCodeClick?.(line.id);
                           }
                         }
                   }

@@ -151,7 +151,6 @@ import {
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
   cartHasOptimisticLines,
-  cartLineMatchesRef,
   cartLineRef,
   findCartLineIndexByRef,
   findMergeableCartLine,
@@ -234,7 +233,6 @@ import {
   peekLocalPosTicketNext,
   ensurePosOfflineOrderNumbers,
   getPosOfflineProduct,
-  getPosOfflineProducts,
   getPosOfflinePendingCount,
   purgeReservedPosTicketsUpTo,
   seedLocalPosTicketSeq,
@@ -742,6 +740,11 @@ function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
   const list = Array.isArray(lines) ? lines : [];
   if (!list.length || needle == null) return null;
 
+  const needleId = needle?.id ?? needle;
+  const needleRef =
+    needle && typeof needle === "object"
+      ? needle.update_code ?? needle.client_line_id ?? needle.id
+      : needle;
   const needleCode =
     preferProductCode ??
     (needle && typeof needle === "object" ? needle.product_code : null);
@@ -750,10 +753,15 @@ function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
       ? Number(needle.on_wholesale_retail ?? 0)
       : null;
 
-  // Match id / update_code / client_line_id — including after TemporaryCart remints
-  // where optimistic `pending-*` ids are replaced but client_line_id may survive.
-  const byRef = list.find((row) => cartLineMatchesRef(row, needle));
-  if (byRef) return byRef;
+  const byId = list.find(
+    (row) =>
+      sameLineId(row.id, needleId) ||
+      (needleRef != null &&
+        (sameLineId(row.update_code, needleRef) ||
+          sameLineId(row.client_line_id, needleRef) ||
+          sameLineId(row.id, needleRef))),
+  );
+  if (byId) return byId;
 
   if (needleCode != null && String(needleCode).trim() !== "") {
     const matches = list.filter(
@@ -1207,8 +1215,6 @@ export function PosScreen({ standalone = false }) {
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission, logout } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
-  /** External POS (/pos): Light Stores cart chrome + theme templates on modern and classic. */
-  const lightStoresChrome = standalone;
   const classicThemeTemplate = useMemo(
     () => resolveClassicPosThemeTemplate(capabilities),
     [capabilities],
@@ -1219,17 +1225,15 @@ export function PosScreen({ standalone = false }) {
   );
   const classicThemeVars = useMemo(
     () =>
-      lightStoresChrome
-        ? classicPosThemeCssVars(classicThemeTemplate, classicThemeColors)
-        : null,
-    [lightStoresChrome, classicThemeTemplate, classicThemeColors],
+      classicLayout ? classicPosThemeCssVars(classicThemeTemplate, classicThemeColors) : null,
+    [classicLayout, classicThemeTemplate, classicThemeColors],
   );
   const classicThemeBridgeVars = useMemo(
     () =>
-      lightStoresChrome
+      classicLayout
         ? classicPosThemeBridgeVars(classicThemeTemplate, classicThemeColors)
         : null,
-    [lightStoresChrome, classicThemeTemplate, classicThemeColors],
+    [classicLayout, classicThemeTemplate, classicThemeColors],
   );
   const {
     activeSession,
@@ -1431,10 +1435,7 @@ export function PosScreen({ standalone = false }) {
     canAutoApprove: canAutoApproveDiscount,
   });
   const cartTableColSpan =
-    6 +
-    (showCartLineType ? 1 : 0) +
-    (showLineDiscountField ? 1 : 0) +
-    (standalone ? 1 : 0);
+    6 + (showCartLineType ? 1 : 0) + (showLineDiscountField ? 1 : 0);
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
   const mpesaStkPlatformEnabled = isPlatformMpesaStkEnabled(
@@ -2125,8 +2126,6 @@ export function PosScreen({ standalone = false }) {
   const orderNameSearchSeqRef = useRef(0);
   const [replacingLineId, setReplacingLineId] = useState(null);
   const replacingLineIdRef = useRef(null);
-  /** Snapshot of the line being swapped — survives TemporaryCart / optimistic id remints. */
-  const replaceTargetSnapshotRef = useRef(null);
   const [swapDraft, setSwapDraft] = useState(null);
   const swapDraftRef = useRef(null);
   const swapLineQtyRef = useRef(null);
@@ -2938,14 +2937,14 @@ export function PosScreen({ standalone = false }) {
   );
 
   const orderNameSearchQuery = useMemo(() => {
-    if (!standalone || !enablePosOrderEdit) return "";
+    if (!classicLayout || !enablePosOrderEdit) return "";
     const trimmed = String(editOrderNo ?? "").trim();
     if (trimmed.length < 2) return "";
     if (looksLikePosOrderNumberLookup(trimmed)) return "";
     // Don't treat the next-ticket placeholder as a name while user hasn't edited.
     if (!orderNoUserEditedRef.current) return "";
     return trimmed;
-  }, [standalone, enablePosOrderEdit, editOrderNo]);
+  }, [classicLayout, enablePosOrderEdit, editOrderNo]);
 
   const debouncedOrderNameQuery = useDebouncedValue(orderNameSearchQuery, 300);
 
@@ -3182,9 +3181,9 @@ export function PosScreen({ standalone = false }) {
           ...new Set((activeCart.lines ?? []).map((l) => l.product_code).filter(Boolean)),
         ];
         const productMeta = {};
-        const rows = await getPosOfflineProducts(codes);
-        for (const row of rows) {
-          if (row?.product_code) productMeta[row.product_code] = row;
+        for (const code of codes) {
+          const row = await getPosOfflineProduct(code);
+          if (row?.product_code) productMeta[code] = row;
         }
         if (cancelled || !Object.keys(productMeta).length) return;
         applyLiveCartCatalogPricesRef.current?.(productMeta);
@@ -3204,7 +3203,7 @@ export function PosScreen({ standalone = false }) {
   }, [standalone, offlineMode, lastSyncMessage]);
 
   useEffect(() => {
-    if (!standalone) return;
+    if (!classicLayout) return;
     const live = new Set((cart?.lines ?? []).map((line) => String(line.id)));
     setSelectedLineIds((prev) => {
       const next = new Set([...prev].filter((id) => live.has(id)));
@@ -3213,7 +3212,7 @@ export function PosScreen({ standalone = false }) {
     if (selectedLineId != null && !live.has(String(selectedLineId))) {
       setSelectedLineId(null);
     }
-  }, [cart?.lines, standalone, selectedLineId, setSelectedLineIds]);
+  }, [cart?.lines, classicLayout, selectedLineId, setSelectedLineIds]);
 
   useEffect(() => {
     const lineCount = cart?.lines?.length ?? 0;
@@ -3222,7 +3221,7 @@ export function PosScreen({ standalone = false }) {
     if (lineCount <= prevCount) return;
 
     const scrollToLatest = () => {
-      if (lightStoresChrome) {
+      if (classicLayout) {
         const el = classicCartTableScrollRef.current;
         if (!el) return;
         // Scroll only inside the cart pane — never scrollIntoView (that jumps
@@ -3240,7 +3239,7 @@ export function PosScreen({ standalone = false }) {
       // Second frame: layout may grow after the new row paints.
       requestAnimationFrame(scrollToLatest);
     });
-  }, [cart?.lines?.length, lightStoresChrome]);
+  }, [cart?.lines?.length, classicLayout]);
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -3381,10 +3380,10 @@ export function PosScreen({ standalone = false }) {
     cart,
   ]);
 
-  // External POS: full theme palette on the cashier desk (modern + classic layouts).
+  // Classic External POS: full theme palette on the cashier desk.
   // Leaving POS restores sidebar + button org theme (backoffice keeps default surfaces).
   useEffect(() => {
-    if (!lightStoresChrome) return undefined;
+    if (!classicLayout) return undefined;
     const previous = getTheme();
     const forceLight = !isDarkClassicPosTheme(classicThemeTemplate);
     if (forceLight) applyTheme("light");
@@ -3394,7 +3393,7 @@ export function PosScreen({ standalone = false }) {
       applyTheme(previous);
       applyOrgErpSidebarTheme(classicThemeTemplate, classicThemeColors, { mode: previous });
     };
-  }, [lightStoresChrome, classicThemeTemplate, classicThemeColors]);
+  }, [classicLayout, classicThemeTemplate, classicThemeColors]);
 
   useEffect(() => {
     if (cart?.discount_approval_pending && cart?.discount_approval_request?.discount_amount != null) {
@@ -3433,7 +3432,7 @@ export function PosScreen({ standalone = false }) {
 
   // Classic: after leave auto-hold, prompt restore/delete on next POS open.
   useEffect(() => {
-    if (!standalone) return undefined;
+    if (!classicLayout || !standalone) return undefined;
     const pending = peekAutoHeldOrder();
     if (!pending?.localHeldId && !pending?.saleId) return undefined;
     let cancelled = false;
@@ -3474,7 +3473,7 @@ export function PosScreen({ standalone = false }) {
     return () => {
       cancelled = true;
     };
-  }, [standalone]);
+  }, [classicLayout, standalone]);
 
   const cartActionPending = busy || lineBusy;
 
@@ -3695,16 +3694,16 @@ export function PosScreen({ standalone = false }) {
           usesPosLocalDraftLineEdits(cart) ||
           usesLocalPosCartWorkspace(cart))
       ) {
-        try {
-          const rows = await getPosOfflineProducts(missing);
-          for (const row of rows) {
-            if (cancelled) return;
+        for (const code of missing) {
+          if (cancelled) return;
+          try {
+            const row = await getPosOfflineProduct(code);
             if (row?.product_code && isSellableCatalogProduct(row)) {
               fromOffline[row.product_code] = enrichProductForLpo(row, uomById, vatById);
             }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
         }
         if (cancelled) return;
         if (Object.keys(fromOffline).length) {
@@ -4765,7 +4764,7 @@ export function PosScreen({ standalone = false }) {
         const missingPkg = list
           .filter((p) => p?.product_code && retailByCodeRef.current[p.product_code] === undefined)
           .map((p) => p.product_code);
-        const cap = lightStoresChrome ? 12 : 24;
+        const cap = classicLayout ? 12 : 24;
         if (!missingPkg.length) return;
         void ensureRetailPackages(missingPkg.slice(0, cap)).then(() => {
           if (seq !== searchSeq.current || abort.signal.aborted) return;
@@ -4887,7 +4886,7 @@ export function PosScreen({ standalone = false }) {
       productBranchParams,
       ensureRetailPackages,
       standalone,
-      lightStoresChrome,
+      classicLayout,
       offlineMode,
       searchOffline,
       sellFromShop,
@@ -4914,12 +4913,12 @@ export function PosScreen({ standalone = false }) {
       ? 0
       : codeLike
         ? 50
-        : standalone
+        : classicLayout
           ? 120
           : 200;
     const t = setTimeout(() => searchProducts(searchQuery), delay);
     return () => clearTimeout(t);
-  }, [searchQuery, searchProducts, standalone, selectedProductCode]);
+  }, [searchQuery, searchProducts, classicLayout, selectedProductCode]);
 
   function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
     if (retailLine != null) return retailLine;
@@ -5859,7 +5858,7 @@ export function PosScreen({ standalone = false }) {
     // Prefer the warmed offline catalog whenever the open sale is local — including
     // after reconnect mid-sale — so scans do not depend on live product GETs.
     if (
-      standalone ||
+      classicLayout ||
       offlineMode ||
       usesLocalPosCartWorkspace(cartRef.current)
     ) {
@@ -5911,7 +5910,6 @@ export function PosScreen({ standalone = false }) {
         if (ok) {
           swapDraftRef.current = null;
           setSwapDraft(null);
-          replaceTargetSnapshotRef.current = null;
           setReplacingLineId(null);
           replacingLineIdRef.current = null;
           setSelectedProduct(null);
@@ -5931,7 +5929,7 @@ export function PosScreen({ standalone = false }) {
       }
     };
 
-    if (usesPosLocalDraftLineEdits(cartRef.current) || standalone) {
+    if (usesPosLocalDraftLineEdits(cartRef.current) || classicLayout) {
       void enqueueCartCommit(finishSwap);
       return true;
     }
@@ -5970,18 +5968,14 @@ export function PosScreen({ standalone = false }) {
     const retailPackage = getRetailPackage(product.product_code);
     const activeReplacingId = replacingLineIdRef.current;
     const activeCart = cartRef.current ?? cart;
-    const replaceNeedle =
-      replaceTargetSnapshotRef.current ??
-      (activeReplacingId
-        ? { id: activeReplacingId, update_code: activeReplacingId, client_line_id: activeReplacingId }
-        : null);
-    const replaceLine = replaceNeedle
-      ? findCartLineForEdit(activeCart?.lines, replaceNeedle, {
-          preferProductCode: replaceNeedle.product_code,
+    const replaceLine = activeReplacingId
+      ? findCartLineForEdit(activeCart?.lines, {
+          id: activeReplacingId,
+          update_code: activeReplacingId,
         })
       : null;
 
-    if (activeReplacingId || replaceTargetSnapshotRef.current) {
+    if (activeReplacingId) {
       if (!replaceLine) {
         setStatusMessage("Could not find the line to swap — press Esc and try again.");
         return;
@@ -6002,56 +5996,28 @@ export function PosScreen({ standalone = false }) {
         oldProduct,
         getRetailPackage(replaceLine.product_code),
       );
-      const stableLineId = cartLineRef(replaceLine) ?? replaceLine.id;
       const nextSwapDraft = {
-        lineId: stableLineId,
+        lineId: replaceLine.id,
         line: replaceLine,
         product,
         quantity: String(quantity),
       };
-      replaceTargetSnapshotRef.current = {
-        id: replaceLine.id,
-        update_code: replaceLine.update_code ?? stableLineId,
-        client_line_id: replaceLine.client_line_id ?? null,
-        product_code: replaceLine.product_code,
-        on_wholesale_retail: replaceLine.on_wholesale_retail,
-      };
       swapDraftRef.current = nextSwapDraft;
       setSwapDraft(nextSwapDraft);
-      setReplacingLineId(stableLineId);
-      replacingLineIdRef.current = stableLineId;
+      setReplacingLineId(replaceLine.id);
+      replacingLineIdRef.current = replaceLine.id;
       setSearchQuery(product.product_code ?? "");
       setSearchResults([]);
       setStatusMessage(
         `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
       );
-      // Wait for ClassicLineQtyCell to mount + assign swapLineQtyRef.
-      let cancelled = false;
-      const focusSwapQty = () => {
-        if (cancelled) return;
-        const el = swapLineQtyRef.current;
-        if (!el) return false;
-        el.focus({ preventScroll: true });
-        el.select?.();
-        return typeof document !== "undefined" && document.activeElement === el;
-      };
       window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          if (focusSwapQty()) return;
-          window.setTimeout(() => focusSwapQty(), 40);
-        });
+        swapLineQtyRef.current?.focus({ preventScroll: true });
+        swapLineQtyRef.current?.select?.();
       });
       return;
     }
 
-    // External POS (modern + classic): add qty 1 immediately — do not park in the entry row.
-    // Parking left Find/search selects stuck with no cart line on Light Stores.
-    if (standalone) {
-      void quickAddOrIncrementProduct(product);
-      return;
-    }
-
-    // Backoffice POS: park on the entry row and focus qty (Enter adds).
     setSelectedProductCode(product.product_code);
     setSelectedProduct(product);
     setUnitPriceTouched(false);
@@ -6090,22 +6056,14 @@ export function PosScreen({ standalone = false }) {
     // Classic / local drafts enqueue without freezing the grid — allow swap while a
     // parallel line save finishes. Hard checkout busy still blocks.
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (lineBusy && !standalone && !localDraftEdit) return;
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
     if (busy && !previousOrderLoadingSoft) return;
     swapCommitInFlightRef.current = false;
     swapDraftRef.current = null;
     setSwapDraft(null);
-    const stableLineId = cartLineRef(line) ?? line.id;
-    replaceTargetSnapshotRef.current = {
-      id: line.id,
-      update_code: line.update_code ?? stableLineId,
-      client_line_id: line.client_line_id ?? null,
-      product_code: line.product_code,
-      on_wholesale_retail: line.on_wholesale_retail,
-    };
-    replacingLineIdRef.current = stableLineId;
-    setReplacingLineId(stableLineId);
-    setSelectedLineId(stableLineId);
+    replacingLineIdRef.current = line.id;
+    setReplacingLineId(line.id);
+    setSelectedLineId(line.id);
     setEditingLineId(null);
     setEditingLineRef(null);
     setSelectedProduct(null);
@@ -6133,10 +6091,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   function cancelReplaceCartLine() {
-    if (!replacingLineId && !swapDraftRef.current && !replaceTargetSnapshotRef.current) {
-      return;
-    }
-    replaceTargetSnapshotRef.current = null;
+    if (!replacingLineId && !swapDraftRef.current) return;
     setReplacingLineId(null);
     replacingLineIdRef.current = null;
     swapDraftRef.current = null;
@@ -6157,22 +6112,14 @@ export function PosScreen({ standalone = false }) {
 
     // Prefer the live cart row — previous-order restore can remint TemporaryCart ids
     // after the swap draft was opened against the optimistic sale-item lines.
-    const replaceNeedle =
-      replaceTargetSnapshotRef.current ??
-      line ??
-      {
-        id: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
-        update_code: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
-        client_line_id: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
-        product_code: line.product_code,
-        on_wholesale_retail: line.on_wholesale_retail,
-      };
     const liveLine =
-      findCartLineForEdit(activeCart.lines, replaceNeedle, {
-        preferProductCode: replaceNeedle.product_code ?? line.product_code,
-      }) ??
       findCartLineForEdit(activeCart.lines, line, {
         preferProductCode: line.product_code,
+      }) ??
+      findCartLineForEdit(activeCart.lines, {
+        id: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
+        product_code: line.product_code,
+        on_wholesale_retail: line.on_wholesale_retail,
       }) ??
       line;
 
@@ -6187,7 +6134,7 @@ export function PosScreen({ standalone = false }) {
 
     // Classic + previous-order / offline: swap in place on the cart first so the
     // UI never depends on TemporaryCart PATCH timing (that left the old SKU).
-    if (usesPosLocalDraftLineEdits(activeCart) || standalone) {
+    if (usesPosLocalDraftLineEdits(activeCart) || classicLayout) {
       const stockAsRetail = Boolean(isRetailLine);
       const stockCheck = posStockAvailability({
         product,
@@ -6275,7 +6222,6 @@ export function PosScreen({ standalone = false }) {
         // must not leave replacingLineId stuck after a successful SKU change.
         swapDraftRef.current = null;
         setSwapDraft(null);
-        replaceTargetSnapshotRef.current = null;
         setReplacingLineId(null);
         replacingLineIdRef.current = null;
         await notePreviousOrderEditSuccess("swap");
@@ -6413,71 +6359,19 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     replacingLineIdRef.current = replacingLineId;
-    if (replacingLineId == null) {
-      replaceTargetSnapshotRef.current = null;
-    }
   }, [replacingLineId]);
 
   useEffect(() => {
     swapDraftRef.current = swapDraft;
   }, [swapDraft]);
 
-  // Optimistic TemporaryCart remints change line.id while swap still holds pending-*.
-  // Heal replacingLineId / swapDraft so the classic row keeps showing the scan slot.
   useEffect(() => {
-    const snap = replaceTargetSnapshotRef.current;
-    const activeId = replacingLineIdRef.current;
-    if (!snap && !activeId) return;
-    const lines = cart?.lines ?? [];
-    if (!lines.length) return;
-    const needle =
-      snap ??
-      ({
-        id: activeId,
-        update_code: activeId,
-        client_line_id: activeId,
-      });
-    const live = findCartLineForEdit(lines, needle, {
-      preferProductCode: needle.product_code,
-    });
-    if (!live) return;
-    const stable = cartLineRef(live) ?? live.id;
-    replaceTargetSnapshotRef.current = {
-      id: live.id,
-      update_code: live.update_code ?? stable,
-      client_line_id: live.client_line_id ?? null,
-      product_code: live.product_code,
-      on_wholesale_retail: live.on_wholesale_retail,
-    };
-    if (String(stable) !== String(activeId)) {
-      replacingLineIdRef.current = stable;
-      setReplacingLineId(stable);
-    }
-    const draft = swapDraftRef.current;
-    if (
-      draft &&
-      (cartLineMatchesRef(live, draft.lineId) ||
-        cartLineMatchesRef(live, snap) ||
-        String(draft.lineId) === String(activeId))
-    ) {
-      if (
-        String(draft.lineId) !== String(stable) ||
-        !cartLineMatchesRef(draft.line, live.id)
-      ) {
-        const nextDraft = { ...draft, lineId: stable, line: live };
-        swapDraftRef.current = nextDraft;
-        setSwapDraft(nextDraft);
-      }
-    }
-  }, [cart?.lines]);
-
-  useEffect(() => {
-    if (!standalone || !replacingLineId || swapDraft) return;
+    if (!classicLayout || !replacingLineId || swapDraft) return;
     const frame = window.requestAnimationFrame(() => {
       focusPosScanInput({ selectAll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [standalone, replacingLineId, swapDraft]);
+  }, [classicLayout, replacingLineId, swapDraft]);
 
   useEffect(() => {
     if (editingLineId) return;
@@ -6486,28 +6380,11 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!selectedProduct?.product_code || replacingLineId) return;
-    const focusQty = () => {
-      const el = qtyInputRef.current;
-      if (!el) return false;
-      el.focus({ preventScroll: true });
-      el.select?.();
-      return typeof document !== "undefined" && document.activeElement === el;
-    };
-    let cancelled = false;
     const frame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (cancelled) return;
-        if (focusQty()) return;
-        // Entry qty may mount one frame later on Light Stores cart chrome.
-        window.setTimeout(() => {
-          if (!cancelled) focusQty();
-        }, 40);
-      });
+      qtyInputRef.current?.focus({ preventScroll: true });
+      qtyInputRef.current?.select?.();
     });
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-    };
+    return () => window.cancelAnimationFrame(frame);
   }, [selectedProduct?.product_code, replacingLineId]);
 
   useEffect(() => {
@@ -7020,18 +6897,10 @@ export function PosScreen({ standalone = false }) {
         ? parseDecimalInput(lineForm.unit_price)
         : null;
 
-    const replaceNeedle =
-      replaceTargetSnapshotRef.current ??
-      (replacingLineIdRef.current
-        ? {
-            id: replacingLineIdRef.current,
-            update_code: replacingLineIdRef.current,
-            client_line_id: replacingLineIdRef.current,
-          }
-        : null);
-    const replaceLine = replaceNeedle
-      ? findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, replaceNeedle, {
-          preferProductCode: replaceNeedle.product_code,
+    const replaceLine = replacingLineIdRef.current
+      ? findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, {
+          id: replacingLineIdRef.current,
+          update_code: replacingLineIdRef.current,
         })
       : null;
 
@@ -7050,8 +6919,6 @@ export function PosScreen({ standalone = false }) {
           override,
         );
         if (ok) {
-          replaceTargetSnapshotRef.current = null;
-          replacingLineIdRef.current = null;
           setReplacingLineId(null);
           // replaceCartLineWithProduct already notes previous-order swap success.
           if (!isPreviousOrderEditSession(cartRef.current)) {
@@ -7157,13 +7024,13 @@ export function PosScreen({ standalone = false }) {
     // Enter on qty must still add the item (same rule as swap / line qty edits).
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
     if (busy) return;
-    if (lineBusy && !standalone && !localDraftEdit) return;
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
     if (addLineBlocked) {
-      if (standalone && lineStockMessage) setStatusMessage(lineStockMessage);
+      if (classicLayout && lineStockMessage) setStatusMessage(lineStockMessage);
       return;
     }
-    // Standalone POS: Enter on qty adds immediately (same as classic).
-    if (standalone) {
+    // Classic entry row only edits qty — Enter adds the line.
+    if (classicLayout) {
       void handleAddLine();
       return;
     }
@@ -7184,7 +7051,7 @@ export function PosScreen({ standalone = false }) {
     e.preventDefault();
     if (!selectedProduct || busy) return;
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (lineBusy && !standalone && !localDraftEdit) return;
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
     if (addLineBlocked) return;
     if (allowEditUnitPrice) {
       focusLineField(unitPriceRef);
@@ -7198,7 +7065,7 @@ export function PosScreen({ standalone = false }) {
     e.preventDefault();
     if (busy) return;
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (lineBusy && !standalone && !localDraftEdit) return;
+    if (lineBusy && !classicLayout && !localDraftEdit) return;
     if (!addLineBlocked) void handleAddLine();
   }
 
@@ -7409,7 +7276,7 @@ export function PosScreen({ standalone = false }) {
       replacingLineIdRef.current = null;
     }
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (!standalone && !localDraftEdit && (busy || lineBusy)) return;
+    if (!classicLayout && !localDraftEdit && (busy || lineBusy)) return;
     const entryQty = parseDecimalInput(entryQtyRaw);
     if (!(entryQty > 0)) {
       setStatusMessage("Enter a quantity greater than zero, or use − to remove the line.");
@@ -7579,7 +7446,7 @@ export function PosScreen({ standalone = false }) {
 
       // Classic / previous-order / offline: paint the typed qty immediately so Enter
       // never snaps back to the old number while TemporaryCart is still catching up.
-      if (standalone || localDraftEdit) {
+      if (classicLayout || localDraftEdit) {
         const live = cartRef.current ?? activeCart;
         const lines = [...(live?.lines ?? [])];
         let idx = findCartLineIndexByRef(lines, lineRef);
@@ -7718,7 +7585,7 @@ export function PosScreen({ standalone = false }) {
         discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
-        unlockUiEarly: standalone,
+        unlockUiEarly: classicLayout,
         lineRetailStockFlagOverride: sessionIsRetail,
       });
       if (ok) {
@@ -7734,7 +7601,7 @@ export function PosScreen({ standalone = false }) {
 
     // Classic (and previous-order local drafts): same as scan-add — optimistic paint,
     // do not freeze the qty grid behind lineBusy / PATCH.
-    if (standalone || localDraftEdit) {
+    if (classicLayout || localDraftEdit) {
       void enqueueCartCommit(async () => {
         try {
           await run();
@@ -8606,7 +8473,6 @@ export function PosScreen({ standalone = false }) {
         refreshInFlight = refreshPosOfflineCatalogPricing(payload)
           .then(async (result) => {
             if (cancelled) return result;
-            if (result?.skipped) return result;
             const uomMap = uomByIdRef.current;
             const vatMap = vatByIdRef.current;
             const updatedProducts = Array.isArray(result?.products) ? result.products : [];
@@ -8630,13 +8496,13 @@ export function PosScreen({ standalone = false }) {
                 ),
               ];
               const nextMeta = {};
-              const rows = await getPosOfflineProducts(codes);
-              for (const row of rows) {
+              for (const code of codes) {
+                const row = await getPosOfflineProduct(code);
                 if (!row?.product_code) continue;
                 const enriched = enrichProductForLpo(row, uomMap, vatMap);
-                nextMeta[row.product_code] = enriched;
-                productByCodeRef.current[row.product_code] = enriched;
-                delete retailByCodeRef.current[row.product_code];
+                nextMeta[code] = enriched;
+                productByCodeRef.current[code] = enriched;
+                delete retailByCodeRef.current[code];
               }
               if (Object.keys(nextMeta).length) {
                 setProductByCode((prev) => ({ ...prev, ...nextMeta }));
@@ -8665,16 +8531,10 @@ export function PosScreen({ standalone = false }) {
     }
 
     // Fallback when Reverb is not configured: quiet refresh on focus / periodically.
-    // Debounce focus+visibility so both events in one switch don't double-warm.
-    let focusRefreshTimer = null;
     function onWindowFocus() {
       if (document.visibilityState && document.visibilityState !== "visible") return;
       if (offlineModeRef.current) return;
-      if (focusRefreshTimer != null) window.clearTimeout(focusRefreshTimer);
-      focusRefreshTimer = window.setTimeout(() => {
-        focusRefreshTimer = null;
-        void applyPricingUpdate({ respectTtl: true }, { announce: false });
-      }, 1500);
+      void applyPricingUpdate({ forceFull: true }, { announce: false });
     }
 
     if (!isRealtimeConfigured()) {
@@ -8683,11 +8543,10 @@ export function PosScreen({ standalone = false }) {
       document.addEventListener("visibilitychange", focusHandler);
       const poll = window.setInterval(() => {
         if (offlineModeRef.current) return;
-        void refreshPosOfflineCatalogPricing({ respectTtl: true }).catch(() => {});
+        void refreshPosOfflineCatalogPricing({ forceFull: true }).catch(() => {});
       }, 3 * 60 * 1000);
       return () => {
         cancelled = true;
-        if (focusRefreshTimer != null) window.clearTimeout(focusRefreshTimer);
         window.removeEventListener("focus", focusHandler);
         document.removeEventListener("visibilitychange", focusHandler);
         window.clearInterval(poll);
@@ -8715,7 +8574,6 @@ export function PosScreen({ standalone = false }) {
 
     return () => {
       cancelled = true;
-      if (focusRefreshTimer != null) window.clearTimeout(focusRefreshTimer);
       try {
         channel?.stopListening(".catalog.pricing.updated");
         echo?.leave(channelName);
@@ -11666,8 +11524,8 @@ export function PosScreen({ standalone = false }) {
       toast.success(message, { id: loadingToastId });
       if (!standalone) setStatusMessage(message);
 
-      if (standalone) {
-        focusProductSearch();
+      if (classicLayout) {
+        focusClassicProductSearch();
       }
     } catch (e) {
       setReceiptPrintStatus("failed");
@@ -12359,15 +12217,15 @@ export function PosScreen({ standalone = false }) {
       if (!codes.length) return;
       void (async () => {
         const found = {};
-        try {
-          const rows = await getPosOfflineProducts(codes);
-          for (const row of rows) {
+        for (const code of codes) {
+          try {
+            const row = await getPosOfflineProduct(code);
             if (row?.product_code && isSellableCatalogProduct(row)) {
               found[row.product_code] = enrichProductForLpo(row, uomById, vatById);
             }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
         }
         if (!Object.keys(found).length) return;
         for (const [code, product] of Object.entries(found)) {
@@ -13542,8 +13400,13 @@ export function PosScreen({ standalone = false }) {
     function runPosFunctionAction(key, state, actions) {
       actions.closeProductSearchDropdown?.();
       if (key === "F2") {
-        // Both layouts: F2 focuses product search. Retail/wholesale is F12.
-        actions.focusProductSearch();
+        // Classic: F2 = find/focus search. Retail/wholesale is F12.
+        // Modern standalone: F2 can also toggle when retail pricing is on.
+        if (state.enableRetailPricing && !state.classicLayout) {
+          actions.toggleRetailWholesaleMode();
+        } else {
+          actions.focusProductSearch();
+        }
         return;
       }
       if (key === "F8") {
@@ -13774,16 +13637,16 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const standaloneDelete =
-        state.standalone &&
+      const classicDelete =
+        state.classicLayout &&
         e.key === "Delete" &&
         (state.selectedLineId || state.selectedLineCount > 0);
 
-      if (!standaloneDelete && isTypingTarget(e.target)) return;
+      if (!classicDelete && isTypingTarget(e.target)) return;
 
       if (phase === "keyup") return;
 
-      if (standaloneDelete) {
+      if (classicDelete) {
         claimPosFunctionKeyEvent(e);
         e.__centrixPosShortcutHandled = true;
         actions.closeProductSearchDropdown?.();
@@ -13834,9 +13697,9 @@ export function PosScreen({ standalone = false }) {
     <div
       className={`pos-workspace relative flex min-h-0 flex-1 flex-col${
         standalone ? " h-full pos-workspace-standalone" : " h-full pos-workspace-backoffice p-4 md:p-6 lg:p-8"
-      }${lightStoresChrome ? " pos-workspace-classic" : ""}`}
+      }${classicLayout ? " pos-workspace-classic" : ""}`}
       data-pos-layout={classicLayout ? "classic" : "modern"}
-      data-classic-pos-theme={lightStoresChrome ? classicThemeTemplate : undefined}
+      data-classic-pos-theme={classicLayout ? classicThemeTemplate : undefined}
       style={classicThemeVars ?? undefined}
     >
       {standalone ? (
@@ -14013,7 +13876,7 @@ export function PosScreen({ standalone = false }) {
                   switchBlocked={false}
                   switchBlockedMessage="Offline sync continues in the background — you can switch workspaces."
                 />
-                {lightStoresChrome ? null : (
+                {classicLayout ? null : (
                   <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
                 )}
                 <UserAccountMenu
@@ -14286,7 +14149,7 @@ export function PosScreen({ standalone = false }) {
                   Stock source: <strong>{posSalesConfig.stockSourceLabel}</strong>
                 </span>
               ) : null}
-              {posSalesConfig.enableRetailPricing && !lightStoresChrome ? (
+              {posSalesConfig.enableRetailPricing && !classicLayout ? (
                 <label className="flex cursor-pointer items-center gap-1.5 font-medium text-[var(--theme-accent-text)]">
                   <input
                     type="checkbox"
@@ -14367,30 +14230,19 @@ export function PosScreen({ standalone = false }) {
                   onOrderNoChange={(value) => {
                     orderNoUserEditedRef.current = true;
                     setEditOrderNo(value);
-                    setOrderEditError(null);
-                    if (!String(value ?? "").trim() || looksLikePosOrderNumberLookup(value)) {
-                      clearOrderNameSearch();
-                    }
                   }}
                   onSubmit={() => void handleEditSelectedOrder()}
-                  onPrevious={() => void classicGoPreviousOrder()}
-                  onNext={() => void classicGoNextOrder()}
-                  canGoPrevious={classicCanGoPrevious}
-                  canGoNext={classicCanGoNext}
+                  onPrevious={() => void goPreviousOrder()}
+                  onNext={() => void goNextOrder()}
+                  canGoPrevious={canGoPreviousOrder}
+                  canGoNext={canGoNextOrder}
                   hasOrders={hasSessionOrders}
-                  allowNameSearch={standalone && enablePosOrderEdit}
-                  nameResults={orderNameResults}
-                  nameLoading={orderNameLoading}
-                  nameHighlightIndex={orderNameHighlight}
-                  onNameHighlightChange={setOrderNameHighlight}
-                  onSelectNameResult={(row) => void handleSelectOrderNameResult(row)}
-                  onClearNameSearch={clearOrderNameSearch}
                   error={orderEditError}
                 />
               </div>
             ) : null}
             <div className="col-span-2 space-y-4">
-              {lightStoresChrome ? null : (
+              {classicLayout ? null : (
                 <PosProductSearch
                   ref={productSearchRef}
                   inputRef={searchInputRef}
@@ -14747,12 +14599,12 @@ export function PosScreen({ standalone = false }) {
           <div
             ref={cartLinesScrollRef}
             className={`pos-cart-table-wrap min-h-0 flex-1${
-              lightStoresChrome ? " overflow-hidden" : " overflow-auto"
+              classicLayout ? " overflow-hidden" : " overflow-auto"
             }${
               showCartToolbar ? " p-3" : " pos-cart-table-wrap--flush"
             }`}
             onDoubleClick={
-              standalone && !lightStoresChrome
+              standalone && !classicLayout
                 ? (e) => {
                     const t = e.target;
                     if (!(t instanceof Element)) return;
@@ -14762,7 +14614,7 @@ export function PosScreen({ standalone = false }) {
                 : undefined
             }
           >
-            {lightStoresChrome ? (
+            {classicLayout ? (
               <ClassicPosCartTable
                 tableScrollRef={classicCartTableScrollRef}
                 lines={cart?.lines ?? []}
@@ -14998,32 +14850,8 @@ export function PosScreen({ standalone = false }) {
                 if (row && !row.querySelector("td[colspan]")) return;
                 void startFreshWorkspace();
               }}
-            >
-              <thead className="sticky top-0 z-10 bg-[var(--theme-page-bg)]">
+            >              <thead className="sticky top-0 z-10 bg-[var(--theme-page-bg)]">
                 <tr className="theme-table-head-row border-b border-[var(--theme-border)] text-left text-xs font-bold uppercase tracking-wide">
-                  {standalone ? (
-                    <th className="w-10 px-2 py-2.5" aria-label="Select">
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5"
-                        checked={allCartLinesSelected((cart?.lines ?? []).map((l) => l.id))}
-                        ref={(el) => {
-                          if (el) {
-                            el.indeterminate = someCartLinesSelected(
-                              (cart?.lines ?? []).map((l) => l.id),
-                            );
-                          }
-                        }}
-                        onChange={(e) =>
-                          toggleAllCartLinesOnPage(
-                            e.target.checked,
-                            (cart?.lines ?? []).map((l) => l.id),
-                          )
-                        }
-                        aria-label="Select all lines"
-                      />
-                    </th>
-                  ) : null}
                   <th className="px-3 py-2.5">Scan code</th>
                   <th className="px-3 py-2.5">Description</th>
                   {showCartLineType ? (
@@ -15049,7 +14877,6 @@ export function PosScreen({ standalone = false }) {
                   cart.lines.map((line) => {
                     const selected = sameLineId(selectedLineId, line.id);
                     const editing = sameLineId(editingLineId, line.id);
-                    const checked = selectedLineIds.has(String(line.id));
                     const productMeta = productByCode[line.product_code];
                     const uom = productMeta?.uom;
                     const isRetailLine = Number(line.on_wholesale_retail) === 1;
@@ -15059,42 +14886,16 @@ export function PosScreen({ standalone = false }) {
                     return (
                       <tr
                         key={line.id}
-                        onClick={() => {
-                          setSelectedLineId(line.id);
-                          if (standalone) {
-                            setSelectedLineIds(new Set([String(line.id)]));
-                          }
-                        }}
+                        onClick={() => setSelectedLineId(line.id)}
                         onDoubleClick={() => handleEditSelectedLine(line.id)}
                         className={`cursor-pointer border-b border-[var(--theme-border)] ${
                           editing
                             ? "bg-amber-50 ring-1 ring-inset ring-amber-300"
-                            : selected || checked
+                            : selected
                               ? "bg-[var(--theme-primary-subtle)]"
                               : "hover:bg-[var(--theme-hover)]"
                         }`}
                       >
-                        {standalone ? (
-                          <td
-                            className="px-2 py-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleCartLineSelect(line.id);
-                              setSelectedLineId(line.id);
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              className="h-3.5 w-3.5"
-                              checked={checked}
-                              onChange={() => {
-                                toggleCartLineSelect(line.id);
-                                setSelectedLineId(line.id);
-                              }}
-                              aria-label={`Select line ${line.product_code}`}
-                            />
-                          </td>
-                        ) : null}
                         <td className="px-3 py-2 font-mono text-xs">
                           {line.product_code}
                           <span className="theme-subtext mt-0.5 block text-[10px] font-normal">
@@ -15196,7 +14997,7 @@ export function PosScreen({ standalone = false }) {
             )}
           </div>
 
-          {lightStoresChrome ? null : (
+          {classicLayout ? null : (
           <div className="pos-cart-footer mt-auto shrink-0">
           <div className="pos-cart-summary shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
             {discountFeaturesEnabled && cart?.discount_approval_pending ? (
@@ -15554,7 +15355,7 @@ export function PosScreen({ standalone = false }) {
           till_id: cart?.till_id ?? null,
           float_session_id: cart?.float_session_id ?? floatSessionId ?? null,
         }}
-        classicTheme={lightStoresChrome}
+        classicTheme={classicLayout}
         themeStyle={classicThemeBridgeVars}
         showHeldAmountPaid={Boolean(posSalesConfig.enableHeldOrderAmountPaid)}
         onRestored={async (restoredCart, sourceSale, meta = {}) => {
@@ -15607,7 +15408,9 @@ export function PosScreen({ standalone = false }) {
           setStatusMessage("Held order restored — ready to complete as a new sale.");
           if (standalone) {
             notifySuccess("Held order restored — complete when ready.");
-            focusProductSearch();
+          }
+          if (classicLayout) {
+            focusClassicProductSearch();
           }
         }}
         onRestoreFailed={(message) => {
@@ -15648,7 +15451,7 @@ export function PosScreen({ standalone = false }) {
           open={leaveGuardOpen}
           lineCount={cartLineCount}
           busy={leaveGuardBusy}
-          classicAutoHold={standalone}
+          classicAutoHold={classicLayout}
           onStay={() => {
             pendingLeaveHrefRef.current = null;
             setLeaveGuardOpen(false);
@@ -15660,7 +15463,7 @@ export function PosScreen({ standalone = false }) {
       ) : null}
 
       <ClassicPosAutoHeldDialog
-        open={Boolean(standalone && autoHeldPrompt)}
+        open={Boolean(classicLayout && autoHeldPrompt)}
         orderNum={autoHeldPrompt?.orderNum}
         holdLabel={autoHeldPrompt?.holdLabel}
         busy={autoHeldBusy}
@@ -15702,49 +15505,46 @@ export function PosScreen({ standalone = false }) {
       />
 
       {standalone ? (
-        <>
-          {(offlineSyncing && pendingSync > 0) ||
-          failedSyncOrders.length > 0 ||
-          (offlineMode && pendingSync > 0) ? (
-            <div
-              className={`${
-                lightStoresChrome ? "classic-pos-offline-sync-strip" : ""
-              } shrink-0 border-t border-[var(--theme-border)] bg-sky-50 px-3 py-1.5 text-sky-950`}
-            >
-              {failedSyncOrders.length > 0 ? (
-                <p className="text-xs font-medium text-amber-950">
-                  {failedSyncOrders.length} offline order
-                  {failedSyncOrders.length === 1 ? "" : "s"} failed to sync.{" "}
-                  <button
-                    type="button"
-                    className="font-semibold underline"
-                    onClick={() => setPendingSyncOpen(true)}
-                  >
-                    Open Pending sync
-                  </button>{" "}
-                  to retry.
-                </p>
-              ) : offlineSyncing && pendingSync > 0 ? (
-                <p className="text-xs font-medium text-sky-950">
-                  {syncProgress?.message
-                    ? `${String(syncProgress.message).replace(/\s*…\s*$/, "")} · ${syncProgressPercent(syncProgress)}%`
-                    : `Syncing offline orders · ${syncProgressPercent(syncProgress)}%`}
-                </p>
-              ) : (
-                <p className="text-xs font-medium text-sky-950">
-                  {pendingSync} offline order{pendingSync === 1 ? "" : "s"} waiting to sync.{" "}
-                  <button
-                    type="button"
-                    className="font-semibold underline"
-                    onClick={() => setPendingSyncOpen(true)}
-                  >
-                    Open Pending sync
-                  </button>
-                </p>
-              )}
-            </div>
-          ) : null}
-          {lightStoresChrome ? (
+        classicLayout ? (
+          <>
+            {(offlineSyncing && pendingSync > 0) ||
+            failedSyncOrders.length > 0 ||
+            (offlineMode && pendingSync > 0) ? (
+              <div className="classic-pos-offline-sync-strip shrink-0 border-t border-[var(--theme-border)] bg-sky-50 px-3 py-1.5 text-sky-950">
+                {failedSyncOrders.length > 0 ? (
+                  <p className="text-xs font-medium text-amber-950">
+                    {failedSyncOrders.length} offline order
+                    {failedSyncOrders.length === 1 ? "" : "s"} failed to sync.{" "}
+                    <button
+                      type="button"
+                      className="font-semibold underline"
+                      onClick={() => setPendingSyncOpen(true)}
+                    >
+                      Open Pending sync
+                    </button>{" "}
+                    to retry.
+                  </p>
+                ) : offlineSyncing && pendingSync > 0 ? (
+                  <p className="text-xs font-medium text-sky-950">
+                    {syncProgress?.message
+                      ? `${String(syncProgress.message).replace(/\s*…\s*$/, "")} · ${syncProgressPercent(syncProgress)}%`
+                      : `Syncing offline orders · ${syncProgressPercent(syncProgress)}%`}
+                  </p>
+                ) : (
+                  <p className="text-xs font-medium text-sky-950">
+                    {pendingSync} offline order{pendingSync === 1 ? "" : "s"} waiting to
+                    sync.{" "}
+                    <button
+                      type="button"
+                      className="font-semibold underline"
+                      onClick={() => setPendingSyncOpen(true)}
+                    >
+                      Open Pending sync
+                    </button>
+                  </p>
+                )}
+              </div>
+            ) : null}
             <ClassicPosStatusFooter
               user={user}
               totals={cartSummary?.total ?? 0}
@@ -15761,30 +15561,18 @@ export function PosScreen({ standalone = false }) {
               }
               connectionStatus={networkStatus}
             />
-          ) : (
-            <PosStatusFooter
-              user={user}
-              organization={organization ?? capabilities?.organization}
-              totals={cartSummary?.total ?? 0}
-              heldCount={heldOrdersCount}
-              pendingSync={pendingSync}
-              currencySettings={classicCurrencySettings}
-              statusMessage={
-                offlineSyncing && pendingSync > 0
-                  ? syncProgress?.message
-                    ? `${String(syncProgress.message).replace(/\s*…\s*$/, "")} · ${syncProgressPercent(syncProgress)}%`
-                    : `Syncing offline orders · ${syncProgressPercent(syncProgress)}%`
-                  : cartBridgeStatus || statusMessage
-              }
-              connectionStatus={networkStatus}
-            />
-          )}
-        </>
+          </>
+        ) : (
+          <PosStatusFooter
+            user={user}
+            organization={organization ?? capabilities?.organization}
+          />
+        )
       ) : null}
 
       {checkoutWaitOverlay}
 
-      {standalone ? (
+      {classicLayout && standalone ? (
         <BatchActionBar count={selectedLineCount} onClear={clearClassicLineSelection}>
           <BatchDeleteButton
             count={selectedLineCount}
