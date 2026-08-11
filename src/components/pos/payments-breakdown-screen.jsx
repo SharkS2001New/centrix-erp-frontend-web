@@ -47,10 +47,10 @@ const EXPORT_COLUMNS = [
   { key: "payment_method", label: "Payment method" },
 ];
 
-function formatAdjustmentCell(value) {
+function formatAdjustmentCell(value, { asNegative = false } = {}) {
   const amount = Number(value ?? 0);
   if (!(amount > 0)) return "—";
-  return formatAccountingAmount(amount);
+  return formatAccountingAmount(asNegative ? -amount : amount);
 }
 
 /** Small tender labels under return / top-up amounts (e.g. "Cash", "M-Pesa"). */
@@ -67,15 +67,17 @@ function adjustmentMethodHint(methods) {
   return names.join(", ");
 }
 
-function AdjustmentAmountCell({ amount, methods }) {
-  const formatted = formatAdjustmentCell(amount);
+function AdjustmentAmountCell({ amount, methods, asNegative = false }) {
+  const formatted = formatAdjustmentCell(amount, { asNegative });
   const hint = adjustmentMethodHint(methods);
   if (formatted === "—") {
     return <span className="text-[var(--theme-text-muted)]">—</span>;
   }
   return (
     <div className="flex flex-col items-end gap-0.5">
-      <span className="font-medium text-[var(--theme-text)]">{formatted}</span>
+      <span className={`font-medium ${asNegative ? "text-red-700" : "text-[var(--theme-text)]"}`}>
+        {formatted}
+      </span>
       {hint ? (
         <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--theme-text-muted)]">
           {hint}
@@ -144,7 +146,7 @@ function mapPaymentExportRow(row, methodName, methods = [], { orderHrefPrefix = 
     customer_name: row.customer_name || "Walk-in",
     amount: formatAccountingAmount(row.order_total ?? row.amount),
     return_amount: (() => {
-      const base = formatAdjustmentCell(row.return_amount);
+      const base = formatAdjustmentCell(row.return_amount, { asNegative: true });
       const hint = adjustmentMethodHint(row.return_methods);
       return hint && base !== "—" ? `${base} (${hint})` : base;
     })(),
@@ -450,7 +452,7 @@ export function PaymentsBreakdownScreen({
         order: `${label} total`,
         customer_name: "",
         amount: formatAccountingAmount(method.total_amount ?? 0),
-        return_amount: formatAdjustmentCell(method.return_amount),
+        return_amount: formatAdjustmentCell(method.return_amount, { asNegative: true }),
         topup_amount: formatAdjustmentCell(method.topup_amount),
         paid_at: "",
         cashier: "",
@@ -661,7 +663,11 @@ export function PaymentsBreakdownScreen({
               setQ(e.target.value);
               setPage(1);
             }}
-            placeholder={activeIsMpesa ? "Order #, Cash Sales #, or M-Pesa code…" : "Order #, Cash Sales #, or reference…"}
+            placeholder={
+              activeIsMpesa
+                ? "Customer, amount, order #, or M-Pesa code…"
+                : "Customer, amount, order #, or reference…"
+            }
             className="w-56 shrink-0 sm:w-64"
           />
         </Field>
@@ -685,7 +691,7 @@ export function PaymentsBreakdownScreen({
         <div className="theme-panel rounded-xl border px-4 py-4 shadow-sm">
           <p className="theme-subtext text-xs font-medium uppercase tracking-wide">Return amount</p>
           <p className="mt-1 text-2xl font-semibold text-[var(--theme-text)]">
-            {formatAdjustmentCell(activeMethodStats.return_amount)}
+            {formatAdjustmentCell(activeMethodStats.return_amount, { asNegative: true })}
           </p>
           <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">Info only — in order total</p>
         </div>
@@ -793,6 +799,7 @@ export function PaymentsBreakdownScreen({
                       <AdjustmentAmountCell
                         amount={row.return_amount}
                         methods={row.return_methods}
+                        asNegative
                       />
                     </td>
                     <td className="px-4 py-3 text-right">

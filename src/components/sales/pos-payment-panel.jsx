@@ -128,7 +128,12 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving, emb
   return renderPosModalPortal(
     <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
       {!embedded ? (
-        <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
+        <button
+          type="button"
+          className="absolute inset-0"
+          aria-label="Close"
+          onClick={onClose}
+        />
       ) : null}
       <div role="dialog" aria-modal="true" className={`${posModalPanelClass(embedded)} ${POS_DIALOG_SHELL}`}>
         <div className={POS_DIALOG_HEADER}>

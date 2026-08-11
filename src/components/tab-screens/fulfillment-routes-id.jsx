@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import { formatOrderNumber } from "@/lib/sales";
+import { isLegacySale } from "@/lib/sale-line-items";
 import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
 import { formatRouteKes } from "@/components/routes/route-form";
 import {
@@ -22,10 +23,12 @@ import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { parsePaginator } from "@/lib/paginated-api";
 import { useTabTitle } from "@/contexts/tab-workspace-context";
 import { tabDetailTitle } from "@/hooks/use-tab-form-exit";
+import { OrderExpandButton, OrderInlineItems } from "@/components/sales/sales-orders-shared";
+import { fetchRoutesAndUomsCached } from "@/lib/reference-data-cache";
 
 export function FulfillmentRoutesIdScreen() {
   const params = useParams();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const routeId = Number(params.id);
 
   const [route, setRoute] = useState(null);
@@ -37,6 +40,10 @@ export function FulfillmentRoutesIdScreen() {
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [loading, setLoading] = useState(true);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const [detailsById, setDetailsById] = useState({});
+  const [detailLoadingId, setDetailLoadingId] = useState(null);
+  const [uomById, setUomById] = useState(() => new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +81,19 @@ export function FulfillmentRoutesIdScreen() {
 
   useTabTitle(route ? tabDetailTitle("Route", route.route_name || `Route #${routeId}`) : null);
 
+  useEffect(() => {
+    const orgId = user?.organization_id;
+    fetchRoutesAndUomsCached(orgId)
+      .then(({ uoms }) => {
+        const uomMap = new Map();
+        for (const u of uoms) {
+          if (u?.id != null) uomMap.set(u.id, u);
+        }
+        setUomById(uomMap);
+      })
+      .catch(() => setUomById(new Map()));
+  }, [user?.organization_id]);
+
   const loadSales = useCallback(async () => {
     try {
       const [listRes, statsRoute] = await Promise.all([
@@ -103,6 +123,7 @@ export function FulfillmentRoutesIdScreen() {
       ]);
       const parsed = parsePaginator(listRes);
       setSales(parsed.items);
+      setExpandedIds(new Set());
       const statsRow = (statsRoute?.data ?? []).find((r) => Number(r.id) === Number(routeId));
       if (statsRow) {
         setSalesStats({
@@ -121,6 +142,38 @@ export function FulfillmentRoutesIdScreen() {
   }, [routeId, fromDate, toDate]);
 
   useTabAwareDataLoad(loadSales);
+
+  const loadOrderDetail = useCallback(async (orderId) => {
+    const key = String(orderId);
+    setDetailLoadingId(key);
+    try {
+      const sale = await apiRequest(`/sales/${orderId}`);
+      setDetailsById((prev) => ({ ...prev, [key]: sale }));
+      return sale;
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Failed to load order items");
+      return null;
+    } finally {
+      setDetailLoadingId((current) => (current === key ? null : current));
+    }
+  }, []);
+
+  function toggleExpand(saleId) {
+    if (saleId == null) return;
+    const key = String(saleId);
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+        if (detailsById[key]?.items === undefined) {
+          void loadOrderDetail(saleId);
+        }
+      }
+      return next;
+    });
+  }
 
   const periodLabel = formatCompactDateRange(fromDate, toDate);
   const isActive = useMemo(() => route && route.is_active !== false, [route]);
@@ -200,24 +253,67 @@ export function FulfillmentRoutesIdScreen() {
                   </p>
                 ) : (
                   <ul className="divide-y divide-slate-100">
-                    {sales.map((sale) => (
-                      <li
-                        key={sale.id ?? sale.order_num}
-                        className="flex items-center justify-between gap-4 px-5 py-3.5"
-                      >
-                        <div>
-                          <p className="font-medium text-slate-900">
-                            Order #{formatOrderNumber(sale)}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {formatShortDate(getSaleTimestamp(sale))}
-                          </p>
-                        </div>
-                        <p className="font-medium text-slate-800">
-                          {formatRouteKes(sale.order_total)}
-                        </p>
-                      </li>
-                    ))}
+                    {sales.map((sale) => {
+                      const key = String(sale.id ?? sale.order_num);
+                      const expanded = expandedIds.has(String(sale.id));
+                      const detail = detailsById[String(sale.id)];
+                      const itemsLoading = detailLoadingId === String(sale.id);
+                      return (
+                        <li key={key} className="px-0">
+                          <div className="flex w-full items-center justify-between gap-4 px-5 py-3.5">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <OrderExpandButton
+                                expanded={expanded}
+                                onClick={() => toggleExpand(sale.id)}
+                                label={`Show items for order #${formatOrderNumber(sale)}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(sale.id)}
+                                className="min-w-0 flex-1 text-left hover:opacity-90"
+                                aria-expanded={expanded}
+                              >
+                                <p className="font-medium text-slate-900">
+                                  Order #{formatOrderNumber(sale)}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {formatShortDate(getSaleTimestamp(sale))}
+                                  {sale.customer_name ? ` · ${sale.customer_name}` : ""}
+                                </p>
+                              </button>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(sale.id)}
+                                className="font-medium text-slate-800"
+                                aria-expanded={expanded}
+                              >
+                                {formatRouteKes(sale.order_total)}
+                              </button>
+                              {sale.id != null ? (
+                                <Link
+                                  href={`/sales/orders/${sale.id}?from=${encodeURIComponent(`/fulfillment/routes/${routeId}`)}`}
+                                  className="text-xs font-medium text-[#185FA5] hover:underline"
+                                >
+                                  View
+                                </Link>
+                              ) : null}
+                            </div>
+                          </div>
+                          {expanded ? (
+                            <div className="border-t border-slate-100 bg-slate-50/80">
+                              <OrderInlineItems
+                                items={detail?.items}
+                                loading={itemsLoading || detail?.items === undefined}
+                                uomById={uomById}
+                                legacyPrint={isLegacySale(detail ?? sale)}
+                              />
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

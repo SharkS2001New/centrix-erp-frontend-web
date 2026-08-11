@@ -2086,6 +2086,11 @@ export function PosScreen({ standalone = false }) {
   /** Shown while copying cart between online server ↔ local offline storage. */
   const [cartBridgeStatus, setCartBridgeStatus] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  /** Sync lock — React state lags one frame, so F10 keyup must not re-enter open. */
+  const paymentOpenRef = useRef(false);
+  /** Ignore Esc/backdrop close for a beat after open (same F10 keystroke race). */
+  const paymentOpenedAtRef = useRef(0);
+  const PAYMENT_DIALOG_CLOSE_GRACE_MS = 450;
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
   const [heldOrdersOpen, setHeldOrdersOpen] = useState(false);
   const [heldOrdersCount, setHeldOrdersCount] = useState(0);
@@ -3849,14 +3854,27 @@ export function PosScreen({ standalone = false }) {
     }
 
     if (applyState) {
-      cartRef.current = full;
-      setCart(full);
-      if (showRouteOrderUi && full?.route_id) {
-        const route = routes.find((r) => r.id === full.route_id);
+      // Never blank an in-flight scan: TemporaryCart create/wipe can finish after
+      // paintOptimisticOn. Merge is O(lines) — no extra network.
+      const live = cartRef.current;
+      const toApply =
+        cartHasOptimisticLines(live)
+          ? {
+              ...full,
+              lines: mergePreservedOptimisticLines(full?.lines, live.lines),
+              next_pos_order_num: full?.next_pos_order_num ?? live?.next_pos_order_num,
+              next_order_num: full?.next_order_num ?? live?.next_order_num,
+            }
+          : full;
+      cartRef.current = toApply;
+      setCart(toApply);
+      if (showRouteOrderUi && toApply?.route_id) {
+        const route = routes.find((r) => r.id === toApply.route_id);
         appliedRouteMarkupRef.current = Number(route?.route_markup_price ?? 0);
       } else {
         appliedRouteMarkupRef.current = 0;
       }
+      return toApply;
     }
     return full;
   }, [
@@ -4182,12 +4200,16 @@ export function PosScreen({ standalone = false }) {
           bootstrapped = await freshCartBootstrapRef.current.catch(() => null);
         }
         if (!bootstrapped || !isServerPosCartId(bootstrapped.id)) {
-          bootstrapped = await loadCashierCart({ skipEditDraftRestore: true, forceEmpty: true });
+          // applyState:false — paint once below after optional wipe + optimistic merge.
+          bootstrapped = await loadCashierCart({
+            skipEditDraftRestore: true,
+            forceEmpty: true,
+            applyState: false,
+          });
         } else if ((bootstrapped.lines?.length ?? 0) > 0) {
           // Sticky cart still held failed-sync / prior sale lines — wipe before first scan.
+          // Do not setCart(empty) here; that blanked optimistic rows mid-add.
           bootstrapped = await wipeTemporaryCartLines(bootstrapped);
-          cartRef.current = bootstrapped;
-          setCart(bootstrapped);
         }
         if (bootstrapped && pendingOptimistic.length) {
           // Keep the instantly painted rows while TemporaryCart finishes creating.
@@ -4198,6 +4220,10 @@ export function PosScreen({ standalone = false }) {
           cartRef.current = merged;
           setCart(merged);
           return merged;
+        }
+        if (bootstrapped) {
+          cartRef.current = bootstrapped;
+          setCart(bootstrapped);
         }
         return bootstrapped;
       }
@@ -4482,6 +4508,32 @@ export function PosScreen({ standalone = false }) {
     closeProductSearchDropdown();
     setSearchResults([]);
     searchInputRef.current?.blur?.();
+  }
+
+  /** Open the F10 payment dialog once — safe against keydown+keyup double fire. */
+  function openPaymentDialog() {
+    paymentOpenRef.current = true;
+    paymentOpenedAtRef.current = Date.now();
+    parkScanForOverlay();
+    setPaymentError(null);
+    setPaymentOpen(true);
+  }
+
+  /**
+   * Close payment. Without `force`, ignores closes in the grace window after open so
+   * F10 does not open → immediately close → reopen (flicker on External POS).
+   */
+  function closePaymentDialog({ force = false } = {}) {
+    if (
+      !force &&
+      paymentOpenRef.current &&
+      Date.now() - paymentOpenedAtRef.current < PAYMENT_DIALOG_CLOSE_GRACE_MS
+    ) {
+      return false;
+    }
+    paymentOpenRef.current = false;
+    setPaymentOpen(false);
+    return true;
   }
 
   function focusClassicProductSearch({ forceSelectAll = false } = {}) {
@@ -7947,7 +7999,7 @@ export function PosScreen({ standalone = false }) {
   async function clearWorkspaceAfterLocalHold(activeCart) {
     setSaveOrderOpen(false);
     setSaveOrderError(null);
-    setPaymentOpen(false);
+    closePaymentDialog({ force: true });
     setPaymentError(null);
     setHeldOrdersOpen(false);
     setLeaveGuardOpen(false);
@@ -8633,7 +8685,7 @@ export function PosScreen({ standalone = false }) {
       closeProductSearchDropdown();
       searchInputRef.current?.blur?.();
       if (!keepPaymentOpen) {
-        setPaymentOpen(false);
+        closePaymentDialog({ force: true });
         // Don't clear receiptPrintStatus here — print may still be in flight.
       }
       setPaymentError(null);
@@ -8676,7 +8728,13 @@ export function PosScreen({ standalone = false }) {
       }
 
       const generation = ++freshWorkspaceGenerationRef.current;
-      const cartPromise = loadCashierCart({ skipEditDraftRestore: true, forceEmpty: true });
+      // applyState:false — avoid painting an empty TemporaryCart over a scan that
+      // already landed on the pending-fresh shell (same pattern as F8 / hold).
+      const cartPromise = loadCashierCart({
+        skipEditDraftRestore: true,
+        forceEmpty: true,
+        applyState: false,
+      });
 
       const peekNextPos = await resolveNextPosTicketForWorkspace(
         cartRef.current,
@@ -8726,10 +8784,24 @@ export function PosScreen({ standalone = false }) {
             }
           }
 
-          const merged = mergeFreshWorkspaceCart(
+          let merged = mergeFreshWorkspaceCart(
             stripOfflineSaleMarkers(stripPreviousOrderEditSession(next)),
             peekNextPos,
           );
+          // First scan often lands on pending-fresh before TemporaryCart id exists —
+          // adopt the server cart id without dropping the optimistic row.
+          if (
+            live &&
+            !liveIsStaleCheckout &&
+            cartHasOptimisticLines(live) &&
+            !live?.held_order_num &&
+            !live?.superseded_sale_id
+          ) {
+            merged = {
+              ...merged,
+              lines: mergePreservedOptimisticLines(merged.lines, live.lines),
+            };
+          }
           cartRef.current = merged;
           setCart(merged);
           const displayPos =
@@ -8915,7 +8987,7 @@ export function PosScreen({ standalone = false }) {
     setReceiptPrintStatus(null);
     if (standalone) {
       clearPosUiDraft();
-      setPaymentOpen(false);
+      closePaymentDialog({ force: true });
       setPaymentError(null);
       try {
         await runPrepareNextOrderOverlay(async (report) => {
@@ -8933,7 +9005,7 @@ export function PosScreen({ standalone = false }) {
       }
       return;
     }
-    setPaymentOpen(false);
+    closePaymentDialog({ force: true });
     setPaymentError(null);
     clearLineEntry();
     setBusy(true);
@@ -10091,7 +10163,7 @@ export function PosScreen({ standalone = false }) {
       });
     }
 
-    setPaymentOpen(false);
+    closePaymentDialog({ force: true });
     setPaymentError(null);
     if (standalone && wasPreviousOrderEdit) {
       await clearWorkspaceAfterPreviousOrderPrint({
@@ -10360,8 +10432,7 @@ export function PosScreen({ standalone = false }) {
       flashPosShortcutMessage(
         "M-Pesa prompt is unavailable offline. Enter cash amount manually to complete the sale.",
       );
-      parkScanForOverlay();
-      setPaymentOpen(true);
+      openPaymentDialog();
       return null;
     }
     const payNow = Number(updatedCart?.mpesa_payment_amount ?? cartRef.current?.mpesa_payment_amount ?? 0);
@@ -11006,7 +11077,7 @@ export function PosScreen({ standalone = false }) {
 
       closeProductSearchDropdown();
       searchInputRef.current?.blur?.();
-      setPaymentOpen(false);
+      closePaymentDialog({ force: true });
       setPaymentError(null);
       // Keep completedSale / last receipt — clearing workspace must not disable Reprint.
       setEditSourceSale(null);
@@ -11131,7 +11202,7 @@ export function PosScreen({ standalone = false }) {
     });
     const generation = ++freshWorkspaceGenerationRef.current;
 
-    setPaymentOpen(false);
+    closePaymentDialog({ force: true });
     setPaymentError(null);
     setEditSourceSale(null);
     setCartLineSaveFailed(false);
@@ -11545,7 +11616,7 @@ export function PosScreen({ standalone = false }) {
     setEditingLineId(null);
     setEditingLineRef(null);
     setReplacingLineId(null);
-    setPaymentOpen(false);
+    closePaymentDialog({ force: true });
     setPaymentError(null);
     setOrderEditError(null);
     setSaveOrderOpen(false);
@@ -11819,7 +11890,7 @@ export function PosScreen({ standalone = false }) {
         setEditingLineId(null);
         setEditingLineRef(null);
         setReplacingLineId(null);
-        setPaymentOpen(false);
+        closePaymentDialog({ force: true });
         setEditSourceSale(saleSnapshot?.id ? saleSnapshot : sale);
         orderNoUserEditedRef.current = false;
         const browseNum = resolvePosBrowseNumber({
@@ -12043,7 +12114,7 @@ export function PosScreen({ standalone = false }) {
       setEditingLineId(null);
       setEditingLineRef(null);
       setReplacingLineId(null);
-      setPaymentOpen(false);
+      closePaymentDialog({ force: true });
       orderNoUserEditedRef.current = false;
       const browseNum = resolvePosBrowseNumber(optimistic);
       if (browseNum != null) setEditOrderNo(String(browseNum));
@@ -12094,7 +12165,7 @@ export function PosScreen({ standalone = false }) {
       setEditingLineId(null);
       setEditingLineRef(null);
       setReplacingLineId(null);
-      setPaymentOpen(false);
+      closePaymentDialog({ force: true });
       orderNoUserEditedRef.current = false;
       const browseNum = resolvePosBrowseNumber(clean);
       const orderNum = clean?.held_order_num ?? sourceSale?.order_num ?? null;
@@ -12204,7 +12275,7 @@ export function PosScreen({ standalone = false }) {
         swapDraftRef.current = null;
         setSwapDraft(null);
       }
-      setPaymentOpen(false);
+      closePaymentDialog({ force: true });
       setEditSourceSale(sourceSale);
       orderNoUserEditedRef.current = false;
       const browseNum = resolvePosBrowseNumber(clean);
@@ -13094,8 +13165,7 @@ export function PosScreen({ standalone = false }) {
             return;
           }
           setPaymentError(null);
-          parkScanForOverlay();
-          setPaymentOpen(true);
+          openPaymentDialog();
           return;
         }
 
@@ -13153,8 +13223,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       setPaymentError(null);
-      parkScanForOverlay();
-      setPaymentOpen(true);
+      openPaymentDialog();
     } finally {
       openCompletePaymentInFlightRef.current = false;
     }
@@ -13208,9 +13277,10 @@ export function PosScreen({ standalone = false }) {
     focusScanCode,
     closeProductSearchDropdown,
     closePayment: () => {
-      setPaymentOpen(false);
-      setReceiptPrintStatus(null);
-      setPaymentError(null);
+      if (closePaymentDialog()) {
+        setReceiptPrintStatus(null);
+        setPaymentError(null);
+      }
     },
     handleNewOrder,
     startFreshWorkspace,
@@ -13411,12 +13481,17 @@ export function PosScreen({ standalone = false }) {
           handledOnKeyDownAt[key] = Date.now();
         }
 
-        if (state.paymentOpen && key === "F10") {
+        // Prefer live ref — React state lags and let a second F10 reopen/flicker the dialog.
+        if ((state.paymentOpen || paymentOpenRef.current) && key === "F10") {
           // F10 opens payment from the cart — once open, use Page Down inside the dialog.
           return;
         }
 
         // Function keys always run — never block behind modal/dialog guards.
+        // F10: open on keydown only when possible; keyup is a PWA fallback above.
+        if (key === "F10" && phase === "keyup" && paymentOpenRef.current) {
+          return;
+        }
         runPosFunctionAction(key, state, actions);
         return;
       }
@@ -14348,8 +14423,7 @@ export function PosScreen({ standalone = false }) {
                   onCartUpdated={setCart}
                   onMessage={setStatusMessage}
                   onPaymentApplied={() => {
-                    parkScanForOverlay();
-                    setPaymentOpen(true);
+                    openPaymentDialog();
                   }}
                   onCompleteOrder={(updatedCart, options) =>
                     void handleMpesaOrderComplete(updatedCart, options)
@@ -15199,7 +15273,7 @@ export function PosScreen({ standalone = false }) {
       <PosPaymentPanel
         open={paymentOpen}
         onClose={() => {
-          setPaymentOpen(false);
+          if (!closePaymentDialog()) return;
           setReceiptPrintStatus(null);
           setKraUploadPrompt(null);
           setKraUploadError(null);
@@ -15287,7 +15361,7 @@ export function PosScreen({ standalone = false }) {
         onRestored={async (restoredCart, sourceSale, meta = {}) => {
           setHeldOrdersOpen(false);
           setSaveOrderOpen(false);
-          setPaymentOpen(false);
+          closePaymentDialog({ force: true });
 
           // restore-to-cart already used replace:true on the same TemporaryCart — do not
           // DELETE /lines afterward (that wiped the just-restored cart and added latency).
