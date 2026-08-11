@@ -48,7 +48,7 @@ function dosDateTime(date = new Date()) {
   return { dosTime, dosDate };
 }
 
-async function collectFiles(rootDir, relative = "") {
+async function collectFiles(rootDir, relative = "", skipFiles = new Set()) {
   const abs = path.join(rootDir, relative);
   const entries = await readdir(abs, { withFileTypes: true });
   const files = [];
@@ -58,8 +58,11 @@ async function collectFiles(rootDir, relative = "") {
     if (entry.name.startsWith(".")) continue;
 
     const rel = relative ? path.join(relative, entry.name) : entry.name;
+    const relPosix = rel.split(path.sep).join("/");
+    if (skipFiles.has(entry.name) || skipFiles.has(relPosix)) continue;
+
     if (entry.isDirectory()) {
-      files.push(...(await collectFiles(rootDir, rel)));
+      files.push(...(await collectFiles(rootDir, rel, skipFiles)));
     } else if (entry.isFile()) {
       files.push(rel);
     }
@@ -68,68 +71,88 @@ async function collectFiles(rootDir, relative = "") {
   return files;
 }
 
+function appendZipEntry(localParts, centralParts, offsetRef, { name, data, dosTime, dosDate }) {
+  const nameBuf = Buffer.from(name, "utf8");
+  const crc = crc32(data);
+  const size = data.length;
+
+  const localHeader = Buffer.concat([
+    u32(0x04034b50),
+    u16(20),
+    u16(0),
+    u16(0),
+    u16(dosTime),
+    u16(dosDate),
+    u32(crc),
+    u32(size),
+    u32(size),
+    u16(nameBuf.length),
+    u16(0),
+    nameBuf,
+  ]);
+
+  const centralHeader = Buffer.concat([
+    u32(0x02014b50),
+    u16(20),
+    u16(20),
+    u16(0),
+    u16(0),
+    u16(dosTime),
+    u16(dosDate),
+    u32(crc),
+    u32(size),
+    u32(size),
+    u16(nameBuf.length),
+    u16(0),
+    u16(0),
+    u16(0),
+    u16(0),
+    u32(0),
+    u32(offsetRef.value),
+    nameBuf,
+  ]);
+
+  localParts.push(localHeader, data);
+  centralParts.push(centralHeader);
+  offsetRef.value += localHeader.length + data.length;
+}
+
 /**
- * @param {string} rootDir absolute path to print-agent-dotnet
+ * @param {string} rootDir absolute path to folder to package
  * @param {string} zipRootName folder name inside the zip
+ * @param {{ skipFiles?: string[], extraFiles?: { name: string, content: string | Buffer }[] }} [options]
  * @returns {Promise<Buffer>}
  */
-export async function zipDirectoryStore(rootDir, zipRootName = "print-agent-dotnet") {
-  const files = await collectFiles(rootDir);
-  if (files.length === 0) {
+export async function zipDirectoryStore(rootDir, zipRootName = "print-agent-dotnet", options = {}) {
+  const skipFiles = new Set(options.skipFiles ?? []);
+  const extraFiles = options.extraFiles ?? [];
+  const files = await collectFiles(rootDir, "", skipFiles);
+  if (files.length === 0 && extraFiles.length === 0) {
     throw new Error("No source files found to package.");
   }
 
   const localParts = [];
   const centralParts = [];
-  let offset = 0;
+  const offsetRef = { value: 0 };
   const { dosTime, dosDate } = dosDateTime();
+  let entryCount = 0;
 
   for (const rel of files) {
     const data = await readFile(path.join(rootDir, rel));
     const name = `${zipRootName}/${rel.split(path.sep).join("/")}`;
-    const nameBuf = Buffer.from(name, "utf8");
-    const crc = crc32(data);
-    const size = data.length;
+    appendZipEntry(localParts, centralParts, offsetRef, { name, data, dosTime, dosDate });
+    entryCount += 1;
+  }
 
-    const localHeader = Buffer.concat([
-      u32(0x04034b50),
-      u16(20),
-      u16(0),
-      u16(0),
-      u16(dosTime),
-      u16(dosDate),
-      u32(crc),
-      u32(size),
-      u32(size),
-      u16(nameBuf.length),
-      u16(0),
-      nameBuf,
-    ]);
-
-    const centralHeader = Buffer.concat([
-      u32(0x02014b50),
-      u16(20),
-      u16(20),
-      u16(0),
-      u16(0),
-      u16(dosTime),
-      u16(dosDate),
-      u32(crc),
-      u32(size),
-      u32(size),
-      u16(nameBuf.length),
-      u16(0),
-      u16(0),
-      u16(0),
-      u16(0),
-      u32(0),
-      u32(offset),
-      nameBuf,
-    ]);
-
-    localParts.push(localHeader, data);
-    centralParts.push(centralHeader);
-    offset += localHeader.length + data.length;
+  for (const extra of extraFiles) {
+    const rel = String(extra.name || "").replace(/^\/+/, "").split(path.sep).join("/");
+    if (!rel) continue;
+    const data = Buffer.isBuffer(extra.content)
+      ? extra.content
+      : Buffer.from(String(extra.content ?? ""), "utf8");
+    const name = `${zipRootName}/${rel}`;
+    appendZipEntry(localParts, centralParts, offsetRef, { name, data, dosTime, dosDate });
+    entryCount += 1;
   }
 
   const central = Buffer.concat(centralParts);
@@ -137,10 +160,10 @@ export async function zipDirectoryStore(rootDir, zipRootName = "print-agent-dotn
     u32(0x06054b50),
     u16(0),
     u16(0),
-    u16(files.length),
-    u16(files.length),
+    u16(entryCount),
+    u16(entryCount),
     u32(central.length),
-    u32(offset),
+    u32(offsetRef.value),
     u16(0),
   ]);
 

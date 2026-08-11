@@ -47,6 +47,7 @@ export const NAV_HREF_ICONS = {
   "/sales/payments-breakdown": "wallet",
   "/hospitality/payments-breakdown": "wallet",
   "/admin/till-printing": "receipt",
+  "/admin/attendance-clock": "clock",
 
   // Pricing & tax
   "/vats": "percent",

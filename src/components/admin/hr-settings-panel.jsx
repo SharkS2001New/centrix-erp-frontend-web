@@ -10,6 +10,7 @@ import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { AppNavLink } from "@/components/layout/app-nav-link";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -206,8 +207,9 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                             ]}
                           />
                           <p className="mt-1 text-xs text-slate-500">
-                            Choose one method for your organization. Configure devices on the Clock-in
-                            devices tab after saving.
+                            Choose one method for your organization. Full device setup and agent download
+                            live under Administration → Attendance clock-in (also on the Clock-in devices
+                            tab here).
                           </p>
                         </Field>
                         {form.attendance_capture_mode === "company_mobile" ? (
@@ -406,14 +408,26 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
           ) : null}
 
           {activeTab === "devices" && !loading ? (
-            form.attendance_capture_mode === "clock_device" ? (
-              <AttendanceClockDevicesSettings />
-            ) : (
-              <div className="space-y-4">
-                <CompanyPremisesPanel embedded />
-                <AttendanceMobileDevicesPanel embedded />
-              </div>
-            )
+            <div className="space-y-3">
+              <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                Prefer{" "}
+                <AppNavLink
+                  href="/admin/attendance-clock"
+                  className="font-medium text-[#185FA5] hover:underline"
+                >
+                  Administration → Attendance clock-in
+                </AppNavLink>{" "}
+                for method, terminals, and Centrix Attendance Agent download.
+              </p>
+              {form.attendance_capture_mode === "clock_device" ? (
+                <AttendanceClockDevicesSettings />
+              ) : (
+                <div className="space-y-4">
+                  <CompanyPremisesPanel embedded />
+                  <AttendanceMobileDevicesPanel embedded />
+                </div>
+              )}
+            </div>
           ) : null}
         </div>
       </section>

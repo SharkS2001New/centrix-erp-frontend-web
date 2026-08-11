@@ -231,6 +231,11 @@ export const SCREEN_COMPONENTS = {
   "admin-themes": lazy(() =>
     import("@/components/tab-screens/admin-themes").then((m) => ({ default: m.AdminThemesScreen })),
   ),
+  "admin-attendance-clock": lazy(() =>
+    import("@/components/tab-screens/admin-attendance-clock").then((m) => ({
+      default: m.AdminAttendanceClockScreen,
+    })),
+  ),
   "admin-till-printing": lazy(() =>
     import("@/components/tab-screens/admin-till-printing").then((m) => ({ default: m.AdminTillPrintingScreen })),
   ),

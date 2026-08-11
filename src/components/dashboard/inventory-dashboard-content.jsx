@@ -92,9 +92,9 @@ export function InventoryDashboardContent() {
       setTopStockRows(stockRes.data ?? []);
       setLowStockRows(lowRes.data ?? []);
       setInventoryValue({
-        shop: valuationRes?.shop_value ?? null,
-        store: valuationRes?.store_value ?? null,
-        total: valuationRes?.value ?? null,
+        shop: valuationRes?.shop_cost_value ?? valuationRes?.shop_value ?? null,
+        store: valuationRes?.store_cost_value ?? valuationRes?.store_value ?? null,
+        total: valuationRes?.cost_value ?? valuationRes?.value ?? null,
         skus: Number(valuationRes?.skus_in_stock ?? 0),
         low: Number(valuationRes?.skus_low ?? 0),
         out: Number(valuationRes?.skus_out ?? 0),

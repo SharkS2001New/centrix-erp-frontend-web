@@ -6,12 +6,13 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = join(__dirname, "config.json");
-const STATE_PATH = join(__dirname, "state.json");
+import {
+  STATE_PATH,
+  ensureConfigFile,
+  isConfigReady,
+  missingConfigFields,
+  SETTINGS_UI_URL,
+} from "./config-lib.js";
 
 function loadJson(path, fallback = null) {
   if (!existsSync(path)) return fallback;
@@ -238,25 +239,31 @@ async function syncOnce(config) {
 }
 
 async function main() {
-  const config = loadJson(CONFIG_PATH);
-  if (!config) {
-    console.error(
-      `[attendance-agent] Missing ${CONFIG_PATH}. Copy config.example.json → config.json and edit.`,
-    );
-    process.exit(1);
-  }
-  for (const key of ["centrixApiUrl", "centrixToken", "deviceNo"]) {
-    if (!config[key]) {
-      console.error(`[attendance-agent] config.${key} is required`);
+  const once = process.argv.includes("--once");
+  const skipUi = process.argv.includes("--no-setup-ui");
+  let config = ensureConfigFile();
+
+  if (!isConfigReady(config)) {
+    const missing = missingConfigFields(config).join(", ");
+    if (once || skipUi) {
+      console.error(
+        `[attendance-agent] Config incomplete (${missing}). Open settings: npm run setup  →  ${SETTINGS_UI_URL}`,
+      );
       process.exit(1);
     }
-  }
-  if (!config.hikvision?.host) {
-    console.error("[attendance-agent] config.hikvision.host is required");
-    process.exit(1);
+    console.log(`[attendance-agent] First-run setup needed (${missing || "incomplete"}). Opening settings UI…`);
+    const { runSettingsUi } = await import("./settings-ui.js");
+    await runSettingsUi({ openBrowser: true, waitUntilReady: true });
+    config = ensureConfigFile();
+    if (!isConfigReady(config)) {
+      console.error(
+        `[attendance-agent] Still incomplete after settings UI. Missing: ${missingConfigFields(config).join(", ")}`,
+      );
+      process.exit(1);
+    }
+    console.log("[attendance-agent] Settings saved. Starting sync…");
   }
 
-  const once = process.argv.includes("--once");
   if (once) {
     await syncOnce(config);
     return;
@@ -264,6 +271,7 @@ async function main() {
 
   const intervalSec = Math.max(60, Number(config.pollIntervalSeconds ?? 300));
   console.log(`[attendance-agent] Running every ${intervalSec}s (Ctrl+C to stop)`);
+  console.log(`[attendance-agent] Re-open settings anytime: npm run setup  (${SETTINGS_UI_URL})`);
   const run = async () => {
     try {
       await syncOnce(config);

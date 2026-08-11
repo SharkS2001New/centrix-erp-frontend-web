@@ -7,7 +7,10 @@
   "main": "agent.js",
   "scripts": {
     "start": "node agent.js",
-    "once": "node agent.js --once"
+    "once": "node agent.js --once",
+    "doctor": "node doctor.js",
+    "setup": "node setup.js",
+    "settings": "node settings-ui.js"
   },
   "engines": {
     "node": ">=20"

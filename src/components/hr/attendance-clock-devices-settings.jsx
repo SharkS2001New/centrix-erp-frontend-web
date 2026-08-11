@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, apiV1BaseUrl } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { downloadAttendanceAgentPackage } from "@/lib/attendance-agent-download";
 
 const EMPTY_FORM = {
   device_no: "",
@@ -24,6 +25,15 @@ export function AttendanceClockDevicesSettings() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [downloadDevice, setDownloadDevice] = useState(null);
+  const [downloadForm, setDownloadForm] = useState({
+    host: "",
+    port: "80",
+    username: "admin",
+    password: "",
+    use_https: false,
+  });
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +88,66 @@ export function AttendanceClockDevicesSettings() {
     }
   }
 
+  function openDownload(device) {
+    setDownloadDevice(device);
+    setDownloadForm({
+      host: device.host || "",
+      port: device.port != null ? String(device.port) : "80",
+      username: device.username || "admin",
+      password: "",
+      use_https: Boolean(device.use_https),
+    });
+  }
+
+  async function confirmDownload() {
+    if (!downloadDevice?.id || downloading) return;
+    if (!downloadForm.host.trim()) {
+      notifyError("Enter the Hikvision LAN IP for this office network.");
+      return;
+    }
+    if (!downloadDevice.has_password && !downloadForm.password.trim()) {
+      notifyError("Enter the device password (or save it on the device record first).");
+      return;
+    }
+
+    setDownloading(true);
+    try {
+      const body = {
+        host: downloadForm.host.trim(),
+        port: downloadForm.port ? Number(downloadForm.port) : 80,
+        username: downloadForm.username.trim() || "admin",
+        use_https: Boolean(downloadForm.use_https),
+        centrix_api_url: apiV1BaseUrl(),
+        persist_device: true,
+      };
+      if (downloadForm.password.trim()) {
+        body.password = downloadForm.password.trim();
+      }
+
+      const issued = await apiRequest(
+        organizationApiPath(`/attendance-clock-devices/${downloadDevice.id}/agent-package`),
+        { method: "POST", body },
+      );
+
+      const config = issued?.config;
+      if (!config?.centrixToken) {
+        throw new Error("Server did not return an agent token.");
+      }
+
+      // Prefer browser-known API URL so the agent hits the same origin as this session.
+      config.centrixApiUrl = apiV1BaseUrl().replace(/\/$/, "");
+
+      const { filename } = await downloadAttendanceAgentPackage(config);
+      notifySuccess(`Downloaded ${filename}. Unzip on a LAN PC and run install-windows.bat.`);
+      setDownloadDevice(null);
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : err?.message || "Download failed");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   const activeDevices = devices.filter((d) => d.is_active !== false);
 
   return (
@@ -87,8 +157,8 @@ export function AttendanceClockDevicesSettings() {
           <h4 className="text-sm font-medium text-slate-900">Clock devices</h4>
           <p className="mt-1 text-xs text-slate-500">
             Centrix is cloud-hosted and cannot reach a LAN device IP directly. Register the terminal
-            here, then run the local <strong>attendance agent</strong> on an office PC (same network
-            as the Hikvision) to push punches to Centrix.
+            here, then download the preconfigured <strong>attendance agent</strong> for an office PC
+            on the same network as the Hikvision.
           </p>
         </div>
         <button
@@ -108,19 +178,33 @@ export function AttendanceClockDevicesSettings() {
         <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
           {activeDevices.map((device) => (
             <li key={device.id} className="px-3 py-2.5 text-sm">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="font-medium text-slate-900">{device.device_no}</p>
-                <p className="text-[11px] uppercase tracking-wide text-slate-400">
-                  {device.provider || "generic"}
-                </p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="font-medium text-slate-900">{device.device_no}</p>
+                    <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                      {device.provider || "generic"}
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-500">{device.location || "Location not set"}</p>
+                  {device.host ? (
+                    <p className="mt-0.5 font-mono text-xs text-slate-500">
+                      LAN {device.use_https ? "https" : "http"}://{device.host}
+                      {device.port ? `:${device.port}` : ""}
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 text-xs text-amber-700">LAN IP not set — required for agent</p>
+                  )}
+                </div>
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  className="shrink-0"
+                  onClick={() => openDownload(device)}
+                >
+                  Download agent
+                </PrimaryButton>
               </div>
-              <p className="text-xs text-slate-500">{device.location || "Location not set"}</p>
-              {device.host ? (
-                <p className="mt-0.5 font-mono text-xs text-slate-500">
-                  LAN {device.use_https ? "https" : "http"}://{device.host}
-                  {device.port ? `:${device.port}` : ""} (for local agent)
-                </p>
-              ) : null}
             </li>
           ))}
         </ul>
@@ -145,7 +229,7 @@ export function AttendanceClockDevicesSettings() {
             className={inputClassName()}
           />
         </Field>
-        <Field label="Device LAN IP (for local agent notes)">
+        <Field label="Device LAN IP (for local agent)">
           <input
             type="text"
             value={form.host}
@@ -178,7 +262,7 @@ export function AttendanceClockDevicesSettings() {
             type="password"
             value={form.password}
             onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-            placeholder="Stored for admin reference / agent setup"
+            placeholder="Stored encrypted for agent download"
             className={inputClassName()}
             autoComplete="new-password"
           />
@@ -204,6 +288,85 @@ export function AttendanceClockDevicesSettings() {
       </div>
 
       <AttendanceClockDeviceHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      <FormModal
+        title={
+          downloadDevice
+            ? `Download agent — ${downloadDevice.device_no}`
+            : "Download attendance agent"
+        }
+        open={Boolean(downloadDevice)}
+        onClose={() => !downloading && setDownloadDevice(null)}
+        onSubmit={() => void confirmDownload()}
+        submitLabel={downloading ? "Preparing…" : "Download zip"}
+      >
+        <p className="mb-3 text-sm text-slate-600">
+          Centrix API URL, device number, and a dedicated agent token are filled in automatically.
+          Confirm the Hikvision LAN settings for the office PC that will run the agent.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Hikvision LAN IP">
+            <input
+              type="text"
+              value={downloadForm.host}
+              onChange={(e) => setDownloadForm((p) => ({ ...p, host: e.target.value }))}
+              placeholder="192.168.1.50"
+              className={inputClassName()}
+              autoFocus
+            />
+          </Field>
+          <Field label="Port">
+            <input
+              type="number"
+              value={downloadForm.port}
+              onChange={(e) => setDownloadForm((p) => ({ ...p, port: e.target.value }))}
+              className={inputClassName()}
+            />
+          </Field>
+          <Field label="Username">
+            <input
+              type="text"
+              value={downloadForm.username}
+              onChange={(e) => setDownloadForm((p) => ({ ...p, username: e.target.value }))}
+              className={inputClassName()}
+              autoComplete="off"
+            />
+          </Field>
+          <Field
+            label={
+              downloadDevice?.has_password
+                ? "Password (leave blank to keep saved)"
+                : "Device password"
+            }
+          >
+            <input
+              type="password"
+              value={downloadForm.password}
+              onChange={(e) => setDownloadForm((p) => ({ ...p, password: e.target.value }))}
+              className={inputClassName()}
+              autoComplete="new-password"
+              placeholder={downloadDevice?.has_password ? "••••••••" : "Required"}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={downloadForm.use_https}
+              onChange={(e) => setDownloadForm((p) => ({ ...p, use_https: e.target.checked }))}
+            />
+            Device uses HTTPS on LAN
+          </label>
+        </div>
+        <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-500">
+          <li>Unzip on a Windows PC on the same LAN as the terminal.</li>
+          <li>
+            Run <code>open-settings.bat</code> — first-run settings UI (confirm LAN IP / password).
+          </li>
+          <li>
+            Install Node.js 20+ if needed, then run <code>install-windows.bat</code>.
+          </li>
+        </ol>
+      </FormModal>
     </div>
   );
 }
@@ -220,22 +383,21 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
       <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
         <li>
           Centrix runs in the <strong>cloud</strong>. Your Hikvision has a <strong>local LAN IP</strong>{" "}
-          with internet — the cloud cannot poll that IP. A small{" "}
-          <strong>attendance agent</strong> on an office PC bridges them.
+          — the cloud cannot poll that IP. A small <strong>attendance agent</strong> on an office PC
+          bridges them (same idea as the Centrix Print Agent).
         </li>
         <li>
-          On the terminal: static LAN IP, enable <strong>ISAPI</strong>, enroll staff with the same
-          ID as Centrix <strong>employee code</strong> (<code>EMP#0001</code> or <code>0001</code>).
+          On the terminal: static LAN IP, enable <strong>ISAPI</strong>, enroll staff with the same ID
+          as Centrix <strong>employee code</strong> (<code>EMP#0001</code> or <code>0001</code>).
         </li>
         <li>
-          Register the device here with a unique <strong>device number</strong> (e.g.{" "}
-          <code>TERMINAL-01</code>). Note the LAN IP for the agent config.
+          Register the device here with a unique <strong>device number</strong>, LAN IP, and password
+          (Administration → Attendance clock-in).
         </li>
         <li>
-          On a PC on the same LAN, run <code>attendance-agent/</code>: copy{" "}
-          <code>config.example.json</code> → <code>config.json</code>, set Centrix API URL + token,
-          device number, and Hikvision LAN IP, then <code>npm start</code> (or Task Scheduler every
-          5 minutes with <code>npm run once</code>).
+          Click <strong>Download agent</strong> — the zip is preconfigured with Centrix URL, token, and
+          device settings. On a LAN PC: unzip → <code>open-settings.bat</code> (settings UI) →{" "}
+          <code>install-windows.bat</code> (Node 20+).
         </li>
         <li>
           The agent polls the device locally and POSTs punches to{" "}

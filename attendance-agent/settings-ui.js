@@ -1,0 +1,488 @@
+#!/usr/bin/env node
+/**
+ * First-run / repair settings UI (local browser).
+ * Opens http://127.0.0.1:9251 — fill Hikvision LAN IP / password and save.
+ */
+
+import http from "node:http";
+import { exec } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import {
+  SETTINGS_UI_PORT,
+  SETTINGS_UI_URL,
+  ensureConfigFile,
+  normalizeConfig,
+  saveConfig,
+  publicConfigView,
+  isConfigReady,
+} from "./config-lib.js";
+
+function openBrowser(url) {
+  const platform = process.platform;
+  let cmd;
+  if (platform === "win32") {
+    cmd = `cmd /c start "" "${url}"`;
+  } else if (platform === "darwin") {
+    cmd = `open "${url}"`;
+  } else {
+    cmd = `xdg-open "${url}"`;
+  }
+  exec(cmd, () => {});
+}
+
+function htmlPage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Centrix Attendance Agent — Settings</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --accent: #185fa5;
+      --accent-soft: #e8f1f8;
+      --ok: #166534;
+      --ok-bg: #dcfce7;
+      --warn: #92400e;
+      --warn-bg: #fef3c7;
+      --err: #991b1b;
+      --err-bg: #fee2e2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #1e3a5f 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #0ea5e9 0%, transparent 40%),
+        var(--bg);
+    }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+    .brand {
+      color: #e2e8f0;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    h1 {
+      color: #f8fafc;
+      font-size: 28px;
+      font-weight: 650;
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+    }
+    .lead { color: #94a3b8; margin: 0 0 24px; line-height: 1.5; font-size: 15px; }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    }
+    .banner {
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 20px;
+    }
+    .banner.warn { background: var(--warn-bg); color: var(--warn); }
+    .banner.ok { background: var(--ok-bg); color: var(--ok); }
+    .banner.err { background: var(--err-bg); color: var(--err); }
+    .grid { display: grid; gap: 14px; }
+    @media (min-width: 560px) {
+      .grid.two { grid-template-columns: 1fr 1fr; }
+    }
+    label { display: block; font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+    input[type="text"], input[type="password"], input[type="number"], input[type="url"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .check {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 14px; color: #334155; margin-top: 4px;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+    .section {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+    .section h2 { margin: 0 0 12px; font-size: 15px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #fff; }
+    button.primary:disabled { opacity: .55; cursor: wait; }
+    button.secondary { background: #f1f5f9; color: #0f172a; }
+    #status { margin-top: 16px; font-size: 13px; white-space: pre-wrap; line-height: 1.45; }
+    code { font-size: 12px; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">Centrix ERP</div>
+    <h1>Attendance Agent settings</h1>
+    <p class="lead">
+      First-run setup for this office PC. Centrix cloud cannot reach a LAN fingerprint terminal —
+      this agent bridges them. Prefills come from Administration → Attendance clock-in.
+    </p>
+    <div class="card">
+      <div id="banner" class="banner warn" hidden></div>
+      <form id="form" class="grid">
+        <div>
+          <label for="centrixApiUrl">Centrix API URL</label>
+          <input id="centrixApiUrl" name="centrixApiUrl" type="url" autocomplete="off" />
+          <p class="hint">Usually prefilled from your Centrix download (ends with <code>/api/v1</code>).</p>
+        </div>
+        <div>
+          <label for="centrixToken">Centrix agent token</label>
+          <input id="centrixToken" name="centrixToken" type="password" autocomplete="off" placeholder="Paste or keep downloaded token" />
+          <p class="hint">Leave blank to keep the existing token.</p>
+        </div>
+        <div class="grid two">
+          <div>
+            <label for="deviceNo">Device number</label>
+            <input id="deviceNo" name="deviceNo" type="text" placeholder="TERMINAL-01" autocomplete="off" />
+          </div>
+          <div>
+            <label for="pollIntervalSeconds">Poll interval (seconds)</label>
+            <input id="pollIntervalSeconds" name="pollIntervalSeconds" type="number" min="60" step="30" />
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Hikvision terminal (LAN)</h2>
+          <div class="grid two">
+            <div>
+              <label for="host">Device LAN IP</label>
+              <input id="host" name="host" type="text" placeholder="192.168.1.50" required autocomplete="off" />
+            </div>
+            <div>
+              <label for="port">Port</label>
+              <input id="port" name="port" type="number" min="1" max="65535" />
+            </div>
+            <div>
+              <label for="username">Username</label>
+              <input id="username" name="username" type="text" autocomplete="off" />
+            </div>
+            <div>
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="new-password" />
+            </div>
+          </div>
+          <label class="check"><input id="useHttps" name="useHttps" type="checkbox" /> Device uses HTTPS on LAN</label>
+          <p class="hint">PC and terminal must be on the same network. Enroll people with the same ID as Centrix employee code.</p>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="primary" id="saveBtn">Save settings</button>
+          <button type="button" class="secondary" id="testBtn">Save &amp; test connection</button>
+        </div>
+        <div id="status"></div>
+      </form>
+    </div>
+  </div>
+  <script>
+    const el = (id) => document.getElementById(id);
+    let existingToken = "";
+
+    function setBanner(type, text) {
+      const b = el("banner");
+      if (!text) { b.hidden = true; return; }
+      b.hidden = false;
+      b.className = "banner " + type;
+      b.textContent = text;
+    }
+
+    function fill(cfg) {
+      existingToken = cfg.centrixToken || "";
+      el("centrixApiUrl").value = cfg.centrixApiUrl || "";
+      el("centrixToken").value = "";
+      el("centrixToken").placeholder = cfg.hasCentrixToken
+        ? "Token on file — leave blank to keep (" + (cfg.centrixTokenMasked || "saved") + ")"
+        : "Required — re-download agent from Centrix Admin if missing";
+      el("deviceNo").value = cfg.deviceNo || "";
+      el("pollIntervalSeconds").value = cfg.pollIntervalSeconds || 300;
+      el("host").value = (cfg.hikvision && cfg.hikvision.host) || "";
+      el("port").value = (cfg.hikvision && cfg.hikvision.port) || 80;
+      el("username").value = (cfg.hikvision && cfg.hikvision.username) || "admin";
+      el("password").value = (cfg.hikvision && cfg.hikvision.password) || "";
+      el("useHttps").checked = Boolean(cfg.hikvision && cfg.hikvision.useHttps);
+      if (cfg.ready) {
+        setBanner("ok", "Configuration looks complete. You can still edit settings below.");
+      } else {
+        setBanner("warn", "First-run setup: fill the device LAN IP and password, then Save. Missing: " + (cfg.missing || []).join(", "));
+      }
+    }
+
+    function readForm() {
+      return {
+        centrixApiUrl: el("centrixApiUrl").value.trim(),
+        centrixToken: el("centrixToken").value.trim() || existingToken,
+        deviceNo: el("deviceNo").value.trim(),
+        pollIntervalSeconds: Number(el("pollIntervalSeconds").value) || 300,
+        hikvision: {
+          host: el("host").value.trim(),
+          port: Number(el("port").value) || 80,
+          username: el("username").value.trim() || "admin",
+          password: el("password").value,
+          useHttps: el("useHttps").checked,
+        },
+      };
+    }
+
+    async function load() {
+      const res = await fetch("/api/config");
+      const cfg = await res.json();
+      fill(cfg);
+    }
+
+    async function save(test) {
+      const status = el("status");
+      const saveBtn = el("saveBtn");
+      const testBtn = el("testBtn");
+      saveBtn.disabled = true;
+      testBtn.disabled = true;
+      status.textContent = test ? "Saving and testing…" : "Saving…";
+      status.style.color = "#64748b";
+      try {
+        const body = readForm();
+        const res = await fetch(test ? "/api/save-and-test" : "/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Save failed");
+        fill(data.config || data);
+        if (test && data.test) {
+          status.textContent = data.test.ok
+            ? "Saved. Connection test passed.\\n" + (data.test.detail || "")
+            : "Saved, but test failed:\\n" + (data.test.detail || "");
+          status.style.color = data.test.ok ? "#166534" : "#991b1b";
+          setBanner(data.test.ok ? "ok" : "err", data.test.ok
+            ? "Ready. Close this window and run install-windows.bat (or npm start)."
+            : "Fix the issues below, then test again.");
+        } else {
+          status.textContent = "Saved. Run install-windows.bat or npm start when ready.";
+          status.style.color = "#166534";
+          setBanner("ok", "Settings saved.");
+        }
+      } catch (err) {
+        status.textContent = err.message || String(err);
+        status.style.color = "#991b1b";
+      } finally {
+        saveBtn.disabled = false;
+        testBtn.disabled = false;
+      }
+    }
+
+    el("form").addEventListener("submit", (e) => { e.preventDefault(); void save(false); });
+    el("testBtn").addEventListener("click", () => void save(true));
+    load().catch((err) => setBanner("err", err.message || String(err)));
+  </script>
+</body>
+</html>`;
+}
+
+async function readBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks).toString("utf8");
+  if (!raw) return {};
+  return JSON.parse(raw);
+}
+
+async function quickTest(config) {
+  const lines = [];
+  let ok = true;
+  const hik = config.hikvision || {};
+  if (!hik.host) {
+    return { ok: false, detail: "Device LAN IP is required." };
+  }
+
+  const scheme = hik.useHttps ? "https" : "http";
+  const port = hik.port || (hik.useHttps ? 443 : 80);
+  const deviceUrl = `${scheme}://${hik.host}:${port}/`;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(deviceUrl, { signal: controller.signal, redirect: "manual" });
+    clearTimeout(timer);
+    lines.push(`Device reachable at ${deviceUrl} (HTTP ${res.status})`);
+  } catch (err) {
+    ok = false;
+    lines.push(`Cannot reach device at ${deviceUrl}: ${err.message}`);
+  }
+
+  if (config.centrixApiUrl && config.centrixToken) {
+    try {
+      const url = `${config.centrixApiUrl.replace(/\/$/, "")}/attendance-clock-devices?per_page=1`;
+      const res = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${config.centrixToken}`,
+        },
+      });
+      if (!res.ok) {
+        ok = false;
+        const text = await res.text();
+        lines.push(`Centrix auth failed (${res.status}): ${text.slice(0, 200)}`);
+      } else {
+        lines.push("Centrix API token accepted.");
+      }
+    } catch (err) {
+      ok = false;
+      lines.push(`Centrix API unreachable: ${err.message}`);
+    }
+  } else {
+    ok = false;
+    lines.push("Centrix API URL or token missing — re-download the agent from Centrix Admin.");
+  }
+
+  if (!config.deviceNo) {
+    ok = false;
+    lines.push("Device number is required.");
+  }
+
+  return { ok, detail: lines.join("\n") };
+}
+
+/**
+ * @param {{ openBrowser?: boolean, waitUntilReady?: boolean }} [options]
+ * @returns {Promise<{ ready: boolean, alreadyRunning?: boolean }>}
+ */
+export function runSettingsUi(options = {}) {
+  const open = options.openBrowser !== false;
+  const waitUntilReady = Boolean(options.waitUntilReady);
+
+  return new Promise((resolve, reject) => {
+    ensureConfigFile();
+    let settled = false;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      try {
+        server.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(result);
+    };
+
+    const server = http.createServer(async (req, res) => {
+      try {
+        const url = new URL(req.url || "/", SETTINGS_UI_URL);
+
+        if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+          res.writeHead(200, {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+          });
+          res.end(htmlPage());
+          return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/api/config") {
+          const view = publicConfigView(ensureConfigFile());
+          res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+          res.end(JSON.stringify(view));
+          return;
+        }
+
+        if (
+          req.method === "POST" &&
+          (url.pathname === "/api/config" || url.pathname === "/api/save-and-test")
+        ) {
+          const body = await readBody(req);
+          const current = normalizeConfig(ensureConfigFile());
+          if (!String(body.centrixToken || "").trim() && current.centrixToken) {
+            body.centrixToken = current.centrixToken;
+          }
+          if (
+            body.hikvision &&
+            !String(body.hikvision.password || "") &&
+            current.hikvision.password
+          ) {
+            body.hikvision.password = current.hikvision.password;
+          }
+          const saved = saveConfig({
+            ...current,
+            ...body,
+            hikvision: { ...current.hikvision, ...(body.hikvision || {}) },
+          });
+          const view = publicConfigView(saved);
+          const payload = { ...view, config: view, ready: view.ready };
+          if (url.pathname === "/api/save-and-test") {
+            payload.test = await quickTest(saved);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(payload));
+          if (waitUntilReady && view.ready) {
+            setTimeout(() => finish({ ready: true }), 400);
+          }
+          return;
+        }
+
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("Not found");
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: err.message || String(err) }));
+      }
+    });
+
+    server.on("error", (err) => {
+      if (err && err.code === "EADDRINUSE") {
+        console.error(`[attendance-agent] Settings UI port ${SETTINGS_UI_PORT} is already in use.`);
+        console.error(`Open ${SETTINGS_UI_URL} in your browser, or close the other settings window.`);
+        if (open) openBrowser(SETTINGS_UI_URL);
+        finish({ ready: isConfigReady(ensureConfigFile()), alreadyRunning: true });
+        return;
+      }
+      reject(err);
+    });
+
+    server.listen(SETTINGS_UI_PORT, "127.0.0.1", () => {
+      console.log(`[attendance-agent] Settings UI: ${SETTINGS_UI_URL}`);
+      if (waitUntilReady) {
+        console.log("Save settings in the browser — this window continues automatically when ready.");
+      } else {
+        console.log("Fill the form in your browser, then Save. Press Ctrl+C here when finished.");
+      }
+      if (open) openBrowser(SETTINGS_UI_URL);
+    });
+
+    const shutdown = () => finish({ ready: isConfigReady(ensureConfigFile()) });
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  });
+}
+
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isDirectRun) {
+  runSettingsUi({ openBrowser: true }).catch((err) => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}

@@ -1091,6 +1091,13 @@ const NAV_SECTION_DEFINITIONS = [
         orgAdminOnly: true,
       },
       {
+        href: "/admin/attendance-clock",
+        label: "Attendance clock-in",
+        module: "admin",
+        permissionAny: [P.admin.settings.view, P.hr.manage, "admin.manage"],
+        orgAdminOnly: true,
+      },
+      {
         href: "/admin/branches",
         label: "Branches",
         module: "admin",

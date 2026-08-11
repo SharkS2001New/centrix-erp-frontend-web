@@ -386,6 +386,10 @@ function match_admin_themes(pathname) {
   return pathname === "/admin/themes";
 }
 
+function match_admin_attendance_clock(pathname) {
+  return pathname === "/admin/attendance-clock";
+}
+
 function match_admin_till_printing(pathname) {
   return pathname === "/admin/till-printing";
 }
@@ -1309,6 +1313,12 @@ export const SCREEN_REGISTRY = [
     title: "Themes",
     route: "/admin/themes",
     match: match_admin_themes,
+  },
+  {
+    id: "admin-attendance-clock",
+    title: "Attendance Clock-in",
+    route: "/admin/attendance-clock",
+    match: match_admin_attendance_clock,
   },
   {
     id: "admin-till-printing",

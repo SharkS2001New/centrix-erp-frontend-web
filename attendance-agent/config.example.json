@@ -1,5 +1,5 @@
 {
-  "centrixApiUrl": "https://YOUR-CENTRIX-HOST/api/v1",
+  "centrixApiUrl": "https://centrixerp.betsassured.com/api/v1",
   "centrixToken": "PASTE_SANCTUM_TOKEN_HERE",
   "deviceNo": "TERMINAL-01",
   "hikvision": {

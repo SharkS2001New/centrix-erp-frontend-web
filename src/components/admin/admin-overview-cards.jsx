@@ -61,6 +61,13 @@ const CARDS = [
     icon: "📜",
     permission: P.admin.audit.view,
   },
+  {
+    href: "/admin/attendance-clock",
+    title: "Attendance clock-in",
+    description: "Fingerprint terminals, company mobile clock-in, and Centrix Attendance Agent download.",
+    icon: "🕐",
+    permissionAny: [P.admin.settings.view, P.hr.manage, "admin.manage"],
+  },
 ];
 
 let adminNavByHrefCache = null;
