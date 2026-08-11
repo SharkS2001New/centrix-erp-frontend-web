@@ -83,7 +83,7 @@ export function priorSaleTenderMap(sourceSale) {
       if (!(amount > 0) || !code) continue;
       if (code.includes("CASH")) cash += amount;
       else if (code.includes("MPESA") || code.includes("AIRTEL")) mpesa += amount;
-      else if (code.includes("EQUITY")) equity += amount;
+      else if (code.includes("EQUITY") || code.includes("ECOBANK") || code === "ECO") equity += amount;
       else if (code.includes("KCB")) kcb += amount;
       else cash += amount;
     }
@@ -96,7 +96,7 @@ export function priorSaleTenderMap(sourceSale) {
         .trim()
         .toUpperCase();
       if (code.includes("MPESA") || code.includes("AIRTEL")) mpesa = paid;
-      else if (code.includes("EQUITY")) equity = paid;
+      else if (code.includes("EQUITY") || code.includes("ECOBANK") || code === "ECO") equity = paid;
       else if (code.includes("KCB")) kcb = paid;
       else cash = paid;
     }
@@ -318,6 +318,21 @@ export function buildPaymentAdjustmentsFromCheckoutBody(body, delta) {
 }
 
 /**
+ * Map a payment method code onto the Cash / M-Pesa / Equity / KCB tender buckets.
+ * @param {string} code
+ * @returns {"cash"|"mpesa"|"equity"|"kcb"}
+ */
+export function previousOrderEditTenderBucket(code) {
+  const normalized = String(code ?? "CASH").trim().toUpperCase();
+  if (normalized.includes("MPESA") || normalized.includes("AIRTEL")) return "mpesa";
+  if (normalized.includes("EQUITY") || normalized.includes("ECOBANK") || normalized === "ECO") {
+    return "equity";
+  }
+  if (normalized.includes("KCB")) return "kcb";
+  return "cash";
+}
+
+/**
  * Scale tender method amounts so they sum to the revised order total
  * (mirrors backend CheckoutController::normalizeTenderMapToTotal).
  *
@@ -364,8 +379,11 @@ export function normalizePreviousOrderEditTenders(tenders, targetTotal) {
 }
 
 /**
- * Rebuild Cash/M-Pesa/Equity/KCB from the prior sale ± payment_adjustments, then
- * clamp the mix to the revised order total so receipts never show prior+top-up doubles.
+ * Rebuild Cash/M-Pesa/Equity/KCB for a previous-order edit receipt:
+ * - Keep original create-order tenders as-is
+ * - Add top-up onto the method the cashier entered (same method combines; different shows both)
+ * - Do not deduct a return from an unrelated method (cash return must not reduce M-Pesa)
+ * - Return amount prints as Change Given via returnGiven
  *
  * @param {object|null|undefined} sourceSale
  * @param {Array<{ adjustment_type?: string, method_code?: string, amount?: number }>} adjustments
@@ -435,36 +453,24 @@ export function rebuildPreviousOrderEditTenders(sourceSale, adjustments, revised
   let equity = hasSourcePayments ? prior.equity : 0;
   let kcb = hasSourcePayments ? prior.kcb : 0;
 
+  // Top-up: add onto the cashier-chosen method (combine when same as original).
   for (const row of rows) {
     if (row.adjustment_type !== "topup") continue;
-    const code = String(row.method_code ?? "CASH").toUpperCase();
-    const amt = Number(row.amount) || 0;
-    if (code.includes("MPESA") || code.includes("AIRTEL")) mpesa += amt;
-    else if (code.includes("EQUITY")) equity += amt;
-    else if (code.includes("KCB")) kcb += amt;
-    else cash += amt;
+    const amt = Math.round((Number(row.amount) || 0) * 100) / 100;
+    if (!(amt > 0)) continue;
+    const bucket = previousOrderEditTenderBucket(row.method_code);
+    if (bucket === "mpesa") mpesa = Math.round((mpesa + amt) * 100) / 100;
+    else if (bucket === "equity") equity = Math.round((equity + amt) * 100) / 100;
+    else if (bucket === "kcb") kcb = Math.round((kcb + amt) * 100) / 100;
+    else cash = Math.round((cash + amt) * 100) / 100;
   }
 
-  if (returnGiven > 0.0001) {
-    let remaining = returnGiven;
-    const reduce = (current) => {
-      const take = Math.min(Math.max(0, current), remaining);
-      remaining = Math.round((remaining - take) * 100) / 100;
-      return Math.round((current - take) * 100) / 100;
-    };
-    cash = reduce(cash);
-    mpesa = reduce(mpesa);
-    equity = reduce(equity);
-    kcb = reduce(kcb);
-  }
+  // Returns: never waterfall-deduct across methods (that moved a Cash refund onto M-Pesa).
+  // Keep original (+ top-up) tender lines on the receipt; Change Given carries the refund.
 
   // Credit unpaid/partial with no new top-up/return: keep the prior settlement.
-  // Scaling tenders to the full revised bill was marking unpaid/partial as paid.
   const preserveCreditSettlement =
     priorWasCredit && topupAmount <= 0.0001 && returnGiven <= 0.0001;
-  const normalizeTarget = preserveCreditSettlement
-    ? Math.min(priorPaid > 0.009 ? priorPaid : hasSourcePayments ? priorTenderSum : 0, target)
-    : target;
 
   if (!hasSourcePayments && topupAmount <= 0 && returnGiven <= 0) {
     const amountPaid = priorWasCredit ? Math.min(priorPaid, target) : target;
@@ -480,17 +486,63 @@ export function rebuildPreviousOrderEditTenders(sourceSale, adjustments, revised
     };
   }
 
-  const normalized = normalizePreviousOrderEditTenders(
-    { cash, mpesa, equity, kcb },
-    normalizeTarget,
-  );
-  const amountPaid =
-    Math.round(
-      (normalized.cash + normalized.mpesa + normalized.equity + normalized.kcb) * 100,
-    ) / 100;
+  if (preserveCreditSettlement) {
+    const normalizeTarget = Math.min(
+      priorPaid > 0.009 ? priorPaid : hasSourcePayments ? priorTenderSum : 0,
+      target,
+    );
+    const normalized = normalizePreviousOrderEditTenders(
+      { cash, mpesa, equity, kcb },
+      normalizeTarget,
+    );
+    const amountPaid =
+      Math.round(
+        (normalized.cash + normalized.mpesa + normalized.equity + normalized.kcb) * 100,
+      ) / 100;
+    return {
+      ...normalized,
+      returnGiven,
+      topupAmount,
+      amountPaid,
+      adjustments: rows,
+    };
+  }
+
+  // Top-up only: nudge rounding drift onto the top-up method (never reclass onto prior).
+  if (topupAmount > 0.0001 && returnGiven <= 0.0001) {
+    const sum = Math.round((cash + mpesa + equity + kcb) * 100) / 100;
+    const drift = Math.round((target - sum) * 100) / 100;
+    if (Math.abs(drift) >= 0.01) {
+      const topupRow = rows.find((row) => row.adjustment_type === "topup");
+      const bucket = previousOrderEditTenderBucket(topupRow?.method_code ?? fallbackMethod);
+      if (bucket === "mpesa") mpesa = Math.max(0, Math.round((mpesa + drift) * 100) / 100);
+      else if (bucket === "equity") equity = Math.max(0, Math.round((equity + drift) * 100) / 100);
+      else if (bucket === "kcb") kcb = Math.max(0, Math.round((kcb + drift) * 100) / 100);
+      else cash = Math.max(0, Math.round((cash + drift) * 100) / 100);
+    }
+  } else if (topupAmount <= 0.0001 && returnGiven <= 0.0001) {
+    // No adjustment rows after reconcile — keep mix clamped to revised total.
+    const normalized = normalizePreviousOrderEditTenders(
+      { cash, mpesa, equity, kcb },
+      target,
+    );
+    cash = normalized.cash;
+    mpesa = normalized.mpesa;
+    equity = normalized.equity;
+    kcb = normalized.kcb;
+  }
+
+  const displayPaid =
+    Math.round((cash + mpesa + equity + kcb) * 100) / 100;
+  // Settlement amount is the revised bill; display tenders may exceed it when a
+  // return is refunded via a different method (Change Given covers the difference).
+  const amountPaid = returnGiven > 0.0001 ? target : displayPaid;
 
   return {
-    ...normalized,
+    cash,
+    mpesa,
+    equity,
+    kcb,
     returnGiven,
     topupAmount,
     amountPaid,

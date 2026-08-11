@@ -167,6 +167,48 @@ describe("normalizePreviousOrderEditTenders / rebuildPreviousOrderEditTenders", 
     expect(tenders.returnGiven).toBe(0);
   });
 
+  it("keeps original M-Pesa and shows Cash separately when top-up is Cash", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      {
+        order_total: 10000,
+        cash: 0,
+        mpesa_amount: 10000,
+        equity_amount: 0,
+        kcb_amount: 0,
+        payment_method_code: "MPESA",
+      },
+      [{ adjustment_type: "topup", method_code: "CASH", amount: 2000 }],
+      12000,
+    );
+    expect(tenders.mpesa).toBe(10000);
+    expect(tenders.cash).toBe(2000);
+    expect(tenders.topupAmount).toBe(2000);
+    expect(tenders.amountPaid).toBe(12000);
+  });
+
+  it("combines Equity top-up onto prior Equity", async () => {
+    const { rebuildPreviousOrderEditTenders } = await import(
+      "@/lib/pos-edit-payment-adjustment"
+    );
+    const tenders = rebuildPreviousOrderEditTenders(
+      {
+        order_total: 5000,
+        cash: 0,
+        mpesa_amount: 0,
+        equity_amount: 5000,
+        kcb_amount: 0,
+      },
+      [{ adjustment_type: "topup", method_code: "ECOBANK", amount: 1500 }],
+      6500,
+    );
+    expect(tenders.equity).toBe(6500);
+    expect(tenders.cash).toBe(0);
+    expect(tenders.mpesa).toBe(0);
+  });
+
   it("never doubles M-Pesa when a bogus full-bill top-up is stored", async () => {
     const { rebuildPreviousOrderEditTenders, paymentRowsFromPreviousOrderEditTenders } =
       await import("@/lib/pos-edit-payment-adjustment");
@@ -206,7 +248,7 @@ describe("normalizePreviousOrderEditTenders / rebuildPreviousOrderEditTenders", 
     expect(tenders.topupAmount).toBe(0);
   });
 
-  it("records return change without inflating M-Pesa", async () => {
+  it("records cash return without deducting from original M-Pesa", async () => {
     const { rebuildPreviousOrderEditTenders } = await import(
       "@/lib/pos-edit-payment-adjustment"
     );
@@ -221,9 +263,11 @@ describe("normalizePreviousOrderEditTenders / rebuildPreviousOrderEditTenders", 
       [{ adjustment_type: "return", method_code: "CASH", amount: 2000 }],
       8000,
     );
-    expect(tenders.mpesa).toBe(8000);
+    expect(tenders.mpesa).toBe(10000);
+    expect(tenders.cash).toBe(0);
     expect(tenders.returnGiven).toBe(2000);
     expect(tenders.topupAmount).toBe(0);
+    expect(tenders.amountPaid).toBe(8000);
   });
 
   it("keeps unpaid credit amount_paid at 0 instead of inventing a full settlement", async () => {
