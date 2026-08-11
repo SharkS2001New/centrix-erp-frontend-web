@@ -7,6 +7,7 @@ import {
   SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { PasswordInput } from "@/components/auth/password-input";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -259,8 +260,7 @@ export function PlatformR2BackupSettingsPanel() {
 
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-600">Secret access key</span>
-          <input
-            type="password"
+          <PasswordInput
             autoComplete="new-password"
             className={inputClass}
             value={r2Form.secret_access_key}

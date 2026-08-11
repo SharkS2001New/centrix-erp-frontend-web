@@ -10,6 +10,7 @@ import {
 } from "@/lib/whatsapp-settings";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { WhatsappTrainingPanel } from "@/components/platform/platform-whatsapp-training-panel";
+import { PasswordInput } from "@/components/auth/password-input";
 
 function WhatsappFields({ form, setForm, loading, saving, onSave, onCopy }) {
   return (
@@ -37,8 +38,7 @@ function WhatsappFields({ form, setForm, loading, saving, onSave, onCopy }) {
           </Field>
 
           <Field label="Webhook verify token">
-            <input
-              type="password"
+            <PasswordInput
               className={inputClassName()}
               value={form.webhook_verify_token}
               onChange={(e) => setForm((f) => ({ ...f, webhook_verify_token: e.target.value }))}

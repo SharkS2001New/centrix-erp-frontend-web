@@ -18,6 +18,7 @@ import { PLATFORM_INVOICE_DESIGN_TEMPLATES } from "@/lib/platform-invoices";
 import { PLATFORM_EMAIL_PLACEHOLDERS } from "@/lib/platform-ai-compose";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
 import { useConfirm } from "@/lib/use-confirm";
+import { PasswordInput } from "@/components/auth/password-input";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -480,8 +481,7 @@ export function PlatformEmailDeliveryPanel() {
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Password</span>
-            <input
-              type="password"
+            <PasswordInput
               className={inputClass}
               value={form.smtp_password}
               onChange={(e) => setForm((f) => ({ ...f, smtp_password: e.target.value }))}
@@ -656,8 +656,7 @@ export function PlatformEmailDeliveryPanel() {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">SMTP password</span>
-                <input
-                  type="password"
+                <PasswordInput
                   className={inputClass}
                   value={form.auth_smtp_password}
                   onChange={(e) => setForm((f) => ({ ...f, auth_smtp_password: e.target.value }))}
@@ -839,18 +838,17 @@ export function PlatformEmailDeliveryPanel() {
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-600">Password</span>
-            <input
-              type="password"
+            <PasswordInput
               className={inputClass}
               value={form.imap_password}
               onChange={(e) => setForm((f) => ({ ...f, imap_password: e.target.value }))}
-                placeholder={
-                  form.imap_password_set
-                    ? "•••••••• (saved — leave blank to keep)"
-                    : form.smtp_password_set
-                      ? "Leave blank to reuse SMTP password"
-                      : "App password if required"
-                }
+              placeholder={
+                form.imap_password_set
+                  ? "•••••••• (saved — leave blank to keep)"
+                  : form.smtp_password_set
+                    ? "Leave blank to reuse SMTP password"
+                    : "App password if required"
+              }
               autoComplete="new-password"
             />
           </label>

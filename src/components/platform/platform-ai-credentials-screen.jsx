@@ -7,6 +7,7 @@ import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/compon
 import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
 import { aiTrainingApiBase } from "@/lib/platform-ai-training";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { PasswordInput } from "@/components/auth/password-input";
 
 export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   const apiBase = aiTrainingApiBase();
@@ -79,8 +80,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <Field label="OpenAI API key">
-                  <input
-                    type="password"
+                  <PasswordInput
                     className={inputClassName()}
                     value={aiForm.api_key}
                     onChange={(e) => setAiForm((f) => ({ ...f, api_key: e.target.value }))}

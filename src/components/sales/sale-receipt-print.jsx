@@ -65,12 +65,24 @@ function tendersFromSalePayments(sale) {
   return totals;
 }
 
-function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {}) {
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+/**
+ * Resolve tender amounts for thermal receipts.
+ * amount_paid is the paid truth — unpaid orders must not invent Cash from payment_method_code
+ * or stale tender columns.
+ */
+export function resolveSaleReceiptTenders(sale, orderTotal) {
+  const total = roundMoney(orderTotal ?? sale?.order_total ?? 0);
+  const amountPaid = Math.max(0, roundMoney(sale?.amount_paid ?? 0));
   const fromPayments = tendersFromSalePayments(sale);
-  let cashAmount = Number(sale.cash ?? 0);
-  let mpesaAmount = Number(sale.mpesa_amount ?? 0);
-  let equityAmount = Number(sale.equity_amount ?? 0);
-  let kcbAmount = Number(sale.kcb_amount ?? 0);
+
+  let cashAmount = Math.max(0, roundMoney(sale?.cash ?? 0));
+  let mpesaAmount = Math.max(0, roundMoney(sale?.mpesa_amount ?? 0));
+  let equityAmount = Math.max(0, roundMoney(sale?.equity_amount ?? 0));
+  let kcbAmount = Math.max(0, roundMoney(sale?.kcb_amount ?? 0));
 
   // If tender columns are empty but sale_payments exist, rebuild from payments.
   const columnTotal = cashAmount + mpesaAmount + equityAmount + kcbAmount;
@@ -81,8 +93,80 @@ function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {})
     kcbAmount = fromPayments.kcb;
   }
 
-  const voucherAmount = Number(sale.voucher_payment_amount ?? 0);
-  const pointsAmount = Number(sale.points_payment_amount ?? 0);
+  let voucherAmount = Math.max(0, roundMoney(sale?.voucher_payment_amount ?? 0));
+  let pointsAmount = Math.max(0, roundMoney(sale?.points_payment_amount ?? 0));
+
+  // Fully unpaid: ignore stale cash/mpesa columns and never invent a full-bill tender.
+  if (amountPaid <= 0.009) {
+    return {
+      cashAmount: 0,
+      mpesaAmount: 0,
+      equityAmount: 0,
+      kcbAmount: 0,
+      voucherAmount: 0,
+      pointsAmount: 0,
+      amountPaid: 0,
+      tenderPaid: 0,
+      balanceDue: Math.max(0, total),
+    };
+  }
+
+  let tenderPaid = roundMoney(
+    cashAmount + mpesaAmount + equityAmount + kcbAmount + voucherAmount + pointsAmount,
+  );
+
+  // Columns empty but amount_paid is set — attribute paid amount to the recorded method.
+  if (tenderPaid <= 0.009) {
+    const code = String(sale?.payment_method_code ?? "CASH").toUpperCase();
+    if (code.includes("MPESA") || code.includes("AIRTEL")) mpesaAmount = amountPaid;
+    else if (code.includes("EQUITY")) equityAmount = amountPaid;
+    else if (code.includes("KCB")) kcbAmount = amountPaid;
+    else if (code.includes("CREDIT")) {
+      /* credit balance is shown separately */
+    } else if (code.includes("VOUCHER")) voucherAmount = amountPaid;
+    else if (code.includes("POINT")) pointsAmount = amountPaid;
+    else cashAmount = amountPaid;
+    tenderPaid = amountPaid;
+  } else if (tenderPaid > amountPaid + 0.02) {
+    // Stale tender columns above amount_paid — trust amount_paid and rebuild from method.
+    cashAmount = 0;
+    mpesaAmount = 0;
+    equityAmount = 0;
+    kcbAmount = 0;
+    voucherAmount = 0;
+    pointsAmount = 0;
+    const code = String(sale?.payment_method_code ?? "CASH").toUpperCase();
+    if (code.includes("MPESA") || code.includes("AIRTEL")) mpesaAmount = amountPaid;
+    else if (code.includes("EQUITY")) equityAmount = amountPaid;
+    else if (code.includes("KCB")) kcbAmount = amountPaid;
+    else if (!code.includes("CREDIT")) cashAmount = amountPaid;
+    tenderPaid = amountPaid;
+  }
+
+  return {
+    cashAmount,
+    mpesaAmount,
+    equityAmount,
+    kcbAmount,
+    voucherAmount,
+    pointsAmount,
+    amountPaid,
+    tenderPaid,
+    balanceDue: Math.max(0, roundMoney(total - amountPaid)),
+  };
+}
+
+export function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {}) {
+  const tenders = resolveSaleReceiptTenders(sale, orderTotal);
+  const {
+    cashAmount,
+    mpesaAmount,
+    equityAmount,
+    kcbAmount,
+    voucherAmount,
+    pointsAmount,
+    balanceDue,
+  } = tenders;
   const rows = [];
 
   if (showAllMethods) {
@@ -102,21 +186,11 @@ function buildUsedPaymentRows(sale, orderTotal, { showAllMethods = false } = {})
   if (voucherAmount > 0) rows.push({ label: "Voucher", value: voucherAmount });
   if (pointsAmount > 0) rows.push({ label: "Points", value: pointsAmount });
 
-  if (sale.is_credit_sale) {
-    const paid = cashAmount + mpesaAmount + equityAmount + kcbAmount + voucherAmount + pointsAmount;
-    const creditAmount = Math.max(0, orderTotal - paid);
-    if (creditAmount > 0) rows.push({ label: "Credit", value: creditAmount });
-  }
-
-  if (!rows.length && sale.payment_method_code) {
-    const code = String(sale.payment_method_code).toUpperCase();
-    let label = sale.payment_method_code;
-    if (code.includes("CASH")) label = "Cash";
-    else if (code.includes("MPESA")) label = "M-Pesa";
-    else if (code.includes("EQUITY")) label = "Equity";
-    else if (code.includes("KCB")) label = "KCB";
-    else if (code.includes("CREDIT")) label = "Credit";
-    rows.push({ label, value: orderTotal });
+  if (sale?.is_credit_sale && balanceDue > 0.0001) {
+    rows.push({ label: "Credit", value: balanceDue });
+  } else if (balanceDue > 0.0001) {
+    // Unpaid / partial mobile & till receipts — always surface the outstanding balance.
+    rows.push({ label: "Balance due", value: balanceDue });
   }
 
   return rows;
@@ -253,17 +327,7 @@ export function buildSaleReceiptHtml(
 
   const orderTotal = Number(sale.order_total ?? 0);
   const vatAmount = Number(sale.total_vat ?? 0);
-  const fromPayments = tendersFromSalePayments(sale);
-  let cashAmount = Number(sale.cash ?? 0);
-  let mpesaAmount = Number(sale.mpesa_amount ?? 0);
-  let equityAmount = Number(sale.equity_amount ?? 0);
-  let kcbAmount = Number(sale.kcb_amount ?? 0);
-  if (cashAmount + mpesaAmount + equityAmount + kcbAmount <= 0.009) {
-    cashAmount = fromPayments.cash;
-    mpesaAmount = fromPayments.mpesa;
-    equityAmount = fromPayments.equity;
-    kcbAmount = fromPayments.kcb;
-  }
+  const receiptTenders = resolveSaleReceiptTenders(sale, orderTotal);
 
   const itemRows = buildSaleDocumentLineRows(items, {
     uomById,
@@ -277,13 +341,10 @@ export function buildSaleReceiptHtml(
     layout: "thermal",
   });
 
-  const totalPaid =
-    cashAmount +
-    mpesaAmount +
-    equityAmount +
-    kcbAmount +
-    Number(sale.voucher_payment_amount ?? 0) +
-    Number(sale.points_payment_amount ?? 0);
+  // Prefer amount_paid so unpaid/partial receipts never treat stale cash columns as paid.
+  const totalPaid = receiptTenders.amountPaid > 0.009
+    ? receiptTenders.amountPaid
+    : receiptTenders.tenderPaid;
   // _cash_tendered is a frontend-only annotation set at checkout time (the amount the customer
   // physically handed over, which may exceed the order total for cash payments). It is never
   // stored on the server. Previous-order edit return/top-up use payment_adjustments — return

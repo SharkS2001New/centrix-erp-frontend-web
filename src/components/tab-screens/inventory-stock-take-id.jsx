@@ -90,6 +90,7 @@ export function InventoryStockTakeIdScreen() {
   const [subCategories, setSubCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [counts, setCounts] = useState({});
+  const [touchedIds, setTouchedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -298,20 +299,23 @@ export function InventoryStockTakeIdScreen() {
   }, [lines, productByCode, uomById, counts]);
 
   const dirty = useMemo(() => {
+    if (touchedIds.size > 0) return true;
     for (const line of lines) {
       const currentBase = countedBaseForLine(line);
       if (Math.abs(currentBase - Number(line.counted_quantity)) >= 0.0001) return true;
     }
     return false;
-  }, [lines, counts, productByCode, uomById]);
+  }, [lines, counts, touchedIds, productByCode, uomById]);
 
   const pageVariances = useMemo(() => {
     const items = [];
     for (const line of lines) {
+      const willApply = Boolean(line.is_counted) || touchedIds.has(line.id);
+      if (!willApply) continue;
       const meta = productMeta(line.product_code);
-      const systemBase = Number(line.system_quantity ?? 0);
+      const liveBase = Number(line.live_quantity ?? line.system_quantity ?? 0);
       const countedBase = countedBaseForLine(line);
-      const varianceBase = countedBase - systemBase;
+      const varianceBase = countedBase - liveBase;
       if (Math.abs(varianceBase) >= 0.0001) {
         items.push({
           line,
@@ -322,9 +326,18 @@ export function InventoryStockTakeIdScreen() {
       }
     }
     return items;
-  }, [lines, counts, productByCode, uomById]);
+  }, [lines, counts, touchedIds, productByCode, uomById]);
 
   function setCount(key, value) {
+    const lineId = Number(String(key).split(":")[0]);
+    if (Number.isFinite(lineId) && lineId > 0) {
+      setTouchedIds((prev) => {
+        if (prev.has(lineId)) return prev;
+        const next = new Set(prev);
+        next.add(lineId);
+        return next;
+      });
+    }
     setCounts((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -352,17 +365,15 @@ export function InventoryStockTakeIdScreen() {
     setSaving(true);
     try {
       const payloadLines = lines
+        .filter((line) => {
+          if (touchedIds.has(line.id)) return true;
+          const currentBase = countedBaseForLine(line);
+          return Math.abs(currentBase - Number(line.counted_quantity ?? 0)) >= 0.0001;
+        })
         .map((line) => ({
           id: line.id,
           counted_quantity: countedBaseForLine(line),
-        }))
-        .filter(
-          (line) =>
-            Math.abs(
-              line.counted_quantity -
-                Number(lines.find((entry) => entry.id === line.id)?.counted_quantity ?? 0),
-            ) >= 0.0001,
-        );
+        }));
 
       if (!payloadLines.length) {
         return;
@@ -383,6 +394,7 @@ export function InventoryStockTakeIdScreen() {
       }
 
       // Drop saved keys so reload re-inits from server values.
+      const savedIds = new Set(payloadLines.map((line) => line.id));
       setCounts((prev) => {
         const next = { ...prev };
         for (const line of payloadLines) {
@@ -390,6 +402,11 @@ export function InventoryStockTakeIdScreen() {
             if (key.startsWith(`${line.id}:`)) delete next[key];
           }
         }
+        return next;
+      });
+      setTouchedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of savedIds) next.delete(id);
         return next;
       });
       await loadLines();
@@ -489,9 +506,11 @@ export function InventoryStockTakeIdScreen() {
         </>
       );
     }
-    const systemText = formatMixedStockDisplay(line.system_quantity, uom).text;
+    const liveBase = Number(line.live_quantity ?? line.system_quantity ?? 0);
+    const systemText = formatMixedStockDisplay(liveBase, uom).text;
     const countedBase = countedBaseForLine(line);
-    const varianceBase = countedBase - Number(line.system_quantity ?? 0);
+    const willApply = Boolean(line.is_counted) || touchedIds.has(line.id);
+    const varianceBase = willApply ? countedBase - liveBase : 0;
     const varianceText = formatMixedStockDisplay(Math.abs(varianceBase), uom).text;
     const levels = uomStockTakeLevels(uom);
 
@@ -502,30 +521,63 @@ export function InventoryStockTakeIdScreen() {
           {readOnly ? (
             <span className="text-sm tabular-nums">
               {formatMixedStockDisplay(countedBase, uom).text}
+              {line.is_counted ? (
+                <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                  Counted
+                </span>
+              ) : (
+                <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                  Not counted
+                </span>
+              )}
             </span>
           ) : levels.length === 1 && levels[0].key === "small" ? (
-            <input
-              type="number"
-              step="any"
-              className={`${inputClassName()} w-20 text-right`}
-              value={counts[`${line.id}:small`] ?? ""}
-              onChange={(e) => setCount(`${line.id}:small`, e.target.value)}
-              disabled={saving}
-              aria-label={`${levels[0].label} count`}
-            />
+            <div className="flex flex-col items-end gap-0.5">
+              <input
+                type="number"
+                step="any"
+                className={`${inputClassName()} w-20 text-right`}
+                value={counts[`${line.id}:small`] ?? ""}
+                onChange={(e) => setCount(`${line.id}:small`, e.target.value)}
+                disabled={saving}
+                aria-label={`${levels[0].label} count`}
+              />
+              {willApply ? (
+                <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                  Will update stock
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400">Edit to count</span>
+              )}
+            </div>
           ) : (
-            <StockTakeCountInputs
-              lineId={line.id}
-              uom={uom}
-              counts={counts}
-              onChange={setCount}
-              disabled={saving}
-            />
+            <div className="flex flex-col items-end gap-0.5">
+              <StockTakeCountInputs
+                lineId={line.id}
+                uom={uom}
+                counts={counts}
+                onChange={setCount}
+                disabled={saving}
+              />
+              {willApply ? (
+                <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                  Will update stock
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400">Edit to count</span>
+              )}
+            </div>
           )}
         </td>
-        <td className={`px-3 py-2 text-right text-sm tabular-nums font-medium ${varianceClass(varianceBase)}`}>
-          {varianceBase > 0 ? "+" : varianceBase < 0 ? "−" : ""}
-          {varianceText}
+        <td className={`px-3 py-2 text-right text-sm tabular-nums font-medium ${willApply ? varianceClass(varianceBase) : "text-slate-400"}`}>
+          {willApply ? (
+            <>
+              {varianceBase > 0 ? "+" : varianceBase < 0 ? "−" : ""}
+              {varianceText}
+            </>
+          ) : (
+            "—"
+          )}
         </td>
       </>
     );
@@ -586,8 +638,8 @@ export function InventoryStockTakeIdScreen() {
       <div className="mb-4 space-y-1">
         {!readOnly ? (
           <p className="text-sm text-slate-500">
-            Count using each product&apos;s UOM packaging — full packs, outers (if set), or base
-            units. Totals reconcile to system stock in small units.
+            Edit and save only the products you physically count. Closing updates ERP stock for
+            those saved counts only — other SKUs keep live POS/receipt balances.
             {dirty ? <span className="ml-2 text-amber-700">Unsaved changes.</span> : null}
           </p>
         ) : null}
@@ -756,17 +808,17 @@ export function InventoryStockTakeIdScreen() {
         submitLabel="Close & update stock"
       >
         <p className="text-sm text-slate-600">
-          Closing applies all saved counts for this session ({totalLines} line
-          {totalLines === 1 ? "" : "s"}). Variances adjust stock to match counted quantities.
+          Closing updates stock only for products you saved counts for. Uncounted lines are left
+          unchanged so POS sales and receipts stay correct.
         </p>
         {pageVariances.length > 0 ? (
           <p className="mt-2 text-sm text-slate-500">
             This page has {pageVariances.length} variance
-            {pageVariances.length === 1 ? "" : "s"} among loaded lines — other pages may have more.
+            {pageVariances.length === 1 ? "" : "s"} among counted lines — other pages may have more.
           </p>
         ) : (
           <p className="mt-2 text-sm text-slate-500">
-            Loaded lines on this page match system quantities.
+            Counted lines on this page match live stock (or nothing has been counted yet).
           </p>
         )}
       </FormModal>

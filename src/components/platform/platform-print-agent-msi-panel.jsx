@@ -8,6 +8,7 @@ import {
   SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { PasswordInput } from "@/components/auth/password-input";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -324,8 +325,7 @@ export function PlatformPrintAgentMsiPanel() {
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-xs sm:col-span-2">
             <span className="font-medium text-slate-600">GitHub token (PAT)</span>
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="off"
               className={`${inputClass} mt-1 font-mono`}
               value={form.github_token}

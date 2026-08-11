@@ -180,49 +180,48 @@ export function FulfillmentRoutesIdScreen() {
 
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <AppBreadcrumb
-          items={[
-            { label: "Fulfillment", href: "/fulfillment" },
-            { label: "Routes", href: "/fulfillment/routes" },
-            { label: route?.route_name ?? `Route #${routeId}` },
-          ]}
-        />
+      <AppBreadcrumb
+        items={[
+          { label: "Fulfillment", href: "/fulfillment" },
+          { label: "Routes", href: "/fulfillment/routes" },
+          { label: route?.route_name ?? `Route #${routeId}` },
+        ]}
+      />
 
-        {loading && !route ? (
-          <p className="mt-8 text-sm text-slate-500">Loading route…</p>
-        ) : !route ? (
-          <p className="mt-8 text-sm text-slate-500">Route not found.</p>
-        ) : (
-          <>
-            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                  {route.route_name}
-                </h1>
-                <p className="mt-1 text-sm text-slate-500">
-                  {[route.route_code, route.area].filter(Boolean).join(" · ") || "Route detail"}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-end gap-2">
-                <Field label="From">
-                  <input
-                    type="date"
-                    className={inputClassName()}
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                  />
-                </Field>
-                <Field label="To">
-                  <input
-                    type="date"
-                    className={inputClassName()}
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                  />
-                </Field>
-              </div>
+      {loading && !route ? (
+        <p className="mt-8 text-sm text-slate-500">Loading route…</p>
+      ) : !route ? (
+        <p className="mt-8 text-sm text-slate-500">Route not found.</p>
+      ) : (
+        <>
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+                {route.route_name}
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                {[route.route_code, route.area].filter(Boolean).join(" · ") || "Route detail"}
+              </p>
             </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label="From">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </Field>
+              <Field label="To">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </Field>
+            </div>
+          </div>
 
             <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Customers" value={String(customerTotal)} />
@@ -351,7 +350,6 @@ export function FulfillmentRoutesIdScreen() {
             </div>
           </>
         )}
-      </div>
     </div>
   );
 }
