@@ -151,6 +151,7 @@ import {
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
   cartHasOptimisticLines,
+  cartLineMatchesRef,
   cartLineRef,
   findCartLineIndexByRef,
   findMergeableCartLine,
@@ -741,11 +742,6 @@ function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
   const list = Array.isArray(lines) ? lines : [];
   if (!list.length || needle == null) return null;
 
-  const needleId = needle?.id ?? needle;
-  const needleRef =
-    needle && typeof needle === "object"
-      ? needle.update_code ?? needle.client_line_id ?? needle.id
-      : needle;
   const needleCode =
     preferProductCode ??
     (needle && typeof needle === "object" ? needle.product_code : null);
@@ -754,15 +750,10 @@ function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
       ? Number(needle.on_wholesale_retail ?? 0)
       : null;
 
-  const byId = list.find(
-    (row) =>
-      sameLineId(row.id, needleId) ||
-      (needleRef != null &&
-        (sameLineId(row.update_code, needleRef) ||
-          sameLineId(row.client_line_id, needleRef) ||
-          sameLineId(row.id, needleRef))),
-  );
-  if (byId) return byId;
+  // Match id / update_code / client_line_id — including after TemporaryCart remints
+  // where optimistic `pending-*` ids are replaced but client_line_id may survive.
+  const byRef = list.find((row) => cartLineMatchesRef(row, needle));
+  if (byRef) return byRef;
 
   if (needleCode != null && String(needleCode).trim() !== "") {
     const matches = list.filter(
@@ -2134,6 +2125,8 @@ export function PosScreen({ standalone = false }) {
   const orderNameSearchSeqRef = useRef(0);
   const [replacingLineId, setReplacingLineId] = useState(null);
   const replacingLineIdRef = useRef(null);
+  /** Snapshot of the line being swapped — survives TemporaryCart / optimistic id remints. */
+  const replaceTargetSnapshotRef = useRef(null);
   const [swapDraft, setSwapDraft] = useState(null);
   const swapDraftRef = useRef(null);
   const swapLineQtyRef = useRef(null);
@@ -5918,6 +5911,7 @@ export function PosScreen({ standalone = false }) {
         if (ok) {
           swapDraftRef.current = null;
           setSwapDraft(null);
+          replaceTargetSnapshotRef.current = null;
           setReplacingLineId(null);
           replacingLineIdRef.current = null;
           setSelectedProduct(null);
@@ -5976,14 +5970,18 @@ export function PosScreen({ standalone = false }) {
     const retailPackage = getRetailPackage(product.product_code);
     const activeReplacingId = replacingLineIdRef.current;
     const activeCart = cartRef.current ?? cart;
-    const replaceLine = activeReplacingId
-      ? findCartLineForEdit(activeCart?.lines, {
-          id: activeReplacingId,
-          update_code: activeReplacingId,
+    const replaceNeedle =
+      replaceTargetSnapshotRef.current ??
+      (activeReplacingId
+        ? { id: activeReplacingId, update_code: activeReplacingId, client_line_id: activeReplacingId }
+        : null);
+    const replaceLine = replaceNeedle
+      ? findCartLineForEdit(activeCart?.lines, replaceNeedle, {
+          preferProductCode: replaceNeedle.product_code,
         })
       : null;
 
-    if (activeReplacingId) {
+    if (activeReplacingId || replaceTargetSnapshotRef.current) {
       if (!replaceLine) {
         setStatusMessage("Could not find the line to swap — press Esc and try again.");
         return;
@@ -6004,34 +6002,56 @@ export function PosScreen({ standalone = false }) {
         oldProduct,
         getRetailPackage(replaceLine.product_code),
       );
+      const stableLineId = cartLineRef(replaceLine) ?? replaceLine.id;
       const nextSwapDraft = {
-        lineId: replaceLine.id,
+        lineId: stableLineId,
         line: replaceLine,
         product,
         quantity: String(quantity),
       };
+      replaceTargetSnapshotRef.current = {
+        id: replaceLine.id,
+        update_code: replaceLine.update_code ?? stableLineId,
+        client_line_id: replaceLine.client_line_id ?? null,
+        product_code: replaceLine.product_code,
+        on_wholesale_retail: replaceLine.on_wholesale_retail,
+      };
       swapDraftRef.current = nextSwapDraft;
       setSwapDraft(nextSwapDraft);
-      setReplacingLineId(replaceLine.id);
-      replacingLineIdRef.current = replaceLine.id;
+      setReplacingLineId(stableLineId);
+      replacingLineIdRef.current = stableLineId;
       setSearchQuery(product.product_code ?? "");
       setSearchResults([]);
       setStatusMessage(
         `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
       );
+      // Wait for ClassicLineQtyCell to mount + assign swapLineQtyRef.
+      let cancelled = false;
+      const focusSwapQty = () => {
+        if (cancelled) return;
+        const el = swapLineQtyRef.current;
+        if (!el) return false;
+        el.focus({ preventScroll: true });
+        el.select?.();
+        return typeof document !== "undefined" && document.activeElement === el;
+      };
       window.requestAnimationFrame(() => {
-        swapLineQtyRef.current?.focus({ preventScroll: true });
-        swapLineQtyRef.current?.select?.();
+        window.requestAnimationFrame(() => {
+          if (focusSwapQty()) return;
+          window.setTimeout(() => focusSwapQty(), 40);
+        });
       });
       return;
     }
 
     // External POS (modern + classic): add qty 1 immediately — do not park in the entry row.
+    // Parking left Find/search selects stuck with no cart line on Light Stores.
     if (standalone) {
       void quickAddOrIncrementProduct(product);
       return;
     }
 
+    // Backoffice POS: park on the entry row and focus qty (Enter adds).
     setSelectedProductCode(product.product_code);
     setSelectedProduct(product);
     setUnitPriceTouched(false);
@@ -6075,9 +6095,17 @@ export function PosScreen({ standalone = false }) {
     swapCommitInFlightRef.current = false;
     swapDraftRef.current = null;
     setSwapDraft(null);
-    replacingLineIdRef.current = line.id;
-    setReplacingLineId(line.id);
-    setSelectedLineId(line.id);
+    const stableLineId = cartLineRef(line) ?? line.id;
+    replaceTargetSnapshotRef.current = {
+      id: line.id,
+      update_code: line.update_code ?? stableLineId,
+      client_line_id: line.client_line_id ?? null,
+      product_code: line.product_code,
+      on_wholesale_retail: line.on_wholesale_retail,
+    };
+    replacingLineIdRef.current = stableLineId;
+    setReplacingLineId(stableLineId);
+    setSelectedLineId(stableLineId);
     setEditingLineId(null);
     setEditingLineRef(null);
     setSelectedProduct(null);
@@ -6105,7 +6133,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   function cancelReplaceCartLine() {
-    if (!replacingLineId && !swapDraftRef.current) return;
+    if (!replacingLineId && !swapDraftRef.current && !replaceTargetSnapshotRef.current) {
+      return;
+    }
+    replaceTargetSnapshotRef.current = null;
     setReplacingLineId(null);
     replacingLineIdRef.current = null;
     swapDraftRef.current = null;
@@ -6126,14 +6157,22 @@ export function PosScreen({ standalone = false }) {
 
     // Prefer the live cart row — previous-order restore can remint TemporaryCart ids
     // after the swap draft was opened against the optimistic sale-item lines.
-    const liveLine =
-      findCartLineForEdit(activeCart.lines, line, {
-        preferProductCode: line.product_code,
-      }) ??
-      findCartLineForEdit(activeCart.lines, {
+    const replaceNeedle =
+      replaceTargetSnapshotRef.current ??
+      line ??
+      {
         id: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
+        update_code: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
+        client_line_id: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
         product_code: line.product_code,
         on_wholesale_retail: line.on_wholesale_retail,
+      };
+    const liveLine =
+      findCartLineForEdit(activeCart.lines, replaceNeedle, {
+        preferProductCode: replaceNeedle.product_code ?? line.product_code,
+      }) ??
+      findCartLineForEdit(activeCart.lines, line, {
+        preferProductCode: line.product_code,
       }) ??
       line;
 
@@ -6236,6 +6275,7 @@ export function PosScreen({ standalone = false }) {
         // must not leave replacingLineId stuck after a successful SKU change.
         swapDraftRef.current = null;
         setSwapDraft(null);
+        replaceTargetSnapshotRef.current = null;
         setReplacingLineId(null);
         replacingLineIdRef.current = null;
         await notePreviousOrderEditSuccess("swap");
@@ -6373,11 +6413,63 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     replacingLineIdRef.current = replacingLineId;
+    if (replacingLineId == null) {
+      replaceTargetSnapshotRef.current = null;
+    }
   }, [replacingLineId]);
 
   useEffect(() => {
     swapDraftRef.current = swapDraft;
   }, [swapDraft]);
+
+  // Optimistic TemporaryCart remints change line.id while swap still holds pending-*.
+  // Heal replacingLineId / swapDraft so the classic row keeps showing the scan slot.
+  useEffect(() => {
+    const snap = replaceTargetSnapshotRef.current;
+    const activeId = replacingLineIdRef.current;
+    if (!snap && !activeId) return;
+    const lines = cart?.lines ?? [];
+    if (!lines.length) return;
+    const needle =
+      snap ??
+      ({
+        id: activeId,
+        update_code: activeId,
+        client_line_id: activeId,
+      });
+    const live = findCartLineForEdit(lines, needle, {
+      preferProductCode: needle.product_code,
+    });
+    if (!live) return;
+    const stable = cartLineRef(live) ?? live.id;
+    replaceTargetSnapshotRef.current = {
+      id: live.id,
+      update_code: live.update_code ?? stable,
+      client_line_id: live.client_line_id ?? null,
+      product_code: live.product_code,
+      on_wholesale_retail: live.on_wholesale_retail,
+    };
+    if (String(stable) !== String(activeId)) {
+      replacingLineIdRef.current = stable;
+      setReplacingLineId(stable);
+    }
+    const draft = swapDraftRef.current;
+    if (
+      draft &&
+      (cartLineMatchesRef(live, draft.lineId) ||
+        cartLineMatchesRef(live, snap) ||
+        String(draft.lineId) === String(activeId))
+    ) {
+      if (
+        String(draft.lineId) !== String(stable) ||
+        !cartLineMatchesRef(draft.line, live.id)
+      ) {
+        const nextDraft = { ...draft, lineId: stable, line: live };
+        swapDraftRef.current = nextDraft;
+        setSwapDraft(nextDraft);
+      }
+    }
+  }, [cart?.lines]);
 
   useEffect(() => {
     if (!standalone || !replacingLineId || swapDraft) return;
@@ -6394,11 +6486,28 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!selectedProduct?.product_code || replacingLineId) return;
+    const focusQty = () => {
+      const el = qtyInputRef.current;
+      if (!el) return false;
+      el.focus({ preventScroll: true });
+      el.select?.();
+      return typeof document !== "undefined" && document.activeElement === el;
+    };
+    let cancelled = false;
     const frame = window.requestAnimationFrame(() => {
-      qtyInputRef.current?.focus({ preventScroll: true });
-      qtyInputRef.current?.select?.();
+      window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        if (focusQty()) return;
+        // Entry qty may mount one frame later on Light Stores cart chrome.
+        window.setTimeout(() => {
+          if (!cancelled) focusQty();
+        }, 40);
+      });
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
   }, [selectedProduct?.product_code, replacingLineId]);
 
   useEffect(() => {
@@ -6911,10 +7020,18 @@ export function PosScreen({ standalone = false }) {
         ? parseDecimalInput(lineForm.unit_price)
         : null;
 
-    const replaceLine = replacingLineIdRef.current
-      ? findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, {
-          id: replacingLineIdRef.current,
-          update_code: replacingLineIdRef.current,
+    const replaceNeedle =
+      replaceTargetSnapshotRef.current ??
+      (replacingLineIdRef.current
+        ? {
+            id: replacingLineIdRef.current,
+            update_code: replacingLineIdRef.current,
+            client_line_id: replacingLineIdRef.current,
+          }
+        : null);
+    const replaceLine = replaceNeedle
+      ? findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, replaceNeedle, {
+          preferProductCode: replaceNeedle.product_code,
         })
       : null;
 
@@ -6933,6 +7050,8 @@ export function PosScreen({ standalone = false }) {
           override,
         );
         if (ok) {
+          replaceTargetSnapshotRef.current = null;
+          replacingLineIdRef.current = null;
           setReplacingLineId(null);
           // replaceCartLineWithProduct already notes previous-order swap success.
           if (!isPreviousOrderEditSession(cartRef.current)) {

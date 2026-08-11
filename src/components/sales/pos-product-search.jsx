@@ -266,6 +266,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
+      // Barcode / exact scan first — open search hits must not steal scanner Enter.
       if (barcodeEnabled && onBarcodeEnter) {
         const handled = await onBarcodeEnter(query.trim());
         if (handled) {
