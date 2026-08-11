@@ -230,7 +230,7 @@ export function ExternalPosPlatformFields({
           onChange={(id) => patch({ classic_pos_theme_template: id })}
           colors={value?.classic_pos_theme_colors}
           onColorsChange={(next) => patch({ classic_pos_theme_colors: next })}
-          description="Backoffice: sidebar + primary buttons only. Classic External POS: full palette. Organization admins can change this anytime under Centrix ERP Themes."
+          description="Backoffice: sidebar + primary buttons only. External POS (/pos, modern and classic layouts): full palette. Organization admins can change this anytime under Centrix ERP Themes."
         />
       ) : null}
 
@@ -248,16 +248,20 @@ export function ExternalPosPlatformFields({
               value={layout}
               onChange={(next) => patch({ external_pos_layout: next })}
               options={[
-                { value: "modern", label: "Modern — current Centrix POS" },
+                {
+                  value: "modern",
+                  label: "Modern — Light Stores cart + Centrix header chrome",
+                },
                 {
                   value: "classic",
-                  label: "Classic — cart on top, Find window, themeable colors",
+                  label: "Classic — Light Stores cart, Find window, themeable colors",
                 },
               ]}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Only affects the external POS workspace (/pos). Organization sidebar color for the rest of
-              the ERP is under Administration → Centrix ERP Themes.
+              Both layouts use the Light Stores cart, instant add-on-pick, and theme templates. Only affects
+              the external POS workspace (/pos). Organization sidebar color for the rest of the ERP is under
+              Administration → Centrix ERP Themes.
             </p>
           </Field>
         </div>

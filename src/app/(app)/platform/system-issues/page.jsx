@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -178,6 +179,7 @@ export default function PlatformSystemIssuesPage() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(25);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [statusFilter, setStatusFilter] = useState("open");
   const [kindFilter, setKindFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -207,7 +209,7 @@ export default function PlatformSystemIssuesPage() {
           searchParams: buildPageParams({
             page,
             perPage: pageSize,
-            q: search,
+            q: debouncedSearch,
             extra,
           }),
           loading: false,
@@ -225,7 +227,7 @@ export default function PlatformSystemIssuesPage() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [page, pageSize, search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
 
   useEffect(() => {
     load();
@@ -234,7 +236,7 @@ export default function PlatformSystemIssuesPage() {
   useEffect(() => {
     setPage(1);
     setSelectedIds(new Set());
-  }, [search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
+  }, [debouncedSearch, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
 
   useEffect(() => {
     setSelectedIds(new Set());

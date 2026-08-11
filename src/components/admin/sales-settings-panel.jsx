@@ -363,24 +363,18 @@ function PaymentFieldsTab({
   hasCustomers,
   mpesaPlatformEnabled,
 }) {
-  const creditSalesRelevant = Boolean(hasCustomers);
-  const showCollectSmallPayments =
-    creditSalesRelevant || Boolean(salesForm.enable_credit_payment) || !hasPosSales;
-
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
         Used when recording payment on a saved order (Sales → Orders → Collect payment).
         {hasPosSales ? " External POS checkout also uses these payment method fields." : ""}
       </p>
-      {showCollectSmallPayments ? (
-        <Toggle
-          label="Allow collecting small payments"
-          description="On Collect payment (and Make payment), staff can record less than the full balance — e.g. KES 500 on a KES 5,000 credit sale — and leave the rest outstanding. Turn off to require settling the full balance in one go. Works with save-then-pay and with direct checkout credit sales."
-          checked={salesForm.allow_credit_pay_now}
-          onChange={(v) => setSalesForm((f) => ({ ...f, allow_credit_pay_now: v }))}
-        />
-      ) : null}
+      <Toggle
+        label="Allow collecting small payments"
+        description="Backoffice only (Sales → Orders → Collect payment / Make payment). Staff can record less than the full balance — e.g. KES 500 on a KES 5,000 debtor order — and leave the rest outstanding. Does not apply to External POS: there, credit is only via the credit customer field (I) and is always fully unpaid. Turn off to require settling the full balance in one go."
+        checked={salesForm.allow_credit_pay_now}
+        onChange={(v) => setSalesForm((f) => ({ ...f, allow_credit_pay_now: v }))}
+      />
       <Toggle
         label="Payment date field"
         description="When off, payment uses today's date automatically."
@@ -540,13 +534,12 @@ function TillsCheckoutSettingsTab({
           ) : (
             <Toggle
               label="Credit customer field at direct checkout"
-              description="Shows a searchable credit customer field on External POS and Sales → Create order checkout. Selecting a customer always saves a fully unpaid credit sale (cash and other tender amounts are ignored). Collect payment on existing orders still allows partial collect."
+              description="External POS and Create order: the only credit path is this credit customer field (I). Selecting a customer always saves a fully unpaid credit sale — cash and other tenders are ignored. Partial payments are not available at the till; use backoffice Collect payment with “Allow collecting small payments” for debtor installments."
               checked={salesForm.enable_credit_payment}
               onChange={(v) =>
                 setSalesForm((f) => ({
                   ...f,
                   enable_credit_payment: v,
-                  allow_credit_pay_now: v ? true : f.allow_credit_pay_now,
                 }))
               }
             />

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
@@ -88,10 +89,12 @@ export function MobilePickingScreen() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/dispatch-trips", {
-        searchParams: { from_date: fromDate, to_date: toDate, per_page: 100 },
-      });
-      const rows = (res.data ?? []).filter(
+      const all = await fetchAllPaginatedRowsSmart(
+        "/dispatch-trips",
+        { from_date: fromDate, to_date: toDate, has_orders: 1 },
+        { perPage: 50, message: "Loading trips…" },
+      );
+      const rows = (all ?? []).filter(
         (row) =>
           !["completed", "cancelled"].includes(String(row.status ?? "")) &&
           (row.sales_count ?? row.sales?.length ?? 0) > 0,

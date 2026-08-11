@@ -4,12 +4,14 @@ export const EXTERNAL_POS_LAYOUTS = [
   {
     value: "modern",
     label: "Modern",
-    description: "Current Centrix External POS layout.",
+    description:
+      "External POS with Light Stores cart, instant add-on-pick, and theme templates.",
   },
   {
     value: "classic",
     label: "Classic",
-    description: "Legacy cashier layout — cart on top, Find product window, beige workspace.",
+    description:
+      "Legacy cashier layout — Light Stores cart on top, Find product window, themeable workspace.",
   },
 ];
 

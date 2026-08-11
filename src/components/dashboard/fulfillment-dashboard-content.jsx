@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { apiRequest } from "@/lib/api";
 import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import {
   countDeliveriesByDriver,
@@ -48,26 +49,40 @@ export function FulfillmentDashboardContent() {
     setError(null);
     const today = toLocalDateInputValue();
     try {
-      const [refs, salesRes] = await Promise.all([
-        fetchFulfillmentRefsCached(user?.organization_id),
-        apiRequest("/sales", {
-          searchParams: {
-            per_page: 200,
-            with_items: 0,
-            from_date: today,
-            to_date: today,
-            date_field: "placed",
-          },
-        }),
-      ]);
+      const salesParams = {
+        with_items: 0,
+        from_date: today,
+        to_date: today,
+        date_field: "placed",
+      };
+
+      // Fleet refs first so KPI shell paints without waiting on today's sales crawl.
+      const refs = await fetchFulfillmentRefsCached(user?.organization_id);
       setDrivers(refs.drivers ?? []);
       setRoutes(refs.routes ?? []);
       setVehicles(refs.vehicles ?? []);
-      setSales(salesRes.data ?? []);
+
+      const first = await apiRequest("/sales", {
+        searchParams: { ...salesParams, page: 1, per_page: 100 },
+        loading: false,
+        reportIssues: false,
+      });
+      setSales(first?.data ?? []);
+      setLoading(false);
+
+      const lastPage = Number(first?.last_page ?? first?.meta?.last_page ?? 1);
+      if (lastPage > 1) {
+        // Large day → background queue; update delivery KPIs when complete.
+        const salesRows = await fetchAllPaginatedRowsSmart("/sales", salesParams, {
+          perPage: 100,
+          message: "Loading today’s deliveries…",
+        });
+        setSales(salesRows ?? []);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load fulfillment dashboard");
-    } finally {
       setLoading(false);
+    } finally {
       setRefreshing(false);
     }
   }, [user?.organization_id]);

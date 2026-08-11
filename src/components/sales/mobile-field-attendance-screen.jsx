@@ -5,6 +5,7 @@ import Link from "next/link";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   Field,
@@ -128,6 +129,7 @@ export default function MobileFieldAttendanceScreen({
   const [fromDate, setFromDate] = useState(isActiveEmbedded ? today : daysAgoCalendarDate(7));
   const [toDate, setToDate] = useState(today);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [openOnly, setOpenOnly] = useState(isActiveEmbedded);
   const [rows, setRows] = useState([]);
   const [hrLinkage, setHrLinkage] = useState(null);
@@ -148,7 +150,7 @@ export default function MobileFieldAttendanceScreen({
         to_date: toDate,
         per_page: "100",
       });
-      if (search.trim()) params.set("q", search.trim());
+      if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
       if (openOnly) params.set("open_only", "1");
 
       const res = await apiRequest(`${apiBase}?${params.toString()}`);
@@ -162,7 +164,7 @@ export default function MobileFieldAttendanceScreen({
     } finally {
       setLoading(false);
     }
-  }, [apiBase, fromDate, toDate, search, openOnly, isHr]);
+  }, [apiBase, fromDate, toDate, debouncedSearch, openOnly, isHr]);
 
   useEffect(() => {
     if (!allowed) return;

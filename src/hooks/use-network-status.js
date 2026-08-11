@@ -8,8 +8,6 @@ import {
   pingApiHealth,
   resolveNetworkStatus,
 } from "@/lib/network-status";
-import { submitSystemIssueReport } from "@/lib/system-issue-reports";
-import { classifyLatency, formatSlowLatencyMessage } from "@/lib/latency-split";
 
 /**
  * Tracks browser online state + API reachability (latency via /health).
@@ -75,31 +73,9 @@ export function useNetworkStatus({ enabled = true, reportOutages = true } = {}) 
         && result.latencyMs >= NETWORK_SLOW_THRESHOLD_MS
         && !slowReportedRef.current
       ) {
-        const split = classifyLatency({
-          clientRttMs: result.latencyMs,
-          serverMs: result.serverMs,
-        });
-        // User/network RTT is not an API defect — skip admin issue noise.
-        if (split.likely === "network") {
-          slowReportedRef.current = true;
-          return;
-        }
+        // Connectivity banner already covers user/network RTT. Do not open
+        // platform system-issue reports from /health probes — those are not API defects.
         slowReportedRef.current = true;
-        void submitSystemIssueReport({
-          kind: "slow",
-          message: formatSlowLatencyMessage({
-            mode: "ping",
-            clientRttMs: result.latencyMs,
-            serverMs: result.serverMs,
-          }),
-          api_path: "/health",
-          http_method: "GET",
-          duration_ms: result.latencyMs,
-          context: {
-            connectivity: "slow_ping",
-            ...split,
-          },
-        });
       }
     },
     [reportOutages],

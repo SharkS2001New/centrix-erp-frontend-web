@@ -14,6 +14,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  PaginationBar,
   SECONDARY_BTN_CLASS,
   SearchInput,
   formatShortDate,
@@ -83,6 +84,8 @@ export function HrAttendanceScreen() {
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(50);
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
   const [activeLoading, setActiveLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -182,8 +185,8 @@ export function HrAttendanceScreen() {
     try {
       const attendanceRes = await apiRequest("/employee-attendance", {
         searchParams: {
-          per_page: 100,
-          page: 1,
+          per_page: historyPageSize,
+          page: historyPage,
           from_date: historyFromDate,
           to_date: historyToDate,
           ...(debouncedSearch ? { q: debouncedSearch } : {}),
@@ -200,7 +203,11 @@ export function HrAttendanceScreen() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [debouncedSearch, historyFromDate, historyToDate, clearSelection]);
+  }, [debouncedSearch, historyFromDate, historyToDate, historyPage, historyPageSize, clearSelection]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [debouncedSearch, historyFromDate, historyToDate]);
 
   const recordPageIds = useMemo(() => records.map((r) => r.id), [records]);
 
@@ -1098,6 +1105,20 @@ export function HrAttendanceScreen() {
                 </tbody>
               </table>
             </div>
+            {recordsTotal > historyPageSize ? (
+              <PaginationBar
+                page={historyPage}
+                totalPages={Math.max(1, Math.ceil(recordsTotal / historyPageSize) || 1)}
+                total={recordsTotal}
+                pageSize={historyPageSize}
+                onChange={setHistoryPage}
+                onPageSizeChange={(size) => {
+                  setHistoryPageSize(size);
+                  setHistoryPage(1);
+                }}
+                pageSizeOptions={[25, 50, 100]}
+              />
+            ) : null}
           </section>
 
           <BatchActionBar count={selectedCount} onClear={clearSelection}>

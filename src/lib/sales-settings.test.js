@@ -431,7 +431,7 @@ describe("collect small / partial payments on order payment", () => {
     expect(cfg.allowPartialPayment).toBe(true);
   });
 
-  it("allows partial collect when POS credit checkout is on even if allow_credit_pay_now is off", () => {
+  it("does not allow partial collect when allow_credit_pay_now is off (even if POS credit is on)", () => {
     const cfg = getCheckoutPaymentConfig(
       {
         sales: {
@@ -441,19 +441,19 @@ describe("collect small / partial payments on order payment", () => {
       },
       { checkoutContext: "order_payment", capabilities: caps },
     );
-    expect(cfg.allowPartialPayment).toBe(true);
+    expect(cfg.allowPartialPayment).toBe(false);
   });
 
   it("does not allow partial pay-now on direct checkout credit (always fully unpaid)", () => {
     const withCredit = getCheckoutPaymentConfig(
-      { sales: { enable_credit_payment: true } },
+      { sales: { enable_credit_payment: true, allow_credit_pay_now: true } },
       { checkoutContext: "pos", capabilities: caps },
     );
     expect(withCredit.allowPartialPayment).toBe(false);
     expect(withCredit.enableCreditPayment).toBe(true);
 
     const withoutCredit = getCheckoutPaymentConfig(
-      { sales: { enable_credit_payment: false } },
+      { sales: { enable_credit_payment: false, allow_credit_pay_now: true } },
       { checkoutContext: "pos", capabilities: caps },
     );
     expect(withoutCredit.allowPartialPayment).toBe(false);

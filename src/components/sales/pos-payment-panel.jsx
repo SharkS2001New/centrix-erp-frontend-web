@@ -602,7 +602,7 @@ export function PosPaymentPanel({
       total: checkoutTotal,
       workflow,
       paymentMethodCode,
-      allowPartialPayment: false,
+      allowPartialPayment: Boolean(cfg.allowPartialPayment),
     });
 
     const cartMpesa = creditSale
@@ -741,12 +741,21 @@ export function PosPaymentPanel({
       );
     }
     if (amountPaid <= 0 && checkoutTotal > 0) {
+      if (cfg.allowPartialPayment) {
+        return "Enter a payment amount to collect (full or partial).";
+      }
       return cfg.enableCreditPayment
         ? "Enter payment amounts or select a credit customer (I) for a fully unpaid sale."
         : "Enter payment amounts to cover the full total.";
     }
     if (amountPaid + 0.01 < checkoutTotal) {
-      return "Full payment required for Cash, M-Pesa, bank, and cheque — or select a credit customer (I) to save as fully unpaid.";
+      // Collect-payment (order_payment): allow installments when admin enables
+      // allow_credit_pay_now. Direct POS checkout keeps allowPartialPayment false —
+      // External POS credit is only via the credit customer field (fully unpaid).
+      if (cfg.allowPartialPayment) return null;
+      return cfg.enableCreditPayment
+        ? "Full payment required for Cash, M-Pesa, bank, and cheque — or select a credit customer (I) to save as fully unpaid."
+        : "Full payment required for Cash, M-Pesa, bank, and cheque.";
     }
     return null;
   }
@@ -1362,7 +1371,9 @@ export function PosPaymentPanel({
       ? checkoutTotal <= 0.01 || amountPaid + 0.01 >= checkoutTotal
       : creditSaleActive
         ? !creditValidationError
-        : !changeExcessive && amountPaid + 0.01 >= checkoutTotal;
+        : !changeExcessive &&
+          (amountPaid + 0.01 >= checkoutTotal ||
+            (Boolean(cfg.allowPartialPayment) && amountPaid > 0.01));
 
   useEffect(() => {
     if (!open || step !== "payment") return;
@@ -2102,6 +2113,11 @@ export function PosPaymentPanel({
             {formatSaleKes(balanceDue)}
           </dd>
         </div>
+        {cfg.allowPartialPayment && !adjustmentMode && checkoutTotal > 0.01 ? (
+          <p className="theme-subtext text-xs">
+            Partial payments allowed — enter any amount up to the balance due.
+          </p>
+        ) : null}
         {!adjustmentMode ? (
         <div className="flex items-baseline justify-between gap-3">
           <dt className="theme-subtext font-medium">Change Due</dt>

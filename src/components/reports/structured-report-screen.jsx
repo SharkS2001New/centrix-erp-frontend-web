@@ -140,6 +140,9 @@ function StandardReportScreen({ definition }) {
   const [viewMode, setViewMode] = useState("table");
   const [chartRows, setChartRows] = useState([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartTruncated, setChartTruncated] = useState(false);
+  const chartCacheKeyRef = useRef("");
+  const MAX_CHART_ROWS = 2000;
   const [applied, setApplied] = useState(() =>
     cacheMatchesDefinition && cachedBundle.applied
       ? cachedBundle.applied
@@ -415,30 +418,53 @@ function StandardReportScreen({ definition }) {
     return combined;
   }, [applied.extraFilters, capabilities, definition, exportSearchParams]);
 
-  // Charts use the full filtered dataset (not just the current table page).
+  // Charts: use the already-loaded table page (no auto full-dataset crawl).
+  // Full export still goes through the queued path via fetchAllReportRows.
   useEffect(() => {
     if (!showCharts) return undefined;
-    let cancelled = false;
-    setChartLoading(true);
-    void (async () => {
-      try {
-        const all = await fetchAllReportRows();
-        if (!cancelled) setChartRows(all);
-      } catch {
-        if (!cancelled) setChartRows(rows);
-      } finally {
-        if (!cancelled) setChartLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [showCharts, fetchAllReportRows, rows]);
+    const cacheKey = JSON.stringify({
+      path: definition.apiPath,
+      params: exportSearchParams,
+      extras: applied.extraFilters,
+      key: definition.key,
+      page,
+      pageSize,
+    });
+    if (cacheKey === chartCacheKeyRef.current && chartRows.length > 0) {
+      return undefined;
+    }
+
+    chartCacheKeyRef.current = cacheKey;
+    const source = Array.isArray(rows) ? rows : [];
+    const total = Number(reportMeta?.total ?? source.length);
+    if (source.length > MAX_CHART_ROWS) {
+      setChartRows(source.slice(0, MAX_CHART_ROWS));
+      setChartTruncated(true);
+    } else {
+      setChartRows(source);
+      setChartTruncated(total > source.length);
+    }
+    setChartLoading(false);
+    return undefined;
+  }, [
+    showCharts,
+    rows,
+    reportMeta?.total,
+    page,
+    pageSize,
+    definition.apiPath,
+    definition.key,
+    exportSearchParams,
+    applied.extraFilters,
+    chartRows.length,
+  ]);
 
   // Reset to table when switching reports.
   useEffect(() => {
     setViewMode("table");
     setChartRows([]);
+    setChartTruncated(false);
+    chartCacheKeyRef.current = "";
   }, [definition.key]);
 
   return (
@@ -531,11 +557,19 @@ function StandardReportScreen({ definition }) {
           ) : null}
 
           {showCharts ? (
-            <ReportChartsSection
-              charts={definition.charts}
-              rows={chartRows.length ? chartRows : rows}
-              loading={chartLoading && chartRows.length === 0}
-            />
+            <>
+              {chartTruncated ? (
+                <p className="mb-2 text-xs text-amber-800">
+                  Charts use the current table page for speed. Export still includes the full
+                  filtered dataset (queued when large).
+                </p>
+              ) : null}
+              <ReportChartsSection
+                charts={definition.charts}
+                rows={chartRows.length ? chartRows : rows}
+                loading={chartLoading && chartRows.length === 0}
+              />
+            </>
           ) : null}
 
           {showTable ? (

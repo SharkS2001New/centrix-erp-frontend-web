@@ -6,7 +6,7 @@ import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/compon
 import { PosReportView } from "@/components/pos/pos-report-view";
 import { PosStatusBadge, printPosTillReport } from "@/components/pos/pos-shared";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { CLOSE_REASONS, DEFAULT_CLOSE_REASON, formatTillKesExact, tillDisplayName, varianceLabel, resolveTillReportBundle, resolveTillReportNo } from "@/lib/pos-till";
+import { CLOSE_REASONS, DEFAULT_CLOSE_REASON, formatTillKesExact, formatTillKesSigned, tillDisplayName, varianceLabel, varianceAmountTone, resolveTillReportBundle, resolveTillReportNo } from "@/lib/pos-till";
 
 function PosSessionDialogShell({
   open,
@@ -345,14 +345,20 @@ export function CloseSessionModal({
 
         {!blindTillClose ? (
           <div
-            className={`rounded-lg px-4 py-3 ${varianceMeta.tone === "shortage" ? "bg-red-50" : varianceMeta.tone === "surplus" ? "bg-amber-50" : "bg-emerald-50"}`}
+            className={`rounded-lg px-4 py-3 ${varianceMeta.tone === "shortage" ? "bg-red-50" : varianceMeta.tone === "surplus" ? "bg-emerald-50" : "bg-emerald-50"}`}
           >
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-slate-700">Variance</span>
               <span
-                className={`text-lg font-semibold ${varianceMeta.tone === "shortage" ? "text-red-700" : varianceMeta.tone === "surplus" ? "text-amber-800" : "text-emerald-700"}`}
+                className={`text-lg font-semibold ${
+                  varianceAmountTone(variance) === "danger"
+                    ? "text-red-700"
+                    : varianceAmountTone(variance) === "success"
+                      ? "text-emerald-700"
+                      : "text-emerald-700"
+                }`}
               >
-                {formatTillKesExact(variance)}
+                {formatTillKesSigned(variance)}
               </span>
             </div>
             <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-600">{varianceMeta.text}</p>

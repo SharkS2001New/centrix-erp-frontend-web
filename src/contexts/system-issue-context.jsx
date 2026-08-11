@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { canSeeServerErrorDetail } from "@/lib/auth-storage";
 import { subscribeSystemIssues } from "@/lib/system-issue-dispatcher";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
@@ -67,8 +67,10 @@ export function SystemIssueProvider({ children }) {
     }
   }, [notes, prompt]);
 
+  const value = useMemo(() => ({ dismiss }), [dismiss]);
+
   return (
-    <SystemIssueContext.Provider value={{ dismiss }}>
+    <SystemIssueContext.Provider value={value}>
       {children}
       <SystemIssuePrompt
         open={Boolean(prompt)}

@@ -149,7 +149,12 @@ export function buildPosTillReportHtml({
         row(
           "Variance",
           printVariance != null
-            ? Number(printVariance).toLocaleString("en-KE", { maximumFractionDigits: 0 })
+            ? (() => {
+                const n = Number(printVariance);
+                if (!Number.isFinite(n) || Math.abs(n) < 0.005) return amt(0);
+                if (n > 0) return `+${amt(n)}`;
+                return `-${amt(Math.abs(n))}`;
+              })()
             : "—",
           { grand: true },
         ),

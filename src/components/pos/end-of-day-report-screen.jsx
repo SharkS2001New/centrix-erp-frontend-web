@@ -8,7 +8,7 @@ import { filterByOrganization } from "@/lib/admin";
 import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
 import { printHtmlDocument } from "@/lib/print-dispatch";
-import { formatTillKes, formatTillKesExact, resolveExpectedNetSales } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, formatTillKesSigned, resolveExpectedNetSales, resolveSessionVariance, varianceAmountTone, isPastCalendarDate, TILL_REPORT_PAYMENT_LINES } from "@/lib/pos-till";
 import { buildExpensesHref, expenseSummaryRowLabel } from "@/lib/expenses-link";
 import {
   FilterSelect,
@@ -64,13 +64,51 @@ function floatPaymentLabel(type) {
   return key.replace(/_/g, " ") || "Other";
 }
 
-function PaymentDonut({ payments }) {
+const PAYMENT_DONUT_COLORS = {
+  cash: "#185FA5",
+  mpesa: "#059669",
+  equity: "#7c3aed",
+  kcb: "#d97706",
+  card: "#64748b",
+  bank: "#7c3aed",
+};
+
+function resolvePaymentDonutSegments(payments) {
+  const cash = Number(payments?.cash ?? 0);
+  const mpesa = Number(payments?.mpesa ?? 0);
+  const equity = Number(payments?.equity ?? 0);
+  const kcb = Number(payments?.kcb ?? 0);
+  const card = Number(payments?.card ?? 0);
+  const bank = Number(payments?.bank ?? 0);
+  const hasNamedBanks = payments?.equity != null || payments?.kcb != null;
+
   const segments = [
-    { key: "cash", label: "Cash", value: Number(payments?.cash ?? 0), color: "#185FA5" },
-    { key: "mpesa", label: "M-Pesa", value: Number(payments?.mpesa ?? 0), color: "#059669" },
-    { key: "bank", label: "Bank", value: Number(payments?.bank ?? 0), color: "#7c3aed" },
-    { key: "card", label: "Card", value: Number(payments?.card ?? 0), color: "#d97706" },
+    { key: "cash", label: "Cash", value: cash, color: PAYMENT_DONUT_COLORS.cash },
+    { key: "mpesa", label: "M-Pesa", value: mpesa, color: PAYMENT_DONUT_COLORS.mpesa },
   ];
+
+  if (hasNamedBanks) {
+    segments.push(
+      { key: "equity", label: "Equity", value: equity, color: PAYMENT_DONUT_COLORS.equity },
+      { key: "kcb", label: "KCB", value: kcb, color: PAYMENT_DONUT_COLORS.kcb },
+    );
+  } else if (bank > 0) {
+    segments.push({ key: "bank", label: "Bank", value: bank, color: PAYMENT_DONUT_COLORS.bank });
+  }
+
+  if (card > 0) {
+    segments.push({ key: "card", label: "Card", value: card, color: PAYMENT_DONUT_COLORS.card });
+  }
+
+  return segments;
+}
+
+function paymentDonutTotal(payments) {
+  return resolvePaymentDonutSegments(payments).reduce((sum, s) => sum + s.value, 0);
+}
+
+function PaymentDonut({ payments }) {
+  const segments = resolvePaymentDonutSegments(payments);
   const total = segments.reduce((sum, s) => sum + s.value, 0);
   if (total <= 0) {
     return (
@@ -193,12 +231,7 @@ function printSummaryRow(label, value, { tone = "default", bold = false } = {}) 
 }
 
 function printPaymentDonutHtml(payments) {
-  const segments = [
-    { key: "cash", label: "Cash", value: Number(payments?.cash ?? 0), color: "#185FA5" },
-    { key: "mpesa", label: "M-Pesa", value: Number(payments?.mpesa ?? 0), color: "#059669" },
-    { key: "bank", label: "Bank", value: Number(payments?.bank ?? 0), color: "#7c3aed" },
-    { key: "card", label: "Card", value: Number(payments?.card ?? 0), color: "#d97706" },
-  ];
+  const segments = resolvePaymentDonutSegments(payments);
   const total = segments.reduce((sum, s) => sum + s.value, 0);
   if (total <= 0) {
     return `<p class="muted" style="text-align:center;padding:24px 0">No payments recorded</p>`;
@@ -266,11 +299,7 @@ async function printEodReport(report, meta) {
           cashMovementsOut: s.cash_movements_out,
           expectedNetSales: s.expected_net_sales ?? s.net_cash_expected,
         });
-  const paymentTotal =
-    Number(payments.cash ?? 0) +
-    Number(payments.mpesa ?? 0) +
-    Number(payments.bank ?? 0) +
-    Number(payments.card ?? 0);
+  const paymentTotal = paymentDonutTotal(payments);
 
   const title = meta.isMonthly ? "Monthly Sales Report" : "End of Day Sales Report";
   const periodLine = escapeHtml(
@@ -354,6 +383,20 @@ async function printEodReport(report, meta) {
         bold: true,
       })}</div>`,
     );
+    if (meta.showCashVariance && meta.actualCash != null) {
+      salesRows.push(
+        printSummaryRow("Actual cash", formatTillKesExact(meta.actualCash), { bold: true }),
+      );
+      if (meta.variance != null) {
+        const tone = varianceAmountTone(meta.variance);
+        salesRows.push(
+          printSummaryRow("Variance", formatTillKesSigned(meta.variance), {
+            bold: true,
+            tone: tone === "default" ? undefined : tone,
+          }),
+        );
+      }
+    }
   }
 
   const metricsRows = [
@@ -378,7 +421,8 @@ async function printEodReport(report, meta) {
               ${printSummaryRow("Transactions", String(row.transactions ?? 0))}
               ${printSummaryRow("Cash", formatTillKes(row.cash_collected))}
               ${printSummaryRow("M-Pesa", formatTillKes(row.mpesa_collected))}
-              ${printSummaryRow("Bank", formatTillKes(row.bank_collected))}`;
+              ${printSummaryRow("Equity", formatTillKes(row.equity_collected ?? 0))}
+              ${printSummaryRow("KCB", formatTillKes(row.kcb_collected ?? 0))}`;
             if (showFloat) {
               block += printSummaryRow("Float", formatTillKes(row.opening_float));
             }
@@ -388,6 +432,7 @@ async function printEodReport(report, meta) {
           .join("");
 
   const sessions = report?.sessions ?? report?.tills ?? [];
+  const showCashVariance = Boolean(meta.showCashVariance);
   let sessionsHtml = "";
   if (showFloat) {
     if (sessions.length === 0) {
@@ -400,6 +445,14 @@ async function printEodReport(report, meta) {
           const timeRange = `${escapeHtml(formatReportTime(row.opened_at))}${
             row.closed_at ? ` – ${escapeHtml(formatReportTime(row.closed_at))}` : " – open"
           }`;
+          const variance = resolveSessionVariance(row);
+          const varianceCell =
+            showCashVariance && row.closing_amount != null
+              ? `<td class="num">${escapeHtml(formatTillKesExact(row.closing_amount))}</td>
+                 <td class="num">${escapeHtml(variance != null ? formatTillKesSigned(variance) : "—")}</td>`
+              : showCashVariance
+                ? `<td class="num">—</td><td class="num">—</td>`
+                : "";
           return `<tr>
             <td>${escapeHtml(sid)}<span class="muted status">${status}</span><div class="muted">${timeRange}</div></td>
             <td>${escapeHtml(row.till_number ?? "")}${row.till_name ? ` · ${escapeHtml(row.till_name)}` : ""}</td>
@@ -408,6 +461,7 @@ async function printEodReport(report, meta) {
             <td class="num">${escapeHtml(formatTillKes(row.gross_sales))}</td>
             <td class="num">${escapeHtml(formatTillKes(row.session_expenses))}</td>
             <td class="num">${escapeHtml(formatTillKes(row.expected_net_sales))}</td>
+            ${varianceCell}
           </tr>`;
         })
         .join("");
@@ -417,6 +471,7 @@ async function printEodReport(report, meta) {
           <thead><tr>
             <th>Session</th><th>Till</th><th>Cashier</th>
             <th class="num">Float</th><th class="num">Sales</th><th class="num">Expenses</th><th class="num">Expected</th>
+            ${showCashVariance ? `<th class="num">Actual</th><th class="num">Variance</th>` : ""}
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
@@ -662,6 +717,9 @@ ${orgLine}
   <section class="panel"><h2>Sales summary</h2>${salesRows.join("")}</section>
   <section class="panel"><h2>Payment summary</h2>
     ${printPaymentDonutHtml(payments)}
+    ${(meta.paymentLines ?? [])
+      .map((row) => printSummaryRow(row.label, formatTillKes(row.total)))
+      .join("")}
     <p class="pay-total">Total collected ${escapeHtml(formatTillKes(paymentTotal))}</p>
   </section>
   <section class="panel"><h2>Key metrics</h2>${metricsRows}</section>
@@ -833,14 +891,71 @@ export function EndOfDayReportScreen() {
     return Math.max(0, Number(summary.gross_sales ?? 0) - Number(summary.total_vat ?? 0));
   }, [summary.gross_sales, summary.gross_sales_ex_vat, summary.total_vat]);
 
-  const paymentTotal = useMemo(
-    () =>
-      Number(payments.cash ?? 0) +
-      Number(payments.mpesa ?? 0) +
-      Number(payments.bank ?? 0) +
-      Number(payments.card ?? 0),
-    [payments],
-  );
+  const paymentTotal = useMemo(() => paymentDonutTotal(payments), [payments]);
+
+  const showCashVariance = useMemo(() => {
+    if (!requireTillFloat) return false;
+    if (reportMode === "monthly") return false;
+    return isPastCalendarDate(saleDate, todayCalendarDate());
+  }, [requireTillFloat, reportMode, saleDate]);
+
+  const cashReconciliation = useMemo(() => {
+    if (!showCashVariance) return null;
+    const sessions = report?.sessions ?? report?.tills ?? [];
+    const selected = floatSessionId
+      ? sessions.find((row) => String(row.float_session_id) === String(floatSessionId))
+      : null;
+    if (selected) {
+      if (selected.closing_amount == null) return null;
+      return {
+        actualCash: Number(selected.closing_amount),
+        variance: resolveSessionVariance(selected),
+      };
+    }
+    const closed = sessions.filter((row) => row.closing_amount != null);
+    if (closed.length === 0) return null;
+    const actualCash = closed.reduce((sum, row) => sum + Number(row.closing_amount ?? 0), 0);
+    const variance = closed.reduce((sum, row) => {
+      const v = resolveSessionVariance(row);
+      return sum + (v != null ? v : 0);
+    }, 0);
+    return { actualCash, variance };
+  }, [showCashVariance, report?.sessions, report?.tills, floatSessionId]);
+
+  const paymentLines = useMemo(() => {
+    const sessions = report?.sessions ?? report?.tills ?? [];
+    const selected = floatSessionId
+      ? sessions.find((row) => String(row.float_session_id) === String(floatSessionId))
+      : null;
+    if (Array.isArray(selected?.payments) && selected.payments.length > 0) {
+      return selected.payments.map((row) => ({
+        label: row.method_name ?? row.method_code ?? "Payment",
+        total: Number(row.total ?? row.total_amount ?? 0),
+      }));
+    }
+    if (!floatSessionId && sessions.some((row) => Array.isArray(row.payments) && row.payments.length > 0)) {
+      const totals = new Map(TILL_REPORT_PAYMENT_LINES.map((spec) => [spec.method_code, 0]));
+      const labels = new Map(TILL_REPORT_PAYMENT_LINES.map((spec) => [spec.method_code, spec.label]));
+      for (const session of sessions) {
+        for (const row of session.payments ?? []) {
+          const code = String(row.method_code ?? "").toUpperCase();
+          if (!totals.has(code)) continue;
+          totals.set(code, totals.get(code) + Number(row.total ?? row.total_amount ?? 0));
+          if (row.method_name) labels.set(code, row.method_name);
+        }
+      }
+      return TILL_REPORT_PAYMENT_LINES.map((spec) => ({
+        label: labels.get(spec.method_code) ?? spec.label,
+        total: totals.get(spec.method_code) ?? 0,
+      }));
+    }
+    return [
+      { label: "Cash payment", total: Number(payments.cash ?? 0) },
+      { label: "M-Pesa payments", total: Number(payments.mpesa ?? 0) },
+      { label: "Equity payment", total: Number(payments.equity ?? 0) },
+      { label: "K.C.B payment", total: Number(payments.kcb ?? 0) },
+    ];
+  }, [report?.sessions, report?.tills, floatSessionId, payments]);
 
   const cashierSalesRows = useMemo(() => {
     const rows = report?.cashiers ?? [];
@@ -860,6 +975,8 @@ export function EndOfDayReportScreen() {
         transactions: s.transactions,
         cash_collected: p.cash,
         mpesa_collected: p.mpesa,
+        equity_collected: p.equity,
+        kcb_collected: p.kcb,
         bank_collected: p.bank,
         opening_float: s.opening_float,
       },
@@ -889,6 +1006,10 @@ export function EndOfDayReportScreen() {
       isMonthly,
       showFloat: requireTillFloat,
       showDiscounts: discountsEnabled,
+      showCashVariance,
+      actualCash: cashReconciliation?.actualCash,
+      variance: cashReconciliation?.variance,
+      paymentLines,
       totalExpenses: report.total_expenses,
       expectedNetSales,
       grossSalesExVat,
@@ -899,6 +1020,7 @@ export function EndOfDayReportScreen() {
     });
   }, [
     branchName,
+    cashReconciliation,
     cashierName,
     cashierSalesRows,
     discountsEnabled,
@@ -908,12 +1030,14 @@ export function EndOfDayReportScreen() {
     netSalesExVat,
     organization?.name,
     organization?.org_name,
+    paymentLines,
     periodEnd,
     periodStart,
     report,
     requireTillFloat,
     saleDate,
     selectedSessionLabel,
+    showCashVariance,
     user?.full_name,
     user?.username,
   ]);
@@ -1107,12 +1231,34 @@ export function EndOfDayReportScreen() {
                     tone="primary"
                     bold
                   />
+                  {showCashVariance && cashReconciliation ? (
+                    <>
+                      <SummaryRow
+                        label="Actual cash"
+                        value={formatTillKesExact(cashReconciliation.actualCash)}
+                        bold
+                      />
+                      {cashReconciliation.variance != null ? (
+                        <SummaryRow
+                          label="Variance"
+                          value={formatTillKesSigned(cashReconciliation.variance)}
+                          tone={varianceAmountTone(cashReconciliation.variance)}
+                          bold
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </Panel>
 
             <Panel title="Payment summary">
               <PaymentDonut payments={payments} />
+              <div className="mt-3 border-t border-[var(--theme-border)] pt-1">
+                {paymentLines.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={formatTillKes(row.total)} />
+                ))}
+              </div>
               <p className="theme-subtext mt-3 text-right text-xs">
                 Total collected {formatTillKes(paymentTotal)}
               </p>
@@ -1152,7 +1298,14 @@ export function EndOfDayReportScreen() {
                         <SummaryRow label="Transactions" value={row.transactions ?? 0} />
                         <SummaryRow label="Cash" value={formatTillKes(row.cash_collected)} />
                         <SummaryRow label="M-Pesa" value={formatTillKes(row.mpesa_collected)} />
-                        <SummaryRow label="Bank" value={formatTillKes(row.bank_collected)} />
+                        <SummaryRow
+                          label="Equity"
+                          value={formatTillKes(row.equity_collected ?? 0)}
+                        />
+                        <SummaryRow
+                          label="KCB"
+                          value={formatTillKes(row.kcb_collected ?? 0)}
+                        />
                           {requireTillFloat ? (
                           <SummaryRow label="Float" value={formatTillKes(row.opening_float)} />
                           ) : null}
@@ -1187,13 +1340,20 @@ export function EndOfDayReportScreen() {
                         <th className="pb-2 pr-3 text-right">Float</th>
                         <th className="pb-2 pr-3 text-right">Sales</th>
                         <th className="pb-2 pr-3 text-right">Expenses</th>
-                        <th className="pb-2 text-right">Expected</th>
+                        <th className={`pb-2 text-right ${showCashVariance ? "pr-3" : ""}`}>Expected</th>
+                        {showCashVariance ? (
+                          <>
+                            <th className="pb-2 pr-3 text-right">Actual</th>
+                            <th className="pb-2 text-right">Variance</th>
+                          </>
+                        ) : null}
                     </tr>
                   </thead>
                   <tbody>
                       {(report.sessions ?? report.tills ?? []).map((row, i) => {
                         const sid = row.float_session_id != null ? String(row.float_session_id) : "";
                         const isSelected = floatSessionId && sid === floatSessionId;
+                        const variance = resolveSessionVariance(row);
                         return (
                           <tr
                             key={`${sid || row.till_number}-${i}`}
@@ -1229,9 +1389,29 @@ export function EndOfDayReportScreen() {
                             <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.opening_float)}</td>
                         <td className="py-2.5 pr-3 text-right text-[var(--theme-text)]">{formatTillKes(row.gross_sales)}</td>
                             <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.session_expenses)}</td>
-                            <td className="py-2.5 text-right font-medium text-[var(--theme-text)]">
+                            <td className={`py-2.5 text-right font-medium text-[var(--theme-text)] ${showCashVariance ? "pr-3" : ""}`}>
                               {formatTillKes(row.expected_net_sales)}
                             </td>
+                            {showCashVariance ? (
+                              <>
+                                <td className="theme-text-muted py-2.5 pr-3 text-right">
+                                  {row.closing_amount != null ? formatTillKesExact(row.closing_amount) : "—"}
+                                </td>
+                                <td
+                                  className={`py-2.5 text-right font-medium ${
+                                    variance == null
+                                      ? "theme-text-muted"
+                                      : varianceAmountTone(variance) === "success"
+                                        ? "text-emerald-600 dark:text-emerald-400"
+                                        : varianceAmountTone(variance) === "danger"
+                                          ? "text-red-600 dark:text-red-400"
+                                          : "text-[var(--theme-text)]"
+                                  }`}
+                                >
+                                  {variance != null ? formatTillKesSigned(variance) : "—"}
+                                </td>
+                              </>
+                            ) : null}
                           </tr>
                         );
                       })}

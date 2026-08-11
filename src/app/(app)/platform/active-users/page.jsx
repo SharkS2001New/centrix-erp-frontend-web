@@ -188,20 +188,29 @@ export default function PlatformActiveUsersPage() {
 
   useEffect(() => {
     let activeController = null;
+    let timer = null;
 
     async function tick() {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       activeController?.abort();
       activeController = new AbortController();
       await load(activeController.signal);
     }
 
     void tick();
-    const timer = window.setInterval(() => {
+    timer = window.setInterval(() => {
       void tick();
-    }, 30000);
+    }, 60_000);
+
+    function onVisibility() {
+      if (document.visibilityState === "visible") void tick();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       activeController?.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [load]);
 

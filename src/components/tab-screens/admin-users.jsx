@@ -209,7 +209,6 @@ export function AdminUsersScreen() {
       const requests = [
         apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } }),
-        apiRequest(adminPath("/roles/permissions/matrix")),
       ];
       const routeReqIndex = mobileAppEnabled ? requests.length : -1;
       if (mobileAppEnabled) {
@@ -233,7 +232,7 @@ export function AdminUsersScreen() {
       }
 
       const results = await Promise.allSettled(requests);
-      const [branchRes, roleRes, matrixRes] = results;
+      const [branchRes, roleRes] = results;
       const routeRes = routeReqIndex >= 0 ? results[routeReqIndex] : null;
       const tillRes = tillReqIndex >= 0 ? results[tillReqIndex] : null;
       const hospitalityOutletRes =
@@ -245,22 +244,9 @@ export function AdminUsersScreen() {
       if (roleRes.status === "rejected") {
         throw roleRes.reason;
       }
-      if (matrixRes.status === "rejected") {
-        throw matrixRes.reason;
-      }
 
       setBranches(filterByOrganization(branchRes.value.data, organizationId));
       setRoles(roleRes.value.data ?? []);
-      setPermissions(matrixRes.value.permissions ?? []);
-      const filteredMatrix = filterPermissionMatrixForCapabilities(
-        {
-          applications: matrixRes.value.applications ?? [],
-          groups: matrixRes.value.groups ?? [],
-        },
-        effectiveCapabilities,
-      );
-      setPermissionApplications(filteredMatrix.applications);
-      setPermissionGroups(filteredMatrix.groups);
 
       if (mobileAppEnabled) {
         if (routeRes?.status === "fulfilled") {
@@ -299,7 +285,33 @@ export function AdminUsersScreen() {
     } finally {
       setLoading(false);
     }
-  }, [organizationId, adminPath, mobileAppEnabled, posEnabled, hospitalityPosEnabled, effectiveCapabilities]);
+  }, [organizationId, adminPath, mobileAppEnabled, posEnabled, hospitalityPosEnabled]);
+
+  const [matrixLoaded, setMatrixLoaded] = useState(false);
+  const [matrixLoading, setMatrixLoading] = useState(false);
+
+  const ensurePermissionMatrix = useCallback(async () => {
+    if (matrixLoaded || matrixLoading) return;
+    setMatrixLoading(true);
+    try {
+      const matrixRes = await apiRequest(adminPath("/roles/permissions/matrix"));
+      setPermissions(matrixRes.permissions ?? []);
+      const filteredMatrix = filterPermissionMatrixForCapabilities(
+        {
+          applications: matrixRes.applications ?? [],
+          groups: matrixRes.groups ?? [],
+        },
+        effectiveCapabilities,
+      );
+      setPermissionApplications(filteredMatrix.applications);
+      setPermissionGroups(filteredMatrix.groups);
+      setMatrixLoaded(true);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load permission matrix");
+    } finally {
+      setMatrixLoading(false);
+    }
+  }, [adminPath, effectiveCapabilities, matrixLoaded, matrixLoading]);
 
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;
@@ -376,6 +388,7 @@ export function AdminUsersScreen() {
     setDeniedIds(new Set());
     setFormError(null);
     setDrawerOpen(true);
+    void ensurePermissionMatrix();
   }
 
   useEffect(() => {
@@ -442,6 +455,7 @@ export function AdminUsersScreen() {
     });
     setFormError(null);
     setDrawerOpen(true);
+    void ensurePermissionMatrix();
   }
 
   function openView(row) {
@@ -1167,14 +1181,18 @@ export function AdminUsersScreen() {
                 Grant extra rights or deny role permissions for this user
                 {editing ? "." : " when they are created."}
               </p>
-              <UserPermissionMatrix
-                applications={permissionApplications}
-                groups={permissionGroups}
-                rolePermissionIds={rolePermissionIds}
-                grantedIds={grantedIds}
-                deniedIds={deniedIds}
-                onToggle={toggleDrawerPermission}
-              />
+              {matrixLoading && !matrixLoaded ? (
+                <p className="text-sm text-slate-500">Loading permission matrix…</p>
+              ) : (
+                <UserPermissionMatrix
+                  applications={permissionApplications}
+                  groups={permissionGroups}
+                  rolePermissionIds={rolePermissionIds}
+                  grantedIds={grantedIds}
+                  deniedIds={deniedIds}
+                  onToggle={toggleDrawerPermission}
+                />
+              )}
             </div>
           ) : null}
         </FormDrawer>

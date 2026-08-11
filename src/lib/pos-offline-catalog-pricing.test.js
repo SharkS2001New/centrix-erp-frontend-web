@@ -10,6 +10,10 @@ vi.mock("@/lib/pos-offline-db", () => ({
     }
   },
   idbGetCatalogProduct: async (code) => catalog.get(String(code)) ?? null,
+  idbGetCatalogProducts: async (codes) =>
+    [...new Set((codes ?? []).map((c) => String(c ?? "").trim()).filter(Boolean))]
+      .map((code) => catalog.get(code))
+      .filter(Boolean),
   idbGetAllCatalog: async () => [...catalog.values()],
   idbClearStore: async (name) => {
     if (name === "catalog") catalog.clear();
@@ -77,5 +81,13 @@ describe("refreshPosOfflineCatalogPricing", () => {
     expect(result.products[0].unit_price).toBe(150);
     const stored = await getPosOfflineProduct("SUGAR");
     expect(stored.unit_price).toBe(150);
+  });
+
+  it("respectTtl skips full warm when catalog TTL is still valid", async () => {
+    const { refreshPosOfflineCatalogPricing } = await import("@/lib/pos-offline");
+    const result = await refreshPosOfflineCatalogPricing({ respectTtl: true });
+    expect(result.skipped).toBe(true);
+    expect(result.forcedFull).toBe(false);
+    expect(result.products).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@
 import {
   formatTillKes,
   formatTillKesExact,
+  formatTillKesSigned,
   formatSessionDateTime,
   formatSessionTime,
   normalizeFloatEntries,
@@ -11,6 +12,7 @@ import {
   resolveTillReportNo,
   resolveTillReportPaymentLines,
   resolveTillSalesSummaryRows,
+  varianceAmountTone,
 } from "@/lib/pos-till";
 
 function ReportSection({ title, children, action = null }) {
@@ -172,14 +174,15 @@ export function PosReportView({
           { label: "Actual cash", value: formatTillKesExact(session?.closing_amount) },
           {
             label: "Variance",
-            value: variance != null ? formatTillKesExact(variance) : "—",
+            value: variance != null ? formatTillKesSigned(variance) : "—",
             valueClassName:
               variance != null
-                ? Number(variance) < 0
-                  ? "text-red-700"
-                  : Number(variance) > 0
-                    ? "text-amber-700"
-                    : "text-emerald-700"
+                ? (() => {
+                    const tone = varianceAmountTone(variance);
+                    if (tone === "danger") return "text-red-700";
+                    if (tone === "success") return "text-emerald-700";
+                    return "text-slate-900";
+                  })()
                 : undefined,
           },
         ]

@@ -34,15 +34,14 @@ export function SalePosPaymentPanel({
       checkoutContext: "order_payment",
       capabilities,
     });
-    const withMpesa = !isPlatformMpesaStkEnabled(capabilities)
-      ? { ...base, enableMpesaAmount: false, enableMpesaCode: false }
-      : base;
-    // Credit / debtor orders always allow installment collect on this screen.
-    if (sale?.is_credit_sale || Number(sale?.amount_paid ?? 0) > 0.01) {
-      return { ...withMpesa, allowPartialPayment: true };
+    // Partial collect is gated only by allow_credit_pay_now (order_payment context).
+    // Do not force-enable here — External POS checkout uses checkoutContext "pos"
+    // and keeps allowPartialPayment false.
+    if (!isPlatformMpesaStkEnabled(capabilities)) {
+      return { ...base, enableMpesaAmount: false, enableMpesaCode: false };
     }
-    return withMpesa;
-  }, [capabilities, sale?.is_credit_sale, sale?.amount_paid]);
+    return base;
+  }, [capabilities]);
 
   useEffect(() => {
     if (!open) return;

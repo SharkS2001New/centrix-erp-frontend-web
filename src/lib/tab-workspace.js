@@ -5,6 +5,36 @@ import { lookupReportLabel } from "@/lib/reports/report-nav";
 
 export const TAB_WORKSPACE_MAX_TABS = 10;
 
+/** Soft keep-alive: active tab + this many recent inactive panes stay mounted. */
+export const TAB_KEEP_ALIVE_SOFT_MAX = 4;
+
+/**
+ * Always unmount when inactive — these screens retain heavy in-memory state.
+ * Tab chrome stays; pane remounts on reactivation.
+ */
+export const TAB_SOFT_EVICT_ALWAYS = new Set([
+  "sales-pos",
+  "reports-key",
+  "inventory-stock",
+  "inventory-stock-take-id",
+  "products",
+  "hr-payroll-runs-id",
+  "accounting-account-mappings",
+]);
+
+/**
+ * @param {{
+ *   entryId: string,
+ *   isActive: boolean,
+ *   inactiveKeepRank: number,
+ * }} args
+ */
+export function shouldKeepTabPaneMounted({ entryId, isActive, inactiveKeepRank }) {
+  if (isActive) return true;
+  if (TAB_SOFT_EVICT_ALWAYS.has(entryId)) return false;
+  return inactiveKeepRank >= 0 && inactiveKeepRank < Math.max(0, TAB_KEEP_ALIVE_SOFT_MAX - 1);
+}
+
 /** Routes that always use full-page navigation without the tab bar. */
 export const TAB_WORKSPACE_EXCLUDED_PREFIXES = [
   "/change-password",

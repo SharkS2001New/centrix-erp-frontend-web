@@ -11,7 +11,8 @@ import { canApprovePayrollRuns } from "@/lib/approval-permissions";
 import { P } from "@/lib/permission-codes";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
-import { Field, DetailDrawer, IconButton, PrimaryButton, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
+import { Field, DetailDrawer, IconButton, PrimaryButton, PaginationBar, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   PayrollBreakdownPanel,
   PayrollRunStatusBadge,
@@ -106,20 +107,25 @@ export function HrPayrollRunsIdScreen() {
   const [processing, setProcessing] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [selectedLineIds, setSelectedLineIds] = useState(() => new Set());
+  const [linesPage, setLinesPage] = useState(1);
+  const [linesPageSize, setLinesPageSize] = useState(50);
   const autoProcessStarted = useRef(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [runData, linesRes] = await Promise.all([
+      const [runData, linesRows] = await Promise.all([
         apiRequest(`/payroll-runs/${runId}`),
-        apiRequest("/payroll-lines", {
-          searchParams: { per_page: 500, "filter[payroll_run_id]": runId },
-        }),
+        fetchAllPaginatedRowsSmart(
+          "/payroll-lines",
+          { "filter[payroll_run_id]": runId },
+          { perPage: 100, message: "Loading payroll lines…" },
+        ),
       ]);
       setRun(runData);
-      setLines(linesRes.data ?? []);
+      setLines(linesRows ?? []);
       setSelectedLineIds(new Set());
+      setLinesPage(1);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load payroll run");
     } finally {
@@ -209,6 +215,16 @@ export function HrPayrollRunsIdScreen() {
     () => buildPayrollSheetFooter(lines, employeeNameFromLine),
     [lines],
   );
+  const linesTotalPages = Math.max(1, Math.ceil(lines.length / linesPageSize) || 1);
+  const safeLinesPage = Math.min(linesPage, linesTotalPages);
+  const pagedLines = useMemo(() => {
+    const start = (safeLinesPage - 1) * linesPageSize;
+    return lines.slice(start, start + linesPageSize);
+  }, [lines, safeLinesPage, linesPageSize]);
+  const pagedDisplayRows = useMemo(() => {
+    const start = (safeLinesPage - 1) * linesPageSize;
+    return payrollSheetDisplayRows.slice(start, start + linesPageSize);
+  }, [payrollSheetDisplayRows, safeLinesPage, linesPageSize]);
   const canPrintOrEmailReceipts =
     run && ["processed", "paid"].includes(run.status) && lines.length > 0;
 
@@ -774,8 +790,8 @@ export function HrPayrollRunsIdScreen() {
                       </td>
                     </tr>
                   ) : (
-                    lines.map((line, index) => {
-                      const row = payrollSheetDisplayRows[index] ?? {};
+                    pagedLines.map((line, index) => {
+                      const row = pagedDisplayRows[index] ?? {};
                       const name = employeeNameFromLine(line);
                       const isSelected = selectedLine?.id === line.id;
                       const isChecked = selectedLineIds.has(String(line.id));
@@ -852,6 +868,20 @@ export function HrPayrollRunsIdScreen() {
                 ) : null}
               </table>
             </div>
+            {lines.length > linesPageSize ? (
+              <PaginationBar
+                page={safeLinesPage}
+                totalPages={linesTotalPages}
+                total={lines.length}
+                pageSize={linesPageSize}
+                onChange={setLinesPage}
+                onPageSizeChange={(size) => {
+                  setLinesPageSize(size);
+                  setLinesPage(1);
+                }}
+                pageSizeOptions={[25, 50, 100]}
+              />
+            ) : null}
           </div>
 
           <DetailDrawer

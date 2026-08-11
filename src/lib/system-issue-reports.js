@@ -3,6 +3,9 @@ import { classifyLatency, formatSlowLatencyMessage } from "./latency-split";
 
 export const SLOW_REQUEST_THRESHOLD_MS = 12000;
 
+/** Server processing must itself be slow before we page admins. */
+export const SLOW_SERVER_THRESHOLD_MS = 5000;
+
 const GENERIC_ISSUE_MESSAGE =
   /^an error occurred in .+ please report this to your system administrator\.?$/i;
 
@@ -81,18 +84,41 @@ export function shouldAutoLogApiError(path, status) {
 }
 
 export function shouldLogSlowRequest(path, durationMs) {
-  if (isIgnoredIssuePath(path)) return false;
-  if (path === "/health" || path.endsWith("/health")) return false;
+  if (isIgnoredIssuePath(path) || isIgnoredSlowPath(path)) return false;
   return durationMs >= SLOW_REQUEST_THRESHOLD_MS;
 }
 
+/**
+ * True when client RTT is high but we lack proof the API itself was slow
+ * (missing server timing, or network dominates).
+ */
+export function isNetworkDominatedSlowRequest({ durationMs, serverMs }) {
+  const split = classifyLatency({ clientRttMs: durationMs, serverMs });
+  if (split.likely !== "api") return true;
+  if (split.server_ms == null) return true;
+  if (split.server_ms < SLOW_SERVER_THRESHOLD_MS) return true;
+  return false;
+}
+
 function isIgnoredIssuePath(path) {
-  const normalized = String(path ?? "");
+  const normalized = String(path ?? "").toLowerCase();
   return (
     normalized.includes("/auth/")
     || normalized.includes("/system-issue-reports")
     || normalized.includes("/background-tasks/")
+  );
+}
+
+/** Chatty poll/presence routes — never treat client RTT as system slowness. */
+function isIgnoredSlowPath(path) {
+  const normalized = String(path ?? "").toLowerCase();
+  const pathOnly = normalized.split("?")[0] ?? normalized;
+  return (
+    normalized.includes("/health")
     || normalized.includes("/notifications/unread-count")
+    || normalized.includes("/notifications/unread")
+    || pathOnly === "/notifications"
+    || pathOnly.endsWith("/notifications")
   );
 }
 
@@ -176,8 +202,8 @@ export async function logSlowRequestIssue({
   if (!shouldLogSlowRequest(path, durationMs)) return null;
 
   const split = classifyLatency({ clientRttMs: durationMs, serverMs });
-  // Client RTT / polling noise is not an API defect for platform admins.
-  if (split.likely === "network") {
+  // Only page admins for proven API/server slowness — never user/network RTT.
+  if (isNetworkDominatedSlowRequest({ durationMs, serverMs })) {
     return null;
   }
 

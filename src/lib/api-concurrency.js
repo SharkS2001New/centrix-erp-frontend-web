@@ -1,5 +1,3 @@
-import { apiRequest } from "@/lib/api";
-
 /** Run async work over items with a max number of in-flight requests. */
 export async function mapWithConcurrency(items, mapper, concurrency = 4) {
   if (!items?.length) return [];
@@ -22,21 +20,12 @@ export async function mapWithConcurrency(items, mapper, concurrency = 4) {
   return results;
 }
 
-/** Paginate a list endpoint without firing unbounded parallel page requests. */
+/** Paginate a list endpoint — routes large result sets through the background queue. */
 export async function fetchAllPages(path, searchParams = {}, options = {}) {
-  const perPage = options.perPage ?? 200;
-  const all = [];
-  let pageNum = 1;
-  let lastPage = 1;
-
-  do {
-    const res = await apiRequest(path, {
-      searchParams: { ...searchParams, page: pageNum, per_page: perPage },
-    });
-    all.push(...(res.data ?? []));
-    lastPage = res.last_page ?? 1;
-    pageNum += 1;
-  } while (pageNum <= lastPage);
-
-  return all;
+  const { fetchAllPaginatedRowsSmart } = await import("@/lib/paginated-fetch");
+  return fetchAllPaginatedRowsSmart(path, searchParams, {
+    perPage: options.perPage ?? 200,
+    message: options.message ?? "Please wait while we load the full dataset…",
+    onProgress: options.onProgress,
+  });
 }

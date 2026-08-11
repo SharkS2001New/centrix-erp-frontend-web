@@ -51,7 +51,6 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { loadReferenceDataPhased } from "@/lib/paginated-fetch";
 import {
   fetchBranchesCached,
-  fetchCatalogReferenceDataCached,
   fetchCategoriesCached,
   fetchSubCategoriesCached,
   fetchSuppliersCached,
@@ -472,21 +471,19 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
               .catch(() => ({ data: [] })),
           () => fetchVatsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
           () => fetchUomsCached(user?.organization_id).then((data) => ({ data })),
-          () => fetchSuppliersCached(user?.organization_id).then((data) => ({ data })),
           () => apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
         ],
         concurrency: 3,
       });
 
       const [catRes, subRes, branchRes] = criticalResults;
-      const [userRes, vatRes, uomRes, supRes, settingsRes] = deferredResults;
+      const [userRes, vatRes, uomRes, settingsRes] = deferredResults;
 
       setUsers(userRes.data ?? []);
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
       setVats(vatRes.data ?? []);
       setUoms(uomRes.data ?? []);
-      setSuppliers(supRes.data ?? []);
       setBranches(branchRes.data ?? []);
       const settingsRows = settingsRes?.data ?? settingsRes ?? [];
       const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
@@ -503,12 +500,31 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     }
   }, [user?.organization_id]);
 
-  // Warm the same org-cache keys the product create/edit form uses so Add/Edit open fast.
-  // Shares in-flight promises with loadReferenceData — no duplicate network when both run.
+  // Supplier crawl is large — load after list paint / when supplier column is shown.
+  useEffect(() => {
+    if (!user?.organization_id) return;
+    if (!visibleColumnIds.includes("supplier")) return;
+    let cancelled = false;
+    void fetchSuppliersCached(user.organization_id)
+      .then((data) => {
+        if (!cancelled) setSuppliers(data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSuppliers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.organization_id, visibleColumnIds]);
+
+  // Warm catalogue form refs after list paint — exclude suppliers (loaded when column shown).
   useEffect(() => {
     const orgId = user?.organization_id;
     void Promise.all([
-      fetchCatalogReferenceDataCached(orgId),
+      fetchCategoriesCached(orgId),
+      fetchSubCategoriesCached(orgId),
+      fetchVatsCached(orgId),
+      fetchUomsCached(orgId),
       fetchBranchesCached(orgId),
     ]).catch(() => {});
   }, [user?.organization_id]);

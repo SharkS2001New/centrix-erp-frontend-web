@@ -1662,13 +1662,13 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
       hasPosSales &&
       hasCustomers &&
       Boolean(sales.enable_credit_payment),
-    // Direct checkout (External POS + Create order): credit is always fully unpaid.
-    // Collect-payment screen: partial when credit / allow_credit_pay_now is on.
+    // External POS / Create order (checkoutContext "pos"): never allow partial tenders.
+    // Credit is only via the credit customer field and is always fully unpaid.
+    // Backoffice Collect payment (order_payment): gated by allow_credit_pay_now only.
     allowPartialPayment:
       checkoutContext === "order_payment" &&
       Boolean(modules.sales) &&
-      (Boolean(sales.allow_credit_pay_now) ||
-        (hasCustomers && Boolean(sales.enable_credit_payment))),
+      Boolean(sales.allow_credit_pay_now),
     /** Collecting against an existing sale — never accept more than balance due. */
     rejectOverpayment: checkoutContext === "order_payment",
     enableCheckoutCustomerName:

@@ -365,20 +365,18 @@ export function InventoryStockScreen() {
   );
 
   const fetchStockExportRows = useCallback(async () => {
-    const searchParams = buildPageParams({
-      page: 1,
+    const baseParams = {
+      branch_id: branchId,
+      in_stock_only: 1,
+      q: debouncedSearch || undefined,
+      subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
+      location: locationFilter !== "all" ? locationFilter : undefined,
+    };
+    const allRows = await fetchAllPaginatedRowsSmart("/reports/stock-on-hand", baseParams, {
       perPage: 200,
-      q: debouncedSearch,
-      extra: {
-        branch_id: branchId,
-        in_stock_only: 1,
-        subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
-        location: locationFilter !== "all" ? locationFilter : undefined,
-      },
+      message: "Loading stock for export…",
     });
-    const stockRes = await apiRequest("/reports/stock-on-hand", { searchParams });
-    const rows = parsePaginator(stockRes).items;
-    return rows.map((row) => stockRowToExport(enrichStockRow(row)));
+    return (allRows ?? []).map((row) => stockRowToExport(enrichStockRow(row)));
   }, [branchId, debouncedSearch, subcategoryFilter, locationFilter]);
   const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);

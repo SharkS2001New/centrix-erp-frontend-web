@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   Field,
   FormDrawer,
   PrimaryButton,
   SearchInput,
+  PaginationBar,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
   TABLE_BODY_ROW_CLASS,
@@ -68,11 +70,19 @@ export function HrCrudPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, apiPath]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -83,18 +93,24 @@ export function HrCrudPage({
         : Promise.resolve({});
       const [res, extraData] = await Promise.all([
         apiRequest(apiPath, {
-          searchParams: { per_page: 200, ...(listSearchParams ?? {}) },
+          searchParams: {
+            per_page: pageSize,
+            page,
+            ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+            ...(listSearchParams ?? {}),
+          },
         }),
         extraPromise,
       ]);
       setRows(res.data ?? []);
+      setTotal(Number(res.meta?.total ?? res.total ?? res.data?.length ?? 0));
       setExtra(extraData ?? {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [apiPath, listSearchParams, loadExtra]);
+  }, [apiPath, listSearchParams, loadExtra, page, pageSize, debouncedSearch]);
 
   const tableExtra = useMemo(
     () => ({ employees: [], ...extra }),
@@ -103,10 +119,13 @@ export function HrCrudPage({
 
   useTabAwareDataLoad(load);
 
+  // Prefer server `q`; keep optional client refine for endpoints that ignore q.
   const filtered = useMemo(() => {
-    if (!searchFilter || !search.trim()) return rows;
-    return rows.filter((r) => searchFilter(r, search.trim().toLowerCase()));
-  }, [rows, search, searchFilter]);
+    if (!searchFilter || !debouncedSearch.trim()) return rows;
+    return rows.filter((r) => searchFilter(r, debouncedSearch.trim().toLowerCase()));
+  }, [rows, debouncedSearch, searchFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
 
   function openCreate() {
     setEditing(null);
@@ -217,8 +236,12 @@ export function HrCrudPage({
               filename={exportFilename ?? resolvedExportTitle}
               apiPath={apiPath}
               columns={exportColumns}
-              totalCount={filtered.length}
-              getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
+              totalCount={total || filtered.length}
+              getSearchParams={() => ({
+                per_page: 200,
+                ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+                ...(listSearchParams ?? {}),
+              })}
               getInlineRows={getInlineExportRows}
               disabled={loading}
             />
@@ -286,6 +309,21 @@ export function HrCrudPage({
           </table>
         </div>
       )}
+
+      {total > pageSize || totalPages > 1 ? (
+        <PaginationBar
+          page={Math.min(page, totalPages)}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          pageSizeOptions={[25, 50, 100]}
+        />
+      ) : null}
 
       {form && (
         <FormDrawer

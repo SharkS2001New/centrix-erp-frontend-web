@@ -589,13 +589,14 @@ async function performApiRequest(path, url, options = {}) {
 
     if (trackIssues) {
       const serverMs = parseServerDurationMs(res, data);
-      await logSlowRequestIssue({
+      // Never block the caller — POS and other chatty paths return immediately.
+      void logSlowRequestIssue({
         path: apiPath,
         method,
         status: res.status,
         durationMs,
         serverMs,
-      });
+      }).catch(() => {});
     }
 
     if (mayAffectInAppNotifications(method, apiPath, data)) {

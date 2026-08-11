@@ -55,10 +55,10 @@ import { resolveSecurityTimeouts } from "@/lib/security-settings";
 import { syncLocalPrintingFromCapabilities, clearLocalPrintingSettingsCache } from "@/lib/local-printing-settings";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
+/** Cheap version poll so demotions (Admin → Cashier) apply without a full refresh wait. */
+const CAPABILITIES_VERSION_POLL_MS = 90_000;
+const POS_CAPABILITIES_REFRESH_MS = 60_000;
 const CAPABILITIES_REFRESH_MS = 90_000;
-const POS_CAPABILITIES_REFRESH_MS = 15_000;
-/** Cheap version poll so demotions (Admin → Cashier) apply without waiting on the 90s TTL. */
-const CAPABILITIES_VERSION_POLL_MS = 15_000;
 
 function getClientId() {
   if (typeof window === "undefined") return "";
@@ -91,7 +91,7 @@ export function AuthProvider({ children }) {
   const [capabilities, setCapabilities] = useState(null);
   const [loginChannel, setLoginChannel] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [capabilitiesRefreshing, setCapabilitiesRefreshing] = useState(false);
+  const capabilitiesRefreshingRef = useRef(false);
   const capabilitiesRefreshAt = useRef(0);
   const capabilitiesRefreshPromise = useRef(null);
 
@@ -109,7 +109,7 @@ export function AuthProvider({ children }) {
       return capabilitiesRefreshPromise.current;
     }
 
-    setCapabilitiesRefreshing(true);
+    capabilitiesRefreshingRef.current = true;
     const promise = (async () => {
       try {
         const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
@@ -124,7 +124,7 @@ export function AuthProvider({ children }) {
         return caps;
       } finally {
         capabilitiesRefreshPromise.current = null;
-        setCapabilitiesRefreshing(false);
+        capabilitiesRefreshingRef.current = false;
       }
     })();
 
@@ -629,7 +629,6 @@ export function AuthProvider({ children }) {
       memberships,
       capabilities,
       loading,
-      capabilitiesRefreshing,
       login,
       loginWithPasskey,
       completeTwoFactorLogin,
@@ -675,7 +674,6 @@ export function AuthProvider({ children }) {
       memberships,
       capabilities,
       loading,
-      capabilitiesRefreshing,
       login,
       loginWithPasskey,
       completeTwoFactorLogin,

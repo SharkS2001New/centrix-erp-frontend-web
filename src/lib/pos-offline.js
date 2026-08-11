@@ -27,6 +27,7 @@ import {
   idbFindSyncedServerSaleIdByPosTicket,
   idbGetAllCatalog,
   idbGetCatalogProduct,
+  idbGetCatalogProducts,
   idbGetLocalCart,
   idbGetMeta,
   idbGetOutboxSale,
@@ -157,8 +158,9 @@ export async function warmPosOfflineCatalog({ force = false } = {}) {
  *   product_code?: string|null,
  *   reason?: string|null,
  *   forceFull?: boolean,
+ *   respectTtl?: boolean,
  * }} [payload]
- * @returns {Promise<{ products: object[], forcedFull: boolean }>}
+ * @returns {Promise<{ products: object[], forcedFull: boolean, skipped?: boolean }>}
  */
 export async function refreshPosOfflineCatalogPricing(payload = {}) {
   const productCode =
@@ -166,6 +168,16 @@ export async function refreshPosOfflineCatalogPricing(payload = {}) {
       ? String(payload.product_code).trim()
       : null;
   const reason = String(payload?.reason ?? "");
+  // Quiet focus/poll refresh: warm only when catalog TTL expired (no forced full crawl).
+  if (payload?.respectTtl === true && !productCode) {
+    const warm = await warmPosOfflineCatalog({ force: Boolean(payload?.forceFull) });
+    if (warm?.skipped) {
+      return { products: [], forcedFull: false, warm, skipped: true };
+    }
+    const all = await idbGetAllCatalog();
+    return { products: all, forcedFull: true, warm };
+  }
+
   const forceFull =
     Boolean(payload?.forceFull) ||
     !productCode ||
@@ -238,6 +250,11 @@ export async function searchPosOfflineCatalog(query, { limit = 50 } = {}) {
 
 export async function getPosOfflineProduct(code) {
   return idbGetCatalogProduct(code);
+}
+
+/** Batch IndexedDB catalog lookups (one transaction). */
+export async function getPosOfflineProducts(codes) {
+  return idbGetCatalogProducts(codes);
 }
 
 export async function getPosOfflineCatalogMeta() {

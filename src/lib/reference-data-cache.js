@@ -80,11 +80,7 @@ export function fetchSuppliersCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "suppliers");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/reference/suppliers", {
-      searchParams: { per_page: 200 },
-      loading: false,
-    });
-    return res.data ?? [];
+    return fetchAllPaginatedRowsSmart("/reference/suppliers", {}, { perPage: 200 });
   });
 }
 
@@ -206,11 +202,11 @@ export function fetchEmployeesCached(organizationId) {
       : "org";
   const key = orgCacheKey(orgId, "employees-lean", branchScope);
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/employees", {
-      searchParams: { per_page: 200, fields: "lean" },
-      loading: false,
-    });
-    return res.data ?? [];
+    return fetchAllPaginatedRowsSmart(
+      "/employees",
+      { fields: "lean" },
+      { perPage: 200, message: "Loading employees…" },
+    );
   });
 }
 
@@ -218,11 +214,7 @@ export function fetchDriversCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "drivers");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/drivers", {
-      searchParams: { per_page: 200 },
-      loading: false,
-    });
-    return res.data ?? [];
+    return fetchAllPaginatedRowsSmart("/drivers", {}, { perPage: 200 });
   });
 }
 
@@ -230,11 +222,7 @@ export function fetchVehiclesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "vehicles");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/vehicles", {
-      searchParams: { per_page: 200 },
-      loading: false,
-    });
-    return res.data ?? [];
+    return fetchAllPaginatedRowsSmart("/vehicles", {}, { perPage: 200 });
   });
 }
 

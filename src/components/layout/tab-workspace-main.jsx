@@ -13,13 +13,20 @@ import {
   pathnameFromTabHref,
   resolveScreen,
 } from "@/lib/screen-registry";
-import { isTabWorkspaceRoute, normalizeTabHref, pathOnlyFromHref } from "@/lib/tab-workspace";
+import {
+  isTabWorkspaceRoute,
+  normalizeTabHref,
+  pathOnlyFromHref,
+  shouldKeepTabPaneMounted,
+} from "@/lib/tab-workspace";
 
 /**
  * Desktop Tab Manager host.
  *
  * Registered screens stay mounted while their tab is open — one instance per
  * concrete pathname (so /customers/1 and /customers/2 are separate panes).
+ * Heavy / idle panes are soft-evicted (unmounted) to free memory; they remount
+ * when the tab is activated again.
  * Unregistered routes use live Next.js `children` for the active URL only.
  * Screen modules load on first open via React.lazy.
  */
@@ -63,7 +70,7 @@ export function TabWorkspaceMain({ children }) {
 
   /** One mounted instance per concrete pathname (query string ignored). */
   const registeredPanes = useMemo(() => {
-    /** @type {Map<string, { path: string, href: string, entry: NonNullable<ReturnType<typeof resolveScreen>> }>} */
+    /** @type {Map<string, { path: string, href: string, entry: NonNullable<ReturnType<typeof resolveScreen>>, lastActiveAt: number }>} */
     const byPath = new Map();
 
     for (const tab of tabs) {
@@ -71,19 +78,42 @@ export function TabWorkspaceMain({ children }) {
       const entry = resolveScreen(href);
       if (!entry) continue;
       const path = pathnameFromTabHref(href);
-      if (!byPath.has(path) || path === activePath) {
-        byPath.set(path, { path, href, entry });
+      const lastActiveAt = Number(tab.lastActiveAt ?? 0);
+      const existing = byPath.get(path);
+      if (!existing || path === activePath || lastActiveAt >= (existing.lastActiveAt ?? 0)) {
+        byPath.set(path, { path, href, entry, lastActiveAt });
       }
     }
 
     if (activeHref && isRegisteredHref(activeHref)) {
       const entry = resolveScreen(activeHref);
       if (entry) {
-        byPath.set(activePath, { path: activePath, href: activeHref, entry });
+        byPath.set(activePath, {
+          path: activePath,
+          href: activeHref,
+          entry,
+          lastActiveAt: Date.now(),
+        });
       }
     }
 
-    return [...byPath.values()];
+    const panes = [...byPath.values()];
+    const inactiveSorted = panes
+      .filter((pane) => pane.path !== activePath)
+      .sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0));
+    const inactiveRank = new Map(
+      inactiveSorted.map((pane, index) => [pane.path, index]),
+    );
+
+    return panes.map((pane) => {
+      const isActive = pane.path === activePath;
+      const keepMounted = shouldKeepTabPaneMounted({
+        entryId: pane.entry.id,
+        isActive,
+        inactiveKeepRank: inactiveRank.get(pane.path) ?? -1,
+      });
+      return { ...pane, isActive, keepMounted };
+    });
   }, [activeHref, activePath, tabs]);
 
   if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) {
@@ -92,8 +122,8 @@ export function TabWorkspaceMain({ children }) {
 
   return (
     <>
-      {registeredPanes.map(({ path, href, entry }) => {
-        const isActive = path === activePath;
+      {registeredPanes.map(({ path, href, entry, isActive, keepMounted }) => {
+        if (!keepMounted) return null;
         return (
           <TabPaneActivityProvider key={`registry:${path}`} paneHref={href} isActive={isActive}>
             <RegisteredTabPane entry={entry} paneHref={href} isActive={isActive} />

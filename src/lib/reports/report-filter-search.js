@@ -151,9 +151,9 @@ export async function resolveReportFilterSelection(optionsKey, value) {
     case "subcategories": {
       try {
         const res = await apiRequest("/reference/sub-categories", {
-          searchParams: { per_page: 500 },
+          searchParams: { per_page: 1, "filter[id]": raw },
         });
-        const row = (res.data ?? []).find((item) => String(item.id) === raw);
+        const row = (res.data ?? [])[0] ?? (res.data ?? []).find((item) => String(item.id) === raw);
         if (row) {
           return {
             value: String(row.id),
@@ -168,9 +168,9 @@ export async function resolveReportFilterSelection(optionsKey, value) {
     case "suppliers": {
       try {
         const res = await apiRequest("/reference/suppliers", {
-          searchParams: { per_page: 200, is_active: 1 },
+          searchParams: { per_page: 1, "filter[id]": raw, is_active: 1 },
         });
-        const row = (res.data ?? []).find((item) => String(item.id) === raw);
+        const row = (res.data ?? [])[0] ?? (res.data ?? []).find((item) => String(item.id) === raw);
         if (row) {
           return {
             value: String(row.id),

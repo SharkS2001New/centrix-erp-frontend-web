@@ -20,7 +20,7 @@ import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog"
 import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
 import { subscribeNotificationsChanged } from "@/lib/notification-events";
 
-const POLL_VISIBLE_MS = 20_000;
+const POLL_VISIBLE_MS = 60_000;
 const POLL_HIDDEN_MS = 90_000;
 
 function BellIcon({ className }) {
@@ -176,6 +176,7 @@ export function NotificationBell() {
     try {
       const res = await apiRequest("/notifications/unread-count", {
         loading: false,
+        reportIssues: false,
         searchParams: workspaceParams,
       });
       const nextCount = Number(res?.count ?? 0);
@@ -195,6 +196,7 @@ export function NotificationBell() {
     try {
       const res = await apiRequest("/notifications?limit=15", {
         loading: false,
+        reportIssues: false,
         searchParams: workspaceParams,
       });
       const rows = Array.isArray(res?.data) ? res.data : [];

@@ -46,21 +46,12 @@ export function buildPageParams({ page = 1, perPage = 25, q = "", filters = {}, 
   return searchParams;
 }
 
-/** Fetch every page from a paginated list endpoint. */
+/** Fetch every page from a paginated list endpoint (queues when many pages). */
 export async function fetchAllPaginated(apiRequest, path, { perPage = 200, extra = {} } = {}) {
-  const all = [];
-  let page = 1;
-  let totalPages = 1;
-
-  do {
-    const res = await apiRequest(path, {
-      searchParams: buildPageParams({ page, perPage, extra }),
-    });
-    const parsed = parsePaginator(res);
-    all.push(...parsed.items);
-    totalPages = parsed.totalPages;
-    page += 1;
-  } while (page <= totalPages);
-
-  return all;
+  void apiRequest;
+  const { fetchAllPaginatedRowsSmart } = await import("@/lib/paginated-fetch");
+  return fetchAllPaginatedRowsSmart(path, extra, {
+    perPage,
+    message: "Please wait while we load the full dataset…",
+  });
 }

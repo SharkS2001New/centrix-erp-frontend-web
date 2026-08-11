@@ -25,6 +25,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { AUDIT_LOG_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
@@ -55,6 +56,7 @@ export function AdminAuditScreen() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(25);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [userFilter, setUserFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState(
     branchLocked && user?.branch_id ? String(user.branch_id) : "all",
@@ -100,7 +102,7 @@ export function AdminAuditScreen() {
       if (branchFilter !== "all") searchParams["filter[branch_id]"] = branchFilter;
       if (actionFilter !== "all") searchParams["filter[action]"] = actionFilter;
       if (moduleFilter !== "all") searchParams["filter[table_name]"] = moduleFilter;
-      if (search.trim()) searchParams.q = search.trim();
+      if (debouncedSearch.trim()) searchParams.q = debouncedSearch.trim();
 
       const res = await apiRequest(adminPath("/audit-logs"), { searchParams });
       setLogs(res.data ?? []);
@@ -117,7 +119,7 @@ export function AdminAuditScreen() {
     } finally {
       setLoading(false);
     }
-  }, [adminPath, page, fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, search]);
+  }, [adminPath, page, pageSize, fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, debouncedSearch]);
 
   useTabAwareDataLoad(loadReferenceData);
 
@@ -125,7 +127,7 @@ export function AdminAuditScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, search]);
+  }, [fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, debouncedSearch]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
