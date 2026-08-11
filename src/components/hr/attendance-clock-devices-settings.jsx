@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError, apiV1BaseUrl } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
-import { Field, PrimaryButton, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, FormModal, inputClassName, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { downloadAttendanceAgentPackage } from "@/lib/attendance-agent-download";
+import {
+  downloadAttendanceAgentPackage,
+  downloadAttendanceAgentSource,
+} from "@/lib/attendance-agent-download";
 
 const EMPTY_FORM = {
   device_no: "",
@@ -34,6 +37,7 @@ export function AttendanceClockDevicesSettings() {
     use_https: false,
   });
   const [downloading, setDownloading] = useState(false);
+  const [downloadingSource, setDownloadingSource] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,7 +152,30 @@ export function AttendanceClockDevicesSettings() {
     }
   }
 
+  async function handleDownloadSourceZip() {
+    if (downloadingSource) return;
+    setDownloadingSource(true);
+    try {
+      const { filename } = await downloadAttendanceAgentSource();
+      notifySuccess(
+        `Downloaded ${filename}. For a preconfigured zip (API URL + token), register a clock device first, then use Download agent zip.`,
+      );
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Could not download attendance agent zip");
+    } finally {
+      setDownloadingSource(false);
+    }
+  }
+
   const activeDevices = devices.filter((d) => d.is_active !== false);
+
+  function startConfiguredDownload() {
+    if (!activeDevices.length) {
+      notifyError("Add a clock device below first, then download a preconfigured agent zip.");
+      return;
+    }
+    openDownload(activeDevices[0]);
+  }
 
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
@@ -170,10 +197,48 @@ export function AttendanceClockDevicesSettings() {
         </button>
       </div>
 
+      <section className="rounded-lg border border-[#185FA5]/30 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h5 className="text-sm font-semibold text-slate-900">Centrix Attendance Agent</h5>
+            <p className="mt-1 text-xs text-slate-600">
+              Same idea as Local printing / Print Agent: download a zip, unzip on a Windows PC on the
+              same LAN as the fingerprint terminal, then install.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={loading || downloading}
+              onClick={() => startConfiguredDownload()}
+            >
+              {downloading ? "Preparing…" : "Download agent zip"}
+            </PrimaryButton>
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={downloadingSource}
+              onClick={() => void handleDownloadSourceZip()}
+            >
+              {downloadingSource ? "Downloading…" : "Download blank package"}
+            </button>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-slate-500">
+          <strong>Download agent zip</strong> issues a Centrix token and prefills{" "}
+          <code className="rounded bg-slate-100 px-1">config.json</code> for a registered device.
+          Use <strong>blank package</strong> only if you will enter settings manually on the PC.
+        </p>
+      </section>
+
       {loading ? (
         <p className="text-sm text-slate-500">Loading devices…</p>
       ) : activeDevices.length === 0 ? (
-        <p className="text-sm text-slate-500">No clock devices registered yet.</p>
+        <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-900">
+          No clock devices yet. Add one below (device number + LAN IP), then click{" "}
+          <strong>Download agent zip</strong>.
+        </p>
       ) : (
         <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
           {activeDevices.map((device) => (
@@ -202,7 +267,7 @@ export function AttendanceClockDevicesSettings() {
                   className="shrink-0"
                   onClick={() => openDownload(device)}
                 >
-                  Download agent
+                  Download agent zip
                 </PrimaryButton>
               </div>
             </li>
@@ -292,13 +357,13 @@ export function AttendanceClockDevicesSettings() {
       <FormModal
         title={
           downloadDevice
-            ? `Download agent — ${downloadDevice.device_no}`
-            : "Download attendance agent"
+            ? `Download agent zip — ${downloadDevice.device_no}`
+            : "Download attendance agent zip"
         }
         open={Boolean(downloadDevice)}
         onClose={() => !downloading && setDownloadDevice(null)}
         onSubmit={() => void confirmDownload()}
-        submitLabel={downloading ? "Preparing…" : "Download zip"}
+        submitLabel={downloading ? "Preparing…" : "Download agent zip"}
       >
         <p className="mb-3 text-sm text-slate-600">
           Centrix API URL, device number, and a dedicated agent token are filled in automatically.
@@ -395,8 +460,8 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
           (Administration → Attendance clock-in).
         </li>
         <li>
-          Click <strong>Download agent</strong> — the zip is preconfigured with Centrix URL, token, and
-          device settings. On a LAN PC: unzip → <code>open-settings.bat</code> (settings UI) →{" "}
+          Click <strong>Download agent zip</strong> — the zip is preconfigured with Centrix URL, token,
+          and device settings. On a LAN PC: unzip → <code>open-settings.bat</code> (settings UI) →{" "}
           <code>install-windows.bat</code> (Node 20+).
         </li>
         <li>

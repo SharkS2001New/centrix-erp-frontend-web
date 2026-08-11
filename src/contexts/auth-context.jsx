@@ -617,10 +617,19 @@ export function AuthProvider({ children }) {
     router.replace(loginPath);
   }, [router]);
 
-  const isOrgWide = useCallback(
-    () => (capabilities?.access_scope ?? user?.access_scope) === "org" || Boolean(user?.is_admin),
-    [capabilities?.access_scope, user?.access_scope, user?.is_admin],
-  );
+  const patchOrganization = useCallback((partial) => {
+    setOrganization((prev) => {
+      const next = { ...(prev ?? {}), ...(partial ?? {}) };
+      setSession(
+        getToken(),
+        getStoredUser() ?? user,
+        next,
+        getStoredMemberships(),
+        getStoredLoginChannel() ?? loginChannel,
+      );
+      return next;
+    });
+  }, [user, loginChannel]);
 
   const value = useMemo(
     () => ({
@@ -638,6 +647,7 @@ export function AuthProvider({ children }) {
       switchWorkspace,
       logout,
       refreshCapabilities,
+      patchOrganization,
       clearMustChangePassword,
       updateProfile,
       applyPasswordExpiry,
@@ -683,6 +693,7 @@ export function AuthProvider({ children }) {
       switchWorkspace,
       logout,
       refreshCapabilities,
+      patchOrganization,
       clearMustChangePassword,
       updateProfile,
       applyPasswordExpiry,

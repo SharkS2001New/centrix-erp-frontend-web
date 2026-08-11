@@ -1093,7 +1093,7 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/admin/attendance-clock",
         label: "Attendance clock-in",
-        module: "admin",
+        module: "hr_payroll",
         permissionAny: [P.admin.settings.view, P.hr.manage, "admin.manage"],
         orgAdminOnly: true,
       },

@@ -8,15 +8,16 @@ import {
   resolveClassicPosThemeColors,
   resolveClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
+import { applyOrgPrimaryTheme, normalizeOrgPrimaryColor } from "@/lib/org-brand-theme";
 import { getTheme, subscribeTheme } from "@/lib/theme";
 
 /**
- * Applies the organization Centrix ERP theme to sidebar background + primary buttons.
+ * Applies organization brand (primary) + Centrix ERP sidebar/button theme.
  * Full workspace / panel / footer colors apply only inside Classic External POS.
  * Re-applies when light/dark mode changes so color themes never override dark mode surfaces.
  */
 export function OrgThemeBridge({ children }) {
-  const { capabilities, user } = useAuth();
+  const { capabilities, user, organization } = useAuth();
   const colorMode = useSyncExternalStore(subscribeTheme, getTheme, () => "light");
 
   const template = useMemo(
@@ -35,6 +36,8 @@ export function OrgThemeBridge({ children }) {
     [colorsKey],
   );
 
+  const orgPrimary = normalizeOrgPrimaryColor(organization?.primary_color);
+
   useLayoutEffect(() => {
     if (!user) {
       clearClassicPosDocumentTheme();
@@ -47,8 +50,12 @@ export function OrgThemeBridge({ children }) {
     }
 
     applyOrgErpSidebarTheme(template, colors, { mode: colorMode });
+    // Org brand primary wins for ERP chrome when set (Admin → Company).
+    if (orgPrimary) {
+      applyOrgPrimaryTheme(orgPrimary, { mode: colorMode });
+    }
     return undefined;
-  }, [user, template, colors, colorMode]);
+  }, [user, template, colors, colorMode, orgPrimary]);
 
   return children;
 }

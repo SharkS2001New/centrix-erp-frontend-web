@@ -94,8 +94,8 @@ export function AttendanceClockSettingsPanel() {
               Register the terminal under <strong>Clock devices</strong> (device number, LAN IP, password).
             </li>
             <li>
-              Click <strong>Download agent</strong> — the zip is preconfigured with Centrix URL, token, and
-              device number.
+              Click <strong>Download agent zip</strong> in the Centrix Attendance Agent box — the zip is
+              preconfigured with Centrix URL, token, and device number.
             </li>
             <li>
               On a Windows PC on the same LAN: unzip → install Node.js 20+ if needed → run{" "}
@@ -115,6 +115,10 @@ export function AttendanceClockSettingsPanel() {
             <li>Set premises location / geofence and verification method.</li>
             <li>Register shared company phones under mobile devices.</li>
             <li>Staff clock in from the company phone app at the premises.</li>
+            <li className="text-slate-500">
+              Fingerprint terminal agent download is available when method is{" "}
+              <strong>Clock device</strong>.
+            </li>
           </ol>
         )}
       </section>
@@ -233,7 +237,7 @@ function AttendanceConfigureGuideModal({ open, onClose }) {
           <ol className="mt-1 list-decimal space-y-1 pl-5 text-slate-600">
             <li>Choose Clock device and save.</li>
             <li>Add the terminal (device number, LAN IP, password).</li>
-            <li>Download the preconfigured agent zip for that device.</li>
+            <li>Download the preconfigured agent zip for that device (Download agent zip).</li>
           </ol>
         </div>
         <div>

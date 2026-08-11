@@ -39,6 +39,7 @@ const EMPTY_FORM = {
   addn_tel2: "",
   org_address: "",
   vat_regno: "",
+  primary_color: "",
 };
 
 function mapOrganizationToForm(org) {
@@ -55,6 +56,7 @@ function mapOrganizationToForm(org) {
     addn_tel2: org.addn_tel2 ?? "",
     org_address: org.org_address ?? "",
     vat_regno: org.vat_regno ?? "",
+    primary_color: org.primary_color ?? "",
   };
 }
 
@@ -66,7 +68,7 @@ function organizationFromResponse(res) {
 const readOnlyClass = `${inputClassName()} cursor-not-allowed bg-slate-50 text-slate-700`;
 
 export function AdminCompanyScreen() {
-  const { organization: authOrganization, loading: authLoading, hasPermission, isSuperAdmin } = useAuth();
+  const { organization: authOrganization, loading: authLoading, hasPermission, isSuperAdmin, patchOrganization } = useAuth();
   const confirm = useConfirm();
   const {
     organizationId: platformOrgId,
@@ -171,7 +173,7 @@ export function AdminCompanyScreen() {
     setSaving(true);
     try {
       const path = platformOrgId ? organizationPath("") : "/erp/organization/profile";
-      await Promise.all([
+      const [profileRes] = await Promise.all([
         apiRequest(path, {
           method: "PATCH",
           body: {
@@ -183,6 +185,7 @@ export function AdminCompanyScreen() {
             org_address: form.org_address.trim(),
             org_pin: form.org_pin.trim() || null,
             vat_regno: form.vat_regno.trim() || null,
+            primary_color: form.primary_color.trim() || null,
           },
         }),
         apiRequest(settingsGeneralPath, {
@@ -190,6 +193,10 @@ export function AdminCompanyScreen() {
           body: documentPrintPhonesPayloadFields(documentPhonesForm, { prefix: "other" }),
         }),
       ]);
+      const updatedOrg = organizationFromResponse(profileRes);
+      if (updatedOrg && !platformOrgId) {
+        patchOrganization?.(updatedOrg);
+      }
       notifySuccess("Company profile saved.");
       await load();
     } catch (e) {
@@ -331,6 +338,29 @@ export function AdminCompanyScreen() {
                   value={form.vat_regno}
                   onChange={(e) => setForm((f) => ({ ...f, vat_regno: e.target.value }))}
                 />
+              </Field>
+              <Field label="Brand color">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    className="h-10 w-14 cursor-pointer rounded border border-[var(--theme-border)] bg-transparent p-1"
+                    value={/^#[0-9A-Fa-f]{6}$/.test(form.primary_color) ? form.primary_color : "#4C5BA4"}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, primary_color: e.target.value.toUpperCase() }))
+                    }
+                    aria-label="Brand primary color"
+                  />
+                  <input
+                    className={`${inputClassName()} font-mono uppercase`}
+                    value={form.primary_color}
+                    placeholder="#4C5BA4"
+                    maxLength={7}
+                    onChange={(e) => setForm((f) => ({ ...f, primary_color: e.target.value }))}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Used as the app accent in Centrix ERP, Manager, and Sales. Leave blank for the default Centrix purple.
+                </p>
               </Field>
               <div className="sm:col-span-2">
                 <Field label="Address *">
