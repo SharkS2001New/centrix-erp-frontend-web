@@ -107,6 +107,18 @@ function paymentDonutTotal(payments) {
   return resolvePaymentDonutSegments(payments).reduce((sum, s) => sum + s.value, 0);
 }
 
+/** Build conic-gradient stop list without mutating locals (eslint react-hooks/immutability). */
+function conicGradientStops(segments, total) {
+  const ranges = segments
+    .filter((s) => s.value > 0)
+    .reduce((acc, s) => {
+      const pct = (s.value / total) * 100;
+      const start = acc.length ? acc[acc.length - 1].end : 0;
+      return [...acc, { color: s.color, start, end: start + pct }];
+    }, /** @type {{ color: string, start: number, end: number }[]} */ ([]));
+  return ranges.map((s) => `${s.color} ${s.start}% ${s.end}%`).join(", ");
+}
+
 function PaymentDonut({ payments }) {
   const segments = resolvePaymentDonutSegments(payments);
   const total = segments.reduce((sum, s) => sum + s.value, 0);
@@ -118,16 +130,7 @@ function PaymentDonut({ payments }) {
     );
   }
 
-  let offset = 0;
-  const stops = segments
-    .filter((s) => s.value > 0)
-    .map((s) => {
-      const pct = (s.value / total) * 100;
-      const stop = `${s.color} ${offset}% ${offset + pct}%`;
-      offset += pct;
-      return stop;
-    })
-    .join(", ");
+  const stops = conicGradientStops(segments, total);
 
   return (
     <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
@@ -236,16 +239,7 @@ function printPaymentDonutHtml(payments) {
   if (total <= 0) {
     return `<p class="muted" style="text-align:center;padding:24px 0">No payments recorded</p>`;
   }
-  let offset = 0;
-  const stops = segments
-    .filter((s) => s.value > 0)
-    .map((s) => {
-      const pct = (s.value / total) * 100;
-      const stop = `${s.color} ${offset}% ${offset + pct}%`;
-      offset += pct;
-      return stop;
-    })
-    .join(", ");
+  const stops = conicGradientStops(segments, total);
   const legend = segments
     .map((s) => {
       const pct = ((s.value / total) * 100).toFixed(1);

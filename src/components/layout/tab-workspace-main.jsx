@@ -88,11 +88,14 @@ export function TabWorkspaceMain({ children }) {
     if (activeHref && isRegisteredHref(activeHref)) {
       const entry = resolveScreen(activeHref);
       if (entry) {
+        const existing = byPath.get(activePath);
         byPath.set(activePath, {
           path: activePath,
           href: activeHref,
           entry,
-          lastActiveAt: Date.now(),
+          // Active pane is always kept mounted; preserve stored activity timestamp
+          // (do not call Date.now() during render — react-hooks/purity).
+          lastActiveAt: existing?.lastActiveAt ?? 0,
         });
       }
     }
