@@ -893,7 +893,7 @@ export function formatPreviousOrderEditUploadBlockMessage(
 
 /**
  * Queued previous-order edit not yet synced (pending / uploading / failed).
- * Used to block opening another receipt for edit on the till.
+ * When saleId is set, only that receipt is considered — other receipts stay editable.
  */
 export async function findInFlightPreviousOrderEditOutbox({ saleId = null } = {}) {
   const rows = await idbListUnsyncedOutbox();
@@ -4202,6 +4202,11 @@ export async function getPosOfflineAutoRetryCount() {
   return idbCountAutoRetryOutbox();
 }
 
+/** Unsynced rows blocking background auto-sync (e.g. stuck mid-upload). */
+export async function getPosOfflineSyncBlockers() {
+  return describeOutboxSyncBlockers();
+}
+
 /** Failed outbox rows (sync_status error) — for reprint while retrying. */
 export async function listFailedOutboxSales() {
   const rows = (await idbListPendingOutbox({ includeErrors: true })).filter(
@@ -4859,19 +4864,20 @@ export async function syncPosOfflineOutbox({
   // Exclusive lock is only for short IndexedDB critical sections.
   // Holding it across checkoutOutboxRow / findExisting network calls blocked
   // cashiers on "Saving…" while reconnect flush ran (often 30s+).
-  const reclaimOlderThanMs = manual ? 15_000 : 5 * 60_000;
+  // Background reclaim was 5m — old sessions stayed "syncing" until manual Sync.
+  const reclaimOlderThanMs = manual ? 15_000 : 60_000;
   await withPosOfflineExclusiveLock(async () => {
     await idbReclaimStuckSyncingOutbox({ olderThanMs: reclaimOlderThanMs });
   });
   let { rows: pending, skippedActiveEdit } = await withPosOfflineExclusiveLock(async () =>
     collectOutboxRowsForSync({ includeErrors, clientSaleUuid }),
   );
-  if (manual && pending.length === 0) {
+  if (pending.length === 0) {
     const blockers = await describeOutboxSyncBlockers({ clientSaleUuid });
     if (blockers.syncing > 0 && !skippedActiveEdit) {
-      // Manual Sync with rows stuck mid-upload — force reclaim and retry once.
+      // Rows stuck mid-upload — reclaim and retry once (manual: immediate; background: 30s).
       await withPosOfflineExclusiveLock(async () => {
-        await idbReclaimStuckSyncingOutbox({ olderThanMs: 0 });
+        await idbReclaimStuckSyncingOutbox({ olderThanMs: manual ? 0 : 30_000 });
       });
       ({ rows: pending, skippedActiveEdit } = await withPosOfflineExclusiveLock(async () =>
         collectOutboxRowsForSync({ includeErrors, clientSaleUuid }),

@@ -96,5 +96,7 @@ describe("previous-order edit upload blocking", () => {
     expect(
       formatPreviousOrderEditUploadBlockMessage(scoped, { sameReceipt: true }),
     ).toMatch(/this receipt/i);
+
+    expect(await findInFlightPreviousOrderEditOutbox({ saleId: 999 })).toBeNull();
   });
 });

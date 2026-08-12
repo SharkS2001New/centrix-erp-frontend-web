@@ -6,6 +6,14 @@ import {
 export const POS_USER_THEME_STORAGE_PREFIX = "centrix.pos.user_theme";
 
 const POS_USER_THEME_CHANGE_EVENT = "centrix-pos-user-theme-change";
+const POS_USER_THEME_ORG_DEFAULT = Object.freeze({ template: null, useOrgDefault: true });
+
+/** Stable snapshot cache — useSyncExternalStore requires referential equality. */
+const snapshotCacheByKey = new Map();
+
+function invalidatePosUserThemePreferenceSnapshotCache() {
+  snapshotCacheByKey.clear();
+}
 
 function storageKey(userId, organizationId) {
   const uid = Number(userId);
@@ -29,7 +37,7 @@ export function readPosUserThemePreference(userId, organizationId) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed?.useOrgDefault === true || parsed?.template == null) {
-      return { template: null, useOrgDefault: true };
+      return POS_USER_THEME_ORG_DEFAULT;
     }
     return {
       template: normalizeClassicPosThemeTemplate(parsed.template),
@@ -46,20 +54,49 @@ export function writePosUserThemePreference(userId, organizationId, { template =
   if (!key) return null;
   if (useOrgDefault || template == null) {
     localStorage.removeItem(key);
+    invalidatePosUserThemePreferenceSnapshotCache();
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(POS_USER_THEME_CHANGE_EVENT));
     }
-    return { template: null, useOrgDefault: true };
+    return POS_USER_THEME_ORG_DEFAULT;
   }
   const next = {
     template: normalizeClassicPosThemeTemplate(template),
     useOrgDefault: false,
   };
   localStorage.setItem(key, JSON.stringify(next));
+  invalidatePosUserThemePreferenceSnapshotCache();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(POS_USER_THEME_CHANGE_EVENT));
   }
   return next;
+}
+
+/** Cached snapshot for useSyncExternalStore — same storage value → same object reference. */
+export function getPosUserThemePreferenceSnapshot(userId, organizationId) {
+  if (!hasThemeStorage()) return null;
+  const key = storageKey(userId, organizationId);
+  if (!key) return null;
+
+  let raw = null;
+  try {
+    raw = localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+
+  const cacheKey = `${key}\0${raw ?? ""}`;
+  if (snapshotCacheByKey.has(cacheKey)) {
+    return snapshotCacheByKey.get(cacheKey);
+  }
+
+  const value = readPosUserThemePreference(userId, organizationId);
+  snapshotCacheByKey.set(cacheKey, value);
+  if (snapshotCacheByKey.size > 32) {
+    const oldest = snapshotCacheByKey.keys().next().value;
+    snapshotCacheByKey.delete(oldest);
+  }
+  return value;
 }
 
 export function clearPosUserThemePreference(userId, organizationId) {

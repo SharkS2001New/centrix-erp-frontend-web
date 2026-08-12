@@ -126,4 +126,29 @@ describe("syncPosOfflineOutbox manual reclaim", () => {
 
     expect(messages[0]).toMatch(/still uploading/i);
   });
+
+  it("reclaims old stuck syncing rows on background sync without manual Sync", async () => {
+    const started = Date.now() - 120_000;
+    rows.push({
+      client_sale_uuid: "old-sync",
+      sync_status: "syncing",
+      sync_kind: "sale",
+      sync_started_at_ms: started,
+      order_num: 3,
+      created_at_ms: started,
+      checkout_body: { pos_order_num: 14 },
+    });
+
+    const messages = [];
+    const { syncPosOfflineOutbox } = await import("@/lib/pos-offline");
+    await syncPosOfflineOutbox({
+      manual: false,
+      onProgress: (progress) => {
+        if (progress.message) messages.push(progress.message);
+      },
+    });
+
+    expect(rows[0].sync_status).toBe("pending");
+    expect(messages[0]).toMatch(/Syncing 1 order/);
+  });
 });

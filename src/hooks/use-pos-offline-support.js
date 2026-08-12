@@ -9,6 +9,7 @@ import {
   ensurePosOfflineOwnerIsolation,
   getPosOfflineAutoRetryCount,
   getPosOfflinePendingCount,
+  getPosOfflineSyncBlockers,
   peekNextPosTicketNumber,
   preparePosOfflineReady,
   reconcilePosTicketNumbersOnReconnect,
@@ -20,6 +21,17 @@ import {
 const RETRY_BACKOFF_MS = 5_000;
 const POST_SALE_FLUSH_ATTEMPTS = 8;
 const POST_SALE_FLUSH_DELAY_MS = 750;
+
+/** True when background flush should run (pending rows or stuck mid-upload). */
+async function shouldAttemptBackgroundOutboxFlush() {
+  const [autoRetry, blockers] = await Promise.all([
+    getPosOfflineAutoRetryCount(),
+    getPosOfflineSyncBlockers(),
+  ]);
+  if (autoRetry > 0) return true;
+  // Badge counts syncing rows but autoRetry does not — still attempt reclaim + upload.
+  return Number(blockers?.syncing ?? 0) > 0;
+}
 
 const EMPTY_SYNC_PROGRESS = {
   phase: "idle",
@@ -436,7 +448,7 @@ export function usePosOfflineSupport({
       await refreshCounts();
 
       const pending = await getPosOfflinePendingCount();
-      const autoRetry = await getPosOfflineAutoRetryCount();
+      const shouldRetry = await shouldAttemptBackgroundOutboxFlush();
       // Till-busy previous-order edits stay pending (deferred) — not Sync failed.
       const failed = lastResults.filter((row) => !row.ok && !row.deferred);
 
@@ -445,7 +457,7 @@ export function usePosOfflineSupport({
         return { ok: true, results: lastResults, pending: 0 };
       }
 
-      if (autoRetry === 0) {
+      if (!shouldRetry) {
         pendingFlushRef.current = false;
         return {
           ok: failed.length === 0,
@@ -533,9 +545,21 @@ export function usePosOfflineSupport({
 
   useEffect(() => {
     if (!enabled) return undefined;
-    void prepare();
-    void refreshCounts();
-  }, [enabled, prepare, refreshCounts]);
+    let cancelled = false;
+    void (async () => {
+      await refreshCounts();
+      if (cancelled) return;
+      void prepare();
+      const canFlush = await probeCanFlushOutbox();
+      if (!canFlush || cancelled) return;
+      if (await shouldAttemptBackgroundOutboxFlush()) {
+        void flushOutboxNow({ includeErrors: false });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, prepare, refreshCounts, probeCanFlushOutbox, flushOutboxNow]);
 
   // Finish an incomplete Z wipe if needed; do not wipe solely on cashier change.
   useEffect(() => {
@@ -603,8 +627,8 @@ export function usePosOfflineSupport({
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void (async () => {
-        const autoRetry = await getPosOfflineAutoRetryCount();
-        if (cancelled || autoRetry <= 0) {
+        if (cancelled) return;
+        if (!(await shouldAttemptBackgroundOutboxFlush())) {
           pendingFlushRef.current = false;
           return;
         }

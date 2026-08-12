@@ -12372,7 +12372,7 @@ export function PosScreen({ standalone = false }) {
     return restoredRaw;
   }
 
-  /** Allow only one previous-order edit sync in flight at a time. */
+  /** Block reopening this receipt while its previous-order edit is still uploading. */
   async function blockIfPreviousOrderEditUploading(saleId) {
     if (!standalone) return null;
 
@@ -12382,15 +12382,11 @@ export function PosScreen({ standalone = false }) {
       Number(current.superseded_sale_id) === Number(saleId);
     if (openingSameActiveEdit) return null;
 
-    if (isBackgroundPreviousOrderEditSyncActive()) {
-      const row = await findInFlightPreviousOrderEditOutbox();
-      return formatPreviousOrderEditUploadBlockMessage(row, { uploading: true });
-    }
-
-    const row = await findInFlightPreviousOrderEditOutbox();
+    const row = await findInFlightPreviousOrderEditOutbox({ saleId });
     if (!row) return null;
     return formatPreviousOrderEditUploadBlockMessage(row, {
       uploading: row.sync_status === "syncing",
+      sameReceipt: true,
     });
   }
 
@@ -12435,9 +12431,16 @@ export function PosScreen({ standalone = false }) {
               await pushOutboxAfterSale(uploadLabel, {
                 syncingLabel: "uploading",
               });
-              const still = await findInFlightPreviousOrderEditOutbox();
+              const outgoingSaleId = Number(
+                (cartRef.current ?? outgoing)?.superseded_sale_id ?? 0,
+              );
+              const still = await findInFlightPreviousOrderEditOutbox(
+                outgoingSaleId > 0 ? { saleId: outgoingSaleId } : {},
+              );
               if (still) {
-                throw new Error(formatPreviousOrderEditUploadBlockMessage(still));
+                throw new Error(
+                  formatPreviousOrderEditUploadBlockMessage(still, { sameReceipt: true }),
+                );
               }
             },
             {

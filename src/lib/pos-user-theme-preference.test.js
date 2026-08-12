@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getPosUserThemePreferenceSnapshot,
   readPosUserThemePreference,
   resolveEffectivePosThemeTemplate,
   writePosUserThemePreference,
@@ -44,5 +45,13 @@ describe("pos user theme preference", () => {
     expect(resolveEffectivePosThemeTemplate("centrix", { useOrgDefault: true, template: null })).toBe(
       "centrix",
     );
+  });
+
+  it("returns stable snapshot references for useSyncExternalStore", () => {
+    writePosUserThemePreference(7, 3, { template: "ocean" });
+    const first = getPosUserThemePreferenceSnapshot(7, 3);
+    const second = getPosUserThemePreferenceSnapshot(7, 3);
+    expect(first).toBe(second);
+    expect(first).toEqual({ template: "ocean", useOrgDefault: false });
   });
 });

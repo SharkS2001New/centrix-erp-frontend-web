@@ -3,19 +3,15 @@
 import { useCallback, useSyncExternalStore } from "react";
 import {
   clearPosUserThemePreference,
-  readPosUserThemePreference,
+  getPosUserThemePreferenceSnapshot,
   subscribePosUserThemePreference,
   writePosUserThemePreference,
 } from "@/lib/pos-user-theme-preference";
 
-function snapshot(userId, organizationId) {
-  return readPosUserThemePreference(userId, organizationId);
-}
-
 export function usePosUserThemePreference(userId, organizationId) {
   const preference = useSyncExternalStore(
     subscribePosUserThemePreference,
-    () => snapshot(userId, organizationId),
+    () => getPosUserThemePreferenceSnapshot(userId, organizationId),
     () => null,
   );
 
