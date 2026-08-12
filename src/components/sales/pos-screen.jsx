@@ -244,6 +244,8 @@ import {
   peekOutboxPosTicketMax,
   peekLocalPosTicketNext,
   ensurePosOfflineOrderNumbers,
+  detectPosTicketOnlineAheadOfLocal,
+  syncLocalPosTicketSeqFromOnline,
   getPosOfflineProduct,
   getPosOfflineProducts,
   getPosOfflinePendingCount,
@@ -293,6 +295,7 @@ import {
   PosPriceCheckerModal,
   PosPreviousOrderLoadingOverlay,
   PosPrepareNextOrderOverlay,
+  PosTicketSyncConflictOverlay,
 } from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
@@ -1635,6 +1638,10 @@ export function PosScreen({ standalone = false }) {
   const [zReportOpen, setZReportOpen] = useState(false);
   const [zReportPayload, setZReportPayload] = useState(null);
   const [zReportTillName, setZReportTillName] = useState(null);
+  /** Server Cash Sales # ahead of this device — sell locked until Z / sync; logout still allowed. */
+  const [ticketSyncConflict, setTicketSyncConflict] = useState(null);
+  const [ticketSyncBusy, setTicketSyncBusy] = useState(false);
+  const ticketSyncCheckSessionRef = useRef(null);
   const [preferredTillId, setPreferredTillId] = useState(null);
   const [pendingTillSuggestion, setPendingTillSuggestion] = useState(null);
   const [posTillMetaLoading, setPosTillMetaLoading] = useState(false);
@@ -1811,6 +1818,8 @@ export function PosScreen({ standalone = false }) {
         device_identifier: getPosDeviceIdentifier(),
       });
       setFloatModalOpen(false);
+      ticketSyncCheckSessionRef.current = null;
+      setTicketSyncConflict(null);
       // New session must not inherit prior-session Cash Sales # from browse list.
       setSessionPosOrders([]);
       setCompletedSale(null);
@@ -1897,7 +1906,95 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  /** Adopt online Cash Sales # into this device IndexedDB and unlock selling. */
+  async function handleSyncTicketSeqFromOnline() {
+    if (!activeSession?.id || ticketSyncBusy) return;
+    setTicketSyncBusy(true);
+    setSessionError(null);
+    try {
+      const aligned = await syncLocalPosTicketSeqFromOnline({
+        floatSessionId: activeSession.id,
+      });
+      const nextNum = Number(aligned?.next_pos_order_num ?? 0);
+      const startAt = Number.isFinite(nextNum) && nextNum > 0 ? nextNum : 1;
+      await clearLocalPosCart().catch(() => {});
+      applyFreshWorkspacePlaceholder(cartRef.current, startAt);
+      setEditOrderNo(String(startAt));
+      ticketSyncCheckSessionRef.current = String(activeSession.id);
+      setTicketSyncConflict(null);
+      void refreshOfflineCounts();
+      setStatusMessage(
+        `Cash Sales numbers synced — next receipt is #${startAt}. You can continue selling on this computer.`,
+      );
+      notifySuccess(`Synced to Cash Sales #${startAt}`);
+      defaultScanFocusDoneRef.current = false;
+      window.requestAnimationFrame(() => {
+        focusPosScanInput({ selectAll: true });
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Could not sync Cash Sales numbers from online.";
+      setStatusMessage(message);
+      notifyError(message);
+    } finally {
+      setTicketSyncBusy(false);
+    }
+  }
+
+  /** Online Cash Sales # ahead of local — lock selling on this device until Z, sync, or leave. */
+  useEffect(() => {
+    if (!standalone || !requireTillFloat || !activeSession?.id || sessionLoading) return undefined;
+    if (!canFlushOutbox || zReportOpen) return undefined;
+
+    const sessionKey = String(activeSession.id);
+    if (ticketSyncCheckSessionRef.current === sessionKey && ticketSyncConflict) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await detectPosTicketOnlineAheadOfLocal({
+          floatSessionId: activeSession.id,
+        });
+        if (cancelled) return;
+        ticketSyncCheckSessionRef.current = sessionKey;
+
+        if (result.conflict) {
+          setTicketSyncConflict(result);
+          setStatusMessage(
+            `This session’s Cash Sales numbers belong to another POS computer (online #${result.serverLastIssued}, this device #${result.localHighWater}). ` +
+              "Sync sales to adopt the online number here, or print Z to start a new session.",
+          );
+          await clearLocalPosCart().catch(() => {});
+          cartRef.current = null;
+          setCart(null);
+          return;
+        }
+
+        setTicketSyncConflict(null);
+      } catch (err) {
+        console.warn("POS ticket sync check failed", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    standalone,
+    requireTillFloat,
+    activeSession?.id,
+    sessionLoading,
+    canFlushOutbox,
+    zReportOpen,
+    ticketSyncConflict,
+  ]);
+
   function handleSessionClosed(res) {
+    setTicketSyncConflict(null);
     const closedTillId = res?.session?.till_id;
     const closedTill = closedTillId
       ? posTills.find((t) => String(t.id) === String(closedTillId))
@@ -1971,6 +2068,8 @@ export function PosScreen({ standalone = false }) {
   }
 
   function leavePosAfterZ() {
+    ticketSyncCheckSessionRef.current = null;
+    setTicketSyncConflict(null);
     floatModalDismissedRef.current = true;
     setFloatModalOpen(false);
     setZReportPayload(null);
@@ -3651,6 +3750,7 @@ export function PosScreen({ standalone = false }) {
     discountReasonDialogOpen ||
     Boolean(autoHeldPrompt) ||
     Boolean(editAdjustmentDialog) ||
+    Boolean(ticketSyncConflict) ||
     preparingNextOpen ||
     (previousOrderLoading && !previousOrderLoadingSoft) ||
     Boolean(autoHeldBusy);
@@ -3663,7 +3763,9 @@ export function PosScreen({ standalone = false }) {
   const orderEditBusy = busy || previousOrderLoading;
   /** Blocks cart qty/swap only on hard waits — soft previous-order load still allows edits. */
   const cartInteractionBusy =
-    busy || (previousOrderLoading && !previousOrderLoadingSoft);
+    busy ||
+    (previousOrderLoading && !previousOrderLoadingSoft) ||
+    Boolean(ticketSyncConflict);
 
   useEffect(() => {
     if (!posSearchSuspended) return undefined;
@@ -14673,10 +14775,21 @@ export function PosScreen({ standalone = false }) {
       />
 
       <div
-        className={`flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden${
+        className={`relative flex min-h-0 flex-1 flex-col lg:flex-row overflow-hidden${
           standalone ? " pos-standalone-frame" : " pos-backoffice-frame"
         }`}
       >
+        <PosTicketSyncConflictOverlay
+          open={Boolean(
+            standalone && ticketSyncConflict && !closeSessionOpen && !zReportOpen,
+          )}
+          localHighWater={ticketSyncConflict?.localHighWater ?? 0}
+          serverLastIssued={ticketSyncConflict?.serverLastIssued ?? 0}
+          busy={sessionBusy}
+          syncing={ticketSyncBusy}
+          onSyncSales={() => void handleSyncTicketSeqFromOnline()}
+          onPrintZ={() => void handleOpenCloseSession()}
+        />
         {/* Left — line entry + payment options */}
         <div className="pos-left-panel flex min-h-0 w-full flex-col self-stretch border-b border-[var(--theme-border)] bg-[var(--theme-page-bg)] lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
           <div className="pos-search-panel shrink-0 border-b border-[var(--theme-border)] px-4 py-2.5">

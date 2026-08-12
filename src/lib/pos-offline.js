@@ -381,9 +381,15 @@ export async function detectPosTicketOnlineAheadOfLocal({ floatSessionId = null 
 
   let serverNext = null;
   try {
-    const res = await ensurePosOfflineOrderNumbers({
-      force: false,
-      floatSessionId: sessionId,
+    const body = { count: 0 };
+    if (Number.isFinite(sessionId) && sessionId > 0) {
+      body.float_session_id = sessionId;
+    }
+    const res = await apiRequest("/sales/order-numbers/reserve", {
+      method: "POST",
+      body,
+      loading: false,
+      reportIssues: false,
     });
     serverNext =
       res?.next_pos_order_num != null && Number(res.next_pos_order_num) > 0
@@ -419,6 +425,53 @@ export async function detectPosTicketOnlineAheadOfLocal({ floatSessionId = null 
     localHighWater,
     serverLastIssued,
     pendingSync,
+  };
+}
+
+/**
+ * Adopt the online Cash Sales watermark onto this device’s IndexedDB so selling can
+ * continue after another computer issued receipts for the same float session.
+ * Raise-only — never lowers a local counter that is already ahead.
+ */
+export async function syncLocalPosTicketSeqFromOnline({ floatSessionId = null } = {}) {
+  const sessionId = Number(floatSessionId);
+  if (!Number.isFinite(sessionId) || sessionId <= 0) {
+    throw new Error("Open a till float session before syncing Cash Sales numbers.");
+  }
+
+  const body = { count: 0, float_session_id: sessionId };
+  const res = await apiRequest("/sales/order-numbers/reserve", {
+    method: "POST",
+    body,
+    loading: false,
+    reportIssues: false,
+  });
+  const serverNext =
+    res?.next_pos_order_num != null && Number(res.next_pos_order_num) > 0
+      ? Number(res.next_pos_order_num)
+      : null;
+  if (serverNext == null) {
+    throw new Error("Could not read the online Cash Sales number. Check the connection and try again.");
+  }
+
+  const posOrderDate =
+    normalizePosOrderDate(res?.pos_order_date) ?? todayPosOrderDate();
+  const serverLastIssued = Math.max(0, serverNext - 1);
+  const before = await peekIssuedPosTicketMax(posOrderDate, sessionId);
+
+  // Explicit adopt — raise IndexedDB past the usual fresh-till guard in ensurePosOfflineOrderNumbers.
+  await seedLocalPosTicketSeq(serverLastIssued, posOrderDate, sessionId, { force: false });
+  // If local was already higher, seedLocalPosTicketSeq is a no-op; next stays local.
+  const afterIssued = Math.max(Number(before ?? 0), serverLastIssued);
+  const next = afterIssued + 1;
+
+  return {
+    next_pos_order_num: next,
+    server_next: serverNext,
+    server_last_issued: serverLastIssued,
+    local_last_issued: afterIssued,
+    pos_order_date: posOrderDate,
+    raised: serverLastIssued > Number(before ?? 0),
   };
 }
 

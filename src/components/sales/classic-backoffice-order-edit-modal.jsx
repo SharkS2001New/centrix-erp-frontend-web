@@ -50,8 +50,6 @@ import {
   applyOrgErpSidebarTheme,
   clearClassicPosDocumentTheme,
   classicPosThemeBridgeVars,
-  resolveExternalPosThemeColors,
-  resolveExternalPosThemeTemplate,
   resolveErpThemeColors,
   resolveErpThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
@@ -64,6 +62,7 @@ import {
 
 /**
  * Classic POS-style Edit order popup — same pricing/route markup path as modern.
+ * Uses the ERP / backoffice org theme (not External POS).
  */
 export function ClassicBackofficeOrderEditModal({
   open,
@@ -105,23 +104,6 @@ export function ClassicBackofficeOrderEditModal({
   const [entryProduct, setEntryProduct] = useState(null);
   const [entryQty, setEntryQty] = useState("");
 
-  const posThemeTemplate = useMemo(
-    () => resolveExternalPosThemeTemplate(effectiveCapabilities),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      effectiveCapabilities?.module_settings?.sales?.external_pos_theme_template,
-      effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_template,
-    ],
-  );
-  const posThemeColorsKey = JSON.stringify({
-    external: effectiveCapabilities?.module_settings?.sales?.external_pos_theme_colors ?? null,
-    legacy: effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {},
-  });
-  const posThemeColors = useMemo(
-    () => resolveExternalPosThemeColors(effectiveCapabilities),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [posThemeColorsKey],
-  );
   const erpThemeTemplate = useMemo(
     () => resolveErpThemeTemplate(effectiveCapabilities),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,22 +121,22 @@ export function ClassicBackofficeOrderEditModal({
     [erpThemeColorsKey],
   );
   const themeStyle = useMemo(
-    () => classicPosThemeBridgeVars(posThemeTemplate, posThemeColors),
-    [posThemeTemplate, posThemeColors],
+    () => classicPosThemeBridgeVars(erpThemeTemplate, erpThemeColors),
+    [erpThemeTemplate, erpThemeColors],
   );
 
-  // Match Classic External POS: apply the External POS theme on document
-  // so portaled scan dropdowns / buttons inherit the palette.
+  // Backoffice classic edit uses the ERP/org theme so portaled scan dropdowns
+  // match modules — not the External POS desk palette.
   useLayoutEffect(() => {
     if (!open) return undefined;
-    applyClassicPosDocumentTheme(posThemeTemplate, posThemeColors);
+    applyClassicPosDocumentTheme(erpThemeTemplate, erpThemeColors);
     return () => {
       clearClassicPosDocumentTheme();
       applyOrgErpSidebarTheme(erpThemeTemplate, erpThemeColors, {
         mode: getTheme(),
       });
     };
-  }, [open, posThemeTemplate, posThemeColors, erpThemeTemplate, erpThemeColors]);
+  }, [open, erpThemeTemplate, erpThemeColors]);
 
   const currentCustomerLabel = useMemo(() => {
     const fromSale =
@@ -907,7 +889,7 @@ export function ClassicBackofficeOrderEditModal({
           "pos-workspace-classic relative flex h-[min(94vh,920px)] max-h-[94vh] w-[min(98vw,1320px)] flex-col overflow-hidden rounded-md border shadow-2xl",
         )}
         data-pos-layout="classic"
-        data-classic-pos-theme={classicThemeTemplate}
+        data-classic-pos-theme={erpThemeTemplate}
         style={themeStyle}
         role="dialog"
         aria-modal="true"

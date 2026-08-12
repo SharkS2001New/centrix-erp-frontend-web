@@ -92,6 +92,74 @@ export function PosPreviousOrderLoadingOverlay({
   );
 }
 
+/**
+ * Selling locked: this device did not start the open till session’s Cash Sales sequence
+ * (session continued on another computer). Header logout / workspace switch stay usable.
+ */
+export function PosTicketSyncConflictOverlay({
+  open,
+  localHighWater = 0,
+  serverLastIssued = 0,
+  onPrintZ,
+  onSyncSales,
+  busy = false,
+  syncing = false,
+}) {
+  if (!open) return null;
+
+  const actionBusy = busy || syncing;
+
+  return (
+    <div
+      className="absolute inset-0 z-[160] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[1px]"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="pos-ticket-sync-conflict-title"
+      aria-describedby="pos-ticket-sync-conflict-desc"
+    >
+      <div className="theme-panel w-full max-w-md rounded-xl border px-6 py-6 shadow-2xl ring-1 ring-slate-900/10">
+        <h2
+          id="pos-ticket-sync-conflict-title"
+          className="theme-heading text-base font-semibold text-slate-900"
+        >
+          Continue on the original POS computer
+        </h2>
+        <p id="pos-ticket-sync-conflict-desc" className="theme-subtext mt-2 text-sm leading-relaxed">
+          This till session’s Cash Sales numbers were issued on another device
+          {serverLastIssued > 0 || localHighWater > 0
+            ? ` (online last #${serverLastIssued || "—"}, this device #${localHighWater || "—"})`
+            : ""}
+          . Selling here would mix IndexedDB receipt data with the wrong computer.
+        </p>
+        <p className="theme-subtext mt-2 text-sm leading-relaxed">
+          <strong className="font-semibold text-slate-800">Sync sales</strong> updates this
+          machine’s IndexedDB to the latest online Cash Sales # so you can continue here.{" "}
+          <strong className="font-semibold text-slate-800">Print Z report</strong> closes the
+          session and starts fresh. Sign out or switch to Backoffice anytime from the header.
+        </p>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={onSyncSales}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {syncing ? "Syncing…" : "Sync sales"}
+          </button>
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={onPrintZ}
+            className="rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
+          >
+            Print Z report
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** After receipt OK — blocks till while the next empty workspace is created (0–100%). */
 export function PosPrepareNextOrderOverlay({ open, progress = 0, message = "Preparing next order…" }) {
   if (!open || typeof document === "undefined") return null;
