@@ -468,10 +468,18 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
     const isPreviousOrderEdit = Boolean(existing.superseded_sale_id && existing.held_order_num);
 
     // Failed / synced / missing outbox must not seed the next sale's lines.
+    // Pending/syncing means checkout already queued the sale — only `editing` is an
+    // active reopen-for-edit session that may keep the local cart.
     if (existing.offline_client_sale_uuid) {
       const outbox = await idbGetOutboxSale(String(existing.offline_client_sale_uuid));
       const status = outbox?.sync_status ?? null;
-      if (!outbox || status === "error" || status === "synced") {
+      if (
+        !outbox ||
+        status === "error" ||
+        status === "synced" ||
+        status === "pending" ||
+        status === "syncing"
+      ) {
         await idbClearLocalCart("active");
         const cart = emptyLocalPosCart(seed);
         await idbPutLocalCart(cart);
@@ -513,12 +521,16 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
 export async function saveLocalPosCart(cart) {
   const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
   await idbPutLocalCart(next);
-  // Revising a pending-sync sale: keep the outbox row in lockstep with the till
-  // so Pending sync / IndexedDB show the edited lines (not the original sale).
+  // Revising a queued offline sale mid-edit only (`sync_status: editing`).
+  // After F10 checkout the outbox is pending — late line saves must not rewrite it
+  // or reattach the next ticket to the old client_sale_uuid.
   if (next.offline_client_sale_uuid) {
-    await syncOutboxSaleFromLocalEditCart(next).catch((e) => {
-      console.error("Failed to mirror offline edit into outbox", e);
-    });
+    const row = await idbGetOutboxSale(String(next.offline_client_sale_uuid)).catch(() => null);
+    if (row?.sync_status === "editing") {
+      await syncOutboxSaleFromLocalEditCart(next).catch((e) => {
+        console.error("Failed to mirror offline edit into outbox", e);
+      });
+    }
   }
   return next;
 }
@@ -645,6 +657,141 @@ export function getBackgroundPreviousOrderEditSyncCartId() {
 export function isPreviousOrderEditTillBusyError(err) {
   return /Cannot sync .+ while a new sale is open on the till/i.test(
     String(err?.message ?? err ?? ""),
+  );
+}
+
+const IN_FLIGHT_PREVIOUS_ORDER_EDIT_STATUSES = new Set(["pending", "syncing", "error"]);
+const offlineCheckoutInFlight = new Map();
+
+function normalizeCheckoutScalar(value) {
+  if (value == null) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Number(value.toFixed(4)) : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const asNum = Number(trimmed);
+    return Number.isFinite(asNum) ? Number(asNum.toFixed(4)) : trimmed;
+  }
+  return value;
+}
+
+function completeOfflineCheckoutGuardKey({
+  cart,
+  summary,
+  cashAmount,
+  floatSessionId,
+  keepCart,
+  paymentMethodCode,
+  paymentSplits,
+  isCreditSale,
+  paymentReference,
+  paymentDate,
+  workflowStatus,
+}) {
+  const lines = Array.isArray(cart?.lines)
+    ? cart.lines
+      .map((line) => ({
+        code: String(line?.product_code ?? "").trim(),
+        qty: normalizeCheckoutScalar(line?.qty),
+        unit_price: normalizeCheckoutScalar(line?.unit_price),
+        display_unit_price: normalizeCheckoutScalar(line?.display_unit_price),
+        discount: normalizeCheckoutScalar(line?.discount),
+        mode: String(line?.on_wholesale_retail ?? "").trim() || null,
+      }))
+      .sort((a, b) => {
+        const aKey = `${a.code}|${a.mode ?? ""}|${a.qty ?? ""}|${a.unit_price ?? ""}|${a.discount ?? ""}`;
+        const bKey = `${b.code}|${b.mode ?? ""}|${b.qty ?? ""}|${b.unit_price ?? ""}|${b.discount ?? ""}`;
+        return aKey.localeCompare(bKey);
+      })
+    : [];
+
+  const keyPayload = {
+    offline_uuid: String(cart?.offline_client_sale_uuid ?? "").trim() || null,
+    held_order_num: normalizeCheckoutScalar(cart?.held_order_num),
+    superseded_sale_id: normalizeCheckoutScalar(cart?.superseded_sale_id),
+    order_discount: normalizeCheckoutScalar(cart?.order_discount),
+    totals: {
+      line_count: normalizeCheckoutScalar(summary?.lineCount ?? 0),
+      order_total: normalizeCheckoutScalar(summary?.orderTotal ?? 0),
+      subtotal: normalizeCheckoutScalar(summary?.subtotal ?? 0),
+      order_discount_amount: normalizeCheckoutScalar(summary?.orderDiscountAmount ?? 0),
+    },
+    payment: {
+      cash_amount: normalizeCheckoutScalar(cashAmount),
+      method: String(paymentMethodCode ?? "").trim() || null,
+      splits: Array.isArray(paymentSplits)
+        ? paymentSplits.map((s) => ({
+          code: String(s?.payment_method_code ?? "").trim() || null,
+          amount: normalizeCheckoutScalar(s?.amount),
+          reference: String(s?.reference ?? "").trim() || null,
+        }))
+        : [],
+      is_credit_sale: Boolean(isCreditSale),
+      reference: String(paymentReference ?? "").trim() || null,
+      date: String(paymentDate ?? "").trim() || null,
+      workflow_status: String(workflowStatus ?? "").trim() || null,
+    },
+    context: {
+      float_session_id: normalizeCheckoutScalar(floatSessionId),
+      keep_cart: Boolean(keepCart),
+    },
+    lines,
+  };
+
+  return JSON.stringify(keyPayload);
+}
+
+/** Cash Sales # label for a queued previous-order edit outbox row. */
+export function previousOrderEditOutboxTicket(row) {
+  const raw =
+    row?.sale_payload?.pos_order_num ??
+    row?.checkout_body?.pos_order_num ??
+    row?.order_num ??
+    null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** User-facing block when another previous-order edit must finish uploading first. */
+export function formatPreviousOrderEditUploadBlockMessage(
+  row,
+  { uploading = false, sameReceipt = false } = {},
+) {
+  const target = sameReceipt ? "this receipt" : "another receipt";
+  if (!row) {
+    return uploading
+      ? `A previous order edit is still uploading. Wait for sync to finish before opening ${target} for edit.`
+      : `A previous order edit is still waiting to sync. Wait for sync to finish before opening ${target} for edit.`;
+  }
+  const ticket = previousOrderEditOutboxTicket(row);
+  const label = ticket != null ? `Cash Sales #${ticket}` : "A previous order edit";
+  if (String(row.sync_status ?? "") === "error") {
+    return `${label} failed to sync. Open Pending sync to retry before editing ${target}.`;
+  }
+  if (uploading || String(row.sync_status ?? "") === "syncing") {
+    return `${label} is still uploading. Wait for sync to finish before opening ${target} for edit.`;
+  }
+  return `${label} is still waiting to upload. Wait for sync to finish before opening ${target} for edit.`;
+}
+
+/**
+ * Queued previous-order edit not yet synced (pending / uploading / failed).
+ * Used to block opening another receipt for edit on the till.
+ */
+export async function findInFlightPreviousOrderEditOutbox({ saleId = null } = {}) {
+  const rows = await idbListUnsyncedOutbox();
+  const expectedSaleId = Number(saleId ?? 0);
+  return (
+    rows.find(
+      (row) =>
+        row?.sync_kind === "previous_order_edit" &&
+        (expectedSaleId > 0
+          ? Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) === expectedSaleId
+          : true) &&
+        IN_FLIGHT_PREVIOUS_ORDER_EDIT_STATUSES.has(String(row.sync_status ?? "")),
+    ) ?? null
   );
 }
 
@@ -1451,6 +1598,69 @@ async function allocateLocalPosTicketNumber(floatSessionId = null) {
   return { pos_order_num: next, pos_order_date: today };
 }
 
+/**
+ * Claim the Cash Sales # for this sale on-device (local counter is source of truth).
+ * Use before server checkout and inside completeOfflineCashSale so online/offline
+ * paths issue the same sequential ticket the UI shows.
+ */
+export async function claimNextLocalPosTicketForSale({
+  cart,
+  floatSessionId = null,
+  existingOutbox = null,
+  editingUuid = null,
+  reuseOrderNum = null,
+  supersededSaleId = null,
+  syncKind = "sale",
+} = {}) {
+  if (!cart) {
+    throw new Error("Missing cart for ticket claim.");
+  }
+  const isPreviousOrderEdit =
+    syncKind === "previous_order_edit" || Boolean(reuseOrderNum && supersededSaleId);
+
+  return withPosOfflineExclusiveLock(async () => {
+    let posOrderNum = null;
+    let posOrderDate = null;
+
+    if (existingOutbox?.sale_payload?.pos_order_num != null) {
+      posOrderNum = Number(existingOutbox.sale_payload.pos_order_num);
+      posOrderDate =
+        normalizePosOrderDate(existingOutbox.sale_payload.pos_order_date) ?? posOrderDate;
+    } else if (cart.pos_order_num != null && Number(cart.pos_order_num) > 0) {
+      posOrderNum = Number(cart.pos_order_num);
+      posOrderDate = normalizePosOrderDate(cart.pos_order_date) ?? posOrderDate;
+    }
+    if (posOrderNum == null) {
+      const fromCart = posTicketFieldsFromCart(cart);
+      if (fromCart.pos_order_num != null) {
+        posOrderNum = fromCart.pos_order_num;
+        posOrderDate = fromCart.pos_order_date ?? posOrderDate;
+      }
+    }
+    if (posOrderNum == null && !isPreviousOrderEdit && !editingUuid) {
+      const localTicket = await allocateLocalPosTicketNumber(
+        floatSessionId ?? cart.float_session_id ?? null,
+      );
+      posOrderNum = localTicket.pos_order_num;
+      posOrderDate = localTicket.pos_order_date ?? posOrderDate;
+    }
+    posOrderDate = clampPosOrderBusinessDate(posOrderDate);
+
+    if (posOrderNum != null && !isPreviousOrderEdit) {
+      await seedLocalPosTicketSeq(
+        Number(posOrderNum),
+        posOrderDate,
+        floatSessionId ?? cart.float_session_id ?? null,
+      );
+    }
+
+    return {
+      pos_order_num: posOrderNum,
+      pos_order_date: posOrderDate,
+    };
+  });
+}
+
 /** Merge POS ticket # onto a sale for thermal print (preserves checkout snapshot). */
 export function withPosReceiptTicket(sale, cartOrSource = null) {
   if (!sale) return sale;
@@ -1502,6 +1712,23 @@ export async function completeOfflineCashSale({
   paymentDate = null,
   workflowStatus = null,
 }) {
+  const guardKey = completeOfflineCheckoutGuardKey({
+    cart,
+    summary: summarizeLocalPosCart(cart, { cashRound: Boolean(cashRound) }),
+    cashAmount,
+    floatSessionId,
+    keepCart,
+    paymentMethodCode: paymentMethodCodeOpt,
+    paymentSplits: paymentSplitsOpt,
+    isCreditSale: isCreditSaleOpt,
+    paymentReference,
+    paymentDate,
+    workflowStatus,
+  });
+  const inFlight = offlineCheckoutInFlight.get(guardKey);
+  if (inFlight) return inFlight;
+
+  const run = (async () => {
   const summary = summarizeLocalPosCart(cart, { cashRound: Boolean(cashRound) });
   const reuseOrderNumEarly =
     cart.held_order_num != null && Number(cart.held_order_num) > 0
@@ -1569,45 +1796,18 @@ export async function completeOfflineCashSale({
   if (existingOutbox?.sync_kind === "previous_order_edit") {
     syncKind = "previous_order_edit";
   }
-  if (existingOutbox?.sale_payload?.pos_order_num != null) {
-    posOrderNum = Number(existingOutbox.sale_payload.pos_order_num);
-    posOrderDate =
-      normalizePosOrderDate(existingOutbox.sale_payload.pos_order_date) ?? posOrderDate;
-  } else if (cart.pos_order_num != null && Number(cart.pos_order_num) > 0) {
-    posOrderNum = Number(cart.pos_order_num);
-    posOrderDate = normalizePosOrderDate(cart.pos_order_date) ?? posOrderDate;
-  }
-  if (posOrderNum == null) {
-    const fromCart = posTicketFieldsFromCart(cart);
-    if (fromCart.pos_order_num != null) {
-      posOrderNum = fromCart.pos_order_num;
-      posOrderDate = fromCart.pos_order_date ?? posOrderDate;
-    }
-  }
-  if (posOrderNum == null && !isPreviousOrderEdit && !editingUuid) {
-    const localTicket = await allocateLocalPosTicketNumber(
-      floatSessionId ?? cart.float_session_id ?? null,
-    );
-    posOrderNum = localTicket.pos_order_num;
-    posOrderDate = localTicket.pos_order_date ?? posOrderDate;
-  }
-  posOrderDate = clampPosOrderBusinessDate(posOrderDate);
-
-  // Always raise the on-device Cash Sales counter when a ticket is issued from the
-  // cart's next_pos_order_num (allocateLocalPosTicketNumber already writes the seq).
-  // Skipping this left seq stuck on the prior receipt so F8 / clear workspace could
-  // rewind onto an already-printed number (e.g. sold #27 offline, next showed #26).
-  if (posOrderNum != null && !isPreviousOrderEdit) {
-    try {
-      await seedLocalPosTicketSeq(
-        Number(posOrderNum),
-        posOrderDate,
-        floatSessionId ?? cart.float_session_id ?? null,
-      );
-    } catch {
-      /* non-fatal — peek still consults pending outbox */
-    }
-  }
+  ({
+    pos_order_num: posOrderNum,
+    pos_order_date: posOrderDate,
+  } = await claimNextLocalPosTicketForSale({
+    cart,
+    floatSessionId,
+    existingOutbox,
+    editingUuid,
+    reuseOrderNum,
+    supersededSaleId,
+    syncKind,
+  }));
 
   // New offline sales (and their revisions): Cash Sales # is the till label.
   // Organization order_num is assigned by the server on sync — never pre-reserved.
@@ -2106,6 +2306,16 @@ export async function completeOfflineCashSale({
   }
   await purgeReservedTicketsForSale(sale);
   return { sale, outbox };
+  })();
+
+  offlineCheckoutInFlight.set(guardKey, run);
+  try {
+    return await run;
+  } finally {
+    if (offlineCheckoutInFlight.get(guardKey) === run) {
+      offlineCheckoutInFlight.delete(guardKey);
+    }
+  }
 }
 
 /**
@@ -3391,7 +3601,7 @@ export async function prefetchServerSalesForOfflineEdit(
 /**
  * While revising a queued offline sale, mirror the live local cart into the
  * outbox row so Pending sync / IndexedDB show the edited lines immediately.
- * Keeps sync_status as `editing` (or leaves pending/error alone if somehow not editing).
+ * Only mirrors while sync_status is `editing` (cashier actively revising on the till).
  */
 export async function syncOutboxSaleFromLocalEditCart(cart) {
   const uuid =
@@ -3402,7 +3612,7 @@ export async function syncOutboxSaleFromLocalEditCart(cart) {
 
   const existing = await idbGetOutboxSale(uuid);
   if (!existing) return null;
-  if (existing.sync_status === "syncing" || existing.sync_status === "synced") {
+  if (existing.sync_status !== "editing") {
     return null;
   }
 
@@ -3542,7 +3752,7 @@ export async function syncOutboxSaleFromLocalEditCart(cart) {
     sale_payload: salePayload,
     checkout_body: checkoutBody,
     content_revision: Number(existing.content_revision ?? 0) + 1,
-    sync_status: existing.sync_status === "pending" ? "editing" : existing.sync_status,
+    sync_status: "editing",
     updated_at_ms: Date.now(),
   };
 

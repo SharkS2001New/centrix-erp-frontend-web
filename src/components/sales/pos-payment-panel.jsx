@@ -605,7 +605,7 @@ export function PosPaymentPanel({
       total: checkoutTotal,
       workflow,
       paymentMethodCode,
-      allowPartialPayment: false,
+      allowPartialPayment: cfg.allowPartialPayment,
     });
 
     const cartMpesa = creditSale
@@ -747,6 +747,9 @@ export function PosPaymentPanel({
       return cfg.enableCreditPayment
         ? "Enter payment amounts or select a credit customer (I) for a fully unpaid sale."
         : "Enter payment amounts to cover the full total.";
+    }
+    if (cfg.allowPartialPayment) {
+      return null;
     }
     if (amountPaid + 0.01 < checkoutTotal) {
       return POS_FULL_PAYMENT_REQUIRED_MESSAGE;
@@ -1365,7 +1368,9 @@ export function PosPaymentPanel({
       ? checkoutTotal <= 0.01 || amountPaid + 0.01 >= checkoutTotal
       : creditSaleActive
         ? !creditValidationError
-        : !changeExcessive && amountPaid + 0.01 >= checkoutTotal;
+        : cfg.allowPartialPayment
+          ? !changeExcessive && amountPaid > 0.009
+          : !changeExcessive && amountPaid + 0.01 >= checkoutTotal;
 
   useEffect(() => {
     if (!open || step !== "payment") return;

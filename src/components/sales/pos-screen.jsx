@@ -218,12 +218,15 @@ import {
   wipeTemporaryCartLines,
   isBackgroundPreviousOrderEditSyncActive,
   getBackgroundPreviousOrderEditSyncCartId,
+  findInFlightPreviousOrderEditOutbox,
+  formatPreviousOrderEditUploadBlockMessage,
   setLiveTemporaryCartOccupancy,
   clearLiveTemporaryCartOccupancy,
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
   cacheServerSaleForOfflineEdit,
+  claimNextLocalPosTicketForSale,
   prefetchServerSalesForOfflineEdit,
   loadOrCreateLocalPosCart,
   loadPreviousOrderEditDraft,
@@ -434,6 +437,20 @@ function stripOfflineSaleMarkers(cart) {
     ...rest
   } = cart;
   return rest;
+}
+
+/** After queued offline edit checkout — keep receipt lines, drop edit identity. */
+function detachCompletedOfflineEditCart(cart) {
+  if (!cart?.offline_client_sale_uuid) return cart;
+  const {
+    offline: _offline,
+    offline_client_sale_uuid: _uuid,
+    offline_edit_snapshot: _snapshot,
+    held_order_num: _held,
+    superseded_sale_id: _superseded,
+    ...rest
+  } = cart;
+  return { ...rest, offline: false };
 }
 
 function isFreshWorkspacePlaceholder(cart) {
@@ -9101,8 +9118,8 @@ export function PosScreen({ standalone = false }) {
           reportIssues: false,
         }).catch(() => {});
       }
-      if (standalone && !offlineMode) {
-        void clearLocalPosCart().catch(() => {});
+      if (standalone) {
+        await clearLocalPosCart().catch(() => {});
       }
 
       const generation = ++freshWorkspaceGenerationRef.current;
@@ -9628,8 +9645,14 @@ export function PosScreen({ standalone = false }) {
           void seedLocalPosTicketSeqFromSale(sale, floatSessionId).catch(() => {});
         }
         markSaleForReprint(sale);
+        const postCheckoutCart = isQueuedOfflineEdit
+          ? detachCompletedOfflineEditCart(cartRef.current ?? activeCart)
+          : cartRef.current ?? activeCart;
+        cartRef.current = postCheckoutCart;
         if (!(standalone && !options.skipAutoNextOrder)) {
           setCart(null);
+        } else if (standalone) {
+          setCart(postCheckoutCart);
         }
         setSelectedLineId(null);
         clearPosUiDraft();
@@ -9902,17 +9925,32 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
-      // Cash Sales #: do not send stale reserved-block tickets. Server allocates
-      // saleMax+1 for this cashier/day (1,2,3…). Previous-order edits keep theirs.
-      const onlinePosFields = isPreviousOrderCashEdit
-        ? checkoutCartFields
-        : {
-            ...checkoutCartFields,
-            pos_order_num: null,
-            pos_order_date: checkoutCartFields.pos_order_date ?? todayPosOrderDate(),
-          };
-
       const liveCart = cartRef.current ?? activeCart;
+
+      // Cash Sales #: local counter is source of truth — claim on-device, then send
+      // the same # to the server (online KRA path included). Previous-order edits
+      // keep the receipt ticket they were opened with.
+      let onlinePosFields = checkoutCartFields;
+      if (!isPreviousOrderCashEdit) {
+        const claimed = await claimNextLocalPosTicketForSale({
+          cart: {
+            ...liveCart,
+            ...checkoutCartFields,
+            next_pos_order_num:
+              checkoutCartFields.next_pos_order_num ??
+              liveCart?.next_pos_order_num ??
+              (String(editOrderNo ?? "").trim()
+                ? Number(String(editOrderNo).trim())
+                : null),
+          },
+          floatSessionId,
+        });
+        onlinePosFields = {
+          ...checkoutCartFields,
+          pos_order_num: claimed.pos_order_num,
+          pos_order_date: claimed.pos_order_date ?? checkoutCartFields.pos_order_date,
+        };
+      }
       const submitKra =
         options.forceSubmitKra != null
           ? Boolean(options.forceSubmitKra)
@@ -12191,11 +12229,41 @@ export function PosScreen({ standalone = false }) {
     return restoredRaw;
   }
 
+  /** Allow only one previous-order edit sync in flight at a time. */
+  async function blockIfPreviousOrderEditUploading(saleId) {
+    if (!standalone) return null;
+
+    const current = cartRef.current ?? cart;
+    const openingSameActiveEdit =
+      Boolean(current?.held_order_num && current?.superseded_sale_id) &&
+      Number(current.superseded_sale_id) === Number(saleId);
+    if (openingSameActiveEdit) return null;
+
+    if (isBackgroundPreviousOrderEditSyncActive()) {
+      const row = await findInFlightPreviousOrderEditOutbox();
+      return formatPreviousOrderEditUploadBlockMessage(row, { uploading: true });
+    }
+
+    const row = await findInFlightPreviousOrderEditOutbox();
+    if (!row) return null;
+    return formatPreviousOrderEditUploadBlockMessage(row, {
+      uploading: row.sync_status === "syncing",
+    });
+  }
+
   async function restoreOrderForEdit(saleId, { replace = false, saleSnapshot = null, keepEditing = false } = {}) {
     if (saleId == null || saleId === "") {
       const message = "No order selected to edit.";
       setOrderEditError(message);
       setStatusMessage(message);
+      return;
+    }
+
+    const uploadBlockMessage = await blockIfPreviousOrderEditUploading(saleId);
+    if (uploadBlockMessage) {
+      setOrderEditError(uploadBlockMessage);
+      setStatusMessage(uploadBlockMessage);
+      if (standalone) notifyError(uploadBlockMessage);
       return;
     }
 
@@ -12215,10 +12283,39 @@ export function PosScreen({ standalone = false }) {
         }
         await ensurePreviousOrderPaymentAdjustment(cartRef.current ?? outgoing);
         const queuedHeldOrderNum = await queuePreviousOrderEditOutboxNow({ force: true });
-        flushPreviousOrderEditOutboxInBackground(
-          queuedHeldOrderNum,
-          freshWorkspaceGenerationRef.current,
+        const uploadLabel = formatPosBrowseLabel(
+          cartRef.current ?? outgoing ?? { held_order_num: queuedHeldOrderNum },
         );
+        try {
+          await runBlockingTask(
+            async () => {
+              await pushOutboxAfterSale(uploadLabel, {
+                syncingLabel: "uploading",
+              });
+              const still = await findInFlightPreviousOrderEditOutbox();
+              if (still) {
+                throw new Error(formatPreviousOrderEditUploadBlockMessage(still));
+              }
+            },
+            {
+              message:
+                uploadLabel !== "—"
+                  ? `Uploading Cash Sales #${uploadLabel}…`
+                  : "Uploading previous order edit…",
+              detail: "Please wait before opening another receipt for edit.",
+            },
+          );
+        } catch (uploadErr) {
+          if (uploadErr instanceof Error && /cancel/i.test(uploadErr.message)) return;
+          const message =
+            uploadErr instanceof Error
+              ? uploadErr.message
+              : "Could not upload the previous order edit. Retry from Pending sync, then open the next receipt.";
+          setOrderEditError(message);
+          setStatusMessage(message);
+          if (standalone) notifyError(message);
+          return;
+        }
       } catch (e) {
         if (e instanceof Error && /cancel/i.test(e.message)) return;
         const message =

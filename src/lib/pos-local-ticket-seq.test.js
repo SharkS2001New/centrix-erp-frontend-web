@@ -213,3 +213,65 @@ describe("peekOutboxPosTicketMax — ignores meta phantoms", () => {
     expect(await peekOutboxPosTicketMax("2026-08-08", sessionId)).toBe(4);
   });
 });
+
+describe("claimNextLocalPosTicketForSale — online/offline same counter", () => {
+  beforeEach(() => {
+    meta.clear();
+    pendingOutbox = [];
+  });
+
+  it("allocates the next local Cash Sales # for a fresh cart", async () => {
+    const {
+      seedLocalPosTicketSeq,
+      claimNextLocalPosTicketForSale,
+      peekLocalPosTicketNext,
+      todayPosOrderDate,
+    } = await import("@/lib/pos-offline");
+    const sessionId = 10;
+    const today = todayPosOrderDate();
+    await seedLocalPosTicketSeq(4, today, sessionId);
+
+    const claimed = await claimNextLocalPosTicketForSale({
+      cart: { lines: [] },
+      floatSessionId: sessionId,
+    });
+    expect(claimed.pos_order_num).toBe(5);
+    expect(await peekLocalPosTicketNext(today, sessionId)).toBe(6);
+  });
+
+  it("reuses cart pos_order_num without consuming another slot", async () => {
+    const {
+      seedLocalPosTicketSeq,
+      claimNextLocalPosTicketForSale,
+      peekLocalPosTicketNext,
+      todayPosOrderDate,
+    } = await import("@/lib/pos-offline");
+    const sessionId = 11;
+    const today = todayPosOrderDate();
+    await seedLocalPosTicketSeq(7, today, sessionId);
+
+    const claimed = await claimNextLocalPosTicketForSale({
+      cart: { pos_order_num: 8, pos_order_date: today },
+      floatSessionId: sessionId,
+    });
+    expect(claimed.pos_order_num).toBe(8);
+    expect(await peekLocalPosTicketNext(today, sessionId)).toBe(9);
+  });
+
+  it("keeps previous-order edit ticket from outbox payload", async () => {
+    const { claimNextLocalPosTicketForSale } = await import("@/lib/pos-offline");
+    const existingOutbox = {
+      sync_kind: "previous_order_edit",
+      sale_payload: { pos_order_num: 3, pos_order_date: "2026-08-08" },
+    };
+    const claimed = await claimNextLocalPosTicketForSale({
+      cart: { held_order_num: 9001, superseded_sale_id: 55 },
+      existingOutbox,
+      reuseOrderNum: 9001,
+      supersededSaleId: 55,
+      syncKind: "previous_order_edit",
+      floatSessionId: 12,
+    });
+    expect(claimed.pos_order_num).toBe(3);
+  });
+});

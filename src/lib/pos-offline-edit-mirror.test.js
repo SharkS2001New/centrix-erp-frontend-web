@@ -190,4 +190,44 @@ describe("syncOutboxSaleFromLocalEditCart", () => {
     const row = await db.idbGetOutboxSale(uuid);
     expect(row.lines[0].quantity).toBe(1);
   });
+
+  it("no-ops when outbox row is already pending (post-checkout)", async () => {
+    const uuid = "pending-uuid";
+    await db.idbPutOutboxSale({
+      client_sale_uuid: uuid,
+      sync_status: "pending",
+      content_revision: 3,
+      sale_payload: {
+        items: [{ product_code: "A", quantity: 2, unit_price: 10 }],
+        order_total: 20,
+      },
+      lines: [{ product_code: "A", quantity: 2, unit_price: 10 }],
+      checkout_body: { client_sale_uuid: uuid, pay_now: 20 },
+    });
+    await saveLocalPosCart({
+      id: "active",
+      offline: true,
+      held_order_num: 5,
+      offline_client_sale_uuid: uuid,
+      lines: [
+        {
+          client_line_id: "a",
+          product_code: "A",
+          quantity: 2,
+          unit_price: 10,
+        },
+        {
+          client_line_id: "b",
+          product_code: "B",
+          quantity: 1,
+          unit_price: 50,
+        },
+      ],
+    });
+    const row = await db.idbGetOutboxSale(uuid);
+    expect(row.sync_status).toBe("pending");
+    expect(row.lines).toHaveLength(1);
+    expect(row.lines[0].product_code).toBe("A");
+    expect(row.content_revision).toBe(3);
+  });
 });
