@@ -1281,12 +1281,13 @@ export function PosScreen({ standalone = false }) {
       capabilities?.module_settings?.sales?.classic_pos_theme_template,
     ],
   );
+  const orgPosThemeColorsKey = JSON.stringify({
+    external: capabilities?.module_settings?.sales?.external_pos_theme_colors ?? null,
+    legacy: capabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {},
+  });
   const orgPosThemeColors = useMemo(
     () => resolveExternalPosThemeColors(capabilities),
-    [
-      JSON.stringify(capabilities?.module_settings?.sales?.external_pos_theme_colors ?? null),
-      JSON.stringify(capabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {}),
-    ],
+    [orgPosThemeColorsKey],
   );
   const { preference: posUserThemePreference, setTemplate: setPosUserThemeTemplate } =
     usePosUserThemePreference(user?.id, organization?.id ?? user?.organization_id);
@@ -1307,12 +1308,13 @@ export function PosScreen({ standalone = false }) {
       capabilities?.module_settings?.sales?.classic_pos_theme_template,
     ],
   );
+  const erpThemeColorsKey = JSON.stringify({
+    erp: capabilities?.module_settings?.sales?.erp_theme_colors ?? null,
+    legacy: capabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {},
+  });
   const erpThemeColors = useMemo(
     () => resolveErpThemeColors(capabilities),
-    [
-      JSON.stringify(capabilities?.module_settings?.sales?.erp_theme_colors ?? null),
-      JSON.stringify(capabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {}),
-    ],
+    [erpThemeColorsKey],
   );
   const posThemeVars = useMemo(
     () =>

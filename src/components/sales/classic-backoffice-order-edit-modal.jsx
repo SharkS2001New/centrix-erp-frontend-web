@@ -130,13 +130,13 @@ export function ClassicBackofficeOrderEditModal({
       effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_template,
     ],
   );
+  const erpThemeColorsKey = JSON.stringify({
+    erp: effectiveCapabilities?.module_settings?.sales?.erp_theme_colors ?? null,
+    legacy: effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {},
+  });
   const erpThemeColors = useMemo(
     () => resolveErpThemeColors(effectiveCapabilities),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      JSON.stringify(effectiveCapabilities?.module_settings?.sales?.erp_theme_colors ?? null),
-      JSON.stringify(effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {}),
-    ],
+    [erpThemeColorsKey],
   );
   const themeStyle = useMemo(
     () => classicPosThemeBridgeVars(posThemeTemplate, posThemeColors),
