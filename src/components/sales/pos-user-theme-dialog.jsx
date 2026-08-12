@@ -7,7 +7,7 @@ import {
   getClassicPosThemeTemplate,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
-import { posModalPanelClass } from "@/components/sales/pos-utility-modals";
+import { posModalPanelClass } from "@/lib/pos-modal-shell";
 
 export function PosUserThemeDialog({
   open,
