@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   formatShortDate,
@@ -655,16 +655,35 @@ function ContextMenuIcon({ name }) {
   return null;
 }
 
+function ContextMenuActionSpinner({ className = "" }) {
+  return (
+    <span
+      className={`inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`.trim()}
+      aria-hidden
+    />
+  );
+}
+
 export function OrderContextMenu({ open, x, y, items, onClose }) {
   const [mounted, setMounted] = useState(false);
+  const [processingKey, setProcessingKey] = useState(null);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
+    if (!open) {
+      setProcessingKey(null);
+      processingRef.current = false;
+    }
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return undefined;
     function handleDismiss(event) {
+      if (processingRef.current) return;
       if (event.type === "keydown" && event.key !== "Escape") return;
       onClose();
     }
@@ -686,6 +705,22 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
   const menuWidth = 260;
   const left = Math.min(x, window.innerWidth - menuWidth - 8);
   const top = Math.min(y, window.innerHeight - items.length * 40 - 16);
+  const isProcessing = Boolean(processingKey);
+
+  async function runMenuAction(item) {
+    if (!item || item.disabled || processingRef.current) return;
+    processingRef.current = true;
+    setProcessingKey(item.key);
+    try {
+      // Let the spinner paint before sync work / confirm dialogs open.
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+      await Promise.resolve(item.onClick?.());
+    } finally {
+      processingRef.current = false;
+      setProcessingKey(null);
+      onClose?.();
+    }
+  }
 
   return createPortal(
     <>
@@ -693,10 +728,15 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
         type="button"
         className="fixed inset-0 z-[9998] cursor-default bg-slate-900/30"
         aria-label="Close menu"
-        onClick={() => onClose()}
+        disabled={isProcessing}
+        onClick={() => {
+          if (processingRef.current) return;
+          onClose();
+        }}
       />
       <div
         role="menu"
+        aria-busy={isProcessing || undefined}
         className="fixed z-[9999] min-w-[14rem] overflow-hidden theme-panel rounded-xl border py-1.5 text-slate-900 shadow-2xl ring-1 ring-black/5"
         style={{ top, left }}
         onClick={(event) => event.stopPropagation()}
@@ -706,26 +746,30 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
           if (item.type === "separator") {
             return <div key={`sep-${index}`} className="my-1 border-t border-slate-200" role="separator" />;
           }
+          const active = processingKey === item.key;
+          const disabled = Boolean(item.disabled) || isProcessing;
           return (
             <button
               key={item.key}
               type="button"
               role="menuitem"
-              disabled={item.disabled}
-              onClick={() => {
-                if (item.disabled) return;
-                // Close before async work so confirm dialogs and other modals are not blocked.
-                onClose?.();
-                void Promise.resolve(item.onClick?.());
-              }}
+              disabled={disabled}
+              aria-busy={active || undefined}
+              onClick={() => void runMenuAction(item)}
               className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                 item.destructive
                   ? "text-red-700 hover:bg-red-50"
                   : "text-slate-900 hover:bg-slate-100"
-              }`}
+              } ${active ? "bg-slate-50" : ""}`}
             >
-              {item.icon ? <ContextMenuIcon name={item.icon} /> : null}
-              <span>{item.label}</span>
+              {active ? (
+                <ContextMenuActionSpinner
+                  className={item.destructive ? "text-red-700" : "text-[var(--theme-primary)]"}
+                />
+              ) : item.icon ? (
+                <ContextMenuIcon name={item.icon} />
+              ) : null}
+              <span>{active ? item.processingLabel || "Working…" : item.label}</span>
             </button>
           );
         })}
@@ -842,95 +886,144 @@ export function OrderRowActions({
   busy = false,
   printAriaLabel = "Print",
 }) {
+  const [quickBusyKey, setQuickBusyKey] = useState(null);
+  const quickBusyRef = useRef(false);
+  const rowBusy = busy || Boolean(quickBusyKey);
+
+  async function runQuickAction(key, action) {
+    if (!action || quickBusyRef.current || busy) return;
+    quickBusyRef.current = true;
+    setQuickBusyKey(key);
+    try {
+      await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+      await Promise.resolve(action());
+    } finally {
+      quickBusyRef.current = false;
+      setQuickBusyKey(null);
+    }
+  }
+
   return (
     <div className="flex items-center justify-end gap-0.5">
       {onReturn ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={rowBusy}
+          aria-busy={quickBusyKey === "return" || undefined}
           onClick={(event) => {
             event.stopPropagation();
-            onReturn();
+            void runQuickAction("return", onReturn);
           }}
           className={`${ROW_QUICK_BTN_CLASS} text-amber-800 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40`}
           aria-label="Return items"
           title="Return items from this order"
         >
-          <ReturnRowIcon />
-          <span>Return</span>
+          {quickBusyKey === "return" ? (
+            <ContextMenuActionSpinner className="text-amber-800" />
+          ) : (
+            <ReturnRowIcon />
+          )}
+          <span>{quickBusyKey === "return" ? "Opening…" : "Return"}</span>
         </button>
       ) : null}
       {onEdit ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={rowBusy}
+          aria-busy={quickBusyKey === "edit" || undefined}
           onClick={(event) => {
             event.stopPropagation();
-            onEdit();
+            void runQuickAction("edit", onEdit);
           }}
           className={`${ROW_QUICK_BTN_CLASS} text-[var(--theme-primary)] hover:bg-[color-mix(in_srgb,var(--theme-primary)_12%,transparent)]`}
           aria-label="Edit order"
           title="Edit order"
         >
-          <EditRowIcon />
-          <span>Edit</span>
+          {quickBusyKey === "edit" ? (
+            <ContextMenuActionSpinner className="text-[var(--theme-primary)]" />
+          ) : (
+            <EditRowIcon />
+          )}
+          <span>{quickBusyKey === "edit" ? "Opening…" : "Edit"}</span>
         </button>
       ) : null}
       {onCollectPayment ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={rowBusy}
+          aria-busy={quickBusyKey === "collect" || undefined}
           onClick={(event) => {
             event.stopPropagation();
-            onCollectPayment();
+            void runQuickAction("collect", onCollectPayment);
           }}
           className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
           aria-label="Collect payment"
           title="Collect payment"
         >
-          <CollectPaymentIcon />
+          {quickBusyKey === "collect" ? (
+            <ContextMenuActionSpinner className="text-emerald-600" />
+          ) : (
+            <CollectPaymentIcon />
+          )}
         </button>
       ) : null}
       {onRestore ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={rowBusy}
+          aria-busy={quickBusyKey === "restore" || undefined}
           onClick={(event) => {
             event.stopPropagation();
-            onRestore();
+            void runQuickAction("restore", onRestore);
           }}
           className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--theme-primary)] hover:bg-[color-mix(in_srgb,var(--theme-primary)_12%,transparent)] disabled:opacity-50"
           aria-label={restoreLabel}
           title={restoreLabel}
         >
-          <RestoreIcon />
+          {quickBusyKey === "restore" ? (
+            <ContextMenuActionSpinner className="text-[var(--theme-primary)]" />
+          ) : (
+            <RestoreIcon />
+          )}
         </button>
       ) : null}
       <button
         type="button"
+        disabled={rowBusy}
+        aria-busy={quickBusyKey === "view" || undefined}
         onClick={(event) => {
           event.stopPropagation();
-          onView?.();
+          void runQuickAction("view", onView);
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
         aria-label="View order summary"
       >
-        <ViewIcon />
+        {quickBusyKey === "view" ? (
+          <ContextMenuActionSpinner className="text-slate-600" />
+        ) : (
+          <ViewIcon />
+        )}
       </button>
       <button
         type="button"
+        disabled={rowBusy}
+        aria-busy={quickBusyKey === "print" || undefined}
         onClick={(event) => {
           event.stopPropagation();
-          onPrint?.();
+          void runQuickAction("print", onPrint);
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
         aria-label={printAriaLabel}
       >
-        <PrintIcon />
+        {quickBusyKey === "print" ? (
+          <ContextMenuActionSpinner className="text-slate-600" />
+        ) : (
+          <PrintIcon />
+        )}
       </button>
       <button
         type="button"
-        disabled={busy}
+        disabled={rowBusy}
         onClick={(event) => {
           event.stopPropagation();
           onOpenMenu?.(event);
