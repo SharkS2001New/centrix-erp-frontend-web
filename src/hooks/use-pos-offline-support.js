@@ -11,6 +11,7 @@ import {
   getPosOfflinePendingCount,
   peekNextPosTicketNumber,
   preparePosOfflineReady,
+  reconcilePosTicketNumbersOnReconnect,
   searchPosOfflineCatalog,
   syncPosOfflineOutbox,
   warmPosOfflineCatalog,
@@ -263,18 +264,19 @@ export function usePosOfflineSupport({
               lastProgressMessage = progress.message;
               setLastSyncMessage(progress.message);
             }
-            // Keep the pending badge accurate while a long flush runs.
-            // Failed rows remain in the outbox — do not subtract them from pending
-            // or the pending-sync popup closes/reopens (and reloads) in a loop.
-            // When total is 0 (e.g. only mid-edit rows), do not force pending to 0 —
-            // refreshCounts after the flush is authoritative.
+            // Keep the header pending badge in sync with IndexedDB as each row uploads.
+            // Authoritative count (not batch total − done) so skipped edits, mid-sync
+            // rows, and new sales queued during flush stay accurate.
             if (progress.phase === "start" || progress.phase === "item_done") {
-              const total = Number(progress.total ?? 0);
-              if (progress.phase === "start" && total === 0) {
-                return;
-              }
-              const remaining = Math.max(0, total - Number(progress.done ?? 0));
-              setPendingSync(remaining);
+              void getPosOfflinePendingCount()
+                .then((pending) => {
+                  setPendingSync(pending);
+                })
+                .catch(() => {
+                  const total = Number(progress.total ?? 0);
+                  const remaining = Math.max(0, total - Number(progress.done ?? 0));
+                  setPendingSync(remaining);
+                });
             }
           },
         });
@@ -564,12 +566,20 @@ export function usePosOfflineSupport({
     const wasFullyOnline = wasFullyOnlineRef.current;
     wasFullyOnlineRef.current = fullyOnline;
     if (!wasFullyOnline && fullyOnline) {
+      // Keep selling — do not lock the till. Flush the outbox in the background
+      // and keep IndexedDB Cash Sales # ahead of the server watermark.
       void (async () => {
         await flushOutboxNow();
+        const aligned = await reconcilePosTicketNumbersOnReconnect({
+          floatSessionId,
+        });
+        if (aligned?.next_pos_order_num != null) {
+          setNextPosOrderNum(Number(aligned.next_pos_order_num));
+        }
         await prepare();
       })();
     }
-  }, [enabled, fullyOnline, flushOutboxNow, prepare]);
+  }, [enabled, fullyOnline, flushOutboxNow, prepare, floatSessionId]);
 
   // Flush when API becomes reachable again (including recovery from offline→slow).
   useEffect(() => {

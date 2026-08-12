@@ -39,4 +39,21 @@ describe("resolvePosTicketForCheckout", () => {
       pos_order_date: "2026-08-03",
     });
   });
+
+  it("does not let a stale cart next ticket overwrite a higher on-screen Cash Sales #", () => {
+    expect(
+      resolvePosTicketForCheckout(
+        {
+          id: 1,
+          channel: "pos",
+          next_pos_order_num: 6,
+          next_pos_order_date: "2026-08-12",
+        },
+        { editOrderNo: "21" },
+      ),
+    ).toEqual({
+      pos_order_num: 21,
+      pos_order_date: "2026-08-12",
+    });
+  });
 });

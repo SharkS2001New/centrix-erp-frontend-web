@@ -296,12 +296,16 @@ export async function ensurePosOfflineOrderNumbers({
   // (e.g. server next=2 would seed lastIssued=1 and skip unused Cash Sales #1).
   const nextPos = Number(res?.next_pos_order_num ?? 0);
   return withPosOfflineExclusiveLock(async () => {
+    const scoped = Number.isFinite(sessionId) && sessionId > 0;
+    const seedSession = scoped ? sessionId : null;
+    const localNext = await peekNextPosTicketNumber(
+      res?.pos_order_date ?? null,
+      seedSession,
+    );
     if (Number.isFinite(nextPos) && nextPos > 0) {
-      const scoped = Number.isFinite(sessionId) && sessionId > 0;
-      const seedSession = scoped ? sessionId : null;
       const key = localPosTicketSeqKey(res?.pos_order_date, seedSession);
       const current = Number((await idbGetMeta(key)) ?? 0);
-      if (current === 0 && nextPos > 1) {
+      if (current === 0 && nextPos > 1 && !(localNext != null && localNext > nextPos)) {
         return {
           reserved: 0,
           available: await idbCountOrderNumbers(),
@@ -313,13 +317,48 @@ export async function ensurePosOfflineOrderNumbers({
         force: false,
       });
     }
+    const serverNext = Number.isFinite(nextPos) && nextPos > 0 ? nextPos : null;
+    const authoritativeNext =
+      localNext != null && serverNext != null
+        ? Math.max(localNext, serverNext)
+        : localNext ?? serverNext;
     return {
       reserved: 0,
       available: await idbCountOrderNumbers(),
-      next_pos_order_num: Number.isFinite(nextPos) && nextPos > 0 ? nextPos : null,
+      next_pos_order_num: authoritativeNext,
       pos_order_date: res?.pos_order_date ?? null,
     };
   });
+}
+
+/**
+ * After reconnect, align server peek with on-device issued tickets (outbox + local seq).
+ * Never lowers the till — pending offline sales keep their printed Cash Sales #.
+ */
+export async function reconcilePosTicketNumbersOnReconnect({ floatSessionId = null } = {}) {
+  const localNext = await peekNextPosTicketNumber(null, floatSessionId);
+  let serverNext = null;
+  try {
+    const res = await ensurePosOfflineOrderNumbers({
+      force: false,
+      floatSessionId,
+    });
+    serverNext =
+      res?.next_pos_order_num != null && Number(res.next_pos_order_num) > 0
+        ? Number(res.next_pos_order_num)
+        : null;
+  } catch {
+    /* offline — local seq only */
+  }
+  const next =
+    localNext != null && serverNext != null
+      ? Math.max(localNext, serverNext)
+      : localNext ?? serverNext;
+  return {
+    next_pos_order_num: next,
+    local_next: localNext,
+    server_next: serverNext,
+  };
 }
 
 /** Next Cash Sales # from the on-device sequence (after server reseed / local issues). */
@@ -1568,7 +1607,24 @@ export function resolvePosTicketForCheckout(cart, options = {}) {
   }
 
   const fromCart = posTicketFieldsFromCart(cart);
+  const trimmed = String(editOrderNo ?? "").trim();
+  const fromEdit = trimmed ? Number(trimmed) : null;
+  const editNum =
+    Number.isFinite(fromEdit) && fromEdit > 0 ? fromEdit : null;
+
+  // New sale: never checkout under the on-screen # after reconnect rewrote
+  // cart.next_pos_order_num from a stale server peek (e.g. UI #21 → upload #6).
+  if (editNum != null && fromCart.pos_order_num != null) {
+    const chosen = Math.max(editNum, fromCart.pos_order_num);
+    return {
+      pos_order_num: chosen,
+      pos_order_date: fromCart.pos_order_date ?? today,
+    };
+  }
   if (fromCart.pos_order_num != null) return fromCart;
+  if (editNum != null) {
+    return { pos_order_num: editNum, pos_order_date: fromCart.pos_order_date ?? today };
+  }
 
   if (pendingSlot?.pos_order_num != null && Number(pendingSlot.pos_order_num) > 0) {
     return {
@@ -1578,14 +1634,6 @@ export function resolvePosTicketForCheckout(cart, options = {}) {
         fromCart.pos_order_date ??
         today,
     };
-  }
-
-  const trimmed = String(editOrderNo ?? "").trim();
-  if (trimmed) {
-    const n = Number(trimmed);
-    if (Number.isFinite(n) && n > 0) {
-      return { pos_order_num: n, pos_order_date: fromCart.pos_order_date ?? today };
-    }
   }
 
   return { pos_order_num: null, pos_order_date: null };
@@ -1719,6 +1767,7 @@ export async function claimNextLocalPosTicketForSale({
   reuseOrderNum = null,
   supersededSaleId = null,
   syncKind = "sale",
+  displayOrderNo = null,
 } = {}) {
   if (!cart) {
     throw new Error("Missing cart for ticket claim.");
@@ -1751,6 +1800,20 @@ export async function claimNextLocalPosTicketForSale({
       );
       posOrderNum = localTicket.pos_order_num;
       posOrderDate = localTicket.pos_order_date ?? posOrderDate;
+    }
+    const displayNumRaw =
+      displayOrderNo != null && String(displayOrderNo).trim()
+        ? Number(String(displayOrderNo).trim())
+        : null;
+    const displayNum =
+      Number.isFinite(displayNumRaw) && displayNumRaw > 0 ? displayNumRaw : null;
+    if (
+      displayNum != null &&
+      !isPreviousOrderEdit &&
+      (posOrderNum == null || displayNum > posOrderNum)
+    ) {
+      posOrderNum = displayNum;
+      posOrderDate = posOrderDate ?? todayPosOrderDate();
     }
     posOrderDate = clampPosOrderBusinessDate(posOrderDate);
 
@@ -1915,6 +1978,7 @@ export async function completeOfflineCashSale({
     reuseOrderNum,
     supersededSaleId,
     syncKind,
+    displayOrderNo: cart.next_pos_order_num ?? cart.pos_order_num ?? null,
   }));
 
   // New offline sales (and their revisions): Cash Sales # is the till label.

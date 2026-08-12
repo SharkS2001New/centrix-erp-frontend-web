@@ -113,6 +113,8 @@ export function PosPendingSyncOverlay({
   canFlush = false,
   syncProgress = null,
   lastSyncMessage = null,
+  /** Live outbox count from usePosOfflineSupport — decrements during upload. */
+  pendingSyncCount = null,
   onSyncAll,
   onSyncOrder,
   offlineMode = false,
@@ -138,6 +140,12 @@ export function PosPendingSyncOverlay({
   const loadedOnceRef = useRef(false);
   const wasSyncingRef = useRef(false);
   const autoCloseWhenEmptyRef = useRef(false);
+  const lastProgressDoneRef = useRef(0);
+
+  const displayPendingCount =
+    pendingSyncCount != null && !Number.isNaN(Number(pendingSyncCount))
+      ? Math.max(0, Number(pendingSyncCount))
+      : rows.length;
 
   useEffect(() => {
     onCountChangeRef.current = onCountChange;
@@ -196,6 +204,22 @@ export function PosPendingSyncOverlay({
     }
     wasSyncingRef.current = syncing;
   }, [syncing, open, loadPendingSales]);
+
+  useEffect(() => {
+    if (!open) {
+      lastProgressDoneRef.current = 0;
+      return;
+    }
+    if (syncProgress?.phase === "start") {
+      lastProgressDoneRef.current = 0;
+      return;
+    }
+    if (syncProgress?.phase !== "item_done") return;
+    const done = Number(syncProgress?.done ?? 0);
+    if (done <= lastProgressDoneRef.current) return;
+    lastProgressDoneRef.current = done;
+    void loadPendingSales({ refresh: true });
+  }, [open, syncProgress?.phase, syncProgress?.done, loadPendingSales]);
 
   useEffect(() => {
     if (!open) {
@@ -396,9 +420,9 @@ export function PosPendingSyncOverlay({
                 <h2 id="pending-sync-title" className="text-base font-semibold tracking-tight">
                   Pending offline sync
                 </h2>
-                {rows.length > 0 ? (
+                {displayPendingCount > 0 ? (
                   <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
-                    {rows.length}
+                    {displayPendingCount}
                   </span>
                 ) : null}
               </div>
@@ -466,7 +490,7 @@ export function PosPendingSyncOverlay({
         {rows.length > 0 ? (
           <div className="shrink-0 border-b border-sky-200 bg-sky-50 px-4 py-2.5">
             <PosOfflineSyncControls
-              pendingSync={rows.length}
+              pendingSync={displayPendingCount}
               syncing={syncing}
               canFlush={canFlush}
               syncProgress={syncProgress}

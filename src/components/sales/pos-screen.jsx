@@ -1390,34 +1390,35 @@ export function PosScreen({ standalone = false }) {
    * While offline/slow, only queue the sale; reconnect flushes 1, 2, 3… when online.
    * `posTicketNum` is Cash Sales # / pos_order_num only — never org order_num. */
   function queueOutboxAfterSale(posTicketNum) {
-    if (offlineMode || !canFlushOutbox) {
-      void (async () => {
-        // Bump immediately so Pending sync shows 1, 2, 3… as each offline sale saves.
-        applyPendingOutboxCount(Math.max(0, Number(pendingSync ?? 0)) + 1);
-        await refreshOfflineCounts();
-        let pending = 0;
-        try {
-          pending = await getPosOfflinePendingCount();
-        } catch {
-          pending = Number(pendingSync ?? 0);
-        }
-        const waiting =
-          pending > 0
-            ? `${pending} order${pending === 1 ? "" : "s"} waiting to sync`
-            : "will sync when online";
-        const ticketLabel =
-          posTicketNum != null && posTicketNum !== "" && String(posTicketNum) !== "—"
-            ? `Cash Sales #${posTicketNum}`
-            : null;
+    // Always bump the pending badge first so a reconnect sale joins the queue
+    // in the UI immediately. Flush in the background when the API is reachable.
+    void (async () => {
+      applyPendingOutboxCount(Math.max(0, Number(pendingSync ?? 0)) + 1);
+      await refreshOfflineCounts();
+      let pending = 0;
+      try {
+        pending = await getPosOfflinePendingCount();
+      } catch {
+        pending = Number(pendingSync ?? 0);
+      }
+      const waiting =
+        pending > 0
+          ? `${pending} order${pending === 1 ? "" : "s"} waiting to sync`
+          : "will sync when online";
+      const ticketLabel =
+        posTicketNum != null && posTicketNum !== "" && String(posTicketNum) !== "—"
+          ? `Cash Sales #${posTicketNum}`
+          : null;
+      if (offlineMode || !canFlushOutbox) {
         setStatusMessage(
           ticketLabel
             ? `${ticketLabel} saved — ${waiting}.`
             : `Sale saved — ${waiting}.`,
         );
-      })();
-      return;
-    }
-    void pushOutboxAfterSale(posTicketNum, { background: true });
+        return;
+      }
+      void pushOutboxAfterSale(posTicketNum, { background: true });
+    })();
   }
 
   const handlePendingSyncCountChange = useCallback(
@@ -9462,6 +9463,11 @@ export function PosScreen({ standalone = false }) {
       return null;
     }
 
+    const isQueuedOfflineEdit = Boolean(activeCart.offline_client_sale_uuid);
+    const isPreviousOrderCashEdit = Boolean(
+      activeCart.held_order_num && activeCart.superseded_sale_id,
+    );
+
     if (
       standalone &&
       activeCart.held_order_num &&
@@ -9475,11 +9481,6 @@ export function PosScreen({ standalone = false }) {
       );
       return null;
     }
-
-    const isQueuedOfflineEdit = Boolean(activeCart.offline_client_sale_uuid);
-    const isPreviousOrderCashEdit = Boolean(
-      activeCart.held_order_num && activeCart.superseded_sale_id,
-    );
 
     if (isPreviousOrderCashEdit) {
       if (!editedOrderHasLocalDraftChanges(activeCart)) {
@@ -9556,14 +9557,19 @@ export function PosScreen({ standalone = false }) {
     // Local cash + outbox when:
     // - truly offline / slow (offlineMode), or
     // - this workspace continued locally after an outage (cart.offline), or
-    // - revising a queued pending-sync sale (offline_client_sale_uuid).
+    // - revising a queued pending-sync sale (offline_client_sale_uuid), or
+    // - internet is back but older tickets are still waiting to upload — keep
+    //   selling on IndexedDB numbers and append to the same pending queue.
     // Mid-sale outage carts keep offline:true after reconnect (we do not rematerialize),
     // so cart.offline must take this path or F10 would hit TemporaryCart with id "active".
+    const queueLocalUntilOutboxDrains =
+      standalone && (pendingSync > 0 || failedSyncOrders.length > 0);
     if (
       standalone &&
       (offlineMode ||
         Boolean(activeCart.offline) ||
-        Boolean(activeCart.offline_client_sale_uuid)) &&
+        Boolean(activeCart.offline_client_sale_uuid) ||
+        queueLocalUntilOutboxDrains) &&
       (!activeCart.held_order_num || isQueuedOfflineEdit || isPreviousOrderCashEdit)
     ) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
@@ -9945,6 +9951,7 @@ export function PosScreen({ standalone = false }) {
                 : null),
           },
           floatSessionId,
+          displayOrderNo: editOrderNo,
         });
         onlinePosFields = {
           ...checkoutCartFields,
@@ -15931,6 +15938,7 @@ export function PosScreen({ standalone = false }) {
         open={pendingSyncOpen}
         onClose={closePendingSyncOverlay}
         onCountChange={handlePendingSyncCountChange}
+        pendingSyncCount={pendingSync}
         syncing={offlineSyncing}
         canFlush={canFlushOutbox}
         syncProgress={syncProgress}
