@@ -225,6 +225,7 @@ export function CloseSessionModal({
   blindTillClose = false,
   onClosed,
   embedded = false,
+  forceClose = false,
 }) {
   const formRef = useRef(null);
   const [actualCash, setActualCash] = useState("");
@@ -273,25 +274,30 @@ export function CloseSessionModal({
   return (
     <PosSessionDialogShell
       open={open}
-      onClose={onClose}
+      onClose={forceClose ? () => {} : onClose}
+      closeOnBackdrop={!forceClose}
       layerClassName="z-[90]"
       embedded={embedded}
-      title="Close POS session"
+      title={forceClose ? "Close session required" : "Close POS session"}
       subtitle={
-        blindTillClose
-          ? "Count all cash in the drawer. Expected cash is hidden until the session closes."
-          : "Count cash in the drawer and reconcile before closing"
+        forceClose
+          ? "Online Cash Sales numbers are ahead of this device. Print Z report to close this session, then declare float again on this computer."
+          : blindTillClose
+            ? "Count all cash in the drawer. Expected cash is hidden until the session closes."
+            : "Count cash in the drawer and reconcile before closing"
       }
       footer={
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
+          {forceClose ? null : (
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
           <PrimaryButton
             type="button"
             showIcon={false}

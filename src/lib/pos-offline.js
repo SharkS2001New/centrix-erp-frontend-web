@@ -361,6 +361,67 @@ export async function reconcilePosTicketNumbersOnReconnect({ floatSessionId = nu
   };
 }
 
+/**
+ * Detect when the server has issued Cash Sales #s this device never printed for the
+ * open float session (typical when External POS is opened on another computer).
+ * When true, the till must Z-close and start a new session — do not continue selling.
+ */
+export async function detectPosTicketOnlineAheadOfLocal({ floatSessionId = null } = {}) {
+  const sessionId = Number(floatSessionId);
+  if (!Number.isFinite(sessionId) || sessionId <= 0) {
+    return {
+      conflict: false,
+      serverNext: null,
+      localNext: null,
+      localHighWater: 0,
+      serverLastIssued: 0,
+      pendingSync: 0,
+    };
+  }
+
+  let serverNext = null;
+  try {
+    const res = await ensurePosOfflineOrderNumbers({
+      force: false,
+      floatSessionId: sessionId,
+    });
+    serverNext =
+      res?.next_pos_order_num != null && Number(res.next_pos_order_num) > 0
+        ? Number(res.next_pos_order_num)
+        : null;
+  } catch {
+    return {
+      conflict: false,
+      offline: true,
+      serverNext: null,
+      localNext: null,
+      localHighWater: 0,
+      serverLastIssued: 0,
+      pendingSync: 0,
+    };
+  }
+
+  const [localNext, issuedMax, outboxMax, pendingSync] = await Promise.all([
+    peekNextPosTicketNumber(null, sessionId),
+    peekIssuedPosTicketMax(null, sessionId),
+    peekOutboxPosTicketMax(null, sessionId),
+    getPosOfflinePendingCount(),
+  ]);
+
+  const localHighWater = Math.max(Number(issuedMax ?? 0), Number(outboxMax ?? 0));
+  const serverLastIssued = serverNext != null ? Math.max(0, serverNext - 1) : 0;
+  const conflict = serverLastIssued > localHighWater;
+
+  return {
+    conflict,
+    serverNext,
+    localNext,
+    localHighWater,
+    serverLastIssued,
+    pendingSync,
+  };
+}
+
 /** Next Cash Sales # from the on-device sequence (after server reseed / local issues). */
 export async function peekLocalPosTicketNext(posOrderDate = null, floatSessionId = null) {
   const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
