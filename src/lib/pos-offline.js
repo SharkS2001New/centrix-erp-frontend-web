@@ -2463,63 +2463,209 @@ function buildOutboxLineBody(line) {
   };
 }
 
-/**
- * Sync a previous-order edit: PUT lines onto the edit cart (or restore-to-cart), then checkout
- * with the same order number so the server record is updated.
- */
-async function findLiveSaleIdForPreviousOrderEdit(row) {
-  const orderNum = Number(row.order_num ?? 0);
-  const supersededId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null;
-  if (!orderNum && !supersededId) return null;
+/** Backend tombstone order # for cancelled POS edit originals (OrderNumberAllocator::SUPERSEDED_ORDER_NUM_BASE). */
+const SUPERSEDED_ORDER_NUM_BASE = 9_000_000;
 
-  // Prefer the known superseded id when it is still a live (editable) sale.
-  if (supersededId) {
-    try {
-      const sale = await apiRequest(`/sales/${supersededId}`, {
-        loading: false,
-        reportIssues: false,
-      });
-      const status = String(sale?.status ?? "").toLowerCase();
-      if (
-        sale?.id
-        && !["cancelled", "held", "draft"].includes(status)
-        && (orderNum <= 0 || Number(sale.order_num) === orderNum)
-      ) {
-        return Number(sale.id);
-      }
-    } catch {
-      /* fall through to order # lookup */
+function isRestorablePosSaleForEdit(sale) {
+  if (!sale?.id) return false;
+  const status = String(sale?.status ?? "").toLowerCase();
+  if (["cancelled", "held", "draft", "expired"].includes(status)) return false;
+  if (Number(sale.archived ?? 0) === 1) return false;
+  const orgNum = Number(sale.order_num ?? 0);
+  if (orgNum >= SUPERSEDED_ORDER_NUM_BASE) return false;
+  return true;
+}
+
+function isOrderNotEditableSyncError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  return /cannot be edited|legacy materialized orders cannot be edited|expired orders cannot be edited/.test(
+    msg,
+  );
+}
+
+function previousOrderEditOrgOrderNum(row) {
+  const fromRow = Number(row.order_num ?? 0);
+  if (fromRow > 0 && fromRow < SUPERSEDED_ORDER_NUM_BASE) return fromRow;
+  const fromCheckout = Number(row.checkout_body?.order_num ?? 0);
+  if (fromCheckout > 0 && fromCheckout < SUPERSEDED_ORDER_NUM_BASE) return fromCheckout;
+  const fromPayload = Number(row.sale_payload?.order_num ?? 0);
+  if (fromPayload > 0 && fromPayload < SUPERSEDED_ORDER_NUM_BASE) return fromPayload;
+  return 0;
+}
+
+async function collectPosSalesSearchCandidates({
+  orderNum = 0,
+  posNum = null,
+  posDate = null,
+  forPosOrderEdit = true,
+} = {}) {
+  const candidates = [];
+  const seenIds = new Set();
+
+  async function collectFromRes(res) {
+    for (const sale of Array.isArray(res?.data) ? res.data : []) {
+      if (!sale?.id || seenIds.has(sale.id)) continue;
+      seenIds.add(sale.id);
+      candidates.push(sale);
     }
   }
 
-  if (!orderNum) return supersededId;
+  const baseParams = {
+    per_page: 50,
+    channel: "pos",
+    order_source: "pos",
+    ...(forPosOrderEdit ? { for_pos_order_edit: 1 } : {}),
+  };
 
-  try {
-    const res = await apiRequest("/sales", {
-      searchParams: {
-        q: String(orderNum),
-        per_page: 30,
-        channel: "pos",
-        order_source: "pos",
-      },
-      loading: false,
-      reportIssues: false,
-    });
-    const rows = Array.isArray(res?.data) ? res.data : [];
-    const live = rows.find((sale) => {
-      if (Number(sale?.order_num) !== orderNum) return false;
-      const status = String(sale?.status ?? "").toLowerCase();
-      return !["cancelled", "held", "draft"].includes(status);
-    });
-    if (live?.id) return Number(live.id);
-  } catch {
-    /* ignore */
+  if (orderNum > 0) {
+    try {
+      await collectFromRes(
+        await apiRequest("/sales", {
+          searchParams: { ...baseParams, q: String(orderNum) },
+          loading: false,
+          reportIssues: false,
+        }),
+      );
+    } catch {
+      /* try pos ticket */
+    }
   }
 
-  return supersededId;
+  if (posNum != null && posNum > 0) {
+    try {
+      await collectFromRes(
+        await apiRequest("/sales", {
+          searchParams: {
+            ...baseParams,
+            filter_pos_order: String(posNum),
+            ...(posDate ? { from_date: posDate, to_date: posDate, date_field: "placed" } : {}),
+          },
+          loading: false,
+          reportIssues: false,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+    if (!candidates.length) {
+      try {
+        await collectFromRes(
+          await apiRequest("/sales", {
+            searchParams: { ...baseParams, q: String(posNum) },
+            loading: false,
+            reportIssues: false,
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function resolveHeadOfPreviousOrderEditChain(candidates, startSaleId = null) {
+  const live = candidates.filter(isRestorablePosSaleForEdit);
+  if (!live.length) return null;
+
+  live.sort((a, b) => Number(b.id ?? 0) - Number(a.id ?? 0));
+
+  const startId = Number(startSaleId ?? 0) || null;
+  if (!startId) return live[0];
+
+  let headId = startId;
+  for (let depth = 0; depth < 20; depth += 1) {
+    const child = live.find(
+      (sale) => Number(sale.fulfillment_meta?.supersedes_sale_id ?? 0) === headId,
+    );
+    if (!child?.id) break;
+    headId = Number(child.id);
+  }
+
+  const head = live.find((sale) => Number(sale.id) === headId);
+  return head ?? live[0];
+}
+
+/**
+ * Resolve the live server sale id for a queued previous-order edit.
+ * Follows supersession chains when an earlier sync already revised the receipt.
+ */
+async function findLiveSaleIdForPreviousOrderEdit(row) {
+  const orderNum = previousOrderEditOrgOrderNum(row);
+  const { posNum, posDate } = outboxRowPosTicket(row);
+  const startId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null;
+
+  if (startId) {
+    try {
+      const direct = await apiRequest(`/sales/${startId}`, {
+        loading: false,
+        reportIssues: false,
+      });
+      if (isRestorablePosSaleForEdit(direct)) {
+        if (orderNum <= 0 || Number(direct.order_num) === orderNum) {
+          return Number(direct.id);
+        }
+      }
+    } catch {
+      /* fall through to list search */
+    }
+  }
+
+  const candidates = await collectPosSalesSearchCandidates({
+    orderNum,
+    posNum,
+    posDate,
+    forPosOrderEdit: true,
+  });
+
+  const orgMatches = candidates.filter((sale) => {
+    if (!isRestorablePosSaleForEdit(sale)) return false;
+    if (orderNum > 0 && Number(sale.order_num) !== orderNum) return false;
+    return true;
+  });
+
+  const ticketMatches =
+    orgMatches.length > 0
+      ? orgMatches
+      : candidates.filter((sale) => {
+          if (!isRestorablePosSaleForEdit(sale)) return false;
+          if (posNum == null) return false;
+          return Number(sale.pos_order_num ?? 0) === posNum;
+        });
+
+  const head = resolveHeadOfPreviousOrderEditChain(ticketMatches, startId);
+  return head?.id ? Number(head.id) : null;
+}
+
+/** Point a queued previous-order edit at the current live sale (not a cancelled tombstone). */
+async function healPreviousOrderEditOutboxRow(row) {
+  if (!row || row.sync_kind !== "previous_order_edit") return row;
+  const liveId = await findLiveSaleIdForPreviousOrderEdit(row);
+  if (!liveId) return row;
+
+  const stored = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0) || null;
+  if (stored === liveId) return row;
+
+  const healed = {
+    ...row,
+    superseded_sale_id: liveId,
+    server_sale_id: liveId,
+    server_cart_id: stored !== liveId ? null : row.server_cart_id ?? null,
+    updated_at_ms: Date.now(),
+  };
+  if (row.client_sale_uuid) {
+    try {
+      await idbPutOutboxSale(healed);
+    } catch {
+      /* upload still uses in-memory healed row */
+    }
+  }
+  return healed;
 }
 
 async function resolvePreviousOrderEditCartId(row) {
+  row = await healPreviousOrderEditOutboxRow(row);
   let cartId = row.server_cart_id ? Number(row.server_cart_id) : null;
 
   async function restoreFromSale(saleId) {
@@ -2540,7 +2686,7 @@ async function resolvePreviousOrderEditCartId(row) {
         reportIssues: false,
       });
       const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? saleId ?? 0);
-      const editOrderNum = Number(row.order_num ?? 0);
+      const editOrderNum = previousOrderEditOrgOrderNum(row);
       await assertPosTillAvailableForSync({
         stickyCart: sticky,
         editSaleId,
@@ -2554,13 +2700,37 @@ async function resolvePreviousOrderEditCartId(row) {
       /* sticky probe failed — continue to restore */
     }
 
-    const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
-      method: "POST",
-      body: { replace: true },
-      loading: false,
-      reportIssues: false,
-    });
-    return restored?.id ? Number(restored.id) : null;
+    try {
+      const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
+        method: "POST",
+        body: { replace: true },
+        loading: false,
+        reportIssues: false,
+      });
+      return restored?.id ? Number(restored.id) : null;
+    } catch (restoreErr) {
+      if (!isOrderNotEditableSyncError(restoreErr)) {
+        throw restoreErr;
+      }
+      // Stale superseded id (cancelled tombstone) — resolve the live revision and retry once.
+      row = await healPreviousOrderEditOutboxRow({
+        ...row,
+        superseded_sale_id: null,
+        server_sale_id: null,
+        server_cart_id: null,
+      });
+      const retrySaleId = await findLiveSaleIdForPreviousOrderEdit(row);
+      if (!retrySaleId || retrySaleId === saleId) {
+        throw restoreErr;
+      }
+      const restored = await apiRequest(`/sales/orders/${retrySaleId}/restore-to-cart`, {
+        method: "POST",
+        body: { replace: true },
+        loading: false,
+        reportIssues: false,
+      });
+      return restored?.id ? Number(restored.id) : null;
+    }
   }
 
   if (cartId) {
@@ -2570,7 +2740,7 @@ async function resolvePreviousOrderEditCartId(row) {
         reportIssues: false,
       });
       const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
-      const editOrderNum = Number(row.order_num ?? 0);
+      const editOrderNum = previousOrderEditOrgOrderNum(row);
       await assertPosTillAvailableForSync({
         stickyCart: existing,
         editSaleId,
@@ -2755,6 +2925,7 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
 }
 
 async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
+  row = await healPreviousOrderEditOutboxRow(row);
   // Cleared receipt → cancel online. Never PUT an empty lines array (API rejects it).
   if (isPreviousOrderEditEmptyCancel(row)) {
     return cancelPreviousOrderEditOutboxRow(row, orderNum);
@@ -4447,14 +4618,23 @@ export async function syncPosOfflineOutbox({
               || isCashSalesTicketCollisionError(firstErr)
               || isOpaqueSalesServerError(firstErr)
               || isMissingTemporaryCartError(firstErr)
+              || isOrderNotEditableSyncError(firstErr)
             );
 
           if (prevEditRecoverable) {
             sale = await findExistingSyncedSaleForOutboxRow(row, printedOrderNum);
             if (!sale) {
               try {
+                const retryRow = isOrderNotEditableSyncError(firstErr)
+                  ? await healPreviousOrderEditOutboxRow({
+                      ...row,
+                      superseded_sale_id: null,
+                      server_sale_id: null,
+                      server_cart_id: null,
+                    })
+                  : { ...row, server_cart_id: null };
                 sale = await checkoutOutboxRow(
-                  { ...row, server_cart_id: null },
+                  retryRow,
                   printedOrderNum,
                   openFloatSessionId ? { float_session_id: openFloatSessionId } : {},
                 );
@@ -4679,3 +4859,10 @@ export async function preparePosOfflineReady({ floatSessionId = null } = {}) {
     pendingSync: await getPosOfflinePendingCount(),
   };
 }
+
+export {
+  isRestorablePosSaleForEdit,
+  resolveHeadOfPreviousOrderEditChain,
+  previousOrderEditOrgOrderNum,
+  isOrderNotEditableSyncError,
+};
