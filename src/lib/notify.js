@@ -5,6 +5,11 @@ export function notifySuccess(message) {
   if (message) toast.success(message);
 }
 
+/** Toast for live catalogue price / markup changes (External POS — Sonner default duration). */
+export function notifyPriceUpdate(message) {
+  if (message) toast.success(message);
+}
+
 /** Transient error feedback — use instead of page-level red banners for actions. */
 export function notifyError(message) {
   if (message) toast.error(message);

@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiRequest } from "@/lib/api";
-import { buildExpensesHref } from "@/lib/expenses-link";
+import { apiRequest, ApiError } from "@/lib/api";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import {
   CASH_MOVEMENT_OPTIONS,
@@ -539,6 +537,117 @@ export function AddFloatModal({ open, onClose, onSaved, session, busy, error }) 
   );
 }
 
+export function SessionExpensesModal({
+  open,
+  onClose,
+  session,
+  tillName,
+  cashierName,
+  embedded = false,
+}) {
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!open || !session?.id) return undefined;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    apiRequest(`/pos/sessions/${session.id}/expenses`, { loading: false, reportIssues: false })
+      .then((res) => {
+        if (cancelled) return;
+        setRows(Array.isArray(res?.data) ? res.data : []);
+        setTotal(Number(res?.total ?? 0));
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof ApiError ? e.message : "Could not load session expenses");
+        setRows([]);
+        setTotal(0);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, session?.id]);
+
+  if (!open) return null;
+
+  return renderPosModalPortal(
+    <div className={posModalOverlayClass(embedded)}>
+      {!embedded ? (
+        <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
+      ) : null}
+      <div
+        className={posModalPanelClass(
+          embedded,
+          "w-full max-w-lg theme-panel rounded-xl border p-6 text-slate-900 shadow-xl",
+        )}
+      >
+        <h2 className="text-lg font-semibold text-slate-900">Session expenses</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {tillName ? `${tillName} · ` : ""}
+          {cashierName ?? "Cashier"}
+          {session?.id ? ` · Session #${session.id}` : ""}
+        </p>
+
+        {error ? (
+          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        ) : null}
+
+        <div className="mt-4 max-h-[min(50vh,320px)] overflow-auto rounded-lg border border-slate-200">
+          {loading ? (
+            <p className="px-4 py-6 text-center text-sm text-slate-500">Loading expenses…</p>
+          ) : rows.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-slate-500">No expenses recorded for this session yet.</p>
+          ) : (
+            <table className="w-full border-collapse text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                <tr>
+                  <th className="px-3 py-2">Description</th>
+                  <th className="px-3 py-2">Category</th>
+                  <th className="px-3 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2 text-slate-900">
+                      {String(row.description ?? "").trim() || row.expense_group?.group_name || "Expense"}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">{row.expense_group?.group_name ?? "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-900">
+                      {formatTillKes(row.expense_amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
+          <p className="text-sm font-semibold text-slate-900">
+            Total{" "}
+            <span className="tabular-nums font-bold text-red-700">{formatTillKes(total)}</span>
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>,
+  );
+}
+
 export function RecordSessionExpenseModal({
   open,
   onClose,
@@ -556,6 +665,7 @@ export function RecordSessionExpenseModal({
   const [expenseDescription, setExpenseDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [expensePaymentMethodId, setExpensePaymentMethodId] = useState("");
+  const [viewExpensesOpen, setViewExpensesOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -563,6 +673,7 @@ export function RecordSessionExpenseModal({
     setAmount("");
     setExpenseGroupId("");
     setExpensePaymentMethodId("");
+    setViewExpensesOpen(false);
   }, [open, session?.id]);
 
   useEffect(() => {
@@ -619,7 +730,17 @@ export function RecordSessionExpenseModal({
     }
   }
 
-  return renderPosModalPortal(
+  return (
+    <>
+      <SessionExpensesModal
+        open={viewExpensesOpen}
+        onClose={() => setViewExpensesOpen(false)}
+        session={session}
+        tillName={tillName}
+        cashierName={cashierName}
+        embedded={embedded}
+      />
+      {renderPosModalPortal(
     <div className={posModalOverlayClass(embedded)}>
       {!embedded ? (
         <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
@@ -627,13 +748,15 @@ export function RecordSessionExpenseModal({
       <div className={posModalPanelClass(embedded, "w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl")}>
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-lg font-semibold text-slate-900">Record expense</h2>
-          <Link
-            href={buildExpensesHref()}
-            data-pos-leave-ignore="true"
-            className="theme-link shrink-0 text-sm font-medium hover:underline"
-          >
-            View expenses
-          </Link>
+          {session?.id ? (
+            <button
+              type="button"
+              onClick={() => setViewExpensesOpen(true)}
+              className="theme-link shrink-0 text-sm font-medium hover:underline"
+            >
+              View expenses
+            </button>
+          ) : null}
         </div>
         <p className="mt-1 text-sm text-slate-500">
           {tillName ? `${tillName} · ` : ""}
@@ -709,7 +832,9 @@ export function RecordSessionExpenseModal({
           </PrimaryButton>
         </div>
       </div>
-    </div>
+    </div>,
+      )}
+    </>
   );
 }
 

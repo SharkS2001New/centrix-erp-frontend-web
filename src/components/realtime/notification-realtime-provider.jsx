@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { notifyNotificationsChanged } from "@/lib/notification-events";
-import { notifyError, notifySuccess } from "@/lib/notify";
+import { notifyError, notifyPriceUpdate } from "@/lib/notify";
 import {
   createNotificationEcho,
   disconnectNotificationEcho,
@@ -54,7 +54,7 @@ export function NotificationRealtimeProvider({ children }) {
           if (severity === "danger" || severity === "error") {
             notifyError(message);
           } else {
-            notifySuccess(message);
+            notifyPriceUpdate(message);
           }
         });
 

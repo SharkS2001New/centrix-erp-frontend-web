@@ -2446,6 +2446,7 @@ html[data-theme="dark"] .workspace-tab-close:hover {
 [data-sonner-toaster] {
   --width: 22rem;
   font-family: inherit;
+  z-index: 99999;
 }
 
 html[data-theme="light"] [data-sonner-toaster],

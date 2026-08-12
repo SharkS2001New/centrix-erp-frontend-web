@@ -1,5 +1,8 @@
 import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
 import {
+  POS_FULL_PAYMENT_REQUIRED_MESSAGE,
+} from "@/lib/pos-checkout-credit-sale";
+import {
   productMatchesCatalogQuery,
   isSellableCatalogProduct,
   stripProductStockFields,
@@ -1670,9 +1673,7 @@ export async function completeOfflineCashSale({
     Number(summary.amountDue) > 0.01 &&
     nonCreditTendered + 0.01 < Number(summary.amountDue)
   ) {
-    throw new Error(
-      "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer (I) to save as fully unpaid.",
-    );
+    throw new Error(POS_FULL_PAYMENT_REQUIRED_MESSAGE);
   }
 
   // Non-credit: settle in full. Credit sales from POS are always fully unpaid.

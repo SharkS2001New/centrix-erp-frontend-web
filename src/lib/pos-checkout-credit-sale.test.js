@@ -1,5 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { isCheckoutCreditSale } from "@/lib/pos-checkout-credit-sale";
+import {
+  isCheckoutCreditSale,
+  POS_CREDIT_CUSTOMER_REQUIRED_MESSAGE,
+  POS_FULL_PAYMENT_REQUIRED_MESSAGE,
+  validatePosDirectCheckoutPayment,
+} from "@/lib/pos-checkout-credit-sale";
+
+describe("validatePosDirectCheckoutPayment — External POS till", () => {
+  it("requires full pay_now for non-credit sales", () => {
+    expect(
+      validatePosDirectCheckoutPayment({
+        isCreditSale: false,
+        payNow: 400,
+        amountDue: 500,
+      }),
+    ).toBe(POS_FULL_PAYMENT_REQUIRED_MESSAGE);
+    expect(
+      validatePosDirectCheckoutPayment({
+        isCreditSale: false,
+        payNow: 500,
+        amountDue: 500,
+      }),
+    ).toBeNull();
+    expect(
+      validatePosDirectCheckoutPayment({
+        isCreditSale: false,
+        payNow: 800,
+        amountDue: 0,
+      }),
+    ).toBeNull();
+  });
+
+  it("allows fully unpaid credit when customer_num is set", () => {
+    expect(
+      validatePosDirectCheckoutPayment({
+        isCreditSale: true,
+        payNow: 0,
+        amountDue: 500,
+        customerNum: 42,
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks credit without a registered customer", () => {
+    expect(
+      validatePosDirectCheckoutPayment({
+        isCreditSale: true,
+        payNow: 0,
+        amountDue: 500,
+      }),
+    ).toBe(POS_CREDIT_CUSTOMER_REQUIRED_MESSAGE);
+  });
+});
 
 describe("isCheckoutCreditSale (I then C/M/E/K)", () => {
   it("is credit when invoice customer selected and unpaid", () => {

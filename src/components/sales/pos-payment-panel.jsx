@@ -7,7 +7,10 @@ import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { formatPosBrowseLabel, formatSaleKes } from "@/lib/sales";
-import { isCheckoutCreditSale } from "@/lib/pos-checkout-credit-sale";
+import {
+  isCheckoutCreditSale,
+  POS_FULL_PAYMENT_REQUIRED_MESSAGE,
+} from "@/lib/pos-checkout-credit-sale";
 import { resolveCheckoutStatus } from "@/lib/order-workflow";
 import {
   alignPaymentSplitsToPayNow,
@@ -746,7 +749,7 @@ export function PosPaymentPanel({
         : "Enter payment amounts to cover the full total.";
     }
     if (amountPaid + 0.01 < checkoutTotal) {
-      return "Full payment required for Cash, M-Pesa, bank, and cheque — or select a credit customer (I) to save as fully unpaid.";
+      return POS_FULL_PAYMENT_REQUIRED_MESSAGE;
     }
     return null;
   }

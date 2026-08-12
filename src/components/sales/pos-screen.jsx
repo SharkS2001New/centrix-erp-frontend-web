@@ -8,7 +8,7 @@ import { buildPageParams } from "@/lib/paginated-api";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { useConfirm } from "@/lib/use-confirm";
-import { notifyError, notifySuccess } from "@/lib/notify";
+import { notifyError, notifyPriceUpdate, notifySuccess } from "@/lib/notify";
 import { toast } from "@/lib/toast";
 import {
   createNotificationEcho,
@@ -160,6 +160,7 @@ import {
   normalizeCartResponse,
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
+import { validatePosDirectCheckoutPayment } from "@/lib/pos-checkout-credit-sale";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosEditPaymentAdjustmentDialog } from "./pos-edit-payment-adjustment-dialog";
 import { PosProductSearch } from "./pos-product-search";
@@ -1398,6 +1399,12 @@ export function PosScreen({ standalone = false }) {
     if (!standalone || !message) return;
     if (error) notifyError(message);
     else notifySuccess(message);
+  }
+
+  /** Live price update toast (classic + modern External POS). */
+  function posPriceUpdateToast(message) {
+    if (!standalone || !message) return;
+    notifyPriceUpdate(message);
   }
 
   const classicCurrencySettings = useMemo(
@@ -8704,13 +8711,13 @@ export function PosScreen({ standalone = false }) {
     const message = `Prices updated — ${updatedCount} cart item${updatedCount === 1 ? "" : "s"}${sample ? `: ${sample}${suffix}` : ""}.`;
     if (announce) {
       setStatusMessage(message);
-      if (standalone) notifySuccess(message);
+      posPriceUpdateToast(message);
     }
     return updatedCount;
   }
   applyLiveCartCatalogPricesRef.current = applyLiveCartCatalogPrices;
 
-  // Live snackbar + IndexedDB catalog refresh when ERP updates product prices/markups.
+  // Live toast + IndexedDB catalog refresh when ERP updates product prices/markups.
   // Kept below uom/vat/product refs so the effect does not hit a TDZ crash on mount.
   useEffect(() => {
     if (!standalone || !organizationId) {
@@ -8724,6 +8731,18 @@ export function PosScreen({ standalone = false }) {
     const channelName = `organization.${organizationId}`;
     let lastToastAt = 0;
     let refreshInFlight = null;
+    let pricingNoticePollTimer = null;
+    let lastSeenPricingNoticeId = 0;
+    let pricingPollFallbackActive = false;
+
+    function flashPricingToast(message) {
+      if (!message) return;
+      const now = Date.now();
+      if (now - lastToastAt < 1200) return;
+      lastToastAt = now;
+      notifyPriceUpdate(message);
+      setStatusMessage(message);
+    }
 
     async function applyPricingUpdate(payload = {}, { announce = true } = {}) {
       if (cancelled) return;
@@ -8786,56 +8805,130 @@ export function PosScreen({ standalone = false }) {
       }
 
       if (cancelled || !announce) return;
-      const now = Date.now();
-      // Debounce toast only — catalogue refresh already ran above.
-      if (now - lastToastAt >= 1200) {
-        lastToastAt = now;
-        notifySuccess(message);
-        setStatusMessage(message);
+      flashPricingToast(message);
+    }
+
+    async function seedPricingNoticeWatermark() {
+      try {
+        const res = await apiRequest("/notifications?limit=10", {
+          loading: false,
+          reportIssues: false,
+          searchParams: { workspace: "pos" },
+        });
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        const latest = rows.find((item) => item?.type === "catalog_pricing");
+        if (latest?.id) lastSeenPricingNoticeId = Number(latest.id);
+      } catch {
+        /* non-blocking */
       }
     }
 
-    // Fallback when Reverb is not configured: quiet refresh on focus / periodically.
+    async function pollPricingNotifications() {
+      if (cancelled || offlineModeRef.current) return;
+      try {
+        const res = await apiRequest("/notifications?limit=10", {
+          loading: false,
+          reportIssues: false,
+          searchParams: { workspace: "pos" },
+        });
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        const latest = rows.find((item) => item?.type === "catalog_pricing");
+        if (!latest?.id) return;
+        const noticeId = Number(latest.id);
+        if (!Number.isFinite(noticeId) || noticeId <= lastSeenPricingNoticeId) return;
+        lastSeenPricingNoticeId = noticeId;
+        await applyPricingUpdate(
+          {
+            message: String(latest.message ?? "").trim() || "Product prices or markups were updated.",
+            product_code: latest.product_code ?? null,
+            reason: "product_price",
+          },
+          { announce: true },
+        );
+      } catch {
+        /* non-blocking */
+      }
+    }
+
+    function schedulePricingNoticePoll() {
+      if (pricingNoticePollTimer) {
+        window.clearInterval(pricingNoticePollTimer);
+        pricingNoticePollTimer = null;
+      }
+      if (!pricingPollFallbackActive || cancelled) return;
+      const intervalMs =
+        document.visibilityState === "visible" ? 45_000 : 90_000;
+      pricingNoticePollTimer = window.setInterval(() => {
+        void pollPricingNotifications();
+      }, intervalMs);
+    }
+
+    function startPricingNoticePollFallback() {
+      if (pricingPollFallbackActive) return;
+      pricingPollFallbackActive = true;
+      void seedPricingNoticeWatermark().finally(() => {
+        schedulePricingNoticePoll();
+        void pollPricingNotifications();
+      });
+    }
+
+    function onPricingPollVisibility() {
+      if (!pricingPollFallbackActive) return;
+      schedulePricingNoticePoll();
+      if (document.visibilityState === "visible") {
+        void pollPricingNotifications();
+      }
+    }
+
+    // Quiet catalogue warm on focus — toast comes from Reverb or notification poll.
     function onWindowFocus() {
       if (document.visibilityState && document.visibilityState !== "visible") return;
       if (offlineModeRef.current) return;
       void applyPricingUpdate({ forceFull: true }, { announce: false });
     }
 
+    const focusHandler = () => onWindowFocus();
+    let catalogWarmPoll = null;
+
     if (!isRealtimeConfigured()) {
-      const focusHandler = () => onWindowFocus();
+      startPricingNoticePollFallback();
       window.addEventListener("focus", focusHandler);
       document.addEventListener("visibilitychange", focusHandler);
-      const poll = window.setInterval(() => {
+      document.addEventListener("visibilitychange", onPricingPollVisibility);
+      catalogWarmPoll = window.setInterval(() => {
         if (offlineModeRef.current) return;
         void refreshPosOfflineCatalogPricing({ forceFull: true }).catch(() => {});
       }, 3 * 60 * 1000);
-      return () => {
-        cancelled = true;
-        window.removeEventListener("focus", focusHandler);
-        document.removeEventListener("visibilitychange", focusHandler);
-        window.clearInterval(poll);
-      };
-    }
+    } else {
+      (async () => {
+        try {
+          echo = await createNotificationEcho();
+          if (cancelled || !echo) {
+            startPricingNoticePollFallback();
+            window.addEventListener("focus", focusHandler);
+            document.addEventListener("visibilitychange", focusHandler);
+            document.addEventListener("visibilitychange", onPricingPollVisibility);
+            return;
+          }
 
-    (async () => {
-      try {
-        echo = await createNotificationEcho();
-        if (cancelled || !echo) return;
-
-        channel = echo.private(channelName);
-        channel.listen(".catalog.pricing.updated", (payload) => {
-          void applyPricingUpdate(payload ?? {});
-        });
-      } catch (error) {
-        if (process.env.NODE_ENV === "development") {
-          console.warn("[pos] pricing realtime unavailable", error);
+          channel = echo.private(channelName);
+          channel.listen(".catalog.pricing.updated", (payload) => {
+            void applyPricingUpdate(payload ?? {});
+          });
+          channel.error(() => {
+            startPricingNoticePollFallback();
+          });
+        } catch (error) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[pos] pricing realtime unavailable", error);
+          }
+          startPricingNoticePollFallback();
+          window.addEventListener("focus", focusHandler);
+          document.addEventListener("visibilitychange", focusHandler);
+          document.addEventListener("visibilitychange", onPricingPollVisibility);
         }
-        // Realtime failed — still allow focus refresh.
-        window.addEventListener("focus", onWindowFocus);
-        document.addEventListener("visibilitychange", onWindowFocus);
-      }
-    })();
+      })();
+    }
 
     return () => {
       cancelled = true;
@@ -8846,8 +8939,11 @@ export function PosScreen({ standalone = false }) {
         /* ignore */
       }
       disconnectNotificationEcho(echo);
-      window.removeEventListener("focus", onWindowFocus);
-      document.removeEventListener("visibilitychange", onWindowFocus);
+      window.removeEventListener("focus", focusHandler);
+      document.removeEventListener("visibilitychange", focusHandler);
+      document.removeEventListener("visibilitychange", onPricingPollVisibility);
+      if (pricingNoticePollTimer) window.clearInterval(pricingNoticePollTimer);
+      if (catalogWarmPoll) window.clearInterval(catalogWarmPoll);
     };
   }, [standalone, organizationId]);
 
@@ -8878,8 +8974,10 @@ export function PosScreen({ standalone = false }) {
             ? `Refreshed — ${updatedCount} cart price${updatedCount === 1 ? "" : "s"} updated.`
             : "Refreshed — search cleared and prices updated.",
         );
-        if (updatedCount > 0 && standalone) {
-          notifySuccess(`${updatedCount} cart price${updatedCount === 1 ? "" : "s"} updated.`);
+        if (updatedCount > 0) {
+          posPriceUpdateToast(
+            `${updatedCount} cart price${updatedCount === 1 ? "" : "s"} updated.`,
+          );
         }
       } else {
         setStatusMessage("Refreshed — search cleared and prices updated.");
@@ -9393,6 +9491,26 @@ export function PosScreen({ standalone = false }) {
       standalone && !isPreviousOrderCashEdit
         ? await peekNextPosOfflineOrderSlot().catch(() => null)
         : null;
+
+    // External POS: every completion path (F10, STK, online server) must settle in
+    // full or via credit customer (I). Previous-order edits use payment_adjustments.
+    if (
+      standalone &&
+      !isPreviousOrderCashEdit &&
+      !body?.__previous_order_edit_adjustment
+    ) {
+      const paymentErr = validatePosDirectCheckoutPayment({
+        isCreditSale: Boolean(body?.is_credit_sale),
+        payNow: Number(body?.pay_now ?? 0),
+        amountDue: Number(summary?.amountDue ?? summary?.total ?? 0),
+        customerNum: body?.customer_num,
+      });
+      if (paymentErr) {
+        setPaymentError(paymentErr);
+        return null;
+      }
+    }
+
     // Org S# may come from the reserved pool for offline; Cash Sales # is never
     // taken from that pool (assigned per cashier 1,2,3… at sale time).
     const checkoutCartFields = posCheckoutCartFields(activeCart, editSourceSale, {
@@ -9419,23 +9537,6 @@ export function PosScreen({ standalone = false }) {
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
       const offlineCashTendered = Number(body?.__cash_tendered ?? 0);
       const isOfflineCredit = Boolean(body?.is_credit_sale);
-      // Non-credit tenders (Cash / M-Pesa / Equity / KCB / bank / cheque) must cover the bill.
-      // Only credit may complete as fully unpaid. Previous-order edits settle via
-      // payment_adjustments (pay_now is 0) — skip this gate for those.
-      if (
-        !isOfflineCredit &&
-        !isPreviousOrderCashEdit &&
-        cashPay + 0.01 < Number(summary?.amountDue ?? 0)
-      ) {
-        setPaymentError(
-          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer (I) to save as fully unpaid.",
-        );
-        return null;
-      }
-      if (isOfflineCredit && !(Number(body?.customer_num) > 0)) {
-        setPaymentError("Credit sales require a registered customer.");
-        return null;
-      }
       setBusy(true);
     setPaymentError(null);
     setReceiptPrintStatus(null);
@@ -9564,16 +9665,6 @@ export function PosScreen({ standalone = false }) {
       const cashPay = Number(body?.pay_now ?? summary?.amountDue ?? 0);
       const cashTendered = Number(body?.__cash_tendered ?? 0);
       const isLocalFirstCredit = Boolean(body?.is_credit_sale);
-      if (
-        !isLocalFirstCredit &&
-        !isPreviousOrderCashEdit &&
-        cashPay + 0.01 < Number(summary?.amountDue ?? 0)
-      ) {
-        setPaymentError(
-          "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer (I) to save as fully unpaid.",
-        );
-        return null;
-      }
       setBusy(true);
       setPaymentError(null);
       setReceiptPrintStatus(null);
@@ -10704,18 +10795,30 @@ export function PosScreen({ standalone = false }) {
     if (payNow <= 0) return null;
 
     const summary = cartSummaryRef.current ?? cartSummary;
+    const amountDue = Number(summary?.amountDue ?? summary?.total ?? 0);
+    const paymentErr = validatePosDirectCheckoutPayment({
+      isCreditSale: false,
+      payNow,
+      amountDue,
+    });
+    if (paymentErr) {
+      flashPosShortcutMessage(paymentErr);
+      openPaymentDialog();
+      return null;
+    }
+
     const total =
       Number(summary?.total ?? 0) > 0
         ? Number(summary.total)
-        : Number(summary?.amountDue ?? 0) + payNow;
+        : amountDue + payNow;
     const status = resolveCheckoutStatus({
       channel,
       isCredit: false,
       payNow,
-      total,
+      total: amountDue > 0.01 ? amountDue : total,
       workflow: channelWorkflow,
       paymentMethodCode: "MPESA",
-      allowPartialPayment: posSalesConfig.payment.allowPartialPayment,
+      allowPartialPayment: false,
     });
     const body = {
       pay_now: payNow,
