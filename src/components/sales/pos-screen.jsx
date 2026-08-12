@@ -301,7 +301,7 @@ import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
-import { getPosDeviceIdentifier } from "@/lib/pos-device";
+import { getPosDeviceIdentifier, saleBelongsToCurrentPosDevice, POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE } from "@/lib/pos-device";
 import {
   createBranchTill,
   indexOpenSessionsByTill,
@@ -2917,6 +2917,12 @@ export function PosScreen({ standalone = false }) {
           if (source && source !== "pos") return false;
           const status = String(row.status ?? "").toLowerCase();
           if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
+          // Previous-order edit: only receipts written on this POS computer.
+          // Unstamped server rows are excluded — they reappear via local outbox mirrors
+          // on the till that printed them.
+          if (!saleBelongsToCurrentPosDevice(row, { allowUnstampedLocalOutbox: false })) {
+            return false;
+          }
           return true;
         })
         .map((row) => ({
@@ -2925,6 +2931,7 @@ export function PosScreen({ standalone = false }) {
           pos_order_num: row.pos_order_num ?? null,
           pos_order_date: row.pos_order_date ?? null,
           float_session_id: row.float_session_id ?? null,
+          pos_device_id: row.pos_device_id ?? row.fulfillment_meta?.pos_device_id ?? null,
           status: row.status,
           order_total: row.order_total != null ? Number(row.order_total) : null,
           amount_paid: row.amount_paid != null ? Number(row.amount_paid) : null,
@@ -2958,6 +2965,9 @@ export function PosScreen({ standalone = false }) {
           return !(rowSession > 0 && rowSession !== activeFloatId);
         });
       }
+      localSyncedOrders = localSyncedOrders.filter((row) =>
+        saleBelongsToCurrentPosDevice(row, { allowUnstampedLocalOutbox: true }),
+      );
 
       const offlineBrowseKeys = new Set(
         offlineOrders
@@ -4164,7 +4174,12 @@ export function PosScreen({ standalone = false }) {
         const saleId = cartRef.current.superseded_sale_id;
         const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
           method: "POST",
-          body: { replace: true },
+          body: {
+            replace: true,
+            ...(getPosDeviceIdentifier()
+              ? { pos_device_id: getPosDeviceIdentifier() }
+              : {}),
+          },
           ...POS_CART_REQUEST,
         });
         const presented =
@@ -9689,6 +9704,12 @@ export function PosScreen({ standalone = false }) {
     const activeCart = cartRef.current ?? cart;
     const summary = cartSummaryRef.current ?? cartSummary;
     if (!activeCart?.id) return null;
+    if (standalone) {
+      const deviceId = getPosDeviceIdentifier();
+      if (deviceId) {
+        body = { ...body, pos_device_id: deviceId };
+      }
+    }
     if (requireTillFloat && !activeSession) {
       promptTillFloatSession(
         suspendedSession
@@ -12459,7 +12480,12 @@ export function PosScreen({ standalone = false }) {
 
     const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
       method: "POST",
-      body: { replace },
+      body: {
+        replace,
+        ...(getPosDeviceIdentifier()
+          ? { pos_device_id: getPosDeviceIdentifier() }
+          : {}),
+      },
     });
     applyRestoredHeldCart(
       restoredRaw,
@@ -12491,6 +12517,16 @@ export function PosScreen({ standalone = false }) {
       const message = "No order selected to edit.";
       setOrderEditError(message);
       setStatusMessage(message);
+      return;
+    }
+
+    if (
+      saleSnapshot &&
+      !saleBelongsToCurrentPosDevice(saleSnapshot, { allowUnstampedLocalOutbox: true })
+    ) {
+      setOrderEditError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
+      setStatusMessage(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
+      if (standalone) notifyError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
       return;
     }
 
@@ -13213,7 +13249,12 @@ export function PosScreen({ standalone = false }) {
       // Fast cart restore (stock + KRA finish afterResponse on the API).
       const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
         method: "POST",
-        body: { replace },
+        body: {
+          replace,
+          ...(getPosDeviceIdentifier()
+            ? { pos_device_id: getPosDeviceIdentifier() }
+            : {}),
+        },
       });
       restoreActive = false;
       const applied = applyAuthoritativeRestoredCart(restoredRaw);
@@ -13571,6 +13612,10 @@ export function PosScreen({ standalone = false }) {
         failLookupKeepNextTicket(
           `No POS order found with Cash Sales #${ticketNum ?? trimmed}.`,
         );
+        return;
+      }
+      if (!saleBelongsToCurrentPosDevice(match, { allowUnstampedLocalOutbox: false })) {
+        failLookupKeepNextTicket(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
         return;
       }
       await restoreOrderForEdit(match.id, { saleSnapshot: match });
