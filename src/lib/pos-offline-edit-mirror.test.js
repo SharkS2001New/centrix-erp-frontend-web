@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/pos-offline-db", () => {
   const outbox = new Map();
   const localCart = new Map();
+  let seq = 0;
   return {
     idbPutOutboxSale: vi.fn(async (row) => {
       outbox.set(String(row.client_sale_uuid), structuredClone(row));
@@ -21,6 +22,7 @@ vi.mock("@/lib/pos-offline-db", () => {
     idbClearLocalCart: vi.fn(async (id = "active") => {
       localCart.delete(String(id));
     }),
+    newClientSaleUuid: vi.fn(() => `line-${++seq}`),
     __outbox: outbox,
     __localCart: localCart,
   };
@@ -31,6 +33,7 @@ vi.mock("@/lib/pos-offline-lock", () => ({
 }));
 
 import {
+  beginOfflineSaleEdit,
   finalizeQueuedOfflineSaleEdit,
   saveLocalPosCart,
   syncOutboxSaleFromLocalEditCart,
@@ -229,5 +232,75 @@ describe("syncOutboxSaleFromLocalEditCart", () => {
     expect(row.lines).toHaveLength(1);
     expect(row.lines[0].product_code).toBe("A");
     expect(row.content_revision).toBe(3);
+  });
+
+  it("keeps only the latest offline previous-order edit before sync starts", async () => {
+    const uuid = "prev-edit-44";
+    await db.idbPutOutboxSale({
+      client_sale_uuid: uuid,
+      order_num: 44,
+      sync_kind: "previous_order_edit",
+      sync_status: "pending",
+      content_revision: 1,
+      sale_payload: {
+        id: `offline:${uuid}`,
+        order_num: 44,
+        pos_order_num: 44,
+        order_total: 100,
+        items: [{ product_code: "A", quantity: 1, unit_price: 100, amount: 100 }],
+      },
+      lines: [{ product_code: "A", quantity: 1, unit_price: 100, amount: 100 }],
+      checkout_body: { client_sale_uuid: uuid, content_revision: 1, pay_now: 0 },
+    });
+
+    // First offline revision before sync starts.
+    let editSession = await beginOfflineSaleEdit(`offline:${uuid}`);
+    let editCart = editSession.cart;
+    await saveLocalPosCart({
+      ...editCart,
+      lines: [
+        {
+          client_line_id: "a1",
+          product_code: "A",
+          quantity: 2,
+          unit_price: 100,
+          amount: 200,
+        },
+      ],
+    });
+    await finalizeQueuedOfflineSaleEdit({
+      ...editCart,
+      lines: [{ client_line_id: "a1", product_code: "A", quantity: 2, unit_price: 100, amount: 200 }],
+    });
+
+    // Second offline revision (same receipt) before sync still hasn't started.
+    editSession = await beginOfflineSaleEdit(`offline:${uuid}`);
+    editCart = editSession.cart;
+    await saveLocalPosCart({
+      ...editCart,
+      lines: [
+        {
+          client_line_id: "a2",
+          product_code: "A",
+          quantity: 3,
+          unit_price: 100,
+          amount: 300,
+        },
+      ],
+    });
+    await finalizeQueuedOfflineSaleEdit({
+      ...editCart,
+      lines: [{ client_line_id: "a2", product_code: "A", quantity: 3, unit_price: 100, amount: 300 }],
+    });
+
+    const latest = await db.idbGetOutboxSale(uuid);
+    expect(latest.sync_status).toBe("pending");
+    expect(latest.sync_kind).toBe("previous_order_edit");
+    expect(latest.content_revision).toBe(5);
+    expect(latest.checkout_body?.content_revision).toBe(5);
+    expect(latest.lines).toHaveLength(1);
+    expect(latest.lines[0].quantity).toBe(3);
+    expect(latest.sale_payload?.items?.[0]?.quantity).toBe(3);
+    expect(latest.sale_payload?.order_total).toBe(300);
   });
 });

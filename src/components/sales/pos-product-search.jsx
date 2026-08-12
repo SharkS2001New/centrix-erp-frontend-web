@@ -100,11 +100,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   }));
 
   useEffect(() => {
-    if (disabled) {
+    // Only close when disabled AND there is no active query — prevents a brief
+    // `busy` flag (e.g. route markup loading) from dismissing the dropdown while
+    // the cashier is mid-search.
+    if (disabled && !String(query ?? "").trim()) {
       setOpen(false);
       setHighlight(-1);
     }
-  }, [disabled]);
+  }, [disabled, query]);
 
   useEffect(() => {
     if (!classic) return undefined;
@@ -446,7 +449,7 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
         }}
         onFocus={() => {
           if (disabled) return;
-          if (query.trim()) setOpen(true);
+          setOpen(true);
         }}
         onKeyDown={handleInputKeyDown}
       />

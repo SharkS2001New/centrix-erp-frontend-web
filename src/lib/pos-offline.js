@@ -467,6 +467,16 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
     const isQueuedEdit = Boolean(existing.offline_client_sale_uuid);
     const isPreviousOrderEdit = Boolean(existing.superseded_sale_id && existing.held_order_num);
 
+    // A cart marked offline_pending_sync was saved at the moment the cashier pressed
+    // F10 (checkout) — lines belong to the completed sale, not a new order. Wipe them
+    // immediately so they never bleed into the next scan session.
+    if (existing.offline_pending_sync) {
+      await idbClearLocalCart("active");
+      const cart = emptyLocalPosCart(seed);
+      await idbPutLocalCart(cart);
+      return cart;
+    }
+
     // Failed / synced / missing outbox must not seed the next sale's lines.
     // Pending/syncing means checkout already queued the sale — only `editing` is an
     // active reopen-for-edit session that may keep the local cart.
@@ -490,7 +500,48 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
     // Abandoned shells from a completed/failed sale must not hijack the next ticket.
     if (!hasLines && !isQueuedEdit && !isPreviousOrderEdit && existing.held_order_num) {
       await idbClearLocalCart("active");
-    } else if (hasLines || isQueuedEdit || isPreviousOrderEdit) {
+    } else if (hasLines && !isQueuedEdit && !isPreviousOrderEdit) {
+      // Guard against a race where queueOfflineSale wrote the outbox but clearLocalPosCart()
+      // has not yet run (the lock is held): if the cart's lines are already captured in any
+      // pending/syncing outbox row, the cart is stale and must not seed the next sale.
+      // We match by checking whether the outbox row contains every SKU that the cart has —
+      // if the cart's product codes are a subset of a queued outbox sale's items, wipe it.
+      try {
+        const pendingRows = await idbListPendingOutbox({ includeErrors: false });
+        const syncingRows = (await idbListUnsyncedOutbox()).filter(
+          (r) => r.sync_status === "syncing",
+        );
+        const allQueued = [...pendingRows, ...syncingRows];
+        const cartCodes = new Set(
+          (existing.lines ?? []).map((l) => String(l.product_code ?? "")).filter(Boolean),
+        );
+        const stale = allQueued.some((row) => {
+          const rowCodes = new Set(
+            (row.sale_payload?.items ?? row.items ?? [])
+              .map((i) => String(i.product_code ?? ""))
+              .filter(Boolean),
+          );
+          // If every SKU in the local cart appears in an outbox row the cart is already queued.
+          if (cartCodes.size === 0 || rowCodes.size === 0) return false;
+          let matched = 0;
+          for (const code of cartCodes) {
+            if (rowCodes.has(code)) matched++;
+          }
+          return matched === cartCodes.size;
+        });
+        if (stale) {
+          await idbClearLocalCart("active");
+          const cart = emptyLocalPosCart(seed);
+          await idbPutLocalCart(cart);
+          return cart;
+        }
+      } catch {
+        /* non-fatal — keep the cart in memory if the check fails */
+      }
+      // Not stale — fall through to return existing cart below.
+    }
+
+    if (hasLines || isQueuedEdit || isPreviousOrderEdit) {
       // Keep lines / active edit sessions. Empty offline shells alone must not hijack F8.
       // Keep lines, but refresh till/session from the open float after a new day.
       const nextTill = seed.till_id ?? existing.till_id ?? null;
@@ -519,6 +570,31 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
 }
 
 export async function saveLocalPosCart(cart) {
+  // Guard: if the outbox row for this cart is already pending/syncing/synced it means
+  // checkout was completed. Late autosave calls (edit timer, optimistic line flush)
+  // must not overwrite the completed-sale cart into IDB and potentially re-surface
+  // those lines on the next new order workspace.
+  if (cart.offline_client_sale_uuid) {
+    const outboxUuid = String(cart.offline_client_sale_uuid).trim();
+    if (outboxUuid) {
+      let outboxStatus = null;
+      try {
+        const row = await idbGetOutboxSale(outboxUuid);
+        outboxStatus = row?.sync_status ?? null;
+      } catch {
+        /* non-fatal */
+      }
+      if (
+        outboxStatus === "pending" ||
+        outboxStatus === "syncing" ||
+        outboxStatus === "synced"
+      ) {
+        // Checkout already queued — silently discard this stale write.
+        return cart;
+      }
+    }
+  }
+
   const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
   await idbPutLocalCart(next);
   // Revising a queued offline sale mid-edit only (`sync_status: editing`).
@@ -1129,6 +1205,38 @@ export function resolveLocalLineVatRate(line, amount = null, productVatMoney = n
 export async function continueOpenCartThroughOutage(openCart, seed = {}) {
   if (!openCart) return null;
   const combineIdenticalLines = seed.combineIdenticalLines !== false;
+
+  // If the cart already points at a pending/syncing outbox row (checkout was just
+  // completed but the link dropped), treat it as a completed sale and hand back an
+  // empty cart instead of carrying the sold lines into the next new order.
+  if (openCart.offline_client_sale_uuid) {
+    const outboxUuid = String(openCart.offline_client_sale_uuid).trim();
+    if (outboxUuid) {
+      let outboxStatus = null;
+      try {
+        const row = await idbGetOutboxSale(outboxUuid);
+        outboxStatus = row?.sync_status ?? null;
+      } catch {
+        /* non-fatal — fall through to normal path */
+      }
+      if (
+        outboxStatus === "pending" ||
+        outboxStatus === "syncing" ||
+        outboxStatus === "synced"
+      ) {
+        // Checkout already queued — clear the local cart so the new sale starts blank.
+        await idbClearLocalCart("active").catch(() => {});
+        const empty = emptyLocalPosCart({
+          branch_id: openCart.branch_id ?? seed.branch_id ?? null,
+          till_id: openCart.till_id ?? seed.till_id ?? null,
+          float_session_id: openCart.float_session_id ?? seed.float_session_id ?? null,
+          channel: openCart.channel ?? seed.channel ?? "pos",
+        });
+        await idbPutLocalCart(empty).catch(() => {});
+        return empty;
+      }
+    }
+  }
 
   if (openCart.offline && Array.isArray(openCart.lines)) {
     const collapsed = collapseCombineableLocalLines(openCart.lines, {

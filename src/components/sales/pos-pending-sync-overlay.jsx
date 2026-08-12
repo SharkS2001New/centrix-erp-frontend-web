@@ -115,6 +115,8 @@ export function PosPendingSyncOverlay({
   lastSyncMessage = null,
   onSyncAll,
   onSyncOrder,
+  offlineMode = false,
+  offlineSellingSinceMs = null,
   onPrintAll,
   onPrintOrder,
 }) {
@@ -470,6 +472,8 @@ export function PosPendingSyncOverlay({
               syncProgress={syncProgress}
               lastSyncMessage={lastSyncMessage}
               onSync={() => void onSyncAll?.()}
+              offlineMode={offlineMode}
+              offlineSellingSinceMs={offlineSellingSinceMs}
             />
           </div>
         ) : null}

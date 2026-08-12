@@ -62,6 +62,9 @@ export function usePosOfflineSupport({
   const [lastSyncMessage, setLastSyncMessage] = useState(null);
   const [syncProgress, setSyncProgress] = useState(EMPTY_SYNC_PROGRESS);
   const [failedSyncOrders, setFailedSyncOrders] = useState([]);
+  /** When local-first selling started during the current outage (ms epoch). */
+  const offlineSellingSinceRef = useRef(null);
+  const [offlineSellingSinceMs, setOfflineSellingSinceMs] = useState(null);
   const wasFullyOnlineRef = useRef(fullyOnline);
   const wasCanFlushRef = useRef(canFlushOutbox);
   const canFlushRef = useRef(canFlushOutbox);
@@ -74,6 +77,31 @@ export function usePosOfflineSupport({
   useEffect(() => {
     canFlushRef.current = canFlushOutbox;
   }, [canFlushOutbox]);
+
+  // Track how long this till has been selling offline with orders queued for sync.
+  useEffect(() => {
+    if (!enabled) {
+      offlineSellingSinceRef.current = null;
+      setOfflineSellingSinceMs(null);
+      return;
+    }
+
+    if (offlineMode) {
+      if (offlineSellingSinceRef.current == null) {
+        const now = Date.now();
+        offlineSellingSinceRef.current = now;
+        setOfflineSellingSinceMs(now);
+      }
+      return;
+    }
+
+    if (pendingSync <= 0 && failedSyncOrders.length <= 0) {
+      if (offlineSellingSinceRef.current != null) {
+        offlineSellingSinceRef.current = null;
+        setOfflineSellingSinceMs(null);
+      }
+    }
+  }, [enabled, offlineMode, pendingSync, failedSyncOrders.length]);
 
   /** Synchronous flush gate — avoids stale canFlushRef after refreshNetwork(). */
   const probeCanFlushOutbox = useCallback(async () => {
@@ -599,6 +627,7 @@ export function usePosOfflineSupport({
     lastSyncMessage,
     syncProgress,
     failedSyncOrders,
+    offlineSellingSinceMs,
     prepare,
     flushOutbox,
     flushOutboxNow,

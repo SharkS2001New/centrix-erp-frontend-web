@@ -175,7 +175,7 @@ import { ClassicPosAutoHeldDialog } from "./classic-pos-auto-held-dialog";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosPendingSyncOverlay } from "./pos-pending-sync-overlay";
-import { syncProgressPercent } from "./pos-offline-sync-controls";
+import { OfflineSellingDurationLabel, syncProgressPercent } from "./pos-offline-sync-controls";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
@@ -1289,6 +1289,7 @@ export function PosScreen({ standalone = false }) {
     lastSyncMessage,
     syncProgress,
     failedSyncOrders,
+    offlineSellingSinceMs,
     searchOffline,
     refreshCounts: refreshOfflineCounts,
     applyPendingOutboxCount,
@@ -13585,8 +13586,8 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function openCompletePayment() {
-    // Already open — treat as success (repeat F10 must not feel like a failure).
-    if (paymentOpen) return;
+    // Use the ref — React state lags one frame and would misfire on a fast second press.
+    if (paymentOpenRef.current) return;
     if (openCompletePaymentInFlightRef.current) return;
     if (busy) {
       flashPosShortcutMessage("Checkout is still in progress — please wait.");
@@ -13599,6 +13600,7 @@ export function PosScreen({ standalone = false }) {
       const savesPending =
         cartCommitPendingRef.current > 0 || Boolean(lineBusyRef.current);
       if (savesPending) {
+        flashPosShortcutMessage("Saving last item… opening payment.", { error: false });
         await waitForCartLineSavesToFinish().catch(() => {});
       }
 
@@ -14564,25 +14566,32 @@ export function PosScreen({ standalone = false }) {
                 }`}
               >
                 {offlineMode ? (
-                  <p>
-                    {networkStatus === "slow"
-                      ? "Slow connection — selling from local cache. Cash Sales # continues on this till."
-                      : "Connection dropped — selling from local cache. Cash Sales # continues on this till."}
-                    {pendingSync > 0 ? (
-                      <>
-                        {" "}
-                        <button
-                          type="button"
-                          className="font-semibold underline"
-                          onClick={() => setPendingSyncOpen(true)}
-                        >
-                          {pendingSync} pending sync
-                          {pendingSync === 1 ? "" : "s"}
-                        </button>
-                        .
-                      </>
-                    ) : null}
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0">
+                      {networkStatus === "slow"
+                        ? "Slow connection — selling from local cache. Cash Sales # continues on this till."
+                        : "Connection dropped — selling from local cache. Cash Sales # continues on this till."}
+                      {pendingSync > 0 ? (
+                        <>
+                          {" "}
+                          <button
+                            type="button"
+                            className="font-semibold underline"
+                            onClick={() => setPendingSyncOpen(true)}
+                          >
+                            {pendingSync} pending sync
+                            {pendingSync === 1 ? "" : "s"}
+                          </button>
+                          .
+                        </>
+                      ) : null}
+                    </p>
+                    <OfflineSellingDurationLabel
+                      sinceMs={offlineSellingSinceMs}
+                      show={pendingSync > 0}
+                      className="text-amber-900"
+                    />
+                  </div>
                 ) : failedSyncOrders.length > 0 ? (
                   <p>
                     Sync failed for {failedSyncOrders.length} offline order
@@ -15928,6 +15937,8 @@ export function PosScreen({ standalone = false }) {
         lastSyncMessage={lastSyncMessage}
         onSyncAll={syncOfflineOrders}
         onSyncOrder={syncSingleOfflineOrder}
+        offlineMode={offlineMode}
+        offlineSellingSinceMs={offlineSellingSinceMs}
         onPrintAll={handlePrintPendingOfflineReceipts}
         onPrintOrder={handlePrintPendingOfflineReceipts}
         onDiscarded={() => {
@@ -16023,23 +16034,37 @@ export function PosScreen({ standalone = false }) {
                     to retry.
                   </p>
                 ) : offlineSyncing && pendingSync > 0 ? (
-                  <p className="text-xs font-medium text-sky-950">
-                    {syncProgress?.message
-                      ? `${String(syncProgress.message).replace(/\s*…\s*$/, "")} · ${syncProgressPercent(syncProgress)}%`
-                      : `Syncing offline orders · ${syncProgressPercent(syncProgress)}%`}
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="min-w-0 text-xs font-medium text-sky-950">
+                      {syncProgress?.message
+                        ? `${String(syncProgress.message).replace(/\s*…\s*$/, "")} · ${syncProgressPercent(syncProgress)}%`
+                        : `Syncing offline orders · ${syncProgressPercent(syncProgress)}%`}
+                    </p>
+                    <OfflineSellingDurationLabel
+                      sinceMs={offlineSellingSinceMs}
+                      show={offlineMode && pendingSync > 0}
+                      className="text-sky-900"
+                    />
+                  </div>
                 ) : (
-                  <p className="text-xs font-medium text-sky-950">
-                    {pendingSync} offline order{pendingSync === 1 ? "" : "s"} waiting to
-                    sync.{" "}
-                    <button
-                      type="button"
-                      className="font-semibold underline"
-                      onClick={() => setPendingSyncOpen(true)}
-                    >
-                      Open Pending sync
-                    </button>
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="min-w-0 text-xs font-medium text-sky-950">
+                      {pendingSync} offline order{pendingSync === 1 ? "" : "s"} waiting to
+                      sync.{" "}
+                      <button
+                        type="button"
+                        className="font-semibold underline"
+                        onClick={() => setPendingSyncOpen(true)}
+                      >
+                        Open Pending sync
+                      </button>
+                    </p>
+                    <OfflineSellingDurationLabel
+                      sinceMs={offlineSellingSinceMs}
+                      show={offlineMode && pendingSync > 0}
+                      className="text-sky-900"
+                    />
+                  </div>
                 )}
               </div>
             ) : null}

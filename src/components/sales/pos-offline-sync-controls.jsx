@@ -1,5 +1,8 @@
 "use client";
 
+import { formatElapsedDuration } from "@/lib/format-elapsed";
+import { useLiveElapsedMs } from "@/hooks/use-live-elapsed-ms";
+
 /**
  * Manual offline-order sync control with a progress bar.
  * Hidden when the outbox is empty and idle so sync stays silent until
@@ -21,6 +24,24 @@ export function syncProgressPercent(progress) {
   return Math.min(100, Math.round(((completed + inFlight) / total) * 100));
 }
 
+/** Live "Offline 12m 05s" label — far right of the pending-sync row. */
+export function OfflineSellingDurationLabel({
+  sinceMs = null,
+  show = true,
+  className = "",
+}) {
+  const elapsed = useLiveElapsedMs(show ? sinceMs : null);
+  if (!show || !sinceMs) return null;
+  return (
+    <span
+      className={`shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums ${className}`.trim()}
+      title="Time selling offline with orders queued for sync"
+    >
+      Offline {formatElapsedDuration(elapsed)}
+    </span>
+  );
+}
+
 export function PosOfflineSyncControls({
   pendingSync = 0,
   syncing = false,
@@ -30,6 +51,8 @@ export function PosOfflineSyncControls({
   onSync,
   compact = false,
   className = "",
+  offlineMode = false,
+  offlineSellingSinceMs = null,
 }) {
   const total = Number(syncProgress?.total ?? 0);
   const current = Number(syncProgress?.current ?? 0);
@@ -47,6 +70,8 @@ export function PosOfflineSyncControls({
     total > 0 ? `${Math.max(current, finishedCount)}/${total}` : null;
 
   const hasPending = pendingSync > 0;
+  const showOfflineDuration =
+    offlineMode && offlineSellingSinceMs != null && hasPending;
   // Never show Sync chrome when the queue is empty — even if syncing flag is sticky.
   const activelySyncingQueue = syncing && hasPending;
   const showSyncButton = hasPending;
@@ -91,7 +116,7 @@ export function PosOfflineSyncControls({
       role="status"
       aria-live="polite"
     >
-      <div className={`flex flex-wrap items-center gap-2 ${compact ? "" : "justify-between"}`}>
+      <div className={`flex flex-wrap items-center gap-2 ${compact ? "" : "justify-between w-full"}`}>
         {!compact && label ? (
           <p className="min-w-0 flex-1 text-xs font-medium leading-snug">{label}</p>
         ) : null}
@@ -128,6 +153,11 @@ export function PosOfflineSyncControls({
             </span>
           </button>
         ) : null}
+        <OfflineSellingDurationLabel
+          sinceMs={offlineSellingSinceMs}
+          show={showOfflineDuration}
+          className={compact ? "opacity-90" : "text-sky-900"}
+        />
       </div>
       {compact && label && (activelySyncingQueue || pendingSync > 0) ? (
         <p className="max-w-[16rem] truncate text-[10px] font-medium leading-tight opacity-90">
