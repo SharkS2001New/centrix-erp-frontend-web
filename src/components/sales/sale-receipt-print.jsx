@@ -128,19 +128,39 @@ export function resolveSaleReceiptTenders(sale, orderTotal) {
     else cashAmount = amountPaid;
     tenderPaid = amountPaid;
   } else if (tenderPaid > amountPaid + 0.02) {
-    // Stale tender columns above amount_paid — trust amount_paid and rebuild from method.
-    cashAmount = 0;
-    mpesaAmount = 0;
-    equityAmount = 0;
-    kcbAmount = 0;
-    voucherAmount = 0;
-    pointsAmount = 0;
-    const code = String(sale?.payment_method_code ?? "CASH").toUpperCase();
-    if (code.includes("MPESA") || code.includes("AIRTEL")) mpesaAmount = amountPaid;
-    else if (code.includes("EQUITY")) equityAmount = amountPaid;
-    else if (code.includes("KCB")) kcbAmount = amountPaid;
-    else if (!code.includes("CREDIT")) cashAmount = amountPaid;
-    tenderPaid = amountPaid;
+    // Cashier may have tendered more than the bill (change). Keep those method amounts
+    // when the excess matches recorded change / cash tendered — do not clamp to order total.
+    const knownChange = Math.max(
+      0,
+      roundMoney(sale?._change_given ?? 0),
+      roundMoney(sale?.order_change ?? 0),
+    );
+    const cashTendered = Math.max(0, roundMoney(sale?._cash_tendered ?? 0));
+    const excess = roundMoney(tenderPaid - amountPaid);
+    const matchesKnownChange =
+      knownChange > 0.009 && Math.abs(excess - knownChange) <= 0.05;
+    const matchesCashTendered =
+      cashTendered > amountPaid + 0.02 && Math.abs(tenderPaid - cashTendered) <= 0.05;
+    const matchesBillPlusChange =
+      total > 0.01 &&
+      knownChange > 0.009 &&
+      Math.abs(tenderPaid - (total + knownChange)) <= 0.05;
+
+    if (!matchesKnownChange && !matchesCashTendered && !matchesBillPlusChange) {
+      // Stale tender columns above amount_paid — trust amount_paid and rebuild from method.
+      cashAmount = 0;
+      mpesaAmount = 0;
+      equityAmount = 0;
+      kcbAmount = 0;
+      voucherAmount = 0;
+      pointsAmount = 0;
+      const code = String(sale?.payment_method_code ?? "CASH").toUpperCase();
+      if (code.includes("MPESA") || code.includes("AIRTEL")) mpesaAmount = amountPaid;
+      else if (code.includes("EQUITY")) equityAmount = amountPaid;
+      else if (code.includes("KCB")) kcbAmount = amountPaid;
+      else if (!code.includes("CREDIT")) cashAmount = amountPaid;
+      tenderPaid = amountPaid;
+    }
   }
 
   return {
@@ -342,9 +362,9 @@ export function buildSaleReceiptHtml(
   });
 
   // Prefer amount_paid so unpaid/partial receipts never treat stale cash columns as paid.
-  const totalPaid = receiptTenders.amountPaid > 0.009
-    ? receiptTenders.amountPaid
-    : receiptTenders.tenderPaid;
+  // When the customer overpaid (change), tenderPaid may exceed amount_paid — use the higher
+  // so Change Given and method rows stay aligned (e.g. M-Pesa 5000 on a 4950 bill).
+  const totalPaid = Math.max(receiptTenders.amountPaid, receiptTenders.tenderPaid);
   // _cash_tendered is a frontend-only annotation set at checkout time (the amount the customer
   // physically handed over, which may exceed the order total for cash payments). It is never
   // stored on the server. Previous-order edit return/top-up use payment_adjustments — return

@@ -231,6 +231,7 @@ import {
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
+  hasLocalPosSaleCopy,
   cacheServerSaleForOfflineEdit,
   claimNextLocalPosTicketForSale,
   prefetchServerSalesForOfflineEdit,
@@ -301,7 +302,12 @@ import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
 import { formDraftKey } from "@/stores/form-drafts";
 import { useFormDraft } from "@/hooks/use-form-draft";
-import { getPosDeviceIdentifier, saleBelongsToCurrentPosDevice, POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE } from "@/lib/pos-device";
+import {
+  getPosDeviceIdentifier,
+  posDeviceIdForRestoreRequest,
+  saleBelongsToCurrentPosDevice,
+  POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE,
+} from "@/lib/pos-device";
 import {
   createBranchTill,
   indexOpenSessionsByTill,
@@ -2898,46 +2904,6 @@ export function PosScreen({ standalone = false }) {
         rows = [];
       }
 
-      const serverOrders = rows
-        .filter((row) => row?.id != null && row?.order_num != null)
-        .filter((row) => Number(row.order_num) < TOMBSTONE_MIN)
-        .filter((row) => !row?.fulfillment_meta?.superseded_by_edit)
-        .filter((row) => {
-          if (cashierId != null) {
-            const rowCashier = row.cashier_id ?? row.created_by;
-            if (rowCashier != null && Number(rowCashier) !== cashierId) return false;
-          }
-          if (activeFloatId != null) {
-            const rowSession = Number(row.float_session_id ?? 0);
-            // Only exclude when the sale is stamped to a *different* open session.
-            // Null/0 (legacy or remapped edits) must stay browseable by Cash Sales #.
-            if (rowSession > 0 && rowSession !== activeFloatId) return false;
-          }
-          const source = String(row.order_source ?? row.channel ?? "pos").toLowerCase();
-          if (source && source !== "pos") return false;
-          const status = String(row.status ?? "").toLowerCase();
-          if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
-          // Previous-order edit: only receipts written on this POS computer.
-          // Unstamped server rows are excluded — they reappear via local outbox mirrors
-          // on the till that printed them.
-          if (!saleBelongsToCurrentPosDevice(row, { allowUnstampedLocalOutbox: false })) {
-            return false;
-          }
-          return true;
-        })
-        .map((row) => ({
-          id: row.id,
-          order_num: row.order_num,
-          pos_order_num: row.pos_order_num ?? null,
-          pos_order_date: row.pos_order_date ?? null,
-          float_session_id: row.float_session_id ?? null,
-          pos_device_id: row.pos_device_id ?? row.fulfillment_meta?.pos_device_id ?? null,
-          status: row.status,
-          order_total: row.order_total != null ? Number(row.order_total) : null,
-          amount_paid: row.amount_paid != null ? Number(row.amount_paid) : null,
-        }))
-        .slice(0, 15);
-
       let offlineOrders = [];
       try {
         offlineOrders = await listOfflinePendingSalesForEdit();
@@ -2965,8 +2931,9 @@ export function PosScreen({ standalone = false }) {
           return !(rowSession > 0 && rowSession !== activeFloatId);
         });
       }
+      // IndexedDB mirrors on this PC are always same-machine (even if unstamped).
       localSyncedOrders = localSyncedOrders.filter((row) =>
-        saleBelongsToCurrentPosDevice(row, { allowUnstampedLocalOutbox: true }),
+        saleBelongsToCurrentPosDevice(row, { knownLocal: true }),
       );
 
       const offlineBrowseKeys = new Set(
@@ -2986,6 +2953,62 @@ export function PosScreen({ standalone = false }) {
           .map((row) => String(row?.id ?? "").trim())
           .filter((id) => id && !id.startsWith("offline:")),
       );
+      const localOwnedTicketKeys = new Set([
+        ...offlineBrowseKeys,
+        ...localSyncedBrowseKeys,
+      ]);
+      const localOwnedSaleIds = new Set(localSyncedIds);
+
+      const serverOrders = rows
+        .filter((row) => row?.id != null && row?.order_num != null)
+        .filter((row) => Number(row.order_num) < TOMBSTONE_MIN)
+        .filter((row) => !row?.fulfillment_meta?.superseded_by_edit)
+        .filter((row) => {
+          if (cashierId != null) {
+            const rowCashier = row.cashier_id ?? row.created_by;
+            if (rowCashier != null && Number(rowCashier) !== cashierId) return false;
+          }
+          if (activeFloatId != null) {
+            const rowSession = Number(row.float_session_id ?? 0);
+            // Only exclude when the sale is stamped to a *different* open session.
+            // Null/0 (legacy or remapped edits) must stay browseable by Cash Sales #.
+            if (rowSession > 0 && rowSession !== activeFloatId) return false;
+          }
+          const source = String(row.order_source ?? row.channel ?? "pos").toLowerCase();
+          if (source && source !== "pos") return false;
+          const status = String(row.status ?? "").toLowerCase();
+          if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
+          // Same machine: device stamp match OR IndexedDB still has this receipt
+          // (offline → upload leaves a local synced mirror).
+          const ticket = resolvePosSessionTicketNumber(row);
+          const hasLocalCopy =
+            localOwnedSaleIds.has(String(row.id)) ||
+            (ticket != null && localOwnedTicketKeys.has(String(ticket)));
+          if (
+            !saleBelongsToCurrentPosDevice(row, { knownLocal: hasLocalCopy })
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .map((row) => ({
+          id: row.id,
+          order_num: row.order_num,
+          pos_order_num: row.pos_order_num ?? null,
+          pos_order_date: row.pos_order_date ?? null,
+          float_session_id: row.float_session_id ?? null,
+          pos_device_id: row.pos_device_id ?? row.fulfillment_meta?.pos_device_id ?? null,
+          status: row.status,
+          order_total: row.order_total != null ? Number(row.order_total) : null,
+          amount_paid: row.amount_paid != null ? Number(row.amount_paid) : null,
+          ...(localOwnedSaleIds.has(String(row.id)) ||
+          (resolvePosSessionTicketNumber(row) != null &&
+            localOwnedTicketKeys.has(String(resolvePosSessionTicketNumber(row))))
+            ? { _local_synced_mirror: true }
+            : {}),
+        }))
+        .slice(0, 15);
+
       const orders = sortPosOrdersByNumberDesc([
         ...offlineOrders.map((row) => ({
           id: row.id,
@@ -2993,8 +3016,10 @@ export function PosScreen({ standalone = false }) {
           pos_order_num: row.pos_order_num ?? null,
           pos_order_date: row.pos_order_date ?? null,
           float_session_id: row.float_session_id ?? null,
+          pos_device_id: row.pos_device_id ?? null,
           status: row.status,
           offline_pending_sync: true,
+          offline_client_uuid: row.offline_client_uuid ?? row.client_sale_uuid ?? null,
         })),
         ...localSyncedOrders
           .filter((row) => {
@@ -3007,7 +3032,10 @@ export function PosScreen({ standalone = false }) {
             pos_order_num: row.pos_order_num ?? null,
             pos_order_date: row.pos_order_date ?? null,
             float_session_id: row.float_session_id ?? null,
+            pos_device_id: row.pos_device_id ?? null,
             status: row.status,
+            offline_client_uuid: row.offline_client_uuid ?? null,
+            _local_synced_mirror: true,
           })),
         ...serverOrders.filter((row) => {
           const ticket = resolvePosSessionTicketNumber(row);
@@ -3035,7 +3063,14 @@ export function PosScreen({ standalone = false }) {
                 pos_order_num: row.pos_order_num ?? null,
                 pos_order_date: row.pos_order_date ?? null,
                 float_session_id: row.float_session_id ?? null,
+                pos_device_id: row.pos_device_id ?? null,
                 status: row.status,
+                ...(row._local_synced_mirror || row.offline_client_uuid
+                  ? {
+                      _local_synced_mirror: Boolean(row._local_synced_mirror),
+                      offline_client_uuid: row.offline_client_uuid ?? null,
+                    }
+                  : {}),
               }))
           : []),
       ]).slice(0, 15);
@@ -4172,13 +4207,14 @@ export function PosScreen({ standalone = false }) {
         cartRef.current?.superseded_sale_id
       ) {
         const saleId = cartRef.current.superseded_sale_id;
+        const restoreDeviceId = posDeviceIdForRestoreRequest(
+          editSourceSale ?? cartRef.current,
+        );
         const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
           method: "POST",
           body: {
             replace: true,
-            ...(getPosDeviceIdentifier()
-              ? { pos_device_id: getPosDeviceIdentifier() }
-              : {}),
+            ...(restoreDeviceId ? { pos_device_id: restoreDeviceId } : {}),
           },
           ...POS_CART_REQUEST,
         });
@@ -12478,13 +12514,12 @@ export function PosScreen({ standalone = false }) {
       replace = true;
     }
 
+    const restoreDeviceId = posDeviceIdForRestoreRequest(saleSnapshot);
     const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
       method: "POST",
       body: {
         replace,
-        ...(getPosDeviceIdentifier()
-          ? { pos_device_id: getPosDeviceIdentifier() }
-          : {}),
+        ...(restoreDeviceId ? { pos_device_id: restoreDeviceId } : {}),
       },
     });
     applyRestoredHeldCart(
@@ -12520,14 +12555,20 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    if (
-      saleSnapshot &&
-      !saleBelongsToCurrentPosDevice(saleSnapshot, { allowUnstampedLocalOutbox: true })
-    ) {
-      setOrderEditError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
-      setStatusMessage(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
-      if (standalone) notifyError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
-      return;
+    if (saleSnapshot) {
+      const ticket =
+        saleSnapshot.pos_order_num != null && Number(saleSnapshot.pos_order_num) > 0
+          ? Number(saleSnapshot.pos_order_num)
+          : null;
+      const allowed =
+        saleBelongsToCurrentPosDevice(saleSnapshot) ||
+        (await hasLocalPosSaleCopy({ saleId, ticketNum: ticket }));
+      if (!allowed) {
+        setOrderEditError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
+        setStatusMessage(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
+        if (standalone) notifyError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
+        return;
+      }
     }
 
     const uploadBlockMessage = await blockIfPreviousOrderEditUploading(saleId);
@@ -13247,13 +13288,12 @@ export function PosScreen({ standalone = false }) {
       if (!paintedOptimistic) beginLoadingIfNeeded();
 
       // Fast cart restore (stock + KRA finish afterResponse on the API).
+      const restoreDeviceId = posDeviceIdForRestoreRequest(saleSnapshot);
       const restoredRaw = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
         method: "POST",
         body: {
           replace,
-          ...(getPosDeviceIdentifier()
-            ? { pos_device_id: getPosDeviceIdentifier() }
-            : {}),
+          ...(restoreDeviceId ? { pos_device_id: restoreDeviceId } : {}),
         },
       });
       restoreActive = false;
@@ -13614,7 +13654,19 @@ export function PosScreen({ standalone = false }) {
         );
         return;
       }
-      if (!saleBelongsToCurrentPosDevice(match, { allowUnstampedLocalOutbox: false })) {
+      const matchTicket =
+        match.pos_order_num != null && Number(match.pos_order_num) > 0
+          ? Number(match.pos_order_num)
+          : ticketNum != null
+            ? Number(ticketNum)
+            : null;
+      const allowedOnThisPc =
+        saleBelongsToCurrentPosDevice(match) ||
+        (await hasLocalPosSaleCopy({
+          saleId: match.id,
+          ticketNum: matchTicket,
+        }));
+      if (!allowedOnThisPc) {
         failLookupKeepNextTicket(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
         return;
       }

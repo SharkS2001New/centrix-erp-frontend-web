@@ -95,4 +95,54 @@ describe("sale receipt payment rows", () => {
     expect(html).toMatch(/Cash[\s\S]*?>0</);
     expect(html).not.toMatch(/Cash[\s\S]*?>15[,.]?880</);
   });
+
+  it("keeps M-Pesa tendered amount and change instead of clamping to order total", () => {
+    const sale = {
+      order_total: 4950,
+      amount_paid: 4950,
+      payment_method_code: "MPESA",
+      cash: 0,
+      mpesa_amount: 5000,
+      equity_amount: 0,
+      kcb_amount: 0,
+      _cash_tendered: 5000,
+      _change_given: 50,
+      order_change: 50,
+      items: [],
+    };
+
+    const tenders = resolveSaleReceiptTenders(sale, 4950);
+    expect(tenders.mpesaAmount).toBe(5000);
+    expect(tenders.amountPaid).toBe(4950);
+    expect(tenders.tenderPaid).toBe(5000);
+
+    const rows = buildUsedPaymentRows(sale, 4950, { showAllMethods: false });
+    expect(rows).toEqual([{ label: "M-Pesa", value: 5000 }]);
+
+    const html = buildSaleReceiptHtml(sale, {
+      seller: { name: "Test Shop" },
+      branding: { showHeader: false, display: "name", organizationName: "Test Shop" },
+      salesSettings: { receipt_show_all_payment_methods: false },
+    });
+    expect(html).toMatch(/Total[\s\S]*?>4[,.]?950</);
+    expect(html).toMatch(/M-Pesa[\s\S]*?>5[,.]?000</);
+    expect(html).toContain("Change Given");
+    expect(html).toMatch(/Change Given[\s\S]*?>50</);
+  });
+
+  it("keeps cash overpayment tender when change is recorded", () => {
+    const sale = {
+      order_total: 39670,
+      amount_paid: 39670,
+      payment_method_code: "CASH",
+      cash: 40000,
+      mpesa_amount: 0,
+      _cash_tendered: 40000,
+      _change_given: 330,
+      order_change: 330,
+    };
+    const tenders = resolveSaleReceiptTenders(sale, 39670);
+    expect(tenders.cashAmount).toBe(40000);
+    expect(tenders.tenderPaid).toBe(40000);
+  });
 });

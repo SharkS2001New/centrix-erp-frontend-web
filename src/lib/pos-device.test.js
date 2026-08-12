@@ -36,7 +36,7 @@ describe("pos device ownership for previous-order edit", () => {
     expect(saleBelongsToCurrentPosDevice(sale)).toBe(true);
   });
 
-  it("blocks sales stamped to another device", async () => {
+  it("blocks sales stamped to another device when there is no local copy", async () => {
     const { getPosDeviceIdentifier, saleBelongsToCurrentPosDevice, POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE } =
       await import("@/lib/pos-device");
 
@@ -50,7 +50,7 @@ describe("pos device ownership for previous-order edit", () => {
     expect(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE).toMatch(/another device/i);
   });
 
-  it("allows unstamped local pending outbox rows on this till", async () => {
+  it("allows IndexedDB local pending and synced-mirror rows on this machine", async () => {
     const { saleBelongsToCurrentPosDevice } = await import("@/lib/pos-device");
 
     expect(
@@ -60,10 +60,56 @@ describe("pos device ownership for previous-order edit", () => {
       }),
     ).toBe(true);
     expect(
+      saleBelongsToCurrentPosDevice({
+        id: 88,
+        _local_synced_mirror: true,
+        offline_client_uuid: "uuid-1",
+      }),
+    ).toBe(true);
+    expect(
+      saleBelongsToCurrentPosDevice({
+        id: 88,
+        offline_client_uuid: "uuid-1",
+      }),
+    ).toBe(true);
+  });
+
+  it("allows knownLocal even when the server stamp is missing or foreign", async () => {
+    const { getPosDeviceIdentifier, saleBelongsToCurrentPosDevice } =
+      await import("@/lib/pos-device");
+
+    getPosDeviceIdentifier();
+    expect(
       saleBelongsToCurrentPosDevice(
         { id: 44, order_num: 10 },
-        { allowUnstampedLocalOutbox: false },
+        { knownLocal: true },
       ),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      saleBelongsToCurrentPosDevice(
+        { id: 44, fulfillment_meta: { pos_device_id: "other-pc" } },
+        { knownLocal: true },
+      ),
+    ).toBe(true);
+  });
+
+  it("blocks unstamped pure server rows without a local copy", async () => {
+    const { getPosDeviceIdentifier, saleBelongsToCurrentPosDevice } =
+      await import("@/lib/pos-device");
+
+    getPosDeviceIdentifier();
+    expect(saleBelongsToCurrentPosDevice({ id: 44, order_num: 10 })).toBe(false);
+  });
+
+  it("prefers the sale stamp for restore-to-cart device id", async () => {
+    const { getPosDeviceIdentifier, posDeviceIdForRestoreRequest } =
+      await import("@/lib/pos-device");
+
+    getPosDeviceIdentifier();
+    expect(
+      posDeviceIdForRestoreRequest({
+        fulfillment_meta: { pos_device_id: "receipt-pc-uuid" },
+      }),
+    ).toBe("receipt-pc-uuid");
   });
 });

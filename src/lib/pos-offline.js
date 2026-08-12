@@ -2,9 +2,7 @@ import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
 import {
   POS_FULL_PAYMENT_REQUIRED_MESSAGE,
 } from "@/lib/pos-checkout-credit-sale";
-import {
-  getPosDeviceIdentifier,
-} from "@/lib/pos-device";
+import { getPosDeviceIdentifier } from "@/lib/pos-device";
 import {
   productMatchesCatalogQuery,
   isSellableCatalogProduct,
@@ -3697,6 +3695,11 @@ export async function listLocalSyncedSalesForBrowse() {
         status: sale.status ?? "paid",
         offline_pending_sync: false,
         offline_client_uuid: String(row.client_sale_uuid || "").trim() || null,
+        pos_device_id:
+          sale.pos_device_id ??
+          sale.fulfillment_meta?.pos_device_id ??
+          row.checkout_body?.pos_device_id ??
+          null,
         _local_synced_mirror: true,
       };
     })
@@ -3768,8 +3771,65 @@ export async function findLocalSyncedSaleForOfflineEdit({
       null,
     status: sale.status ?? "paid",
     items,
+    offline_client_uuid: String(row.client_sale_uuid || "").trim() || null,
+    pos_device_id:
+      sale.pos_device_id ??
+      sale.fulfillment_meta?.pos_device_id ??
+      row.checkout_body?.pos_device_id ??
+      null,
     _local_synced_mirror: true,
   };
+}
+
+function outboxRowMatchesSaleLookup(row, { targetId, ticket }) {
+  if (!row || typeof row !== "object") return false;
+  if (targetId > 0 && Number(row.server_sale_id ?? 0) === targetId) return true;
+  if (targetId > 0 && Number(row.superseded_sale_id ?? 0) === targetId) return true;
+  const payloadId = Number(row.sale_payload?.id ?? 0);
+  if (targetId > 0 && payloadId === targetId) return true;
+  const pos =
+    row.sale_payload?.pos_order_num ??
+    row.checkout_body?.pos_order_num ??
+    null;
+  if (Number.isFinite(ticket) && ticket > 0 && pos != null && Number(pos) === ticket) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * True when this PC still has the receipt in IndexedDB (pending upload or synced mirror).
+ * That is the ownership test for previous-order edit on the same machine —
+ * including offline sales that later uploaded when internet returned.
+ */
+export async function hasLocalPosSaleCopy({ saleId = null, ticketNum = null } = {}) {
+  if (saleId != null && String(saleId).startsWith("offline:")) return true;
+
+  const targetId = saleId != null ? Number(saleId) : null;
+  const ticket = ticketNum != null ? Number(ticketNum) : null;
+  if (!(targetId > 0) && !(Number.isFinite(ticket) && ticket > 0)) return false;
+
+  try {
+    const synced = await idbListSyncedOutboxForBrowse({
+      maxAgeMs: 7 * 24 * 60 * 60 * 1000,
+      limit: 100,
+    });
+    if ((synced ?? []).some((row) => outboxRowMatchesSaleLookup(row, { targetId, ticket }))) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const pending = await idbListUnsyncedOutbox();
+    if ((pending ?? []).some((row) => outboxRowMatchesSaleLookup(row, { targetId, ticket }))) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 /** Stable IndexedDB key for online POS sales mirrored for offline previous-order edit. */

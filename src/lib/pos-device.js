@@ -65,34 +65,57 @@ export function resolveSalePosDeviceId(saleOrRow) {
   return null;
 }
 
+/** True when this row is clearly backed by IndexedDB on this machine. */
+export function isLocalPosOutboxSaleRow(saleOrRow) {
+  if (saleOrRow == null || typeof saleOrRow !== "object") return false;
+  if (saleOrRow._local_synced_mirror) return true;
+  if (saleOrRow.offline_pending_sync) return true;
+  const id = String(saleOrRow.id ?? "");
+  if (id.startsWith("offline:")) return true;
+  if (String(saleOrRow.offline_client_uuid ?? "").trim()) return true;
+  if (
+    String(saleOrRow.client_sale_uuid ?? "").trim() &&
+    (saleOrRow.sync_kind === "sale" ||
+      saleOrRow.sync_kind === "previous_order_edit" ||
+      saleOrRow.sync_kind === "online_mirror" ||
+      saleOrRow.sync_status === "synced" ||
+      saleOrRow.sync_status === "pending" ||
+      saleOrRow.sync_status === "editing")
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
- * Previous-order edit is only allowed for Cash Sales written on this PC.
+ * Previous-order edit is allowed when this machine has the receipt (IndexedDB),
+ * or the sale is stamped to this computer's device id.
  *
- * - Stamped sale → must match `getPosDeviceIdentifier()`
- * - Unstamped local pending outbox (`offline:…`) → allow (this till wrote it)
- * - Unstamped server sale → block (safe after a PC move; no durable device claim)
+ * "Same device" = same physical PC with a local outbox / synced mirror copy —
+ * including offline sales that later uploaded when internet returned.
  */
 export function saleBelongsToCurrentPosDevice(saleOrRow, options = {}) {
-  const { allowUnstampedLocalOutbox = true } = options;
+  const { knownLocal = false } = options;
+  if (knownLocal || isLocalPosOutboxSaleRow(saleOrRow)) return true;
+
   const current = normalizeDeviceIdentifier(getPosDeviceIdentifier());
   if (!current) return true;
 
   const stamped = resolveSalePosDeviceId(saleOrRow);
   if (stamped) return stamped === current;
 
-  if (!allowUnstampedLocalOutbox) return false;
-
-  const id = String(saleOrRow?.id ?? "");
-  if (id.startsWith("offline:")) return true;
-  if (saleOrRow?.offline_pending_sync) return true;
-  // Local outbox row that has not been mirrored from the server list yet.
-  if (
-    saleOrRow?.client_sale_uuid &&
-    (saleOrRow.sync_kind === "sale" || saleOrRow.sync_kind === "previous_order_edit")
-  ) {
-    return true;
-  }
+  // Pure server row with no device stamp and no local outbox markers — not editable
+  // on a foreign till (new PC with empty IndexedDB).
   return false;
+}
+
+/** Device id to send on restore-to-cart — prefer the receipt's own stamp so uploads match. */
+export function posDeviceIdForRestoreRequest(saleOrRow = null) {
+  return (
+    resolveSalePosDeviceId(saleOrRow) ||
+    normalizeDeviceIdentifier(getPosDeviceIdentifier()) ||
+    null
+  );
 }
 
 export const POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE =
