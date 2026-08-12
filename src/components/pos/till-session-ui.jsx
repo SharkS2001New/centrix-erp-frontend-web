@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { buildExpensesHref } from "@/lib/expenses-link";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import {
   CASH_MOVEMENT_OPTIONS,
@@ -623,7 +625,16 @@ export function RecordSessionExpenseModal({
         <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
       ) : null}
       <div className={posModalPanelClass(embedded, "w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl")}>
-        <h2 className="text-lg font-semibold text-slate-900">Record expense</h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">Record expense</h2>
+          <Link
+            href={buildExpensesHref()}
+            data-pos-leave-ignore="true"
+            className="theme-link shrink-0 text-sm font-medium hover:underline"
+          >
+            View expenses
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-slate-500">
           {tillName ? `${tillName} · ` : ""}
           {cashierName ?? "Cashier"}

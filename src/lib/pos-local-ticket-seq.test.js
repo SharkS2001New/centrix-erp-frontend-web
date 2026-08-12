@@ -12,6 +12,7 @@ vi.mock("@/lib/pos-offline-db", async () => {
       meta.set(key, value);
     },
     idbListPendingOutbox: async () => pendingOutbox,
+    idbCountOrderNumbers: async () => 0,
   };
 });
 
@@ -141,5 +142,74 @@ describe("seedLocalPosTicketSeqFromSale — online checkout without float_sessio
     await seedLocalPosTicketSeq(31, "2026-08-08", sessionId);
     expect(await peekLocalPosTicketNext("2026-08-08", sessionId)).toBe(32);
     expect(await peekNextPosTicketNumber("2026-08-08", sessionId)).toBe(32);
+  });
+});
+
+describe("ensurePosOfflineOrderNumbers — no phantom Cash Sales #1", () => {
+  beforeEach(() => {
+    meta.clear();
+    pendingOutbox = [];
+  });
+
+  it("does not seed lastIssued=1 when server next is 2 on a fresh till", async () => {
+    const { apiRequest } = await import("@/lib/api");
+    apiRequest.mockResolvedValueOnce({
+      next_pos_order_num: 2,
+      pos_order_date: "2026-08-08",
+    });
+    const { ensurePosOfflineOrderNumbers, peekLocalPosTicketNext, peekIssuedPosTicketMax } =
+      await import("@/lib/pos-offline");
+    const sessionId = 77;
+
+    const res = await ensurePosOfflineOrderNumbers({ floatSessionId: sessionId });
+    expect(res.next_pos_order_num).toBe(1);
+    expect(await peekLocalPosTicketNext("2026-08-08", sessionId)).toBeNull();
+    expect(await peekIssuedPosTicketMax("2026-08-08", sessionId)).toBeNull();
+  });
+
+  it("still raises when local already issued tickets this session", async () => {
+    const { apiRequest } = await import("@/lib/api");
+    const { seedLocalPosTicketSeq, ensurePosOfflineOrderNumbers, peekLocalPosTicketNext } =
+      await import("@/lib/pos-offline");
+    const sessionId = 77;
+
+    await seedLocalPosTicketSeq(3, "2026-08-08", sessionId);
+    apiRequest.mockResolvedValueOnce({
+      next_pos_order_num: 5,
+      pos_order_date: "2026-08-08",
+    });
+    await ensurePosOfflineOrderNumbers({ floatSessionId: sessionId });
+    expect(await peekLocalPosTicketNext("2026-08-08", sessionId)).toBe(5);
+  });
+});
+
+describe("peekOutboxPosTicketMax — ignores meta phantoms", () => {
+  beforeEach(() => {
+    meta.clear();
+    pendingOutbox = [];
+  });
+
+  it("returns null when only meta is seeded (no outbox)", async () => {
+    const { seedLocalPosTicketSeq, peekOutboxPosTicketMax, peekIssuedPosTicketMax } =
+      await import("@/lib/pos-offline");
+    const sessionId = 88;
+    await seedLocalPosTicketSeq(1, "2026-08-08", sessionId);
+    expect(await peekIssuedPosTicketMax("2026-08-08", sessionId)).toBe(1);
+    expect(await peekOutboxPosTicketMax("2026-08-08", sessionId)).toBeNull();
+  });
+
+  it("returns pending outbox max without needing meta", async () => {
+    const { peekOutboxPosTicketMax } = await import("@/lib/pos-offline");
+    const sessionId = 88;
+    pendingOutbox = [
+      {
+        sale_payload: {
+          pos_order_num: 4,
+          pos_order_date: "2026-08-08",
+          float_session_id: sessionId,
+        },
+      },
+    ];
+    expect(await peekOutboxPosTicketMax("2026-08-08", sessionId)).toBe(4);
   });
 });

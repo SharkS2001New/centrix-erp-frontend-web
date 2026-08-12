@@ -266,6 +266,14 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
+      // Classic Find: any visible result → select / park on qty (Enter on qty adds).
+      // Barcode quick-add only when there is no pickable row yet (true scan before
+      // search results land), so Find never skips the qty step.
+      if (classic && results.length) {
+        setOpen(false);
+        pickHighlighted();
+        return;
+      }
       if (barcodeEnabled && onBarcodeEnter) {
         const handled = await onBarcodeEnter(query.trim());
         if (handled) {

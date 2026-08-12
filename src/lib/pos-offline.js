@@ -27,6 +27,7 @@ import {
   idbFindSyncedServerSaleIdByPosTicket,
   idbGetAllCatalog,
   idbGetCatalogProduct,
+  idbGetCatalogProducts,
   idbGetLocalCart,
   idbGetMeta,
   idbGetOutboxSale,
@@ -251,6 +252,11 @@ export async function getPosOfflineProduct(code) {
   return idbGetCatalogProduct(code);
 }
 
+/** Batch IndexedDB catalog lookups (one transaction). */
+export async function getPosOfflineProducts(codes) {
+  return idbGetCatalogProducts(codes);
+}
+
 export async function getPosOfflineCatalogMeta() {
   return {
     warmedAt: Number((await idbGetMeta("catalog_warmed_at")) ?? 0) || null,
@@ -283,11 +289,24 @@ export async function ensurePosOfflineOrderNumbers({
     reportIssues: false,
   });
   // Raise-only seed from server. Local pending 7,8,9… stay ahead of last synced #6.
+  // Fresh till (local seq still 0): do NOT import org/server watermark gaps
+  // (e.g. server next=2 would seed lastIssued=1 and skip unused Cash Sales #1).
   const nextPos = Number(res?.next_pos_order_num ?? 0);
   return withPosOfflineExclusiveLock(async () => {
     if (Number.isFinite(nextPos) && nextPos > 0) {
       const scoped = Number.isFinite(sessionId) && sessionId > 0;
-      await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date, scoped ? sessionId : null, {
+      const seedSession = scoped ? sessionId : null;
+      const key = localPosTicketSeqKey(res?.pos_order_date, seedSession);
+      const current = Number((await idbGetMeta(key)) ?? 0);
+      if (current === 0 && nextPos > 1) {
+        return {
+          reserved: 0,
+          available: await idbCountOrderNumbers(),
+          next_pos_order_num: 1,
+          pos_order_date: res?.pos_order_date ?? null,
+        };
+      }
+      await seedLocalPosTicketSeq(nextPos - 1, res?.pos_order_date, seedSession, {
         force: false,
       });
     }
@@ -360,6 +379,40 @@ export async function peekIssuedPosTicketMax(posOrderDate = null, floatSessionId
     /* ignore */
   }
 
+  return maxIssued > 0 ? maxIssued : null;
+}
+
+/**
+ * Highest Cash Sales # sitting in the local outbox only (ignores meta seeds).
+ * Used so a phantom server watermark cannot skip unused #1 on a fresh till.
+ */
+export async function peekOutboxPosTicketMax(posOrderDate = null, floatSessionId = null) {
+  const today = normalizePosOrderDate(posOrderDate) ?? todayPosOrderDate();
+  const sessionId = Number(floatSessionId);
+  const scopedSession =
+    Number.isFinite(sessionId) && sessionId > 0 ? sessionId : null;
+  let maxIssued = 0;
+  try {
+    const pending = await idbListPendingOutbox({ includeErrors: true });
+    for (const row of pending ?? []) {
+      const num = Number(
+        row?.sale_payload?.pos_order_num ?? row?.checkout_body?.pos_order_num ?? 0,
+      );
+      const date =
+        normalizePosOrderDate(row?.sale_payload?.pos_order_date) ??
+        normalizePosOrderDate(row?.checkout_body?.pos_order_date);
+      if (!(num > maxIssued) || (date && date !== today)) continue;
+      const rowSession = outboxRowFloatSessionId(row);
+      if (scopedSession) {
+        if (rowSession != null && rowSession !== scopedSession) continue;
+      } else if (rowSession) {
+        continue;
+      }
+      maxIssued = num;
+    }
+  } catch {
+    /* ignore */
+  }
   return maxIssued > 0 ? maxIssued : null;
 }
 

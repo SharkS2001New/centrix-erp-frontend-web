@@ -46,8 +46,31 @@ export function cartHasOptimisticLines(cart) {
 export function cartLineRef(line) {
   const code = line?.update_code;
   if (code != null && String(code).trim() !== "") return code;
+  if (line?.client_line_id != null && String(line.client_line_id).trim() !== "") {
+    return line.client_line_id;
+  }
   if (line?.id != null && String(line.id).trim() !== "") return line.id;
   return null;
+}
+
+/** True when a cart row matches a replace/swap target (id, update_code, or client_line_id). */
+export function cartLineMatchesRef(line, target) {
+  if (line == null || target == null || target === "") return false;
+  const keys = new Set(
+    [target, target?.id, target?.update_code, target?.client_line_id, cartLineRef(target)]
+      .filter((v) => v != null && String(v).trim() !== "")
+      .map((v) => String(v)),
+  );
+  if (!keys.size) return false;
+  for (const key of [
+    line.id,
+    line.update_code,
+    line.client_line_id,
+    cartLineRef(line),
+  ]) {
+    if (key != null && keys.has(String(key))) return true;
+  }
+  return false;
 }
 
 /** Resolve a cart line index for in-place edit/swap (id or update_code). */
@@ -62,7 +85,10 @@ export function findCartLineIndexByRef(lines, editingRef) {
       (line?.id != null && String(line.id) === ref) ||
       (line?.update_code != null &&
         String(line.update_code).trim() !== "" &&
-        String(line.update_code) === ref),
+        String(line.update_code) === ref) ||
+      (line?.client_line_id != null &&
+        String(line.client_line_id).trim() !== "" &&
+        String(line.client_line_id) === ref),
   );
   return idx;
 }

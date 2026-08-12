@@ -151,6 +151,7 @@ import {
   applyOptimisticCartMutation,
   buildOptimisticCartLine,
   cartHasOptimisticLines,
+  cartLineMatchesRef,
   cartLineRef,
   findCartLineIndexByRef,
   findMergeableCartLine,
@@ -230,9 +231,11 @@ import {
   peekNextPosOfflineOrderSlot,
   peekNextPosTicketNumber,
   peekIssuedPosTicketMax,
+  peekOutboxPosTicketMax,
   peekLocalPosTicketNext,
   ensurePosOfflineOrderNumbers,
   getPosOfflineProduct,
+  getPosOfflineProducts,
   getPosOfflinePendingCount,
   purgeReservedPosTicketsUpTo,
   seedLocalPosTicketSeq,
@@ -740,11 +743,6 @@ function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
   const list = Array.isArray(lines) ? lines : [];
   if (!list.length || needle == null) return null;
 
-  const needleId = needle?.id ?? needle;
-  const needleRef =
-    needle && typeof needle === "object"
-      ? needle.update_code ?? needle.client_line_id ?? needle.id
-      : needle;
   const needleCode =
     preferProductCode ??
     (needle && typeof needle === "object" ? needle.product_code : null);
@@ -753,15 +751,10 @@ function findCartLineForEdit(lines, needle, { preferProductCode = null } = {}) {
       ? Number(needle.on_wholesale_retail ?? 0)
       : null;
 
-  const byId = list.find(
-    (row) =>
-      sameLineId(row.id, needleId) ||
-      (needleRef != null &&
-        (sameLineId(row.update_code, needleRef) ||
-          sameLineId(row.client_line_id, needleRef) ||
-          sameLineId(row.id, needleRef))),
-  );
-  if (byId) return byId;
+  // Match id / update_code / client_line_id — including after TemporaryCart remints
+  // where optimistic `pending-*` ids are replaced but client_line_id may survive.
+  const byRef = list.find((row) => cartLineMatchesRef(row, needle));
+  if (byRef) return byRef;
 
   if (needleCode != null && String(needleCode).trim() !== "") {
     const matches = list.filter(
@@ -925,7 +918,6 @@ function resolveFreshWorkspacePosNum(
   issuedPosMax = null,
   floatSessionId = null,
 ) {
-  const serverNext = resolvePosNextBrowseNumber(activeCart);
   let maxPos = 0;
   if (issuedPosMax != null && Number(issuedPosMax) > 0) {
     maxPos = Number(issuedPosMax);
@@ -959,10 +951,11 @@ function resolveFreshWorkspacePosNum(
     if (activePos != null && activePos > maxPos) maxPos = activePos;
   }
   const sessionNext = maxPos > 0 ? maxPos + 1 : null;
-  // Session sequence from completed tickets on this till — do not jump to server
-  // watermark+1 (reserved block) which would show Cash Sales #21 with unused #1–#20.
+  // Session / outbox sequence — do not jump to server watermark+1 (reserved block).
+  // No issued tickets yet → always start at Cash Sales #1 (never inherit gaps).
+  // Callers must pass outbox-backed issuedPosMax (or null), never meta-only phantoms.
   if (sessionNext != null) return sessionNext;
-  return serverNext;
+  return 1;
 }
 
 /** Prefer local Cash Sales seq (source of truth) over session browse / server peek. */
@@ -984,12 +977,15 @@ async function resolveNextPosTicketForWorkspace(
     }
   }
 
+  // Outbox = real on-device issues. Meta alone can be a phantom server watermark (#1
+  // "issued" with no sale) that must not skip unused Cash Sales #1.
+  const outboxMax = await peekOutboxPosTicketMax(null, floatSessionId).catch(() => null);
   const issuedPosMax = await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null);
   const sessionNext = resolveFreshWorkspacePosNum(
     activeCart,
     sessionOrders,
     pendingSale,
-    issuedPosMax,
+    outboxMax,
     floatSessionId,
   );
   const emptyFresh =
@@ -998,12 +994,23 @@ async function resolveNextPosTicketForWorkspace(
     !activeCart?.offline_client_sale_uuid;
   const alreadyShowing = resolvePosNextBrowseNumber(activeCart);
 
-  // Local seq includes pending outbox tickets — authoritative while offline sync lags.
   const localNext = await peekLocalPosTicketNext(null, floatSessionId).catch(() => null);
+  // Floor from real issues only (outbox / session). Do not use meta-only phantoms.
   const localFloorNext =
-    issuedPosMax != null && Number(issuedPosMax) > 0
-      ? Number(issuedPosMax) + 1
-      : localNext;
+    outboxMax != null && Number(outboxMax) > 0
+      ? Number(outboxMax) + 1
+      : sessionNext != null && Number(sessionNext) > 1
+        ? localNext
+        : null;
+
+  // Fresh blank till with no session receipts and no pending outbox: Cash Sales #1.
+  // Heal poisoned meta so offline allocate also starts at #1 (not #2).
+  if (emptyFresh && Number(sessionNext) === 1 && !(outboxMax > 0)) {
+    if (localNext != null && Number(localNext) > 1) {
+      void seedLocalPosTicketSeq(0, null, floatSessionId, { force: true }).catch(() => {});
+    }
+    return 1;
+  }
 
   if (
     emptyFresh &&
@@ -1024,20 +1031,18 @@ async function resolveNextPosTicketForWorkspace(
     return Number(alreadyShowing);
   }
 
-  const slot = await peekNextPosOfflineOrderSlot().catch(() => null);
-  const slotNum =
-    slot?.pos_order_num != null && Number(slot.pos_order_num) > 0
-      ? Number(slot.pos_order_num)
-      : null;
-
-  // Local / issued max always wins over a lagging server watermark.
-  const candidates = [localFloorNext, sessionNext, localNext, slotNum].filter(
-    (n) => n != null && Number(n) > 0,
-  );
-  if (candidates.length) {
-    return Math.max(...candidates.map((n) => Number(n)));
+  // Systematic next-ticket order (must stay consecutive — no jumping):
+  // Prefer session-derived next; raise with outbox / local floor when tickets exist.
+  if (sessionNext != null && Number(sessionNext) > 1) {
+    const raised = [sessionNext, localFloorNext, localNext, issuedPosMax != null ? Number(issuedPosMax) + 1 : null]
+      .filter((n) => n != null && Number(n) > 0)
+      .map((n) => Number(n));
+    return raised.length ? Math.max(...raised) : Number(sessionNext);
   }
-  return sessionNext;
+  if (outboxMax != null && Number(outboxMax) > 0) {
+    return Number(outboxMax) + 1;
+  }
+  return 1;
 }
 
 function offlinePrintOptions(sale, base = {}) {
@@ -2126,6 +2131,8 @@ export function PosScreen({ standalone = false }) {
   const orderNameSearchSeqRef = useRef(0);
   const [replacingLineId, setReplacingLineId] = useState(null);
   const replacingLineIdRef = useRef(null);
+  /** Snapshot of the line being swapped — survives TemporaryCart / optimistic id remints. */
+  const replaceTargetSnapshotRef = useRef(null);
   const [swapDraft, setSwapDraft] = useState(null);
   const swapDraftRef = useRef(null);
   const swapLineQtyRef = useRef(null);
@@ -3181,9 +3188,9 @@ export function PosScreen({ standalone = false }) {
           ...new Set((activeCart.lines ?? []).map((l) => l.product_code).filter(Boolean)),
         ];
         const productMeta = {};
-        for (const code of codes) {
-          const row = await getPosOfflineProduct(code);
-          if (row?.product_code) productMeta[code] = row;
+        const rows = await getPosOfflineProducts(codes);
+        for (const row of rows) {
+          if (row?.product_code) productMeta[row.product_code] = row;
         }
         if (cancelled || !Object.keys(productMeta).length) return;
         applyLiveCartCatalogPricesRef.current?.(productMeta);
@@ -3694,16 +3701,16 @@ export function PosScreen({ standalone = false }) {
           usesPosLocalDraftLineEdits(cart) ||
           usesLocalPosCartWorkspace(cart))
       ) {
-        for (const code of missing) {
-          if (cancelled) return;
-          try {
-            const row = await getPosOfflineProduct(code);
+        try {
+          const rows = await getPosOfflineProducts(missing);
+          for (const row of rows) {
+            if (cancelled) return;
             if (row?.product_code && isSellableCatalogProduct(row)) {
               fromOffline[row.product_code] = enrichProductForLpo(row, uomById, vatById);
             }
-          } catch {
-            /* ignore */
           }
+        } catch {
+          /* ignore */
         }
         if (cancelled) return;
         if (Object.keys(fromOffline).length) {
@@ -4557,6 +4564,28 @@ export function PosScreen({ standalone = false }) {
         if (!focusSearchAfterAdd.current) return;
         focusSearchAfterAdd.current = false;
         focusPosScanInput({ selectAll: true });
+      });
+    });
+  }
+
+  /** Park keyboard on Classic entry qty after Find/select (Enter adds the line). */
+  function scheduleFocusEntryQty() {
+    // Cancel any pending "focus Scan after add" so it cannot steal qty focus.
+    focusSearchAfterAdd.current = false;
+    const focusQty = () => {
+      const el = qtyInputRef.current;
+      if (!el || el.disabled) return false;
+      el.focus({ preventScroll: true });
+      el.select?.();
+      return typeof document !== "undefined" && document.activeElement === el;
+    };
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (focusQty()) return;
+        window.setTimeout(() => {
+          if (focusQty()) return;
+          window.setTimeout(() => focusQty(), 80);
+        }, 40);
       });
     });
   }
@@ -5676,6 +5705,13 @@ export function PosScreen({ standalone = false }) {
           cartRef.current = nextCart;
           setCart(nextCart);
         }
+      } else if (intendedEdit) {
+        // Swap / in-place edit must never POST a second row when the line ref is missing.
+        setStatusMessage("Could not sync the line change — try the qty Enter again.");
+        setCartLineSaveFailed(true);
+        if (clearEntry && !unlockUiEarly) clearClassicEntryFields();
+        else if (clearEntry && unlockUiEarly) focusScanAfterItemAdded();
+        return false;
       } else {
         const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
           method: "POST",
@@ -5806,6 +5842,15 @@ export function PosScreen({ standalone = false }) {
 
   async function quickAddOrIncrementProduct(product) {
     if (busy || !product) return;
+    // Never append a row while a line swap is in progress.
+    if (
+      replacingLineIdRef.current ||
+      replaceTargetSnapshotRef.current ||
+      swapDraftRef.current
+    ) {
+      void pickProduct(product);
+      return;
+    }
     if (!assertRouteReadyForAdd()) return;
 
     setProductByCode((prev) =>
@@ -5854,6 +5899,25 @@ export function PosScreen({ standalone = false }) {
     const trimmed = String(code ?? "").trim();
     if (!trimmed) return false;
 
+    const swapActive = Boolean(
+      replacingLineIdRef.current ||
+        replaceTargetSnapshotRef.current ||
+        swapDraftRef.current,
+    );
+
+    // Classic: product already parked on the entry row with this code — Enter adds
+    // (covers focus stuck on Scan after select). Do not quick-add a second line.
+    // Never treat a mid-swap Scan Enter as a new-line add.
+    if (
+      classicLayout &&
+      selectedProduct &&
+      String(selectedProductCode ?? "").trim() === trimmed &&
+      !swapActive
+    ) {
+      handleQuantityEnter();
+      return true;
+    }
+
     let product = null;
     // Prefer the warmed offline catalog whenever the open sale is local — including
     // after reconnect mid-sale — so scans do not depend on live product GETs.
@@ -5878,7 +5942,8 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Barcode not found — search by name or code.");
       return false;
     }
-    if (replacingLineIdRef.current) {
+    // Swap in progress — always park replacement on the target line (never quick-add).
+    if (swapActive) {
       void pickProduct(product);
       return true;
     }
@@ -5910,6 +5975,7 @@ export function PosScreen({ standalone = false }) {
         if (ok) {
           swapDraftRef.current = null;
           setSwapDraft(null);
+          replaceTargetSnapshotRef.current = null;
           setReplacingLineId(null);
           replacingLineIdRef.current = null;
           setSelectedProduct(null);
@@ -5946,8 +6012,8 @@ export function PosScreen({ standalone = false }) {
     const draft = swapDraftRef.current;
     if (!draft) return;
     const matches =
-      sameLineId(draft.lineId, line.id) ||
-      sameLineId(draft.line?.id, line.id) ||
+      cartLineMatchesRef(line, draft.lineId) ||
+      cartLineMatchesRef(line, draft.line) ||
       sameLineId(draft.line?.update_code, line.update_code) ||
       sameLineId(draft.line?.update_code, line.id);
     if (!matches) return;
@@ -5964,18 +6030,32 @@ export function PosScreen({ standalone = false }) {
     productByCodeRef.current[product.product_code] =
       productByCodeRef.current[product.product_code] ?? product;
 
-    await ensureRetailPackageForProduct(product);
-    const retailPackage = getRetailPackage(product.product_code);
     const activeReplacingId = replacingLineIdRef.current;
     const activeCart = cartRef.current ?? cart;
-    const replaceLine = activeReplacingId
-      ? findCartLineForEdit(activeCart?.lines, {
-          id: activeReplacingId,
-          update_code: activeReplacingId,
+    const isSwap = Boolean(
+      activeReplacingId ||
+        replaceTargetSnapshotRef.current ||
+        swapDraftRef.current,
+    );
+
+    // Swap still needs retail package before drafting qty; Find/select must park first
+    // so qty mounts even when retail_package fetch is slow or offline.
+    if (isSwap) {
+      await ensureRetailPackageForProduct(product);
+    }
+
+    const replaceNeedle =
+      replaceTargetSnapshotRef.current ??
+      (activeReplacingId
+        ? { id: activeReplacingId, update_code: activeReplacingId, client_line_id: activeReplacingId }
+        : null);
+    const replaceLine = replaceNeedle
+      ? findCartLineForEdit(activeCart?.lines, replaceNeedle, {
+          preferProductCode: replaceNeedle.product_code,
         })
       : null;
 
-    if (activeReplacingId) {
+    if (isSwap) {
       if (!replaceLine) {
         setStatusMessage("Could not find the line to swap — press Esc and try again.");
         return;
@@ -5996,58 +6076,105 @@ export function PosScreen({ standalone = false }) {
         oldProduct,
         getRetailPackage(replaceLine.product_code),
       );
+      const stableLineId = cartLineRef(replaceLine) ?? replaceLine.id;
       const nextSwapDraft = {
-        lineId: replaceLine.id,
+        lineId: stableLineId,
         line: replaceLine,
         product,
         quantity: String(quantity),
       };
+      replaceTargetSnapshotRef.current = {
+        id: replaceLine.id,
+        update_code: replaceLine.update_code ?? stableLineId,
+        client_line_id: replaceLine.client_line_id ?? null,
+        product_code: replaceLine.product_code,
+        on_wholesale_retail: replaceLine.on_wholesale_retail,
+      };
       swapDraftRef.current = nextSwapDraft;
       setSwapDraft(nextSwapDraft);
-      setReplacingLineId(replaceLine.id);
-      replacingLineIdRef.current = replaceLine.id;
+      setReplacingLineId(stableLineId);
+      replacingLineIdRef.current = stableLineId;
       setSearchQuery(product.product_code ?? "");
       setSearchResults([]);
       setStatusMessage(
         `Swapping to ${posProductDisplayName(product)} — adjust qty if needed, then press Enter.`,
       );
+      // Wait for ClassicLineQtyCell to mount + assign swapLineQtyRef.
+      let cancelled = false;
+      const focusSwapQty = () => {
+        if (cancelled) return;
+        const el = swapLineQtyRef.current;
+        if (!el) return false;
+        el.focus({ preventScroll: true });
+        el.select?.();
+        return typeof document !== "undefined" && document.activeElement === el;
+      };
       window.requestAnimationFrame(() => {
-        swapLineQtyRef.current?.focus({ preventScroll: true });
-        swapLineQtyRef.current?.select?.();
+        window.requestAnimationFrame(() => {
+          if (focusSwapQty()) return;
+          window.setTimeout(() => focusSwapQty(), 40);
+        });
       });
       return;
     }
 
-    setSelectedProductCode(product.product_code);
+    // Classic / Find select: park entry row, resolve markup, then focus qty.
+    // Price must be base + package/route markup before the cashier commits Enter.
+    // Do not quick-add on Find/select — barcode scan still uses handleBarcodeEnter.
+    const parkCode = product.product_code;
+    focusSearchAfterAdd.current = false;
+    setSelectedProductCode(parkCode);
     setSelectedProduct(product);
     setUnitPriceTouched(false);
-    const quantity = defaultPosEntryQty(product, sellWholesale, retailPackage);
-    const computed = applyComputedPrice(
-      product,
-      quantity,
-      0,
-      null,
-      null,
-      null,
-    );
-    setLineForm({
-      product_code: product.product_code,
-      description: product.product_name ?? "",
-      package: product.uom
-        ? uomCompactPackageLabel(product.uom)
-        : computed.packagingLabel,
-      quantity,
-      discount: String(computed.discountAmount ?? 0),
-      unit_price: String(computed.displayUnitPrice),
-    });
 
-    // After select, Scan shows the product code (not the typed search fragment)
-    // while focus moves to qty.
-    setSearchQuery(product.product_code ?? "");
+    // Mount the entry row immediately (description / provisional qty) so focus can land.
+    const shellPkg = getRetailPackage(parkCode);
+    const shellQty = defaultPosEntryQty(product, sellWholesaleRef.current, shellPkg);
+    setLineForm({
+      product_code: parkCode,
+      description: product.product_name ?? "",
+      package: product.uom ? uomCompactPackageLabel(product.uom) : "",
+      quantity: shellQty,
+      discount: "0",
+      unit_price: "",
+    });
+    setSearchQuery(parkCode ?? "");
     searchAbortRef.current?.abort();
     searchSeq.current += 1;
     setSearching(false);
     setSearchResults([]);
+
+    try {
+      await ensureRetailPackageForProduct(product);
+    } catch {
+      /* fall through — price from catalog if package unavailable */
+    }
+
+    // Still on this parked SKU?
+    const stillParked =
+      String(productByCodeRef.current[parkCode]?.product_code ?? parkCode) === String(parkCode);
+    if (!stillParked) return;
+
+    const pricedPkg = getRetailPackage(parkCode);
+    setLineForm((prev) => {
+      if (String(prev.product_code) !== String(parkCode)) return prev;
+      // Keep any qty the cashier typed while markup was loading.
+      const qty =
+        prev.quantity != null && String(prev.quantity).trim() !== ""
+          ? prev.quantity
+          : defaultPosEntryQty(product, sellWholesaleRef.current, pricedPkg);
+      const priced = applyComputedPrice(product, qty, 0, null, null, null);
+      return {
+        ...prev,
+        quantity: qty,
+        package: product.uom
+          ? uomCompactPackageLabel(product.uom)
+          : priced.packagingLabel,
+        discount: String(priced.discountAmount ?? 0),
+        unit_price: String(priced.displayUnitPrice),
+      };
+    });
+    scheduleFocusEntryQty();
   }
 
   function beginReplaceCartLine(lineId) {
@@ -6061,9 +6188,17 @@ export function PosScreen({ standalone = false }) {
     swapCommitInFlightRef.current = false;
     swapDraftRef.current = null;
     setSwapDraft(null);
-    replacingLineIdRef.current = line.id;
-    setReplacingLineId(line.id);
-    setSelectedLineId(line.id);
+    const stableLineId = cartLineRef(line) ?? line.id;
+    replaceTargetSnapshotRef.current = {
+      id: line.id,
+      update_code: line.update_code ?? stableLineId,
+      client_line_id: line.client_line_id ?? null,
+      product_code: line.product_code,
+      on_wholesale_retail: line.on_wholesale_retail,
+    };
+    replacingLineIdRef.current = stableLineId;
+    setReplacingLineId(stableLineId);
+    setSelectedLineId(stableLineId);
     setEditingLineId(null);
     setEditingLineRef(null);
     setSelectedProduct(null);
@@ -6091,7 +6226,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   function cancelReplaceCartLine() {
-    if (!replacingLineId && !swapDraftRef.current) return;
+    if (!replacingLineId && !swapDraftRef.current && !replaceTargetSnapshotRef.current) {
+      return;
+    }
+    replaceTargetSnapshotRef.current = null;
     setReplacingLineId(null);
     replacingLineIdRef.current = null;
     swapDraftRef.current = null;
@@ -6112,14 +6250,22 @@ export function PosScreen({ standalone = false }) {
 
     // Prefer the live cart row — previous-order restore can remint TemporaryCart ids
     // after the swap draft was opened against the optimistic sale-item lines.
-    const liveLine =
-      findCartLineForEdit(activeCart.lines, line, {
-        preferProductCode: line.product_code,
-      }) ??
-      findCartLineForEdit(activeCart.lines, {
+    const replaceNeedle =
+      replaceTargetSnapshotRef.current ??
+      line ??
+      {
         id: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
+        update_code: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
+        client_line_id: replacingLineIdRef.current ?? swapDraftRef.current?.lineId,
         product_code: line.product_code,
         on_wholesale_retail: line.on_wholesale_retail,
+      };
+    const liveLine =
+      findCartLineForEdit(activeCart.lines, replaceNeedle, {
+        preferProductCode: replaceNeedle.product_code ?? line.product_code,
+      }) ??
+      findCartLineForEdit(activeCart.lines, line, {
+        preferProductCode: line.product_code,
       }) ??
       line;
 
@@ -6192,12 +6338,16 @@ export function PosScreen({ standalone = false }) {
       };
 
       const lines = [...(activeCart.lines ?? [])];
-      let idx = lines.findIndex(
-        (row) =>
-          sameLineId(row.id, preservedId) ||
-          sameLineId(row.update_code, preservedRef) ||
-          sameLineId(row.client_line_id, preservedRef),
+      let idx = lines.findIndex((row) =>
+        cartLineMatchesRef(row, {
+          id: preservedId,
+          update_code: preservedRef,
+          client_line_id: liveLine.client_line_id ?? preservedRef,
+        }),
       );
+      if (idx < 0) {
+        idx = lines.findIndex((row) => cartLineMatchesRef(row, liveLine));
+      }
       if (idx < 0) {
         idx = lines.findIndex(
           (row) =>
@@ -6222,6 +6372,7 @@ export function PosScreen({ standalone = false }) {
         // must not leave replacingLineId stuck after a successful SKU change.
         swapDraftRef.current = null;
         setSwapDraft(null);
+        replaceTargetSnapshotRef.current = null;
         setReplacingLineId(null);
         replacingLineIdRef.current = null;
         await notePreviousOrderEditSuccess("swap");
@@ -6249,12 +6400,15 @@ export function PosScreen({ standalone = false }) {
         }
         notifySuccess("Item changed successfully");
         setStatusMessage("Item changed successfully");
+        replaceTargetSnapshotRef.current = null;
         clearClassicEntryFields();
         return true;
       }
 
       // Classic live TemporaryCart: UI already swapped — sync with PATCH, keep local
       // SKU even if the network round-trip fails (cashier must not see the old item).
+      // unlockUiEarly skips ensureCart rematerialize (that reloaded the old SKU and
+      // caused a second POST row alongside the swapped line).
       const lineRef = cartLineRef(nextLine);
       try {
         const ok = await commitCartLine({
@@ -6267,6 +6421,8 @@ export function PosScreen({ standalone = false }) {
           override,
           clearEntry: true,
           successMessage: null,
+          unlockUiEarly: true,
+          keepOptimisticOnFailure: true,
           lineRetailStockFlagOverride: isRetailLine,
         });
         // Guard against a silent server no-op that reverts the SKU.
@@ -6294,8 +6450,20 @@ export function PosScreen({ standalone = false }) {
               id: repairedLines[repairIdx].id,
               update_code:
                 repairedLines[repairIdx].update_code ?? nextLine.update_code,
+              client_line_id:
+                repairedLines[repairIdx].client_line_id ?? nextLine.client_line_id,
             };
-            const repaired = { ...live, lines: repairedLines };
+            // Drop any duplicate row that a failed POST may have appended.
+            const deduped = repairedLines.filter((row, i) => {
+              if (i === repairIdx) return true;
+              return !(
+                String(row.product_code) === String(product.product_code) &&
+                Number(row.on_wholesale_retail ?? 0) ===
+                  Number(nextLine.on_wholesale_retail ?? 0) &&
+                row._optimistic
+              );
+            });
+            const repaired = { ...live, lines: deduped };
             cartRef.current = repaired;
             setCart(repaired);
           }
@@ -6303,6 +6471,36 @@ export function PosScreen({ standalone = false }) {
             "Item changed on screen — server sync lagged. Press Enter on qty again if needed.",
           );
         } else if (ok) {
+          // Remove accidental duplicate of the new SKU if sync appended one.
+          const live = cartRef.current ?? nextCart;
+          const matched = (live.lines ?? []).filter(
+            (row) =>
+              sameLineId(row.id, nextLine.id) ||
+              String(cartLineRef(row)) === String(lineRef) ||
+              (String(row.product_code) === String(product.product_code) &&
+                Number(row.on_wholesale_retail ?? 0) ===
+                  Number(nextLine.on_wholesale_retail ?? 0)),
+          );
+          if (matched.length > 1) {
+            let kept = false;
+            const deduped = (live.lines ?? []).filter((row) => {
+              const isSwapRow =
+                sameLineId(row.id, nextLine.id) ||
+                String(cartLineRef(row)) === String(lineRef) ||
+                (String(row.product_code) === String(product.product_code) &&
+                  Number(row.on_wholesale_retail ?? 0) ===
+                    Number(nextLine.on_wholesale_retail ?? 0));
+              if (!isSwapRow) return true;
+              if (kept) return false;
+              kept = true;
+              return true;
+            });
+            if (deduped.length !== (live.lines ?? []).length) {
+              const repaired = { ...live, lines: deduped };
+              cartRef.current = repaired;
+              setCart(repaired);
+            }
+          }
           notifySuccess("Item changed successfully");
           setStatusMessage("Item changed successfully");
         }
@@ -6314,6 +6512,7 @@ export function PosScreen({ standalone = false }) {
         );
       }
       clearClassicEntryFields();
+      replaceTargetSnapshotRef.current = null;
       return true;
     }
 
@@ -6359,11 +6558,63 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     replacingLineIdRef.current = replacingLineId;
+    if (replacingLineId == null) {
+      replaceTargetSnapshotRef.current = null;
+    }
   }, [replacingLineId]);
 
   useEffect(() => {
     swapDraftRef.current = swapDraft;
   }, [swapDraft]);
+
+  // Optimistic TemporaryCart remints change line.id while swap still holds pending-*.
+  // Heal replacingLineId / swapDraft so the classic row keeps showing the scan slot.
+  useEffect(() => {
+    const snap = replaceTargetSnapshotRef.current;
+    const activeId = replacingLineIdRef.current;
+    if (!snap && !activeId) return;
+    const lines = cart?.lines ?? [];
+    if (!lines.length) return;
+    const needle =
+      snap ??
+      ({
+        id: activeId,
+        update_code: activeId,
+        client_line_id: activeId,
+      });
+    const live = findCartLineForEdit(lines, needle, {
+      preferProductCode: needle.product_code,
+    });
+    if (!live) return;
+    const stable = cartLineRef(live) ?? live.id;
+    replaceTargetSnapshotRef.current = {
+      id: live.id,
+      update_code: live.update_code ?? stable,
+      client_line_id: live.client_line_id ?? null,
+      product_code: live.product_code,
+      on_wholesale_retail: live.on_wholesale_retail,
+    };
+    if (String(stable) !== String(activeId)) {
+      replacingLineIdRef.current = stable;
+      setReplacingLineId(stable);
+    }
+    const draft = swapDraftRef.current;
+    if (
+      draft &&
+      (cartLineMatchesRef(live, draft.lineId) ||
+        cartLineMatchesRef(live, snap) ||
+        String(draft.lineId) === String(activeId))
+    ) {
+      if (
+        String(draft.lineId) !== String(stable) ||
+        !cartLineMatchesRef(draft.line, live.id)
+      ) {
+        const nextDraft = { ...draft, lineId: stable, line: live };
+        swapDraftRef.current = nextDraft;
+        setSwapDraft(nextDraft);
+      }
+    }
+  }, [cart?.lines]);
 
   useEffect(() => {
     if (!classicLayout || !replacingLineId || swapDraft) return;
@@ -6380,11 +6631,7 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!selectedProduct?.product_code || replacingLineId) return;
-    const frame = window.requestAnimationFrame(() => {
-      qtyInputRef.current?.focus({ preventScroll: true });
-      qtyInputRef.current?.select?.();
-    });
-    return () => window.cancelAnimationFrame(frame);
+    scheduleFocusEntryQty();
   }, [selectedProduct?.product_code, replacingLineId]);
 
   useEffect(() => {
@@ -6862,6 +7109,17 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleAddLine() {
+    // Mid-swap: never append — finish the in-place replace instead.
+    if (swapDraftRef.current?.product) {
+      void completeSwapFromDraft(
+        lineFormQtyCommitRef.current ?? swapDraftRef.current.quantity ?? lineForm.quantity,
+      );
+      return;
+    }
+    if (replacingLineIdRef.current || replaceTargetSnapshotRef.current) {
+      setStatusMessage("Choose the replacement product, then press Enter on the line qty.");
+      return;
+    }
     if (!lineForm.product_code || !selectedProduct) {
       setStatusMessage("Select a product first.");
       return;
@@ -6897,10 +7155,18 @@ export function PosScreen({ standalone = false }) {
         ? parseDecimalInput(lineForm.unit_price)
         : null;
 
-    const replaceLine = replacingLineIdRef.current
-      ? findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, {
-          id: replacingLineIdRef.current,
-          update_code: replacingLineIdRef.current,
+    const replaceNeedle =
+      replaceTargetSnapshotRef.current ??
+      (replacingLineIdRef.current
+        ? {
+            id: replacingLineIdRef.current,
+            update_code: replacingLineIdRef.current,
+            client_line_id: replacingLineIdRef.current,
+          }
+        : null);
+    const replaceLine = replaceNeedle
+      ? findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, replaceNeedle, {
+          preferProductCode: replaceNeedle.product_code,
         })
       : null;
 
@@ -6919,6 +7185,8 @@ export function PosScreen({ standalone = false }) {
           override,
         );
         if (ok) {
+          replaceTargetSnapshotRef.current = null;
+          replacingLineIdRef.current = null;
           setReplacingLineId(null);
           // replaceCartLineWithProduct already notes previous-order swap success.
           if (!isPreviousOrderEditSession(cartRef.current)) {
@@ -7023,7 +7291,8 @@ export function PosScreen({ standalone = false }) {
     // Classic / previous-order drafts enqueue without freezing on TemporaryCart lineBusy —
     // Enter on qty must still add the item (same rule as swap / line qty edits).
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (busy) return;
+    // Soft previous-order load must not block Classic qty Enter → add.
+    if (busy && !(classicLayout && previousOrderLoadingSoft)) return;
     if (lineBusy && !classicLayout && !localDraftEdit) return;
     if (addLineBlocked) {
       if (classicLayout && lineStockMessage) setStatusMessage(lineStockMessage);
@@ -7257,14 +7526,15 @@ export function PosScreen({ standalone = false }) {
     // normal qty Enter into completeSwapFromDraft and left the qty unchanged).
     const swapTargetsThisLine =
       Boolean(swapDraft) &&
-      (sameLineId(swapDraft.lineId, line.id) ||
-        sameLineId(swapDraft.line?.id, line.id) ||
+      (cartLineMatchesRef(line, swapDraft.lineId) ||
+        cartLineMatchesRef(line, swapDraft.line) ||
+        cartLineMatchesRef(line, replaceTargetSnapshotRef.current) ||
         sameLineId(swapDraft.line?.update_code, line.update_code) ||
         sameLineId(swapDraft.line?.update_code, line.id) ||
         sameLineId(swapDraft.lineId, line.update_code) ||
         sameLineId(swapDraft.line?.client_line_id, line.id) ||
         sameLineId(swapDraft.line?.client_line_id, line.update_code));
-    if (swapTargetsThisLine) {
+    if (swapTargetsThisLine || (swapDraft?.product && replacingLineIdRef.current)) {
       if (swapDraft?.product) {
         void completeSwapFromDraft(entryQtyRaw);
         return;
@@ -7272,6 +7542,7 @@ export function PosScreen({ standalone = false }) {
       // Incomplete swap draft — clear and apply a normal qty edit.
       swapDraftRef.current = null;
       setSwapDraft(null);
+      replaceTargetSnapshotRef.current = null;
       setReplacingLineId(null);
       replacingLineIdRef.current = null;
     }
@@ -7291,12 +7562,9 @@ export function PosScreen({ standalone = false }) {
     {
       const activeCart = cartRef.current ?? cart;
       const liveLine =
-        (activeCart?.lines ?? []).find(
-          (row) =>
-            sameLineId(row.id, line.id) ||
-            (cartLineRef(line) != null &&
-              String(cartLineRef(row)) === String(cartLineRef(line))),
-        ) ?? line;
+        findCartLineForEdit(activeCart?.lines, line, {
+          preferProductCode: line.product_code,
+        }) ?? line;
       const productMeta =
         productByCodeRef.current[liveLine.product_code] ??
         productByCode[liveLine.product_code] ??
@@ -7329,12 +7597,9 @@ export function PosScreen({ standalone = false }) {
     const run = async () => {
       const activeCart = cartRef.current ?? cart;
       const liveLine =
-        (activeCart?.lines ?? []).find(
-          (row) =>
-            sameLineId(row.id, line.id) ||
-            (cartLineRef(line) != null &&
-              String(cartLineRef(row)) === String(cartLineRef(line))),
-        ) ?? line;
+        findCartLineForEdit(activeCart?.lines, line, {
+          preferProductCode: line.product_code,
+        }) ?? line;
       const lineRef = cartLineRef(liveLine);
       if (!lineRef) {
         setStatusMessage("Could not resolve the cart line to update.");
@@ -8496,13 +8761,13 @@ export function PosScreen({ standalone = false }) {
                 ),
               ];
               const nextMeta = {};
-              for (const code of codes) {
-                const row = await getPosOfflineProduct(code);
+              const rows = await getPosOfflineProducts(codes);
+              for (const row of rows) {
                 if (!row?.product_code) continue;
                 const enriched = enrichProductForLpo(row, uomMap, vatMap);
-                nextMeta[code] = enriched;
-                productByCodeRef.current[code] = enriched;
-                delete retailByCodeRef.current[code];
+                nextMeta[row.product_code] = enriched;
+                productByCodeRef.current[row.product_code] = enriched;
+                delete retailByCodeRef.current[row.product_code];
               }
               if (Object.keys(nextMeta).length) {
                 setProductByCode((prev) => ({ ...prev, ...nextMeta }));
@@ -10788,7 +11053,7 @@ export function PosScreen({ standalone = false }) {
     skipEditAutosaveRef.current = true;
     setPendingSyncOpen(false);
 
-    const issuedPosMax = await peekIssuedPosTicketMax(null, floatSessionId).catch(() => null);
+    const outboxMax = await peekOutboxPosTicketMax(null, floatSessionId).catch(() => null);
     const hasPendingOutbox = pendingSync > 0 || failedSyncOrders.length > 0;
 
     // Already on a blank new order at last+1 (e.g. after F10) — F8 must not bump again.
@@ -10798,7 +11063,8 @@ export function PosScreen({ standalone = false }) {
         activeCart,
         sessionPosOrders,
         null,
-        issuedPosMax,
+        outboxMax,
+        floatSessionId,
       );
       const showing =
         resolvePosNextBrowseNumber(activeCart) ?? resolvePosBrowseNumber(activeCart);
@@ -10963,7 +11229,8 @@ export function PosScreen({ standalone = false }) {
       activeCart,
       sessionPosOrders,
       null,
-      issuedPosMax,
+      outboxMax,
+      floatSessionId,
     );
 
     const completeFreshWorkspaceBootstrap = async ({
@@ -11725,6 +11992,14 @@ export function PosScreen({ standalone = false }) {
         return;
       }
     }
+    const prev = String(previousEditOrderNo ?? "").trim();
+    // Searched for the blank next ticket (or a missing receipt with that #) —
+    // keep that number. Never advance past a Cash Sales # that does not exist.
+    if (prev && failedTicket != null && prev === String(failedTicket)) {
+      setEditOrderNo(prev);
+      orderNoUserEditedRef.current = false;
+      return;
+    }
     const activeFloatId =
       floatSessionId != null && Number(floatSessionId) > 0
         ? Number(floatSessionId)
@@ -11740,22 +12015,30 @@ export function PosScreen({ standalone = false }) {
     const candidates = [nextScoped, liveNext]
       .map((n) => Number(n))
       .filter((n) => Number.isFinite(n) && n > 0);
+    // Prefer the prior blank next when it is still the first unused ticket
+    // (e.g. stay on #1 after "No POS order found with Cash Sales #1").
+    if (prev) {
+      const prevNum = Number(prev);
+      if (Number.isFinite(prevNum) && prevNum > 0) {
+        const floor = candidates.length ? Math.min(...candidates) : 1;
+        if (prevNum <= floor) {
+          setEditOrderNo(prev);
+          orderNoUserEditedRef.current = false;
+          return;
+        }
+      }
+    }
     if (candidates.length) {
-      setEditOrderNo(String(Math.max(...candidates)));
+      setEditOrderNo(String(Math.min(...candidates)));
       orderNoUserEditedRef.current = false;
       return;
     }
-    if (String(previousEditOrderNo ?? "").trim()) {
-      if (
-        failedTicket == null ||
-        String(previousEditOrderNo).trim() !== String(failedTicket)
-      ) {
-        setEditOrderNo(String(previousEditOrderNo).trim());
-        orderNoUserEditedRef.current = false;
-        return;
-      }
+    if (prev) {
+      setEditOrderNo(prev);
+      orderNoUserEditedRef.current = false;
+      return;
     }
-    // Last resort: never leave the failed receipt # as the blank next ticket.
+    // Last resort: never leave a failed receipt search as a jumped blank next.
     setEditOrderNo("1");
     orderNoUserEditedRef.current = false;
   }
@@ -12217,15 +12500,15 @@ export function PosScreen({ standalone = false }) {
       if (!codes.length) return;
       void (async () => {
         const found = {};
-        for (const code of codes) {
-          try {
-            const row = await getPosOfflineProduct(code);
+        try {
+          const rows = await getPosOfflineProducts(codes);
+          for (const row of rows) {
             if (row?.product_code && isSellableCatalogProduct(row)) {
               found[row.product_code] = enrichProductForLpo(row, uomById, vatById);
             }
-          } catch {
-            /* ignore */
           }
+        } catch {
+          /* ignore */
         }
         if (!Object.keys(found).length) return;
         for (const [code, product] of Object.entries(found)) {
