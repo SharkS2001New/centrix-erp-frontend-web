@@ -214,11 +214,13 @@ export function usePosOfflineSupport({
       pendingFlushRef.current = false;
       setSyncing(true);
       const showProgress = manualFlushRef.current;
+      let lastProgressMessage = null;
       try {
         const results = await syncPosOfflineOutbox({
           includeErrors,
           clientSaleUuid,
           floatSessionId,
+          manual,
           onProgress: (progress) => {
             setSyncProgress({
               phase: progress.phase ?? "syncing",
@@ -230,6 +232,7 @@ export function usePosOfflineSupport({
               message: progress.message ?? null,
             });
             if (progress.message) {
+              lastProgressMessage = progress.message;
               setLastSyncMessage(progress.message);
             }
             // Keep the pending badge accurate while a long flush runs.
@@ -288,13 +291,19 @@ export function usePosOfflineSupport({
             `Could not sync ${failed.length} sale(s). Open Pending sync or tap Sync to retry.`,
           );
         } else if (showProgress) {
-          setLastSyncMessage("No offline orders waiting to sync.");
+          const pendingLeft = await getPosOfflinePendingCount().catch(() => 0);
+          const emptyMessage = lastProgressMessage ?? "No offline orders waiting to sync.";
+          setLastSyncMessage(emptyMessage);
           setSyncProgress({
             ...EMPTY_SYNC_PROGRESS,
             phase: "complete",
-            message: "No offline orders waiting to sync.",
+            message: emptyMessage,
           });
-          notifySuccess("No offline orders waiting to sync.");
+          if (pendingLeft <= 0) {
+            notifySuccess("No offline orders waiting to sync.");
+          } else if (!/no offline orders waiting to sync/i.test(emptyMessage)) {
+            notifyError(emptyMessage);
+          }
         }
         if (failed.length) {
           const detail = failed

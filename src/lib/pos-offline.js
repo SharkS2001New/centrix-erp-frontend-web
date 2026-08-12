@@ -4150,6 +4150,54 @@ function reportPosOutboxSyncFailure(row, err, printedOrderNum) {
   });
 }
 
+/** Unsynced rows that block an immediate flush (for badge vs Sync messaging). */
+async function describeOutboxSyncBlockers({ clientSaleUuid = null } = {}) {
+  const onlyUuid = String(clientSaleUuid ?? "").trim();
+  const activeCart = await idbGetLocalCart("active").catch(() => null);
+  const cartUuid =
+    activeCart?.offline_client_sale_uuid != null &&
+    String(activeCart.offline_client_sale_uuid).trim()
+      ? String(activeCart.offline_client_sale_uuid).trim()
+      : null;
+  const rows = (await idbListUnsyncedOutbox()).filter((row) => {
+    if (!onlyUuid) return true;
+    return String(row.client_sale_uuid ?? "").trim() === onlyUuid;
+  });
+  let syncing = 0;
+  let editing = 0;
+  let activeEdit = 0;
+  for (const row of rows) {
+    const status = String(row.sync_status ?? "");
+    if (status === "syncing") {
+      syncing += 1;
+      continue;
+    }
+    if (status === "editing") {
+      editing += 1;
+      const uuid = String(row.client_sale_uuid ?? "").trim();
+      if (cartUuid && uuid === cartUuid) {
+        activeEdit += 1;
+      }
+    }
+  }
+  return { syncing, editing, activeEdit, total: rows.length };
+}
+
+function resolveEmptyOutboxSyncMessage({ skippedActiveEdit, blockers }) {
+  if (skippedActiveEdit || Number(blockers?.activeEdit ?? 0) > 0) {
+    return "Finish or clear the open edit on the ticket, then sync.";
+  }
+  const syncing = Number(blockers?.syncing ?? 0);
+  if (syncing > 0) {
+    return `${syncing} offline order${syncing === 1 ? "" : "s"} still uploading — wait a moment, then tap Sync again.`;
+  }
+  const editing = Number(blockers?.editing ?? 0);
+  if (editing > 0) {
+    return `${editing} offline order${editing === 1 ? "" : "s"} open for edit — finish editing or clear the ticket, then sync.`;
+  }
+  return "No offline orders waiting to sync.";
+}
+
 /**
  * Rows eligible for upload. Mid-edit (`editing`) is skipped while that sale is
  * still open on the till; stale edits (cashier left the ticket) are re-queued.
@@ -4253,22 +4301,44 @@ export async function syncPosOfflineOutbox({
   includeErrors = true,
   clientSaleUuid = null,
   floatSessionId = null,
+  manual = false,
 } = {}) {
   // Exclusive lock is only for short IndexedDB critical sections.
   // Holding it across checkoutOutboxRow / findExisting network calls blocked
   // cashiers on "Saving…" while reconnect flush ran (often 30s+).
+  const reclaimOlderThanMs = manual ? 15_000 : 5 * 60_000;
   await withPosOfflineExclusiveLock(async () => {
-    await idbReclaimStuckSyncingOutbox({ olderThanMs: 5 * 60_000 });
+    await idbReclaimStuckSyncingOutbox({ olderThanMs: reclaimOlderThanMs });
   });
-  const { rows: pending, skippedActiveEdit } = await withPosOfflineExclusiveLock(async () =>
+  let { rows: pending, skippedActiveEdit } = await withPosOfflineExclusiveLock(async () =>
     collectOutboxRowsForSync({ includeErrors, clientSaleUuid }),
   );
+  if (manual && pending.length === 0) {
+    const blockers = await describeOutboxSyncBlockers({ clientSaleUuid });
+    if (blockers.syncing > 0 && !skippedActiveEdit) {
+      // Manual Sync with rows stuck mid-upload — force reclaim and retry once.
+      await withPosOfflineExclusiveLock(async () => {
+        await idbReclaimStuckSyncingOutbox({ olderThanMs: 0 });
+      });
+      ({ rows: pending, skippedActiveEdit } = await withPosOfflineExclusiveLock(async () =>
+        collectOutboxRowsForSync({ includeErrors, clientSaleUuid }),
+      ));
+    }
+  }
   const openFloatSessionId =
     Number(floatSessionId ?? 0) > 0 ? Number(floatSessionId) : null;
   const total = pending.length;
   const results = [];
   let done = 0;
   let failed = 0;
+
+  const emptySyncMessage =
+    total === 0
+      ? resolveEmptyOutboxSyncMessage({
+          skippedActiveEdit,
+          blockers: await describeOutboxSyncBlockers({ clientSaleUuid }),
+        })
+      : null;
 
   onProgress?.({
     phase: "start",
@@ -4277,12 +4347,7 @@ export async function syncPosOfflineOutbox({
     done: 0,
     failed: 0,
     order_num: null,
-    message:
-      total === 0
-        ? skippedActiveEdit
-          ? "Finish or clear the open edit on the ticket, then sync."
-          : "No offline orders waiting to sync."
-        : `Syncing ${total} order(s)…`,
+    message: total === 0 ? emptySyncMessage : `Syncing ${total} order(s)…`,
   });
 
   for (let index = 0; index < pending.length; index += 1) {
@@ -4580,7 +4645,7 @@ export async function syncPosOfflineOutbox({
     order_num: null,
     message:
       total === 0
-        ? "No offline orders waiting to sync."
+        ? emptySyncMessage ?? "No offline orders waiting to sync."
         : failed
           ? `Synced ${done} of ${total}; ${failed} failed.`
           : `Synced ${done} of ${total} order(s).`,
