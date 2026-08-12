@@ -5,7 +5,8 @@ export const POS_FULL_PAYMENT_REQUIRED_MESSAGE =
   "Full payment required for Cash, M-Pesa, bank, and cheque. Select a credit customer (I) to save as fully unpaid.";
 
 /**
- * External POS direct checkout: full tender or credit (I) only — no partial A/R at till.
+ * Direct checkout (External POS + Backoffice Create order): full tender or credit (I) only.
+ * Partial installments are backoffice Collect payment on existing orders.
  * @returns {string|null} error message, or null when valid
  */
 export function validatePosDirectCheckoutPayment({

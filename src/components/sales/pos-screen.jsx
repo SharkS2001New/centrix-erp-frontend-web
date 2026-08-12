@@ -204,7 +204,7 @@ import {
 import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
 import { usePosUserThemePreference } from "@/hooks/use-pos-user-theme-preference";
-import { resolveEffectivePosThemeTemplate } from "@/lib/pos-user-theme-preference";
+import { resolveEffectivePosThemeTemplate, resolveEffectivePosThemeColors } from "@/lib/pos-user-theme-preference";
 import { PosUserThemeDialog } from "./pos-user-theme-dialog";
 import {
   abandonOfflineSaleEdit,
@@ -1289,18 +1289,16 @@ export function PosScreen({ standalone = false }) {
     () => resolveExternalPosThemeColors(capabilities),
     [orgPosThemeColorsKey],
   );
-  const { preference: posUserThemePreference, setTemplate: setPosUserThemeTemplate } =
+  const { preference: posUserThemePreference, savePreference: savePosUserThemePreference } =
     usePosUserThemePreference(user?.id, organization?.id ?? user?.organization_id);
   const posThemeTemplate = useMemo(
     () => resolveEffectivePosThemeTemplate(orgPosThemeTemplate, posUserThemePreference),
     [orgPosThemeTemplate, posUserThemePreference],
   );
-  const posThemeColors = useMemo(() => {
-    if (posUserThemePreference && !posUserThemePreference.useOrgDefault && posUserThemePreference.template) {
-      return {};
-    }
-    return orgPosThemeColors;
-  }, [posUserThemePreference, orgPosThemeColors]);
+  const posThemeColors = useMemo(
+    () => resolveEffectivePosThemeColors(orgPosThemeColors, posUserThemePreference),
+    [orgPosThemeColors, posUserThemePreference],
+  );
   const erpThemeTemplate = useMemo(
     () => resolveErpThemeTemplate(capabilities),
     [
@@ -9661,13 +9659,9 @@ export function PosScreen({ standalone = false }) {
         ? await peekNextPosOfflineOrderSlot().catch(() => null)
         : null;
 
-    // External POS: every completion path (F10, STK, online server) must settle in
-    // full or via credit customer (I). Previous-order edits use payment_adjustments.
-    if (
-      standalone &&
-      !isPreviousOrderCashEdit &&
-      !body?.__previous_order_edit_adjustment
-    ) {
+    // External POS / Backoffice Create order: full tender or credit (I) only.
+    // Partial installments are backoffice Collect payment on existing orders.
+    if (!isPreviousOrderCashEdit && !body?.__previous_order_edit_adjustment) {
       const paymentErr = validatePosDirectCheckoutPayment({
         isCreditSale: Boolean(body?.is_credit_sale),
         payNow: Number(body?.pay_now ?? 0),
@@ -15070,6 +15064,7 @@ export function PosScreen({ standalone = false }) {
                   cart={cart}
                   busy={busy}
                   amountDue={cartSummary.amountDue}
+                  allowPartialPayment={false}
                   enableVouchers={enableVouchers}
                   enablePoints={enableRedeemablePoints}
                   enableMpesa={enableMpesaOnPos}
@@ -16085,7 +16080,12 @@ export function PosScreen({ standalone = false }) {
               ? posUserThemePreference.template
               : null
           }
-          onSave={(template) => setPosUserThemeTemplate(template)}
+          userColors={
+            posUserThemePreference && !posUserThemePreference.useOrgDefault
+              ? posUserThemePreference.colors
+              : {}
+          }
+          onSave={(next) => savePosUserThemePreference(next)}
           embedded
         />
       ) : null}

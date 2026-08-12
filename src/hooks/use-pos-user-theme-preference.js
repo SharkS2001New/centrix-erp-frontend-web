@@ -15,13 +15,16 @@ export function usePosUserThemePreference(userId, organizationId) {
     () => null,
   );
 
-  const setTemplate = useCallback(
-    (template) => {
-      if (template == null) {
+  const savePreference = useCallback(
+    (next) => {
+      if (next == null || next.useOrgDefault) {
         clearPosUserThemePreference(userId, organizationId);
         return;
       }
-      writePosUserThemePreference(userId, organizationId, { template });
+      writePosUserThemePreference(userId, organizationId, {
+        template: next.template,
+        colors: next.colors,
+      });
     },
     [userId, organizationId],
   );
@@ -32,7 +35,7 @@ export function usePosUserThemePreference(userId, organizationId) {
 
   return {
     preference,
-    setTemplate,
+    savePreference,
     useOrgDefault,
     hasOverride: Boolean(preference && !preference.useOrgDefault && preference.template),
   };

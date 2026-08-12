@@ -429,6 +429,7 @@ describe("collect small / partial payments on order payment", () => {
       { checkoutContext: "order_payment", capabilities: caps },
     );
     expect(cfg.allowPartialPayment).toBe(true);
+    expect(cfg.checkoutContext).toBe("order_payment");
   });
 
   it("does not allow partial collect when allow_credit_pay_now is off (even if POS credit is on)", () => {
@@ -450,6 +451,7 @@ describe("collect small / partial payments on order payment", () => {
       { checkoutContext: "pos", capabilities: caps },
     );
     expect(withCredit.allowPartialPayment).toBe(false);
+    expect(withCredit.checkoutContext).toBe("pos");
     expect(withCredit.enableCreditPayment).toBe(true);
 
     const withoutCredit = getCheckoutPaymentConfig(

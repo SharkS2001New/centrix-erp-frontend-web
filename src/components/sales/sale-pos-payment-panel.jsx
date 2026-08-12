@@ -37,12 +37,27 @@ export function SalePosPaymentPanel({
     const withMpesa = !isPlatformMpesaStkEnabled(capabilities)
       ? { ...base, enableMpesaAmount: false, enableMpesaCode: false }
       : base;
-    // Credit / debtor orders always allow installment collect on this screen.
-    if (sale?.is_credit_sale || Number(sale?.amount_paid ?? 0) > 0.01) {
-      return { ...withMpesa, allowPartialPayment: true };
-    }
-    return withMpesa;
-  }, [capabilities, sale?.is_credit_sale, sale?.amount_paid]);
+    const paymentStatus = String(sale?.payment_status ?? "").toLowerCase();
+    const hasOutstanding =
+      Number(balanceDue ?? 0) > 0.01 ||
+      Number(sale?.amount_paid ?? 0) > 0.01 ||
+      Boolean(sale?.is_credit_sale) ||
+      paymentStatus === "unpaid" ||
+      paymentStatus === "partial" ||
+      paymentStatus === "pending_payment";
+    // Collect payment on unpaid / partially paid orders — installments when org allows.
+    return {
+      ...withMpesa,
+      checkoutContext: "order_payment",
+      allowPartialPayment: Boolean(withMpesa.allowPartialPayment && hasOutstanding),
+    };
+  }, [
+    capabilities,
+    sale?.is_credit_sale,
+    sale?.amount_paid,
+    sale?.payment_status,
+    balanceDue,
+  ]);
 
   useEffect(() => {
     if (!open) return;

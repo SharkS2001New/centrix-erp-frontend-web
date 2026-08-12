@@ -1671,6 +1671,7 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
       Boolean(sales.allow_credit_pay_now),
     /** Collecting against an existing sale — never accept more than balance due. */
     rejectOverpayment: checkoutContext === "order_payment",
+    checkoutContext,
     enableCheckoutCustomerName:
       checkoutContext === "pos" &&
       hasPosSales &&

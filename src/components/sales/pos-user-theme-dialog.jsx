@@ -1,38 +1,121 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  CLASSIC_POS_COLOR_OVERRIDE_FIELDS,
   CLASSIC_POS_THEME_DEFAULT,
   CLASSIC_POS_THEME_TEMPLATES,
+  classicPosThemeCssVars,
   getClassicPosThemeTemplate,
+  normalizeClassicPosHexColor,
+  normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 import { posModalPanelClass } from "@/lib/pos-modal-shell";
+
+function PosThemeColorField({ field, value, fallback, onChange }) {
+  const display = normalizeClassicPosHexColor(value) || normalizeClassicPosHexColor(fallback) || "#888888";
+  const custom = Boolean(normalizeClassicPosHexColor(value));
+
+  return (
+    <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[var(--theme-text)]">{field.label}</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-[var(--theme-text-muted)]">{field.description}</p>
+        </div>
+        {custom ? (
+          <button
+            type="button"
+            onClick={() => onChange?.("")}
+            className="shrink-0 text-[11px] font-medium text-[var(--theme-primary)] hover:underline"
+          >
+            Reset
+          </button>
+        ) : null}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="color"
+          aria-label={`${field.label} color`}
+          value={display}
+          onChange={(e) => onChange?.(e.target.value)}
+          className="h-9 w-11 cursor-pointer rounded border border-[var(--theme-border)] bg-[var(--theme-input-bg)] p-0.5"
+        />
+        <input
+          type="text"
+          value={custom ? String(value).toUpperCase() : ""}
+          placeholder={String(fallback || display).toUpperCase()}
+          spellCheck={false}
+          onChange={(e) => {
+            const raw = e.target.value.trim();
+            if (!raw) {
+              onChange?.("");
+              return;
+            }
+            const hex = normalizeClassicPosHexColor(raw.startsWith("#") ? raw : `#${raw}`);
+            if (hex) onChange?.(hex);
+            else onChange?.(raw);
+          }}
+          onBlur={(e) => {
+            const hex = normalizeClassicPosHexColor(e.target.value);
+            onChange?.(hex || "");
+          }}
+          className="min-w-0 flex-1 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-input-bg)] px-2.5 py-1.5 font-mono text-sm uppercase text-[var(--theme-text)] focus:border-[var(--theme-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--theme-primary)]"
+        />
+      </div>
+    </div>
+  );
+}
 
 export function PosUserThemeDialog({
   open,
   onClose,
   orgTemplate = CLASSIC_POS_THEME_DEFAULT,
   userTemplate = null,
+  userColors = {},
   onSave,
   embedded = true,
 }) {
   const [selected, setSelected] = useState("org");
+  const [customColors, setCustomColors] = useState({});
 
   useEffect(() => {
     if (!open) return;
     setSelected(userTemplate ? normalizeClassicPosThemeTemplate(userTemplate) : "org");
-  }, [open, userTemplate]);
+    setCustomColors(normalizeClassicPosThemeColors(userColors));
+  }, [open, userTemplate, userColors]);
+
+  const baseTemplateId = selected === "org" ? orgTemplate : selected;
+  const baseVars = useMemo(
+    () => classicPosThemeCssVars(normalizeClassicPosThemeTemplate(baseTemplateId)),
+    [baseTemplateId],
+  );
+  const normalizedCustomColors = normalizeClassicPosThemeColors(customColors);
+  const hasCustomColors = Object.keys(normalizedCustomColors).length > 0;
 
   if (!open) return null;
 
   const orgLabel = getClassicPosThemeTemplate(orgTemplate)?.label ?? "Organization";
 
+  function patchColor(key, nextValue) {
+    const hex = normalizeClassicPosHexColor(nextValue);
+    setCustomColors((prev) => {
+      const next = { ...normalizeClassicPosThemeColors(prev) };
+      if (hex) next[key] = hex;
+      else delete next[key];
+      return next;
+    });
+  }
+
   function handleSave() {
     if (selected === "org") {
       onSave?.(null);
     } else {
-      onSave?.(normalizeClassicPosThemeTemplate(selected));
+      onSave?.({
+        template: normalizeClassicPosThemeTemplate(selected),
+        colors: normalizeClassicPosThemeColors(customColors),
+      });
     }
     onClose?.();
   }
@@ -49,7 +132,7 @@ export function PosUserThemeDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="pos-user-theme-title"
-        className={`${posModalPanelClass(embedded, "flex max-h-[min(88vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border shadow-2xl")}`}
+        className={`${posModalPanelClass(embedded, "flex max-h-[min(88vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border shadow-2xl")}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="classic-pos-themed-dialog-header shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-[var(--theme-primary-fg)]">
@@ -124,6 +207,40 @@ export function PosUserThemeDialog({
               );
             })}
           </div>
+
+          {selected !== "org" ? (
+            <div className="mt-5 border-t border-[var(--theme-border)] pt-4">
+              <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--theme-text)]">Custom colors</p>
+                  <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">
+                    Optional — pick a base theme above, then enter hex codes (#RRGGBB) for any part
+                    you want to change.
+                  </p>
+                </div>
+                {hasCustomColors ? (
+                  <button
+                    type="button"
+                    onClick={() => setCustomColors({})}
+                    className="text-xs font-medium text-[var(--theme-primary)] hover:underline"
+                  >
+                    Reset all colors
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {CLASSIC_POS_COLOR_OVERRIDE_FIELDS.map((field) => (
+                  <PosThemeColorField
+                    key={field.key}
+                    field={field}
+                    value={normalizedCustomColors[field.key] ?? ""}
+                    fallback={baseVars[field.cssVar] || baseVars["--classic-header"]}
+                    onChange={(next) => patchColor(field.key, next)}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <footer className="flex shrink-0 justify-end gap-2 border-t border-[var(--theme-border)] px-4 py-3">

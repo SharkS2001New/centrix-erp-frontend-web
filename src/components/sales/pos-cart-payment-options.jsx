@@ -131,6 +131,8 @@ export function PosCartPaymentOptions({
   enablePoints,
   enableMpesa,
   enableStkPush = false,
+  /** Create order: false. Collect payment: true when org allows installments. */
+  allowPartialPayment = false,
   embedded = false,
   onCartUpdated,
   onMessage,
@@ -1039,7 +1041,9 @@ export function PosCartPaymentOptions({
                   className={inputCls}
                 />
                 <p className="mt-1 text-[10px] text-slate-500">
-                  Partial payment is allowed — e.g. push KES 50 on a KES 200 order.
+                  {allowPartialPayment
+                    ? "Partial payment is allowed — e.g. push KES 50 on a KES 200 order."
+                    : "Full payment required — enter the full balance for this order."}
                 </p>
               </label>
             ) : null}
@@ -1067,8 +1071,9 @@ export function PosCartPaymentOptions({
                   className={inputCls}
                 />
                 <p className="mt-1 text-[10px] text-slate-500">
-                  Defaults to the full balance — lower this for a partial payment (e.g. KES 50 on a
-                  KES 200 order).
+                  {allowPartialPayment
+                    ? "Defaults to the full balance — lower this for a partial payment (e.g. KES 50 on a KES 200 order)."
+                    : "Defaults to the full balance — this order must be paid in full."}
                 </p>
               </label>
             ) : null}

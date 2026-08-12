@@ -1,12 +1,14 @@
 import {
   CLASSIC_POS_THEME_DEFAULT,
+  normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 
 export const POS_USER_THEME_STORAGE_PREFIX = "centrix.pos.user_theme";
 
 const POS_USER_THEME_CHANGE_EVENT = "centrix-pos-user-theme-change";
-const POS_USER_THEME_ORG_DEFAULT = Object.freeze({ template: null, useOrgDefault: true });
+const POS_USER_THEME_ORG_DEFAULT = Object.freeze({ template: null, colors: {}, useOrgDefault: true });
+const EMPTY_COLORS = Object.freeze({});
 
 /** Stable snapshot cache — useSyncExternalStore requires referential equality. */
 const snapshotCacheByKey = new Map();
@@ -27,7 +29,21 @@ function hasThemeStorage() {
   return typeof localStorage !== "undefined";
 }
 
-/** @returns {{ template: string|null, useOrgDefault: boolean } | null} */
+function normalizeStoredPreference(parsed) {
+  if (!parsed || typeof parsed !== "object") return null;
+  if (parsed.useOrgDefault === true || parsed.template == null) {
+    return POS_USER_THEME_ORG_DEFAULT;
+  }
+  const colors = normalizeClassicPosThemeColors(parsed.colors);
+  const hasColors = Object.keys(colors).length > 0;
+  return {
+    template: normalizeClassicPosThemeTemplate(parsed.template),
+    colors: hasColors ? colors : EMPTY_COLORS,
+    useOrgDefault: false,
+  };
+}
+
+/** @returns {{ template: string|null, colors: Record<string, string>, useOrgDefault: boolean } | null} */
 export function readPosUserThemePreference(userId, organizationId) {
   if (!hasThemeStorage()) return null;
   const key = storageKey(userId, organizationId);
@@ -35,20 +51,17 @@ export function readPosUserThemePreference(userId, organizationId) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed?.useOrgDefault === true || parsed?.template == null) {
-      return POS_USER_THEME_ORG_DEFAULT;
-    }
-    return {
-      template: normalizeClassicPosThemeTemplate(parsed.template),
-      useOrgDefault: false,
-    };
+    return normalizeStoredPreference(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
-export function writePosUserThemePreference(userId, organizationId, { template = null, useOrgDefault = false } = {}) {
+export function writePosUserThemePreference(
+  userId,
+  organizationId,
+  { template = null, colors = null, useOrgDefault = false } = {},
+) {
   if (!hasThemeStorage()) return null;
   const key = storageKey(userId, organizationId);
   if (!key) return null;
@@ -60,8 +73,10 @@ export function writePosUserThemePreference(userId, organizationId, { template =
     }
     return POS_USER_THEME_ORG_DEFAULT;
   }
+  const normalizedColors = normalizeClassicPosThemeColors(colors ?? {});
   const next = {
     template: normalizeClassicPosThemeTemplate(template),
+    colors: normalizedColors,
     useOrgDefault: false,
   };
   localStorage.setItem(key, JSON.stringify(next));
@@ -69,7 +84,11 @@ export function writePosUserThemePreference(userId, organizationId, { template =
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(POS_USER_THEME_CHANGE_EVENT));
   }
-  return next;
+  return {
+    template: next.template,
+    colors: Object.keys(normalizedColors).length > 0 ? normalizedColors : EMPTY_COLORS,
+    useOrgDefault: false,
+  };
 }
 
 /** Cached snapshot for useSyncExternalStore — same storage value → same object reference. */
@@ -117,4 +136,19 @@ export function resolveEffectivePosThemeTemplate(orgTemplate, userPreference) {
     return org;
   }
   return normalizeClassicPosThemeTemplate(userPreference.template);
+}
+
+/** Effective External POS color overrides — personal colors on top of chosen template. */
+export function resolveEffectivePosThemeColors(orgColors, userPreference) {
+  if (!userPreference || userPreference.useOrgDefault) {
+    return normalizeClassicPosThemeColors(orgColors);
+  }
+  const personal = normalizeClassicPosThemeColors(userPreference.colors);
+  if (Object.keys(personal).length > 0) {
+    return personal;
+  }
+  if (userPreference.template) {
+    return {};
+  }
+  return normalizeClassicPosThemeColors(orgColors);
 }
