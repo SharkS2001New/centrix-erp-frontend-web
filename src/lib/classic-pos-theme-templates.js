@@ -718,23 +718,63 @@ export function clearClassicPosDocumentTheme() {
 }
 
 export function resolveClassicPosThemeTemplate(moduleSettingsOrCapabilities = null) {
-  const sales =
-    moduleSettingsOrCapabilities?.module_settings?.sales ??
-    moduleSettingsOrCapabilities?.sales ??
-    moduleSettingsOrCapabilities?.module_settings ??
-    moduleSettingsOrCapabilities ??
-    {};
-  return normalizeClassicPosThemeTemplate(sales?.classic_pos_theme_template);
+  return resolveExternalPosThemeTemplate(moduleSettingsOrCapabilities);
 }
 
 export function resolveClassicPosThemeColors(moduleSettingsOrCapabilities = null) {
-  const sales =
-    moduleSettingsOrCapabilities?.module_settings?.sales ??
-    moduleSettingsOrCapabilities?.sales ??
-    moduleSettingsOrCapabilities?.module_settings ??
-    moduleSettingsOrCapabilities ??
-    {};
+  return resolveExternalPosThemeColors(moduleSettingsOrCapabilities);
+}
+
+function resolveSalesThemeSettings(moduleSettingsOrCapabilities = null) {
+  const root = moduleSettingsOrCapabilities ?? {};
+  return (
+    root?.module_settings?.sales ??
+    root?.sales ??
+    root?.module_settings ??
+    root ??
+    {}
+  );
+}
+
+/** ERP modules (sidebar + primary buttons) — falls back to legacy classic_pos_theme_* when unset. */
+export function resolveErpThemeTemplate(moduleSettingsOrCapabilities = null) {
+  const sales = resolveSalesThemeSettings(moduleSettingsOrCapabilities);
+  if (Object.prototype.hasOwnProperty.call(sales, "erp_theme_template")) {
+    return normalizeClassicPosThemeTemplate(sales.erp_theme_template);
+  }
+  return normalizeClassicPosThemeTemplate(sales?.classic_pos_theme_template);
+}
+
+export function resolveErpThemeColors(moduleSettingsOrCapabilities = null) {
+  const sales = resolveSalesThemeSettings(moduleSettingsOrCapabilities);
+  if (Object.prototype.hasOwnProperty.call(sales, "erp_theme_colors")) {
+    return normalizeClassicPosThemeColors(sales.erp_theme_colors);
+  }
   return normalizeClassicPosThemeColors(sales?.classic_pos_theme_colors);
+}
+
+/** External POS (/pos) full palette — falls back to legacy classic_pos_theme_* when unset. */
+export function resolveExternalPosThemeTemplate(moduleSettingsOrCapabilities = null) {
+  const sales = resolveSalesThemeSettings(moduleSettingsOrCapabilities);
+  if (Object.prototype.hasOwnProperty.call(sales, "external_pos_theme_template")) {
+    return normalizeClassicPosThemeTemplate(sales.external_pos_theme_template);
+  }
+  return normalizeClassicPosThemeTemplate(sales?.classic_pos_theme_template);
+}
+
+export function resolveExternalPosThemeColors(moduleSettingsOrCapabilities = null) {
+  const sales = resolveSalesThemeSettings(moduleSettingsOrCapabilities);
+  if (Object.prototype.hasOwnProperty.call(sales, "external_pos_theme_colors")) {
+    return normalizeClassicPosThemeColors(sales.external_pos_theme_colors);
+  }
+  return normalizeClassicPosThemeColors(sales?.classic_pos_theme_colors);
+}
+
+/** Scoped theme vars for modern External POS workspace (does not affect ERP modules). */
+export function externalPosThemeCssVars(moduleSettingsOrCapabilities = null) {
+  const template = resolveExternalPosThemeTemplate(moduleSettingsOrCapabilities);
+  const colors = resolveExternalPosThemeColors(moduleSettingsOrCapabilities);
+  return classicPosThemeBridgeVars(template, colors);
 }
 
 export function isDarkClassicPosTheme(id) {

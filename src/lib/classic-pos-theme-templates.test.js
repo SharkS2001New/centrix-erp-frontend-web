@@ -7,6 +7,10 @@ import {
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
   orgErpSidebarThemeVars,
+  resolveErpThemeColors,
+  resolveErpThemeTemplate,
+  resolveExternalPosThemeColors,
+  resolveExternalPosThemeTemplate,
   resolvePwaThemeColor,
 } from "@/lib/classic-pos-theme-templates";
 
@@ -107,5 +111,40 @@ describe("classic POS theme color overrides", () => {
     expect(resolvePwaThemeColor(orgErpSidebarThemeVars("ocean"))).toBe(
       orgErpSidebarThemeVars("ocean")["--erp-sidebar-bg"],
     );
+  });
+});
+
+describe("split ERP vs External POS theme resolution", () => {
+  it("falls back to legacy classic_pos_theme when split fields are unset", () => {
+    const caps = {
+      module_settings: {
+        sales: {
+          classic_pos_theme_template: "ocean",
+          classic_pos_theme_colors: { header: "#0d9488" },
+        },
+      },
+    };
+    expect(resolveErpThemeTemplate(caps)).toBe("ocean");
+    expect(resolveExternalPosThemeTemplate(caps)).toBe("ocean");
+    expect(resolveErpThemeColors(caps)).toEqual({ header: "#0d9488" });
+    expect(resolveExternalPosThemeColors(caps)).toEqual({ header: "#0d9488" });
+  });
+
+  it("uses independent ERP and External POS themes when configured", () => {
+    const caps = {
+      module_settings: {
+        sales: {
+          classic_pos_theme_template: "centrix",
+          erp_theme_template: "slate",
+          external_pos_theme_template: "midnight",
+          erp_theme_colors: { header: "#334155" },
+          external_pos_theme_colors: { header: "#818cf8" },
+        },
+      },
+    };
+    expect(resolveErpThemeTemplate(caps)).toBe("slate");
+    expect(resolveExternalPosThemeTemplate(caps)).toBe("midnight");
+    expect(resolveErpThemeColors(caps)).toEqual({ header: "#334155" });
+    expect(resolveExternalPosThemeColors(caps)).toEqual({ header: "#818cf8" });
   });
 });

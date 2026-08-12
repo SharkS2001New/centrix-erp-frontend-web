@@ -130,16 +130,36 @@ export function mergePreservedOptimisticLines(serverLines, prevLines) {
   return lines;
 }
 
+/** Never let a TemporaryCart response rewind the displayed Cash Sales #. */
+export function raisePosNextTicketNumber(...candidates) {
+  const nums = candidates
+    .flatMap((v) => (Array.isArray(v) ? v : [v]))
+    .map((v) => (v != null && v !== "" ? Number(v) : NaN))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return nums.length ? Math.max(...nums) : null;
+}
+
 /** Merge a single-line API payload into the current cart (legacy fallback). */
-export function applyCartMutationResponse(prevCart, res, { targetLineRef = null } = {}) {
+export function applyCartMutationResponse(
+  prevCart,
+  res,
+  { targetLineRef = null, extraPosTickets = [] } = {},
+) {
   const normalized = normalizeCartResponse(res);
   if (normalized) {
+    const nextPos = raisePosNextTicketNumber(
+      normalized.next_pos_order_num,
+      prevCart?.next_pos_order_num,
+      ...extraPosTickets,
+    );
     return {
       ...prevCart,
       ...normalized,
       lines: mergePreservedOptimisticLines(normalized.lines, prevCart?.lines),
       // Line mutations used to omit next_order_num → caption became "New Order - —".
       next_order_num: normalized.next_order_num ?? prevCart?.next_order_num ?? null,
+      next_pos_order_num:
+        nextPos ?? normalized.next_pos_order_num ?? prevCart?.next_pos_order_num ?? null,
     };
   }
   if (!prevCart?.id || !res?.product_code) return prevCart;

@@ -99,18 +99,28 @@ function ClassicPosColorField({ field, value, fallback, onChange }) {
   );
 }
 
-/** Centrix ERP theme picker — sidebar + buttons org-wide; full palette on Classic POS only. */
+/** Centrix ERP theme picker — scope controls which custom color fields apply. */
 export function ClassicPosThemePicker({
   value,
   onChange,
   colors = {},
   onColorsChange,
+  title = "Centrix ERP Themes",
   description = "In backoffice modules (including Hotel Backoffice), this changes the sidebar background and primary button colors. Classic External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.",
+  scope = "both",
 }) {
   const selectedId = normalizeClassicPosThemeTemplate(value);
   const overrides = normalizeClassicPosThemeColors(colors);
   const baseVars = classicPosThemeCssVars(selectedId);
   const hasCustomColors = Object.keys(overrides).length > 0;
+  const colorFields =
+    scope === "erp"
+      ? CLASSIC_POS_COLOR_OVERRIDE_FIELDS.filter((field) =>
+          ["header", "button", "select"].includes(field.key),
+        )
+      : scope === "external_pos"
+        ? CLASSIC_POS_COLOR_OVERRIDE_FIELDS
+        : CLASSIC_POS_COLOR_OVERRIDE_FIELDS;
 
   function patchColor(key, nextValue) {
     const hex = normalizeClassicPosHexColor(nextValue);
@@ -123,7 +133,7 @@ export function ClassicPosThemePicker({
   return (
     <div className="space-y-5">
       <div>
-        <p className="mb-1 text-sm font-medium text-slate-700">Centrix ERP Themes</p>
+        <p className="mb-1 text-sm font-medium text-slate-700">{title}</p>
         {description ? <p className="mb-3 text-xs text-slate-500">{description}</p> : null}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {CLASSIC_POS_THEME_TEMPLATES.map((theme) => {
@@ -171,9 +181,11 @@ export function ClassicPosThemePicker({
             <div>
               <p className="text-sm font-medium text-slate-700">Custom colors</p>
               <p className="mt-0.5 text-xs text-slate-500">
-                Optional overrides on top of the selected template. Header tints the ERP sidebar
-                (Retail, Distribution, and Hotel Backoffice); button colors apply org-wide; workspace
-                and footer apply on Classic External POS only. Leave blank to use the template default.
+                {scope === "erp"
+                  ? "Optional overrides on top of the selected template. Header tints the ERP sidebar; button and select colors apply across Sales, Inventory, Admin, and other modules."
+                  : scope === "external_pos"
+                    ? "Optional overrides for the External POS workspace (/pos) — workspace, header, footer, buttons, and selection highlights. Leave blank to use the template default."
+                    : "Optional overrides on top of the selected template. Header tints the ERP sidebar (Retail, Distribution, and Hotel Backoffice); button colors apply org-wide; workspace and footer apply on Classic External POS only. Leave blank to use the template default."}
               </p>
             </div>
             {hasCustomColors ? (
@@ -187,7 +199,9 @@ export function ClassicPosThemePicker({
             ) : null}
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            {CLASSIC_POS_COLOR_OVERRIDE_FIELDS.map((field) => (
+            {CLASSIC_POS_COLOR_OVERRIDE_FIELDS.filter((field) =>
+              colorFields.some((entry) => entry.key === field.key),
+            ).map((field) => (
               <ClassicPosColorField
                 key={field.key}
                 field={field}
@@ -197,6 +211,48 @@ export function ClassicPosThemePicker({
               />
             ))}
           </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Separate ERP modules vs External POS theme preferences. */
+export function CentrixSplitThemePickers({
+  erpTemplate,
+  erpColors,
+  onErpTemplateChange,
+  onErpColorsChange,
+  externalPosTemplate,
+  externalPosColors,
+  onExternalPosTemplateChange,
+  onExternalPosColorsChange,
+  showExternalPos = true,
+}) {
+  return (
+    <div className="space-y-8">
+      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+        <ClassicPosThemePicker
+          title="ERP modules theme"
+          scope="erp"
+          value={erpTemplate}
+          onChange={onErpTemplateChange}
+          colors={erpColors}
+          onColorsChange={onErpColorsChange}
+          description="Applies to Sales, Inventory, Admin, Finance, and other backoffice modules — sidebar background and primary button colors only."
+        />
+      </div>
+      {showExternalPos ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <ClassicPosThemePicker
+            title="External POS theme"
+            scope="external_pos"
+            value={externalPosTemplate}
+            onChange={onExternalPosTemplateChange}
+            colors={externalPosColors}
+            onColorsChange={onExternalPosColorsChange}
+            description="Applies to the cashier workspace at /pos (modern and classic layouts) — full palette including workspace, footer, and dialogs. Does not change backoffice module colors."
+          />
         </div>
       ) : null}
     </div>
@@ -225,12 +281,20 @@ export function ExternalPosPlatformFields({
   return (
     <div className="space-y-6">
       {showTheme ? (
-        <ClassicPosThemePicker
-          value={value?.classic_pos_theme_template}
-          onChange={(id) => patch({ classic_pos_theme_template: id })}
-          colors={value?.classic_pos_theme_colors}
-          onColorsChange={(next) => patch({ classic_pos_theme_colors: next })}
-          description="Backoffice: sidebar + primary buttons only. External POS (/pos, modern and classic layouts): full palette. Organization admins can change this anytime under Centrix ERP Themes."
+        <CentrixSplitThemePickers
+          erpTemplate={value?.erp_theme_template ?? value?.classic_pos_theme_template}
+          erpColors={value?.erp_theme_colors ?? value?.classic_pos_theme_colors}
+          onErpTemplateChange={(id) => patch({ erp_theme_template: id })}
+          onErpColorsChange={(next) => patch({ erp_theme_colors: next })}
+          externalPosTemplate={
+            value?.external_pos_theme_template ?? value?.classic_pos_theme_template
+          }
+          externalPosColors={
+            value?.external_pos_theme_colors ?? value?.classic_pos_theme_colors
+          }
+          onExternalPosTemplateChange={(id) => patch({ external_pos_theme_template: id })}
+          onExternalPosColorsChange={(next) => patch({ external_pos_theme_colors: next })}
+          showExternalPos={posEnabled}
         />
       ) : null}
 

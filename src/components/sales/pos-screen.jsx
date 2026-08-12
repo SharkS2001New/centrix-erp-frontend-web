@@ -158,6 +158,7 @@ import {
   looksLikeProductCodeQuery,
   mergePreservedOptimisticLines,
   normalizeCartResponse,
+  raisePosNextTicketNumber,
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
 import { validatePosDirectCheckoutPayment } from "@/lib/pos-checkout-credit-sale";
@@ -195,11 +196,16 @@ import {
   classicPosThemeBridgeVars,
   classicPosThemeCssVars,
   isDarkClassicPosTheme,
-  resolveClassicPosThemeColors,
-  resolveClassicPosThemeTemplate,
+  resolveErpThemeColors,
+  resolveErpThemeTemplate,
+  resolveExternalPosThemeColors,
+  resolveExternalPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
+import { usePosUserThemePreference } from "@/hooks/use-pos-user-theme-preference";
+import { resolveEffectivePosThemeTemplate } from "@/lib/pos-user-theme-preference";
+import { PosUserThemeDialog } from "./pos-user-theme-dialog";
 import {
   abandonOfflineSaleEdit,
   cartHasStaleFailedOutboxAttachment,
@@ -976,6 +982,36 @@ function resolveFreshWorkspacePosNum(
   return 1;
 }
 
+/** Sync next Cash Sales # — raises with local/outbox hints so pending uploads never rewind the till. */
+function resolveImmediateNextPosTicket(
+  activeCart,
+  sessionOrders,
+  pendingSale,
+  { localNextHint = null, editOrderNoHint = null, floatSessionId: sessionId = null } = {},
+) {
+  const sessionNext = resolveFreshWorkspacePosNum(
+    activeCart,
+    sessionOrders,
+    pendingSale,
+    null,
+    sessionId,
+  );
+  const pendingTicket = pendingSale
+    ? Number(resolvePosSessionTicketNumber(pendingSale) ?? 0)
+    : 0;
+  const candidates = [
+    sessionNext,
+    localNextHint,
+    editOrderNoHint,
+    resolvePosNextBrowseNumber(activeCart),
+    pendingTicket > 0 ? pendingTicket + 1 : null,
+  ]
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!candidates.length) return sessionNext ?? 1;
+  return Math.max(...candidates);
+}
+
 /** Prefer local Cash Sales seq (source of truth) over session browse / server peek. */
 async function resolveNextPosTicketForWorkspace(
   activeCart,
@@ -1238,25 +1274,61 @@ export function PosScreen({ standalone = false }) {
   const confirm = useConfirm();
   const { user, capabilities, organization, hasPermission, logout } = useAuth();
   const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
-  const classicThemeTemplate = useMemo(
-    () => resolveClassicPosThemeTemplate(capabilities),
-    [capabilities],
+  const orgPosThemeTemplate = useMemo(
+    () => resolveExternalPosThemeTemplate(capabilities),
+    [
+      capabilities?.module_settings?.sales?.external_pos_theme_template,
+      capabilities?.module_settings?.sales?.classic_pos_theme_template,
+    ],
   );
-  const classicThemeColors = useMemo(
-    () => resolveClassicPosThemeColors(capabilities),
-    [capabilities],
+  const orgPosThemeColors = useMemo(
+    () => resolveExternalPosThemeColors(capabilities),
+    [
+      JSON.stringify(capabilities?.module_settings?.sales?.external_pos_theme_colors ?? null),
+      JSON.stringify(capabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {}),
+    ],
   );
-  const classicThemeVars = useMemo(
+  const { preference: posUserThemePreference, setTemplate: setPosUserThemeTemplate } =
+    usePosUserThemePreference(user?.id, organization?.id ?? user?.organization_id);
+  const posThemeTemplate = useMemo(
+    () => resolveEffectivePosThemeTemplate(orgPosThemeTemplate, posUserThemePreference),
+    [orgPosThemeTemplate, posUserThemePreference],
+  );
+  const posThemeColors = useMemo(() => {
+    if (posUserThemePreference && !posUserThemePreference.useOrgDefault && posUserThemePreference.template) {
+      return {};
+    }
+    return orgPosThemeColors;
+  }, [posUserThemePreference, orgPosThemeColors]);
+  const erpThemeTemplate = useMemo(
+    () => resolveErpThemeTemplate(capabilities),
+    [
+      capabilities?.module_settings?.sales?.erp_theme_template,
+      capabilities?.module_settings?.sales?.classic_pos_theme_template,
+    ],
+  );
+  const erpThemeColors = useMemo(
+    () => resolveErpThemeColors(capabilities),
+    [
+      JSON.stringify(capabilities?.module_settings?.sales?.erp_theme_colors ?? null),
+      JSON.stringify(capabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {}),
+    ],
+  );
+  const posThemeVars = useMemo(
     () =>
-      classicLayout ? classicPosThemeCssVars(classicThemeTemplate, classicThemeColors) : null,
-    [classicLayout, classicThemeTemplate, classicThemeColors],
+      classicLayout
+        ? classicPosThemeCssVars(posThemeTemplate, posThemeColors)
+        : standalone
+          ? classicPosThemeBridgeVars(posThemeTemplate, posThemeColors)
+          : null,
+    [classicLayout, standalone, posThemeTemplate, posThemeColors],
   );
   const classicThemeBridgeVars = useMemo(
     () =>
       classicLayout
-        ? classicPosThemeBridgeVars(classicThemeTemplate, classicThemeColors)
+        ? classicPosThemeBridgeVars(posThemeTemplate, posThemeColors)
         : null,
-    [classicLayout, classicThemeTemplate, classicThemeColors],
+    [classicLayout, posThemeTemplate, posThemeColors],
   );
   const {
     activeSession,
@@ -2132,6 +2204,7 @@ export function PosScreen({ standalone = false }) {
   /** Shown while copying cart between online server ↔ local offline storage. */
   const [cartBridgeStatus, setCartBridgeStatus] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [posUserThemeOpen, setPosUserThemeOpen] = useState(false);
   /** Sync lock — React state lags one frame, so F10 keyup must not re-enter open. */
   const paymentOpenRef = useRef(false);
   /** Ignore Esc/backdrop close for a beat after open (same F10 keystroke race). */
@@ -2446,22 +2519,35 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const nextBrowse = resolvePosNextBrowseNumber(cart);
-    if (nextBrowse != null) {
-      setEditOrderNo(String(nextBrowse));
-      return;
-    }
-    // F8 / post-checkout placeholder owns editOrderNo — never derive from session list here.
-    if (isFreshWorkspacePlaceholder(cart)) return;
+    let sessionNext = null;
     if (sessionPosOrders.length > 0) {
       let maxPos = 0;
       for (const row of sessionPosOrders) {
         const n = Number(resolvePosSessionTicketNumber(row) ?? 0);
         if (n > maxPos) maxPos = n;
       }
-      if (maxPos > 0) {
-        setEditOrderNo(String(maxPos + 1));
-      }
+      if (maxPos > 0) sessionNext = maxPos + 1;
     }
+    const derived = nextBrowse ?? sessionNext;
+    if (derived == null) {
+      // F8 / post-checkout placeholder owns editOrderNo — never derive from session list here.
+      if (isFreshWorkspacePlaceholder(cart)) return;
+      return;
+    }
+    if (isFreshWorkspacePlaceholder(cart)) {
+      setEditOrderNo(String(derived));
+      return;
+    }
+    // In-progress new sale: server watermark / session list must not rewind local #42 → #39.
+    setEditOrderNo((current) => {
+      const currentNum = Number(String(current ?? "").trim());
+      const offlineNext = Number(offlineNextPosOrderNum ?? 0);
+      const candidates = [derived, currentNum, offlineNext].filter(
+        (n) => Number.isFinite(n) && n > 0,
+      );
+      if (!candidates.length) return String(derived);
+      return String(Math.max(...candidates));
+    });
   }, [
     standalone,
     isCartEditSession,
@@ -2470,6 +2556,7 @@ export function PosScreen({ standalone = false }) {
     cart?.pos_order_num,
     cart?.next_pos_order_num,
     sessionPosOrders,
+    offlineNextPosOrderNum,
   ]);
 
   const advisedDiscountLines = useMemo(
@@ -3433,15 +3520,15 @@ export function PosScreen({ standalone = false }) {
   useEffect(() => {
     if (!classicLayout) return undefined;
     const previous = getTheme();
-    const forceLight = !isDarkClassicPosTheme(classicThemeTemplate);
+    const forceLight = !isDarkClassicPosTheme(posThemeTemplate);
     if (forceLight) applyTheme("light");
-    if (isDarkClassicPosTheme(classicThemeTemplate)) applyTheme("dark");
-    applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
+    if (isDarkClassicPosTheme(posThemeTemplate)) applyTheme("dark");
+    applyClassicPosDocumentTheme(posThemeTemplate, posThemeColors);
     return () => {
       applyTheme(previous);
-      applyOrgErpSidebarTheme(classicThemeTemplate, classicThemeColors, { mode: previous });
+      applyOrgErpSidebarTheme(erpThemeTemplate, erpThemeColors, { mode: previous });
     };
-  }, [classicLayout, classicThemeTemplate, classicThemeColors]);
+  }, [classicLayout, posThemeTemplate, posThemeColors, erpThemeTemplate, erpThemeColors]);
 
   useEffect(() => {
     if (cart?.discount_approval_pending && cart?.discount_approval_request?.discount_amount != null) {
@@ -3910,10 +3997,23 @@ export function PosScreen({ standalone = false }) {
           ? {
               ...full,
               lines: mergePreservedOptimisticLines(full?.lines, live.lines),
-              next_pos_order_num: full?.next_pos_order_num ?? live?.next_pos_order_num,
+              next_pos_order_num: raisePosNextTicketNumber(
+                full?.next_pos_order_num,
+                live?.next_pos_order_num,
+                editOrderNo,
+                offlineNextPosOrderNum,
+              ),
               next_order_num: full?.next_order_num ?? live?.next_order_num,
             }
-          : full;
+          : {
+              ...full,
+              next_pos_order_num: raisePosNextTicketNumber(
+                full?.next_pos_order_num,
+                live?.next_pos_order_num,
+                editOrderNo,
+                offlineNextPosOrderNum,
+              ),
+            };
       cartRef.current = toApply;
       setCart(toApply);
       if (showRouteOrderUi && toApply?.route_id) {
@@ -3936,6 +4036,8 @@ export function PosScreen({ standalone = false }) {
     usesRouteMarkup,
     selectedRouteId,
     routes,
+    editOrderNo,
+    offlineNextPosOrderNum,
   ]);
 
   const recoverMissingServerCart = useCallback(async () => {
@@ -4204,12 +4306,15 @@ export function PosScreen({ standalone = false }) {
         markServerCartConsumed(current.id);
         await wipeTemporaryCartLines(current).catch(() => {});
       }
-      const nextPos = resolveFreshWorkspacePosNum(
+      const nextPos = resolveImmediateNextPosTicket(
         stripOfflineSaleMarkers(current),
         sessionPosOrders,
         null,
-        null,
-        floatSessionId,
+        {
+          localNextHint: offlineNextPosOrderNum,
+          editOrderNoHint: editOrderNo,
+          floatSessionId,
+        },
       );
       applyFreshWorkspacePlaceholder(current, nextPos);
       return loadCashierCart({ skipEditDraftRestore: true, forceEmpty: true });
@@ -4324,6 +4429,8 @@ export function PosScreen({ standalone = false }) {
     floatSessionId,
     sessionPosOrders,
     materializeOfflineCartOnServer,
+    editOrderNo,
+    offlineNextPosOrderNum,
   ]);
 
   function enqueueCartCommit(task) {
@@ -5351,9 +5458,15 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
 
-    // Local workspace: true offline/slow, OR mid-sale cart kept local after reconnect.
-    // Never POST to TemporaryCart with id "active" — that breaks scanning after the link returns.
-    if (standalone && (offlineMode || usesLocalPosCartWorkspace(liveCart))) {
+    // Local workspace: true offline/slow, OR mid-sale cart kept local after reconnect,
+    // OR pending outbox still draining — IndexedDB owns Cash Sales # until upload completes.
+    const hasPendingOutboxQueue = pendingSync > 0 || failedSyncOrders.length > 0;
+    if (
+      standalone &&
+      (offlineMode ||
+        usesLocalPosCartWorkspace(liveCart) ||
+        (hasPendingOutboxQueue && !isPreviousOrderEditSession(liveCart)))
+    ) {
       // Continue the open sale in place — never rebuild/copy TemporaryCart lines here.
       const live = cartRef.current ?? liveCart;
       const activeCart =
@@ -5539,6 +5652,7 @@ export function PosScreen({ standalone = false }) {
           }
         : null;
     const serverUpdateNo = liveCart?.update_no;
+    const preservePosTickets = [editOrderNo, offlineNextPosOrderNum];
 
     const paintOptimisticOn = (baseCart) => {
       if (!baseCart?.id || needsLineDiscountApproval) return null;
@@ -5603,7 +5717,9 @@ export function PosScreen({ standalone = false }) {
             body: deferredLineBody,
             ...POS_CART_REQUEST,
           });
-          cartState = applyCartMutationResponse(cartRef.current ?? activeCart, added);
+          cartState = applyCartMutationResponse(cartRef.current ?? activeCart, added, {
+            extraPosTickets: preservePosTickets,
+          });
           if (shouldApplyServerCartMutation(activeCart.id)) {
             cartRef.current = cartState;
             setCart(cartState);
@@ -5623,6 +5739,7 @@ export function PosScreen({ standalone = false }) {
           });
           cartState = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
             targetLineRef: lineRef,
+            extraPosTickets: preservePosTickets,
           });
           if (shouldApplyServerCartMutation(activeCart.id)) {
             cartRef.current = cartState;
@@ -5741,6 +5858,7 @@ export function PosScreen({ standalone = false }) {
         });
         const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
           targetLineRef,
+          extraPosTickets: preservePosTickets,
         });
         if (shouldApplyServerCartMutation(activeCart.id)) {
           cartRef.current = nextCart;
@@ -5759,7 +5877,9 @@ export function PosScreen({ standalone = false }) {
           body: lineBody,
           ...POS_CART_REQUEST,
         });
-        const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated);
+        const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
+          extraPosTickets: preservePosTickets,
+        });
         if (shouldApplyServerCartMutation(activeCart.id)) {
           cartRef.current = nextCart;
           setCart(nextCart);
@@ -5788,6 +5908,7 @@ export function PosScreen({ standalone = false }) {
               });
               const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
                 targetLineRef,
+                extraPosTickets: preservePosTickets,
               });
               if (shouldApplyServerCartMutation(fresh.id)) {
                 cartRef.current = nextCart;
@@ -5799,7 +5920,9 @@ export function PosScreen({ standalone = false }) {
                 body: lineBody,
                 ...POS_CART_REQUEST,
               });
-              const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated);
+              const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
+                extraPosTickets: preservePosTickets,
+              });
               if (shouldApplyServerCartMutation(fresh.id)) {
                 cartRef.current = nextCart;
                 setCart(nextCart);
@@ -8319,12 +8442,15 @@ export function PosScreen({ standalone = false }) {
     // Holding parks IndexedDB only — invalidate any in-flight held restore materialize.
     // (applyFreshWorkspacePlaceholder also bumps this.)
     const serverId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
-    const quickPeek = resolveFreshWorkspacePosNum(
+    const quickPeek = resolveImmediateNextPosTicket(
       activeCart,
       sessionPosOrders,
       null,
-      null,
-      floatSessionId,
+      {
+        localNextHint: offlineNextPosOrderNum,
+        editOrderNoHint: editOrderNo,
+        floatSessionId,
+      },
     );
     applyFreshWorkspacePlaceholder(activeCart, quickPeek);
 
@@ -9100,15 +9226,18 @@ export function PosScreen({ standalone = false }) {
           ? Number(checkoutCart.id)
           : null;
 
-      // Drop to an empty shell immediately — do not wait on peek / POST cart.
-      const quickPeek = resolveFreshWorkspacePosNum(
+      // Drop to an empty shell immediately — local seq first while outbox still drains.
+      const immediateNext = resolveImmediateNextPosTicket(
         checkoutCart,
         sessionPosOrders,
         saleForPeek,
-        null,
-        floatSessionId,
+        {
+          localNextHint: offlineNextPosOrderNum,
+          editOrderNoHint: editOrderNo,
+          floatSessionId,
+        },
       );
-      applyFreshWorkspacePlaceholder(checkoutCart, quickPeek);
+      applyFreshWorkspacePlaceholder(checkoutCart, immediateNext);
       setStatusMessage("New order — scan or search a product.");
       report(28);
 
@@ -9125,8 +9254,6 @@ export function PosScreen({ standalone = false }) {
       }
 
       const generation = ++freshWorkspaceGenerationRef.current;
-      // applyState:false — avoid painting an empty TemporaryCart over a scan that
-      // already landed on the pending-fresh shell (same pattern as F8 / hold).
       const cartPromise = loadCashierCart({
         skipEditDraftRestore: true,
         forceEmpty: true,
@@ -9141,7 +9268,7 @@ export function PosScreen({ standalone = false }) {
       );
       if (
         peekNextPos != null &&
-        Number(peekNextPos) !== Number(cartRef.current?.next_pos_order_num ?? quickPeek)
+        Number(peekNextPos) !== Number(cartRef.current?.next_pos_order_num ?? immediateNext)
       ) {
         applyFreshWorkspacePlaceholder(cartRef.current, peekNextPos);
       }
@@ -9202,8 +9329,12 @@ export function PosScreen({ standalone = false }) {
           cartRef.current = merged;
           setCart(merged);
           const displayPos =
-            resolvePosNextBrowseNumber(merged) ??
-            (peekNextPos != null ? peekNextPos : null);
+            raisePosNextTicketNumber(
+              resolvePosNextBrowseNumber(merged),
+              peekNextPos,
+              editOrderNo,
+              offlineNextPosOrderNum,
+            ) ?? resolvePosNextBrowseNumber(merged) ?? peekNextPos ?? null;
           setEditOrderNo(displayPos != null ? String(displayPos) : "");
           if (enablePosOrderEdit) {
             void loadCompletedPosOrders();
@@ -9272,6 +9403,8 @@ export function PosScreen({ standalone = false }) {
       loadCompletedPosOrders,
       focusClassicProductSearch,
       sessionPosOrders,
+      editOrderNo,
+      offlineNextPosOrderNum,
     ],
   );
 
@@ -14206,8 +14339,9 @@ export function PosScreen({ standalone = false }) {
         standalone ? " h-full pos-workspace-standalone" : " h-full pos-workspace-backoffice p-4 md:p-6 lg:p-8"
       }${classicLayout ? " pos-workspace-classic" : ""}`}
       data-pos-layout={classicLayout ? "classic" : "modern"}
-      data-classic-pos-theme={classicLayout ? classicThemeTemplate : undefined}
-      style={classicThemeVars ?? undefined}
+      data-classic-pos-theme={classicLayout ? posThemeTemplate : undefined}
+      data-external-pos-theme={standalone ? posThemeTemplate : undefined}
+      style={posThemeVars ?? undefined}
     >
       {standalone ? (
         <>
@@ -14389,6 +14523,8 @@ export function PosScreen({ standalone = false }) {
                 <UserAccountMenu
                   showName={false}
                   triggerClassName="pos-header-action-btn inline-flex items-center rounded-md p-1"
+                  showPosThemeOption={standalone}
+                  onOpenPosTheme={() => setPosUserThemeOpen(true)}
                 />
               </div>
             </div>
@@ -15933,6 +16069,21 @@ export function PosScreen({ standalone = false }) {
         }}
         embedded={!standalone}
       />
+
+      {standalone ? (
+        <PosUserThemeDialog
+          open={posUserThemeOpen}
+          onClose={() => setPosUserThemeOpen(false)}
+          orgTemplate={orgPosThemeTemplate}
+          userTemplate={
+            posUserThemePreference && !posUserThemePreference.useOrgDefault
+              ? posUserThemePreference.template
+              : null
+          }
+          onSave={(template) => setPosUserThemeTemplate(template)}
+          embedded
+        />
+      ) : null}
 
       <PosPendingSyncOverlay
         open={pendingSyncOpen}

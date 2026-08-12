@@ -50,8 +50,10 @@ import {
   applyOrgErpSidebarTheme,
   clearClassicPosDocumentTheme,
   classicPosThemeBridgeVars,
-  resolveClassicPosThemeColors,
-  resolveClassicPosThemeTemplate,
+  resolveExternalPosThemeColors,
+  resolveExternalPosThemeTemplate,
+  resolveErpThemeColors,
+  resolveErpThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 import { getTheme } from "@/lib/theme";
 import { uomCompactPackageLabel } from "@/lib/uom-packaging";
@@ -103,36 +105,56 @@ export function ClassicBackofficeOrderEditModal({
   const [entryProduct, setEntryProduct] = useState(null);
   const [entryQty, setEntryQty] = useState("");
 
-  const classicThemeTemplate = useMemo(
-    () => resolveClassicPosThemeTemplate(effectiveCapabilities),
+  const posThemeTemplate = useMemo(
+    () => resolveExternalPosThemeTemplate(effectiveCapabilities),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_template],
+    [
+      effectiveCapabilities?.module_settings?.sales?.external_pos_theme_template,
+      effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_template,
+    ],
   );
-  const classicThemeColorsKey = JSON.stringify(
-    effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {},
-  );
-  const classicThemeColors = useMemo(
-    () => resolveClassicPosThemeColors(effectiveCapabilities),
+  const posThemeColorsKey = JSON.stringify({
+    external: effectiveCapabilities?.module_settings?.sales?.external_pos_theme_colors ?? null,
+    legacy: effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {},
+  });
+  const posThemeColors = useMemo(
+    () => resolveExternalPosThemeColors(effectiveCapabilities),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [classicThemeColorsKey],
+    [posThemeColorsKey],
+  );
+  const erpThemeTemplate = useMemo(
+    () => resolveErpThemeTemplate(effectiveCapabilities),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      effectiveCapabilities?.module_settings?.sales?.erp_theme_template,
+      effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_template,
+    ],
+  );
+  const erpThemeColors = useMemo(
+    () => resolveErpThemeColors(effectiveCapabilities),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      JSON.stringify(effectiveCapabilities?.module_settings?.sales?.erp_theme_colors ?? null),
+      JSON.stringify(effectiveCapabilities?.module_settings?.sales?.classic_pos_theme_colors ?? {}),
+    ],
   );
   const themeStyle = useMemo(
-    () => classicPosThemeBridgeVars(classicThemeTemplate, classicThemeColors),
-    [classicThemeTemplate, classicThemeColors],
+    () => classicPosThemeBridgeVars(posThemeTemplate, posThemeColors),
+    [posThemeTemplate, posThemeColors],
   );
 
-  // Match Classic External POS: apply the ERP-selected classic theme on document
+  // Match Classic External POS: apply the External POS theme on document
   // so portaled scan dropdowns / buttons inherit the palette.
   useLayoutEffect(() => {
     if (!open) return undefined;
-    applyClassicPosDocumentTheme(classicThemeTemplate, classicThemeColors);
+    applyClassicPosDocumentTheme(posThemeTemplate, posThemeColors);
     return () => {
       clearClassicPosDocumentTheme();
-      applyOrgErpSidebarTheme(classicThemeTemplate, classicThemeColors, {
+      applyOrgErpSidebarTheme(erpThemeTemplate, erpThemeColors, {
         mode: getTheme(),
       });
     };
-  }, [open, classicThemeTemplate, classicThemeColors]);
+  }, [open, posThemeTemplate, posThemeColors, erpThemeTemplate, erpThemeColors]);
 
   const currentCustomerLabel = useMemo(() => {
     const fromSale =

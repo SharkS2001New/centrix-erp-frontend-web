@@ -28,6 +28,8 @@ export function UserAccountMenu({
   triggerClassName = "app-topbar-user-btn flex items-center gap-2 rounded-md py-1 pl-1 pr-2 transition sm:pr-2.5",
   showName = true,
   mobileThemeToggle = true,
+  showPosThemeOption = false,
+  onOpenPosTheme,
 }) {
   const { user, capabilities, logout, memberships } = useAuth();
   const { lockScreen } = useLockScreen();
@@ -111,6 +113,19 @@ export function UserAccountMenu({
               >
                 Lock screen
               </button>
+              {showPosThemeOption ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="velzon-user-dropdown-item flex w-full px-4 py-2 text-left text-sm"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenPosTheme?.();
+                  }}
+                >
+                  My POS color theme
+                </button>
+              ) : null}
               <button
                 type="button"
                 role="menuitem"

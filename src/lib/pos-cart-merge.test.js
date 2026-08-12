@@ -113,6 +113,20 @@ describe("applyCartMutationResponse", () => {
     const next = applyCartMutationResponse(prev, res);
     expect(next.lines.map((l) => l.product_code).sort()).toEqual(["A", "B", "C"]);
   });
+
+  it("never lowers next_pos_order_num when the server watermark lags local", () => {
+    const prev = { id: 10, next_pos_order_num: 42, lines: [{ id: 1, product_code: "A" }] };
+    const res = {
+      id: 10,
+      next_pos_order_num: 39,
+      lines: [
+        { id: 1, product_code: "A" },
+        { id: 2, product_code: "B" },
+      ],
+    };
+    const next = applyCartMutationResponse(prev, res, { extraPosTickets: ["42"] });
+    expect(next.next_pos_order_num).toBe(42);
+  });
 });
 
 describe("applyOptimisticCartMutation (swap / edit)", () => {

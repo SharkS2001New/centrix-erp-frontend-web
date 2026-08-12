@@ -6,21 +6,37 @@ import {
   CLASSIC_POS_THEME_DEFAULT,
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
+  resolveErpThemeColors,
+  resolveErpThemeTemplate,
+  resolveExternalPosThemeColors,
+  resolveExternalPosThemeTemplate,
 } from "@/lib/classic-pos-theme-templates";
 import {
-  ClassicPosThemePicker,
+  CentrixSplitThemePickers,
   ExternalPosPlatformFields,
 } from "@/components/admin/external-pos-platform-fields";
 import { resolveExternalPosLayout } from "@/lib/external-pos-layout";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
-function platformExternalPosFromApi(res) {
-  const sales = res?.sales ?? res ?? {};
+function themesFromSales(sales = {}) {
+  const bag = { module_settings: { sales } };
   return {
-    external_pos_layout: sales.external_pos_layout === "classic" ? "classic" : "modern",
+    erp_theme_template: resolveErpThemeTemplate(bag),
+    erp_theme_colors: resolveErpThemeColors(bag),
+    external_pos_theme_template: resolveExternalPosThemeTemplate(bag),
+    external_pos_theme_colors: resolveExternalPosThemeColors(bag),
     classic_pos_theme_template: normalizeClassicPosThemeTemplate(sales.classic_pos_theme_template),
     classic_pos_theme_colors: normalizeClassicPosThemeColors(sales.classic_pos_theme_colors),
+  };
+}
+
+function platformExternalPosFromApi(res) {
+  const sales = res?.sales ?? res ?? {};
+  const themes = themesFromSales(sales);
+  return {
+    external_pos_layout: sales.external_pos_layout === "classic" ? "classic" : "modern",
+    ...themes,
     show_pos_checkout_on_create: sales.show_pos_checkout_on_create !== false,
     require_pos_till_float: Boolean(sales.require_pos_till_float),
     enable_pos_cash_rounding: Boolean(sales.enable_pos_cash_rounding),
@@ -28,6 +44,27 @@ function platformExternalPosFromApi(res) {
     enable_pos_order_edit: Boolean(sales.enable_pos_order_edit),
     enable_held_order_amount_paid: Boolean(sales.enable_held_order_amount_paid),
     pos_combine_identical_lines: sales.pos_combine_identical_lines !== false,
+  };
+}
+
+function buildThemeSaveBody({
+  erpThemeTemplate,
+  erpThemeColors,
+  externalPosThemeTemplate,
+  externalPosThemeColors,
+}) {
+  const erpTemplate = normalizeClassicPosThemeTemplate(erpThemeTemplate);
+  const erpColors = normalizeClassicPosThemeColors(erpThemeColors);
+  const externalTemplate = normalizeClassicPosThemeTemplate(externalPosThemeTemplate);
+  const externalColors = normalizeClassicPosThemeColors(externalPosThemeColors);
+  return {
+    erp_theme_template: erpTemplate,
+    erp_theme_colors: erpColors,
+    external_pos_theme_template: externalTemplate,
+    external_pos_theme_colors: externalColors,
+    // Legacy mirror — older clients still read classic_pos_theme_* as External POS theme.
+    classic_pos_theme_template: externalTemplate,
+    classic_pos_theme_colors: externalColors,
   };
 }
 
@@ -43,8 +80,10 @@ export function ExternalPosSettingsPanel({
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
   const [platformForm, setPlatformForm] = useState(() => platformExternalPosFromApi({}));
-  const [themeTemplate, setThemeTemplate] = useState(CLASSIC_POS_THEME_DEFAULT);
-  const [themeColors, setThemeColors] = useState({});
+  const [erpThemeTemplate, setErpThemeTemplate] = useState(CLASSIC_POS_THEME_DEFAULT);
+  const [erpThemeColors, setErpThemeColors] = useState({});
+  const [externalPosThemeTemplate, setExternalPosThemeTemplate] = useState(CLASSIC_POS_THEME_DEFAULT);
+  const [externalPosThemeColors, setExternalPosThemeColors] = useState({});
   const [loading, setLoading] = useState(true);
 
   const modules = capabilities?.modules ?? {};
@@ -60,14 +99,20 @@ export function ExternalPosSettingsPanel({
     : layoutFromCaps;
   const isClassic = layout === "classic";
 
+  function applyThemesFromApi(fromApi) {
+    setErpThemeTemplate(fromApi.erp_theme_template);
+    setErpThemeColors(fromApi.erp_theme_colors);
+    setExternalPosThemeTemplate(fromApi.external_pos_theme_template);
+    setExternalPosThemeColors(fromApi.external_pos_theme_colors);
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const salesRes = await apiRequest(settingsPath("sales"));
       const fromApi = platformExternalPosFromApi(salesRes);
       setPlatformForm(fromApi);
-      setThemeTemplate(fromApi.classic_pos_theme_template);
-      setThemeColors(fromApi.classic_pos_theme_colors);
+      applyThemesFromApi(fromApi);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load Centrix ERP Themes");
     } finally {
@@ -83,24 +128,26 @@ export function ExternalPosSettingsPanel({
     e.preventDefault();
     setSaving(true);
     try {
-      const themeId = normalizeClassicPosThemeTemplate(
-        platformManaged ? platformForm.classic_pos_theme_template : themeTemplate,
-      );
-      const colors = normalizeClassicPosThemeColors(
-        platformManaged ? platformForm.classic_pos_theme_colors : themeColors,
+      const themeBody = buildThemeSaveBody(
+        platformManaged
+          ? {
+              erpThemeTemplate: platformForm.erp_theme_template,
+              erpThemeColors: platformForm.erp_theme_colors,
+              externalPosThemeTemplate: platformForm.external_pos_theme_template,
+              externalPosThemeColors: platformForm.external_pos_theme_colors,
+            }
+          : {
+              erpThemeTemplate,
+              erpThemeColors,
+              externalPosThemeTemplate,
+              externalPosThemeColors,
+            },
       );
       const body = {
-        classic_pos_theme_template: themeId,
-        classic_pos_theme_colors: colors,
+        ...themeBody,
         ...(platformManaged
           ? {
               external_pos_layout: platformForm.external_pos_layout,
-              classic_pos_theme_template: normalizeClassicPosThemeTemplate(
-                platformForm.classic_pos_theme_template,
-              ),
-              classic_pos_theme_colors: normalizeClassicPosThemeColors(
-                platformForm.classic_pos_theme_colors,
-              ),
               show_pos_checkout_on_create: Boolean(platformForm.show_pos_checkout_on_create),
               require_pos_till_float: Boolean(platformForm.require_pos_till_float),
               enable_pos_cash_rounding: Boolean(platformForm.enable_pos_cash_rounding),
@@ -120,8 +167,7 @@ export function ExternalPosSettingsPanel({
       const salesRes = await apiRequest(settingsPath("sales"));
       const fromApi = platformExternalPosFromApi(salesRes);
       setPlatformForm(fromApi);
-      setThemeTemplate(fromApi.classic_pos_theme_template);
-      setThemeColors(fromApi.classic_pos_theme_colors);
+      applyThemesFromApi(fromApi);
       setMessage("Centrix ERP Themes saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save Centrix ERP Themes");
@@ -137,15 +183,15 @@ export function ExternalPosSettingsPanel({
         <p className="mt-1 text-sm text-slate-500">
           {isHospitality ? (
             <>
-              Color palette for Centrix ERP Themes. Hotel Backoffice and Admin change the{" "}
-              <strong>sidebar background</strong> and <strong>primary button colors</strong>. Default
-              is Centrix.
+              Choose separate color palettes for <strong>ERP modules</strong> (sidebar and primary
+              buttons in Hotel Backoffice and Admin) and for <strong>External POS</strong> when
+              enabled. Default is Centrix for both.
             </>
           ) : (
             <>
-              Color palette for Centrix ERP Themes. Backoffice and other modules only change the{" "}
-              <strong>sidebar background</strong> and <strong>primary button colors</strong>. Classic
-              External POS still uses the full palette (workspace, footer, dialogs). Default is Centrix.
+              Choose separate color palettes for <strong>ERP modules</strong> (Sales, Inventory,
+              Admin, and other backoffice screens) and for <strong>External POS</strong> (/pos).
+              POS can use Ocean while backoffice stays Centrix, for example.
               {hasPosSales
                 ? " Till close, barcode scanner, and POS customer prompts are under Organization settings → Sales → Tills."
                 : ""}
@@ -160,15 +206,7 @@ export function ExternalPosSettingsPanel({
             {platformManaged ? (
               <ExternalPosPlatformFields
                 value={platformForm}
-                onChange={(next) => {
-                  setPlatformForm(next);
-                  if (next?.classic_pos_theme_template) {
-                    setThemeTemplate(normalizeClassicPosThemeTemplate(next.classic_pos_theme_template));
-                  }
-                  if (next?.classic_pos_theme_colors != null) {
-                    setThemeColors(normalizeClassicPosThemeColors(next.classic_pos_theme_colors));
-                  }
-                }}
+                onChange={setPlatformForm}
                 posEnabled={hasPosSales}
                 showTheme
                 showLayout={hasPosSales}
@@ -182,19 +220,21 @@ export function ExternalPosSettingsPanel({
                     <p className="mt-1 text-xs text-slate-600">
                       Current layout:{" "}
                       <span className="font-medium">{isClassic ? "Classic" : "Modern"}</span>
-                      . Theme colors below tint the ERP sidebar and primary buttons
-                      {isClassic
-                        ? "; Classic External POS still uses the full palette"
-                        : ""}
-                      . Layout is set by the platform.
+                      . ERP and External POS themes below are independent — layout is set by the
+                      platform.
                     </p>
                   </div>
                 ) : null}
-                <ClassicPosThemePicker
-                  value={themeTemplate}
-                  onChange={setThemeTemplate}
-                  colors={themeColors}
-                  onColorsChange={setThemeColors}
+                <CentrixSplitThemePickers
+                  erpTemplate={erpThemeTemplate}
+                  erpColors={erpThemeColors}
+                  onErpTemplateChange={setErpThemeTemplate}
+                  onErpColorsChange={setErpThemeColors}
+                  externalPosTemplate={externalPosThemeTemplate}
+                  externalPosColors={externalPosThemeColors}
+                  onExternalPosTemplateChange={setExternalPosThemeTemplate}
+                  onExternalPosColorsChange={setExternalPosThemeColors}
+                  showExternalPos={hasPosSales}
                 />
               </>
             )}
