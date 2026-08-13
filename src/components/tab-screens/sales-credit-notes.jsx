@@ -38,16 +38,19 @@ function resolveCreditNoteRow(row) {
   return {
     ...row,
     status: row.status ?? customerReturn?.status,
-    return_no: customerReturn?.return_no,
-    return_date: row.credit_date ?? customerReturn?.return_date,
+    return_no: row.return_no ?? customerReturn?.return_no,
+    customer_return_id: row.customer_return_id ?? customerReturn?.id ?? null,
+    pending_return_only: Boolean(row.pending_return_only),
+    return_date: row.credit_date ?? row.return_date ?? customerReturn?.return_date,
     total_amount: row.total_amount ?? customerReturn?.total_amount,
-    customer: customerReturn?.customer,
+    customer: row.customer ?? customerReturn?.customer,
     sale: row.sale ?? customerReturn?.sale,
     sale_id: row.sale_id ?? customerReturn?.sale_id,
     can_approve: row.can_approve ?? customerReturn?.can_approve,
     can_reject: row.can_reject ?? customerReturn?.can_reject,
     can_delete: row.can_delete ?? customerReturn?.can_delete,
     can_print: row.can_print ?? true,
+    credit_note_no: row.credit_note_no ?? customerReturn?.return_no ?? "—",
     customerReturn,
   };
 }
@@ -222,21 +225,21 @@ export function SalesCreditNotesScreen() {
           await approveRequest();
         }
         notifySuccess(
-          `${row.credit_note_no} approved. The order was adjusted and the credit note issued.`,
+          `${row.credit_note_no ?? "Credit note"} approved. The order was adjusted and the credit note issued.`,
         );
       } else if (type === "reject") {
         await apiRequest(`/credit-notes/${row.id}/reject`, {
           method: "POST",
           body: { reason: rejectReason.trim() },
         });
-        notifySuccess(`${row.credit_note_no} rejected.`);
+        notifySuccess(`${row.credit_note_no ?? "Credit note"} rejected.`);
       } else if (type === "delete") {
         await apiRequest(`/credit-notes/${row.id}`, { method: "DELETE" });
         if (detailOpen && detailRow?.credit_note?.id === row.id) {
           setDetailOpen(false);
           setDetailRow(null);
         }
-        notifySuccess(`${row.credit_note_no} deleted.`);
+        notifySuccess(`${row.credit_note_no ?? "Credit note"} deleted.`);
       }
 
       setDialog(null);

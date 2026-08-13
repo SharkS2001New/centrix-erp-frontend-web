@@ -10,6 +10,7 @@ import {
   FilterSelect,
   FilterToolbar,
   PaginationBar,
+  PrimaryButton,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
 import { useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
@@ -572,6 +573,9 @@ export function PaymentsBreakdownScreen({
             }}
             disabled={loading || methods.length === 0}
           />
+          <PrimaryButton type="button" showIcon={false} onClick={() => void load()} disabled={loading}>
+            Refresh
+          </PrimaryButton>
         </div>
       }
     >
@@ -671,13 +675,6 @@ export function PaymentsBreakdownScreen({
             className="w-56 shrink-0 sm:w-64"
           />
         </Field>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg bg-[var(--theme-primary)] px-4 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-        >
-          Refresh
-        </button>
       </FilterToolbar>
 
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">

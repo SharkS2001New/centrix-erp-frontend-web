@@ -12,6 +12,7 @@ import { formatTillKes, formatTillKesExact, formatTillKesSigned, resolveExpected
 import { buildExpensesHref, expenseSummaryRowLabel } from "@/lib/expenses-link";
 import {
   FilterSelect,
+  FilterToolbar,
   PrimaryButton,
   SECONDARY_BTN_CLASS,
   StatCard,
@@ -1038,7 +1039,7 @@ export function EndOfDayReportScreen() {
 
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="theme-subtext text-xs">
             <Link href="/reports" className="theme-link hover:underline">Reports</Link>
@@ -1057,96 +1058,97 @@ export function EndOfDayReportScreen() {
             {selectedSessionLabel ? ` · ${selectedSessionLabel}` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Branch</label>
-            <FilterSelect
-              value={branchId}
-              onChange={(e) => {
-                setBranchId(e.target.value);
-                setCashierId("");
-                setFloatSessionId("");
-              }}
-              options={[
-                { value: "", label: "All branches" },
-                ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
-              ]}
-            />
-          </div>
-          <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Cashier</label>
-            <FilterSelect
-              value={cashierId}
-              onChange={(e) => {
-                setCashierId(e.target.value);
-                setFloatSessionId("");
-              }}
-              options={[{ value: "", label: "All cashiers" }, ...cashierOptions]}
-            />
-          </div>
-          {requireTillFloat ? (
-            <div>
-              <label className="theme-subtext mb-1 block text-xs font-medium">Till session</label>
-              <FilterSelect
-                value={floatSessionId}
-                onChange={(e) => setFloatSessionId(e.target.value)}
-                options={[
-                  { value: "", label: "All sessions" },
-                  ...sessionOptions.map((opt) => ({ value: opt.value, label: opt.label })),
-                ]}
-              />
-            </div>
-          ) : null}
-          <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
-            <FilterSelect
-              value={reportMode}
-              onChange={(e) => setReportMode(e.target.value)}
-              options={[
-                { value: "daily", label: "Daily" },
-                { value: "monthly", label: "Monthly" },
-              ]}
-            />
-          </div>
-          {reportMode === "monthly" ? (
-            <div>
-              <label className="theme-subtext mb-1 block text-xs font-medium">Month</label>
-              <input
-                type="month"
-                className={`${inputClassName()} w-40`}
-                value={saleMonth}
-                onChange={(e) => setSaleMonth(e.target.value)}
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="theme-subtext mb-1 block text-xs font-medium">Date</label>
-              <input
-                type="date"
-                className={`${inputClassName()} w-40`}
-                value={saleDate}
-                onChange={(e) => setSaleDate(e.target.value)}
-              />
-            </div>
-          )}
-          <button type="button" onClick={load} className={SECONDARY_BTN_CLASS}>
-            Filter
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleEodPrint}
+            disabled={loading || !report}
+            className={SECONDARY_BTN_CLASS}
+          >
+            Print / PDF
           </button>
-          {report ? (
-            <button
-              type="button"
-              onClick={handleEodPrint}
-              disabled={loading}
-              className={SECONDARY_BTN_CLASS}
-            >
-              Print / PDF
-            </button>
-          ) : null}
           <PrimaryButton type="button" showIcon={false} onClick={load} disabled={loading}>
             Refresh
           </PrimaryButton>
         </div>
       </div>
+
+      <FilterToolbar className="mb-6 flex-wrap overflow-visible">
+        <div>
+          <label className="theme-subtext mb-1 block text-xs font-medium">Branch</label>
+          <FilterSelect
+            value={branchId}
+            onChange={(e) => {
+              setBranchId(e.target.value);
+              setCashierId("");
+              setFloatSessionId("");
+            }}
+            options={[
+              { value: "", label: "All branches" },
+              ...branches.map((b) => ({ value: String(b.id), label: b.branch_name })),
+            ]}
+          />
+        </div>
+        <div>
+          <label className="theme-subtext mb-1 block text-xs font-medium">Cashier</label>
+          <FilterSelect
+            value={cashierId}
+            onChange={(e) => {
+              setCashierId(e.target.value);
+              setFloatSessionId("");
+            }}
+            options={[{ value: "", label: "All cashiers" }, ...cashierOptions]}
+          />
+        </div>
+        {requireTillFloat ? (
+          <div>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Till session</label>
+            <FilterSelect
+              value={floatSessionId}
+              onChange={(e) => setFloatSessionId(e.target.value)}
+              options={[
+                { value: "", label: "All sessions" },
+                ...sessionOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+              ]}
+            />
+          </div>
+        ) : null}
+        <div>
+          <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
+          <FilterSelect
+            value={reportMode}
+            onChange={(e) => setReportMode(e.target.value)}
+            options={[
+              { value: "daily", label: "Daily" },
+              { value: "monthly", label: "Monthly" },
+            ]}
+          />
+        </div>
+        {reportMode === "monthly" ? (
+          <div>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Month</label>
+            <input
+              type="month"
+              className={`${inputClassName()} w-40`}
+              value={saleMonth}
+              onChange={(e) => setSaleMonth(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Date</label>
+            <input
+              type="date"
+              className={`${inputClassName()} w-40`}
+              value={saleDate}
+              onChange={(e) => setSaleDate(e.target.value)}
+            />
+          </div>
+        )}
+        <button type="button" onClick={load} className={SECONDARY_BTN_CLASS}>
+          Filter
+        </button>
+      </FilterToolbar>
 
       {error ? (
         <p className="theme-alert-error mb-4 rounded-lg px-4 py-3 text-sm">{error}</p>

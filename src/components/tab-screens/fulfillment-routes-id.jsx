@@ -194,33 +194,31 @@ export function FulfillmentRoutesIdScreen() {
         <p className="mt-8 text-sm text-slate-500">Route not found.</p>
       ) : (
         <>
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                {route.route_name}
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                {[route.route_code, route.area].filter(Boolean).join(" · ") || "Route detail"}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-end gap-2">
-              <Field label="From">
-                <input
-                  type="date"
-                  className={inputClassName()}
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                />
-              </Field>
-              <Field label="To">
-                <input
-                  type="date"
-                  className={inputClassName()}
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                />
-              </Field>
-            </div>
+          <div className="mb-4">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+              {route.route_name}
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {[route.route_code, route.area].filter(Boolean).join(" · ") || "Route detail"}
+            </p>
+          </div>
+          <div className="mb-6 flex flex-wrap items-end gap-2">
+            <Field label="From">
+              <input
+                type="date"
+                className={inputClassName()}
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </Field>
+            <Field label="To">
+              <input
+                type="date"
+                className={inputClassName()}
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </Field>
           </div>
 
             <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
