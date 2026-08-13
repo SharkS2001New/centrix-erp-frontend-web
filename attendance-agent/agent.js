@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * On-LAN Hikvision → Centrix cloud attendance bridge.
- * Polls ISAPI AcsEvent on the local device IP, pushes events to Centrix ingest API.
+ * On-LAN Hikvision → Centrix cloud bridge.
+ * Polls ISAPI AcsEvent on the local device IP, pushes events to Centrix ingest API,
+ * and proxies ISAPI management commands from Centrix cloud to the local terminal.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import {
   STATE_PATH,
@@ -13,6 +14,14 @@ import {
   missingConfigFields,
   SETTINGS_UI_URL,
 } from "./config-lib.js";
+import {
+  AGENT_VERSION,
+  centrixAuthHeaders,
+  centrixDeviceBase,
+  deviceBaseUrl,
+  fetchWithDigest,
+  headersToObject,
+} from "./isapi-lib.js";
 
 function loadJson(path, fallback = null) {
   if (!existsSync(path)) return fallback;
@@ -21,76 +30,6 @@ function loadJson(path, fallback = null) {
 
 function saveState(state) {
   writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
-}
-
-function basicAuthHeader(username, password) {
-  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-}
-
-/** Digest auth helper for Hikvision ISAPI (common on DS-K1T series). */
-async function fetchWithDigest(url, { method = "GET", body, username, password, headers = {} } = {}) {
-  const first = await fetch(url, {
-    method,
-    headers: {
-      Accept: "application/json",
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (first.status !== 401) return first;
-
-  const www = first.headers.get("www-authenticate") || "";
-  if (!/digest/i.test(www)) {
-    return fetch(url, {
-      method,
-      headers: {
-        Accept: "application/json",
-        Authorization: basicAuthHeader(username, password),
-        ...(body ? { "Content-Type": "application/json" } : {}),
-        ...headers,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
-
-  const parts = Object.fromEntries(
-    [...www.matchAll(/(\w+)=(?:"([^"]+)"|([^\s,]+))/g)].map((m) => [m[1].toLowerCase(), m[2] ?? m[3]]),
-  );
-  const realm = parts.realm || "";
-  const nonce = parts.nonce || "";
-  const qop = parts.qop || "auth";
-  const opaque = parts.opaque;
-  const nc = "00000001";
-  const cnonce = randomUUID().replace(/-/g, "").slice(0, 16);
-  const uri = new URL(url).pathname + new URL(url).search;
-  const ha1 = createHash("md5").update(`${username}:${realm}:${password}`).digest("hex");
-  const ha2 = createHash("md5").update(`${method}:${uri}`).digest("hex");
-  const response = createHash("md5")
-    .update(`${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}`)
-    .digest("hex");
-  const auth =
-    `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", ` +
-    `algorithm=MD5, response="${response}", qop=${qop}, nc=${nc}, cnonce="${cnonce}"` +
-    (opaque ? `, opaque="${opaque}"` : "");
-
-  return fetch(url, {
-    method,
-    headers: {
-      Accept: "application/json",
-      Authorization: auth,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-}
-
-function deviceBaseUrl(hik) {
-  const scheme = hik.useHttps ? "https" : "http";
-  const port = hik.port || (hik.useHttps ? 443 : 80);
-  return `${scheme}://${hik.host}:${port}`;
 }
 
 function mapDirection(status) {
@@ -174,20 +113,15 @@ async function fetchAcsEvents(config, fromIso, toIso) {
 }
 
 async function postIngestEvents(config, events) {
-  const base = String(config.centrixApiUrl).replace(/\/$/, "");
-  const deviceId = config.deviceId;
-  if (!deviceId) {
+  if (!config.deviceId) {
     throw new Error("deviceId missing from config — re-download agent package from Centrix.");
   }
-  const url = `${base}/attendance-clock-devices/${deviceId}/hikvision/agent/ingest-events`;
+  const url = `${centrixDeviceBase(config)}/agent/ingest-events`;
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.centrixToken}`,
-    },
+    headers: centrixAuthHeaders(config),
     body: JSON.stringify({
+      agent_version: AGENT_VERSION,
       events: events.map((e) => ({
         employee_no: e.employee_no,
         employee_name: e.employee_name,
@@ -222,11 +156,7 @@ async function postPunchLegacy(config, event) {
   const url = `${String(config.centrixApiUrl).replace(/\/$/, "")}/attendance/clock-punch`;
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.centrixToken}`,
-    },
+    headers: centrixAuthHeaders(config),
     body: JSON.stringify({
       employee_code: event.employee_no,
       device_no: config.deviceNo,
@@ -246,6 +176,81 @@ async function postPunchLegacy(config, event) {
     throw new Error(`Centrix clock-punch HTTP ${res.status}: ${typeof msg === "string" ? msg : JSON.stringify(msg)}`);
   }
   return json;
+}
+
+async function executeIsapiCommand(config, command) {
+  const hik = config.hikvision;
+  const accept = command.accept === "xml" ? "application/xml" : "application/json";
+  const path = command.path.startsWith("/") ? command.path : `/${command.path}`;
+  const url = `${deviceBaseUrl(hik)}${path}`;
+  const res = await fetchWithDigest(url, {
+    method: command.method || "GET",
+    body: command.body ?? undefined,
+    username: hik.username || "admin",
+    password: hik.password || "",
+    accept,
+  });
+  const body = await res.text();
+
+  return {
+    success: res.ok,
+    status: res.status,
+    headers: headersToObject(res),
+    body,
+    error: res.ok ? null : body.slice(0, 500),
+  };
+}
+
+async function submitCommandResult(config, commandId, result) {
+  const url = `${centrixDeviceBase(config)}/agent/commands/${commandId}/result`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: centrixAuthHeaders(config),
+    body: JSON.stringify({
+      agent_version: AGENT_VERSION,
+      success: Boolean(result.success),
+      status: result.status ?? null,
+      headers: result.headers ?? {},
+      body: result.body ?? "",
+      error: result.error ?? null,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Command result HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+}
+
+async function pollCentrixCommands(config) {
+  if (!config.deviceId) return 0;
+
+  const url =
+    `${centrixDeviceBase(config)}/agent/commands/pending` +
+    `?limit=5&agent_version=${encodeURIComponent(AGENT_VERSION)}`;
+  const res = await fetch(url, { headers: centrixAuthHeaders(config) });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Command poll HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const payload = await res.json();
+  const commands = payload?.commands ?? [];
+  let handled = 0;
+
+  for (const command of commands) {
+    let result;
+    try {
+      result = await executeIsapiCommand(config, command);
+      if (!result.success) {
+        result = { success: false, error: result.error || `HTTP ${result.status}` };
+      }
+    } catch (err) {
+      result = { success: false, error: err.message };
+    }
+    await submitCommandResult(config, command.id, result);
+    handled += 1;
+  }
+
+  return handled;
 }
 
 async function syncOnce(config) {
@@ -363,22 +368,43 @@ async function main() {
   }
 
   if (once) {
+    const commands = await pollCentrixCommands(config).catch((err) => {
+      console.warn(`[attendance-agent] command poll: ${err.message}`);
+      return 0;
+    });
+    if (commands > 0) console.log(`[attendance-agent] Proxied ${commands} ISAPI command(s)`);
     await syncOnce(config);
     return;
   }
 
   const intervalSec = Math.max(60, Number(config.pollIntervalSeconds ?? 300));
-  console.log(`[attendance-agent] Running every ${intervalSec}s (Ctrl+C to stop)`);
+  const commandPollSec = Math.min(5, intervalSec);
+  console.log(
+    `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${intervalSec}s`,
+  );
   console.log(`[attendance-agent] Re-open settings anytime: npm run setup  (${SETTINGS_UI_URL})`);
-  const run = async () => {
+
+  const pollCommands = async () => {
+    try {
+      const count = await pollCentrixCommands(config);
+      if (count > 0) console.log(`[attendance-agent] Proxied ${count} ISAPI command(s)`);
+    } catch (err) {
+      console.warn(`[attendance-agent] command poll failed: ${err.message}`);
+    }
+  };
+
+  const runSync = async () => {
     try {
       await syncOnce(config);
     } catch (err) {
       console.error(`[attendance-agent] sync failed: ${err.message}`);
     }
   };
-  await run();
-  setInterval(run, intervalSec * 1000);
+
+  await pollCommands();
+  await runSync();
+  setInterval(pollCommands, commandPollSec * 1000);
+  setInterval(runSync, intervalSec * 1000);
 }
 
 main().catch((err) => {

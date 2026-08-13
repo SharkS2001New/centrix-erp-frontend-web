@@ -3,11 +3,16 @@
 Local bridge for **cloud Centrix** + **LAN Hikvision** fingerprint terminals.
 
 Centrix in the cloud cannot open `192.168.x.x`. This agent runs on an office PC
-(or mini-PC) on the **same LAN as the terminal**, polls ISAPI punches, and posts
-them to Centrix over the internet.
+(or mini-PC) on the **same LAN as the terminal**:
+
+- Polls ISAPI attendance punches and posts them to Centrix
+- **Proxies all Manage Hikvision ISAPI commands** from Centrix cloud (users, cards, fingerprints, test connection, sync)
 
 ```
-Hikvision (LAN IP)  ←ISAPI poll—  Attendance Agent  —HTTPS→  Centrix Cloud
+Hikvision (LAN)  ←ISAPI—  Attendance Agent  —HTTPS→  Centrix Cloud
+                              ↑
+                    Manage Hikvision UI sends commands;
+                    agent executes them locally every ~5s
 ```
 
 **Recommended:** download a **preconfigured zip** from Centrix → **Administration → Attendance clock-in** → **Download agent**.

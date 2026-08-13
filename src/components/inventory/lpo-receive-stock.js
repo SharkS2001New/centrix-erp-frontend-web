@@ -10,18 +10,51 @@ import {
   baseToDisplayQty,
   displayToBaseQty,
   stockTakeCountsToBase,
+  uomForReceiveCount,
 } from "@/lib/stock-uom";
 
+function catalogUom(unitId, uomById) {
+  if (unitId == null || !uomById?.get) return null;
+  return uomById.get(unitId) ?? uomById.get(String(unitId)) ?? null;
+}
+
+function fallbackUomFromLine(line) {
+  const factor = Number(line?.conversion_factor ?? 0);
+  const packageName = String(line?.package_name ?? line?.packaging_label ?? "").trim();
+  if (!(factor > 1) && !packageName) return null;
+  return {
+    conversion_factor: factor > 0 ? factor : 1,
+    full_name: packageName || "pack",
+    small_packaging_label: String(line?.measure_unit ?? "kg").trim() || "kg",
+    uses_small_packaging: true,
+  };
+}
+
+/** Catalog UOM with Bag + kg unlocked when conversion_factor > 1. */
+export function resolveReceiveLineUom(line, uomById) {
+  const raw =
+    catalogUom(line?.unit_id, uomById) ??
+    (line?.unit_uom && typeof line.unit_uom === "object" ? line.unit_uom : null) ??
+    (line?.uom && typeof line.uom === "object" ? line.uom : null) ??
+    fallbackUomFromLine(line);
+  return uomForReceiveCount(raw);
+}
+
 export function receiveBaseForLine(lineId, uom, counts) {
-  const levels = uomStockTakeLevels(uom);
+  const receiveUom = uomForReceiveCount(uom);
+  const levels = uomStockTakeLevels(receiveUom);
   const byKey = readStockTakeCounts(lineId, levels, counts);
-  return stockTakeCountsToBase(byKey, uom);
+  return stockTakeCountsToBase(byKey, receiveUom);
 }
 
 /** UOM for manual receipt lines — prefer snapshot from add time (search results). */
 export function uomForManualReceiveLine(line, uomById) {
-  if (line?.unit_uom) return line.unit_uom;
-  return line?.unit_id ? uomById.get(line.unit_id) ?? null : null;
+  return resolveReceiveLineUom(line, uomById);
+}
+
+/** UOM for From-purchase-order receive rows. */
+export function uomForLpoReceiveLine(line, uomById) {
+  return resolveReceiveLineUom(line, uomById);
 }
 
 /** Whether a PO line can still accept goods (open, partial, or offer qty over order). */
@@ -78,7 +111,7 @@ export function buildInitialReceiveCounts(lines, uomById, baseQty = 0) {
   const initial = {};
   for (const line of lines ?? []) {
     const lineKey = String(line.id);
-    const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+    const uom = resolveReceiveLineUom(line, uomById);
     const levels = uomStockTakeLevels(uom);
     Object.assign(initial, initStockTakeCounts(lineKey, baseQty, uom, levels));
   }
@@ -93,7 +126,7 @@ export function fillReceiveCountsForLines(lines, uomById, receiveCounts) {
   const next = { ...receiveCounts };
   for (const line of lines ?? []) {
     const lineKey = String(line.id);
-    const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+    const uom = resolveReceiveLineUom(line, uomById);
     const levels = uomStockTakeLevels(uom);
     const openRemainingBase = lpoLineOpenRemainingBase(line, uom);
     Object.assign(next, initStockTakeCounts(lineKey, openRemainingBase, uom, levels));
@@ -213,7 +246,7 @@ export function lpoSessionReceiveMoney(
 export function lpoReceiveSessionTotal(lines, uomById, receiveCounts, lineUnitCosts) {
   let total = 0;
   for (const line of lines ?? []) {
-    const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+    const uom = resolveReceiveLineUom(line, uomById);
     const unitCost = resolveLineUnitCost(line, lineUnitCosts);
     total += lpoSessionLineAmount(line, uom, receiveCounts, unitCost);
   }

@@ -86,7 +86,10 @@ function formatInventoryAdjustmentMeasureLabel(level, uom, { sellOnRetail = fals
  * Measure levels for stock adjustment on Sells W/R products.
  * Wholesale-only UOMs (Bag only) still expose the retail small unit (kg, pcs, …).
  */
-export function inventoryAdjustmentMeasureLevels(uom, { sellOnRetail = false } = {}) {
+export function inventoryAdjustmentMeasureLevels(
+  uom,
+  { sellOnRetail = false, plainLabels = false } = {},
+) {
   let levels = uomStockTakeLevels(uom);
 
   // UOM marked full-pack-only but product sells retail — expose the small unit too.
@@ -115,12 +118,29 @@ export function inventoryAdjustmentMeasureLevels(uom, { sellOnRetail = false } =
     ];
   }
 
-  if (!sellOnRetail) return levels;
+  if (!sellOnRetail || plainLabels) return levels;
 
   return levels.map((level) => ({
     ...level,
     label: formatInventoryAdjustmentMeasureLabel(level, uom, { sellOnRetail: true }),
   }));
+}
+
+/** Packaging count fields for Adjust stock — same levels as receive, plain Bag/kg labels. */
+export function stockAdjustmentCountLevels(uom, { sellOnRetail = false } = {}) {
+  return inventoryAdjustmentMeasureLevels(uom, { sellOnRetail, plainLabels: true });
+}
+
+/**
+ * Receive / adjust entry: when 1 bag = 50 kg, always allow Bag + kg even if the
+ * UOM is marked full-package-only (wholesale sell unit).
+ */
+export function uomForReceiveCount(uom) {
+  if (!uom || typeof uom !== "object") return uom ?? null;
+  if (uomHasFullPack(uom) && !uomUsesSmallPackaging(uom)) {
+    return { ...uom, uses_small_packaging: true };
+  }
+  return uom;
 }
 
 export function normalizeInventoryAdjustmentLevel(

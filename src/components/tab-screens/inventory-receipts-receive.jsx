@@ -40,6 +40,7 @@ import {
   receiveBaseForLine,
   resolveLineUnitCost,
   uomForManualReceiveLine,
+  uomForLpoReceiveLine,
 } from "@/components/inventory/lpo-receive-stock";
 import { LpoReceiveSessionFooter } from "@/components/inventory/lpo-receive-session-footer";
 import { LpoSupplierInvoicePicker } from "@/components/inventory/lpo-supplier-invoice-picker";
@@ -188,7 +189,7 @@ export function InventoryReceiptsReceiveScreen() {
   function addManualProduct(product) {
     if (manualLines.some((l) => l.product_code === product.product_code)) return;
     mergeProducts([product]);
-    const uom = product.uom ?? uomById.get(product.unit_id);
+    const uom = uomForManualReceiveLine(product, uomById);
     setManualLines((prev) => [
       ...prev,
       { ...lineFromEnrichedProduct(product), unit_uom: uom ?? null },
@@ -310,7 +311,7 @@ export function InventoryReceiptsReceiveScreen() {
     e.preventDefault();
     const lines = lpoData?.lines ?? [];
     const toPost = lines.filter((line) => {
-      const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+      const uom = uomForLpoReceiveLine(line, uomById);
       return receiveBaseForLine(String(line.id), uom, receiveCounts) > 0;
     });
     if (toPost.length === 0) {
@@ -331,7 +332,7 @@ export function InventoryReceiptsReceiveScreen() {
     setSaving(true);
     try {
       for (const line of toPost) {
-        const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+        const uom = uomForLpoReceiveLine(line, uomById);
         const receiveBase = receiveBaseForLine(String(line.id), uom, receiveCounts);
         const unitCost = resolveLineUnitCost(line, lineUnitCosts);
         await apiRequest("/inventory/receive", {
@@ -561,7 +562,7 @@ export function InventoryReceiptsReceiveScreen() {
                     </thead>
                     <tbody>
                       {lpoLines.map((line) => {
-                        const lineUom = line.unit_id ? uomById.get(line.unit_id) : null;
+                        const lineUom = uomForLpoReceiveLine(line, uomById);
                         const lineKey = String(line.id);
                         const openRemainingBase = lpoLineOpenRemainingBase(line, lineUom);
                         const receivingNowBase = receiveBaseForLine(

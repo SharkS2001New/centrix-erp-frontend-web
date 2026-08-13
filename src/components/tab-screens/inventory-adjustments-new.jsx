@@ -1,7 +1,7 @@
 "use client";
 
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton } from "@/components/layout/tab-form-exit-button";
@@ -16,24 +16,23 @@ import {
   resolveInventoryLineUom,
 } from "@/components/lpo/lpo-product-utils";
 import {
-  DamageMeasureSelect,
-} from "@/components/inventory/damage-measure-select";
-import {
   InventoryProductLines,
   useInventoryCatalogMaps,
 } from "@/components/inventory/inventory-product-lines";
+import {
+  initStockTakeCounts,
+  readStockTakeCounts,
+  StockTakeCountInputs,
+} from "@/components/inventory/stock-take-count-inputs";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { productStockAtLocation } from "@/lib/pos-stock";
 import {
-  defaultInventoryAdjustmentMeasure,
-  formatDisplayQty,
   formatMixedStockDisplay,
-  inventoryAdjustmentMeasureLevels,
-  inventoryAdjustmentQtyToBase,
-  normalizeInventoryAdjustmentLevel,
   productSellsRetail,
+  stockAdjustmentCountLevels,
+  stockTakeCountsToBase,
+  uomForReceiveCount,
 } from "@/lib/stock-uom";
-import { smallPackagingLabel } from "@/lib/uom-packaging";
 
 function lineFromProduct(product) {
   const uom = product.uom;
@@ -44,11 +43,6 @@ function lineFromProduct(product) {
     unit_id: product.unit_id ?? null,
     sell_on_retail: sellOnRetail,
     retail_package: product.retail_package ?? null,
-    quantity: "1",
-    package_type: defaultInventoryAdjustmentMeasure(uom, {
-      sellOnRetail,
-      stockLocation: "shop",
-    }),
     stock_location: "shop",
     direction: "increase",
     stock_in_shop: Number(product.stock_in_shop ?? product.stock_on_hand_shop ?? 0),
@@ -62,17 +56,26 @@ function lineFromProduct(product) {
   };
 }
 
-function formatLineStock(line, uom, location) {
-  const baseQty = productStockAtLocation(line, location);
-  const sellOnRetail = productSellsRetail(line);
-  if (!sellOnRetail || !uom) {
-    return formatMixedStockDisplay(baseQty, uom).text;
-  }
-  const level = normalizeInventoryAdjustmentLevel(line.package_type, uom, { sellOnRetail });
-  if (level === "small") {
-    return `${formatDisplayQty(baseQty)} ${smallPackagingLabel(uom)}`;
-  }
-  return formatMixedStockDisplay(baseQty, uom).text;
+function adjustmentBaseForLine(line, uom, adjustCounts) {
+  if (!uom || !line?.product_code) return 0;
+  const receiveUom = uomForReceiveCount(uom);
+  const levels = stockAdjustmentCountLevels(receiveUom, {
+    sellOnRetail: productSellsRetail(line),
+  });
+  const byKey = readStockTakeCounts(line.product_code, levels, adjustCounts);
+  return stockTakeCountsToBase(byKey, receiveUom);
+}
+
+function seedAdjustCountsForProduct(product, uomById, prev = {}) {
+  const uom = uomForReceiveCount(resolveInventoryLineUom(product, uomById));
+  if (!uom || !product?.product_code) return prev;
+  const levels = stockAdjustmentCountLevels(uom, {
+    sellOnRetail: productSellsRetail(product),
+  });
+  return {
+    ...prev,
+    ...initStockTakeCounts(product.product_code, 0, uom, levels),
+  };
 }
 
 export function InventoryAdjustmentsNewScreen() {
@@ -84,6 +87,7 @@ export function InventoryAdjustmentsNewScreen() {
 
   const [uoms, setUoms] = useState([]);
   const [lines, setLines] = useState([]);
+  const [adjustCounts, setAdjustCounts] = useState({});
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [presetLoaded, setPresetLoaded] = useState(false);
@@ -104,18 +108,14 @@ export function InventoryAdjustmentsNewScreen() {
       const next = prev.map((line) => {
         const uom = resolveInventoryLineUom(line, uomById);
         if (!uom) return line;
-        const sellOnRetail = productSellsRetail(line);
-        const package_type = normalizeInventoryAdjustmentLevel(line.package_type, uom, {
-          sellOnRetail,
-        });
         const needsUom =
           !line.uom ||
           typeof line.uom !== "object" ||
           line.uom.id !== uom.id ||
           line.uom.uses_small_packaging !== uom.uses_small_packaging;
-        if (needsUom || package_type !== line.package_type) {
+        if (needsUom) {
           changed = true;
-          return { ...line, uom, package_type };
+          return { ...line, uom };
         }
         return line;
       });
@@ -136,7 +136,9 @@ export function InventoryAdjustmentsNewScreen() {
           uomById.get(String(product.unit_id ?? "")) ??
           product.uom ??
           null;
-        setLines([lineFromProduct({ ...product, uom })]);
+        const row = lineFromProduct({ ...product, uom });
+        setLines([row]);
+        setAdjustCounts((prev) => seedAdjustCountsForProduct(row, uomById, prev));
         setPresetLoaded(true);
       })
       .catch(() => {
@@ -147,17 +149,31 @@ export function InventoryAdjustmentsNewScreen() {
     };
   }, [presetProductCode, presetLoaded, branchId, uomById]);
 
+  function setAdjustCount(key, value) {
+    setAdjustCounts((prev) => ({ ...prev, [key]: value }));
+  }
+
   function addProduct(product) {
     const code = product.product_code;
     if (lines.some((l) => l.product_code === code)) return;
-    setLines((prev) => [...prev, lineFromProduct(product)]);
+    const row = lineFromProduct(product);
+    setLines((prev) => [...prev, row]);
+    setAdjustCounts((prev) => seedAdjustCountsForProduct(row, uomById, prev));
   }
 
   function addProducts(products) {
     const existing = new Set(lines.map((l) => l.product_code));
     const toAdd = products.filter((p) => !existing.has(p.product_code));
     if (!toAdd.length) return;
-    setLines((prev) => [...prev, ...toAdd.map((product) => lineFromProduct(product))]);
+    const rows = toAdd.map((product) => lineFromProduct(product));
+    setLines((prev) => [...prev, ...rows]);
+    setAdjustCounts((prev) => {
+      let next = prev;
+      for (const row of rows) {
+        next = seedAdjustCountsForProduct(row, uomById, next);
+      }
+      return next;
+    });
   }
 
   function updateLine(index, patch) {
@@ -166,7 +182,10 @@ export function InventoryAdjustmentsNewScreen() {
 
   async function submit(e) {
     e.preventDefault();
-    const toPost = lines.filter((line) => line.product_code && Number(line.quantity) > 0);
+    const toPost = lines.filter((line) => {
+      const uom = resolveInventoryLineUom(line, uomById);
+      return line.product_code && adjustmentBaseForLine(line, uom, adjustCounts) > 0;
+    });
     if (toPost.length === 0) {
       notifyError("Add at least one product with a quantity.");
       return;
@@ -180,10 +199,7 @@ export function InventoryAdjustmentsNewScreen() {
     try {
       for (const line of toPost) {
         const uom = resolveInventoryLineUom(line, uomById);
-        const sellOnRetail = productSellsRetail(line);
-        const baseQty = inventoryAdjustmentQtyToBase(line.quantity, line.package_type, uom, {
-          sellOnRetail,
-        });
+        const baseQty = adjustmentBaseForLine(line, uom, adjustCounts);
         const signedQty = line.direction === "decrease" ? -Math.abs(baseQty) : Math.abs(baseQty);
         const body = {
           branch_id: branchId,
@@ -241,16 +257,19 @@ export function InventoryAdjustmentsNewScreen() {
           tableHeaders={[
             { key: "product", label: "Product" },
             { key: "direction", label: "Direction" },
-            { key: "measure", label: "Measured as" },
-            { key: "qty", label: "Qty", align: "right" },
+            { key: "qty", label: "Qty to adjust", align: "right" },
             { key: "loc", label: "Location" },
           ]}
           emptyMessage="Search and add products to adjust."
           renderCells={(line, index) => {
-            const uom = resolveInventoryLineUom(line, uomById);
-            const sellOnRetail = productSellsRetail(line);
-            const measureLevels = inventoryAdjustmentMeasureLevels(uom, { sellOnRetail });
-            const stockLabel = formatLineStock(line, uom, line.stock_location);
+            const uom = uomForReceiveCount(resolveInventoryLineUom(line, uomById));
+            const countLevels = stockAdjustmentCountLevels(uom, {
+              sellOnRetail: productSellsRetail(line),
+            });
+            const stockLabel = formatMixedStockDisplay(
+              productStockAtLocation(line, line.stock_location),
+              uom,
+            ).text;
             return (
               <>
                 <td className="px-3 py-2">
@@ -265,43 +284,23 @@ export function InventoryAdjustmentsNewScreen() {
                   />
                 </td>
                 <td className="px-3 py-2">
-                  <DamageMeasureSelect
+                  <StockTakeCountInputs
+                    lineId={line.product_code}
                     uom={uom}
-                    sellOnRetail={sellOnRetail}
-                    measureLevels={measureLevels}
-                    value={line.package_type}
-                    onChange={(package_type) => updateLine(index, { package_type })}
-                    onClick={(e) => e.stopPropagation()}
+                    levels={countLevels}
+                    counts={adjustCounts}
+                    onChange={setAdjustCount}
+                    showPreview
                   />
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <input
-                    type="number"
-                    min="0.001"
-                    step="any"
-                    className={`${inputClassName()} w-24 text-right`}
-                    value={line.quantity}
-                    onChange={(e) => updateLine(index, { quantity: e.target.value })}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <p className="mt-0.5 text-[10px] text-slate-500">In stock: {stockLabel}</p>
+                  <p className="mt-1 text-right text-[10px] text-slate-500">
+                    In stock: {stockLabel}
+                  </p>
                 </td>
                 <td className="px-3 py-2">
                   <SearchableSelect
                     className={`${inputClassName()} text-xs`}
                     value={line.stock_location}
-                    onChange={(stock_location) => {
-                      const nextMeasure = sellOnRetail
-                        ? defaultInventoryAdjustmentMeasure(uom, {
-                            sellOnRetail,
-                            stockLocation: stock_location,
-                          })
-                        : line.package_type;
-                      updateLine(index, {
-                        stock_location,
-                        package_type: nextMeasure,
-                      });
-                    }}
+                    onChange={(stock_location) => updateLine(index, { stock_location })}
                     options={[
                       { value: "shop", label: "Shop" },
                       { value: "store", label: "Store" },

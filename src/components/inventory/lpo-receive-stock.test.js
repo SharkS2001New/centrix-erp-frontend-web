@@ -6,8 +6,11 @@ import {
   lpoSessionReceivedPackQty,
   lpoSessionReceiveAmount,
   offerAdjustedUnitCost,
+  receiveBaseForLine,
   resolveLineUnitCost,
+  uomForLpoReceiveLine,
 } from "@/components/inventory/lpo-receive-stock";
+import { uomStockTakeLevels } from "@/lib/uom-packaging";
 
 describe("offerAdjustedUnitCost", () => {
   it("averages PO cost across ordered + offer qty", () => {
@@ -127,5 +130,45 @@ describe("resolveLineUnitCost", () => {
     const line = { id: 1, cost_price: 490 };
     expect(resolveLineUnitCost(line, { 1: "480.39" })).toBe(480.39);
     expect(resolveLineUnitCost(line, {})).toBe(490);
+  });
+});
+
+describe("LPO receive Bag + kg (full-package UOM)", () => {
+  const bagUom = {
+    id: 9,
+    uom_type: "bag",
+    full_name: "Bag",
+    conversion_factor: 50,
+    small_packaging_label: "kg",
+    uses_small_packaging: false,
+  };
+  const uomById = new Map([[9, bagUom], ["9", bagUom]]);
+
+  it("unlocks Bag and kg fields for From-purchase-order lines", () => {
+    const line = {
+      id: 44,
+      unit_id: 9,
+      package_name: "Bag",
+      conversion_factor: 50,
+      measure_unit: "kg",
+    };
+    const uom = uomForLpoReceiveLine(line, uomById);
+    expect(uomStockTakeLevels(uom).map((l) => l.label)).toEqual(["Bag", "kg"]);
+  });
+
+  it("counts bags plus leftover kg into base units", () => {
+    const line = { id: 44, unit_id: 9, conversion_factor: 50 };
+    const uom = uomForLpoReceiveLine(line, uomById);
+    expect(
+      receiveBaseForLine("44", uom, { "44:full": "2", "44:small": "10" }),
+    ).toBe(110);
+  });
+
+  it("falls back to LPO line conversion when catalog UOM is missing", () => {
+    const uom = uomForLpoReceiveLine(
+      { id: 1, package_name: "Bag", conversion_factor: 50, measure_unit: "kg" },
+      new Map(),
+    );
+    expect(uomStockTakeLevels(uom).map((l) => l.label)).toEqual(["Bag", "kg"]);
   });
 });

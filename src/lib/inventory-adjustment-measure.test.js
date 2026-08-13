@@ -4,6 +4,7 @@ import {
   inventoryAdjustmentMeasureLevels,
   inventoryAdjustmentQtyToBase,
   productSellsRetail,
+  stockAdjustmentCountLevels,
 } from "@/lib/stock-uom";
 
 const sugarBagUom = {
@@ -73,5 +74,10 @@ describe("inventory adjustment measure — retail + wholesale", () => {
       "Wholesale (Bag)",
       "Retail (kg)",
     ]);
+  });
+
+  it("stockAdjustmentCountLevels uses plain Bag/kg labels like Receive stock", () => {
+    const levels = stockAdjustmentCountLevels(sugarBagUom, { sellOnRetail: true });
+    expect(levels.map((l) => l.label)).toEqual(["Bag", "kg"]);
   });
 });

@@ -358,6 +358,7 @@ export function AttendanceClockDevicesSettings() {
                   ) : (
                     <p className="mt-0.5 text-xs text-amber-700">LAN IP not set — required for agent</p>
                   )}
+                  <AgentStatusLine device={device} />
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <button
@@ -644,6 +645,23 @@ export function AttendanceClockDevicesSettings() {
         onClose={() => setFingerprintTestDevice(null)}
       />
     </div>
+  );
+}
+
+function isAgentOnline(device) {
+  if (!device?.agent_last_seen_at) return false;
+  const seen = new Date(device.agent_last_seen_at).getTime();
+  return Date.now() - seen < 90_000;
+}
+
+function AgentStatusLine({ device }) {
+  const online = isAgentOnline(device);
+  return (
+    <p className={`mt-1 text-[11px] ${online ? "text-emerald-700" : "text-amber-700"}`}>
+      Agent {online ? "online" : "offline"}
+      {device.agent_last_seen_at ? ` — last seen ${new Date(device.agent_last_seen_at).toLocaleString()}` : ""}
+      {!online ? " — install agent zip on a LAN PC" : ""}
+    </p>
   );
 }
 

@@ -77,7 +77,8 @@ export function HikvisionDeviceScreen() {
         setConnectionError(result.error ?? "Could not reach the device.");
         notifyError(result.error ?? "Device offline or unreachable from this server.");
       } else {
-        notifySuccess("Connected to Hikvision terminal.");
+        const via = result.via_agent ? " (via Attendance Agent)" : "";
+        notifySuccess(`Connected to Hikvision terminal${via}.`);
         setCapabilities(result.capabilities ?? null);
         await loadOverview();
         await loadDevice();
@@ -398,9 +399,13 @@ export function HikvisionDeviceScreen() {
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {connectionError}
           {" "}
-          Centrix cloud cannot reach LAN devices unless the API runs on the same network or via VPN.
-          Use the Attendance Agent on the office PC for unattended sync.
+          Cloud Centrix reaches this terminal through the <strong>Attendance Agent</strong> on an office
+          PC. Download the agent zip, install it on the same LAN as the Hikvision, then try again.
         </p>
+      ) : null}
+
+      {device ? (
+        <AgentStatusBanner device={device} overview={overview} />
       ) : null}
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-2">
@@ -666,6 +671,41 @@ export function HikvisionDeviceScreen() {
         onClose={() => setFingerprintTestOpen(false)}
       />
     </CatalogPageShell>
+  );
+}
+
+function isAgentOnline(device) {
+  if (!device?.agent_last_seen_at) return false;
+  const seen = new Date(device.agent_last_seen_at).getTime();
+  return Date.now() - seen < 90_000;
+}
+
+function AgentStatusBanner({ device, overview }) {
+  const online = isAgentOnline(device);
+  const viaAgent = overview?.via_agent;
+
+  return (
+    <div
+      className={`mb-4 rounded-lg border px-3 py-2 text-sm ${
+        online
+          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+          : "border-amber-200 bg-amber-50 text-amber-900"
+      }`}
+    >
+      {online ? (
+        <>
+          <strong>Attendance Agent online</strong>
+          {viaAgent ? " — device commands are proxied through the office LAN PC." : " — ready for Manage Hikvision."}
+          {device.agent_version ? ` (agent v${device.agent_version})` : ""}
+        </>
+      ) : (
+        <>
+          <strong>Attendance Agent offline.</strong> Download and run the agent on a Windows PC on the same LAN
+          as the terminal. All Manage Hikvision actions (users, cards, fingerprints, test connection) go
+          through the agent when Centrix is cloud-hosted.
+        </>
+      )}
+    </div>
   );
 }
 
