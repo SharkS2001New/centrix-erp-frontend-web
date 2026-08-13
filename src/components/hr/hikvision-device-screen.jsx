@@ -740,11 +740,23 @@ export function HikvisionDeviceScreen() {
 
 function AgentStatusBanner({ device, overview }) {
   const agent = overview?.agent;
-  const online =
-    Boolean(agent?.online) ||
-    (device?.agent_last_seen_at
-      ? Date.now() - new Date(device.agent_last_seen_at).getTime() < 90_000
-      : false);
+  const lastSeenAt = device?.agent_last_seen_at;
+  const [seenRecently, setSeenRecently] = useState(false);
+
+  useEffect(() => {
+    if (!lastSeenAt) {
+      setSeenRecently(false);
+      return undefined;
+    }
+    const check = () => {
+      setSeenRecently(Date.now() - new Date(lastSeenAt).getTime() < 90_000);
+    };
+    check();
+    const id = setInterval(check, 15_000);
+    return () => clearInterval(id);
+  }, [lastSeenAt]);
+
+  const online = Boolean(agent?.online) || seenRecently;
   const version = agent?.version || device?.agent_version;
 
   return (
