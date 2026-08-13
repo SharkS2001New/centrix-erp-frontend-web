@@ -1,6 +1,10 @@
 import { PRINT_FOOTER_LABELS } from "@/lib/print-footer-settings";
 import { generalFormFromApi, mergeGeneralSettings } from "@/lib/general-settings";
 import {
+  creditNotePrintFormFromApi,
+  creditNotePrintPayloadFromForm,
+} from "@/lib/credit-note-print-settings";
+import {
   invoicePrintFormFromApi,
   invoicePrintPayloadFromForm,
 } from "@/lib/invoice-print-settings";
@@ -93,8 +97,10 @@ export const EMPTY_PRINTOUTS_FORM = {
   },
   invoice_valid_days: "7",
   invoice_document_template: "default",
+  credit_note_document_template: "default",
   invoice_print_delivery_terms: "",
   invoice_print_footer_lines: "",
+  print_footer_credit_note: "",
   proforma_valid_days: String(PROFORMA_PRINT_DEFAULTS.proforma_valid_days),
   show_print_proforma_invoice_option: true,
   proforma_document_template: "default",
@@ -145,6 +151,7 @@ export const PRINTOUT_KIND_LABELS = {
   receipt: "Thermal receipts",
   invoice: "A4 invoices",
   proforma: "Proforma invoices",
+  credit_note: "Credit notes",
   hospitality_check: "Hotel check receipts",
   lpo: "Local purchase orders (LPO)",
   loading_sheet: "Loading sheets",
@@ -203,7 +210,7 @@ export function resolvePrintoutSections(capabilities) {
   const hasRoutePrintouts = hasDistribution || hasMobileSales;
 
   const footerKeys = Object.keys(PRINT_FOOTER_LABELS).filter((key) => {
-    if (key === "receipt" || key === "invoice") return hasSales;
+    if (key === "receipt" || key === "invoice" || key === "credit_note") return hasSales;
     // Hotel check footer is edited on the Hotel checks tab (hospitality settings), not General.
     if (key === "hospitality_check") return false;
     if (key === "lpo") return hasProcurement;
@@ -218,6 +225,7 @@ export function resolvePrintoutSections(capabilities) {
     hasSales ? "receipt" : null,
     hasSales ? "invoice" : null,
     hasSales ? "proforma" : null,
+    hasSales ? "credit_note" : null,
     hasHospitality ? "hospitality_check" : null,
     hasProcurement ? "lpo" : null,
     hasRoutePrintouts ? "loading_sheet" : null,
@@ -230,6 +238,7 @@ export function resolvePrintoutSections(capabilities) {
     hasSales ? "receipt" : null,
     hasSales ? "invoice" : null,
     hasSales ? "proforma" : null,
+    hasSales ? "credit_note" : null,
     hasHospitality ? "hospitality_check" : null,
     hasProcurement ? "lpo" : null,
     hasRoutePrintouts ? "loading_sheet" : null,
@@ -285,6 +294,7 @@ export function printoutsSalesFormFromApi(res) {
     invoice_valid_days: sales.invoice_valid_days,
     ...invoicePrintFormFromApi(sales),
     ...proformaPrintFormFromApi(sales),
+    ...creditNotePrintFormFromApi(sales),
   };
 }
 
@@ -417,6 +427,7 @@ export function printoutsSalesPayloadFromForm(form) {
     invoice_valid_days: Number(form.invoice_valid_days) || 0,
     ...invoicePrintPayloadFromForm(form),
     ...proformaPrintPayloadFromForm(form),
+    ...creditNotePrintPayloadFromForm(form),
   };
 }
 

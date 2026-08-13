@@ -88,11 +88,12 @@ export function isLocalPosOutboxSaleRow(saleOrRow) {
 }
 
 /**
- * Previous-order edit is allowed when this machine has the receipt (IndexedDB),
- * or the sale is stamped to this computer's device id.
+ * Previous-order edit is allowed when:
+ * - this machine has the receipt in IndexedDB (offline sale / synced mirror), or
+ * - the sale is stamped to this computer's device id, or
+ * - the sale has no device stamp (cloud-synced online sale — backend is source of truth).
  *
- * "Same device" = same physical PC with a local outbox / synced mirror copy —
- * including offline sales that later uploaded when internet returned.
+ * Only an explicit stamp for a *different* PC blocks edit (unless knownLocal).
  */
 export function saleBelongsToCurrentPosDevice(saleOrRow, options = {}) {
   const { knownLocal = false } = options;
@@ -104,18 +105,14 @@ export function saleBelongsToCurrentPosDevice(saleOrRow, options = {}) {
   const stamped = resolveSalePosDeviceId(saleOrRow);
   if (stamped) return stamped === current;
 
-  // Pure server row with no device stamp and no local outbox markers — not editable
-  // on a foreign till (new PC with empty IndexedDB).
-  return false;
+  // Unstamped cloud rows: this till wrote them while online (or before device
+  // stamping). Blocking here made same-PC previous-order edit fail after sync.
+  return true;
 }
 
-/** Device id to send on restore-to-cart — prefer the receipt's own stamp so uploads match. */
-export function posDeviceIdForRestoreRequest(saleOrRow = null) {
-  return (
-    resolveSalePosDeviceId(saleOrRow) ||
-    normalizeDeviceIdentifier(getPosDeviceIdentifier()) ||
-    null
-  );
+/** Device id to send on restore-to-cart — always this computer, never spoof the receipt stamp. */
+export function posDeviceIdForRestoreRequest(_saleOrRow = null) {
+  return normalizeDeviceIdentifier(getPosDeviceIdentifier()) || null;
 }
 
 export const POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE =

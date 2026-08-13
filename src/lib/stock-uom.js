@@ -45,13 +45,19 @@ export function uomLabelFrom(uom) {
 
 /** Convert damage entry quantity to base pieces for the ledger. */
 export function normalizeDamageLevel(packageType, uom) {
+  let level;
   if (packageType === "full_package" || packageType === "partial" || packageType === "full") {
-    if (uomHasFullPack(uom)) return "full";
-    return "small";
+    level = uomHasFullPack(uom) ? "full" : "small";
+  } else if (packageType === "pieces" || packageType === "small") {
+    level = "small";
+  } else if (packageType === "middle") {
+    level = "middle";
+  } else {
+    level = defaultDamageMeasureLevel(uom);
   }
-  if (packageType === "pieces" || packageType === "small") return "small";
-  if (packageType === "middle") return "middle";
-  return defaultDamageMeasureLevel(uom);
+
+  const keys = uomStockTakeLevels(uom).map((entry) => entry.key);
+  return keys.includes(level) ? level : (keys[0] ?? level);
 }
 
 export function defaultDamageMeasureLevel(uom) {

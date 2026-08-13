@@ -22,6 +22,10 @@ import {
 import { buildLpoPrintHtml, sampleLpoPreviewData } from "@/components/lpo/lpo-print-html";
 import { buildSaleInvoiceHtml } from "@/components/sales/sale-invoice-print";
 import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
+import {
+  buildCreditNotePreviewHtml,
+  sampleCreditNotePreviewDocument,
+} from "@/components/sales/credit-note-print";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { lpoPrintPayloadFromForm } from "@/lib/lpo-print-settings";
 import { loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
@@ -53,6 +57,7 @@ const PREVIEW_OPTION_LABELS = {
   receipt: "Thermal receipt",
   invoice: "Invoice receipt (A4)",
   proforma: "Proforma invoice",
+  credit_note: "Credit note",
   hospitality_check: "Hotel check receipt",
   lpo: "LPO",
   loading_sheet: "Loading sheet",
@@ -66,6 +71,7 @@ const PREVIEW_TYPOGRAPHY_VARIANT = {
   hospitality_check: "thermal_check",
   invoice: "sale_invoice",
   proforma: "sale_invoice",
+  credit_note: "sale_invoice",
   lpo: "lpo",
   loading_sheet: "loading_sheet",
   picking_list: "picking_list",
@@ -99,7 +105,10 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     organization,
     generalSettings: general,
     documentVariant:
-      previewType === "invoice" || previewType === "proforma" || previewType === "receipt"
+      previewType === "invoice" ||
+      previewType === "proforma" ||
+      previewType === "receipt" ||
+      previewType === "credit_note"
         ? previewType
         : null,
   });
@@ -183,6 +192,15 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       generalSettings: general,
       salesSettings: sales,
       documentType: "proforma",
+    });
+  }
+
+  if (previewType === "credit_note") {
+    return buildCreditNotePreviewHtml(sampleCreditNotePreviewDocument(), {
+      organization: organizationForPrint,
+      generalSettings: general,
+      salesSettings: sales,
+      printedBy: "Preview",
     });
   }
 

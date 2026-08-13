@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useListRefreshUi } from "@/lib/list-refresh-ui";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -49,6 +49,7 @@ function resolveCreditNoteRow(row) {
     can_approve: row.can_approve ?? customerReturn?.can_approve,
     can_reject: row.can_reject ?? customerReturn?.can_reject,
     can_delete: row.can_delete ?? customerReturn?.can_delete,
+    can_edit: row.can_edit ?? customerReturn?.can_edit,
     can_print: row.can_print ?? true,
     credit_note_no: row.credit_note_no ?? customerReturn?.return_no ?? "—",
     customerReturn,
@@ -67,6 +68,7 @@ function printableFromCreditNoteRow(row) {
 
 export function SalesCreditNotesScreen() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { capabilities, hasPermission, organization, generalSettings, user } = useAuth();
   const { runQueuedTask } = useQueuedTask(
     "Please wait while the credit note is submitted to the KRA device…",
@@ -154,6 +156,11 @@ export function SalesCreditNotesScreen() {
         customerReturn
           ? {
               ...customerReturn,
+              can_edit: full.can_edit ?? customerReturn.can_edit,
+              can_approve: full.can_approve ?? customerReturn.can_approve,
+              can_reject: full.can_reject ?? customerReturn.can_reject,
+              can_delete: full.can_delete ?? customerReturn.can_delete,
+              can_print: full.can_print ?? customerReturn.can_print ?? true,
               credit_note: full,
               creditNote: full,
             }
@@ -272,6 +279,7 @@ export function SalesCreditNotesScreen() {
         await printCustomerReturn(printable, {
           organization,
           generalSettings: generalSettings(),
+          moduleSettings: capabilities?.module_settings,
           kraEnabled: kraDeviceEnabled,
           user,
         });
@@ -279,7 +287,7 @@ export function SalesCreditNotesScreen() {
         notifyError(e instanceof Error ? e.message : "Failed to print credit note");
       }
     },
-    [generalSettings, kraDeviceEnabled, organization, user],
+    [capabilities?.module_settings, generalSettings, kraDeviceEnabled, organization, user],
   );
 
   const manageHint = canManage
@@ -470,6 +478,12 @@ export function SalesCreditNotesScreen() {
         onRequestAction={(type, row) => {
           const creditNote = row.credit_note ?? row.creditNote;
           openActionDialog(type, creditNote ? { ...creditNote, status: row.status } : row);
+        }}
+        onEdit={(row) => {
+          const creditNote = row.credit_note ?? row.creditNote;
+          const editId = creditNote?.id ?? row.id;
+          setDetailOpen(false);
+          router.push(`/sales/credit-notes/${editId}/edit`);
         }}
         onPrint={handlePrint}
         error={actionError}

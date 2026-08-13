@@ -19,10 +19,13 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/hr-employees-id-edit").then((m) => ({ default: m.HrEmployeesIdEditScreen })),
   ),
   "hr-payroll-runs-id": lazy(() =>
-    import("@/components/tab-screens/hr-payroll-runs-id").then((m) => ({ default: m.HrPayrollRunsIdScreen })),
+    import(undefined).then((m) => ({ default: m.undefined })),
   ),
   "lpo-lpoNo-print-delivery-note": lazy(() =>
     import("@/components/tab-screens/lpo-lpoNo-print-delivery-note").then((m) => ({ default: m.LpoLpoNoPrintDeliveryNoteScreen })),
+  ),
+  "sales-credit-notes-id-edit": lazy(() =>
+    import("@/components/tab-screens/sales-credit-notes-id-edit").then((m) => ({ default: m.SalesCreditNotesIdEditScreen })),
   ),
   "sales-orders-queues-slug": lazy(() =>
     import("@/components/tab-screens/sales-orders-queues-slug").then((m) => ({ default: m.SalesOrdersQueuesSlugScreen })),
@@ -201,6 +204,9 @@ export const SCREEN_COMPONENTS = {
   "accounting-trial-balance": lazy(() =>
     import("@/components/tab-screens/accounting-trial-balance").then((m) => ({ default: m.AccountingTrialBalanceScreen })),
   ),
+  "admin-attendance-clock": lazy(() =>
+    import("@/components/tab-screens/admin-attendance-clock").then((m) => ({ default: m.AdminAttendanceClockScreen })),
+  ),
   "admin-audit": lazy(() =>
     import("@/components/tab-screens/admin-audit").then((m) => ({ default: m.AdminAuditScreen })),
   ),
@@ -230,11 +236,6 @@ export const SCREEN_COMPONENTS = {
   ),
   "admin-themes": lazy(() =>
     import("@/components/tab-screens/admin-themes").then((m) => ({ default: m.AdminThemesScreen })),
-  ),
-  "admin-attendance-clock": lazy(() =>
-    import("@/components/tab-screens/admin-attendance-clock").then((m) => ({
-      default: m.AdminAttendanceClockScreen,
-    })),
   ),
   "admin-till-printing": lazy(() =>
     import("@/components/tab-screens/admin-till-printing").then((m) => ({ default: m.AdminTillPrintingScreen })),
@@ -339,7 +340,7 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/hr-overtime").then((m) => ({ default: m.HrOvertimeScreen })),
   ),
   "hr-payroll": lazy(() =>
-    import("@/components/tab-screens/hr-payroll").then((m) => ({ default: m.HrPayrollScreen })),
+    import(undefined).then((m) => ({ default: m.undefined })),
   ),
   "hr-positions": lazy(() =>
     import("@/components/tab-screens/hr-positions").then((m) => ({ default: m.HrPositionsScreen })),
@@ -481,7 +482,7 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/customers-id").then((m) => ({ default: m.CustomersIdScreen })),
   ),
   "lpo-lpoNo": lazy(() =>
-    import("@/components/tab-screens/lpo-lpoNo").then((m) => ({ default: m.LpoLpoNoScreen })),
+    import(undefined).then((m) => ({ default: m.undefined })),
   ),
   "products-code": lazy(() =>
     import("@/components/tab-screens/products-code").then((m) => ({ default: m.ProductsCodeScreen })),
@@ -529,7 +530,7 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/inventory").then((m) => ({ default: m.InventoryScreen })),
   ),
   "lpo": lazy(() =>
-    import("@/components/tab-screens/lpo").then((m) => ({ default: m.LpoScreen })),
+    import(undefined).then((m) => ({ default: m.undefined })),
   ),
   "notifications": lazy(() =>
     import("@/components/tab-screens/notifications").then((m) => ({ default: m.NotificationsScreen })),

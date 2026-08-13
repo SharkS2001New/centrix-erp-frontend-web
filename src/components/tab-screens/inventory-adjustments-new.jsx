@@ -11,7 +11,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { isStockAdjustmentApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
-import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
+import {
+  lineFromEnrichedProduct,
+  resolveInventoryLineUom,
+} from "@/components/lpo/lpo-product-utils";
 import {
   DamageMeasureSelect,
   defaultDamagePackageType,
@@ -21,17 +24,32 @@ import {
   useInventoryCatalogMaps,
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
-import { damageQtyToBase } from "@/lib/stock-uom";
+import { productStockAtLocation } from "@/lib/pos-stock";
+import { damageQtyToBase, formatMixedStockDisplay, normalizeDamageLevel } from "@/lib/stock-uom";
 
 function lineFromProduct(product) {
   const uom = product.uom;
   return {
     ...lineFromEnrichedProduct(product),
+    uom: uom && typeof uom === "object" ? uom : null,
     quantity: "1",
     package_type: defaultDamagePackageType(uom),
     stock_location: "shop",
     direction: "increase",
+    stock_in_shop: Number(product.stock_in_shop ?? product.stock_on_hand_shop ?? 0),
+    stock_in_store: Number(product.stock_in_store ?? product.stock_on_hand_store ?? 0),
+    stock_available_shop: Number(
+      product.stock_available_shop ?? product.stock_in_shop ?? product.stock_on_hand_shop ?? 0,
+    ),
+    stock_available_store: Number(
+      product.stock_available_store ?? product.stock_in_store ?? product.stock_on_hand_store ?? 0,
+    ),
   };
+}
+
+function formatLineStock(line, uom, location) {
+  const baseQty = productStockAtLocation(line, location);
+  return formatMixedStockDisplay(baseQty, uom).text;
 }
 
 export function InventoryAdjustmentsNewScreen() {
@@ -54,6 +72,26 @@ export function InventoryAdjustmentsNewScreen() {
   }, [user?.organization_id]);
 
   const { uomById } = useInventoryCatalogMaps(uoms);
+
+  useEffect(() => {
+    if (!uoms.length) return;
+    setLines((prev) => {
+      if (!prev.length) return prev;
+      let changed = false;
+      const next = prev.map((line) => {
+        const uom = resolveInventoryLineUom(line, uomById);
+        if (!uom) return line;
+        const package_type = normalizeDamageLevel(line.package_type, uom);
+        const needsUom = !line.uom || typeof line.uom !== "object";
+        if (needsUom || package_type !== line.package_type) {
+          changed = true;
+          return { ...line, uom, package_type };
+        }
+        return line;
+      });
+      return changed ? next : prev;
+    });
+  }, [uoms, uomById]);
 
   useEffect(() => {
     if (!presetProductCode || presetLoaded) return;
@@ -107,7 +145,7 @@ export function InventoryAdjustmentsNewScreen() {
       !canDirectInventoryAction({ hasPermission, capabilities });
     try {
       for (const line of toPost) {
-        const uom = uomById.get(line.unit_id);
+        const uom = resolveInventoryLineUom(line, uomById);
         const baseQty = damageQtyToBase(line.quantity, line.package_type, uom);
         const signedQty = line.direction === "decrease" ? -Math.abs(baseQty) : Math.abs(baseQty);
         const body = {
@@ -160,6 +198,7 @@ export function InventoryAdjustmentsNewScreen() {
           lines={lines}
           onChange={setLines}
           uomById={uomById}
+          branchId={branchId}
           onAddProduct={addProduct}
           onAddProducts={addProducts}
           tableHeaders={[
@@ -171,7 +210,8 @@ export function InventoryAdjustmentsNewScreen() {
           ]}
           emptyMessage="Search and add products to adjust."
           renderCells={(line, index) => {
-            const uom = uomById.get(line.unit_id);
+            const uom = resolveInventoryLineUom(line, uomById);
+            const stockLabel = formatLineStock(line, uom, line.stock_location);
             return (
               <>
                 <td className="px-3 py-2">
@@ -203,6 +243,7 @@ export function InventoryAdjustmentsNewScreen() {
                     onChange={(e) => updateLine(index, { quantity: e.target.value })}
                     onClick={(e) => e.stopPropagation()}
                   />
+                  <p className="mt-0.5 text-[10px] text-slate-500">In stock: {stockLabel}</p>
                 </td>
                 <td className="px-3 py-2">
                   <SearchableSelect

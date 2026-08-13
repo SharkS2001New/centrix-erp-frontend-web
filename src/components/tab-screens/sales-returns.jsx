@@ -224,6 +224,7 @@ export function SalesReturnsScreen() {
         await printCustomerReturn(printable, {
           organization,
           generalSettings: generalSettings(),
+          moduleSettings: capabilities?.module_settings,
           kraEnabled: kraDeviceEnabled,
           user,
         });
@@ -231,7 +232,7 @@ export function SalesReturnsScreen() {
         notifyError(e instanceof Error ? e.message : "Failed to print credit note");
       }
     },
-    [generalSettings, kraDeviceEnabled, organization, user],
+    [capabilities?.module_settings, generalSettings, kraDeviceEnabled, organization, user],
   );
 
   const manageHint = canManageReturns

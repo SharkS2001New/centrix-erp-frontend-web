@@ -55,6 +55,12 @@ export const DOCUMENT_LOGO_VARIANTS = {
     defaultPosition: "right",
     defaultSize: "large",
   },
+  credit_note: {
+    label: "Credit note",
+    defaultShow: true,
+    defaultPosition: "right",
+    defaultSize: "large",
+  },
   proforma: {
     label: "Proforma invoice",
     defaultShow: true,

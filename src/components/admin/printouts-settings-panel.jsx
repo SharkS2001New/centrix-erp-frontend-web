@@ -73,6 +73,7 @@ const PRINTOUT_TABS = [
   { id: "receipt", label: "Thermal receipts", requiresSales: true },
   { id: "invoice", label: "A4 invoices", requiresSales: true },
   { id: "proforma", label: "Proforma", requiresSales: true },
+  { id: "credit_note", label: "Credit notes", requiresSales: true },
   { id: "hospitality_check", label: "Hotel checks", requiresHospitality: true },
   { id: "lpo", label: "LPO", requiresProcurement: true },
   { id: "loading_sheet", label: "Loading sheets", requiresRoutePrintouts: true },
@@ -422,6 +423,44 @@ function ThermalReceiptsTab({ form, setForm, hasMobileSales, organization = null
         />
         <div className="mt-3">
           <DocumentFooterField footerKey="receipt" form={form} setForm={setForm} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CreditNotesTab({ form, setForm }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeading
+        title="Credit notes"
+        description="Layout template, logo, fonts, and closing footer text for A4 credit note printouts."
+      />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="credit_note_document_template"
+        label="Document template"
+      />
+      <PrintFontSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="credit_note"
+        description="Font for credit note printouts. Falls back to A4 invoice fonts until you set these."
+      />
+      <DocumentLogoSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="credit_note"
+        description="Logo size and position on credit notes."
+      />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Closing text on credit notes (one line per row)."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="credit_note" form={form} setForm={setForm} />
         </div>
       </div>
     </div>
@@ -1001,6 +1040,7 @@ function previewTypeForTab(tabId, previewTypes = []) {
     tabId === "receipt" ||
     tabId === "invoice" ||
     tabId === "proforma" ||
+    tabId === "credit_note" ||
     tabId === "lpo" ||
     tabId === "loading_sheet" ||
     tabId === "picking_list" ||
@@ -1279,6 +1319,9 @@ export function PrintoutsSettingsPanel({
     }
     if (activeTab === "proforma" && hasSales) {
       return <ProformaInvoicesTab form={form} setForm={setForm} organization={organization} />;
+    }
+    if (activeTab === "credit_note" && hasSales) {
+      return <CreditNotesTab form={form} setForm={setForm} />;
     }
     if (activeTab === "hospitality_check" && hasHospitality) {
       return (

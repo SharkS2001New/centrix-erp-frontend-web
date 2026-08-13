@@ -1,11 +1,11 @@
 "use client";
 
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { HrPayrollRunsIdScreen } from "@/components/tab-screens/hr-payroll-runs-id";
+import { undefined } from "undefined";
 
 /** Tab workspace hosts this screen from the registry when enabled. */
 export default function Page() {
   const { enabled } = useTabWorkspace();
   if (enabled) return null;
-  return <HrPayrollRunsIdScreen />;
+  return <undefined />;
 }

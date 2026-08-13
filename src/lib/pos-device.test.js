@@ -93,23 +93,23 @@ describe("pos device ownership for previous-order edit", () => {
     ).toBe(true);
   });
 
-  it("blocks unstamped pure server rows without a local copy", async () => {
+  it("allows unstamped cloud-synced server rows on this till after upload", async () => {
     const { getPosDeviceIdentifier, saleBelongsToCurrentPosDevice } =
       await import("@/lib/pos-device");
 
     getPosDeviceIdentifier();
-    expect(saleBelongsToCurrentPosDevice({ id: 44, order_num: 10 })).toBe(false);
+    expect(saleBelongsToCurrentPosDevice({ id: 44, order_num: 10 })).toBe(true);
   });
 
-  it("prefers the sale stamp for restore-to-cart device id", async () => {
+  it("sends this computer's device id on restore-to-cart (does not spoof the receipt stamp)", async () => {
     const { getPosDeviceIdentifier, posDeviceIdForRestoreRequest } =
       await import("@/lib/pos-device");
 
-    getPosDeviceIdentifier();
+    const deviceId = getPosDeviceIdentifier();
     expect(
       posDeviceIdForRestoreRequest({
         fulfillment_meta: { pos_device_id: "receipt-pc-uuid" },
       }),
-    ).toBe("receipt-pc-uuid");
+    ).toBe(deviceId);
   });
 });

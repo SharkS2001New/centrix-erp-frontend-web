@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { tabAddTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
+import { tabAddTitle, tabEditTitle, useTabFormExit } from "@/hooks/use-tab-form-exit";
 import { TabFormCancelButton, TabFormBackButton } from "@/components/layout/tab-form-exit-button";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -17,6 +17,7 @@ import {
   REFUND_METHODS,
   RETURN_REASON_OTHER,
   resolveReturnReason,
+  parseCreditNoteReason,
   parseInvoiceNumber,
   salesReturnSearchParams,
 } from "@/components/sales/customer-returns-shared";
@@ -27,8 +28,44 @@ import {
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
+function creditLineFromReturnLine(line) {
+  const creditAmount = Math.round(Number(line.amount ?? 0) * 100) / 100;
+  const lineTotal = Math.round(
+    Number(line.quantity_sold ?? 0) * Number(line.unit_price ?? 0) * 100,
+  ) / 100;
+  return {
+    sale_item_id: line.sale_item_id ?? null,
+    product_code: line.product_code,
+    product_name: line.product_name ?? line.product?.product_name ?? line.product_code,
+    uom: line.uom ?? null,
+    quantity_sold: Number(line.quantity_sold ?? 0),
+    line_total: lineTotal > 0 ? lineTotal : creditAmount,
+    max_credit_amount: null,
+    credit_amount: creditAmount,
+    line_no: line.line_no ?? null,
+  };
+}
+
+function splitWalkInNotes(storedNotes) {
+  const raw = String(storedNotes ?? "").trim();
+  if (!raw) return { walkInName: "", notes: "" };
+  const match = raw.match(/^Walk-in:\s*(.+?)(?:\n([\s\S]*))?$/i);
+  if (!match) return { walkInName: "", notes: raw };
+  return {
+    walkInName: String(match[1] ?? "").trim(),
+    notes: String(match[2] ?? "").trim(),
+  };
+}
+
 function emptyCreditLineFromSaleItem(item) {
-  const lineTotal = Math.round(Number(item.amount ?? item.line_total ?? 0) * 100) / 100;
+  // return-lines uses `amount` for the default return credit (0 until qty is set)
+  // and `line_total` for the invoice line value — prefer line_total for credit notes.
+  const lineTotal = Math.round(
+    Number(item.line_total ?? item.max_credit_amount ?? item.amount ?? 0) * 100,
+  ) / 100;
+  const maxCredit = Math.round(
+    Number(item.max_credit_amount ?? item.line_total ?? lineTotal) * 100,
+  ) / 100;
   return {
     sale_item_id: item.sale_item_id ?? item.id,
     product_code: item.product_code,
@@ -36,7 +73,7 @@ function emptyCreditLineFromSaleItem(item) {
     uom: item.uom ?? null,
     quantity_sold: Number(item.quantity_sold ?? item.quantity ?? 0),
     line_total: lineTotal,
-    max_credit_amount: lineTotal,
+    max_credit_amount: maxCredit > 0 ? maxCredit : null,
     credit_amount: 0,
     line_no: item.line_no ?? null,
   };
@@ -61,13 +98,17 @@ function isGenericWalkInName(name) {
 }
 
 export function CreditNoteForm({
+  editing = null,
   onSaved,
   onCancel,
   backHref = "/sales/credit-notes",
   backLabel = "← Back to credit notes",
   initialSaleId = "",
 }) {
-  const { exitTo } = useTabFormExit(tabAddTitle("credit note"));
+  const formTitle = editing
+    ? tabEditTitle("credit note", editing.credit_note_no ?? editing.return_no)
+    : tabAddTitle("credit note");
+  const { exitTo } = useTabFormExit(formTitle);
   const { user, capabilities } = useAuth();
   const returnSearchStatuses = useMemo(
     () => resolveCustomerReturnStatuses(salesSettingsFromCapabilities(capabilities)),
@@ -96,6 +137,7 @@ export function CreditNoteForm({
   const [invoiceHint, setInvoiceHint] = useState(null);
   const [productPick, setProductPick] = useState("");
   const [pickedProduct, setPickedProduct] = useState(null);
+  const [hydratedEditId, setHydratedEditId] = useState(null);
 
   const lineCreditTotal = useMemo(() => totalCreditAmount(lines), [lines]);
   const amountOnlyTotal = Number(totalAmount) > 0 ? Number(totalAmount) : 0;
@@ -210,10 +252,71 @@ export function CreditNoteForm({
   }, [applyCustomerFromSale]);
 
   useEffect(() => {
-    if (!initialSaleId) return;
+    if (!initialSaleId || editing) return;
     if (String(initialSaleId) === "undefined" || String(initialSaleId) === "null") return;
     loadSale(initialSaleId);
-  }, [initialSaleId, loadSale]);
+  }, [editing, initialSaleId, loadSale]);
+
+  useEffect(() => {
+    if (!editing?.id) return;
+    if (hydratedEditId === editing.id) return;
+
+    const customerReturn = editing.customer_return ?? editing.customerReturn ?? editing;
+    const existingLines = customerReturn?.lines ?? editing.lines ?? [];
+    const hasLines = Array.isArray(existingLines) && existingLines.some((line) => Number(line.amount) > 0);
+
+    setSaleId(editing.sale_id ? String(editing.sale_id) : "");
+    setCreditDate(
+      String(editing.credit_date ?? editing.return_date ?? "").slice(0, 10) ||
+        new Date().toISOString().slice(0, 10),
+    );
+    setRefundMethod(editing.refund_method ?? "CASH");
+    const parsedReason = parseCreditNoteReason(editing.reason);
+    setReasonPreset(parsedReason.preset);
+    setReasonOther(parsedReason.other);
+
+    const split = splitWalkInNotes(editing.notes);
+    setNotes(split.notes);
+
+    if (editing.customer_num) {
+      setWalkIn(false);
+      setWalkInName("");
+      setCustomerNum(String(editing.customer_num));
+      const customer = editing.customer ?? customerReturn?.customer;
+      if (customer) {
+        setCustomerOptions([creditCustomerToOption(customer)]);
+      }
+    } else {
+      setWalkIn(true);
+      setCustomerNum("");
+      setCustomerOptions([]);
+      setWalkInName(split.walkInName);
+    }
+
+    if (editing.sale) {
+      setInvoiceQuery(formatReceiptNumber(editing.sale));
+      const balance = Number(editing.sale.order_total ?? editing.sale.balance ?? 0);
+      setInvoiceBalance(Number.isFinite(balance) ? balance : null);
+    }
+
+    if (hasLines) {
+      setItemizeProducts(true);
+      setLines(existingLines.map((line) => creditLineFromReturnLine(line)));
+      setTotalAmount("");
+      setInvoiceHint(`Editing ${existingLines.length} product line(s).`);
+    } else {
+      setItemizeProducts(false);
+      setLines([]);
+      setTotalAmount(
+        editing.total_amount != null && Number(editing.total_amount) > 0
+          ? String(editing.total_amount)
+          : "",
+      );
+      setInvoiceHint("Editing amount-only credit note.");
+    }
+
+    setHydratedEditId(editing.id);
+  }, [editing, hydratedEditId]);
 
   const resolveAndLoadInvoice = useCallback(async () => {
     const q = invoiceQuery.trim();
@@ -386,7 +489,10 @@ export function CreditNoteForm({
           : { total_amount: amountOnlyTotal, lines: [] }),
       };
 
-      await apiRequest("/credit-notes", { method: "POST", body });
+      await apiRequest(editing?.id ? `/credit-notes/${editing.id}` : "/credit-notes", {
+        method: editing?.id ? "PUT" : "POST",
+        body,
+      });
       if (onSaved) {
         await onSaved();
       } else {
@@ -404,10 +510,13 @@ export function CreditNoteForm({
       <div className="mb-4 flex flex-wrap items-start gap-3">
         <TabFormBackButton href={backHref} label={backLabel} />
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold text-slate-900">Create credit note</h1>
+          <h1 className="text-xl font-semibold text-slate-900">
+            {editing ? `Edit ${editing.credit_note_no ?? editing.return_no ?? "credit note"}` : "Create credit note"}
+          </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Issue a credit for billing errors or price adjustments without returning stock. Product
-            lines are optional when the customer underpaid due to a price difference.
+            {editing
+              ? "Update this pending credit note before it is approved."
+              : "Issue a credit for billing errors or price adjustments without returning stock. Product lines are optional when the customer underpaid due to a price difference."}
           </p>
         </div>
       </div>
@@ -661,7 +770,11 @@ export function CreditNoteForm({
                           type="number"
                           min="0"
                           step="0.01"
-                          max={line.max_credit_amount ?? undefined}
+                          max={
+                            Number(line.max_credit_amount) > 0
+                              ? Number(line.max_credit_amount)
+                              : undefined
+                          }
                           className={`${inputClassName()} w-32 text-right`}
                           value={line.credit_amount || ""}
                           onChange={(e) => updateCreditAmount(index, e.target.value)}
@@ -706,7 +819,7 @@ export function CreditNoteForm({
 
       <div className="mt-6 flex flex-wrap gap-2">
         <PrimaryButton type="submit" disabled={saving || loadingSale || !canSubmit}>
-          {saving ? "Saving…" : "Create credit note"}
+          {saving ? "Saving…" : editing ? "Update credit note" : "Create credit note"}
         </PrimaryButton>
         <TabFormCancelButton
           href={backHref}

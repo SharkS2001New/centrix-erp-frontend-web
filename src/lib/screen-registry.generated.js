@@ -38,6 +38,13 @@ function match_lpo_lpoNo_print_delivery_note(pathname) {
   return true;
 }
 
+function match_sales_credit_notes_id_edit(pathname) {
+  const m = pathname.match("^/sales/credit-notes/([^/]+)/edit$");
+  if (!m) return false;
+  if (["new","supplier"].includes(m[1])) return false;
+  return true;
+}
+
 function match_sales_orders_queues_slug(pathname) {
   const m = pathname.match("^/sales/orders/queues/([^/]+)$");
   if (!m) return false;
@@ -346,6 +353,10 @@ function match_accounting_trial_balance(pathname) {
   return pathname === "/accounting/trial-balance";
 }
 
+function match_admin_attendance_clock(pathname) {
+  return pathname === "/admin/attendance-clock";
+}
+
 function match_admin_audit(pathname) {
   return pathname === "/admin/audit";
 }
@@ -384,10 +395,6 @@ function match_admin_settings(pathname) {
 
 function match_admin_themes(pathname) {
   return pathname === "/admin/themes";
-}
-
-function match_admin_attendance_clock(pathname) {
-  return pathname === "/admin/attendance-clock";
 }
 
 function match_admin_till_printing(pathname) {
@@ -901,6 +908,12 @@ export const SCREEN_REGISTRY = [
     match: match_lpo_lpoNo_print_delivery_note,
   },
   {
+    id: "sales-credit-notes-id-edit",
+    title: "Edit",
+    route: "/sales/credit-notes/[id]/edit",
+    match: match_sales_credit_notes_id_edit,
+  },
+  {
     id: "sales-orders-queues-slug",
     title: "Queues",
     route: "/sales/orders/queues/[slug]",
@@ -1255,6 +1268,12 @@ export const SCREEN_REGISTRY = [
     match: match_accounting_trial_balance,
   },
   {
+    id: "admin-attendance-clock",
+    title: "Attendance Clock",
+    route: "/admin/attendance-clock",
+    match: match_admin_attendance_clock,
+  },
+  {
     id: "admin-audit",
     title: "Audit",
     route: "/admin/audit",
@@ -1280,7 +1299,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "admin-kra-responses",
-    title: "KRA device log",
+    title: "Kra Responses",
     route: "/admin/kra-responses",
     match: match_admin_kra_responses,
   },
@@ -1313,12 +1332,6 @@ export const SCREEN_REGISTRY = [
     title: "Themes",
     route: "/admin/themes",
     match: match_admin_themes,
-  },
-  {
-    id: "admin-attendance-clock",
-    title: "Attendance Clock-in",
-    route: "/admin/attendance-clock",
-    match: match_admin_attendance_clock,
   },
   {
     id: "admin-till-printing",

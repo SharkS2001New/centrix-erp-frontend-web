@@ -27,7 +27,7 @@ const defaultMonthRange = currentMonthDateRange();
 
 function LegacyReturnsContent() {
   const searchParams = useSearchParams();
-  const { organization, generalSettings, user } = useAuth();
+  const { organization, generalSettings, user, capabilities } = useAuth();
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -134,6 +134,7 @@ function LegacyReturnsContent() {
     printCreditNote(payload, {
       organization,
       generalSettings: generalSettings(),
+      moduleSettings: capabilities?.module_settings,
       user,
     });
   }

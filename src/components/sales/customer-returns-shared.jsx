@@ -49,6 +49,18 @@ export function parseReturnReason(stored) {
   return { preset: RETURN_REASON_OTHER, other: value };
 }
 
+/** @returns {{ preset: string, other: string }} */
+export function parseCreditNoteReason(stored) {
+  const value = String(stored ?? "").trim();
+  if (!value) {
+    return { preset: CREDIT_NOTE_REASONS[0], other: "" };
+  }
+  if (CREDIT_NOTE_REASONS.includes(value)) {
+    return { preset: value, other: "" };
+  }
+  return { preset: RETURN_REASON_OTHER, other: value };
+}
+
 /** @returns {string} */
 export function resolveReturnReason(preset, otherText) {
   const selected = String(preset ?? "").trim();

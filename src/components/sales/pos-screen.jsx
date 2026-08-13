@@ -2725,14 +2725,21 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const browseNum = resolvePosBrowseNumber(sale);
+    const deviceStamp =
+      sale.pos_device_id ??
+      sale.fulfillment_meta?.pos_device_id ??
+      getPosDeviceIdentifier() ??
+      null;
     const entry = {
       id: sale.id,
       order_num: sale.order_num,
       pos_order_num: sale.pos_order_num ?? null,
       pos_order_date: sale.pos_order_date ?? null,
       float_session_id: sale.float_session_id ?? floatSessionId ?? null,
+      pos_device_id: deviceStamp,
       status: sale.status,
       ...(sale.offline_pending_sync ? { offline_pending_sync: true } : {}),
+      ...(!sale.offline_pending_sync ? { _local_synced_mirror: true } : {}),
     };
     setSessionPosOrders((prev) => {
       // Same POS ticket after edit replaces the previous sale id so ← opens the live receipt.

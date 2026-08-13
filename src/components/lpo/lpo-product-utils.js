@@ -185,6 +185,12 @@ export function lineFromEnrichedProduct(product) {
 /** Resolve UOM for inventory lines (never treat package name strings as UOM rows). */
 export function resolveInventoryLineUom(line, uomById) {
   if (line?.uom && typeof line.uom === "object") return line.uom;
-  if (line?.unit_id != null && uomById?.get) return uomById.get(line.unit_id) ?? null;
+  if (line?.unit_id != null && uomById?.get) {
+    return (
+      uomById.get(line.unit_id) ??
+      uomById.get(String(line.unit_id)) ??
+      null
+    );
+  }
   return null;
 }

@@ -16,6 +16,7 @@ import {
 } from "@/lib/reports/report-branding";
 import { resolveDocumentPrintPhonesLine } from "@/lib/document-print-phones";
 import { escapeHtml } from "@/lib/html-escape";
+import { orgDocumentTemplateCss, resolveOrgDocumentTemplateId } from "@/lib/document-print-templates";
 
 export { escapeHtml };
 
@@ -147,6 +148,7 @@ export function buildBrandedA4DocumentHtml({
   generalSettings = null,
   bodyHtml = "",
   documentFooterText = "",
+  documentTemplateId = null,
   printedBy = null,
   pageLabel = "Page 1 of 1",
 }) {
@@ -160,13 +162,16 @@ export function buildBrandedA4DocumentHtml({
   const watermarkHtml = buildReportWatermarkHtml(resolvedBranding);
   const printedAt = new Date().toLocaleString("en-GB");
   const footerText = documentFooterText || resolvedBranding.documentFooterText || "";
+  const templateId = resolveOrgDocumentTemplateId(documentTemplateId);
+  const themeCss = orgDocumentTemplateCss(templateId, { layout: "classic" });
 
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(title)}</title>
-  <style>${brandedDocumentStyles(generalSettings ?? branding?.generalSettings)}</style>
+  <style>${brandedDocumentStyles(generalSettings ?? branding?.generalSettings)}
+  ${themeCss}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   ${watermarkHtml}

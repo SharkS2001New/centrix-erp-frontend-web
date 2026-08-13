@@ -155,7 +155,15 @@ export function InventoryProductLines({
 }
 
 export function useInventoryCatalogMaps(uoms, vats = []) {
-  const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
+  const uomById = useMemo(() => {
+    const map = new Map();
+    for (const uom of uoms) {
+      if (uom?.id == null) continue;
+      map.set(uom.id, uom);
+      map.set(String(uom.id), uom);
+    }
+    return map;
+  }, [uoms]);
   const vatById = useMemo(() => new Map(vats.map((v) => [v.id, v])), [vats]);
   return { uomById, vatById };
 }

@@ -11,6 +11,7 @@ import {
 export const PRINT_FOOTER_TYPES = {
   receipt: "print_footer_receipt",
   invoice: "print_footer_a4_invoice",
+  credit_note: "print_footer_credit_note",
   hospitality_check: "print_footer_hospitality_check",
   lpo: "print_footer_lpo",
   loading_sheet: "print_footer_loading_sheet",
@@ -22,6 +23,7 @@ export const PRINT_FOOTER_TYPES = {
 export const PRINT_FOOTER_FORM_KEYS = {
   receipt: "print_footer_receipt",
   invoice: "print_footer_a4_invoice",
+  credit_note: "print_footer_credit_note",
   hospitality_check: "print_footer_hospitality_check",
   lpo: "print_footer_lpo",
   loading_sheet: "print_footer_loading_sheet",
@@ -33,6 +35,7 @@ export const PRINT_FOOTER_FORM_KEYS = {
 export const PRINT_FOOTER_LABELS = {
   receipt: "Thermal receipt footer",
   invoice: "A4 sales invoice footer",
+  credit_note: "Credit note footer",
   hospitality_check: "Hotel check receipt footer",
   lpo: "LPO footer",
   loading_sheet: "Loading sheet footer",

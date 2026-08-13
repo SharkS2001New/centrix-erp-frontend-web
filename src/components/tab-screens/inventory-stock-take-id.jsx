@@ -1,6 +1,6 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -16,6 +16,8 @@ import {
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { canDirectInventoryAction } from "@/lib/approval-permissions";
+import { useConfirm } from "@/lib/use-confirm";
 import {
   FormModal,
   PrimaryButton,
@@ -33,6 +35,7 @@ import {
   stockTakeProductScopeLabel,
 } from "@/components/inventory/inventory-shared";
 import {
+  countKey,
   initStockTakeCounts,
   readStockTakeCounts,
   StockTakeCountInputs,
@@ -79,8 +82,10 @@ function uomFromLine(line, uomMap) {
 export function InventoryStockTakeIdScreen() {
   const params = useParams();
   const router = useRouter();
-  const { organization } = useAuth();
+  const confirm = useConfirm();
+  const { organization, capabilities, hasPermission } = useAuth();
   const sessionId = params.id;
+  const canResetStocks = canDirectInventoryAction({ hasPermission, capabilities });
 
   const [session, setSession] = useState(null);
   const [lines, setLines] = useState([]);
@@ -90,6 +95,7 @@ export function InventoryStockTakeIdScreen() {
   const [subCategories, setSubCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [counts, setCounts] = useState({});
+  const [lineById, setLineById] = useState({});
   const [touchedIds, setTouchedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
@@ -97,6 +103,7 @@ export function InventoryStockTakeIdScreen() {
   const [printing, setPrinting] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [resettingStocks, setResettingStocks] = useState(false);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -190,6 +197,13 @@ export function InventoryStockTakeIdScreen() {
       setProducts([...productMap.values()]);
       setTotalLines(parsed.total);
       setTotalPages(parsed.totalPages);
+      setLineById((prev) => {
+        const next = { ...prev };
+        for (const line of pageRows) {
+          next[line.id] = line;
+        }
+        return next;
+      });
       setCounts((prev) => {
         const next = { ...prev };
         for (const [key, value] of Object.entries(pageCounts)) {
@@ -267,10 +281,36 @@ export function InventoryStockTakeIdScreen() {
     };
   }
 
+  function resolveLineUom(line) {
+    if (!line) return null;
+    if (line.unit_id != null && uomById.has(line.unit_id)) {
+      return uomById.get(line.unit_id);
+    }
+    if (line.conversion_factor != null || line.uom_name || line.uom_type) {
+      return {
+        id: line.unit_id,
+        full_name: line.uom_name,
+        conversion_factor: line.conversion_factor,
+        small_packaging_label: line.small_packaging_label,
+        middle_packaging_label: line.middle_packaging_label,
+        middle_factor: line.middle_factor,
+        uom_type: line.uom_type,
+      };
+    }
+    return null;
+  }
+
   function countedBaseForLine(line) {
-    const { uom, levels } = productMeta(line.product_code);
+    const uom = resolveLineUom(line) ?? productMeta(line.product_code).uom;
+    const levels = uomStockTakeLevels(uom);
     const byKey = readStockTakeCounts(line.id, levels, counts);
     return stockTakeCountsToBase(byKey, uom);
+  }
+
+  function lineCountsInitialized(line) {
+    const uom = resolveLineUom(line) ?? productMeta(line.product_code).uom;
+    const levels = uomStockTakeLevels(uom);
+    return levels.some((level) => counts[countKey(line.id, level.key)] !== undefined);
   }
 
   const showShop = session?.stock_location === "shop" || session?.stock_location === "both";
@@ -301,8 +341,9 @@ export function InventoryStockTakeIdScreen() {
   const dirty = useMemo(() => {
     if (touchedIds.size > 0) return true;
     for (const line of lines) {
+      if (!lineCountsInitialized(line)) continue;
       const currentBase = countedBaseForLine(line);
-      if (Math.abs(currentBase - Number(line.counted_quantity)) >= 0.0001) return true;
+      if (Math.abs(currentBase - Number(line.counted_quantity ?? 0)) >= 0.0001) return true;
     }
     return false;
   }, [lines, counts, touchedIds, productByCode, uomById]);
@@ -341,39 +382,41 @@ export function InventoryStockTakeIdScreen() {
     setCounts((prev) => ({ ...prev, [key]: value }));
   }
 
-  function guardUnsaved(next) {
-    if (dirty) {
-      notifyError("Save your counts before changing page or filters.");
-      return false;
-    }
-    next();
-    return true;
-  }
-
   function handlePageChange(nextPage) {
-    guardUnsaved(() => setPage(nextPage));
+    setPage(nextPage);
   }
 
   function handlePageSizeChange(size) {
-    guardUnsaved(() => {
-      setPageSize(size);
-      setPage(1);
-    });
+    setPageSize(size);
+    setPage(1);
+  }
+
+  function buildSavePayloadLines() {
+    const candidateIds = new Set(touchedIds);
+    for (const line of lines) {
+      if (!lineCountsInitialized(line)) continue;
+      const currentBase = countedBaseForLine(line);
+      if (Math.abs(currentBase - Number(line.counted_quantity ?? 0)) >= 0.0001) {
+        candidateIds.add(line.id);
+      }
+    }
+
+    const payloadLines = [];
+    for (const id of candidateIds) {
+      const line = lineById[id] ?? lines.find((entry) => entry.id === id);
+      if (!line) continue;
+      payloadLines.push({
+        id: line.id,
+        counted_quantity: countedBaseForLine(line),
+      });
+    }
+    return payloadLines;
   }
 
   async function saveCounts() {
     setSaving(true);
     try {
-      const payloadLines = lines
-        .filter((line) => {
-          if (touchedIds.has(line.id)) return true;
-          const currentBase = countedBaseForLine(line);
-          return Math.abs(currentBase - Number(line.counted_quantity ?? 0)) >= 0.0001;
-        })
-        .map((line) => ({
-          id: line.id,
-          counted_quantity: countedBaseForLine(line),
-        }));
+      const payloadLines = buildSavePayloadLines();
 
       if (!payloadLines.length) {
         return;
@@ -407,6 +450,18 @@ export function InventoryStockTakeIdScreen() {
       setTouchedIds((prev) => {
         const next = new Set(prev);
         for (const id of savedIds) next.delete(id);
+        return next;
+      });
+      setLineById((prev) => {
+        const next = { ...prev };
+        for (const saved of payloadLines) {
+          if (!next[saved.id]) continue;
+          next[saved.id] = {
+            ...next[saved.id],
+            counted_quantity: saved.counted_quantity,
+            is_counted: true,
+          };
+        }
         return next;
       });
       await loadLines();
@@ -445,6 +500,62 @@ export function InventoryStockTakeIdScreen() {
   }
 
   const readOnly = session?.status === "completed";
+
+  const hasSavedCounts = useMemo(
+    () => lines.some((line) => line.is_counted) || Object.values(lineById).some((line) => line.is_counted),
+    [lines, lineById],
+  );
+
+  async function handleResetStocks() {
+    if (!canResetStocks || readOnly || !totalLines) return;
+    if (dirty) {
+      notifyError("Save or discard unsaved counts before resetting stocks.");
+      return;
+    }
+    if (hasSavedCounts) {
+      notifyError("Cannot reset after counts have been saved. Start a new stock take session instead.");
+      return;
+    }
+
+    const scopeLabel =
+      session?.stock_location === "shop"
+        ? "shop"
+        : session?.stock_location === "store"
+          ? "store / warehouse"
+          : "shop and store";
+
+    const ok = await confirm({
+      title: "Reset all stocks to zero?",
+      message: `This zeros ERP stock for every product in this session (${scopeLabel}) before you count. Use this when opening balances are wrong and you want to rebuild from a physical count. This cannot be undone.`,
+      confirmLabel: "Reset stocks to 0",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setResettingStocks(true);
+    try {
+      const resetRequest = () =>
+        apiRequest(`/inventory/stock-take/${sessionId}/reset-stocks`, { method: "POST" });
+
+      if (totalLines > 50) {
+        await runQueuedTask(resetRequest, {
+          message: `Resetting stock for ${totalLines} lines…`,
+        });
+      } else {
+        await resetRequest();
+      }
+
+      setCounts({});
+      setTouchedIds(new Set());
+      setLineById({});
+      notifySuccess("Stocks reset to zero. Enter your physical counts, then save and close the stock take.");
+      await loadLines();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to reset stocks");
+    } finally {
+      setResettingStocks(false);
+    }
+  }
 
   async function handlePrint() {
     if (dirty) {
@@ -612,6 +723,23 @@ export function InventoryStockTakeIdScreen() {
           </button>
           {!readOnly ? (
             <>
+              {canResetStocks ? (
+                <button
+                  type="button"
+                  onClick={() => void handleResetStocks()}
+                  disabled={resettingStocks || saving || completing || !totalLines || dirty || hasSavedCounts}
+                  title={
+                    hasSavedCounts
+                      ? "Cannot reset after counts have been saved"
+                      : dirty
+                        ? "Save or discard unsaved counts first"
+                        : "Zero ERP stock for all products in this session before counting"
+                  }
+                  className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {resettingStocks ? "Resetting…" : "Reset stocks"}
+                </button>
+              ) : null}
               <PrimaryButton type="button" showIcon={false} onClick={saveCounts} disabled={saving || !dirty}>
                 {saving ? "Saving…" : "Save counts"}
               </PrimaryButton>
@@ -640,6 +768,13 @@ export function InventoryStockTakeIdScreen() {
           <p className="text-sm text-slate-500">
             Edit and save only the products you physically count. Closing updates ERP stock for
             those saved counts only — other SKUs keep live POS/receipt balances.
+            {canResetStocks ? (
+              <>
+                {" "}
+                Admins can use <strong>Reset stocks</strong> first to zero opening balances before
+                counting.
+              </>
+            ) : null}
             {dirty ? <span className="ml-2 text-amber-700">Unsaved changes.</span> : null}
           </p>
         ) : null}
@@ -652,13 +787,7 @@ export function InventoryStockTakeIdScreen() {
               type="search"
               className={`${FILTER_CONTROL_CLASS} w-72 sm:w-96`}
               value={search}
-              onChange={(e) => {
-                if (dirty) {
-                  notifyError("Save your counts before searching.");
-                  return;
-                }
-                setSearch(e.target.value);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Product name or code…"
             />
           </Field>
@@ -668,10 +797,6 @@ export function InventoryStockTakeIdScreen() {
                 <FilterSelect
                   value={categoryFilter}
                   onChange={(e) => {
-                    if (dirty) {
-                      notifyError("Save your counts before changing filters.");
-                      return;
-                    }
                     setCategoryFilter(e.target.value);
                     setSubcategoryFilter("all");
                   }}
@@ -687,13 +812,7 @@ export function InventoryStockTakeIdScreen() {
               <Field label="Subcategory">
                 <FilterSelect
                   value={subcategoryFilter}
-                  onChange={(e) => {
-                    if (dirty) {
-                      notifyError("Save your counts before changing filters.");
-                      return;
-                    }
-                    setSubcategoryFilter(e.target.value);
-                  }}
+                  onChange={(e) => setSubcategoryFilter(e.target.value)}
                   options={[
                     { value: "all", label: "All subcategories" },
                     ...filterSubCategoryOptions.map((sub) => ({

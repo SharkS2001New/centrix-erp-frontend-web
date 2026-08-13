@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { PencilIcon } from "@/components/catalog/catalog-shared";
 import { resolveCustomerReturnActionFlags } from "@/components/sales/customer-return-actions";
 
 function CheckCircleIcon() {
@@ -93,6 +95,16 @@ export function CreditNoteRowActions({ row, busyId, canManage, onRequestAction, 
         >
           <XCircleIcon />
         </IconActionButton>
+      ) : null}
+      {flags.can_edit ? (
+        <Link
+          href={`/sales/credit-notes/${row.id}/edit`}
+          title="Edit credit note"
+          aria-label="Edit credit note"
+          className="rounded-md p-1.5 text-[#185FA5] transition-colors hover:bg-[#E6F1FB]"
+        >
+          <PencilIcon />
+        </Link>
       ) : null}
       {flags.can_delete ? (
         <IconActionButton

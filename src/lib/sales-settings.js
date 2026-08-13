@@ -7,6 +7,7 @@ import {
   PROFORMA_PRINT_DEFAULTS,
   proformaPrintFormFromApi,
 } from "@/lib/proforma-print-settings";
+import { CREDIT_NOTE_PRINT_DEFAULTS, creditNotePrintFormFromApi } from "@/lib/credit-note-print-settings";
 import { defaultDateRange } from "@/lib/datetime";
 import {
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
@@ -122,6 +123,7 @@ const SALES_DEFAULTS = {
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   ...PROFORMA_PRINT_DEFAULTS,
+  ...CREDIT_NOTE_PRINT_DEFAULTS,
   stock_deduct_on: {
     pos: "order_created",
     mobile: "order_completed",
@@ -720,6 +722,7 @@ export function salesOrganizationFormFromApi(res) {
     ),
     ...invoicePrintFormFromApi(sales),
     ...proformaPrintFormFromApi(sales),
+    ...creditNotePrintFormFromApi(sales),
     stock_deduct_on: sales.stock_deduct_on || "order_created",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(sales.orders_list_default_days)),
     reports_default_date_range_days: String(
@@ -813,6 +816,7 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     proforma_valid_days: _proformaValidDays,
     show_print_proforma_invoice_option: _showPrintProformaInvoiceOption,
     proforma_document_template: _proformaDocumentTemplate,
+    credit_note_document_template: _creditNoteDocumentTemplate,
     show_proforma_payment_details: _showProformaPaymentDetails,
     proforma_payment_details: _proformaPaymentDetails,
     use_same_print_phones_for_proforma: _useSamePrintPhonesForProforma,

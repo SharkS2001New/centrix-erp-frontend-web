@@ -9,7 +9,7 @@ export const ORG_DOCUMENT_DESIGN_TEMPLATES = [
   {
     id: "default",
     label: "Default (current layout)",
-    description: "Keep the existing invoice / proforma / LPO look unchanged.",
+    description: "Keep the existing invoice / proforma / credit note / LPO look unchanged.",
   },
   { id: "modern", label: "Modern", description: "Clean blue accent header — Stripe-inspired." },
   { id: "classic", label: "Classic formal", description: "Traditional bordered stationery with serif accents." },
@@ -68,6 +68,7 @@ const THEME_MAP = {
 export const DOCUMENT_TEMPLATE_SETTING_KEYS = {
   invoice: "invoice_document_template",
   proforma: "proforma_document_template",
+  credit_note: "credit_note_document_template",
   lpo: "lpo_document_template",
 };
 
@@ -238,6 +239,7 @@ export function documentTemplateFormDefaults() {
   return {
     invoice_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
     proforma_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+    credit_note_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
     lpo_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
   };
 }
@@ -246,6 +248,9 @@ export function documentTemplateFormFromSales(sales = {}) {
   return {
     invoice_document_template: resolveOrgDocumentTemplateId(sales.invoice_document_template),
     proforma_document_template: resolveOrgDocumentTemplateId(sales.proforma_document_template),
+    credit_note_document_template: resolveOrgDocumentTemplateId(
+      sales.credit_note_document_template,
+    ),
   };
 }
 
@@ -259,6 +264,9 @@ export function documentTemplateSalesPayloadFromForm(form = {}) {
   return {
     invoice_document_template: resolveOrgDocumentTemplateId(form.invoice_document_template),
     proforma_document_template: resolveOrgDocumentTemplateId(form.proforma_document_template),
+    credit_note_document_template: resolveOrgDocumentTemplateId(
+      form.credit_note_document_template,
+    ),
   };
 }
 
