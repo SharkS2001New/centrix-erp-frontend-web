@@ -3860,11 +3860,9 @@ export async function cacheServerSaleForOfflineEdit(sale) {
   const serverId = Number(sale.id ?? 0);
   if (!(serverId > 0)) return false;
   if (String(sale.id).startsWith("offline:")) return false;
-  // Never cache receipts stamped to another POS computer.
   const deviceId = getPosDeviceIdentifier();
   const stamped =
     String(sale.pos_device_id ?? sale.fulfillment_meta?.pos_device_id ?? "").trim() || null;
-  if (stamped && deviceId && stamped !== deviceId) return false;
 
   const items = Array.isArray(sale.items)
     ? sale.items.filter((row) => row?.product_code && Number(row.quantity ?? 0) > 0)

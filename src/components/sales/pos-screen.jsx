@@ -231,7 +231,6 @@ import {
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
-  hasLocalPosSaleCopy,
   cacheServerSaleForOfflineEdit,
   claimNextLocalPosTicketForSale,
   prefetchServerSalesForOfflineEdit,
@@ -305,8 +304,6 @@ import { useFormDraft } from "@/hooks/use-form-draft";
 import {
   getPosDeviceIdentifier,
   posDeviceIdForRestoreRequest,
-  saleBelongsToCurrentPosDevice,
-  POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE,
 } from "@/lib/pos-device";
 import {
   createBranchTill,
@@ -2962,10 +2959,6 @@ export function PosScreen({ standalone = false }) {
           return !(rowSession > 0 && rowSession !== activeFloatId);
         });
       }
-      // IndexedDB mirrors on this PC are always same-machine (even if unstamped).
-      localSyncedOrders = localSyncedOrders.filter((row) =>
-        saleBelongsToCurrentPosDevice(row, { knownLocal: true }),
-      );
 
       const offlineBrowseKeys = new Set(
         offlineOrders
@@ -3009,17 +3002,6 @@ export function PosScreen({ standalone = false }) {
           if (source && source !== "pos") return false;
           const status = String(row.status ?? "").toLowerCase();
           if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
-          // Same machine: device stamp match OR IndexedDB still has this receipt
-          // (offline → upload leaves a local synced mirror).
-          const ticket = resolvePosSessionTicketNumber(row);
-          const hasLocalCopy =
-            localOwnedSaleIds.has(String(row.id)) ||
-            (ticket != null && localOwnedTicketKeys.has(String(ticket)));
-          if (
-            !saleBelongsToCurrentPosDevice(row, { knownLocal: hasLocalCopy })
-          ) {
-            return false;
-          }
           return true;
         })
         .map((row) => ({
@@ -12571,22 +12553,6 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    if (saleSnapshot) {
-      const ticket =
-        saleSnapshot.pos_order_num != null && Number(saleSnapshot.pos_order_num) > 0
-          ? Number(saleSnapshot.pos_order_num)
-          : null;
-      const allowed =
-        saleBelongsToCurrentPosDevice(saleSnapshot) ||
-        (await hasLocalPosSaleCopy({ saleId, ticketNum: ticket }));
-      if (!allowed) {
-        setOrderEditError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
-        setStatusMessage(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
-        if (standalone) notifyError(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
-        return;
-      }
-    }
-
     const uploadBlockMessage = await blockIfPreviousOrderEditUploading(saleId);
     if (uploadBlockMessage) {
       setOrderEditError(uploadBlockMessage);
@@ -13668,22 +13634,6 @@ export function PosScreen({ standalone = false }) {
         failLookupKeepNextTicket(
           `No POS order found with Cash Sales #${ticketNum ?? trimmed}.`,
         );
-        return;
-      }
-      const matchTicket =
-        match.pos_order_num != null && Number(match.pos_order_num) > 0
-          ? Number(match.pos_order_num)
-          : ticketNum != null
-            ? Number(ticketNum)
-            : null;
-      const allowedOnThisPc =
-        saleBelongsToCurrentPosDevice(match) ||
-        (await hasLocalPosSaleCopy({
-          saleId: match.id,
-          ticketNum: matchTicket,
-        }));
-      if (!allowedOnThisPc) {
-        failLookupKeepNextTicket(POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE);
         return;
       }
       await restoreOrderForEdit(match.id, { saleSnapshot: match });

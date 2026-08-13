@@ -87,33 +87,7 @@ export function isLocalPosOutboxSaleRow(saleOrRow) {
   return false;
 }
 
-/**
- * Previous-order edit is allowed when:
- * - this machine has the receipt in IndexedDB (offline sale / synced mirror), or
- * - the sale is stamped to this computer's device id, or
- * - the sale has no device stamp (cloud-synced online sale — backend is source of truth).
- *
- * Only an explicit stamp for a *different* PC blocks edit (unless knownLocal).
- */
-export function saleBelongsToCurrentPosDevice(saleOrRow, options = {}) {
-  const { knownLocal = false } = options;
-  if (knownLocal || isLocalPosOutboxSaleRow(saleOrRow)) return true;
-
-  const current = normalizeDeviceIdentifier(getPosDeviceIdentifier());
-  if (!current) return true;
-
-  const stamped = resolveSalePosDeviceId(saleOrRow);
-  if (stamped) return stamped === current;
-
-  // Unstamped cloud rows: this till wrote them while online (or before device
-  // stamping). Blocking here made same-PC previous-order edit fail after sync.
-  return true;
-}
-
 /** Device id to send on restore-to-cart — always this computer, never spoof the receipt stamp. */
 export function posDeviceIdForRestoreRequest(_saleOrRow = null) {
   return normalizeDeviceIdentifier(getPosDeviceIdentifier()) || null;
 }
-
-export const POS_OTHER_DEVICE_EDIT_BLOCK_MESSAGE =
-  "This Cash Sales # was written on another device. Previous-order edit is only available on the till that printed the receipt.";
