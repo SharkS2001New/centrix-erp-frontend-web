@@ -20,13 +20,12 @@ Preconfigured package from Centrix → Administration → Attendance clock-in.
 
 1. Unzip this folder anywhere (e.g. C:\\Centrix\\attendance-agent).
 2. Install Node.js 20+ if needed: https://nodejs.org/
-3. Double-click **open-settings.bat** (first-run UI) — confirm device LAN IP / password, Save & test.
-4. Double-click **install-windows.bat** (registers Task Scheduler every 5 minutes).
-   If settings are incomplete, the installer opens the settings UI first.
-5. Optional continuous mode: \`npm start\` (also opens settings UI on first run if needed).
+3. Double-click **install-windows.bat**.
+   A browser opens so you can confirm every connection detail (Centrix URL, token, device ID, LAN IP, port 80, username, password). Click **Save, test & continue**.
+4. Windows then registers an always-on task that starts at logon/startup and keeps the agent running.
+5. Change settings later: **open-settings.bat**. Remove: **uninstall-windows.bat**.
 
-Punches appear under HR → Attendance after a successful poll.
-Re-open settings anytime: **open-settings.bat** or \`npm run setup\`.
+Punches and Manage Hikvision actions go through this agent.
 Keep this folder private — config.json includes a Centrix API token.
 `;
 }

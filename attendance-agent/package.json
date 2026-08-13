@@ -1,8 +1,8 @@
 {
   "name": "centrix-attendance-agent",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "On-LAN bridge: poll Hikvision fingerprint terminals and push punches to Centrix cloud",
+  "description": "On-LAN bridge: proxy Hikvision ISAPI for Centrix cloud and push attendance punches",
   "type": "module",
   "main": "agent.js",
   "scripts": {

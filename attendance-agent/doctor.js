@@ -7,75 +7,10 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash, randomUUID } from "node:crypto";
+import { deviceBaseUrl, fetchWithDigest } from "./isapi-lib.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = join(__dirname, "config.json");
-
-function basicAuthHeader(username, password) {
-  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-}
-
-async function fetchWithDigest(url, { method = "GET", body, username, password } = {}) {
-  const first = await fetch(url, {
-    method,
-    headers: {
-      Accept: "application/json",
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (first.status !== 401) return first;
-
-  const www = first.headers.get("www-authenticate") || "";
-  if (!/digest/i.test(www)) {
-    return fetch(url, {
-      method,
-      headers: {
-        Accept: "application/json",
-        Authorization: basicAuthHeader(username, password),
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
-
-  const parts = Object.fromEntries(
-    [...www.matchAll(/(\w+)=(?:"([^"]+)"|([^\s,]+))/g)].map((m) => [m[1].toLowerCase(), m[2] ?? m[3]]),
-  );
-  const realm = parts.realm || "";
-  const nonce = parts.nonce || "";
-  const qop = parts.qop || "auth";
-  const opaque = parts.opaque;
-  const nc = "00000001";
-  const cnonce = randomUUID().replace(/-/g, "").slice(0, 16);
-  const uri = new URL(url).pathname + new URL(url).search;
-  const ha1 = createHash("md5").update(`${username}:${realm}:${password}`).digest("hex");
-  const ha2 = createHash("md5").update(`${method}:${uri}`).digest("hex");
-  const response = createHash("md5")
-    .update(`${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}`)
-    .digest("hex");
-  const auth =
-    `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", ` +
-    `algorithm=MD5, response="${response}", qop=${qop}, nc=${nc}, cnonce="${cnonce}"` +
-    (opaque ? `, opaque="${opaque}"` : "");
-
-  return fetch(url, {
-    method,
-    headers: {
-      Accept: "application/json",
-      Authorization: auth,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-}
-
-function deviceBaseUrl(hik) {
-  const scheme = hik.useHttps ? "https" : "http";
-  const port = hik.port || (hik.useHttps ? 443 : 80);
-  return `${scheme}://${hik.host}:${port}`;
-}
 
 function ok(msg) {
   console.log(`  ✓ ${msg}`);
@@ -164,6 +99,15 @@ async function main() {
         failed += 1;
       } else {
         ok(`Device ${config.deviceNo} is registered and active`);
+        if (!config.deviceId) {
+          fail("deviceId missing — re-download the agent zip from Centrix Admin");
+          failed += 1;
+        } else if (Number(match.id) !== Number(config.deviceId)) {
+          fail(`deviceId ${config.deviceId} does not match registered device ${match.id}`);
+          failed += 1;
+        } else {
+          ok(`deviceId ${config.deviceId} matches`);
+        }
       }
     }
   } catch (err) {
@@ -176,7 +120,7 @@ async function main() {
     console.error(`Doctor found ${failed} issue(s). Fix them before live punches.`);
     process.exit(1);
   }
-  console.log("All checks passed. Next: clock once on the terminal, then run: npm run once");
+  console.log("All checks passed. The Windows service keeps the agent running for punches and Manage Hikvision.");
   console.log("Then confirm the session in Centrix HR → Attendance.\n");
 }
 

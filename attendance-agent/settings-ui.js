@@ -16,6 +16,7 @@ import {
   publicConfigView,
   isConfigReady,
 } from "./config-lib.js";
+import { deviceBaseUrl, fetchWithDigest } from "./isapi-lib.js";
 
 function openBrowser(url) {
   const platform = process.platform;
@@ -30,13 +31,13 @@ function openBrowser(url) {
   exec(cmd, () => {});
 }
 
-function htmlPage() {
+function htmlPage(installer = false) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Centrix Attendance Agent — Settings</title>
+  <title>Centrix Attendance Agent — ${installer ? "Install" : "Settings"}</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -140,10 +141,11 @@ function htmlPage() {
 <body>
   <div class="wrap">
     <div class="brand">Centrix ERP</div>
-    <h1>Attendance Agent settings</h1>
+    <h1>${installer ? "Install Attendance Agent" : "Attendance Agent settings"}</h1>
     <p class="lead">
-      First-run setup for this office PC. Centrix cloud cannot reach a LAN fingerprint terminal —
-      this agent bridges them. Prefills come from Administration → Attendance clock-in.
+      ${installer
+        ? "Review every connection detail on this office PC, then save and test. After that, Windows will run the agent as an always-on service."
+        : "First-run setup for this office PC. Centrix cloud cannot reach a LAN fingerprint terminal — this agent bridges them. Prefills come from Administration → Attendance clock-in."}
     </p>
     <div class="card">
       <div id="banner" class="banner warn" hidden></div>
@@ -164,8 +166,17 @@ function htmlPage() {
             <input id="deviceNo" name="deviceNo" type="text" placeholder="TERMINAL-01" autocomplete="off" />
           </div>
           <div>
-            <label for="pollIntervalSeconds">Poll interval (seconds)</label>
+            <label for="deviceId">Centrix device ID</label>
+            <input id="deviceId" name="deviceId" type="number" min="1" step="1" />
+            <p class="hint">Prefills from the Admin download. Needed so Manage Hikvision can proxy through this agent.</p>
+          </div>
+          <div>
+            <label for="pollIntervalSeconds">Attendance poll (seconds)</label>
             <input id="pollIntervalSeconds" name="pollIntervalSeconds" type="number" min="60" step="30" />
+          </div>
+          <div>
+            <label for="lookbackMinutes">Lookback (minutes)</label>
+            <input id="lookbackMinutes" name="lookbackMinutes" type="number" min="5" step="5" />
           </div>
         </div>
 
@@ -179,6 +190,7 @@ function htmlPage() {
             <div>
               <label for="port">Port</label>
               <input id="port" name="port" type="number" min="1" max="65535" />
+              <p class="hint">Hikvision HTTP ISAPI uses <strong>80</strong>, not 8000.</p>
             </div>
             <div>
               <label for="username">Username</label>
@@ -194,8 +206,11 @@ function htmlPage() {
         </div>
 
         <div class="actions">
-          <button type="submit" class="primary" id="saveBtn">Save settings</button>
-          <button type="button" class="secondary" id="testBtn">Save &amp; test connection</button>
+          ${installer
+            ? `<button type="button" class="primary" id="testBtn">Save, test &amp; continue</button>
+          <button type="submit" class="secondary" id="saveBtn">Save without testing</button>`
+            : `<button type="submit" class="primary" id="saveBtn">Save settings</button>
+          <button type="button" class="secondary" id="testBtn">Save &amp; test connection</button>`}
         </div>
         <div id="status"></div>
       </form>
@@ -203,6 +218,7 @@ function htmlPage() {
   </div>
   <script>
     const el = (id) => document.getElementById(id);
+    const installer = ${installer ? "true" : "false"};
     let existingToken = "";
 
     function setBanner(type, text) {
@@ -221,16 +237,20 @@ function htmlPage() {
         ? "Token on file — leave blank to keep (" + (cfg.centrixTokenMasked || "saved") + ")"
         : "Required — re-download agent from Centrix Admin if missing";
       el("deviceNo").value = cfg.deviceNo || "";
+      el("deviceId").value = cfg.deviceId || "";
       el("pollIntervalSeconds").value = cfg.pollIntervalSeconds || 300;
+      el("lookbackMinutes").value = cfg.lookbackMinutes || 360;
       el("host").value = (cfg.hikvision && cfg.hikvision.host) || "";
       el("port").value = (cfg.hikvision && cfg.hikvision.port) || 80;
       el("username").value = (cfg.hikvision && cfg.hikvision.username) || "admin";
       el("password").value = (cfg.hikvision && cfg.hikvision.password) || "";
       el("useHttps").checked = Boolean(cfg.hikvision && cfg.hikvision.useHttps);
       if (cfg.ready) {
-        setBanner("ok", "Configuration looks complete. You can still edit settings below.");
+        setBanner("ok", installer
+          ? "Prefills look complete. Confirm the LAN IP, port 80, and device password, then Save, test & continue."
+          : "Configuration looks complete. You can still edit settings below.");
       } else {
-        setBanner("warn", "First-run setup: fill the device LAN IP and password, then Save. Missing: " + (cfg.missing || []).join(", "));
+        setBanner("warn", "Fill every connection field below, then Save. Missing: " + (cfg.missing || []).join(", "));
       }
     }
 
@@ -239,7 +259,9 @@ function htmlPage() {
         centrixApiUrl: el("centrixApiUrl").value.trim(),
         centrixToken: el("centrixToken").value.trim() || existingToken,
         deviceNo: el("deviceNo").value.trim(),
+        deviceId: el("deviceId").value ? Number(el("deviceId").value) : null,
         pollIntervalSeconds: Number(el("pollIntervalSeconds").value) || 300,
+        lookbackMinutes: Number(el("lookbackMinutes").value) || 360,
         hikvision: {
           host: el("host").value.trim(),
           port: Number(el("port").value) || 80,
@@ -280,10 +302,14 @@ function htmlPage() {
             : "Saved, but test failed:\\n" + (data.test.detail || "");
           status.style.color = data.test.ok ? "#166534" : "#991b1b";
           setBanner(data.test.ok ? "ok" : "err", data.test.ok
-            ? "Ready. Close this window and run install-windows.bat (or npm start)."
+            ? (installer
+              ? "Ready. Closing this window and installing the Windows service…"
+              : "Ready. Close this window and run install-windows.bat (or npm start).")
             : "Fix the issues below, then test again.");
         } else {
-          status.textContent = "Saved. Run install-windows.bat or npm start when ready.";
+          status.textContent = installer
+            ? "Saved. Click Save, test & continue to install the service."
+            : "Saved. Run install-windows.bat or npm start when ready.";
           status.style.color = "#166534";
           setBanner("ok", "Settings saved.");
         }
@@ -320,23 +346,34 @@ async function quickTest(config) {
     return { ok: false, detail: "Device LAN IP is required." };
   }
 
-  const scheme = hik.useHttps ? "https" : "http";
-  const port = hik.port || (hik.useHttps ? 443 : 80);
-  const deviceUrl = `${scheme}://${hik.host}:${port}/`;
+  const infoUrl = `${deviceBaseUrl(hik)}/ISAPI/System/deviceInfo`;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(deviceUrl, { signal: controller.signal, redirect: "manual" });
-    clearTimeout(timer);
-    lines.push(`Device reachable at ${deviceUrl} (HTTP ${res.status})`);
+    const res = await fetchWithDigest(infoUrl, {
+      method: "GET",
+      username: hik.username || "admin",
+      password: hik.password || "",
+      accept: "application/xml, application/json",
+    });
+    if (res.status === 401) {
+      ok = false;
+      lines.push(`Hikvision reachable at ${hik.host}:${hik.port || 80}, but username/password was rejected.`);
+    } else if (!res.ok) {
+      ok = false;
+      const text = await res.text();
+      lines.push(`Hikvision deviceInfo HTTP ${res.status}: ${text.slice(0, 200)}`);
+    } else {
+      const text = await res.text();
+      const model = text.match(/<model>([^<]+)</i)?.[1] || text.match(/"model"\s*:\s*"([^"]+)"/)?.[1];
+      lines.push(`Hikvision ISAPI OK${model ? ` — ${model}` : ""} at ${infoUrl.replace(/\/ISAPI.*/, "")}`);
+    }
   } catch (err) {
     ok = false;
-    lines.push(`Cannot reach device at ${deviceUrl}: ${err.message}`);
+    lines.push(`Cannot reach Hikvision at ${infoUrl}: ${err.message}`);
   }
 
   if (config.centrixApiUrl && config.centrixToken) {
     try {
-      const url = `${config.centrixApiUrl.replace(/\/$/, "")}/attendance-clock-devices?per_page=1`;
+      const url = `${config.centrixApiUrl.replace(/\/$/, "")}/auth/me`;
       const res = await fetch(url, {
         headers: {
           Accept: "application/json",
@@ -363,17 +400,22 @@ async function quickTest(config) {
     ok = false;
     lines.push("Device number is required.");
   }
+  if (!config.deviceId) {
+    ok = false;
+    lines.push("Centrix device ID is required — re-download the agent zip from Administration → Attendance clock-in.");
+  }
 
   return { ok, detail: lines.join("\n") };
 }
 
 /**
- * @param {{ openBrowser?: boolean, waitUntilReady?: boolean }} [options]
+ * @param {{ openBrowser?: boolean, waitUntilReady?: boolean, installer?: boolean }} [options]
  * @returns {Promise<{ ready: boolean, alreadyRunning?: boolean }>}
  */
 export function runSettingsUi(options = {}) {
   const open = options.openBrowser !== false;
   const waitUntilReady = Boolean(options.waitUntilReady);
+  const installer = Boolean(options.installer);
 
   return new Promise((resolve, reject) => {
     ensureConfigFile();
@@ -399,7 +441,7 @@ export function runSettingsUi(options = {}) {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store",
           });
-          res.end(htmlPage());
+          res.end(htmlPage(installer));
           return;
         }
 
@@ -438,8 +480,9 @@ export function runSettingsUi(options = {}) {
           }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(payload));
-          if (waitUntilReady && view.ready) {
-            setTimeout(() => finish({ ready: true }), 400);
+          const testedOk = url.pathname === "/api/save-and-test" && payload.test?.ok;
+          if (waitUntilReady && view.ready && (!installer || testedOk)) {
+            setTimeout(() => finish({ ready: true }), testedOk ? 1200 : 400);
           }
           return;
         }
@@ -466,7 +509,11 @@ export function runSettingsUi(options = {}) {
     server.listen(SETTINGS_UI_PORT, "127.0.0.1", () => {
       console.log(`[attendance-agent] Settings UI: ${SETTINGS_UI_URL}`);
       if (waitUntilReady) {
-        console.log("Save settings in the browser — this window continues automatically when ready.");
+        console.log(
+          installer
+            ? "Browser opened. Confirm connection details, then click Save, test & continue."
+            : "Save settings in the browser — this window continues automatically when ready.",
+        );
       } else {
         console.log("Fill the form in your browser, then Save. Press Ctrl+C here when finished.");
       }

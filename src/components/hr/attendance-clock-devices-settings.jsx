@@ -283,7 +283,8 @@ export function AttendanceClockDevicesSettings() {
           <p className="mt-1 text-xs text-slate-500">
             Centrix is cloud-hosted and cannot reach a LAN device IP directly. Register the terminal
             here, then download the preconfigured <strong>attendance agent</strong> for an office PC
-            on the same network as the Hikvision.
+            on the same network as the Hikvision. During install the agent lets you confirm every
+            connection detail, then runs as a Windows service.
           </p>
         </div>
         <button
@@ -629,11 +630,10 @@ export function AttendanceClockDevicesSettings() {
         </div>
         <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-500">
           <li>Unzip on a Windows PC on the same LAN as the terminal.</li>
+          <li>Install Node.js 20+ if needed, then run <code>install-windows.bat</code>.</li>
           <li>
-            Run <code>open-settings.bat</code> — first-run settings UI (confirm LAN IP / password).
-          </li>
-          <li>
-            Install Node.js 20+ if needed, then run <code>install-windows.bat</code>.
+            The installer opens a browser so you can confirm every connection detail, then Save, test
+            &amp; continue. Windows then keeps the agent running as a service.
           </li>
         </ol>
       </FormModal>
@@ -690,12 +690,12 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
         </li>
         <li>
           Click <strong>Download agent zip</strong> — the zip is preconfigured with Centrix URL, token,
-          and device settings. On a LAN PC: unzip → <code>open-settings.bat</code> (settings UI) →{" "}
-          <code>install-windows.bat</code> (Node 20+).
+          and device settings. On a LAN PC: unzip → <code>install-windows.bat</code> (Node 20+). The
+          installer opens a setup screen for every connection detail, then registers an always-on service.
         </li>
         <li>
-          The agent polls the device locally and POSTs punches to{" "}
-          <code>/api/v1/attendance/clock-punch</code>. Sessions appear on HR → Attendance.
+          The agent talks to the Hikvision on the LAN and to Centrix online — attendance punches and
+          Manage Hikvision (users, cards, fingerprints, test connection) all go through it.
         </li>
       </ol>
     </FormModal>

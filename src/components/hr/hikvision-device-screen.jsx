@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { isNumericRouteId, routeParamValue } from "@/lib/route-params";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import {
   CatalogPageShell,
@@ -32,7 +33,7 @@ function featureEnabled(capabilities, key) {
 
 export function HikvisionDeviceScreen() {
   const params = useParams();
-  const deviceId = params?.id;
+  const deviceId = routeParamValue(params?.id);
   const { organizationApiPath } = useSettingsApi();
   const base = organizationApiPath(`/attendance-clock-devices/${deviceId}/hikvision`);
 
@@ -57,6 +58,7 @@ export function HikvisionDeviceScreen() {
   const [fingerprintTestOpen, setFingerprintTestOpen] = useState(false);
 
   const loadDevice = useCallback(async () => {
+    if (!isNumericRouteId(deviceId)) return null;
     const row = await apiRequest(organizationApiPath(`/attendance-clock-devices/${deviceId}`));
     setDevice(row);
     return row;
@@ -151,6 +153,11 @@ export function HikvisionDeviceScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    if (!isNumericRouteId(deviceId)) {
+      setLoading(false);
+      setDevice(null);
+      return undefined;
+    }
     (async () => {
       setLoading(true);
       try {
@@ -173,7 +180,7 @@ export function HikvisionDeviceScreen() {
     return () => {
       cancelled = true;
     };
-  }, [loadDevice, loadOverview]);
+  }, [deviceId, loadDevice, loadOverview]);
 
   useEffect(() => {
     if (tab === "Employees" && featureEnabled(capabilities, "users")) {
@@ -354,6 +361,30 @@ export function HikvisionDeviceScreen() {
     () => device?.device_info_json ?? overview?.device?.device_info_json ?? {},
     [device, overview],
   );
+
+  if (!isNumericRouteId(deviceId)) {
+    return (
+      <CatalogPageShell
+        title="Hikvision device"
+        banner={
+          <AdminBreadcrumb
+            items={[
+              { label: "Administration", href: "/admin" },
+              { label: "Attendance clock-in", href: "/admin/attendance-clock" },
+              { label: "Device" },
+            ]}
+          />
+        }
+      >
+        <p className="text-sm text-slate-500">
+          Select a clock device from Attendance clock-in. This tab is missing a valid device id.
+        </p>
+        <Link href="/admin/attendance-clock" className={`${SECONDARY_BTN_CLASS} mt-3 inline-flex`}>
+          Back to clock devices
+        </Link>
+      </CatalogPageShell>
+    );
+  }
 
   if (loading) {
     return (

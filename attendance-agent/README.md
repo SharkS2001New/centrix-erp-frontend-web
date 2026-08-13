@@ -15,7 +15,7 @@ Hikvision (LAN)  ←ISAPI—  Attendance Agent  —HTTPS→  Centrix Cloud
                     agent executes them locally every ~5s
 ```
 
-**Recommended:** download a **preconfigured zip** from Centrix → **Administration → Attendance clock-in** → **Download agent**.
+**Recommended:** download a **preconfigured zip** from Centrix → **Administration → Attendance clock-in** → **Download agent zip**.
 
 **Full on-site checklist:** see [SETUP.md](./SETUP.md).
 
@@ -27,12 +27,13 @@ Hikvision (LAN)  ←ISAPI—  Attendance Agent  —HTTPS→  Centrix Cloud
 
 ## Quick install (from Admin download)
 
-1. Unzip `CentrixAttendanceAgent-….zip`
-2. Double-click **`open-settings.bat`** — browser settings UI (LAN IP / password)
-3. Double-click **`install-windows.bat`** (Task Scheduler every 5 minutes)
-4. Re-open settings later: `open-settings.bat` or `npm run setup`
+1. Unzip `CentrixAttendanceAgent-….zip` (prefer `C:\Centrix\attendance-agent`).
+2. Install Node.js 20+ if needed: https://nodejs.org/
+3. Double-click **`install-windows.bat`**.
+4. A browser opens with **every connection field** (Centrix URL, token, device ID, LAN IP, port, username, password). Confirm them, then click **Save, test & continue**.
+5. Windows registers an always-on task that starts at logon/startup and keeps the agent running as a service.
 
-First `npm start` also opens the settings UI if config is incomplete.
+Change settings later: **`open-settings.bat`**. Remove: **`uninstall-windows.bat`**.
 
 ## Manual setup
 
@@ -42,10 +43,4 @@ cp config.example.json config.json   # if needed
 npm run setup                        # opens settings UI
 npm run doctor
 npm start
-```
-
-One-shot sync (cron / Task Scheduler):
-
-```bash
-npm run once
 ```

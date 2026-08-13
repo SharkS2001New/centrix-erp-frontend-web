@@ -31,6 +31,13 @@ export function ensureConfigFile() {
   return loadJson(CONFIG_PATH, emptyConfig());
 }
 
+function normalizeHikvisionPort(port, useHttps) {
+  const n = Number(port);
+  if (!Number.isFinite(n) || n <= 0) return useHttps ? 443 : 80;
+  if (n === 8000 && !useHttps) return 80;
+  return n;
+}
+
 export function emptyConfig() {
   return {
     centrixApiUrl: "",
@@ -59,7 +66,7 @@ export function normalizeConfig(raw) {
     deviceNo: String(raw?.deviceNo ?? base.deviceNo).trim(),
     hikvision: {
       host: String(hik.host ?? "").trim(),
-      port: Number(hik.port) > 0 ? Number(hik.port) : 80,
+      port: normalizeHikvisionPort(hik.port, Boolean(hik.useHttps)),
       username: String(hik.username ?? "admin").trim() || "admin",
       password: String(hik.password ?? ""),
       useHttps: Boolean(hik.useHttps),
@@ -82,21 +89,22 @@ export function isConfigReady(config) {
   return Boolean(
     c.centrixApiUrl &&
       c.centrixToken &&
+      c.deviceId &&
       c.deviceNo &&
       c.hikvision.host &&
-      c.hikvision.password !== undefined &&
-      String(c.hikvision.password).length > 0,
+      String(c.hikvision.password || "").length > 0,
   );
 }
 
 export function missingConfigFields(config) {
   const c = normalizeConfig(config || {});
   const missing = [];
-  if (!c.centrixApiUrl) missing.push("centrixApiUrl");
-  if (!c.centrixToken) missing.push("centrixToken");
-  if (!c.deviceNo) missing.push("deviceNo");
-  if (!c.hikvision.host) missing.push("hikvision.host");
-  if (!String(c.hikvision.password || "")) missing.push("hikvision.password");
+  if (!c.centrixApiUrl) missing.push("Centrix API URL");
+  if (!c.centrixToken) missing.push("Centrix token");
+  if (!c.deviceId) missing.push("device id");
+  if (!c.deviceNo) missing.push("device number");
+  if (!c.hikvision.host) missing.push("Hikvision LAN IP");
+  if (!String(c.hikvision.password || "")) missing.push("Hikvision password");
   return missing;
 }
 
