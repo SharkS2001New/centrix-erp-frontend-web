@@ -159,6 +159,13 @@ function match_accounting_journal_entries_id(pathname) {
   return true;
 }
 
+function match_admin_attendance_clock_id(pathname) {
+  const m = pathname.match("^/admin/attendance-clock/([^/]+)$");
+  if (!m) return false;
+
+  return true;
+}
+
 function match_customers_id_edit(pathname) {
   const m = pathname.match("^/customers/([^/]+)/edit$");
   if (!m) return false;
@@ -1058,6 +1065,12 @@ export const SCREEN_REGISTRY = [
     match: match_accounting_journal_entries_id,
   },
   {
+    id: "admin-attendance-clock-id",
+    title: "Hikvision device",
+    route: "/admin/attendance-clock/[id]",
+    match: match_admin_attendance_clock_id,
+  },
+  {
     id: "customers-id-edit",
     title: "Edit",
     route: "/customers/[id]/edit",
@@ -1269,7 +1282,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "admin-attendance-clock",
-    title: "Attendance Clock",
+    title: "Attendance clock-in",
     route: "/admin/attendance-clock",
     match: match_admin_attendance_clock,
   },

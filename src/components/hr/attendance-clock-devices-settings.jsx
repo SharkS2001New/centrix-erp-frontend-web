@@ -6,6 +6,7 @@ import { apiRequest, ApiError, apiV1BaseUrl } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, FormModal, inputClassName, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { LiveFingerprintTestModal } from "@/components/hr/live-fingerprint-test-modal";
 import {
   downloadAttendanceAgentPackage,
   downloadAttendanceAgentSource,
@@ -39,6 +40,8 @@ export function AttendanceClockDevicesSettings() {
   });
   const [downloading, setDownloading] = useState(false);
   const [downloadingSource, setDownloadingSource] = useState(false);
+  const [connectionTestingId, setConnectionTestingId] = useState(null);
+  const [fingerprintTestDevice, setFingerprintTestDevice] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,6 +61,42 @@ export function AttendanceClockDevicesSettings() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function testDeviceConnection(device) {
+    if (!device?.host) {
+      notifyError("Set the device LAN IP before testing connection.");
+      return;
+    }
+    setConnectionTestingId(device.id);
+    try {
+      const result = await apiRequest(
+        organizationApiPath(`/attendance-clock-devices/${device.id}/hikvision/test-connection`),
+        { method: "POST" },
+      );
+      if (result.online) {
+        notifySuccess(`${device.device_no} — connected (${result.device_info?.model ?? "Hikvision"}).`);
+      } else {
+        notifyError(result.error ?? "Could not reach the device from this server.");
+      }
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Connection test failed");
+    } finally {
+      setConnectionTestingId(null);
+    }
+  }
+
+  function startFingerprintTest(device) {
+    if (!device?.host) {
+      notifyError("Set the device LAN IP before testing fingerprint.");
+      return;
+    }
+    if (device.provider !== "hikvision") {
+      notifyError("Fingerprint test is only available for Hikvision devices.");
+      return;
+    }
+    setFingerprintTestDevice(device);
+  }
 
   async function register() {
     if (!form.device_no.trim()) {
@@ -262,7 +301,22 @@ export function AttendanceClockDevicesSettings() {
                     <p className="mt-0.5 text-xs text-amber-700">LAN IP not set — required for agent</p>
                   )}
                 </div>
-                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  disabled={connectionTestingId === device.id}
+                  onClick={() => void testDeviceConnection(device)}
+                >
+                  {connectionTestingId === device.id ? "Testing…" : "Test connection"}
+                </button>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  onClick={() => startFingerprintTest(device)}
+                >
+                  Test fingerprint
+                </button>
                 <Link
                   href={`/admin/attendance-clock/${device.id}`}
                   className={`${SECONDARY_BTN_CLASS} text-center`}
@@ -441,6 +495,13 @@ export function AttendanceClockDevicesSettings() {
           </li>
         </ol>
       </FormModal>
+
+      <LiveFingerprintTestModal
+        open={Boolean(fingerprintTestDevice)}
+        device={fingerprintTestDevice}
+        organizationApiPath={organizationApiPath}
+        onClose={() => setFingerprintTestDevice(null)}
+      />
     </div>
   );
 }

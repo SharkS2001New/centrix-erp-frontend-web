@@ -338,15 +338,7 @@ export function InventoryStockTakeIdScreen() {
     return [...map.values()].sort((a, b) => a.product_name.localeCompare(b.product_name));
   }, [lines, productByCode, uomById, counts]);
 
-  const dirty = useMemo(() => {
-    if (touchedIds.size > 0) return true;
-    for (const line of lines) {
-      if (!lineCountsInitialized(line)) continue;
-      const currentBase = countedBaseForLine(line);
-      if (Math.abs(currentBase - Number(line.counted_quantity ?? 0)) >= 0.0001) return true;
-    }
-    return false;
-  }, [lines, counts, touchedIds, productByCode, uomById]);
+  const dirty = touchedIds.size > 0;
 
   const pageVariances = useMemo(() => {
     const items = [];
@@ -508,10 +500,6 @@ export function InventoryStockTakeIdScreen() {
 
   async function handleResetStocks() {
     if (!canResetStocks || readOnly || !totalLines) return;
-    if (dirty) {
-      notifyError("Save or discard unsaved counts before resetting stocks.");
-      return;
-    }
     if (hasSavedCounts) {
       notifyError("Cannot reset after counts have been saved. Start a new stock take session instead.");
       return;
@@ -526,7 +514,11 @@ export function InventoryStockTakeIdScreen() {
 
     const ok = await confirm({
       title: "Reset all stocks to zero?",
-      message: `This zeros ERP stock for every product in this session (${scopeLabel}) before you count. Use this when opening balances are wrong and you want to rebuild from a physical count. This cannot be undone.`,
+      message: `${
+        dirty
+          ? "Unsaved counts on this page will be discarded. "
+          : ""
+      }This zeros ERP stock for every product in this session (${scopeLabel}) before you count. Use this when opening balances are wrong and you want to rebuild from a physical count. This cannot be undone.`,
       confirmLabel: "Reset stocks to 0",
       destructive: true,
     });
@@ -727,12 +719,12 @@ export function InventoryStockTakeIdScreen() {
                 <button
                   type="button"
                   onClick={() => void handleResetStocks()}
-                  disabled={resettingStocks || saving || completing || !totalLines || dirty || hasSavedCounts}
+                  disabled={resettingStocks || saving || completing || !totalLines || hasSavedCounts}
                   title={
                     hasSavedCounts
                       ? "Cannot reset after counts have been saved"
                       : dirty
-                        ? "Save or discard unsaved counts first"
+                        ? "Discard unsaved counts and zero ERP stock for this session"
                         : "Zero ERP stock for all products in this session before counting"
                   }
                   className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"

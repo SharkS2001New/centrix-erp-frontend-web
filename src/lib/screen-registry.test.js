@@ -34,4 +34,8 @@ describe("screen registry (full ERP)", () => {
   it("excludes platform routes from registry expectations", () => {
     expect(isRegisteredHref("/platform/invoices")).toBe(false);
   });
+
+  it("resolves admin attendance clock device detail", () => {
+    expect(resolveScreen("/admin/attendance-clock/42")?.id).toBe("admin-attendance-clock-id");
+  });
 });

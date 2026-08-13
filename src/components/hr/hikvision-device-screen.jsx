@@ -13,6 +13,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { LiveFingerprintTestModal } from "@/components/hr/live-fingerprint-test-modal";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 const TABS = [
@@ -53,6 +54,7 @@ export function HikvisionDeviceScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
+  const [fingerprintTestOpen, setFingerprintTestOpen] = useState(false);
 
   const loadDevice = useCallback(async () => {
     const row = await apiRequest(organizationApiPath(`/attendance-clock-devices/${deviceId}`));
@@ -378,6 +380,14 @@ export function HikvisionDeviceScreen() {
           <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void testConnection()}>
             {busy ? "Connecting…" : "Test connection"}
           </PrimaryButton>
+          <PrimaryButton
+            type="button"
+            showIcon={false}
+            disabled={busy}
+            onClick={() => setFingerprintTestOpen(true)}
+          >
+            Test fingerprint
+          </PrimaryButton>
           <Link href="/admin/attendance-clock" className={SECONDARY_BTN_CLASS}>
             Back
           </Link>
@@ -648,6 +658,13 @@ export function HikvisionDeviceScreen() {
           </pre>
         </section>
       ) : null}
+
+      <LiveFingerprintTestModal
+        open={fingerprintTestOpen}
+        device={device}
+        organizationApiPath={organizationApiPath}
+        onClose={() => setFingerprintTestOpen(false)}
+      />
     </CatalogPageShell>
   );
 }

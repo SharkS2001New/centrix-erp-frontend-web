@@ -99,6 +99,9 @@ export const SCREEN_COMPONENTS = {
   "accounting-journal-entries-id": lazy(() =>
     import("@/components/tab-screens/accounting-journal-entries-id").then((m) => ({ default: m.AccountingJournalEntriesIdScreen })),
   ),
+  "admin-attendance-clock-id": lazy(() =>
+    import("@/components/tab-screens/admin-attendance-clock-id").then((m) => ({ default: m.AdminAttendanceClockIdScreen })),
+  ),
   "customers-id-edit": lazy(() =>
     import("@/components/tab-screens/customers-id-edit").then((m) => ({ default: m.CustomersIdEditScreen })),
   ),

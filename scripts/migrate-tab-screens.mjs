@@ -15,6 +15,16 @@ const COMPONENTS_OUT = path.join(ROOT, "src/lib/screen-registry-components.gener
 
 /** Prefer these existing screen modules instead of re-extracting. */
 const PREFERRED_SCREENS = {
+  "admin-attendance-clock": {
+    importPath: "@/components/tab-screens/admin-attendance-clock",
+    exportName: "AdminAttendanceClockScreen",
+    title: "Attendance clock-in",
+  },
+  "admin-attendance-clock-id": {
+    importPath: "@/components/tab-screens/admin-attendance-clock-id",
+    exportName: "AdminAttendanceClockIdScreen",
+    title: "Hikvision device",
+  },
   dashboard: {
     importPath: "@/components/dashboard/overview-dashboard",
     exportName: "OverviewDashboard",
