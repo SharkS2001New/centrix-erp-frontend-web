@@ -477,9 +477,47 @@ async function testFingerprintLocal(config, { push = false, lookbackSeconds = 12
     return { ok: false, detail: "Device LAN IP is required." };
   }
 
+  // Prove LAN reachability first — AcsEvent failures often hide as "network connection error".
+  const infoUrl = `${deviceBaseUrl(hik)}/ISAPI/System/deviceInfo`;
+  try {
+    const res = await fetchWithDigest(infoUrl, {
+      method: "GET",
+      username: hik.username || "admin",
+      password: hik.password || "",
+      accept: "application/xml, application/json",
+    });
+    if (res.status === 401) {
+      return {
+        ok: false,
+        detail:
+          `Reached ${hik.host}:${hik.port || 80}, but username/password was rejected.\n` +
+          "Fix Device username/password in settings, Save, then try again.",
+      };
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      return {
+        ok: false,
+        detail: `Hikvision deviceInfo HTTP ${res.status}: ${text.slice(0, 200)}`,
+      };
+    }
+  } catch (err) {
+    return { ok: false, detail: err.message || String(err) };
+  }
+
   const from = new Date(Date.now() - Math.max(15, lookbackSeconds) * 1000);
   const to = new Date();
-  const events = await fetchAcsEvents(config, from, to);
+  let events;
+  try {
+    events = await fetchAcsEvents(config, from, to);
+  } catch (err) {
+    return {
+      ok: false,
+      detail:
+        `Device is reachable, but reading punches failed:\n${err.message || String(err)}\n` +
+        "Place a finger on the terminal, wait for the beep, then try again.",
+    };
+  }
   if (!events.length) {
     return {
       ok: false,

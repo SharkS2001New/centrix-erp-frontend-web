@@ -249,6 +249,9 @@ export const SCREEN_COMPONENTS = {
   "customers-new": lazy(() =>
     import("@/components/tab-screens/customers-new").then((m) => ({ default: m.CustomersNewScreen })),
   ),
+  "customers-shop-debtors": lazy(() =>
+    import("@/components/tab-screens/customers-shop-debtors").then((m) => ({ default: m.CustomersShopDebtorsScreen })),
+  ),
   "finance-expenses": lazy(() =>
     import("@/components/tab-screens/finance-expenses").then((m) => ({ default: m.FinanceExpensesScreen })),
   ),

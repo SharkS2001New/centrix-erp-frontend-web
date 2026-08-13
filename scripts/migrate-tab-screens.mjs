@@ -40,6 +40,11 @@ const PREFERRED_SCREENS = {
     exportName: "CustomersListScreen",
     title: "Customers",
   },
+  "customers-shop-debtors": {
+    importPath: "@/components/tab-screens/customers-shop-debtors",
+    exportName: "CustomersShopDebtorsScreen",
+    title: "Shop debtors",
+  },
   "products-deleted": {
     importPath: "@/components/tab-screens/products-deleted",
     exportName: "ProductsDeletedScreen",

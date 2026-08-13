@@ -47,6 +47,7 @@ export const P = {
   },
   customers: {
     customers: { view: "customers.customers.view" },
+    shop_debtors: { view: "customers.shop_debtors.view" },
     statements: { view: "customers.statements.view" },
   },
   payments: {

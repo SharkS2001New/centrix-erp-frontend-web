@@ -74,7 +74,12 @@ export function isProductShelfLocationEnabled(capabilities) {
 }
 
 export function isRouteOnlyCustomers(capabilities) {
-  return Boolean(capabilities?.modules?.distribution);
+  if (!capabilities?.modules?.distribution) return false;
+  // External POS / direct-checkout credit: shop debtors coexist with route customers.
+  if (isExternalPosEnabled(capabilities)) return false;
+  const sales = capabilities?.module_settings?.sales ?? {};
+  if (Boolean(sales.enable_credit_payment)) return false;
+  return true;
 }
 
 export function mergeDistributionSettings(capabilities) {

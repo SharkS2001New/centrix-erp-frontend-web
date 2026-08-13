@@ -36,6 +36,29 @@ export function isDistributionModuleEnabled(capabilities) {
   return Boolean(capabilities?.modules?.distribution);
 }
 
+/** Direct-checkout credit customer field (External POS / till checkout). */
+export function isDirectCheckoutCreditEnabled(capabilities) {
+  if (!capabilities?.modules?.customers_suppliers) return false;
+  const sales = capabilities?.module_settings?.sales ?? {};
+  return Boolean(sales.enable_credit_payment);
+}
+
+/**
+ * Shop Debtors nav/page: credit customers for till / direct checkout.
+ * Hidden for distribution-only orgs that have neither External POS nor
+ * direct-checkout credit payment.
+ */
+export function shouldShowShopDebtors(capabilities) {
+  if (isExternalPosEnabled(capabilities) || isDirectCheckoutCreditEnabled(capabilities)) {
+    return true;
+  }
+  // Non-distribution orgs can still manage debtor customer records.
+  return (
+    Boolean(capabilities?.modules?.customers_suppliers) &&
+    !isDistributionModuleEnabled(capabilities)
+  );
+}
+
 /** KRA sidebar links when platform allows integration and the org has configured a device. */
 export function isKraNavEnabled(capabilities) {
   return isKraDeviceConfigured(capabilities?.module_settings, capabilities);

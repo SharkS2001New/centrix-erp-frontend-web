@@ -169,7 +169,7 @@ function match_admin_attendance_clock_id(pathname) {
 function match_customers_id_edit(pathname) {
   const m = pathname.match("^/customers/([^/]+)/edit$");
   if (!m) return false;
-  if (["new"].includes(m[1])) return false;
+  if (["new","shop-debtors"].includes(m[1])) return false;
   return true;
 }
 
@@ -414,6 +414,10 @@ function match_admin_users(pathname) {
 
 function match_customers_new(pathname) {
   return pathname === "/customers/new";
+}
+
+function match_customers_shop_debtors(pathname) {
+  return pathname === "/customers/shop-debtors";
 }
 
 function match_finance_expenses(pathname) {
@@ -731,7 +735,7 @@ function match_suppliers_returns(pathname) {
 function match_customers_id(pathname) {
   const m = pathname.match("^/customers/([^/]+)$");
   if (!m) return false;
-  if (["new"].includes(m[1])) return false;
+  if (["new","shop-debtors"].includes(m[1])) return false;
   return true;
 }
 
@@ -1363,6 +1367,12 @@ export const SCREEN_REGISTRY = [
     title: "New",
     route: "/customers/new",
     match: match_customers_new,
+  },
+  {
+    id: "customers-shop-debtors",
+    title: "Shop debtors",
+    route: "/customers/shop-debtors",
+    match: match_customers_shop_debtors,
   },
   {
     id: "finance-expenses",

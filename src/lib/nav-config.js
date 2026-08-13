@@ -13,6 +13,8 @@ import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
+import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 
 function buildReportNavItems() {
   return [
@@ -37,7 +39,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -210,6 +212,13 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.backend",
         permission: P.sales.orders.view,
         requireWhatsappOrders: true,
+      },
+      {
+        href: "/customers/shop-debtors",
+        label: "Shop debtors",
+        module: "customers_suppliers",
+        permission: P.customers.shop_debtors.view,
+        requireShopDebtors: true,
       },
     ],
   },
@@ -1241,6 +1250,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
   if (item.requireMpesaC2bReconciliation && !isMpesaC2bReconciliationEnabled(capabilities?.module_settings)) return false;
   if (item.requireWhatsappOrders && !isPlatformWhatsappEnabled(capabilities)) return false;
+  if (item.requireShopDebtors && !shouldShowShopDebtors(capabilities)) return false;
+  if (item.hideWhenRouteOnlyCustomers && isRouteOnlyCustomers(capabilities)) return false;
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;

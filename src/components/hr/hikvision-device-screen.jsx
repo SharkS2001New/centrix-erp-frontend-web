@@ -239,13 +239,40 @@ export function HikvisionDeviceScreen() {
     setBusy(true);
     try {
       const result = await apiRequest(`${base}/sync/attendance`, { method: "POST" });
+      const via = result.via_agent ? " via agent" : "";
       notifySuccess(
-        `Attendance sync — pulled ${result.pulled ?? 0}, applied ${result.applied ?? 0}.`,
+        `Attendance sync${via} — pulled ${result.pulled ?? 0}, applied ${result.applied ?? 0}` +
+          (result.retried ? `, retried ${result.retried}` : "") +
+          ".",
       );
+      if (result.errors?.length) {
+        notifyError(String(result.errors[0]));
+      }
       await loadStoredEvents();
       await loadOverview();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Attendance sync failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reprocessPending() {
+    setBusy(true);
+    try {
+      const result = await apiRequest(`${base}/sync/reprocess-pending`, { method: "POST" });
+      notifySuccess(
+        `Retry pending — applied ${result.applied ?? 0}` +
+          (result.errors?.length ? `, ${result.errors.length} still failing` : "") +
+          ".",
+      );
+      if (result.errors?.length) {
+        notifyError(String(result.errors[0]));
+      }
+      await loadStoredEvents();
+      await loadOverview();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Retry failed");
     } finally {
       setBusy(false);
     }
@@ -272,19 +299,25 @@ export function HikvisionDeviceScreen() {
     }
     setBusy(true);
     try {
-      await apiRequest(`${base}/sync/employees/map`, {
+      const result = await apiRequest(`${base}/sync/employees/map`, {
         method: "POST",
         body: {
           employee_id: Number(employeeId),
           hikvision_employee_no: hikvisionEmployeeNo,
         },
       });
-      notifySuccess(`Mapped ${hikvisionEmployeeNo}.`);
+      const applied = result?.reprocessed?.applied ?? 0;
+      notifySuccess(
+        applied > 0
+          ? `Mapped ${hikvisionEmployeeNo} — applied ${applied} pending punch(es).`
+          : `Mapped ${hikvisionEmployeeNo}.`,
+      );
       setUnmappedUsers((rows) =>
         rows.filter(
           (row) => (row.employeeNo ?? row.EmployeeNo ?? "") !== hikvisionEmployeeNo,
         ),
       );
+      await loadStoredEvents();
       await loadOverview();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Mapping failed");
@@ -644,17 +677,28 @@ export function HikvisionDeviceScreen() {
             <UnsupportedNotice feature="Access / attendance events" />
           ) : (
             <>
-              <PrimaryButton
-                type="button"
-                showIcon={false}
-                disabled={busy}
-                onClick={() => void syncAttendance()}
-              >
-                Sync now
-              </PrimaryButton>
+              <div className="flex flex-wrap gap-2">
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  disabled={busy}
+                  onClick={() => void syncAttendance()}
+                >
+                  Sync now
+                </PrimaryButton>
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  disabled={busy}
+                  onClick={() => void reprocessPending()}
+                >
+                  Retry pending punches
+                </PrimaryButton>
+              </div>
               <p className="text-xs text-slate-500">
-                Raw events are stored first, then Centrix HR rules determine clock in/out. Historical
-                sync recovers punches missed while offline.
+                Sync pulls events through <strong>CentrixAttendanceAgent</strong> on the office LAN.
+                Raw events are stored first; Centrix then applies clock in/out. Use Retry after mapping
+                an employee if punches were stuck as Pending.
               </p>
               <EventTable events={storedEvents} />
             </>
@@ -695,7 +739,19 @@ export function HikvisionDeviceScreen() {
             >
               Sync attendance
             </PrimaryButton>
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={busy}
+              onClick={() => void reprocessPending()}
+            >
+              Retry pending punches
+            </PrimaryButton>
           </div>
+          <p className="text-xs text-slate-500">
+            Mapping a device person to a Centrix employee also retries any pending punches for that
+            terminal ID. Sync attendance requires the agent online.
+          </p>
           {unmappedUsers.length > 0 ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -838,7 +894,7 @@ function EventTable({ events }) {
   }
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200">
-      <table className="w-full min-w-[640px] text-left text-sm">
+      <table className="w-full min-w-[720px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
             <th className="px-3 py-2">Time</th>
@@ -846,6 +902,7 @@ function EventTable({ events }) {
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2">Verify</th>
             <th className="px-3 py-2">Processed</th>
+            <th className="px-3 py-2">Error</th>
           </tr>
         </thead>
         <tbody>
@@ -856,6 +913,9 @@ function EventTable({ events }) {
               <td className="px-3 py-2 text-xs">{row.attendance_status ?? "—"}</td>
               <td className="px-3 py-2 text-xs">{row.verification_method ?? "—"}</td>
               <td className="px-3 py-2 text-xs">{row.processed_at ? "Yes" : "Pending"}</td>
+              <td className="max-w-[220px] truncate px-3 py-2 text-xs text-red-700" title={row.process_error || ""}>
+                {row.process_error || "—"}
+              </td>
             </tr>
           ))}
         </tbody>

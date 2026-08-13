@@ -5,7 +5,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 
-export const AGENT_VERSION = "2.2.0";
+export const AGENT_VERSION = "2.2.1";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -42,12 +42,63 @@ export function basicAuthHeader(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
+/**
+ * Node/undici often surfaces LAN failures as cryptic "network connection error" / "fetch failed".
+ * Unwrap causes and turn them into actionable text for the settings UI.
+ */
+export function describeNetworkError(err, targetUrl = "") {
+  const parts = [];
+  let cur = err;
+  for (let i = 0; i < 4 && cur; i += 1) {
+    const msg = String(cur.message || cur).trim();
+    if (msg && !parts.includes(msg)) parts.push(msg);
+    const code = cur.code || cur.cause?.code;
+    if (code && !parts.includes(String(code))) parts.push(String(code));
+    cur = cur.cause;
+  }
+  const joined = parts.join(" — ");
+  const lower = joined.toLowerCase();
+  const isLanFail =
+    /network connection error|fetch failed|econnrefused|econnreset|etimedout|enotfound|ehostunreach|enetunreach|socket hang up|other side closed|connect timeout/i.test(
+      lower,
+    );
+
+  if (!isLanFail) {
+    return joined || "Unknown network error";
+  }
+
+  let hostHint = targetUrl;
+  try {
+    if (targetUrl) {
+      const u = new URL(targetUrl);
+      hostHint = `${u.hostname}:${u.port || (u.protocol === "https:" ? 443 : 80)}`;
+    }
+  } catch {
+    /* keep raw */
+  }
+
+  return (
+    `Cannot reach Hikvision at ${hostHint || "the configured LAN address"}. ` +
+    "Confirm this PC is on the same office LAN, the Device LAN IP is correct, HTTP port is 80 " +
+    "(not 8000), Windows Firewall allows Node, and you can open the device web page from this PC. " +
+    `(Detail: ${joined})`
+  );
+}
+
+async function rawFetch(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    throw new Error(describeNetworkError(err, url));
+  }
+}
+
 /** Digest auth helper for Hikvision ISAPI (common on DS-K1T series). */
 export async function fetchWithDigest(
   url,
   { method = "GET", body, username, password, headers = {}, accept = "application/json" } = {},
 ) {
-  const first = await fetch(url, {
+  const first = await rawFetch(url, {
     method,
     headers: {
       Accept: accept,
@@ -61,7 +112,7 @@ export async function fetchWithDigest(
 
   const www = first.headers.get("www-authenticate") || "";
   if (!/digest/i.test(www)) {
-    return fetch(url, {
+    return rawFetch(url, {
       method,
       headers: {
         Accept: accept,
@@ -93,7 +144,7 @@ export async function fetchWithDigest(
     `algorithm=MD5, response="${response}", qop=${qop}, nc=${nc}, cnonce="${cnonce}"` +
     (opaque ? `, opaque="${opaque}"` : "");
 
-  return fetch(url, {
+  return rawFetch(url, {
     method,
     headers: {
       Accept: accept,
