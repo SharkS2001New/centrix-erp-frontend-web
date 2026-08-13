@@ -1,0 +1,688 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { apiRequest, ApiError } from "@/lib/api";
+import { useSettingsApi } from "@/contexts/settings-api-context";
+import {
+  CatalogPageShell,
+  Field,
+  PrimaryButton,
+  SECONDARY_BTN_CLASS,
+  inputClassName,
+} from "@/components/catalog/catalog-shared";
+import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { notifyError, notifySuccess } from "@/lib/notify";
+
+const TABS = [
+  "Overview",
+  "Employees",
+  "Fingerprints",
+  "Cards",
+  "Attendance",
+  "Synchronization",
+  "Capabilities",
+];
+
+function featureEnabled(capabilities, key) {
+  return Boolean(capabilities?.features?.[key]);
+}
+
+export function HikvisionDeviceScreen() {
+  const params = useParams();
+  const deviceId = params?.id;
+  const { organizationApiPath } = useSettingsApi();
+  const base = organizationApiPath(`/attendance-clock-devices/${deviceId}/hikvision`);
+
+  const [tab, setTab] = useState("Overview");
+  const [device, setDevice] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [capabilities, setCapabilities] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [cards, setCards] = useState([]);
+  const [unmappedUsers, setUnmappedUsers] = useState([]);
+  const [centrixEmployees, setCentrixEmployees] = useState([]);
+  const [mapSelections, setMapSelections] = useState({});
+  const [storedEvents, setStoredEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
+
+  const loadDevice = useCallback(async () => {
+    const row = await apiRequest(organizationApiPath(`/attendance-clock-devices/${deviceId}`));
+    setDevice(row);
+    return row;
+  }, [organizationApiPath, deviceId]);
+
+  const loadOverview = useCallback(async () => {
+    const data = await apiRequest(`${base}/overview`);
+    setOverview(data);
+    setCapabilities(data?.device?.capabilities_json ?? capabilities);
+  }, [base, capabilities]);
+
+  const testConnection = useCallback(async () => {
+    setBusy(true);
+    setConnectionError(null);
+    try {
+      const result = await apiRequest(`${base}/test-connection`, { method: "POST" });
+      if (!result.online) {
+        setConnectionError(result.error ?? "Could not reach the device.");
+        notifyError(result.error ?? "Device offline or unreachable from this server.");
+      } else {
+        notifySuccess("Connected to Hikvision terminal.");
+        setCapabilities(result.capabilities ?? null);
+        await loadOverview();
+        await loadDevice();
+      }
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : "Connection test failed";
+      setConnectionError(msg);
+      notifyError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }, [base, loadDevice, loadOverview]);
+
+  const loadUsers = useCallback(async () => {
+    const data = await apiRequest(`${base}/users/search`, {
+      method: "POST",
+      body: { maxResults: 50 },
+    });
+    setUsers(data.users ?? []);
+  }, [base]);
+
+  const loadCards = useCallback(async () => {
+    const data = await apiRequest(`${base}/cards/search`, {
+      method: "POST",
+      body: { maxResults: 50 },
+    });
+    setCards(data.cards ?? []);
+  }, [base]);
+
+  const loadUnmappedFromDevice = useCallback(async () => {
+    const data = await apiRequest(`${base}/sync/employees-from-device`);
+    setUnmappedUsers(data.unmapped ?? []);
+  }, [base]);
+
+  const loadCentrixEmployees = useCallback(async () => {
+    const res = await apiRequest("/employees", {
+      searchParams: { per_page: 200, is_active: 1 },
+    });
+    setCentrixEmployees(res.data ?? []);
+  }, []);
+
+  const loadStoredEvents = useCallback(async () => {
+    const data = await apiRequest(`${base}/events/stored`, {
+      searchParams: { per_page: 50 },
+    });
+    setStoredEvents(data.events?.data ?? data.events ?? []);
+  }, [base]);
+
+  const refreshCapabilities = useCallback(async () => {
+    const data = await apiRequest(`${base}/capabilities`);
+    setCapabilities(data.capabilities ?? null);
+  }, [base]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        await loadDevice();
+        if (!cancelled) {
+          try {
+            await loadOverview();
+          } catch {
+            /* overview may fail until first connection */
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          notifyError(e instanceof ApiError ? e.message : "Failed to load device");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadDevice, loadOverview]);
+
+  useEffect(() => {
+    if (tab === "Employees" && featureEnabled(capabilities, "users")) {
+      void loadUsers().catch(() => {});
+    }
+    if (tab === "Cards" && featureEnabled(capabilities, "cards")) {
+      void loadCards().catch(() => {});
+    }
+    if (tab === "Attendance") {
+      void loadStoredEvents().catch(() => {});
+    }
+    if (tab === "Synchronization") {
+      void loadCentrixEmployees().catch(() => {});
+    }
+    if (tab === "Capabilities") {
+      void refreshCapabilities().catch(() => {});
+    }
+  }, [
+    tab,
+    capabilities,
+    loadUsers,
+    loadCards,
+    loadStoredEvents,
+    loadCentrixEmployees,
+    refreshCapabilities,
+  ]);
+
+  const caps = capabilities ?? device?.capabilities_json ?? overview?.device?.capabilities_json;
+
+  async function syncEmployeesToDevice() {
+    setBusy(true);
+    try {
+      const result = await apiRequest(`${base}/sync/employees-to-device`, { method: "POST" });
+      notifySuccess(
+        `Sync complete — created ${result.created ?? 0}, updated ${result.updated ?? 0}.`,
+      );
+      await loadUsers();
+      await loadOverview();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Employee sync failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function syncAttendance() {
+    setBusy(true);
+    try {
+      const result = await apiRequest(`${base}/sync/attendance`, { method: "POST" });
+      notifySuccess(
+        `Attendance sync — pulled ${result.pulled ?? 0}, applied ${result.applied ?? 0}.`,
+      );
+      await loadStoredEvents();
+      await loadOverview();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Attendance sync failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadUnmappedAndRefresh() {
+    setBusy(true);
+    try {
+      await loadUnmappedFromDevice();
+      await loadOverview();
+      notifySuccess("Device persons loaded.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not load device persons");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function mapDeviceUser(hikvisionEmployeeNo) {
+    const employeeId = mapSelections[hikvisionEmployeeNo];
+    if (!employeeId) {
+      notifyError("Select a Centrix employee to map.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest(`${base}/sync/employees/map`, {
+        method: "POST",
+        body: {
+          employee_id: Number(employeeId),
+          hikvision_employee_no: hikvisionEmployeeNo,
+        },
+      });
+      notifySuccess(`Mapped ${hikvisionEmployeeNo}.`);
+      setUnmappedUsers((rows) =>
+        rows.filter(
+          (row) => (row.employeeNo ?? row.EmployeeNo ?? "") !== hikvisionEmployeeNo,
+        ),
+      );
+      await loadOverview();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Mapping failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const deviceInfo = useMemo(
+    () => device?.device_info_json ?? overview?.device?.device_info_json ?? {},
+    [device, overview],
+  );
+
+  if (loading) {
+    return (
+      <CatalogPageShell title="Hikvision device">
+        <p className="text-sm text-slate-500">Loading…</p>
+      </CatalogPageShell>
+    );
+  }
+
+  return (
+    <CatalogPageShell
+      title={device?.device_name || device?.device_no || "Hikvision device"}
+      subtitle="Full ISAPI device management — persons, cards, biometrics, and attendance events"
+      banner={
+        <AdminBreadcrumb
+          items={[
+            { label: "Administration", href: "/admin" },
+            { label: "Attendance clock-in", href: "/admin/attendance-clock" },
+            { label: device?.device_no ?? "Device" },
+          ]}
+        />
+      }
+      action={
+        <div className="flex flex-wrap gap-2">
+          <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void testConnection()}>
+            {busy ? "Connecting…" : "Test connection"}
+          </PrimaryButton>
+          <Link href="/admin/attendance-clock" className={SECONDARY_BTN_CLASS}>
+            Back
+          </Link>
+        </div>
+      }
+    >
+      {connectionError ? (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {connectionError}
+          {" "}
+          Centrix cloud cannot reach LAN devices unless the API runs on the same network or via VPN.
+          Use the Attendance Agent on the office PC for unattended sync.
+        </p>
+      ) : null}
+
+      <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 pb-2">
+        {TABS.map((label) => (
+          <button
+            key={label}
+            type="button"
+            className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+              tab === label
+                ? "bg-[#185FA5] text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+            onClick={() => setTab(label)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "Overview" ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <InfoCard label="Status" value={overview?.online ? "Online" : "Unknown / offline"} />
+          <InfoCard label="Model" value={deviceInfo.model ?? deviceInfo.deviceType ?? "—"} />
+          <InfoCard label="Serial" value={deviceInfo.serialNumber ?? "—"} />
+          <InfoCard label="Firmware" value={deviceInfo.firmwareVersion ?? "—"} />
+          <InfoCard label="LAN" value={device?.host ? `${device.host}:${device.port ?? 80}` : "—"} />
+          <InfoCard label="Persons" value={overview?.counts?.users ?? "—"} />
+          <InfoCard label="Cards" value={overview?.counts?.cards ?? "—"} />
+          <InfoCard label="Events today" value={overview?.counts?.events_today ?? "—"} />
+          <InfoCard
+            label="Last sync"
+            value={overview?.sync?.last_synced_at ?? device?.last_synced_at ?? "—"}
+          />
+        </div>
+      ) : null}
+
+      {tab === "Employees" ? (
+        <section className="space-y-3">
+          {!featureEnabled(caps, "users") ? (
+            <UnsupportedNotice feature="Person / employee management" />
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  disabled={busy}
+                  onClick={() => void syncEmployeesToDevice()}
+                >
+                  Sync Centrix → device
+                </PrimaryButton>
+                <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => void loadUsers()}>
+                  Refresh
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Uses Centrix <code className="rounded bg-slate-100 px-1">employee_code</code> as Hikvision{" "}
+                <code className="rounded bg-slate-100 px-1">employeeNo</code>.
+              </p>
+              <UserTable users={users} />
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "Fingerprints" ? (
+        <section>
+          {!featureEnabled(caps, "fingerprints") ? (
+            <UnsupportedNotice feature="Fingerprint management" />
+          ) : caps?.features?.remote_fingerprint_enrollment ? (
+            <p className="text-sm text-slate-600">
+              Remote enrollment is supported on this firmware. Use the terminal workflow from Centrix
+              employee sync, then capture on the device.
+            </p>
+          ) : (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Fingerprint enrollment must be completed on the terminal. Centrix can sync templates
+              where the device API allows download/apply — remote capture is not supported on this
+              DS-K1T904AMF firmware.
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "Cards" ? (
+        <section className="space-y-3">
+          {!featureEnabled(caps, "cards") ? (
+            <UnsupportedNotice feature="Card management" />
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => void loadCards()}>
+                  Refresh
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Cards are linked to Hikvision <code className="rounded bg-slate-100 px-1">employeeNo</code>{" "}
+                matching Centrix employee codes.
+              </p>
+              <CardTable cards={cards} />
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "Attendance" ? (
+        <section className="space-y-3">
+          {!featureEnabled(caps, "events") ? (
+            <UnsupportedNotice feature="Access / attendance events" />
+          ) : (
+            <>
+              <PrimaryButton
+                type="button"
+                showIcon={false}
+                disabled={busy}
+                onClick={() => void syncAttendance()}
+              >
+                Sync now
+              </PrimaryButton>
+              <p className="text-xs text-slate-500">
+                Raw events are stored first, then Centrix HR rules determine clock in/out. Historical
+                sync recovers punches missed while offline.
+              </p>
+              <EventTable events={storedEvents} />
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "Synchronization" ? (
+        <section className="space-y-4 text-sm text-slate-700">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <InfoCard label="Centrix employees" value={overview?.sync?.centrix_employees ?? "—"} />
+            <InfoCard label="Device persons" value={overview?.sync?.device_users ?? "—"} />
+            <InfoCard label="Mapped" value={overview?.sync?.mapped ?? "—"} />
+            <InfoCard label="Unmapped on device" value={overview?.sync?.unmapped_device_users ?? "—"} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={busy}
+              onClick={() => void syncEmployeesToDevice()}
+            >
+              Sync employees → device
+            </PrimaryButton>
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={busy}
+              onClick={() => void loadUnmappedAndRefresh()}
+            >
+              Load unmapped from device
+            </PrimaryButton>
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={busy}
+              onClick={() => void syncAttendance()}
+            >
+              Sync attendance
+            </PrimaryButton>
+          </div>
+          {unmappedUsers.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Unmapped device persons
+              </p>
+              <UnmappedUserTable
+                users={unmappedUsers}
+                centrixEmployees={centrixEmployees}
+                mapSelections={mapSelections}
+                onSelect={(no, employeeId) =>
+                  setMapSelections((prev) => ({ ...prev, [no]: employeeId }))
+                }
+                onMap={(no) => void mapDeviceUser(no)}
+                busy={busy}
+              />
+            </div>
+          ) : null}
+          {overview?.sync?.last_error ? (
+            <p className="text-xs text-red-700">Last error: {overview.sync.last_error}</p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {tab === "Capabilities" ? (
+        <section className="space-y-3">
+          <FeatureFlags capabilities={caps} />
+          <pre className="max-h-[480px] overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+            {JSON.stringify(caps ?? {}, null, 2)}
+          </pre>
+        </section>
+      ) : null}
+    </CatalogPageShell>
+  );
+}
+
+function InfoCard({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-0.5 text-sm font-medium text-slate-900">{String(value ?? "—")}</p>
+    </div>
+  );
+}
+
+function UnsupportedNotice({ feature }) {
+  return (
+    <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+      {feature} is not reported as supported by this terminal. Check Capabilities after Test
+      connection, or update firmware.
+    </p>
+  );
+}
+
+function UserTable({ users }) {
+  if (!users?.length) {
+    return <p className="text-sm text-slate-500">No persons on device (or not loaded yet).</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full min-w-[480px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-3 py-2">Employee No</th>
+            <th className="px-3 py-2">Name</th>
+            <th className="px-3 py-2">Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((row, idx) => (
+            <tr key={idx} className="border-t border-slate-100">
+              <td className="px-3 py-2 font-mono text-xs">
+                {row.employeeNo ?? row.EmployeeNo ?? "—"}
+              </td>
+              <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
+              <td className="px-3 py-2 text-xs text-slate-500">{row.userType ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function EventTable({ events }) {
+  if (!events?.length) {
+    return <p className="text-sm text-slate-500">No stored events yet. Run Sync now.</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full min-w-[640px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-3 py-2">Time</th>
+            <th className="px-3 py-2">Employee</th>
+            <th className="px-3 py-2">Status</th>
+            <th className="px-3 py-2">Verify</th>
+            <th className="px-3 py-2">Processed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((row) => (
+            <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
+              <td className="px-3 py-2 text-xs">{row.event_time ?? "—"}</td>
+              <td className="px-3 py-2 font-mono text-xs">{row.employee_no ?? "—"}</td>
+              <td className="px-3 py-2 text-xs">{row.attendance_status ?? "—"}</td>
+              <td className="px-3 py-2 text-xs">{row.verification_method ?? "—"}</td>
+              <td className="px-3 py-2 text-xs">{row.processed_at ? "Yes" : "Pending"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CardTable({ cards }) {
+  if (!cards?.length) {
+    return <p className="text-sm text-slate-500">No cards on device (or not loaded yet).</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full min-w-[480px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-3 py-2">Employee No</th>
+            <th className="px-3 py-2">Card No</th>
+            <th className="px-3 py-2">Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cards.map((row, idx) => (
+            <tr key={idx} className="border-t border-slate-100">
+              <td className="px-3 py-2 font-mono text-xs">
+                {row.employeeNo ?? row.EmployeeNo ?? "—"}
+              </td>
+              <td className="px-3 py-2 font-mono text-xs">{row.cardNo ?? row.CardNo ?? "—"}</td>
+              <td className="px-3 py-2 text-xs text-slate-500">{row.cardType ?? row.CardType ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FeatureFlags({ capabilities }) {
+  const features = capabilities?.features ?? {};
+  const labels = [
+    ["users", "Employees"],
+    ["cards", "Cards"],
+    ["fingerprints", "Fingerprints"],
+    ["events", "Events"],
+    ["remote_fingerprint_enrollment", "Remote fingerprint enrollment"],
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {labels.map(([key, label]) => {
+        const enabled = Boolean(features[key]);
+        return (
+          <span
+            key={key}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              enabled
+                ? "bg-emerald-100 text-emerald-800"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {label}: {enabled ? "Supported" : "Not supported"}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function UnmappedUserTable({ users, centrixEmployees, mapSelections, onSelect, onMap, busy }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full min-w-[640px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-3 py-2">Device employeeNo</th>
+            <th className="px-3 py-2">Name on device</th>
+            <th className="px-3 py-2">Map to Centrix employee</th>
+            <th className="px-3 py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((row) => {
+            const no = row.employeeNo ?? row.EmployeeNo ?? "";
+            return (
+              <tr key={no} className="border-t border-slate-100">
+                <td className="px-3 py-2 font-mono text-xs">{no || "—"}</td>
+                <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
+                <td className="px-3 py-2">
+                  <select
+                    className={inputClassName}
+                    value={mapSelections[no] ?? ""}
+                    onChange={(e) => onSelect(no, e.target.value)}
+                  >
+                    <option value="">Select employee…</option>
+                    {centrixEmployees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.employee_code} — {emp.full_name ?? emp.first_name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    disabled={busy || !mapSelections[no]}
+                    onClick={() => onMap(no)}
+                  >
+                    Map
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError, apiV1BaseUrl } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, FormModal, inputClassName, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
@@ -261,6 +262,13 @@ export function AttendanceClockDevicesSettings() {
                     <p className="mt-0.5 text-xs text-amber-700">LAN IP not set — required for agent</p>
                   )}
                 </div>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <Link
+                  href={`/admin/attendance-clock/${device.id}`}
+                  className={`${SECONDARY_BTN_CLASS} text-center`}
+                >
+                  Manage Hikvision
+                </Link>
                 <PrimaryButton
                   type="button"
                   showIcon={false}

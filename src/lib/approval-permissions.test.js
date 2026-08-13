@@ -71,5 +71,6 @@ describe("approval-permissions", () => {
     expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.approve" })).toBe(false);
     expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.reset" })).toBe(true);
     expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.manage" })).toBe(true);
+    expect(canResetStockTakeStocks({ hasPermission: () => false, user: { is_admin: true } })).toBe(true);
   });
 });

@@ -84,8 +84,9 @@ export function canApproveStockTakeCompletions({ hasPermission = () => false, ca
 }
 
 /** Zero ERP stock for all products in a stock take session before counting. */
-export function canResetStockTakeStocks({ hasPermission = () => false, capabilities } = {}) {
+export function canResetStockTakeStocks({ hasPermission = () => false, capabilities, user } = {}) {
   return (
+    Boolean(user?.is_admin) ||
     hasPermission("inventory.stock_take.reset") ||
     hasPermission("inventory.manage")
   );

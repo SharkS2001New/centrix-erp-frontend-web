@@ -9,12 +9,13 @@ const ACTION_LABELS = {
   edit: "Edit",
   delete: "Delete",
   approve: "Approve",
+  reset: "Reset",
   give: "Give",
   deliver: "Deliver",
   manage: "Manage",
 };
 
-const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "give", "deliver", "manage"];
+const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "reset", "give", "deliver", "manage"];
 
 export function modulePermissionIds(group) {
   return group.features.flatMap((feature) =>
