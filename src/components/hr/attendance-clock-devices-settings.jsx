@@ -278,6 +278,7 @@ export function AttendanceClockDevicesSettings() {
                   Download agent zip
                 </PrimaryButton>
               </div>
+              </div>
             </li>
           ))}
         </ul>
