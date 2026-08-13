@@ -212,25 +212,30 @@ export function AccountingReportScreen({
       title={title}
       subtitle={subtitle ?? `Accounting > ${title}`}
       action={
-        exportColumns.length ? (
-          <ReportExportToolbar
-            filename={title}
-            title={title}
-            subtitle={subtitle ?? ""}
-            columns={exportColumns}
-            exportSource={{
-              path: apiPath,
-              searchParams: exportSearchParams,
-            }}
-            meta={{
-              fromDate,
-              toDate,
-              branchName: branchLabel,
-              extraLines: accountLabel ? [`Account: ${accountOptionLabel(accountLabel)}`] : [],
-            }}
-            disabled={loading}
-          />
-        ) : null
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {exportColumns.length ? (
+            <ReportExportToolbar
+              filename={title}
+              title={title}
+              subtitle={subtitle ?? ""}
+              columns={exportColumns}
+              exportSource={{
+                path: apiPath,
+                searchParams: exportSearchParams,
+              }}
+              meta={{
+                fromDate,
+                toDate,
+                branchName: branchLabel,
+                extraLines: accountLabel ? [`Account: ${accountOptionLabel(accountLabel)}`] : [],
+              }}
+              disabled={loading}
+            />
+          ) : null}
+          <PrimaryButton type="button" showIcon={false} onClick={() => void refreshReport()} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh"}
+          </PrimaryButton>
+        </div>
       }
       toolbar={
         <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -295,9 +300,6 @@ export function AccountingReportScreen({
 />
             </Field>
           ) : null}
-          <PrimaryButton type="button" showIcon={false} onClick={() => void refreshReport()}>
-            Refresh
-          </PrimaryButton>
         </div>
       }
       banner={

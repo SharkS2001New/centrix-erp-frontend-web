@@ -184,6 +184,8 @@ export function ProfitLossReportScreen({ definition }) {
       section={definition.section}
       title={definition.title}
       subtitle={`${definition.subtitle} · ${periodLabel}`}
+      onRefresh={() => void refreshReport()}
+      refreshLoading={loading}
       exportConfig={{
         filename: definition.key ?? "profit-loss",
         columns: exportColumns,
@@ -210,7 +212,6 @@ export function ProfitLossReportScreen({ definition }) {
         onBranchChange={setBranchId}
         onExtraChange={() => {}}
         onFilter={() => setApplied({ fromDate, toDate, branchId })}
-        onRefresh={() => void refreshReport()}
         onReset={() => {
           const range = todayDashboardDateRange();
           const bid = initialBranchId(user, isOrgWide);

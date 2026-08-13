@@ -474,6 +474,8 @@ function StandardReportScreen({ definition }) {
       title={definition.title}
       subtitle={definition.subtitle}
       onAnalyzeWithAi={() => setAiOpen(true)}
+      onRefresh={refreshReport}
+      refreshLoading={loading}
       exportConfig={
         columns.length
           ? {
@@ -524,7 +526,6 @@ function StandardReportScreen({ definition }) {
         onBranchChange={setBranchId}
         onExtraChange={handleExtraFilterChange}
         onFilter={applyFilters}
-        onRefresh={refreshReport}
         onReset={resetFilters}
         loading={loading}
         showBranchFilter={multiBranch && !reportHidesBranchFilter(definition.key)}

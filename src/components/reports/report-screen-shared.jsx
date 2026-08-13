@@ -75,7 +75,6 @@ export function ReportFilterBar({
   onBranchChange,
   onExtraChange,
   onFilter,
-  onRefresh,
   onReset,
   loading = false,
   showBranchFilter = true,
@@ -85,7 +84,6 @@ export function ReportFilterBar({
   );
   const hasExtraFilters = (extraFilters ?? []).length > 0;
   const hasAnyFilterControl = showDateRange || showBranchFilter || hasQueryFilters || hasExtraFilters;
-  const refreshHandler = onRefresh ?? onFilter;
 
   if (!hasAnyFilterControl) {
     return null;
@@ -148,16 +146,6 @@ export function ReportFilterBar({
           <PrimaryButton type="button" showIcon={false} disabled={loading} onClick={onFilter}>
             {loading ? "Loading…" : "Filter"}
           </PrimaryButton>
-          {refreshHandler ? (
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => void refreshHandler()}
-              className={FILTER_RESET_BTN_CLASS}
-            >
-              {loading ? "Refreshing…" : "Refresh"}
-            </button>
-          ) : null}
           <button type="button" onClick={onReset} className={FILTER_RESET_BTN_CLASS}>
             Reset
           </button>
@@ -355,9 +343,18 @@ export function ReportPageShell({
   exportConfig,
   printAction = null,
   onExport,
+  onRefresh = null,
+  refreshLoading = false,
   onAnalyzeWithAi = null,
   children,
 }) {
+  const hasHeaderActions =
+    Boolean(exportConfig) ||
+    Boolean(printAction) ||
+    Boolean(onAnalyzeWithAi) ||
+    Boolean(onRefresh) ||
+    Boolean(onExport);
+
   return (
     <div>
       <AdminBreadcrumb
@@ -372,8 +369,8 @@ export function ReportPageShell({
           <h1 className="text-2xl font-semibold theme-heading">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm theme-subtext">{subtitle}</p> : null}
         </div>
-        {exportConfig || printAction || onAnalyzeWithAi ? (
-          <div className="flex flex-wrap items-center gap-2">
+        {hasHeaderActions ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {printAction ? (
               <button
                 type="button"
@@ -385,27 +382,38 @@ export function ReportPageShell({
               </button>
             ) : null}
             {exportConfig ? (
-          <ReportExportToolbar
-            filename={exportConfig.filename}
-            title={title}
-            subtitle={subtitle ?? exportConfig.subtitle}
-            columns={exportConfig.columns}
-            getRows={exportConfig.getRows}
-            exportSource={exportConfig.exportSource}
-            meta={exportConfig.meta}
-            footerRow={exportConfig.footerRow}
-            estimatedRowCount={exportConfig.estimatedRowCount}
-            disabled={exportConfig.disabled}
-            onAnalyzeWithAi={onAnalyzeWithAi ?? exportConfig.onAnalyzeWithAi ?? null}
-          />
+              <ReportExportToolbar
+                filename={exportConfig.filename}
+                title={title}
+                subtitle={subtitle ?? exportConfig.subtitle}
+                columns={exportConfig.columns}
+                getRows={exportConfig.getRows}
+                exportSource={exportConfig.exportSource}
+                meta={exportConfig.meta}
+                footerRow={exportConfig.footerRow}
+                estimatedRowCount={exportConfig.estimatedRowCount}
+                disabled={exportConfig.disabled}
+                onAnalyzeWithAi={onAnalyzeWithAi ?? exportConfig.onAnalyzeWithAi ?? null}
+              />
             ) : onAnalyzeWithAi ? (
               <AiAnalyzeButton onClick={onAnalyzeWithAi} />
             ) : null}
+            {!exportConfig && !printAction && !onAnalyzeWithAi && onExport ? (
+              <button type="button" onClick={onExport} className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}>
+                Export CSV
+              </button>
+            ) : null}
+            {onRefresh ? (
+              <PrimaryButton
+                type="button"
+                showIcon={false}
+                disabled={refreshLoading}
+                onClick={() => void onRefresh()}
+              >
+                {refreshLoading ? "Refreshing…" : "Refresh"}
+              </PrimaryButton>
+            ) : null}
           </div>
-        ) : onExport ? (
-          <button type="button" onClick={onExport} className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}>
-            Export CSV
-          </button>
         ) : null}
       </div>
       {children}

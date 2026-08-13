@@ -470,6 +470,8 @@ export function KraReceiptsReportScreen({ definition }) {
         section={definition.section}
         title={definition.title}
         subtitle={isInvoicesView ? undefined : definition.subtitle}
+        onRefresh={() => void refreshReport()}
+        refreshLoading={loading}
         exportConfig={{
           filename: definition.key ?? "kra-receipts",
           columns: exportColumns.map((col) => ({
@@ -535,7 +537,6 @@ export function KraReceiptsReportScreen({ definition }) {
               },
             });
           }}
-          onRefresh={() => void refreshReport()}
           onReset={() => {
             const range = getReportsDefaultDateRange(capabilities?.module_settings);
             const bid = defaultReportBranchId(user, isOrgWide);

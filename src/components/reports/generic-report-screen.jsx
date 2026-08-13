@@ -231,28 +231,33 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       title={label ?? "Report"}
       subtitle={subtitle ?? undefined}
       action={
-        exportColumns.length ? (
-          <ReportExportToolbar
-            filename={reportKey ?? label ?? "report"}
-            title={label ?? "Report"}
-            subtitle={subtitle ?? ""}
-            columns={exportColumns}
-            exportSource={{
-              path: apiPath,
-              searchParams: exportSearchParams,
-              estimatedRowCount: total,
-            }}
-            estimatedRowCount={total}
-            meta={{
-              fromDate,
-              toDate,
-              branchName: branchLabel,
-              extraLines: recordHeaderLines,
-            }}
-            disabled={loading}
-            onAnalyzeWithAi={() => setAiOpen(true)}
-          />
-        ) : null
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {exportColumns.length ? (
+            <ReportExportToolbar
+              filename={reportKey ?? label ?? "report"}
+              title={label ?? "Report"}
+              subtitle={subtitle ?? ""}
+              columns={exportColumns}
+              exportSource={{
+                path: apiPath,
+                searchParams: exportSearchParams,
+                estimatedRowCount: total,
+              }}
+              estimatedRowCount={total}
+              meta={{
+                fromDate,
+                toDate,
+                branchName: branchLabel,
+                extraLines: recordHeaderLines,
+              }}
+              disabled={loading}
+              onAnalyzeWithAi={() => setAiOpen(true)}
+            />
+          ) : null}
+          <PrimaryButton type="button" showIcon={false} onClick={() => void refreshReport()} disabled={loading}>
+            {loading ? "Refreshing…" : "Refresh"}
+          </PrimaryButton>
+        </div>
       }
       toolbar={
         showFilterToolbar ? (
@@ -308,9 +313,6 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             }}
             optionsByKey={filterOptions}
           />
-          <PrimaryButton type="button" showIcon={false} onClick={() => void refreshReport()}>
-            Refresh
-          </PrimaryButton>
         </FilterToolbar>
         ) : (
           <div className="mb-4">

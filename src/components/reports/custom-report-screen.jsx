@@ -224,6 +224,8 @@ export function CustomReportScreen({ templateId }) {
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
+      onRefresh={() => void refreshReport()}
+      refreshLoading={loading}
       exportConfig={{
         filename: definition.title,
         columns: columns.map((col) => ({
@@ -258,7 +260,6 @@ export function CustomReportScreen({ templateId }) {
         onBranchChange={setBranchId}
         onExtraChange={() => {}}
         onFilter={applyFilters}
-        onRefresh={() => void refreshReport()}
         onReset={resetFilters}
         loading={loading}
         showBranchFilter={multiBranch}

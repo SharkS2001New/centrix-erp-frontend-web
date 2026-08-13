@@ -146,6 +146,8 @@ export function ExpensesReportScreen({ definition }) {
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
+      onRefresh={() => void refreshReport()}
+      refreshLoading={loading}
       exportConfig={{
         filename: definition.key ?? "expenses",
         columns: (definition.columns ?? []).map((col) => ({
@@ -187,7 +189,6 @@ export function ExpensesReportScreen({ definition }) {
           setPage(1);
           setApplied({ fromDate, toDate, branchId });
         }}
-        onRefresh={() => void refreshReport()}
         onReset={() => {
           const bid = user?.branch_id ? String(user.branch_id) : "";
           setFromDate("");
