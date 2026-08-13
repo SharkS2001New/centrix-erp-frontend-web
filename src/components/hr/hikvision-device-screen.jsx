@@ -76,12 +76,10 @@ export function HikvisionDeviceScreen() {
     try {
       const result = await apiRequest(`${base}/test-connection`, { method: "POST" });
       if (!result.online) {
-        setConnectionError(result.error ?? "Could not reach the device.");
-        notifyError(result.error ?? "Device offline or unreachable from this server.");
+        setConnectionError(result.error ?? "CentrixAttendanceAgent is not reachable.");
+        notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
       } else {
-        const via = result.via_agent ? " (via Attendance Agent)" : "";
-        notifySuccess(`Connected to Hikvision terminal${via}.`);
-        setCapabilities(result.capabilities ?? null);
+        notifySuccess(result.message ?? "CentrixAttendanceAgent is connected.");
         await loadOverview();
         await loadDevice();
       }
@@ -410,7 +408,7 @@ export function HikvisionDeviceScreen() {
       action={
         <div className="flex flex-wrap gap-2">
           <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void testConnection()}>
-            {busy ? "Connecting…" : "Test connection"}
+            {busy ? "Testing…" : "Test connection"}
           </PrimaryButton>
           <PrimaryButton
             type="button"
@@ -430,8 +428,9 @@ export function HikvisionDeviceScreen() {
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {connectionError}
           {" "}
-          Cloud Centrix reaches this terminal through the <strong>Attendance Agent</strong> on an office
-          PC. Download the agent zip, install it on the same LAN as the Hikvision, then try again.
+          Cloud Centrix talks to this terminal through <strong>CentrixAttendanceAgent</strong> on an
+          office PC. Download the agent for this device, install it on the same LAN as the Hikvision,
+          then try Test connection again.
         </p>
       ) : null}
 
@@ -725,15 +724,15 @@ function AgentStatusBanner({ device, overview }) {
     >
       {online ? (
         <>
-          <strong>Attendance Agent online</strong>
-          {viaAgent ? " — device commands are proxied through the office LAN PC." : " — ready for Manage Hikvision."}
-          {device.agent_version ? ` (agent v${device.agent_version})` : ""}
+          <strong>CentrixAttendanceAgent online</strong>
+          {viaAgent ? " — Centrix can send commands to the office agent." : " — ready for Manage Hikvision."}
+          {device.agent_version ? ` (v${device.agent_version})` : ""}
         </>
       ) : (
         <>
-          <strong>Attendance Agent offline.</strong> Download and run the agent on a Windows PC on the same LAN
-          as the terminal. All Manage Hikvision actions (users, cards, fingerprints, test connection) go
-          through the agent when Centrix is cloud-hosted.
+          <strong>CentrixAttendanceAgent offline.</strong> Download it for this device and run it on a
+          Windows PC on the same LAN as the terminal. Test connection checks that Centrix can reach the
+          agent. Manage Hikvision (users, cards, fingerprints) also goes through the agent.
         </>
       )}
     </div>

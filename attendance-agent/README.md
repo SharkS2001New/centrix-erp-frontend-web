@@ -29,11 +29,11 @@ Hikvision (LAN)  ←ISAPI—  Attendance Agent  —HTTPS→  Centrix Cloud
 
 1. Unzip `CentrixAttendanceAgent-….zip` (prefer `C:\Centrix\attendance-agent`).
 2. Install Node.js 20+ if needed: https://nodejs.org/
-3. Double-click **`install-windows.bat`**.
-4. A browser opens with **every connection field** (Centrix URL, token, device ID, LAN IP, port, username, password). Confirm them, then click **Save, test & continue**.
-5. Windows registers an always-on task that starts at logon/startup and keeps the agent running as a service.
+3. Double-click **`install-windows.bat`** (accept the Administrator prompt).
+4. A browser opens with **every connection field**. Confirm them, then click **Save, test & continue**.
+5. Windows installs the **CentrixAttendanceAgent** service (Automatic delayed start). It runs in the background and starts with Windows.
 
-Change settings later: **`open-settings.bat`**. Remove: **`uninstall-windows.bat`**.
+Change settings later: **`open-settings.bat`**. Remove: **`uninstall-windows.bat`** (Administrator).
 
 ## Manual setup
 

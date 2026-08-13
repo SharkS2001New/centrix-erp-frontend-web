@@ -1,9 +1,43 @@
+#Requires -RunAsAdministrator
 # ASCII-only: Windows PowerShell 5.1 misreads UTF-8 punctuation as broken quotes.
 $ErrorActionPreference = "Stop"
-$taskName = "CentrixAttendanceAgent"
-Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+
+$ServiceName = "CentrixAttendanceAgent"
+$InstallDir = "C:\Program Files\Centrix\AttendanceAgent"
+$serviceExe = Join-Path $InstallDir "CentrixAttendanceAgent.exe"
+
+$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($existing) {
+  if ($existing.Status -eq "Running") {
+    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+  }
+  if (Test-Path $serviceExe) {
+    & $serviceExe stop 2>$null | Out-Null
+    & $serviceExe uninstall 2>$null | Out-Null
+    Start-Sleep -Seconds 1
+  }
+  $still = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+  if ($still) {
+    sc.exe delete $ServiceName | Out-Null
+    Start-Sleep -Seconds 2
+  }
+  Write-Host "Removed Windows service '$ServiceName'."
+}
+
+$existingTask = Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+if ($existingTask) {
+  Stop-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+  Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false
+  Write-Host "Removed legacy scheduled task '$ServiceName'."
+}
+
 Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.CommandLine -match 'agent\.js' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Write-Host "Removed scheduled task '$taskName'." -ForegroundColor Green
-Write-Host "config.json was left in place. Delete this folder if you no longer need the agent."
+
+if (Test-Path $InstallDir) {
+  Remove-Item -Path $InstallDir -Recurse -Force
+  Write-Host "Removed $InstallDir"
+}
+
+Write-Host "CentrixAttendanceAgent uninstalled. Download-folder copies were left in place." -ForegroundColor Green

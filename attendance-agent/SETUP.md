@@ -56,11 +56,11 @@ Centrix matches punches by that code (with or without `EMP#` prefix). Wrong ID =
 1. In Centrix → **Administration → Attendance clock-in**, click **Download agent zip** for the terminal.
 2. Unzip on a PC on the **same LAN** as the Hikvision (with internet to Centrix). Prefer `C:\Centrix\attendance-agent`.
 3. Install **Node.js 20+** if needed: https://nodejs.org/
-4. Double-click **`install-windows.bat`**. A browser opens so you can confirm **all connection details** (Centrix URL, token, device ID, LAN IP, port **80**, username, password). Click **Save, test & continue**.
-5. The installer then registers an always-on Windows task (starts at logon/startup, restarts if it crashes).
+4. Double-click **`install-windows.bat`** and accept the Administrator prompt. A browser opens so you can confirm **all connection details** (Centrix URL, token, device ID, LAN IP, port **80**, username, password). Click **Save, test & continue**.
+5. The installer copies the agent to `C:\Program Files\Centrix\AttendanceAgent` and installs the **CentrixAttendanceAgent** Windows service (starts automatically with Windows).
 
 If you need to change settings later: `open-settings.bat` or `npm run setup`.
-To remove the service: `uninstall-windows.bat`.
+To remove the service: `uninstall-windows.bat` (Run as Administrator).
 
 The zip already includes `config.json` with Centrix API URL, a dedicated agent token, and `deviceId` / `deviceNo`.
 
@@ -106,7 +106,7 @@ Then clock **out** and confirm the session closes.
 
 ## What’s next after go-live
 
-1. Leave the agent on the always-on Windows task / office mini-PC.
+1. Leave **CentrixAttendanceAgent** running as a Windows service on the office PC.
 2. Enroll remaining staff with matching IDs.
 3. Train supervisors to use **HR → Attendance** (not the device UI) for records.
 4. Optional later: multi-terminal agents (one config/`deviceNo` per device).

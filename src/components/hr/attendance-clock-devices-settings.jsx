@@ -9,7 +9,6 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { LiveFingerprintTestModal } from "@/components/hr/live-fingerprint-test-modal";
 import {
   downloadAttendanceAgentPackage,
-  downloadAttendanceAgentSource,
 } from "@/lib/attendance-agent-download";
 
 const EMPTY_FORM = {
@@ -39,7 +38,6 @@ export function AttendanceClockDevicesSettings() {
     use_https: false,
   });
   const [downloading, setDownloading] = useState(false);
-  const [downloadingSource, setDownloadingSource] = useState(false);
   const [connectionTestingId, setConnectionTestingId] = useState(null);
   const [fingerprintTestDevice, setFingerprintTestDevice] = useState(null);
   const [editDevice, setEditDevice] = useState(null);
@@ -73,10 +71,6 @@ export function AttendanceClockDevicesSettings() {
   }, [load]);
 
   async function testDeviceConnection(device) {
-    if (!device?.host) {
-      notifyError("Set the device LAN IP before testing connection.");
-      return;
-    }
     setConnectionTestingId(device.id);
     try {
       const result = await apiRequest(
@@ -84,13 +78,9 @@ export function AttendanceClockDevicesSettings() {
         { method: "POST" },
       );
       if (result.online) {
-        const portNote =
-          result.resolved_port && device.port && Number(device.port) !== result.resolved_port
-            ? ` (using port ${result.resolved_port})`
-            : "";
-        notifySuccess(`${device.device_no} — connected (${result.device_info?.model ?? "Hikvision"})${portNote}.`);
+        notifySuccess(result.message ?? `CentrixAttendanceAgent is connected for ${device.device_no}.`);
       } else {
-        notifyError(result.error ?? "Could not reach the device from this server.");
+        notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
       }
       await load();
     } catch (e) {
@@ -240,7 +230,7 @@ export function AttendanceClockDevicesSettings() {
       config.centrixApiUrl = apiV1BaseUrl().replace(/\/$/, "");
 
       const { filename } = await downloadAttendanceAgentPackage(config);
-      notifySuccess(`Downloaded ${filename}. Unzip on a LAN PC and run install-windows.bat.`);
+      notifySuccess(`Downloaded ${filename}. Unzip on a LAN PC and run install-windows.bat as Administrator.`);
       setDownloadDevice(null);
       await load();
     } catch (err) {
@@ -250,30 +240,7 @@ export function AttendanceClockDevicesSettings() {
     }
   }
 
-  async function handleDownloadSourceZip() {
-    if (downloadingSource) return;
-    setDownloadingSource(true);
-    try {
-      const { filename } = await downloadAttendanceAgentSource();
-      notifySuccess(
-        `Downloaded ${filename}. For a preconfigured zip (API URL + token), register a clock device first, then use Download agent zip.`,
-      );
-    } catch (err) {
-      notifyError(err instanceof Error ? err.message : "Could not download attendance agent zip");
-    } finally {
-      setDownloadingSource(false);
-    }
-  }
-
   const activeDevices = devices.filter((d) => d.is_active !== false);
-
-  function startConfiguredDownload() {
-    if (!activeDevices.length) {
-      notifyError("Add a clock device below first, then download a preconfigured agent zip.");
-      return;
-    }
-    openDownload(activeDevices[0]);
-  }
 
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
@@ -282,9 +249,9 @@ export function AttendanceClockDevicesSettings() {
           <h4 className="text-sm font-medium text-slate-900">Clock devices</h4>
           <p className="mt-1 text-xs text-slate-500">
             Centrix is cloud-hosted and cannot reach a LAN device IP directly. Register the terminal
-            here, then download the preconfigured <strong>attendance agent</strong> for an office PC
-            on the same network as the Hikvision. During install the agent lets you confirm every
-            connection detail, then runs as a Windows service.
+            below, then download <strong>CentrixAttendanceAgent</strong> for that device. Install it on
+            an office PC on the same network as the Hikvision. Test connection checks that Centrix can
+            talk to the agent.
           </p>
         </div>
         <button
@@ -296,47 +263,12 @@ export function AttendanceClockDevicesSettings() {
         </button>
       </div>
 
-      <section className="rounded-lg border border-[#185FA5]/30 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h5 className="text-sm font-semibold text-slate-900">Centrix Attendance Agent</h5>
-            <p className="mt-1 text-xs text-slate-600">
-              Same idea as Local printing / Print Agent: download a zip, unzip on a Windows PC on the
-              same LAN as the fingerprint terminal, then install.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <PrimaryButton
-              type="button"
-              showIcon={false}
-              disabled={loading || downloading}
-              onClick={() => startConfiguredDownload()}
-            >
-              {downloading ? "Preparing…" : "Download agent zip"}
-            </PrimaryButton>
-            <button
-              type="button"
-              className={SECONDARY_BTN_CLASS}
-              disabled={downloadingSource}
-              onClick={() => void handleDownloadSourceZip()}
-            >
-              {downloadingSource ? "Downloading…" : "Download blank package"}
-            </button>
-          </div>
-        </div>
-        <p className="mt-2 text-[11px] text-slate-500">
-          <strong>Download agent zip</strong> issues a Centrix token and prefills{" "}
-          <code className="rounded bg-slate-100 px-1">config.json</code> for a registered device.
-          Use <strong>blank package</strong> only if you will enter settings manually on the PC.
-        </p>
-      </section>
-
       {loading ? (
         <p className="text-sm text-slate-500">Loading devices…</p>
       ) : activeDevices.length === 0 ? (
         <p className="rounded-lg border border-dashed border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-900">
-          No clock devices yet. Add one below (device number + LAN IP), then click{" "}
-          <strong>Download agent zip</strong>.
+          No clock devices yet. Add one below (device number + LAN IP), then download{" "}
+          <strong>CentrixAttendanceAgent</strong> for that device.
         </p>
       ) : (
         <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
@@ -396,7 +328,7 @@ export function AttendanceClockDevicesSettings() {
                   className="shrink-0"
                   onClick={() => openDownload(device)}
                 >
-                  Download agent zip
+                  Download CentrixAttendanceAgent
                 </PrimaryButton>
               </div>
               </div>
@@ -562,13 +494,13 @@ export function AttendanceClockDevicesSettings() {
       <FormModal
         title={
           downloadDevice
-            ? `Download agent zip — ${downloadDevice.device_no}`
-            : "Download attendance agent zip"
+            ? `Download CentrixAttendanceAgent — ${downloadDevice.device_no}`
+            : "Download CentrixAttendanceAgent"
         }
         open={Boolean(downloadDevice)}
         onClose={() => !downloading && setDownloadDevice(null)}
         onSubmit={() => void confirmDownload()}
-        submitLabel={downloading ? "Preparing…" : "Download agent zip"}
+        submitLabel={downloading ? "Preparing…" : "Download CentrixAttendanceAgent"}
       >
         <p className="mb-3 text-sm text-slate-600">
           Centrix API URL, device number, and a dedicated agent token are filled in automatically.
@@ -630,10 +562,10 @@ export function AttendanceClockDevicesSettings() {
         </div>
         <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-500">
           <li>Unzip on a Windows PC on the same LAN as the terminal.</li>
-          <li>Install Node.js 20+ if needed, then run <code>install-windows.bat</code>.</li>
+          <li>Install Node.js 20+ if needed, then run <code>install-windows.bat</code> as Administrator.</li>
           <li>
-            The installer opens a browser so you can confirm every connection detail, then Save, test
-            &amp; continue. Windows then keeps the agent running as a service.
+            Confirm connection details in the browser, then Save, test &amp; continue. Windows installs
+            the <strong>CentrixAttendanceAgent</strong> service (starts with Windows).
           </li>
         </ol>
       </FormModal>
@@ -658,9 +590,9 @@ function AgentStatusLine({ device }) {
   const online = isAgentOnline(device);
   return (
     <p className={`mt-1 text-[11px] ${online ? "text-emerald-700" : "text-amber-700"}`}>
-      Agent {online ? "online" : "offline"}
+      CentrixAttendanceAgent {online ? "online" : "offline"}
       {device.agent_last_seen_at ? ` — last seen ${new Date(device.agent_last_seen_at).toLocaleString()}` : ""}
-      {!online ? " — install agent zip on a LAN PC" : ""}
+      {!online ? " — download and install on a LAN PC" : ""}
     </p>
   );
 }
@@ -689,9 +621,10 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
           (Administration → Attendance clock-in).
         </li>
         <li>
-          Click <strong>Download agent zip</strong> — the zip is preconfigured with Centrix URL, token,
-          and device settings. On a LAN PC: unzip → <code>install-windows.bat</code> (Node 20+). The
-          installer opens a setup screen for every connection detail, then registers an always-on service.
+          Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is preconfigured
+          with Centrix URL, token, and device settings. On a LAN PC: unzip →{" "}
+          <code>install-windows.bat</code> as Administrator (Node 20+). The installer opens a setup
+          screen for every connection detail, then installs the Windows service.
         </li>
         <li>
           The agent talks to the Hikvision on the LAN and to Centrix online — attendance punches and

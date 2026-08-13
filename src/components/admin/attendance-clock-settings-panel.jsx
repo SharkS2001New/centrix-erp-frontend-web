@@ -94,13 +94,14 @@ export function AttendanceClockSettingsPanel() {
               Register the terminal under <strong>Clock devices</strong> (device number, LAN IP, password).
             </li>
             <li>
-              Click <strong>Download agent zip</strong> in the Centrix Attendance Agent box — the zip is
+              Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is
               preconfigured with Centrix URL, token, and device number.
             </li>
             <li>
               On a Windows PC on the same LAN: unzip → install Node.js 20+ if needed → run{" "}
-              <code className="rounded bg-white px-1 text-xs">open-settings.bat</code> (first-run settings
-              UI) → then <code className="rounded bg-white px-1 text-xs">install-windows.bat</code>.
+              <code className="rounded bg-white px-1 text-xs">install-windows.bat</code> as Administrator.
+              Confirm connection details, then Save, test &amp; continue. That installs the{" "}
+              <strong>CentrixAttendanceAgent</strong> Windows service.
             </li>
             <li>
               Punches appear under <strong>HR → Attendance</strong>. Re-open agent settings anytime with{" "}
@@ -237,7 +238,7 @@ function AttendanceConfigureGuideModal({ open, onClose }) {
           <ol className="mt-1 list-decimal space-y-1 pl-5 text-slate-600">
             <li>Choose Clock device and save.</li>
             <li>Add the terminal (device number, LAN IP, password).</li>
-            <li>Download the preconfigured agent zip for that device (Download agent zip).</li>
+            <li>Download CentrixAttendanceAgent for that device.</li>
           </ol>
         </div>
         <div>
@@ -246,15 +247,9 @@ function AttendanceConfigureGuideModal({ open, onClose }) {
             <li>Install Node.js 20+ from nodejs.org if needed.</li>
             <li>Unzip the download.</li>
             <li>
-              Run <code>open-settings.bat</code> — a browser settings UI opens so you can confirm
-              device IP / password (first run).
-            </li>
-            <li>
-              Run <code>install-windows.bat</code> to schedule sync every 5 minutes.
-            </li>
-            <li>
-              Optional: <code>npm start</code> for continuous mode (also opens the settings UI if
-              config is incomplete).
+              Run <code>install-windows.bat</code> as Administrator. Confirm connection details in the
+              browser, then Save, test &amp; continue. Windows installs the{" "}
+              <strong>CentrixAttendanceAgent</strong> service.
             </li>
           </ol>
         </div>

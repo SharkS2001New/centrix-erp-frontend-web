@@ -179,9 +179,24 @@ async function postPunchLegacy(config, event) {
 }
 
 async function executeIsapiCommand(config, command) {
+  const method = String(command.method || "GET").toUpperCase();
+  const path = command.path.startsWith("/") ? command.path : `/${command.path}`;
+  if (method === "PING" || path === "/agent/ping") {
+    return {
+      success: true,
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        pong: true,
+        agent: "CentrixAttendanceAgent",
+        version: AGENT_VERSION,
+      }),
+      error: null,
+    };
+  }
+
   const hik = config.hikvision;
   const accept = command.accept === "xml" ? "application/xml" : "application/json";
-  const path = command.path.startsWith("/") ? command.path : `/${command.path}`;
   const url = `${deviceBaseUrl(hik)}${path}`;
   const res = await fetchWithDigest(url, {
     method: command.method || "GET",
