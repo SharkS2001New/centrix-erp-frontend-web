@@ -226,9 +226,10 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toMatch(/page-break-after:\s*always/);
     expect(html).toMatch(/display:\s*grid/);
     expect(html).toContain('class="has-doc-print-edge-footer"');
-    expect(html).toMatch(/\.print-page\s*\{[^}]*width:\s*100%/);
-    expect(html).not.toMatch(/@media print[\s\S]*width:\s*210mm/);
+    expect(html).toMatch(/\.print-page\s*\{[^}]*width:\s*210mm/);
+    expect(html).toMatch(/@media print[\s\S]*\.print-page\s*\{[\s\S]*?width:\s*100%/);
     expect(html).toMatch(/\.col-total\s*\{[^}]*white-space:\s*nowrap/);
+    expect(html).toContain("5% 26% 22% 24% 23%");
   });
 
   it("titles combined lists with natural-language route names", () => {

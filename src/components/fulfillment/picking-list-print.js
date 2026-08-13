@@ -288,8 +288,8 @@ function normalizePickingLines(lines, uomByProductCode) {
 
 /** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid. */
 function salesPickingGridColumns() {
-  // Last column needs room for "1,234,567.89" without clipping on A4.
-  return "4% minmax(0, 26%) minmax(0, 22%) minmax(0, 24%) minmax(72px, 18%)";
+  // Give Line amount more than the old 17% so 1,234,567.89 is not clipped.
+  return "5% 26% 22% 24% 23%";
 }
 
 function distributionPickingGridColumns(includeShelfLocation = true) {
@@ -479,9 +479,10 @@ function pickingListPrintStyles(
   const sharedPrintLayout = `
     @page { size: A4; margin: 0; }
     html { height: auto; }
-    /* One physical A4 sheet per .print-page — fit inside body print padding (not 210mm + padding). */
+    /* Screen preview is a physical A4 sheet. Print uses 100% of the padded body
+       (12mm sides) so the Line amount column is not clipped past 210mm. */
     .print-page {
-      width: 100%;
+      width: 210mm;
       max-width: 100%;
       box-sizing: border-box;
       padding: ${px(24)};
@@ -557,19 +558,19 @@ function pickingListPrintStyles(
       padding: ${px(8)} 0;
       font-weight: 700;
     }
-    .pick-head > div { padding: 0 ${px(6)}; min-width: 0; }
+    .pick-head > div { padding: 0 ${px(6)}; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
       padding: ${px(8)} 0;
     }
-    .pick-line > div { padding: 0 ${px(6)}; min-width: 0; }
+    .pick-line > div { padding: 0 ${px(6)}; }
     .col-no { text-align: center; }
-    .col-price { min-width: 0; word-break: break-word; }
+    .col-price { overflow-wrap: break-word; }
     .col-total {
       text-align: right;
       white-space: nowrap;
+      overflow: visible;
       font-variant-numeric: tabular-nums;
-      padding-right: ${px(2)};
     }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: ${px(220)}; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
@@ -586,7 +587,7 @@ function pickingListPrintStyles(
       .print-page {
         width: 100% !important;
         max-width: 100% !important;
-        padding: ${px(4, true)} 0 8mm;
+        padding: ${px(8, true)} ${px(4, true)} 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -649,7 +650,7 @@ function pickingListPrintStyles(
       .print-page {
         width: 100% !important;
         max-width: 100% !important;
-        padding: ${px(4, true)} 0 8mm;
+        padding: ${px(8, true)} ${px(4, true)} 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }
