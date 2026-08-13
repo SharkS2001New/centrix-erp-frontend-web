@@ -2,9 +2,18 @@
 
 import { inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
-import { defaultDamageMeasureLevel, damageMeasureLabel, normalizeDamageLevel } from "@/lib/stock-uom";
+import {
+  defaultDamageMeasureLevel,
+  damageMeasureLabel,
+  inventoryAdjustmentMeasureLevels,
+  normalizeDamageLevel,
+  normalizeInventoryAdjustmentLevel,
+} from "@/lib/stock-uom";
 
-export function damageMeasureOptions(uom) {
+export function damageMeasureOptions(uom, { sellOnRetail = false } = {}) {
+  if (sellOnRetail) {
+    return inventoryAdjustmentMeasureLevels(uom, { sellOnRetail: true });
+  }
   return uomStockTakeLevels(uom);
 }
 
@@ -15,9 +24,20 @@ export function DamageMeasureSelect({
   className,
   onClick,
   id,
+  /** Sells W/R — expose retail small unit alongside wholesale pack. */
+  sellOnRetail = false,
+  measureLevels: measureLevelsProp = null,
+  normalizeLevel: normalizeLevelProp = null,
 }) {
-  const options = damageMeasureOptions(uom);
-  const normalized = normalizeDamageLevel(value, uom);
+  const measureLevels =
+    measureLevelsProp ?? damageMeasureOptions(uom, { sellOnRetail });
+  const normalizeLevel =
+    normalizeLevelProp ??
+    (sellOnRetail
+      ? (packageType, uomRow) =>
+          normalizeInventoryAdjustmentLevel(packageType, uomRow, { sellOnRetail: true })
+      : normalizeDamageLevel);
+  const normalized = normalizeLevel(value, uom);
 
   return (
     <div id={id} className="contents" onClick={onClick}>
@@ -25,7 +45,7 @@ export function DamageMeasureSelect({
         className={className ?? `${inputClassName()} text-xs capitalize`}
         value={normalized}
         onChange={onChange}
-        options={options.map((opt) => ({ value: opt.key, label: opt.label }))}
+        options={measureLevels.map((opt) => ({ value: opt.key, label: opt.label }))}
       />
     </div>
   );

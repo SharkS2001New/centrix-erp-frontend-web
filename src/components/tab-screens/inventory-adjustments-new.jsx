@@ -17,7 +17,6 @@ import {
 } from "@/components/lpo/lpo-product-utils";
 import {
   DamageMeasureSelect,
-  defaultDamagePackageType,
 } from "@/components/inventory/damage-measure-select";
 import {
   InventoryProductLines,
@@ -25,15 +24,31 @@ import {
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { productStockAtLocation } from "@/lib/pos-stock";
-import { damageQtyToBase, formatMixedStockDisplay, normalizeDamageLevel } from "@/lib/stock-uom";
+import {
+  defaultInventoryAdjustmentMeasure,
+  formatDisplayQty,
+  formatMixedStockDisplay,
+  inventoryAdjustmentMeasureLevels,
+  inventoryAdjustmentQtyToBase,
+  normalizeInventoryAdjustmentLevel,
+  productSellsRetail,
+} from "@/lib/stock-uom";
+import { smallPackagingLabel } from "@/lib/uom-packaging";
 
 function lineFromProduct(product) {
   const uom = product.uom;
+  const sellOnRetail = productSellsRetail(product);
   return {
     ...lineFromEnrichedProduct(product),
     uom: uom && typeof uom === "object" ? uom : null,
+    unit_id: product.unit_id ?? null,
+    sell_on_retail: sellOnRetail,
+    retail_package: product.retail_package ?? null,
     quantity: "1",
-    package_type: defaultDamagePackageType(uom),
+    package_type: defaultInventoryAdjustmentMeasure(uom, {
+      sellOnRetail,
+      stockLocation: "shop",
+    }),
     stock_location: "shop",
     direction: "increase",
     stock_in_shop: Number(product.stock_in_shop ?? product.stock_on_hand_shop ?? 0),
@@ -49,6 +64,14 @@ function lineFromProduct(product) {
 
 function formatLineStock(line, uom, location) {
   const baseQty = productStockAtLocation(line, location);
+  const sellOnRetail = productSellsRetail(line);
+  if (!sellOnRetail || !uom) {
+    return formatMixedStockDisplay(baseQty, uom).text;
+  }
+  const level = normalizeInventoryAdjustmentLevel(line.package_type, uom, { sellOnRetail });
+  if (level === "small") {
+    return `${formatDisplayQty(baseQty)} ${smallPackagingLabel(uom)}`;
+  }
   return formatMixedStockDisplay(baseQty, uom).text;
 }
 
@@ -81,8 +104,15 @@ export function InventoryAdjustmentsNewScreen() {
       const next = prev.map((line) => {
         const uom = resolveInventoryLineUom(line, uomById);
         if (!uom) return line;
-        const package_type = normalizeDamageLevel(line.package_type, uom);
-        const needsUom = !line.uom || typeof line.uom !== "object";
+        const sellOnRetail = productSellsRetail(line);
+        const package_type = normalizeInventoryAdjustmentLevel(line.package_type, uom, {
+          sellOnRetail,
+        });
+        const needsUom =
+          !line.uom ||
+          typeof line.uom !== "object" ||
+          line.uom.id !== uom.id ||
+          line.uom.uses_small_packaging !== uom.uses_small_packaging;
         if (needsUom || package_type !== line.package_type) {
           changed = true;
           return { ...line, uom, package_type };
@@ -101,7 +131,11 @@ export function InventoryAdjustmentsNewScreen() {
     })
       .then((product) => {
         if (cancelled || !product?.product_code) return;
-        const uom = uomById.get(product.unit_id);
+        const uom =
+          uomById.get(product.unit_id) ??
+          uomById.get(String(product.unit_id ?? "")) ??
+          product.uom ??
+          null;
         setLines([lineFromProduct({ ...product, uom })]);
         setPresetLoaded(true);
       })
@@ -146,7 +180,10 @@ export function InventoryAdjustmentsNewScreen() {
     try {
       for (const line of toPost) {
         const uom = resolveInventoryLineUom(line, uomById);
-        const baseQty = damageQtyToBase(line.quantity, line.package_type, uom);
+        const sellOnRetail = productSellsRetail(line);
+        const baseQty = inventoryAdjustmentQtyToBase(line.quantity, line.package_type, uom, {
+          sellOnRetail,
+        });
         const signedQty = line.direction === "decrease" ? -Math.abs(baseQty) : Math.abs(baseQty);
         const body = {
           branch_id: branchId,
@@ -211,6 +248,8 @@ export function InventoryAdjustmentsNewScreen() {
           emptyMessage="Search and add products to adjust."
           renderCells={(line, index) => {
             const uom = resolveInventoryLineUom(line, uomById);
+            const sellOnRetail = productSellsRetail(line);
+            const measureLevels = inventoryAdjustmentMeasureLevels(uom, { sellOnRetail });
             const stockLabel = formatLineStock(line, uom, line.stock_location);
             return (
               <>
@@ -228,6 +267,8 @@ export function InventoryAdjustmentsNewScreen() {
                 <td className="px-3 py-2">
                   <DamageMeasureSelect
                     uom={uom}
+                    sellOnRetail={sellOnRetail}
+                    measureLevels={measureLevels}
                     value={line.package_type}
                     onChange={(package_type) => updateLine(index, { package_type })}
                     onClick={(e) => e.stopPropagation()}
@@ -249,7 +290,18 @@ export function InventoryAdjustmentsNewScreen() {
                   <SearchableSelect
                     className={`${inputClassName()} text-xs`}
                     value={line.stock_location}
-                    onChange={(stock_location) => updateLine(index, { stock_location })}
+                    onChange={(stock_location) => {
+                      const nextMeasure = sellOnRetail
+                        ? defaultInventoryAdjustmentMeasure(uom, {
+                            sellOnRetail,
+                            stockLocation: stock_location,
+                          })
+                        : line.package_type;
+                      updateLine(index, {
+                        stock_location,
+                        package_type: nextMeasure,
+                      });
+                    }}
                     options={[
                       { value: "shop", label: "Shop" },
                       { value: "store", label: "Store" },

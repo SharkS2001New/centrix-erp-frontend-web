@@ -42,6 +42,16 @@ export function AttendanceClockDevicesSettings() {
   const [downloadingSource, setDownloadingSource] = useState(false);
   const [connectionTestingId, setConnectionTestingId] = useState(null);
   const [fingerprintTestDevice, setFingerprintTestDevice] = useState(null);
+  const [editDevice, setEditDevice] = useState(null);
+  const [editForm, setEditForm] = useState({
+    location: "",
+    host: "",
+    port: "80",
+    username: "admin",
+    password: "",
+    use_https: false,
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,7 +84,11 @@ export function AttendanceClockDevicesSettings() {
         { method: "POST" },
       );
       if (result.online) {
-        notifySuccess(`${device.device_no} — connected (${result.device_info?.model ?? "Hikvision"}).`);
+        const portNote =
+          result.resolved_port && device.port && Number(device.port) !== result.resolved_port
+            ? ` (using port ${result.resolved_port})`
+            : "";
+        notifySuccess(`${device.device_no} — connected (${result.device_info?.model ?? "Hikvision"})${portNote}.`);
       } else {
         notifyError(result.error ?? "Could not reach the device from this server.");
       }
@@ -96,6 +110,50 @@ export function AttendanceClockDevicesSettings() {
       return;
     }
     setFingerprintTestDevice(device);
+  }
+
+  function openEdit(device) {
+    setEditDevice(device);
+    setEditForm({
+      location: device.location || "",
+      host: device.host || "",
+      port: device.port != null ? String(device.port) : "80",
+      username: device.username || "admin",
+      password: "",
+      use_https: Boolean(device.use_https),
+    });
+  }
+
+  async function saveEdit() {
+    if (!editDevice?.id || editSaving) return;
+    if (!editForm.host.trim()) {
+      notifyError("Device LAN IP is required.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const body = {
+        location: editForm.location.trim() || null,
+        host: editForm.host.trim(),
+        port: editForm.port ? Number(editForm.port) : 80,
+        username: editForm.username.trim() || "admin",
+        use_https: Boolean(editForm.use_https),
+      };
+      if (editForm.password.trim()) {
+        body.password = editForm.password.trim();
+      }
+      await apiRequest(organizationApiPath(`/attendance-clock-devices/${editDevice.id}`), {
+        method: "PATCH",
+        body,
+      });
+      notifySuccess(`${editDevice.device_no} updated.`);
+      setEditDevice(null);
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not update device");
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   async function register() {
@@ -305,6 +363,13 @@ export function AttendanceClockDevicesSettings() {
                 <button
                   type="button"
                   className={SECONDARY_BTN_CLASS}
+                  onClick={() => openEdit(device)}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
                   disabled={connectionTestingId === device.id}
                   onClick={() => void testDeviceConnection(device)}
                 >
@@ -374,6 +439,9 @@ export function AttendanceClockDevicesSettings() {
             placeholder="80"
             className={inputClassName()}
           />
+          <p className="mt-1 text-[11px] text-slate-500">
+            Hikvision ISAPI HTTP uses port <strong>80</strong> — not 8000 (Centrix dev server).
+          </p>
         </Field>
         <Field label="Device username">
           <input
@@ -418,6 +486,78 @@ export function AttendanceClockDevicesSettings() {
       <AttendanceClockDeviceHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       <FormModal
+        title={editDevice ? `Edit clock device — ${editDevice.device_no}` : ""}
+        open={Boolean(editDevice)}
+        onClose={() => !editSaving && setEditDevice(null)}
+        onSubmit={() => void saveEdit()}
+        submitLabel={editSaving ? "Saving…" : "Save changes"}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Location (optional)">
+              <input
+                type="text"
+                value={editForm.location}
+                onChange={(e) => setEditForm((p) => ({ ...p, location: e.target.value }))}
+                className={inputClassName()}
+              />
+            </Field>
+          </div>
+          <Field label="Device LAN IP">
+            <input
+              type="text"
+              value={editForm.host}
+              onChange={(e) => setEditForm((p) => ({ ...p, host: e.target.value }))}
+              placeholder="192.168.100.215"
+              className={inputClassName()}
+              autoFocus
+            />
+          </Field>
+          <Field label="Port">
+            <input
+              type="number"
+              value={editForm.port}
+              onChange={(e) => setEditForm((p) => ({ ...p, port: e.target.value }))}
+              className={inputClassName()}
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Use <strong>80</strong> for Hikvision HTTP ISAPI. Port 8000 is the Centrix API, not the
+              terminal.
+            </p>
+          </Field>
+          <Field label="Username">
+            <input
+              type="text"
+              value={editForm.username}
+              onChange={(e) => setEditForm((p) => ({ ...p, username: e.target.value }))}
+              className={inputClassName()}
+              autoComplete="off"
+            />
+          </Field>
+          <Field
+            label={editDevice?.has_password ? "Password (leave blank to keep)" : "Device password"}
+          >
+            <input
+              type="password"
+              value={editForm.password}
+              onChange={(e) => setEditForm((p) => ({ ...p, password: e.target.value }))}
+              className={inputClassName()}
+              autoComplete="new-password"
+              placeholder={editDevice?.has_password ? "••••••••" : "Required"}
+            />
+          </Field>
+          <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={editForm.use_https}
+              onChange={(e) => setEditForm((p) => ({ ...p, use_https: e.target.checked }))}
+            />
+            Device uses HTTPS on LAN
+          </label>
+        </div>
+      </FormModal>
+
+      <FormModal
         title={
           downloadDevice
             ? `Download agent zip — ${downloadDevice.device_no}`
@@ -450,6 +590,7 @@ export function AttendanceClockDevicesSettings() {
               onChange={(e) => setDownloadForm((p) => ({ ...p, port: e.target.value }))}
               className={inputClassName()}
             />
+            <p className="mt-1 text-[11px] text-slate-500">Hikvision HTTP ISAPI: port 80.</p>
           </Field>
           <Field label="Username">
             <input

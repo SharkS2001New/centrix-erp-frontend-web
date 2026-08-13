@@ -60,6 +60,128 @@ export function normalizeDamageLevel(packageType, uom) {
   return keys.includes(level) ? level : (keys[0] ?? level);
 }
 
+export function productSellsRetail(productOrLine) {
+  if (
+    productOrLine?.sell_on_retail === 1 ||
+    productOrLine?.sell_on_retail === true
+  ) {
+    return true;
+  }
+  const retailPack = productOrLine?.retail_package;
+  return Boolean(retailPack && typeof retailPack === "object");
+}
+
+function formatInventoryAdjustmentMeasureLabel(level, uom, { sellOnRetail = false } = {}) {
+  if (!sellOnRetail) return level.label;
+  if (level.key === "full") {
+    return `Wholesale (${fullPackageLabel(uom, level.label)})`;
+  }
+  if (level.key === "small") {
+    return `Retail (${smallPackagingLabel(uom)})`;
+  }
+  return level.label;
+}
+
+/**
+ * Measure levels for stock adjustment on Sells W/R products.
+ * Wholesale-only UOMs (Bag only) still expose the retail small unit (kg, pcs, …).
+ */
+export function inventoryAdjustmentMeasureLevels(uom, { sellOnRetail = false } = {}) {
+  let levels = uomStockTakeLevels(uom);
+
+  // UOM marked full-pack-only but product sells retail — expose the small unit too.
+  if (
+    sellOnRetail &&
+    levels.length === 1 &&
+    levels[0].key === "full" &&
+    uomHasFullPack(uom)
+  ) {
+    levels = [
+      levels[0],
+      { level: "small", key: "small", label: smallPackagingLabel(uom) },
+    ];
+  }
+
+  // Guard: catalog says small-unit breakdown is enabled but levels collapsed to one row.
+  if (
+    levels.length === 1 &&
+    levels[0].key === "full" &&
+    uomHasFullPack(uom) &&
+    uomUsesSmallPackaging(uom)
+  ) {
+    levels = [
+      levels[0],
+      { level: "small", key: "small", label: smallPackagingLabel(uom) },
+    ];
+  }
+
+  if (!sellOnRetail) return levels;
+
+  return levels.map((level) => ({
+    ...level,
+    label: formatInventoryAdjustmentMeasureLabel(level, uom, { sellOnRetail: true }),
+  }));
+}
+
+export function normalizeInventoryAdjustmentLevel(
+  packageType,
+  uom,
+  { sellOnRetail = false } = {},
+) {
+  let level;
+  if (packageType === "full_package" || packageType === "partial" || packageType === "full") {
+    level = uomHasFullPack(uom) ? "full" : "small";
+  } else if (packageType === "pieces" || packageType === "small") {
+    level = "small";
+  } else if (packageType === "middle") {
+    level = "middle";
+  } else {
+    level = defaultInventoryAdjustmentMeasure(uom, { sellOnRetail });
+  }
+
+  const keys = inventoryAdjustmentMeasureLevels(uom, { sellOnRetail }).map(
+    (entry) => entry.key,
+  );
+  return keys.includes(level) ? level : (keys[0] ?? level);
+}
+
+export function defaultInventoryAdjustmentMeasure(
+  uom,
+  { sellOnRetail = false, stockLocation = "shop" } = {},
+) {
+  const levels = inventoryAdjustmentMeasureLevels(uom, { sellOnRetail });
+  if (sellOnRetail && stockLocation === "shop") {
+    return levels.find((l) => l.key === "small")?.key ?? levels[0]?.key ?? "small";
+  }
+  return levels.find((l) => l.key === "full")?.key ?? defaultDamageMeasureLevel(uom);
+}
+
+export function inventoryAdjustmentMeasureLabel(uom, packageType, { sellOnRetail = false } = {}) {
+  const level = normalizeInventoryAdjustmentLevel(packageType, uom, { sellOnRetail });
+  const match = inventoryAdjustmentMeasureLevels(uom, { sellOnRetail }).find(
+    (l) => l.key === level,
+  );
+  return match?.label ?? level;
+}
+
+export function inventoryAdjustmentQtyToBase(
+  displayQty,
+  packageType,
+  uomOrFactor,
+  { sellOnRetail = false } = {},
+) {
+  const qty = Number(displayQty ?? 0);
+  const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
+  const level = normalizeInventoryAdjustmentLevel(packageType, uom, { sellOnRetail });
+
+  if (level === "small") return qty;
+  if (level === "middle") {
+    const mid = Number(uom?.middle_factor ?? 0);
+    return mid > 0 ? qty * mid : qty;
+  }
+  return displayToBaseQty(qty, uomOrFactor);
+}
+
 export function defaultDamageMeasureLevel(uom) {
   const levels = uomStockTakeLevels(uom);
   return levels.find((l) => l.key === "full")?.key ?? levels[0]?.key ?? "small";

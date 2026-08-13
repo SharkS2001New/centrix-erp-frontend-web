@@ -228,6 +228,9 @@ import {
   formatPreviousOrderEditUploadBlockMessage,
   setLiveTemporaryCartOccupancy,
   clearLiveTemporaryCartOccupancy,
+  isPosOfflineCheckoutInFlight,
+  isFreshOfflinePosNewSale,
+  cartMatchesFailedOutboxResidue,
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
@@ -3363,26 +3366,33 @@ export function PosScreen({ standalone = false }) {
 
     const failKey = `fail:${Number(syncProgress.failed)}:${String(syncProgress.message ?? "")}`;
     if (failedSyncDetachKeyRef.current === failKey) return;
-    failedSyncDetachKeyRef.current = failKey;
 
     const current = cartRef.current;
+
+    // Never disrupt checkout, payment, or receipt print for an unrelated live ticket.
+    if (
+      paymentOpenRef.current ||
+      busy ||
+      receiptPrintStatus === "pending" ||
+      isPosOfflineCheckoutInFlight()
+    ) {
+      return;
+    }
+
     // Keep an explicit reopen-for-edit (has offline_edit_snapshot). Everything else
     // attached to a failed outbox must release the till for the next sale.
     if (isActiveOfflineEditSession(current) && current?.offline_edit_snapshot) {
+      failedSyncDetachKeyRef.current = failKey;
       return;
     }
     if (current?.held_order_num && current?.superseded_sale_id && editedOrderHasLocalDraftChanges(current)) {
+      failedSyncDetachKeyRef.current = failKey;
       return;
     }
 
+    failedSyncDetachKeyRef.current = failKey;
+
     void (async () => {
-      await clearLocalPosCart().catch(() => {});
-
-      const live = cartRef.current;
-      if (!live) return;
-
-      // Even when the UI is already a blank pending-fresh shell, sticky TemporaryCart
-      // may still hold the failed upload's lines — wipe before the next scan.
       const wipeStickyIfNeeded = async (maybeCart) => {
         if (isServerPosCartId(maybeCart?.id)) {
           markServerCartConsumed(maybeCart.id);
@@ -3411,33 +3421,40 @@ export function PosScreen({ standalone = false }) {
         }
       };
 
+      const live = cartRef.current;
+      if (!live) return;
+
+      // Cashier is building a fresh offline ticket while another row failed sync —
+      // scrub orphan sticky server lines only; never wipe the live workspace.
+      if (isFreshOfflinePosNewSale(live)) {
+        await wipeStickyIfNeeded(live);
+        return;
+      }
+
       if (isFreshWorkspacePlaceholder(live)) {
         await wipeStickyIfNeeded(live);
         return;
       }
 
-      if (
-        live.held_order_num ||
-        live.offline_client_sale_uuid ||
-        live.offline ||
-        live.superseded_sale_id ||
-        (live.lines?.length ?? 0) > 0
-      ) {
-        // Failed sync residue often leaves TemporaryCart lines on the "new order"
-        // workspace — clear them so the next scan cannot merge into the failed sale.
-        await wipeStickyIfNeeded(live);
-        const nextPos = resolveFreshWorkspacePosNum(
-          stripOfflineSaleMarkers(live),
-          sessionPosOrders,
-          null,
-          null,
-          floatSessionId,
-        );
-        applyFreshWorkspacePlaceholder(live, nextPos);
-        setStatusMessage(
-          "Sync failed for a queued sale — workspace cleared for a new order. Use Sync failed to retry.",
-        );
+      // Only detach when the workspace is actually tied to a failed outbox row.
+      if (!cartMatchesFailedOutboxResidue(live, failedSyncOrders)) {
+        return;
       }
+
+      await clearLocalPosCart().catch(() => {});
+
+      await wipeStickyIfNeeded(live);
+      const nextPos = resolveFreshWorkspacePosNum(
+        stripOfflineSaleMarkers(live),
+        sessionPosOrders,
+        null,
+        null,
+        floatSessionId,
+      );
+      applyFreshWorkspacePlaceholder(live, nextPos);
+      setStatusMessage(
+        "Sync failed for a queued sale — workspace cleared for a new order. Use Sync failed to retry.",
+      );
     })();
   }, [
     standalone,
@@ -3448,6 +3465,9 @@ export function PosScreen({ standalone = false }) {
     floatSessionId,
     user?.branch_id,
     tillId,
+    busy,
+    receiptPrintStatus,
+    failedSyncOrders,
   ]);
 
   // When the offline catalog refreshes, apply new prices to open cart lines.

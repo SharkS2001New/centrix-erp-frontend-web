@@ -231,3 +231,43 @@ describe("loadOrCreateLocalPosCart — ghost line prevention", () => {
     expect(next.lines ?? []).toHaveLength(0);
   });
 });
+
+describe("failed sync residue detection", () => {
+  it("treats a fresh offline new sale as unrelated to failed outbox rows", async () => {
+    const {
+      isFreshOfflinePosNewSale,
+      cartMatchesFailedOutboxResidue,
+    } = await import("@/lib/pos-offline");
+
+    const liveCart = {
+      id: "active",
+      offline: true,
+      updated_at_ms: 9000,
+      lines: [{ product_code: "SUGAR", quantity: 1, unit_price: 140, client_line_id: "c1" }],
+    };
+    const failed = [
+      {
+        client_sale_uuid: "failed-a",
+        items: [{ product_code: "SUGAR", quantity: 1, unit_price: 140 }],
+        updated_at_ms: 1000,
+      },
+    ];
+
+    expect(isFreshOfflinePosNewSale(liveCart)).toBe(true);
+    expect(cartMatchesFailedOutboxResidue(liveCart, failed)).toBe(false);
+  });
+
+  it("detects workspace tied to a failed outbox uuid", async () => {
+    const { cartMatchesFailedOutboxResidue } = await import("@/lib/pos-offline");
+
+    const liveCart = {
+      id: "active",
+      offline: true,
+      offline_client_sale_uuid: "failed-a",
+      lines: [{ product_code: "MAIZE", quantity: 2, unit_price: 60, client_line_id: "c1" }],
+    };
+    const failed = [{ client_sale_uuid: "failed-a", items: liveCart.lines }];
+
+    expect(cartMatchesFailedOutboxResidue(liveCart, failed)).toBe(true);
+  });
+});

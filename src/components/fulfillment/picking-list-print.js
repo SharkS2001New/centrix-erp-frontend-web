@@ -288,7 +288,8 @@ function normalizePickingLines(lines, uomByProductCode) {
 
 /** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid. */
 function salesPickingGridColumns() {
-  return "5% 28% 24% 26% 17%";
+  // Last column needs room for "1,234,567.89" without clipping on A4.
+  return "4% minmax(0, 26%) minmax(0, 22%) minmax(0, 24%) minmax(72px, 18%)";
 }
 
 function distributionPickingGridColumns(includeShelfLocation = true) {
@@ -478,9 +479,10 @@ function pickingListPrintStyles(
   const sharedPrintLayout = `
     @page { size: A4; margin: 0; }
     html { height: auto; }
-    /* One physical A4 sheet per .print-page — do not rely on browser auto-fragmentation alone. */
+    /* One physical A4 sheet per .print-page — fit inside body print padding (not 210mm + padding). */
     .print-page {
-      width: 210mm;
+      width: 100%;
+      max-width: 100%;
       box-sizing: border-box;
       padding: ${px(24)};
       /* Safety margin so the last row is not clipped by printer edges / footers. */
@@ -555,14 +557,20 @@ function pickingListPrintStyles(
       padding: ${px(8)} 0;
       font-weight: 700;
     }
-    .pick-head > div { padding: 0 ${px(6)}; }
+    .pick-head > div { padding: 0 ${px(6)}; min-width: 0; }
     .pick-line {
       border-bottom: 1px solid #cbd5e1;
       padding: ${px(8)} 0;
     }
-    .pick-line > div { padding: 0 ${px(6)}; }
+    .pick-line > div { padding: 0 ${px(6)}; min-width: 0; }
     .col-no { text-align: center; }
-    .col-total { text-align: right; }
+    .col-price { min-width: 0; word-break: break-word; }
+    .col-total {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      padding-right: ${px(2)};
+    }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; line-height: 1.35; max-width: ${px(220)}; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
     .signatures h3 { font-size: ${px(12)}; margin: 0 0 ${px(8)}; }
@@ -576,8 +584,9 @@ function pickingListPrintStyles(
       }
       body { font-size: ${px(12, true)}; }
       .print-page {
-        width: 210mm;
-        padding: ${px(8, true)} ${px(4, true)} 8mm;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: ${px(4, true)} 0 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }
@@ -638,8 +647,9 @@ function pickingListPrintStyles(
       }
       body { font-size: ${px(12, true)}; }
       .print-page {
-        width: 210mm;
-        padding: ${px(8, true)} ${px(4, true)} 8mm;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: ${px(4, true)} 0 8mm;
         page-break-after: always !important;
         break-after: page !important;
       }

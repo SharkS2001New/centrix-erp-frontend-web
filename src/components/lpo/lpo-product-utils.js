@@ -182,15 +182,15 @@ export function lineFromEnrichedProduct(product) {
   };
 }
 
-/** Resolve UOM for inventory lines (never treat package name strings as UOM rows). */
+/** Resolve UOM for inventory lines — prefer cached /uoms row over embedded product snapshot. */
 export function resolveInventoryLineUom(line, uomById) {
-  if (line?.uom && typeof line.uom === "object") return line.uom;
   if (line?.unit_id != null && uomById?.get) {
-    return (
+    const fromCatalog =
       uomById.get(line.unit_id) ??
       uomById.get(String(line.unit_id)) ??
-      null
-    );
+      null;
+    if (fromCatalog) return fromCatalog;
   }
+  if (line?.uom && typeof line.uom === "object") return line.uom;
   return null;
 }

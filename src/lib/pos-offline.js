@@ -641,6 +641,73 @@ function localCartIsStaleQueuedCheckout(existing, outboxRow) {
   return cartMs <= outboxMs + 1500;
 }
 
+/** True while completeOfflineCashSale holds the checkout lock. */
+export function isPosOfflineCheckoutInFlight() {
+  return offlineCheckoutInFlight.size > 0;
+}
+
+/**
+ * Fresh new offline ticket — cashier is mid-sale, not reopening a queued/failed row.
+ * These workspaces must never be cleared by background sync failure handlers.
+ */
+export function isFreshOfflinePosNewSale(cart) {
+  if (!cart || !(cart.lines?.length > 0)) return false;
+  if (cart.offline_client_sale_uuid) return false;
+  if (cart.superseded_sale_id && cart.held_order_num) return false;
+  return (
+    Boolean(cart.offline) ||
+    String(cart.id ?? "") === "active" ||
+    String(cart.id ?? "").startsWith("offline:")
+  );
+}
+
+function failedOutboxRowItems(row) {
+  if (Array.isArray(row?.items) && row.items.length > 0) return row.items;
+  if (Array.isArray(row?.sale_payload?.items) && row.sale_payload.items.length > 0) {
+    return row.sale_payload.items;
+  }
+  return [];
+}
+
+/**
+ * True when the live workspace still carries a failed outbox sale (sticky residue),
+ * not an unrelated new ticket the cashier is building.
+ */
+export function cartMatchesFailedOutboxResidue(cart, failedSales) {
+  if (!cart || !Array.isArray(failedSales) || failedSales.length === 0) {
+    return false;
+  }
+  const uuid = String(cart.offline_client_sale_uuid ?? "").trim();
+  if (uuid) {
+    return failedSales.some(
+      (row) => String(row.client_sale_uuid ?? "").trim() === uuid,
+    );
+  }
+  if (cart.held_order_num && cart.superseded_sale_id) {
+    const held = Number(cart.held_order_num);
+    return failedSales.some((row) => {
+      const n = Number(row.order_num ?? row.pos_order_num ?? 0);
+      return held > 0 && n === held;
+    });
+  }
+  if ((cart.lines?.length ?? 0) === 0) return false;
+  if (isFreshOfflinePosNewSale(cart)) return false;
+
+  if (isServerPosCartId(cart.id)) {
+    return failedSales.some((row) =>
+      cartLinesMatchQueuedOutboxSnapshot(cart.lines, failedOutboxRowItems(row)),
+    );
+  }
+
+  return failedSales.some((row) =>
+    localCartIsStaleQueuedCheckout(cart, {
+      ...row,
+      items: failedOutboxRowItems(row),
+      sale_payload: row.sale_payload ?? { items: failedOutboxRowItems(row) },
+    }),
+  );
+}
+
 export async function loadOrCreateLocalPosCart(seed = {}) {
   const existing = await idbGetLocalCart("active");
   if (existing) {
@@ -1095,6 +1162,30 @@ export function setLiveTemporaryCartOccupancy(cart) {
     String(cart?.id ?? "").startsWith("offline:") ||
     String(cart?.id ?? "") === "pending-fresh";
 
+  // Mid-checkout: IDB may already be cleared but the till UI still owns this sale.
+  if (isPosOfflineCheckoutInFlight()) {
+    writeLiveTemporaryCartOccupancy({
+      cartId: serverId ?? -1,
+      lineCount: Math.max(lineCount, 1),
+      isEdit,
+      updatedAt: Date.now(),
+      checkoutInFlight: true,
+    });
+    return;
+  }
+
+  // Offline/local workspace with lines — defer sync even when IDB was cleared mid-checkout.
+  if (offlineLocal && lineCount > 0) {
+    writeLiveTemporaryCartOccupancy({
+      cartId: serverId ?? -1,
+      lineCount,
+      isEdit,
+      updatedAt: Date.now(),
+      offlineLocal: true,
+    });
+    return;
+  }
+
   if (!serverId || offlineLocal || (lineCount === 0 && !isEdit)) {
     writeLiveTemporaryCartOccupancy(null);
     return;
@@ -1161,6 +1252,9 @@ export async function assertPosTillAvailableForSync({
   editOrderNum = 0,
   allowWipeOrphans = false,
 } = {}) {
+  if (isPosOfflineCheckoutInFlight()) {
+    throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
+  }
   const local = await idbGetLocalCart("active").catch(() => null);
   if (isLocalPosCartBusy(local)) {
     throw new Error(POS_TILL_BUSY_SYNC_MESSAGE);
