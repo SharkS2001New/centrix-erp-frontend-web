@@ -5,7 +5,6 @@
  * and proxies ISAPI management commands from Centrix cloud to the local terminal.
  */
 
-import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import {
   STATE_PATH,
@@ -19,6 +18,7 @@ import {
   centrixAuthHeaders,
   centrixDeviceBase,
   deviceBaseUrl,
+  fetchAcsEvents,
   fetchWithDigest,
   headersToObject,
 } from "./isapi-lib.js";
@@ -30,86 +30,6 @@ function loadJson(path, fallback = null) {
 
 function saveState(state) {
   writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
-}
-
-function mapDirection(status) {
-  const s = String(status || "").toLowerCase();
-  if (["checkin", "check_in", "in", "1"].includes(s)) return "in";
-  if (["checkout", "check_out", "out", "2"].includes(s)) return "out";
-  return "auto";
-}
-
-function normalizeEventRow(row) {
-  const employeeNo = String(
-    row.employeeNoString ?? row.employeeNo ?? row.cardNo ?? "",
-  ).trim();
-  const punchedAt = String(row.time ?? row.dateTime ?? "").trim();
-  if (!employeeNo || !punchedAt) return null;
-
-  return {
-    employee_no: employeeNo,
-    employee_name: row.name ? String(row.name) : null,
-    punched_at: punchedAt,
-    attendance_status: row.attendanceStatus ? String(row.attendanceStatus) : null,
-    verification_method: row.currentVerifyMode
-      ? String(row.currentVerifyMode)
-      : row.verifyMode
-        ? String(row.verifyMode)
-        : null,
-    card_no: row.cardNo ? String(row.cardNo) : null,
-    serial_no: row.serialNo ? String(row.serialNo) : null,
-    major: row.major != null ? Number(row.major) : null,
-    minor: row.minor != null ? Number(row.minor) : null,
-    direction: mapDirection(row.attendanceStatus),
-    raw: row,
-  };
-}
-
-async function fetchAcsEvents(config, fromIso, toIso) {
-  const hik = config.hikvision;
-  const url = `${deviceBaseUrl(hik)}/ISAPI/AccessControl/AcsEvent?format=json`;
-  const searchId = randomUUID();
-  const events = [];
-  let position = 0;
-
-  for (let page = 0; page < 20; page += 1) {
-    const body = {
-      AcsEventCond: {
-        searchID: searchId,
-        searchResultPosition: position,
-        maxResults: 30,
-        major: 0,
-        minor: 0,
-        startTime: fromIso,
-        endTime: toIso,
-        eventAttribute: "attendance",
-      },
-    };
-    const res = await fetchWithDigest(url, {
-      method: "POST",
-      body,
-      username: hik.username || "admin",
-      password: hik.password || "",
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Hikvision AcsEvent HTTP ${res.status}: ${text.slice(0, 300)}`);
-    }
-    const payload = await res.json();
-    const list = payload?.AcsEvent?.InfoList ?? payload?.AcsEvent?.infoList ?? [];
-    const rows = Array.isArray(list) ? list : list && typeof list === "object" ? [list] : [];
-    for (const row of rows) {
-      const normalized = normalizeEventRow(row);
-      if (normalized) events.push(normalized);
-    }
-    const matches = Number(payload?.AcsEvent?.numOfMatches ?? rows.length);
-    position += Math.max(1, matches);
-    const status = String(payload?.AcsEvent?.responseStatusStrg ?? "").toLowerCase();
-    if (matches < 1 || rows.length < 1 || status !== "more") break;
-  }
-
-  events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
-  return events;
 }
 
 async function postIngestEvents(config, events) {
@@ -276,11 +196,8 @@ async function syncOnce(config) {
     : new Date(Date.now() - lookback * 60_000);
   const to = new Date();
 
-  const fromIso = from.toISOString().replace(/\.\d{3}Z$/, "+00:00");
-  const toIso = to.toISOString().replace(/\.\d{3}Z$/, "+00:00");
-
-  console.log(`[attendance-agent] Polling ${config.hikvision.host} from ${fromIso} …`);
-  const events = await fetchAcsEvents(config, fromIso, toIso);
+  console.log(`[attendance-agent] Polling ${config.hikvision.host} from ${from.toISOString()} …`);
+  const events = await fetchAcsEvents(config, from, to);
   console.log(`[attendance-agent] Pulled ${events.length} event(s)`);
 
   if (events.length === 0) {
@@ -392,7 +309,7 @@ async function main() {
     return;
   }
 
-  const intervalSec = Math.max(60, Number(config.pollIntervalSeconds ?? 300));
+  const intervalSec = Math.max(30, Number(config.pollIntervalSeconds ?? 60));
   const commandPollSec = 2;
   console.log(
     `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${intervalSec}s`,

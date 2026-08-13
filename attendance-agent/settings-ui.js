@@ -16,7 +16,14 @@ import {
   publicConfigView,
   isConfigReady,
 } from "./config-lib.js";
-import { deviceBaseUrl, fetchWithDigest } from "./isapi-lib.js";
+import {
+  deviceBaseUrl,
+  fetchWithDigest,
+  fetchAcsEvents,
+  AGENT_VERSION,
+  centrixAuthHeaders,
+  centrixDeviceBase,
+} from "./isapi-lib.js";
 
 function openBrowser(url) {
   const platform = process.platform;
@@ -205,6 +212,19 @@ function htmlPage(installer = false) {
           <p class="hint">PC and terminal must be on the same network. Enroll people with the same ID as Centrix employee code.</p>
         </div>
 
+        <div class="section" id="fpSection">
+          <h2>Test fingerprint (local)</h2>
+          <p class="hint" style="margin-bottom:12px">
+            Place a finger on the Hikvision terminal, then click the button. This reads events from the
+            device on this LAN and can push the punch to Centrix immediately.
+          </p>
+          <div class="actions" style="margin-top:0">
+            <button type="button" class="primary" id="fpBtn">Check fingerprint now</button>
+            <button type="button" class="secondary" id="fpPushBtn">Check &amp; send to Centrix</button>
+          </div>
+          <div id="fpStatus" style="margin-top:12px;font-size:13px;white-space:pre-wrap;line-height:1.45"></div>
+        </div>
+
         <div class="actions">
           ${installer
             ? `<button type="button" class="primary" id="testBtn">Save, test &amp; continue</button>
@@ -238,7 +258,7 @@ function htmlPage(installer = false) {
         : "Required — re-download agent from Centrix Admin if missing";
       el("deviceNo").value = cfg.deviceNo || "";
       el("deviceId").value = cfg.deviceId || "";
-      el("pollIntervalSeconds").value = cfg.pollIntervalSeconds || 300;
+      el("pollIntervalSeconds").value = cfg.pollIntervalSeconds || 60;
       el("lookbackMinutes").value = cfg.lookbackMinutes || 360;
       el("host").value = (cfg.hikvision && cfg.hikvision.host) || "";
       el("port").value = (cfg.hikvision && cfg.hikvision.port) || 80;
@@ -260,7 +280,7 @@ function htmlPage(installer = false) {
         centrixToken: el("centrixToken").value.trim() || existingToken,
         deviceNo: el("deviceNo").value.trim(),
         deviceId: el("deviceId").value ? Number(el("deviceId").value) : null,
-        pollIntervalSeconds: Number(el("pollIntervalSeconds").value) || 300,
+        pollIntervalSeconds: Number(el("pollIntervalSeconds").value) || 60,
         lookbackMinutes: Number(el("lookbackMinutes").value) || 360,
         hikvision: {
           host: el("host").value.trim(),
@@ -324,6 +344,49 @@ function htmlPage(installer = false) {
 
     el("form").addEventListener("submit", (e) => { e.preventDefault(); void save(false); });
     el("testBtn").addEventListener("click", () => void save(true));
+
+    async function runFingerprintTest(push) {
+      const status = el("fpStatus");
+      const fpBtn = el("fpBtn");
+      const fpPushBtn = el("fpPushBtn");
+      fpBtn.disabled = true;
+      fpPushBtn.disabled = true;
+      status.textContent = push
+        ? "Reading terminal and sending to Centrix…"
+        : "Reading recent punches from the terminal…";
+      status.style.color = "#64748b";
+      try {
+        // Save current form values first so LAN IP / password are current.
+        const body = readForm();
+        await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const res = await fetch("/api/test-fingerprint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ push: Boolean(push), lookback_seconds: 120 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Fingerprint test failed");
+        status.textContent = data.detail || (data.ok ? "OK" : "No punch found");
+        status.style.color = data.ok ? "#166534" : "#92400e";
+        setBanner(data.ok ? "ok" : "warn", data.ok
+          ? (push ? "Punch found and sent to Centrix (if configured)." : "Punch found on the terminal.")
+          : "No recent punch. Place a finger on the terminal, wait for the beep, then try again.");
+      } catch (err) {
+        status.textContent = err.message || String(err);
+        status.style.color = "#991b1b";
+        setBanner("err", err.message || String(err));
+      } finally {
+        fpBtn.disabled = false;
+        fpPushBtn.disabled = false;
+      }
+    }
+
+    el("fpBtn").addEventListener("click", () => void runFingerprintTest(false));
+    el("fpPushBtn").addEventListener("click", () => void runFingerprintTest(true));
     load().catch((err) => setBanner("err", err.message || String(err)));
   </script>
 </body>
@@ -408,6 +471,86 @@ async function quickTest(config) {
   return { ok, detail: lines.join("\n") };
 }
 
+async function testFingerprintLocal(config, { push = false, lookbackSeconds = 120 } = {}) {
+  const hik = config.hikvision || {};
+  if (!hik.host) {
+    return { ok: false, detail: "Device LAN IP is required." };
+  }
+
+  const from = new Date(Date.now() - Math.max(15, lookbackSeconds) * 1000);
+  const to = new Date();
+  const events = await fetchAcsEvents(config, from, to);
+  if (!events.length) {
+    return {
+      ok: false,
+      detail:
+        `No events from ${hik.host} in the last ${lookbackSeconds}s.\n` +
+        "Place a finger on the terminal, wait for acceptance, then try again.",
+    };
+  }
+
+  const fingerprintEvents = events.filter((e) =>
+    String(e.verification_method || "")
+      .toLowerCase()
+      .includes("finger"),
+  );
+  const latest = fingerprintEvents[fingerprintEvents.length - 1] || events[events.length - 1];
+  const lines = [
+    `Found ${events.length} event(s); latest:`,
+    `  employee: ${latest.employee_no}`,
+    `  time:     ${latest.punched_at}`,
+    `  verify:   ${latest.verification_method || "—"}`,
+    `  status:   ${latest.attendance_status || "—"}`,
+  ];
+
+  if (!push) {
+    return { ok: true, detail: lines.join("\n"), latest, events };
+  }
+
+  if (!config.deviceId || !config.centrixApiUrl || !config.centrixToken) {
+    lines.push("Cannot push: Centrix deviceId / API URL / token missing.");
+    return { ok: false, detail: lines.join("\n"), latest, events };
+  }
+
+  const url = `${centrixDeviceBase(config)}/agent/ingest-events`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: centrixAuthHeaders(config),
+    body: JSON.stringify({
+      agent_version: AGENT_VERSION,
+      events: [
+        {
+          employee_no: latest.employee_no,
+          employee_name: latest.employee_name,
+          punched_at: latest.punched_at,
+          attendance_status: latest.attendance_status,
+          verification_method: latest.verification_method,
+          card_no: latest.card_no,
+          serial_no: latest.serial_no,
+          major: latest.major,
+          minor: latest.minor,
+          raw: latest.raw,
+        },
+      ],
+    }),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    lines.push(`Centrix ingest failed HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, detail: lines.join("\n"), latest, events };
+  }
+  lines.push(
+    `Sent to Centrix — stored=${json?.stored ?? 0} applied=${json?.applied ?? 0} skipped=${json?.skipped ?? 0}`,
+  );
+  return { ok: true, detail: lines.join("\n"), latest, events, ingest: json };
+}
+
 /**
  * @param {{ openBrowser?: boolean, waitUntilReady?: boolean, installer?: boolean }} [options]
  * @returns {Promise<{ ready: boolean, alreadyRunning?: boolean }>}
@@ -449,6 +592,23 @@ export function runSettingsUi(options = {}) {
           const view = publicConfigView(ensureConfigFile());
           res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
           res.end(JSON.stringify(view));
+          return;
+        }
+
+        if (req.method === "POST" && url.pathname === "/api/test-fingerprint") {
+          const body = await readBody(req);
+          const config = normalizeConfig(ensureConfigFile());
+          try {
+            const result = await testFingerprintLocal(config, {
+              push: Boolean(body.push),
+              lookbackSeconds: Number(body.lookback_seconds) || 120,
+            });
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, message: err.message || String(err) }));
+          }
           return;
         }
 

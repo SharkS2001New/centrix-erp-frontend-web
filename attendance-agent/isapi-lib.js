@@ -5,7 +5,31 @@
 
 import { createHash, randomUUID } from "node:crypto";
 
-export const AGENT_VERSION = "2.0.0";
+export const AGENT_VERSION = "2.2.0";
+
+/**
+ * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
+ * Example: 2026-08-13T20:05:01+03:00
+ */
+export function formatAcsEventDateTime(date = new Date(), withOffset = true) {
+  const d = date instanceof Date ? date : new Date(date);
+  const pad = (n) => String(n).padStart(2, "0");
+  const y = d.getFullYear();
+  const m = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const h = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  const s = pad(d.getSeconds());
+  if (!withOffset) {
+    return `${y}-${m}-${day}T${h}:${min}:${s}`;
+  }
+  const offsetMin = -d.getTimezoneOffset();
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const oh = pad(Math.floor(abs / 60));
+  const om = pad(abs % 60);
+  return `${y}-${m}-${day}T${h}:${min}:${s}${sign}${oh}:${om}`;
+}
 
 export function deviceBaseUrl(hik) {
   const scheme = hik.useHttps ? "https" : "http";
@@ -99,4 +123,132 @@ export function centrixAuthHeaders(config) {
 
 export function centrixDeviceBase(config) {
   return `${String(config.centrixApiUrl).replace(/\/$/, "")}/attendance-clock-devices/${config.deviceId}/hikvision`;
+}
+
+export function mapDirection(status) {
+  const s = String(status || "").toLowerCase();
+  if (["checkin", "check_in", "in", "1"].includes(s)) return "in";
+  if (["checkout", "check_out", "out", "2"].includes(s)) return "out";
+  return "auto";
+}
+
+export function normalizeEventRow(row) {
+  const employeeNo = String(
+    row.employeeNoString ?? row.employeeNo ?? row.cardNo ?? "",
+  ).trim();
+  const punchedAt = String(row.time ?? row.dateTime ?? "").trim();
+  if (!employeeNo || !punchedAt) return null;
+
+  return {
+    employee_no: employeeNo,
+    employee_name: row.name ? String(row.name) : null,
+    punched_at: punchedAt,
+    attendance_status: row.attendanceStatus ? String(row.attendanceStatus) : null,
+    verification_method: row.currentVerifyMode
+      ? String(row.currentVerifyMode)
+      : row.verifyMode
+        ? String(row.verifyMode)
+        : null,
+    card_no: row.cardNo ? String(row.cardNo) : null,
+    serial_no: row.serialNo ? String(row.serialNo) : null,
+    major: row.major != null ? Number(row.major) : null,
+    minor: row.minor != null ? Number(row.minor) : null,
+    direction: mapDirection(row.attendanceStatus),
+    raw: row,
+  };
+}
+
+/**
+ * Pull attendance / access events from the local Hikvision terminal.
+ * Tries several AcsEventCond shapes because firmware differs.
+ */
+export async function fetchAcsEvents(config, fromDate, toDate) {
+  const hik = config.hikvision || {};
+  const url = `${deviceBaseUrl(hik)}/ISAPI/AccessControl/AcsEvent?format=json`;
+  const searchId = randomUUID().replace(/-/g, "").slice(0, 16);
+  const from = fromDate instanceof Date ? fromDate : new Date(fromDate);
+  const to = toDate instanceof Date ? toDate : new Date(toDate);
+
+  const timePairs = [
+    {
+      startTime: formatAcsEventDateTime(from, true),
+      endTime: formatAcsEventDateTime(to, true),
+    },
+    {
+      startTime: formatAcsEventDateTime(from, false),
+      endTime: formatAcsEventDateTime(to, false),
+    },
+  ];
+  const filters = [
+    { major: 0, minor: 0, eventAttribute: "attendance" },
+    { major: 0, minor: 0 },
+  ];
+
+  const candidates = [];
+  for (const times of timePairs) {
+    for (const filter of filters) {
+      candidates.push({ ...times, ...filter });
+    }
+  }
+
+  let lastError = null;
+  for (const baseCond of candidates) {
+    try {
+      const events = [];
+      let position = 0;
+      for (let page = 0; page < 20; page += 1) {
+        const body = {
+          AcsEventCond: {
+            ...baseCond,
+            searchID: searchId,
+            searchResultPosition: position,
+            maxResults: 30,
+          },
+        };
+        const res = await fetchWithDigest(url, {
+          method: "POST",
+          body,
+          username: hik.username || "admin",
+          password: hik.password || "",
+        });
+        const text = await res.text();
+        let payload = null;
+        try {
+          payload = text ? JSON.parse(text) : null;
+        } catch {
+          payload = null;
+        }
+        if (!res.ok) {
+          const msg = `Hikvision AcsEvent HTTP ${res.status}: ${text.slice(0, 300)}`;
+          if (
+            /badparameters|invalid content|0x60000001/i.test(text) ||
+            res.status === 400
+          ) {
+            lastError = new Error(msg);
+            break;
+          }
+          throw new Error(msg);
+        }
+        const list = payload?.AcsEvent?.InfoList ?? payload?.AcsEvent?.infoList ?? [];
+        const rows = Array.isArray(list) ? list : list && typeof list === "object" ? [list] : [];
+        for (const row of rows) {
+          const normalized = normalizeEventRow(row);
+          if (normalized) events.push(normalized);
+        }
+        const matches = Number(payload?.AcsEvent?.numOfMatches ?? rows.length);
+        position += Math.max(1, matches);
+        const status = String(payload?.AcsEvent?.responseStatusStrg ?? "").toLowerCase();
+        if (matches < 1 || rows.length < 1 || status !== "more") {
+          events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
+          return events;
+        }
+      }
+      events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
+      return events;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError ?? new Error("Hikvision AcsEvent search failed.");
 }

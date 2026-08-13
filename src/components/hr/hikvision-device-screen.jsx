@@ -64,11 +64,15 @@ export function HikvisionDeviceScreen() {
     return row;
   }, [organizationApiPath, deviceId]);
 
-  const loadOverview = useCallback(async () => {
-    const data = await apiRequest(`${base}/overview`);
+  const loadOverview = useCallback(async (refreshCounts = false) => {
+    const data = await apiRequest(`${base}/overview`, {
+      loading: false,
+      searchParams: refreshCounts ? { refresh_counts: 1 } : undefined,
+    });
     setOverview(data);
-    setCapabilities(data?.device?.capabilities_json ?? capabilities);
-  }, [base, capabilities]);
+    setCapabilities(data?.device?.capabilities_json ?? null);
+    return data;
+  }, [base]);
 
   const testConnection = useCallback(async () => {
     setBusy(true);
@@ -456,8 +460,37 @@ export function HikvisionDeviceScreen() {
       </div>
 
       {tab === "Overview" ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <InfoCard label="Status" value={overview?.online ? "Online" : "Unknown / offline"} />
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-500">
+              Page opens from Centrix DB + agent heartbeat (fast). Live person/card counts need the agent —
+              click Refresh live counts when needed.
+            </p>
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                void loadOverview(true)
+                  .catch((e) =>
+                    notifyError(e instanceof ApiError ? e.message : "Could not refresh live counts"),
+                  )
+                  .finally(() => setBusy(false));
+              }}
+            >
+              {busy ? "Refreshing…" : "Refresh live counts"}
+            </button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <InfoCard
+            label="Agent"
+            value={
+              overview?.agent?.online
+                ? `CentrixAttendanceAgent online${overview.agent.version ? ` v${overview.agent.version}` : ""}`
+                : "CentrixAttendanceAgent offline"
+            }
+          />
           <InfoCard label="Model" value={deviceInfo.model ?? deviceInfo.deviceType ?? "—"} />
           <InfoCard label="Serial" value={deviceInfo.serialNumber ?? "—"} />
           <InfoCard label="Firmware" value={deviceInfo.firmwareVersion ?? "—"} />
@@ -469,6 +502,7 @@ export function HikvisionDeviceScreen() {
             label="Last sync"
             value={overview?.sync?.last_synced_at ?? device?.last_synced_at ?? "—"}
           />
+          </div>
         </div>
       ) : null}
 
@@ -704,15 +738,14 @@ export function HikvisionDeviceScreen() {
   );
 }
 
-function isAgentOnline(device) {
-  if (!device?.agent_last_seen_at) return false;
-  const seen = new Date(device.agent_last_seen_at).getTime();
-  return Date.now() - seen < 90_000;
-}
-
 function AgentStatusBanner({ device, overview }) {
-  const online = isAgentOnline(device);
-  const viaAgent = overview?.via_agent;
+  const agent = overview?.agent;
+  const online =
+    Boolean(agent?.online) ||
+    (device?.agent_last_seen_at
+      ? Date.now() - new Date(device.agent_last_seen_at).getTime() < 90_000
+      : false);
+  const version = agent?.version || device?.agent_version;
 
   return (
     <div
@@ -725,8 +758,8 @@ function AgentStatusBanner({ device, overview }) {
       {online ? (
         <>
           <strong>CentrixAttendanceAgent online</strong>
-          {viaAgent ? " — Centrix can send commands to the office agent." : " — ready for Manage Hikvision."}
-          {device.agent_version ? ` (v${device.agent_version})` : ""}
+          {" — Centrix can send commands to the office agent."}
+          {version ? ` (v${version})` : ""}
         </>
       ) : (
         <>
