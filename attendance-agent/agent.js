@@ -393,7 +393,7 @@ async function main() {
   }
 
   const intervalSec = Math.max(60, Number(config.pollIntervalSeconds ?? 300));
-  const commandPollSec = Math.min(5, intervalSec);
+  const commandPollSec = 2;
   console.log(
     `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${intervalSec}s`,
   );

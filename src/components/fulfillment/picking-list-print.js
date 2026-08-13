@@ -386,13 +386,13 @@ export const PICKING_LIST_LINES_PER_PAGE = 40;
  */
 export const PICKING_LIST_PAGE_BUDGET_MM = {
   /** Line area after org header + title + column head on page 1. */
-  first: 200,
+  first: 205,
   /** Line area after continued label + column head on later pages. */
-  continued: 250,
+  continued: 254,
   /** Summary box + signature blocks reserved on the last page only. */
   summaryReserve: 52,
-  /** Extra empty margin after the last item on a page (~1 row). */
-  bottomSafety: 8,
+  /** Extra empty margin after the last item on a page (~½ row). */
+  bottomSafety: 4,
 };
 
 /** Estimate print height of one picking row from its content (taller when multi-line). */
