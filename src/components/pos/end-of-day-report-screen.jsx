@@ -5,10 +5,10 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { filterByOrganization } from "@/lib/admin";
-import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
 import { printHtmlDocument } from "@/lib/print-dispatch";
-import { formatTillKes, formatTillKesExact, formatTillKesSigned, resolveExpectedNetSales, resolveSessionVariance, varianceAmountTone, isPastCalendarDate, TILL_REPORT_PAYMENT_LINES } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, formatTillKesSigned, resolveExpectedNetSales, resolveSessionVariance, sessionHasClosedCashMaths, varianceAmountTone, TILL_REPORT_PAYMENT_LINES } from "@/lib/pos-till";
 import { buildExpensesHref, expenseSummaryRowLabel } from "@/lib/expenses-link";
 import {
   FilterSelect,
@@ -441,8 +441,9 @@ async function printEodReport(report, meta) {
             row.closed_at ? ` – ${escapeHtml(formatReportTime(row.closed_at))}` : " – open"
           }`;
           const variance = resolveSessionVariance(row);
+          const closed = sessionHasClosedCashMaths(row);
           const varianceCell =
-            showCashVariance && row.closing_amount != null
+            showCashVariance && closed
               ? `<td class="num">${escapeHtml(formatTillKesExact(row.closing_amount))}</td>
                  <td class="num">${escapeHtml(variance != null ? formatTillKesSigned(variance) : "—")}</td>`
               : showCashVariance
@@ -747,7 +748,7 @@ export function EndOfDayReportScreen() {
   const discountsEnabled = areSalesDiscountsEnabled(capabilities?.module_settings);
 
   const [branches, setBranches] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [cashierOptions, setCashierOptions] = useState([]);
   const [branchId, setBranchId] = useState("");
   const [cashierId, setCashierId] = useState("");
   const [floatSessionId, setFloatSessionId] = useState("");
@@ -760,38 +761,44 @@ export function EndOfDayReportScreen() {
 
   useEffect(() => {
     if (!organizationId) return;
-    Promise.all([
-      fetchBranchesCached(organizationId),
-      fetchUsersCached(organizationId),
-    ])
-      .then(([branchesData, usersData]) => {
+    fetchBranchesCached(organizationId)
+      .then((branchesData) => {
         const list = filterByOrganization(branchesData ?? [], organizationId);
         setBranches(list);
-        setUsers(filterByOrganization(usersData ?? [], organizationId));
         if (!branchId && user?.branch_id) {
           setBranchId(String(user.branch_id));
         } else if (!branchId && list[0]) {
           setBranchId(String(list[0].id));
         }
       })
-      .catch(() => {
-        setBranches([]);
-        setUsers([]);
-      });
+      .catch(() => setBranches([]));
   }, [organizationId, user?.branch_id, branchId]);
 
-  const cashierOptions = useMemo(() => {
-    const active = users.filter((u) => u.is_active !== false);
-    const scoped = branchId
-      ? active.filter((u) => !u.branch_id || String(u.branch_id) === branchId)
-      : active;
-    return scoped
-      .map((u) => ({
-        value: String(u.id),
-        label: u.full_name?.trim() || u.username || `User #${u.id}`,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [users, branchId]);
+  useEffect(() => {
+    if (!organizationId) return;
+    let cancelled = false;
+    const params = { per_page: 50 };
+    if (branchId) params.branch_id = branchId;
+    apiRequest("/reports/filter-cashiers", { searchParams: params })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setCashierOptions(
+          rows
+            .map((u) => ({
+              value: String(u.id),
+              label: u.full_name?.trim() || u.username || `User #${u.id}`,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setCashierOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, branchId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -891,8 +898,10 @@ export function EndOfDayReportScreen() {
   const showCashVariance = useMemo(() => {
     if (!requireTillFloat) return false;
     if (reportMode === "monthly") return false;
-    return isPastCalendarDate(saleDate, todayCalendarDate());
-  }, [requireTillFloat, reportMode, saleDate]);
+    const sessions = report?.sessions ?? report?.tills ?? [];
+    // Show Actual / Variance for any closed till — including today.
+    return sessions.some((row) => sessionHasClosedCashMaths(row));
+  }, [requireTillFloat, reportMode, report?.sessions, report?.tills]);
 
   const cashReconciliation = useMemo(() => {
     if (!showCashVariance) return null;
@@ -901,13 +910,13 @@ export function EndOfDayReportScreen() {
       ? sessions.find((row) => String(row.float_session_id) === String(floatSessionId))
       : null;
     if (selected) {
-      if (selected.closing_amount == null) return null;
+      if (!sessionHasClosedCashMaths(selected)) return null;
       return {
         actualCash: Number(selected.closing_amount),
         variance: resolveSessionVariance(selected),
       };
     }
-    const closed = sessions.filter((row) => row.closing_amount != null);
+    const closed = sessions.filter((row) => sessionHasClosedCashMaths(row));
     if (closed.length === 0) return null;
     const actualCash = closed.reduce((sum, row) => sum + Number(row.closing_amount ?? 0), 0);
     const variance = closed.reduce((sum, row) => {
@@ -1090,7 +1099,7 @@ export function EndOfDayReportScreen() {
           />
         </div>
         <div>
-          <label className="theme-subtext mb-1 block text-xs font-medium">Cashier</label>
+          <label className="theme-subtext mb-1 block text-xs font-medium">Cashier / user</label>
           <FilterSelect
             value={cashierId}
             onChange={(e) => {
@@ -1136,7 +1145,7 @@ export function EndOfDayReportScreen() {
           </div>
         ) : (
           <div>
-            <label className="theme-subtext mb-1 block text-xs font-medium">Date</label>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Sale date</label>
             <input
               type="date"
               className={`${inputClassName()} w-40`}
@@ -1323,6 +1332,9 @@ export function EndOfDayReportScreen() {
 
             {requireTillFloat ? (
             <Panel title="Till sessions" className="lg:col-span-2">
+              <p className="theme-subtext mb-3 text-xs">
+                Actual cash and variance appear once the cashier closes till maths — including for today.
+              </p>
               {(report.sessions ?? report.tills ?? []).length === 0 ? (
                 <p className="theme-subtext text-sm">No till sessions for this date.</p>
               ) : (
@@ -1391,7 +1403,9 @@ export function EndOfDayReportScreen() {
                             {showCashVariance ? (
                               <>
                                 <td className="theme-text-muted py-2.5 pr-3 text-right">
-                                  {row.closing_amount != null ? formatTillKesExact(row.closing_amount) : "—"}
+                                  {sessionHasClosedCashMaths(row) && row.closing_amount != null
+                                    ? formatTillKesExact(row.closing_amount)
+                                    : "—"}
                                 </td>
                                 <td
                                   className={`py-2.5 text-right font-medium ${

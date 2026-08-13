@@ -42,6 +42,16 @@ export function isPastCalendarDate(isoDate, todayIso = null) {
   return day < today;
 }
 
+/** True when the session has closed till cash maths (closing declared). */
+export function sessionHasClosedCashMaths(session) {
+  if (!session || typeof session !== "object") return false;
+  if (session.closing_amount != null && session.closing_amount !== "") return true;
+  const closedAt = session.closed_at != null ? String(session.closed_at).trim() : "";
+  if (closedAt) return true;
+  const status = String(session.session_status ?? session.status ?? "").toLowerCase();
+  return status === "closed";
+}
+
 export function resolveSessionVariance(session) {
   if (!session) return null;
   if (session.variance != null && session.variance !== "") {
