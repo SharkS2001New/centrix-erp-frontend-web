@@ -166,6 +166,7 @@ export const P = {
       view: "inventory.stock_take.view",
       create: "inventory.stock_take.create",
       approve: "inventory.stock_take.approve",
+      reset: "inventory.stock_take.reset",
     },
   },
   purchasing: {

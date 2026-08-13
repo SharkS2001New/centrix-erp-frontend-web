@@ -16,7 +16,7 @@ import {
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import { canDirectInventoryAction } from "@/lib/approval-permissions";
+import { canDirectInventoryAction, canResetStockTakeStocks } from "@/lib/approval-permissions";
 import { useConfirm } from "@/lib/use-confirm";
 import {
   FormModal,
@@ -85,7 +85,7 @@ export function InventoryStockTakeIdScreen() {
   const confirm = useConfirm();
   const { organization, capabilities, hasPermission } = useAuth();
   const sessionId = params.id;
-  const canResetStocks = canDirectInventoryAction({ hasPermission, capabilities });
+  const canResetStocks = canResetStockTakeStocks({ hasPermission, capabilities });
 
   const [session, setSession] = useState(null);
   const [lines, setLines] = useState([]);

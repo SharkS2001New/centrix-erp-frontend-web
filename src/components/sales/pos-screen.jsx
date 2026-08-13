@@ -2483,6 +2483,7 @@ export function PosScreen({ standalone = false }) {
   const editAutosaveRerunRef = useRef(null);
   const skipEditAutosaveRef = useRef(false);
   const openCompletePaymentInFlightRef = useRef(false);
+  const openCompletePaymentTaskRef = useRef(null);
   const [editAutosaveBusy, setEditAutosaveBusy] = useState(false);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
@@ -2766,6 +2767,29 @@ export function PosScreen({ standalone = false }) {
     completedSaleRef.current = sale;
     setCompletedSale(sale);
     rememberCompletedPosOrder(sale);
+  }
+
+  /** Blank the till right after checkout so the next ticket cannot merge into the completed cart. */
+  function detachWorkspaceAfterStandaloneCheckout(sale, checkoutCart) {
+    if (!standalone || sale?._previous_order_edit_finished) return;
+    if (Boolean(checkoutCart?.held_order_num && checkoutCart?.superseded_sale_id)) {
+      return;
+    }
+    const nextTicket = resolveImmediateNextPosTicket(
+      checkoutCart,
+      sessionPosOrders,
+      sale,
+      {
+        localNextHint: offlineNextPosOrderNum,
+        editOrderNoHint: editOrderNo,
+        floatSessionId,
+      },
+    );
+    applyFreshWorkspacePlaceholder(checkoutCart, nextTicket);
+    setSelectedLineId(null);
+    clearPosUiDraft();
+    clearLineEntry();
+    void clearLocalPosCart().catch(() => {});
   }
 
   function promptPreviousOrderPaymentAdjustment(delta, orderNum, options = {}) {
@@ -9746,7 +9770,10 @@ export function PosScreen({ standalone = false }) {
   async function handleCheckout(body, options = {}) {
     const activeCart = cartRef.current ?? cart;
     const summary = cartSummaryRef.current ?? cartSummary;
-    if (!activeCart?.id) return null;
+    if (!activeCart?.id) {
+      setPaymentError("Cart is not ready — scan an item and try again.");
+      return null;
+    }
     if (standalone) {
       const deviceId = getPosDeviceIdentifier();
       if (deviceId) {
@@ -9947,18 +9974,12 @@ export function PosScreen({ standalone = false }) {
           void seedLocalPosTicketSeqFromSale(sale, floatSessionId).catch(() => {});
         }
         markSaleForReprint(sale);
-        const postCheckoutCart = isQueuedOfflineEdit
-          ? detachCompletedOfflineEditCart(cartRef.current ?? activeCart)
-          : cartRef.current ?? activeCart;
-        cartRef.current = postCheckoutCart;
-        if (!(standalone && !options.skipAutoNextOrder)) {
-          setCart(null);
-        } else if (standalone) {
-          setCart(postCheckoutCart);
+        if (isPreviousOrderCashEdit && standalone) {
+          queueOutboxAfterSale(resolvePosBrowseNumber(sale));
+          await printRevisedPreviousOrderAndFocusNewOrder(sale);
+          return { ...sale, _previous_order_edit_finished: true };
         }
-        setSelectedLineId(null);
-        clearPosUiDraft();
-        clearLineEntry();
+        detachWorkspaceAfterStandaloneCheckout(sale, activeCart);
         {
           const cashLabel = formatPosBrowseLabel(sale);
           setStatusMessage(
@@ -9968,11 +9989,6 @@ export function PosScreen({ standalone = false }) {
           );
         }
         markServerCartConsumed(activeCart.id);
-        if (isPreviousOrderCashEdit && standalone) {
-          queueOutboxAfterSale(resolvePosBrowseNumber(sale));
-          await printRevisedPreviousOrderAndFocusNewOrder(sale);
-          return { ...sale, _previous_order_edit_finished: true };
-        }
         afterSaleCheckoutComplete(sale, options);
         queueOutboxAfterSale(resolvePosBrowseNumber(sale));
         return sale;
@@ -10082,18 +10098,13 @@ export function PosScreen({ standalone = false }) {
             }).catch(() => {});
           }
           markSaleForReprint(sale);
-          if (!(standalone && !options.skipAutoNextOrder)) {
-            setCart(null);
-          }
-          setSelectedLineId(null);
-          clearPosUiDraft();
-          clearLineEntry();
-          void clearPreviousOrderEditDraft().catch(() => {});
           if (isPreviousOrderCashEdit && standalone) {
             queueOutboxAfterSale(resolvePosBrowseNumber(sale));
             await printRevisedPreviousOrderAndFocusNewOrder(sale);
             return { ...sale, _previous_order_edit_finished: true };
           }
+          detachWorkspaceAfterStandaloneCheckout(sale, activeCart);
+          void clearPreviousOrderEditDraft().catch(() => {});
           afterSaleCheckoutComplete(sale, options);
           queueOutboxAfterSale(resolvePosBrowseNumber(sale));
           return sale;
@@ -10402,9 +10413,7 @@ export function PosScreen({ standalone = false }) {
       }
       afterSaleCheckoutComplete(sale, options);
       markSaleForReprint(sale);
-      if (!(standalone && !options.skipAutoNextOrder)) {
-        setCart(null);
-      }
+      detachWorkspaceAfterStandaloneCheckout(sale, liveCart);
       setSelectedLineId(null);
       clearPosUiDraft();
       clearLineEntry();
@@ -13931,16 +13940,23 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function openCompletePayment() {
+    // Payment already open on ORDER COMPLETE — F10/Enter means start the next order.
+    if (paymentOpenRef.current && receiptPrintStatus) {
+      void handleContinueNextOrder();
+      return;
+    }
     // Use the ref — React state lags one frame and would misfire on a fast second press.
     if (paymentOpenRef.current) return;
-    if (openCompletePaymentInFlightRef.current) return;
+    if (openCompletePaymentTaskRef.current) {
+      await openCompletePaymentTaskRef.current.catch(() => {});
+      if (paymentOpenRef.current) return;
+    }
     if (busy) {
       flashPosShortcutMessage("Checkout is still in progress — please wait.");
       return;
     }
 
-    openCompletePaymentInFlightRef.current = true;
-    try {
+    const run = (async () => {
       // Wait only when a line save is in flight — never soft-fail F10 afterward.
       const savesPending =
         cartCommitPendingRef.current > 0 || Boolean(lineBusyRef.current);
@@ -14059,6 +14075,10 @@ export function PosScreen({ standalone = false }) {
       }
 
       // Held park / ticket markers without previous-order edit — complete like a normal sale.
+      if (!activeCart?.id) {
+        flashPosShortcutMessage("Cart is not ready — scan an item and try F10 again.");
+        return;
+      }
       if (!activeCart?.lines?.length) {
         flashPosShortcutMessage("Add items before completing payment (F10).");
         return;
@@ -14069,8 +14089,17 @@ export function PosScreen({ standalone = false }) {
       }
       setPaymentError(null);
       openPaymentDialog();
+    })();
+
+    openCompletePaymentInFlightRef.current = true;
+    openCompletePaymentTaskRef.current = run;
+    try {
+      await run;
     } finally {
       openCompletePaymentInFlightRef.current = false;
+      if (openCompletePaymentTaskRef.current === run) {
+        openCompletePaymentTaskRef.current = null;
+      }
     }
   }
 
@@ -14081,6 +14110,7 @@ export function PosScreen({ standalone = false }) {
     classicLayout,
     standalone,
     paymentOpen,
+    receiptPrintStatus,
     saveOrderOpen,
     heldOrdersOpen,
     pendingSyncOpen,
@@ -14132,6 +14162,7 @@ export function PosScreen({ standalone = false }) {
     handleRefresh,
     openSaveOrderDialog,
     openCompletePayment,
+    handleContinueNextOrder,
     handlePrintReceipt,
     removeSelectedLine,
     removeSelectedLines,
@@ -14328,6 +14359,10 @@ export function PosScreen({ standalone = false }) {
 
         // Prefer live ref — React state lags and let a second F10 reopen/flicker the dialog.
         if ((state.paymentOpen || paymentOpenRef.current) && key === "F10") {
+          if (state.receiptPrintStatus) {
+            void actions.handleContinueNextOrder?.();
+            return;
+          }
           // F10 opens payment from the cart — once open, use Page Down inside the dialog.
           return;
         }

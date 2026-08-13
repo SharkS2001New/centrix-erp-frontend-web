@@ -199,6 +199,7 @@
     "inventory.stock.view",
     "inventory.stock_take.approve",
     "inventory.stock_take.create",
+    "inventory.stock_take.reset",
     "inventory.stock_take.view",
     "inventory.transfers.create",
     "inventory.transfers.view",

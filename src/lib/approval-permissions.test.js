@@ -12,6 +12,7 @@ import {
   canApproveSupplierReturns,
   canDirectCancelOrders,
   canDirectInventoryAction,
+  canResetStockTakeStocks,
 } from "@/lib/approval-permissions";
 
 const caps = (map) => ({ approval_permissions: map });
@@ -63,5 +64,12 @@ describe("approval-permissions", () => {
         capabilities: caps({ leave_requests: true }),
       }),
     ).toBe(true);
+  });
+
+  it("separates stock take reset from create and approve", () => {
+    expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.create" })).toBe(false);
+    expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.approve" })).toBe(false);
+    expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.reset" })).toBe(true);
+    expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.manage" })).toBe(true);
   });
 });

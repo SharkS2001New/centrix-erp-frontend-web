@@ -80,6 +80,7 @@ describe("loadOrCreateLocalPosCart — ghost line prevention", () => {
     outboxStore.set("sale-a-uuid", {
       client_sale_uuid: "sale-a-uuid",
       sync_status: "pending",
+      updated_at_ms: 2000,
       sale_payload: {
         items: [
           { product_code: "MAIZE", quantity: 5, unit_price: 60 },
@@ -91,6 +92,7 @@ describe("loadOrCreateLocalPosCart — ghost line prevention", () => {
     cartStore.set("active", {
       id: "active",
       offline: true,
+      updated_at_ms: 1000,
       // NO offline_client_sale_uuid — plain new-sale cart, not a queued edit
       lines: [
         { product_code: "MAIZE", quantity: 5, unit_price: 60, client_line_id: "c1" },
@@ -105,11 +107,12 @@ describe("loadOrCreateLocalPosCart — ghost line prevention", () => {
     expect(next.offline_client_sale_uuid).toBeUndefined();
   });
 
-  it("wipes a stale cart even when only a subset of outbox items matches all cart lines", async () => {
-    // Outbox has 3 items; cart only has 2 of them — those 2 are already queued.
+  it("preserves a new sale when only some SKUs overlap a pending outbox row", async () => {
+    // Order 2 sells SUGAR+FLOUR while order 1 outbox also had those plus OIL.
     outboxStore.set("sale-b-uuid", {
       client_sale_uuid: "sale-b-uuid",
       sync_status: "pending",
+      updated_at_ms: 1000,
       sale_payload: {
         items: [
           { product_code: "SUGAR", quantity: 1, unit_price: 140 },
@@ -121,6 +124,7 @@ describe("loadOrCreateLocalPosCart — ghost line prevention", () => {
     cartStore.set("active", {
       id: "active",
       offline: true,
+      updated_at_ms: 5000,
       lines: [
         { product_code: "SUGAR", quantity: 1, unit_price: 140, client_line_id: "c1" },
         { product_code: "FLOUR", quantity: 3, unit_price: 70,  client_line_id: "c2" },
@@ -130,7 +134,30 @@ describe("loadOrCreateLocalPosCart — ghost line prevention", () => {
     const { loadOrCreateLocalPosCart } = await import("@/lib/pos-offline");
     const next = await loadOrCreateLocalPosCart({ branch_id: 1 });
 
-    expect(next.lines ?? []).toHaveLength(0);
+    expect(next.lines ?? []).toHaveLength(2);
+  });
+
+  it("preserves a repeat sale with the same lines after checkout queued the prior ticket", async () => {
+    outboxStore.set("sale-repeat-uuid", {
+      client_sale_uuid: "sale-repeat-uuid",
+      sync_status: "pending",
+      updated_at_ms: 1000,
+      sale_payload: {
+        items: [{ product_code: "SUGAR", quantity: 1, unit_price: 140 }],
+      },
+    });
+    cartStore.set("active", {
+      id: "active",
+      offline: true,
+      updated_at_ms: 8000,
+      lines: [{ product_code: "SUGAR", quantity: 1, unit_price: 140, client_line_id: "c1" }],
+    });
+
+    const { loadOrCreateLocalPosCart } = await import("@/lib/pos-offline");
+    const next = await loadOrCreateLocalPosCart({ branch_id: 1 });
+
+    expect(next.lines ?? []).toHaveLength(1);
+    expect(next.lines[0].product_code).toBe("SUGAR");
   });
 
   it("preserves a fresh cart whose lines do NOT appear in any outbox sale", async () => {

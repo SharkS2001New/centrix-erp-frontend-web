@@ -614,6 +614,33 @@ export function emptyLocalPosCart(seed = {}) {
   };
 }
 
+function normalizeLinesFingerprint(lines) {
+  return (lines ?? [])
+    .filter((line) => {
+      const code = String(line?.product_code ?? "").trim();
+      const qty = Number(line?.quantity ?? 0);
+      return code && qty > 0;
+    })
+    .map((line) => `${String(line.product_code)}:${Number(line.quantity)}`)
+    .sort()
+    .join("|");
+}
+
+/** True when cart lines are an exact qty snapshot of queued outbox items (ghost-line race). */
+export function cartLinesMatchQueuedOutboxSnapshot(cartLines, outboxItems) {
+  const left = normalizeLinesFingerprint(cartLines);
+  const right = normalizeLinesFingerprint(outboxItems);
+  return Boolean(left) && left === right;
+}
+
+function localCartIsStaleQueuedCheckout(existing, outboxRow) {
+  const rowItems = outboxRow.sale_payload?.items ?? outboxRow.items ?? [];
+  if (!cartLinesMatchQueuedOutboxSnapshot(existing.lines, rowItems)) return false;
+  const cartMs = Number(existing.updated_at_ms ?? 0);
+  const outboxMs = Number(outboxRow.updated_at_ms ?? outboxRow.created_at_ms ?? 0);
+  return cartMs <= outboxMs + 1500;
+}
+
 export async function loadOrCreateLocalPosCart(seed = {}) {
   const existing = await idbGetLocalCart("active");
   if (existing) {
@@ -656,33 +683,17 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
       await idbClearLocalCart("active");
     } else if (hasLines && !isQueuedEdit && !isPreviousOrderEdit) {
       // Guard against a race where queueOfflineSale wrote the outbox but clearLocalPosCart()
-      // has not yet run (the lock is held): if the cart's lines are already captured in any
-      // pending/syncing outbox row, the cart is stale and must not seed the next sale.
-      // We match by checking whether the outbox row contains every SKU that the cart has —
-      // if the cart's product codes are a subset of a queued outbox sale's items, wipe it.
+      // has not yet run (the lock is held): if the cart's lines exactly match a pending/syncing
+      // outbox snapshot and the cart was last touched before checkout queued, wipe it.
+      // Do NOT wipe when the cashier re-sells overlapping SKUs on the next ticket — that
+      // shared-product subset match falsely deleted live order-2 lines on F10.
       try {
         const pendingRows = await idbListPendingOutbox({ includeErrors: false });
         const syncingRows = (await idbListUnsyncedOutbox()).filter(
           (r) => r.sync_status === "syncing",
         );
         const allQueued = [...pendingRows, ...syncingRows];
-        const cartCodes = new Set(
-          (existing.lines ?? []).map((l) => String(l.product_code ?? "")).filter(Boolean),
-        );
-        const stale = allQueued.some((row) => {
-          const rowCodes = new Set(
-            (row.sale_payload?.items ?? row.items ?? [])
-              .map((i) => String(i.product_code ?? ""))
-              .filter(Boolean),
-          );
-          // If every SKU in the local cart appears in an outbox row the cart is already queued.
-          if (cartCodes.size === 0 || rowCodes.size === 0) return false;
-          let matched = 0;
-          for (const code of cartCodes) {
-            if (rowCodes.has(code)) matched++;
-          }
-          return matched === cartCodes.size;
-        });
+        const stale = allQueued.some((row) => localCartIsStaleQueuedCheckout(existing, row));
         if (stale) {
           await idbClearLocalCart("active");
           const cart = emptyLocalPosCart(seed);
