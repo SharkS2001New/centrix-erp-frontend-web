@@ -36,15 +36,23 @@ const PREFERRED_SCREENS = {
     title: "Deleted products",
   },
   "hr-payroll": {
+    importPath: "@/components/tab-screens/hr-payroll",
+    exportName: "HrPayrollScreen",
     title: "Payroll runs",
   },
   "hr-payroll-runs-id": {
+    importPath: "@/components/tab-screens/hr-payroll-runs-id",
+    exportName: "HrPayrollRunsIdScreen",
     title: "Payroll run",
   },
   "lpo-lpoNo": {
+    importPath: "@/components/tab-screens/lpo-lpoNo",
+    exportName: "LpoLpoNoScreen",
     title: "LPO",
   },
   lpo: {
+    importPath: "@/components/tab-screens/lpo",
+    exportName: "LpoScreen",
     title: "LPO",
   },
 };
@@ -306,7 +314,7 @@ function main() {
     const match = buildMatchSource(route, siblingExclusions);
     const exportName = `${toPascalCase(id)}Screen`;
 
-    if (PREFERRED_SCREENS[id]) {
+    if (PREFERRED_SCREENS[id]?.importPath) {
       const pref = PREFERRED_SCREENS[id];
       entries.push({
         id,
@@ -480,7 +488,7 @@ ${mapLines.join("\n")}
   console.log(`Migrated ${entries.length} screens.`);
   console.log(`Wrote ${path.relative(ROOT, REGISTRY_OUT)}`);
   console.log(`Wrote ${path.relative(ROOT, COMPONENTS_OUT)}`);
-  console.log(`Wrote ${entries.filter((e) => e.importPath.includes("tab-screens")).length} extracted tab-screen files`);
+  console.log(`Wrote ${entries.filter((e) => String(e.importPath ?? "").includes("tab-screens")).length} extracted tab-screen files`);
 }
 
 main();

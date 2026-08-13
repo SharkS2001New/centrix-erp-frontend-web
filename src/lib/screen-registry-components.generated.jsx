@@ -19,7 +19,7 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/hr-employees-id-edit").then((m) => ({ default: m.HrEmployeesIdEditScreen })),
   ),
   "hr-payroll-runs-id": lazy(() =>
-    import(undefined).then((m) => ({ default: m.undefined })),
+    import("@/components/tab-screens/hr-payroll-runs-id").then((m) => ({ default: m.HrPayrollRunsIdScreen })),
   ),
   "lpo-lpoNo-print-delivery-note": lazy(() =>
     import("@/components/tab-screens/lpo-lpoNo-print-delivery-note").then((m) => ({ default: m.LpoLpoNoPrintDeliveryNoteScreen })),
@@ -340,7 +340,7 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/hr-overtime").then((m) => ({ default: m.HrOvertimeScreen })),
   ),
   "hr-payroll": lazy(() =>
-    import(undefined).then((m) => ({ default: m.undefined })),
+    import("@/components/tab-screens/hr-payroll").then((m) => ({ default: m.HrPayrollScreen })),
   ),
   "hr-positions": lazy(() =>
     import("@/components/tab-screens/hr-positions").then((m) => ({ default: m.HrPositionsScreen })),
@@ -482,7 +482,7 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/customers-id").then((m) => ({ default: m.CustomersIdScreen })),
   ),
   "lpo-lpoNo": lazy(() =>
-    import(undefined).then((m) => ({ default: m.undefined })),
+    import("@/components/tab-screens/lpo-lpoNo").then((m) => ({ default: m.LpoLpoNoScreen })),
   ),
   "products-code": lazy(() =>
     import("@/components/tab-screens/products-code").then((m) => ({ default: m.ProductsCodeScreen })),
@@ -530,7 +530,7 @@ export const SCREEN_COMPONENTS = {
     import("@/components/tab-screens/inventory").then((m) => ({ default: m.InventoryScreen })),
   ),
   "lpo": lazy(() =>
-    import(undefined).then((m) => ({ default: m.undefined })),
+    import("@/components/tab-screens/lpo").then((m) => ({ default: m.LpoScreen })),
   ),
   "notifications": lazy(() =>
     import("@/components/tab-screens/notifications").then((m) => ({ default: m.NotificationsScreen })),
