@@ -2,6 +2,7 @@
 # CentrixAttendanceAgent - Windows service installer
 # 1) Opens a browser to confirm every connection detail
 # 2) Copies files to Program Files and installs a Windows service (starts with Windows)
+# Compiles a small local service wrapper with csc.exe (ships with Windows). No GitHub download.
 # ASCII-only: Windows PowerShell 5.1 misreads UTF-8 punctuation as broken quotes.
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +12,6 @@ Set-Location $AgentDir
 $ServiceName = "CentrixAttendanceAgent"
 $DisplayName = "Centrix Attendance Agent"
 $InstallDir = "C:\Program Files\Centrix\AttendanceAgent"
-$WinswUrl = "https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe"
 
 function Ensure-Node {
   $node = Get-Command node -ErrorAction SilentlyContinue
@@ -29,9 +29,15 @@ function Ensure-Node {
   return $node.Source
 }
 
-function Xml-Escape([string]$value) {
-  if ($null -eq $value) { return "" }
-  return ($value -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;')
+function Find-Csc {
+  $candidates = @(
+    (Join-Path $env:windir "Microsoft.NET\Framework64\v4.0.30319\csc.exe"),
+    (Join-Path $env:windir "Microsoft.NET\Framework\v4.0.30319\csc.exe")
+  )
+  foreach ($c in $candidates) {
+    if (Test-Path $c) { return $c }
+  }
+  return $null
 }
 
 function Stop-LegacyTask {
@@ -49,32 +55,23 @@ function Stop-AgentProcesses {
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
-function Ensure-WinSW([string]$targetExe) {
-  $bundled = @(
-    (Join-Path $AgentDir "WinSW-x64.exe"),
-    (Join-Path $AgentDir "winsw.exe"),
-    $targetExe
-  ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-
-  if ($bundled -and $bundled -ne $targetExe) {
-    Copy-Item -Path $bundled -Destination $targetExe -Force
-    Write-Host "Using bundled WinSW service wrapper."
-    return
+function Remove-ExistingService {
+  $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+  if (-not $existing) { return }
+  if ($existing.Status -eq "Running") {
+    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
   }
-  if (Test-Path $targetExe) {
-    Write-Host "WinSW service wrapper already present."
-    return
-  }
-
-  Write-Host "Downloading WinSW service wrapper..."
-  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  Invoke-WebRequest -Uri $WinswUrl -OutFile $targetExe -UseBasicParsing -TimeoutSec 120
-  if (-not (Test-Path $targetExe)) {
-    throw "Could not download WinSW. Allow internet access to GitHub, then re-run install-windows.bat."
-  }
+  sc.exe delete $ServiceName | Out-Null
+  Start-Sleep -Seconds 2
 }
 
 $nodeExe = Ensure-Node
+$csc = Find-Csc
+if (-not $csc) {
+  Write-Host ".NET Framework C# compiler (csc.exe) was not found." -ForegroundColor Yellow
+  Write-Host "Install Microsoft .NET Framework 4.8, then re-run install-windows.bat as Administrator."
+  exit 1
+}
 
 Write-Host ""
 Write-Host "Opening the connection setup screen..." -ForegroundColor Cyan
@@ -104,10 +101,12 @@ if ($LASTEXITCODE -ne 0) {
 
 Stop-LegacyTask
 Stop-AgentProcesses
+Remove-ExistingService
 
 Write-Host "Installing Windows service '$ServiceName' to $InstallDir ..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir "logs") | Out-Null
+$logDir = Join-Path $InstallDir "logs"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 $skipNames = @(
   "agent.log",
@@ -116,67 +115,37 @@ $skipNames = @(
   "CentrixAttendanceAgent.xml",
   "CentrixAttendanceAgent.wrapper.log",
   "CentrixAttendanceAgent.out.log",
-  "CentrixAttendanceAgent.err.log"
+  "CentrixAttendanceAgent.err.log",
+  "WinSW-x64.exe",
+  "winsw.exe"
 )
 Get-ChildItem -Path $AgentDir -File | Where-Object { $skipNames -notcontains $_.Name } | ForEach-Object {
   Copy-Item -Path $_.FullName -Destination (Join-Path $InstallDir $_.Name) -Force
 }
 
+$nodePathFile = Join-Path $InstallDir "node-exe.txt"
+[System.IO.File]::WriteAllText($nodePathFile, $nodeExe)
+
+$serviceCs = Join-Path $InstallDir "CentrixAttendanceAgentService.cs"
 $serviceExe = Join-Path $InstallDir "CentrixAttendanceAgent.exe"
-$serviceXml = Join-Path $InstallDir "CentrixAttendanceAgent.xml"
-$agentJs = Join-Path $InstallDir "agent.js"
-$logDir = Join-Path $InstallDir "logs"
-
-Ensure-WinSW -targetExe $serviceExe
-
-$xml = @"
-<service>
-  <id>$ServiceName</id>
-  <name>$DisplayName</name>
-  <description>Bridges Centrix cloud to a LAN Hikvision terminal (ISAPI proxy and attendance sync).</description>
-  <executable>$(Xml-Escape $nodeExe)</executable>
-  <arguments>"$(Xml-Escape $agentJs)"</arguments>
-  <workingdirectory>$(Xml-Escape $InstallDir)</workingdirectory>
-  <logpath>$(Xml-Escape $logDir)</logpath>
-  <log mode="roll-by-size">
-    <sizeThreshold>10240</sizeThreshold>
-    <keepFiles>8</keepFiles>
-  </log>
-  <onfailure action="restart" delay="5 sec"/>
-  <onfailure action="restart" delay="10 sec"/>
-  <onfailure action="restart" delay="30 sec"/>
-  <resetfailure>1 hour</resetfailure>
-  <startmode>Automatic</startmode>
-  <delayedAutoStart>true</delayedAutoStart>
-  <stoptimeout>15 sec</stoptimeout>
-</service>
-"@
-[System.IO.File]::WriteAllText($serviceXml, $xml)
-
-$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($existing) {
-  if ($existing.Status -eq "Running") {
-    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-  }
-  & $serviceExe stop 2>$null | Out-Null
-  & $serviceExe uninstall 2>$null | Out-Null
-  Start-Sleep -Seconds 2
-  $still = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-  if ($still) {
-    sc.exe delete $ServiceName | Out-Null
-    Start-Sleep -Seconds 2
-  }
+if (-not (Test-Path $serviceCs)) {
+  Write-Host "CentrixAttendanceAgentService.cs is missing from the package. Re-download CentrixAttendanceAgent from Centrix Admin." -ForegroundColor Yellow
+  exit 1
 }
 
-Push-Location $InstallDir
-try {
-  & $serviceExe install
-  if ($LASTEXITCODE -ne 0) {
-    throw "WinSW install failed with exit code $LASTEXITCODE."
-  }
-} finally {
-  Pop-Location
+Write-Host "Building service wrapper..."
+& $csc /nologo /optimize /target:winexe /out:$serviceExe /r:System.dll /r:System.ServiceProcess.dll $serviceCs
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $serviceExe)) {
+  Write-Host "Could not compile CentrixAttendanceAgent.exe." -ForegroundColor Yellow
+  exit 1
 }
+
+New-Service `
+  -Name $ServiceName `
+  -BinaryPathName "`"$serviceExe`"" `
+  -DisplayName $DisplayName `
+  -Description "Bridges Centrix cloud to a LAN Hikvision terminal (ISAPI proxy and attendance sync)." `
+  -StartupType Automatic | Out-Null
 
 sc.exe config $ServiceName start= delayed-auto | Out-Null
 sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/10000/restart/30000 | Out-Null

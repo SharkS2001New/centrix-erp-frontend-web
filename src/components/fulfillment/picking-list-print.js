@@ -379,21 +379,20 @@ function buildSalesPickingLineRows(lines) {
 export const PICKING_LIST_LINES_PER_PAGE = 40;
 
 /**
- * A4 line-area budgets (mm). Must fit inside the padded print body:
- * 297mm sheet − 10mm top − 30mm edge footer − ~10mm sheet padding ≈ 247mm.
- * Older first/continued values (210 / 258) ignored that 40mm footer band, so the
- * last row of a sheet spilled onto the next page; page-break-after:always then
- * left the rest of that sheet blank (page 2 = 1 line, data resumes on page 3).
+ * A4 line-area budgets (mm) after page chrome (header / continued label / column head).
+ * The 30mm edge footer is a fixed overlay — do not subtract it from this flowing
+ * line area or pages stop early with a large blank band. Trim only ~1 row from the
+ * previous 210 / 258 values so the last line cannot spill onto a nearly empty sheet.
  */
 export const PICKING_LIST_PAGE_BUDGET_MM = {
   /** Line area after org header + title + column head on page 1. */
-  first: 168,
+  first: 200,
   /** Line area after continued label + column head on later pages. */
-  continued: 215,
+  continued: 250,
   /** Summary box + signature blocks reserved on the last page only. */
   summaryReserve: 52,
-  /** Extra empty margin after the last item on a page. */
-  bottomSafety: 10,
+  /** Extra empty margin after the last item on a page (~1 row). */
+  bottomSafety: 8,
 };
 
 /** Estimate print height of one picking row from its content (taller when multi-line). */
@@ -406,8 +405,8 @@ export function estimatePickingLineHeightMm(line) {
   if (price.length > 40) textLines += 1;
   const name = String(line?.product_name ?? "").trim();
   if (name.length > 34) textLines += 1;
-  // 8px padding × 2 + 11px type + line-height + hairline ≈ 8.5mm in Chromium print.
-  return 8.5 + Math.max(0, textLines - 1) * 3.6;
+  // Single-line row: 8px padding × 2 + 11px type + hairline ≈ 7.2mm.
+  return 7.2 + Math.max(0, textLines - 1) * 3.4;
 }
 
 function sumEstimatedPickingHeightMm(lines) {

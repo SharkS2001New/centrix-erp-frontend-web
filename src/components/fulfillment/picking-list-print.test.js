@@ -32,7 +32,7 @@ describe("chunkPickingLinesForPrint", () => {
       quantity_label: "1 Bag",
     }));
     const shortChunks = chunkPickingLinesForPrint(shortLines);
-    expect(shortChunks[0].length).toBeGreaterThan(16);
+    expect(shortChunks[0].length).toBeGreaterThan(24);
     expect(shortChunks[0].length).toBeLessThanOrEqual(PICKING_LIST_LINES_PER_PAGE);
     // A 1-line middle sheet is the overflow bug: last row of page 1 spills, then
     // page-break-after:always leaves the rest of that leaf blank.
@@ -92,8 +92,8 @@ describe("chunkPickingLinesForPrint", () => {
       summaryReserveMm: 40,
       bottomSafetyMm: 0,
     });
-    // Short rows are ~8.5mm → 100mm budget holds ~11 lines, not stop early for summary.
-    expect(chunks[0].length).toBeGreaterThanOrEqual(11);
+    // Short rows are ~7.2mm → 100mm budget holds ~13 lines, not stop early for summary.
+    expect(chunks[0].length).toBeGreaterThanOrEqual(13);
     expect(chunks.flat()).toHaveLength(lines.length);
   });
 });

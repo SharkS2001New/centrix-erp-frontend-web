@@ -4,23 +4,14 @@ $ErrorActionPreference = "Stop"
 
 $ServiceName = "CentrixAttendanceAgent"
 $InstallDir = "C:\Program Files\Centrix\AttendanceAgent"
-$serviceExe = Join-Path $InstallDir "CentrixAttendanceAgent.exe"
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing) {
   if ($existing.Status -eq "Running") {
     Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
   }
-  if (Test-Path $serviceExe) {
-    & $serviceExe stop 2>$null | Out-Null
-    & $serviceExe uninstall 2>$null | Out-Null
-    Start-Sleep -Seconds 1
-  }
-  $still = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-  if ($still) {
-    sc.exe delete $ServiceName | Out-Null
-    Start-Sleep -Seconds 2
-  }
+  sc.exe delete $ServiceName | Out-Null
+  Start-Sleep -Seconds 2
   Write-Host "Removed Windows service '$ServiceName'."
 }
 
