@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * On-LAN Hikvision → Centrix cloud attendance bridge.
- * Polls ISAPI AcsEvent on the local device IP, posts punches to Centrix.
+ * Polls ISAPI AcsEvent on the local device IP, pushes events to Centrix ingest API.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -43,7 +43,6 @@ async function fetchWithDigest(url, { method = "GET", body, username, password, 
 
   const www = first.headers.get("www-authenticate") || "";
   if (!/digest/i.test(www)) {
-    // Fall back to basic
     return fetch(url, {
       method,
       headers: {
@@ -101,6 +100,32 @@ function mapDirection(status) {
   return "auto";
 }
 
+function normalizeEventRow(row) {
+  const employeeNo = String(
+    row.employeeNoString ?? row.employeeNo ?? row.cardNo ?? "",
+  ).trim();
+  const punchedAt = String(row.time ?? row.dateTime ?? "").trim();
+  if (!employeeNo || !punchedAt) return null;
+
+  return {
+    employee_no: employeeNo,
+    employee_name: row.name ? String(row.name) : null,
+    punched_at: punchedAt,
+    attendance_status: row.attendanceStatus ? String(row.attendanceStatus) : null,
+    verification_method: row.currentVerifyMode
+      ? String(row.currentVerifyMode)
+      : row.verifyMode
+        ? String(row.verifyMode)
+        : null,
+    card_no: row.cardNo ? String(row.cardNo) : null,
+    serial_no: row.serialNo ? String(row.serialNo) : null,
+    major: row.major != null ? Number(row.major) : null,
+    minor: row.minor != null ? Number(row.minor) : null,
+    direction: mapDirection(row.attendanceStatus),
+    raw: row,
+  };
+}
+
 async function fetchAcsEvents(config, fromIso, toIso) {
   const hik = config.hikvision;
   const url = `${deviceBaseUrl(hik)}/ISAPI/AccessControl/AcsEvent?format=json`;
@@ -114,9 +139,11 @@ async function fetchAcsEvents(config, fromIso, toIso) {
         searchID: searchId,
         searchResultPosition: position,
         maxResults: 30,
-        major: 5,
+        major: 0,
+        minor: 0,
         startTime: fromIso,
         endTime: toIso,
+        eventAttribute: "attendance",
       },
     };
     const res = await fetchWithDigest(url, {
@@ -131,29 +158,67 @@ async function fetchAcsEvents(config, fromIso, toIso) {
     }
     const payload = await res.json();
     const list = payload?.AcsEvent?.InfoList ?? payload?.AcsEvent?.infoList ?? [];
-    const rows = Array.isArray(list) ? list : [];
+    const rows = Array.isArray(list) ? list : list && typeof list === "object" ? [list] : [];
     for (const row of rows) {
-      const employeeNo = String(
-        row.employeeNoString ?? row.employeeNo ?? row.cardNo ?? "",
-      ).trim();
-      const punchedAt = String(row.time ?? row.dateTime ?? "").trim();
-      if (!employeeNo || !punchedAt) continue;
-      events.push({
-        employeeNo,
-        punchedAt,
-        direction: mapDirection(row.attendanceStatus),
-      });
+      const normalized = normalizeEventRow(row);
+      if (normalized) events.push(normalized);
     }
     const matches = Number(payload?.AcsEvent?.numOfMatches ?? rows.length);
     position += Math.max(1, matches);
-    if (matches < 1 || rows.length < 1) break;
+    const status = String(payload?.AcsEvent?.responseStatusStrg ?? "").toLowerCase();
+    if (matches < 1 || rows.length < 1 || status !== "more") break;
   }
 
-  events.sort((a, b) => String(a.punchedAt).localeCompare(String(b.punchedAt)));
+  events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
   return events;
 }
 
-async function postPunch(config, event) {
+async function postIngestEvents(config, events) {
+  const base = String(config.centrixApiUrl).replace(/\/$/, "");
+  const deviceId = config.deviceId;
+  if (!deviceId) {
+    throw new Error("deviceId missing from config — re-download agent package from Centrix.");
+  }
+  const url = `${base}/attendance-clock-devices/${deviceId}/hikvision/agent/ingest-events`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.centrixToken}`,
+    },
+    body: JSON.stringify({
+      events: events.map((e) => ({
+        employee_no: e.employee_no,
+        employee_name: e.employee_name,
+        punched_at: e.punched_at,
+        attendance_status: e.attendance_status,
+        verification_method: e.verification_method,
+        card_no: e.card_no,
+        serial_no: e.serial_no,
+        major: e.major,
+        minor: e.minor,
+        raw: e.raw,
+      })),
+    }),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    /* non-json */
+  }
+  if (!res.ok) {
+    const msg = json?.message || json?.errors || text.slice(0, 300);
+    throw new Error(
+      `Centrix ingest HTTP ${res.status}: ${typeof msg === "string" ? msg : JSON.stringify(msg)}`,
+    );
+  }
+  return json;
+}
+
+async function postPunchLegacy(config, event) {
   const url = `${String(config.centrixApiUrl).replace(/\/$/, "")}/attendance/clock-punch`;
   const res = await fetch(url, {
     method: "POST",
@@ -163,9 +228,9 @@ async function postPunch(config, event) {
       Authorization: `Bearer ${config.centrixToken}`,
     },
     body: JSON.stringify({
-      employee_code: event.employeeNo,
+      employee_code: event.employee_no,
       device_no: config.deviceNo,
-      punched_at: event.punchedAt,
+      punched_at: event.punched_at,
       direction: event.direction || "auto",
     }),
   });
@@ -198,32 +263,65 @@ async function syncOnce(config) {
   const events = await fetchAcsEvents(config, fromIso, toIso);
   console.log(`[attendance-agent] Pulled ${events.length} event(s)`);
 
+  if (events.length === 0) {
+    state.lastSyncedAt = new Date().toISOString();
+    saveState(state);
+    return { applied: 0, skipped: 0, pulled: 0 };
+  }
+
   let applied = 0;
   let skipped = 0;
   let lastEventAt = state.lastEventAt || null;
 
-  for (const event of events) {
-    const key = `${event.employeeNo}|${event.punchedAt}|${event.direction}`;
-    if (state.seen?.[key]) {
-      skipped += 1;
-      continue;
-    }
+  if (config.deviceId) {
     try {
-      const result = await postPunch(config, event);
-      applied += 1;
-      state.seen = state.seen || {};
-      state.seen[key] = Date.now();
-      lastEventAt = event.punchedAt;
+      const result = await postIngestEvents(config, events);
+      applied = Number(result?.applied ?? 0);
+      skipped = Number(result?.skipped ?? 0);
+      lastEventAt = events[events.length - 1]?.punched_at ?? lastEventAt;
       console.log(
-        `[attendance-agent] ${result?.action || "ok"} ${event.employeeNo} @ ${event.punchedAt}`,
+        `[attendance-agent] Ingest stored=${result?.stored ?? 0} applied=${applied} skipped=${skipped}`,
       );
     } catch (err) {
-      skipped += 1;
-      console.warn(`[attendance-agent] skip ${event.employeeNo}: ${err.message}`);
+      console.warn(`[attendance-agent] Ingest failed, falling back to clock-punch: ${err.message}`);
+      for (const event of events) {
+        const key = `${event.employee_no}|${event.punched_at}|${event.serial_no ?? ""}`;
+        if (state.seen?.[key]) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          await postPunchLegacy(config, event);
+          applied += 1;
+          state.seen = state.seen || {};
+          state.seen[key] = Date.now();
+          lastEventAt = event.punched_at;
+        } catch (e) {
+          skipped += 1;
+          console.warn(`[attendance-agent] skip ${event.employee_no}: ${e.message}`);
+        }
+      }
+    }
+  } else {
+    for (const event of events) {
+      const key = `${event.employee_no}|${event.punched_at}|${event.serial_no ?? ""}`;
+      if (state.seen?.[key]) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        await postPunchLegacy(config, event);
+        applied += 1;
+        state.seen = state.seen || {};
+        state.seen[key] = Date.now();
+        lastEventAt = event.punched_at;
+      } catch (err) {
+        skipped += 1;
+        console.warn(`[attendance-agent] skip ${event.employee_no}: ${err.message}`);
+      }
     }
   }
 
-  // Prune seen map (keep ~7 days)
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   if (state.seen) {
     for (const [k, ts] of Object.entries(state.seen)) {

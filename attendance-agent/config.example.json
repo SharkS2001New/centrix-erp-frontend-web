@@ -1,6 +1,7 @@
 {
   "centrixApiUrl": "https://centrixerp.betsassured.com/api/v1",
   "centrixToken": "PASTE_SANCTUM_TOKEN_HERE",
+  "deviceId": null,
   "deviceNo": "TERMINAL-01",
   "hikvision": {
     "host": "192.168.1.50",

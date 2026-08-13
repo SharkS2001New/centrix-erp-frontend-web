@@ -66,11 +66,10 @@ describe("approval-permissions", () => {
     ).toBe(true);
   });
 
-  it("separates stock take reset from create and approve", () => {
+  it("requires inventory.stock_take.reset and not broader inventory.manage", () => {
     expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.create" })).toBe(false);
     expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.approve" })).toBe(false);
+    expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.manage" })).toBe(false);
     expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.stock_take.reset" })).toBe(true);
-    expect(canResetStockTakeStocks({ hasPermission: (code) => code === "inventory.manage" })).toBe(true);
-    expect(canResetStockTakeStocks({ hasPermission: () => false, user: { is_admin: true } })).toBe(true);
   });
 });

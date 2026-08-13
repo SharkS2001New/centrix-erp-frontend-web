@@ -85,7 +85,7 @@ export function InventoryStockTakeIdScreen() {
   const confirm = useConfirm();
   const { organization, capabilities, hasPermission, user } = useAuth();
   const sessionId = params.id;
-  const canResetStocks = canResetStockTakeStocks({ hasPermission, capabilities, user });
+  const canResetStocks = canResetStockTakeStocks({ hasPermission });
 
   const [session, setSession] = useState(null);
   const [lines, setLines] = useState([]);

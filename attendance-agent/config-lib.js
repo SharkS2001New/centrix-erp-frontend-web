@@ -35,6 +35,7 @@ export function emptyConfig() {
   return {
     centrixApiUrl: "",
     centrixToken: "",
+    deviceId: null,
     deviceNo: "",
     hikvision: {
       host: "",
@@ -54,6 +55,7 @@ export function normalizeConfig(raw) {
   return {
     centrixApiUrl: String(raw?.centrixApiUrl ?? base.centrixApiUrl).trim().replace(/\/$/, ""),
     centrixToken: String(raw?.centrixToken ?? base.centrixToken).trim(),
+    deviceId: raw?.deviceId != null && raw.deviceId !== "" ? Number(raw.deviceId) : null,
     deviceNo: String(raw?.deviceNo ?? base.deviceNo).trim(),
     hikvision: {
       host: String(hik.host ?? "").trim(),

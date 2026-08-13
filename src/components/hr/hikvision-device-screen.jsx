@@ -41,6 +41,11 @@ export function HikvisionDeviceScreen() {
   const [capabilities, setCapabilities] = useState(null);
   const [users, setUsers] = useState([]);
   const [cards, setCards] = useState([]);
+  const [fingerprints, setFingerprints] = useState([]);
+  const [fingerprintMeta, setFingerprintMeta] = useState(null);
+  const [cardForm, setCardForm] = useState({ employeeNo: "", cardNo: "", cardType: "normalCard" });
+  const [showCardForm, setShowCardForm] = useState(false);
+  const [fpEmployeeFilter, setFpEmployeeFilter] = useState("");
   const [unmappedUsers, setUnmappedUsers] = useState([]);
   const [centrixEmployees, setCentrixEmployees] = useState([]);
   const [mapSelections, setMapSelections] = useState({});
@@ -100,6 +105,23 @@ export function HikvisionDeviceScreen() {
     setCards(data.cards ?? []);
   }, [base]);
 
+  const loadFingerprints = useCallback(async (employeeNo = "") => {
+    const body = { maxResults: 50 };
+    if (employeeNo.trim()) {
+      body.employee_no = employeeNo.trim();
+    }
+    const data = await apiRequest(`${base}/fingerprints/search`, {
+      method: "POST",
+      body,
+    });
+    setFingerprints(data.fingerprints ?? []);
+  }, [base]);
+
+  const loadFingerprintMeta = useCallback(async () => {
+    const data = await apiRequest(`${base}/fingerprints/capabilities`);
+    setFingerprintMeta(data);
+  }, [base]);
+
   const loadUnmappedFromDevice = useCallback(async () => {
     const data = await apiRequest(`${base}/sync/employees-from-device`);
     setUnmappedUsers(data.unmapped ?? []);
@@ -157,6 +179,10 @@ export function HikvisionDeviceScreen() {
     if (tab === "Cards" && featureEnabled(capabilities, "cards")) {
       void loadCards().catch(() => {});
     }
+    if (tab === "Fingerprints" && featureEnabled(capabilities, "fingerprints")) {
+      void loadFingerprintMeta().catch(() => {});
+      void loadFingerprints(fpEmployeeFilter).catch(() => {});
+    }
     if (tab === "Attendance") {
       void loadStoredEvents().catch(() => {});
     }
@@ -171,6 +197,9 @@ export function HikvisionDeviceScreen() {
     capabilities,
     loadUsers,
     loadCards,
+    loadFingerprints,
+    loadFingerprintMeta,
+    fpEmployeeFilter,
     loadStoredEvents,
     loadCentrixEmployees,
     refreshCapabilities,
@@ -247,6 +276,72 @@ export function HikvisionDeviceScreen() {
       await loadOverview();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Mapping failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveCard() {
+    if (!cardForm.employeeNo.trim() || !cardForm.cardNo.trim()) {
+      notifyError("Employee No and Card No are required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest(`${base}/cards`, {
+        method: "POST",
+        body: {
+          employeeNo: cardForm.employeeNo.trim(),
+          cardNo: cardForm.cardNo.trim(),
+          cardType: cardForm.cardType || "normalCard",
+        },
+      });
+      notifySuccess("Card added on device.");
+      setCardForm({ employeeNo: "", cardNo: "", cardType: "normalCard" });
+      setShowCardForm(false);
+      await loadCards();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not add card");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCardRow(row) {
+    const employeeNo = row.employeeNo ?? row.EmployeeNo ?? "";
+    const cardNo = row.cardNo ?? row.CardNo ?? "";
+    if (!employeeNo || !cardNo) return;
+    if (!window.confirm(`Delete card ${cardNo} for ${employeeNo}?`)) return;
+    setBusy(true);
+    try {
+      await apiRequest(`${base}/cards`, {
+        method: "DELETE",
+        body: { employeeNo, cardNo },
+      });
+      notifySuccess("Card deleted.");
+      await loadCards();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not delete card");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteFingerprintRow(row) {
+    const employeeNo = row.employeeNo ?? row.EmployeeNo ?? "";
+    const fingerPrintID = row.fingerPrintID ?? row.FingerPrintID;
+    if (!employeeNo || fingerPrintID == null) return;
+    if (!window.confirm(`Delete fingerprint ${fingerPrintID} for ${employeeNo}?`)) return;
+    setBusy(true);
+    try {
+      await apiRequest(`${base}/fingerprints`, {
+        method: "DELETE",
+        body: { employeeNo, fingerPrintID: Number(fingerPrintID) },
+      });
+      notifySuccess("Fingerprint deleted.");
+      await loadFingerprints(fpEmployeeFilter);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not delete fingerprint");
     } finally {
       setBusy(false);
     }
@@ -362,20 +457,45 @@ export function HikvisionDeviceScreen() {
       ) : null}
 
       {tab === "Fingerprints" ? (
-        <section>
+        <section className="space-y-3">
           {!featureEnabled(caps, "fingerprints") ? (
             <UnsupportedNotice feature="Fingerprint management" />
-          ) : caps?.features?.remote_fingerprint_enrollment ? (
-            <p className="text-sm text-slate-600">
-              Remote enrollment is supported on this firmware. Use the terminal workflow from Centrix
-              employee sync, then capture on the device.
-            </p>
           ) : (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Fingerprint enrollment must be completed on the terminal. Centrix can sync templates
-              where the device API allows download/apply — remote capture is not supported on this
-              DS-K1T904AMF firmware.
-            </p>
+            <>
+              {fingerprintMeta?.remote_enrollment_supported ? (
+                <p className="text-sm text-slate-600">
+                  Remote enrollment is supported on this firmware. Sync the employee to the device
+                  first, then capture on the terminal.
+                </p>
+              ) : (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {fingerprintMeta?.enrollment_message ??
+                    "Fingerprint enrollment must be completed on the terminal."}
+                </p>
+              )}
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Filter by employeeNo">
+                  <input
+                    className={inputClassName}
+                    value={fpEmployeeFilter}
+                    onChange={(e) => setFpEmployeeFilter(e.target.value)}
+                    placeholder="Optional employee code"
+                  />
+                </Field>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  onClick={() => void loadFingerprints(fpEmployeeFilter)}
+                >
+                  Search
+                </button>
+              </div>
+              <FingerprintTable
+                fingerprints={fingerprints}
+                onDelete={(row) => void deleteFingerprintRow(row)}
+                busy={busy}
+              />
+            </>
           )}
         </section>
       ) : null}
@@ -387,15 +507,53 @@ export function HikvisionDeviceScreen() {
           ) : (
             <>
               <div className="flex flex-wrap gap-2">
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  disabled={busy}
+                  onClick={() => setShowCardForm((v) => !v)}
+                >
+                  {showCardForm ? "Cancel" : "Add card"}
+                </PrimaryButton>
                 <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => void loadCards()}>
                   Refresh
                 </button>
               </div>
+              {showCardForm ? (
+                <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-3">
+                  <Field label="Employee No">
+                    <input
+                      className={inputClassName}
+                      value={cardForm.employeeNo}
+                      onChange={(e) => setCardForm((f) => ({ ...f, employeeNo: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Card No">
+                    <input
+                      className={inputClassName}
+                      value={cardForm.cardNo}
+                      onChange={(e) => setCardForm((f) => ({ ...f, cardNo: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Type">
+                    <input
+                      className={inputClassName}
+                      value={cardForm.cardType}
+                      onChange={(e) => setCardForm((f) => ({ ...f, cardType: e.target.value }))}
+                    />
+                  </Field>
+                  <div className="sm:col-span-3">
+                    <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void saveCard()}>
+                      Save card on device
+                    </PrimaryButton>
+                  </div>
+                </div>
+              ) : null}
               <p className="text-xs text-slate-500">
                 Cards are linked to Hikvision <code className="rounded bg-slate-100 px-1">employeeNo</code>{" "}
                 matching Centrix employee codes.
               </p>
-              <CardTable cards={cards} />
+              <CardTable cards={cards} onDelete={(row) => void deleteCardRow(row)} busy={busy} />
             </>
           )}
         </section>
@@ -574,7 +732,7 @@ function EventTable({ events }) {
   );
 }
 
-function CardTable({ cards }) {
+function CardTable({ cards, onDelete, busy }) {
   if (!cards?.length) {
     return <p className="text-sm text-slate-500">No cards on device (or not loaded yet).</p>;
   }
@@ -586,6 +744,7 @@ function CardTable({ cards }) {
             <th className="px-3 py-2">Employee No</th>
             <th className="px-3 py-2">Card No</th>
             <th className="px-3 py-2">Type</th>
+            <th className="px-3 py-2" />
           </tr>
         </thead>
         <tbody>
@@ -596,6 +755,65 @@ function CardTable({ cards }) {
               </td>
               <td className="px-3 py-2 font-mono text-xs">{row.cardNo ?? row.CardNo ?? "—"}</td>
               <td className="px-3 py-2 text-xs text-slate-500">{row.cardType ?? row.CardType ?? "—"}</td>
+              <td className="px-3 py-2">
+                <button
+                  type="button"
+                  className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => onDelete?.(row)}
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FingerprintTable({ fingerprints, onDelete, busy }) {
+  if (!fingerprints?.length) {
+    return (
+      <p className="text-sm text-slate-500">
+        No fingerprint records returned. Enroll on the terminal, then search again.
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full min-w-[520px] text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-3 py-2">Employee No</th>
+            <th className="px-3 py-2">Fingerprint ID</th>
+            <th className="px-3 py-2">Type</th>
+            <th className="px-3 py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {fingerprints.map((row, idx) => (
+            <tr key={idx} className="border-t border-slate-100">
+              <td className="px-3 py-2 font-mono text-xs">
+                {row.employeeNo ?? row.EmployeeNo ?? "—"}
+              </td>
+              <td className="px-3 py-2 font-mono text-xs">
+                {row.fingerPrintID ?? row.FingerPrintID ?? "—"}
+              </td>
+              <td className="px-3 py-2 text-xs text-slate-500">
+                {row.fingerType ?? row.FingerType ?? "—"}
+              </td>
+              <td className="px-3 py-2">
+                <button
+                  type="button"
+                  className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => onDelete?.(row)}
+                >
+                  Delete
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

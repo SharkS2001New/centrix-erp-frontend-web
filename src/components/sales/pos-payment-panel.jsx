@@ -264,6 +264,8 @@ export function PosPaymentPanel({
   const creditSelectRef = useRef(null);
   const receiptCustomerSelectRef = useRef(null);
   const enterActionRef = useRef(() => {});
+  /** Same-tick cash prefill on Page Down before React state catches up. */
+  const paymentAmountOverrideRef = useRef(null);
   const prevOpenRef = useRef(false);
   const stkPollRef = useRef(null);
   const lastStkAmountRef = useRef(null);
@@ -430,25 +432,17 @@ export function PosPaymentPanel({
   }, []);
 
   const amountPaid = useMemo(() => {
-    let bankTotal = 0;
-    if (cfg.useBankSelect) {
-      bankTotal = parseDecimalInput(bankAmount);
-    } else {
-      bankTotal =
-        parseDecimalInput(equityAmount) +
-        parseDecimalInput(kcbAmount) +
-        parseDecimalInput(otherBankAmount);
-    }
-    // Cart-applied M-Pesa is already deducted from billTotal/amount due — do not
-    // count the locked field toward the remaining balance again.
-    const mpesaTender =
-      cfg.enableMpesaAmount && !mpesaFieldsLocked ? parseDecimalInput(mpesaAmount) : 0;
-    return (
-      parseDecimalInput(cashAmount) +
-      mpesaTender +
-      bankTotal +
-      (cfg.showCheque ? parseDecimalInput(chequeAmount) : 0)
-    );
+    return computeAmountPaidFromParts({
+      cashAmount,
+      mpesaAmount,
+      bankAmount,
+      equityAmount,
+      kcbAmount,
+      otherBankAmount,
+      chequeAmount,
+      cfg,
+      mpesaFieldsLocked,
+    });
   }, [
     cashAmount,
     mpesaAmount,
@@ -462,6 +456,40 @@ export function PosPaymentPanel({
     cfg.enableMpesaAmount,
     mpesaFieldsLocked,
   ]);
+
+  function resolveEffectiveAmountPaid() {
+    return paymentAmountOverrideRef.current ?? amountPaid;
+  }
+
+  function computeAmountPaidFromParts({
+    cashAmount: cashRaw,
+    mpesaAmount: mpesaRaw,
+    bankAmount: bankRaw,
+    equityAmount: equityRaw,
+    kcbAmount: kcbRaw,
+    otherBankAmount: otherRaw,
+    chequeAmount: chequeRaw,
+    cfg: paymentCfg = cfg,
+    mpesaFieldsLocked: mpesaLocked = mpesaFieldsLocked,
+  }) {
+    let bankTotal = 0;
+    if (paymentCfg.useBankSelect) {
+      bankTotal = parseDecimalInput(bankRaw);
+    } else {
+      bankTotal =
+        parseDecimalInput(equityRaw) +
+        parseDecimalInput(kcbRaw) +
+        parseDecimalInput(otherRaw);
+    }
+    const mpesaTender =
+      paymentCfg.enableMpesaAmount && !mpesaLocked ? parseDecimalInput(mpesaRaw) : 0;
+    return (
+      parseDecimalInput(cashRaw) +
+      mpesaTender +
+      bankTotal +
+      (paymentCfg.showCheque ? parseDecimalInput(chequeRaw) : 0)
+    );
+  }
 
   const checkoutTotal = adjustmentMode
     ? Math.abs(signedEditDelta)
@@ -695,6 +723,7 @@ export function PosPaymentPanel({
   }
 
   function validatePayment() {
+    const paid = resolveEffectiveAmountPaid();
     const fieldErr = validatePaymentFieldDetails();
     if (fieldErr) return fieldErr;
 
@@ -702,13 +731,13 @@ export function PosPaymentPanel({
       if (checkoutTotal <= 0.01) {
         return null;
       }
-      if (amountPaid + 0.01 < checkoutTotal) {
+      if (paid + 0.01 < checkoutTotal) {
         return isReturnAdjustment
           ? "Enter how the refund was paid — amounts must match the return total."
           : "Enter how the top-up was paid — amounts must match the extra due.";
       }
-      if (cfg.rejectOverpayment && amountPaid - checkoutTotal > 0.01) {
-        return `Payment of ${formatSaleKes(amountPaid)} exceeds the ${isReturnAdjustment ? "return" : "top-up"} amount of ${formatSaleKes(checkoutTotal)}.`;
+      if (cfg.rejectOverpayment && paid - checkoutTotal > 0.01) {
+        return `Payment of ${formatSaleKes(paid)} exceeds the ${isReturnAdjustment ? "return" : "top-up"} amount of ${formatSaleKes(checkoutTotal)}.`;
       }
       return null;
     }
@@ -721,7 +750,7 @@ export function PosPaymentPanel({
       }
       const creditSale = isCheckoutCreditSale({
         hasCreditCustomer,
-        amountPaid,
+        amountPaid: paid,
         checkoutTotal,
         adjustmentMode,
       });
@@ -732,18 +761,18 @@ export function PosPaymentPanel({
         });
       }
     }
-    if (cfg.rejectOverpayment && amountPaid - checkoutTotal > 0.01) {
-      return `Payment of ${formatSaleKes(amountPaid)} exceeds the amount due of ${formatSaleKes(checkoutTotal)}. Enter the correct amount to continue.`;
+    if (cfg.rejectOverpayment && paid - checkoutTotal > 0.01) {
+      return `Payment of ${formatSaleKes(paid)} exceeds the amount due of ${formatSaleKes(checkoutTotal)}. Enter the correct amount to continue.`;
     }
-    if (!cfg.rejectOverpayment && isPosCashChangeExcessive(amountPaid, checkoutTotal)) {
-      const change = posCashChangeDue(amountPaid, checkoutTotal);
+    if (!cfg.rejectOverpayment && isPosCashChangeExcessive(paid, checkoutTotal)) {
+      const change = posCashChangeDue(paid, checkoutTotal);
       return (
         `Overpay too large — change would be ${formatSaleKes(change)}. ` +
         `Only reasonable change is allowed (max ${formatSaleKes(MAX_POS_CASH_CHANGE)}). ` +
         `Enter the amount the customer actually tendered.`
       );
     }
-    if (amountPaid <= 0 && checkoutTotal > 0) {
+    if (paid <= 0 && checkoutTotal > 0) {
       return cfg.enableCreditPayment
         ? "Enter payment amounts or select a credit customer (I) for a fully unpaid sale."
         : "Enter payment amounts to cover the full total.";
@@ -751,14 +780,57 @@ export function PosPaymentPanel({
     if (cfg.allowPartialPayment) {
       return null;
     }
-    if (amountPaid + 0.01 < checkoutTotal) {
+    if (paid + 0.01 < checkoutTotal) {
       return POS_FULL_PAYMENT_REQUIRED_MESSAGE;
     }
     return null;
   }
 
+  function resolveCanCompleteWithPaid(paid) {
+    if (adjustmentMode) {
+      return checkoutTotal <= 0.01 || paid + 0.01 >= checkoutTotal;
+    }
+    if (creditSaleActive) {
+      return !validateCustomerCreditSale({
+        customer: creditCustomer,
+        creditAmount: creditAmountDue,
+      });
+    }
+    const changeExcessive =
+      !adjustmentMode &&
+      !cfg.rejectOverpayment &&
+      isPosCashChangeExcessive(paid, checkoutTotal);
+    if (cfg.allowPartialPayment) {
+      return !changeExcessive && paid > 0.009;
+    }
+    return !changeExcessive && paid + 0.01 >= checkoutTotal;
+  }
+
+  function resolvePageDownCashPrefill() {
+    const parsedCash = parseDecimalInput(cashAmount);
+    if (adjustmentMode || parsedCash > 0.009) {
+      return { nextCashStr: cashAmount, paid: resolveEffectiveAmountPaid() };
+    }
+    const remaining = remainingForPaymentField(cashAmount);
+    if (remaining <= 0.009) {
+      return { nextCashStr: cashAmount, paid: resolveEffectiveAmountPaid() };
+    }
+    const nextCashStr = formatPaymentFillAmount(remaining);
+    const paid = computeAmountPaidFromParts({
+      cashAmount: nextCashStr,
+      mpesaAmount,
+      bankAmount,
+      equityAmount,
+      kcbAmount,
+      otherBankAmount,
+      chequeAmount,
+    });
+    return { nextCashStr, paid };
+  }
+
   function handleRequestComplete() {
     setLocalError(null);
+    const paid = resolveEffectiveAmountPaid();
     const err = validatePayment();
     if (err) {
       setLocalError(err);
@@ -768,22 +840,59 @@ export function PosPaymentPanel({
     setSessionBillTotal(total);
     const isCredit = isCheckoutCreditSale({
       hasCreditCustomer,
-      amountPaid,
+      amountPaid: paid,
       checkoutTotal: total,
       adjustmentMode,
     });
-    const paid = isCredit ? 0 : amountPaid;
-    const payNow = adjustmentMode ? 0 : isCredit ? 0 : Math.min(paid, total);
+    const payNowAmount = isCredit ? 0 : paid;
+    const payNow = adjustmentMode ? 0 : isCredit ? 0 : Math.min(payNowAmount, total);
     setConfirmSummary({
       billTotal: total,
-      amountPaid: paid,
+      amountPaid: payNowAmount,
       payNow,
-      balanceDue: Math.max(0, total - paid),
-      changeDue: adjustmentMode || isCredit ? 0 : Math.max(0, paid - total),
+      balanceDue: Math.max(0, total - payNowAmount),
+      changeDue: adjustmentMode || isCredit ? 0 : Math.max(0, payNowAmount - total),
       isCredit,
       isReturnAdjustment,
     });
     setStep("confirm");
+  }
+
+  function requestPaymentStepComplete() {
+    if (step !== "payment" || saving) return;
+
+    const { nextCashStr, paid } = resolvePageDownCashPrefill();
+    if (nextCashStr !== cashAmount) {
+      setCashAmount(nextCashStr);
+    }
+    paymentAmountOverrideRef.current = paid;
+
+    try {
+      if (!resolveCanCompleteWithPaid(paid)) {
+        setLocalError(
+          validatePayment() || "Please check the amount — payment is less than the bill total.",
+        );
+        return;
+      }
+      handleRequestComplete();
+    } finally {
+      paymentAmountOverrideRef.current = null;
+    }
+  }
+
+  function handlePageDownShortcut() {
+    if (saving || step === "saving") return;
+    if (step === "payment") {
+      requestPaymentStepComplete();
+      return;
+    }
+    if (step === "confirm") {
+      handleConfirmYes();
+      return;
+    }
+    if (step === "customerName") {
+      handleCustomerNameContinue();
+    }
   }
 
   function formatPaymentFillAmount(amount, { ceil = false } = {}) {
@@ -919,17 +1028,6 @@ export function PosPaymentPanel({
     return false;
   }
 
-  function requestPaymentStepComplete() {
-    if (step !== "payment" || saving) return;
-    if (!canComplete) {
-      setLocalError(
-        validatePayment() || "Please check the amount — payment is less than the bill total.",
-      );
-      return;
-    }
-    handleRequestComplete();
-  }
-
   function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false, methodCode = null } = {}) {
     if (step !== "payment" || saving) return;
 
@@ -939,7 +1037,8 @@ export function PosPaymentPanel({
 
     if (e.key === "PageDown") {
       e.preventDefault();
-      requestPaymentStepComplete();
+      e.stopPropagation();
+      handlePageDownShortcut();
       return;
     }
 
@@ -974,7 +1073,8 @@ export function PosPaymentPanel({
 
     if (e.key === "PageDown") {
       e.preventDefault();
-      requestPaymentStepComplete();
+      e.stopPropagation();
+      handlePageDownShortcut();
       return;
     }
 
@@ -1452,19 +1552,20 @@ export function PosPaymentPanel({
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
+      if (e.key === "PageDown" && !saving && step !== "saving" && step !== "complete") {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePageDownShortcut();
+        return;
+      }
       if (step === "payment" && !saving) {
-        if (e.key === "PageDown") {
-          e.preventDefault();
-          requestPaymentStepComplete();
-          return;
-        }
         if (handlePaymentNavigationKey(e)) return;
       }
       enterActionRef.current(e);
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, step, saving, canComplete, checkoutTotal, amountPaid]);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open, step, saving, checkoutTotal, amountPaid]);
 
   function handleCreditCustomerChange(value, option) {
     setCustomerNum(value);
@@ -2368,7 +2469,8 @@ export function PosPaymentPanel({
               onTriggerKeyDown={(e) => {
                 if (e.key === "PageDown") {
                   e.preventDefault();
-                  requestPaymentStepComplete();
+                  e.stopPropagation();
+                  handlePageDownShortcut();
                   return;
                 }
                 if (handlePaymentNavigationKey(e)) return;

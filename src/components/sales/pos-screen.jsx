@@ -2769,6 +2769,8 @@ export function PosScreen({ standalone = false }) {
   /** Blank the till right after checkout so the next ticket cannot merge into the completed cart. */
   function detachWorkspaceAfterStandaloneCheckout(sale, checkoutCart) {
     if (!standalone || sale?._previous_order_edit_finished) return;
+    // Keep cart lines visible behind the payment dialog until ORDER COMPLETE → OK.
+    if (paymentOpenRef.current) return;
     if (Boolean(checkoutCart?.held_order_num && checkoutCart?.superseded_sale_id)) {
       return;
     }

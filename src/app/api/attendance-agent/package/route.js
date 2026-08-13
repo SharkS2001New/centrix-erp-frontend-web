@@ -116,6 +116,7 @@ export async function POST(request) {
     const normalized = {
       centrixApiUrl: String(config.centrixApiUrl).trim().replace(/\/$/, ""),
       centrixToken: String(config.centrixToken).trim(),
+      deviceId: config.deviceId != null && config.deviceId !== "" ? Number(config.deviceId) : null,
       deviceNo: String(config.deviceNo).trim(),
       hikvision: {
         host: String(hik.host ?? "").trim(),
