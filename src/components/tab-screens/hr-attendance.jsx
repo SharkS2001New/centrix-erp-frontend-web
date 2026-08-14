@@ -282,6 +282,82 @@ export function HrAttendanceScreen() {
     [sessions],
   );
 
+  const todayDays = useMemo(() => {
+    const byEmployee = new Map();
+    for (const session of todaySessions) {
+      const key = String(session.employee_id);
+      if (!byEmployee.has(key)) byEmployee.set(key, []);
+      byEmployee.get(key).push(session);
+    }
+    return [...byEmployee.values()].map((group) => {
+      const sorted = [...group].sort(
+        (a, b) => sessionTimestamp(a.clock_in_at) - sessionTimestamp(b.clock_in_at),
+      );
+      const employee = sorted[0]?.employee;
+      const lunch = shiftLunchRequired(employee?.shift);
+      const first = sorted[0];
+      const second = sorted[1];
+      const last = sorted[sorted.length - 1];
+      let lunchOut = null;
+      let lunchIn = null;
+      let clockOut = last?.clock_out_at ?? null;
+      if (lunch) {
+        if (second) {
+          lunchOut = first?.clock_out_at ?? null;
+          lunchIn = second?.clock_in_at ?? null;
+          clockOut = last?.clock_out_at ?? null;
+        } else if (first?.clock_out_at) {
+          const hour = sessionHour(first.clock_out_at);
+          if (hour != null && hour >= 16) {
+            clockOut = first.clock_out_at;
+          } else {
+            lunchOut = first.clock_out_at;
+            clockOut = null;
+          }
+        } else {
+          clockOut = null;
+        }
+      }
+      let status = "on_shift";
+      if (clockOut) status = "clocked_out";
+      else if (lunchOut && !lunchIn) status = "at_lunch";
+      return {
+        employeeId: first?.employee_id,
+        employee,
+        sessions: sorted,
+        lastSession: last,
+        clockIn: first?.clock_in_at ?? null,
+        lunchOut,
+        lunchIn,
+        clockOut,
+        lunchRequired: lunch,
+        status,
+        device: last?.device_identifier || first?.device_identifier,
+        source: last?.source || first?.source,
+      };
+    });
+  }, [todaySessions]);
+
+  function shiftLunchRequired(shift) {
+    if (!shift) return true;
+    if (shift.lunch_required === false) return false;
+    if (shift.lunch_minutes == null) return true;
+    return Number(shift.lunch_minutes) > 0;
+  }
+
+  function sessionHour(value) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-KE", {
+      timeZone: "Africa/Nairobi",
+      hour: "2-digit",
+      hour12: false,
+    }).formatToParts(parsed);
+    const hour = Number(parts.find((p) => p.type === "hour")?.value);
+    return Number.isFinite(hour) ? hour : null;
+  }
+
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
 
   const selectedEmployees = useMemo(() => {
@@ -596,23 +672,35 @@ export function HrAttendanceScreen() {
   async function syncFromDevices() {
     setSyncingPunches(true);
     try {
-      const result = await apiRequest("/attendance/sync-from-devices", {
-        method: "POST",
-        body:
-          tab === "records"
-            ? { from: historyFromDate, to: historyToDate }
-            : {},
-      });
+      const body =
+        tab === "records"
+          ? { from: historyFromDate, to: historyToDate }
+          : {};
+      let result;
+      try {
+        result = await apiRequest("/attendance/sync-from-devices", {
+          method: "POST",
+          body,
+        });
+      } catch (e) {
+        const missing =
+          e instanceof ApiError &&
+          (e.status === 404 || /could not be found/i.test(String(e.message || "")));
+        if (!missing) throw e;
+        result = await fallbackSyncFromClockDevices(body);
+      }
       const devices = Number(result.devices ?? 0);
       const pulled = Number(result.pulled ?? 0);
       const applied = Number(result.applied ?? 0);
       const retried = Number(result.retried ?? 0);
+      const duplicates = Number(result.duplicates ?? 0);
       if (devices === 0) {
         notifySuccess("No Hikvision clocks to sync. Attendance list refreshed.");
       } else {
         notifySuccess(
           `Synced ${devices} clock${devices === 1 ? "" : "s"} — pulled ${pulled}, applied ${applied}` +
             (retried ? `, retried ${retried}` : "") +
+            (duplicates ? `, ${duplicates} duplicate${duplicates === 1 ? "" : "s"} logged` : "") +
             ".",
         );
       }
@@ -628,6 +716,51 @@ export function HrAttendanceScreen() {
     } finally {
       setSyncingPunches(false);
     }
+  }
+
+  async function fallbackSyncFromClockDevices(body) {
+    const listRes = await apiRequest("/attendance-clock-devices", {
+      searchParams: { per_page: 200 },
+    });
+    const rows = Array.isArray(listRes?.data) ? listRes.data : Array.isArray(listRes) ? listRes : [];
+    const clocks = rows.filter(
+      (row) =>
+        String(row.provider || "").toLowerCase() === "hikvision" &&
+        row.is_active !== false &&
+        String(row.host || "").trim() !== "",
+    );
+    const summary = {
+      devices: clocks.length,
+      pulled: 0,
+      stored: 0,
+      applied: 0,
+      skipped: 0,
+      duplicates: 0,
+      retried: 0,
+      errors: [],
+    };
+    for (const device of clocks) {
+      try {
+        const result = await apiRequest(`/attendance-clock-devices/${device.id}/hikvision/sync/attendance`, {
+          method: "POST",
+          body,
+        });
+        summary.pulled += Number(result.pulled ?? 0);
+        summary.stored += Number(result.stored ?? 0);
+        summary.applied += Number(result.applied ?? 0);
+        summary.skipped += Number(result.skipped ?? 0);
+        summary.duplicates += Number(result.duplicates ?? 0);
+        summary.retried += Number(result.retried ?? 0);
+        for (const error of result.errors ?? []) {
+          summary.errors.push(error);
+        }
+      } catch (err) {
+        const label = String(device.device_no || device.id);
+        const message = err instanceof ApiError ? err.message : "Sync failed";
+        summary.errors.push(`${label}: ${message}`);
+      }
+    }
+    return summary;
   }
 
   async function markMissingAsAbsent() {
@@ -938,14 +1071,15 @@ export function HrAttendanceScreen() {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Premises today</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Each clock session (Africa/Nairobi). Lunch in/out appears as a second row. Delete a
-                wrong punch; remaining punches rebuild the day. Use <strong>Refresh attendance</strong> to pull
-                new fingerprint punches from office clocks into this list.
+                One row per person: clock in, lunch out, lunch in, and clock out (leave for home),
+                following that employee’s shift. Extra fingerprint scans in the same hour do not
+                change these times — they appear under Missed punches. Use{" "}
+                <strong>Refresh attendance</strong> to pull new punches from office clocks.
               </p>
             </div>
             {activeLoading ? (
               <p className="px-5 py-6 text-sm text-slate-500">Loading…</p>
-            ) : todaySessions.length === 0 ? (
+            ) : todayDays.length === 0 ? (
               <p className="px-5 py-6 text-sm text-slate-500">No premises clock-ins yet today.</p>
             ) : (
               <div className="overflow-x-auto">
@@ -955,6 +1089,8 @@ export function HrAttendanceScreen() {
                       <th className="px-4 py-3">Employee</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Clock in</th>
+                      <th className="px-4 py-3">Lunch out</th>
+                      <th className="px-4 py-3">Lunch in</th>
                       <th className="px-4 py-3">Clock out</th>
                       <th className="px-4 py-3">Device</th>
                       <th className="px-4 py-3">Source</th>
@@ -962,34 +1098,44 @@ export function HrAttendanceScreen() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {todaySessions.map((s) => (
-                      <tr key={s.id} className="theme-table-body-row">
-                        <td className="px-4 py-3 font-medium text-slate-900">{sessionEmployeeLabel(s)}</td>
+                    {todayDays.map((day) => (
+                      <tr key={day.employeeId} className="theme-table-body-row">
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {sessionEmployeeLabel(day.lastSession)}
+                        </td>
                         <td className="px-4 py-3">
-                          {!s.clock_out_at ? (
+                          {day.status === "clocked_out" ? (
+                            <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                              Left for home
+                            </span>
+                          ) : day.status === "at_lunch" ? (
+                            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                              At lunch
+                            </span>
+                          ) : (
                             <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
                               On shift
                             </span>
-                          ) : (
-                            <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                              Clocked out
-                            </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 tabular-nums text-slate-700">{sessionTimeLabel(s.clock_in_at)}</td>
+                        <td className="px-4 py-3 tabular-nums text-slate-700">{sessionTimeLabel(day.clockIn)}</td>
                         <td className="px-4 py-3 tabular-nums text-slate-700">
-                          {s.clock_out_at ? sessionTimeLabel(s.clock_out_at) : "—"}
+                          {day.lunchRequired ? sessionTimeLabel(day.lunchOut) : "—"}
                         </td>
-                        <td className="px-4 py-3 text-slate-600">{s.device_identifier || "—"}</td>
-                        <td className="px-4 py-3 text-slate-600">{formatAttendanceSource(s.source)}</td>
+                        <td className="px-4 py-3 tabular-nums text-slate-700">
+                          {day.lunchRequired ? sessionTimeLabel(day.lunchIn) : "—"}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-slate-700">{sessionTimeLabel(day.clockOut)}</td>
+                        <td className="px-4 py-3 text-slate-600">{day.device || "—"}</td>
+                        <td className="px-4 py-3 text-slate-600">{formatAttendanceSource(day.source)}</td>
                         {canManageSettings ? (
                           <td className="px-4 py-3 text-right">
                             <button
                               type="button"
-                              onClick={() => void deleteClockSession(s)}
+                              onClick={() => void deleteClockSession(day.lastSession)}
                               className="text-red-600 hover:underline"
                             >
-                              Delete
+                              Delete last punch
                             </button>
                           </td>
                         ) : null}
@@ -1037,9 +1183,10 @@ export function HrAttendanceScreen() {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
               <p className="mt-1 text-sm text-slate-500">
-                One row per employee per day. Select rows to waive lateness (one shared reason) or
-                delete in bulk. Paid hours exclude lunch and time after shift end. Overtime ≥ 1 hour
-                creates a pending OT draft for HR approval.
+                One row per employee per day with clock in, lunch out, lunch in, and clock out.
+                Lunch columns follow the shift (hidden as — when the shift has no lunch). Paid hours
+                exclude unpaid lunch and time after shift end. Overtime ≥ 1 hour creates a pending OT
+                draft for HR approval.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -1054,8 +1201,10 @@ export function HrAttendanceScreen() {
                     />
                     <th className="px-4 py-3">Employee</th>
                     <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">In</th>
-                    <th className="px-4 py-3">Out</th>
+                    <th className="px-4 py-3">Clock in</th>
+                    <th className="px-4 py-3">Lunch out</th>
+                    <th className="px-4 py-3">Lunch in</th>
+                    <th className="px-4 py-3">Clock out</th>
                     <th className="px-4 py-3">Paid / exp.</th>
                     <th className="px-4 py-3">Late</th>
                     <th className="px-4 py-3">Lunch</th>
@@ -1069,13 +1218,13 @@ export function HrAttendanceScreen() {
                 <tbody className="divide-y divide-slate-100">
                   {historyLoading ? (
                     <tr>
-                      <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={15} className="px-4 py-8 text-center text-slate-500">
                         Loading…
                       </td>
                     </tr>
                   ) : records.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={15} className="px-4 py-8 text-center text-slate-500">
                         {recordSearch.trim()
                           ? "No attendance records match your search in this date range."
                           : "No attendance records in this date range."}
@@ -1093,8 +1242,14 @@ export function HrAttendanceScreen() {
                           {composeEmployeeDisplayName(r.employee) || r.employee_id}
                         </td>
                         <td className="px-4 py-3">{formatShortDate(r.attendance_date)}</td>
-                        <td className="px-4 py-3">{r.check_in?.slice?.(0, 5) ?? "—"}</td>
-                        <td className="px-4 py-3">{r.check_out?.slice?.(0, 5) ?? "—"}</td>
+                        <td className="px-4 py-3">{r.clock_in ?? r.check_in?.slice?.(0, 5) ?? "—"}</td>
+                        <td className="px-4 py-3">
+                          {r.lunch_required === false ? "—" : (r.lunch_out ?? "—")}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.lunch_required === false ? "—" : (r.lunch_in ?? "—")}
+                        </td>
+                        <td className="px-4 py-3">{r.clock_out ?? r.check_out?.slice?.(0, 5) ?? "—"}</td>
                         <td className="whitespace-nowrap px-4 py-3">
                           {r.hours_worked ?? "—"}
                           {r.expected_hours != null ? (

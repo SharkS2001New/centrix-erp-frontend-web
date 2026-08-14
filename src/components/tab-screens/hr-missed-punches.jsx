@@ -90,7 +90,7 @@ export function HrMissedPunchesScreen() {
   return (
     <CatalogPageShell
       title="Missed punches"
-      subtitle="Terminal scans that did not create HR attendance, extra scans in the same hour, and shifts still waiting for a clock-out"
+      subtitle="Terminal scans that did not create HR attendance, extra scans logged as duplicates, and shifts still waiting for a clock-out"
       action={
         canRetry ? (
           <PrimaryButton type="button" disabled={retrying || loading} onClick={() => void retryPending()}>
@@ -156,7 +156,7 @@ export function HrMissedPunchesScreen() {
       <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-[15px] font-medium text-slate-900">Duplicate punches</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Extra terminal scans in the same hour. The first punch still counts for attendance; these are logged so HR can see every scan.
+          Extra terminal scans in the same hour. Only the first successful punch counts for attendance; these extras are logged here.
         </p>
         {loading ? (
           <p className="mt-3 text-sm text-slate-500">Loading…</p>
