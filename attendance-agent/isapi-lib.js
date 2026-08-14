@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.4.0";
+export const AGENT_VERSION = "2.4.1";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -494,6 +494,9 @@ export async function fetchAcsEvents(config, fromDate, toDate) {
   const url = `${deviceBaseUrl(hik)}/ISAPI/AccessControl/AcsEvent?format=json`;
   const from = fromDate instanceof Date ? fromDate : new Date(fromDate);
   const to = toDate instanceof Date ? toDate : new Date(toDate);
+  if (from.getTime() > to.getTime()) {
+    from.setTime(to.getTime() - 6 * 60 * 60 * 1000);
+  }
 
   const timePairs = [
     {

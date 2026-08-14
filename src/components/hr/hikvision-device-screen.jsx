@@ -208,9 +208,13 @@ export function HikvisionDeviceScreen() {
 
   useEffect(() => {
     if (tab === "Employees" && featureEnabled(capabilities, "users")) {
-      void loadUsers().catch(() => {});
+      void loadUsers().catch((err) => {
+        notifyError(err instanceof ApiError ? err.message : "Could not load device employees");
+      });
       if (featureEnabled(capabilities, "fingerprints")) {
-        void loadFingerprints("").catch(() => {});
+        void loadFingerprints("").catch((err) => {
+          notifyError(err instanceof ApiError ? err.message : "Could not load fingerprint enrollment");
+        });
       }
     }
     if (tab === "Cards" && featureEnabled(capabilities, "cards")) {
@@ -895,7 +899,19 @@ function UnsupportedNotice({ feature }) {
 }
 
 function hikvisionEmployeeNo(row) {
-  return String(row?.employeeNo ?? row?.EmployeeNo ?? "").trim();
+  return String(row?.employeeNo ?? row?.EmployeeNo ?? row?.employeeNoString ?? "").trim();
+}
+
+function hikvisionEmployeeNoKeys(no) {
+  const raw = String(no ?? "").trim();
+  if (!raw) return [];
+  const keys = new Set([raw]);
+  const digits = raw.replace(/^0+/, "") || "0";
+  keys.add(digits);
+  if (/^\d+$/.test(digits)) {
+    keys.add(digits.padStart(4, "0"));
+  }
+  return [...keys];
 }
 
 function hikvisionFingerId(row) {
@@ -920,6 +936,14 @@ function hikvisionCount(row, ...keys) {
     const n = Number(row[key]);
     if (Number.isFinite(n)) return n;
   }
+  const nested = row?.fingerPrint ?? row?.FingerPrint;
+  if (nested && typeof nested === "object") {
+    for (const key of ["numOfFP", "count", "num", "NumOfFP"]) {
+      const n = Number(nested[key]);
+      if (Number.isFinite(n)) return n;
+    }
+    if (nested.enable === true || nested.enable === "true") return 1;
+  }
   return 0;
 }
 
@@ -943,12 +967,26 @@ function hikvisionValidSummary(row) {
 function groupFingerprintsByEmployee(fingerprints) {
   const map = new Map();
   for (const row of fingerprints ?? []) {
-    const no = hikvisionEmployeeNo(row);
-    if (!no) continue;
-    if (!map.has(no)) map.set(no, []);
-    map.get(no).push(row);
+    for (const key of hikvisionEmployeeNoKeys(hikvisionEmployeeNo(row))) {
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(row);
+    }
   }
   return map;
+}
+
+function fingerprintsForUser(byEmployee, user) {
+  const seen = new Set();
+  const rows = [];
+  for (const key of hikvisionEmployeeNoKeys(hikvisionEmployeeNo(user))) {
+    for (const row of byEmployee.get(key) ?? []) {
+      const id = `${hikvisionEmployeeNo(row)}:${row.fingerPrintID ?? row.FingerPrintID ?? rows.length}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      rows.push(row);
+    }
+  }
+  return rows;
 }
 
 function fingerprintEnrollment(user, fps) {
@@ -997,7 +1035,7 @@ function UserTable({ users, fingerprints }) {
         <tbody>
           {users.map((row, idx) => {
             const no = hikvisionEmployeeNo(row);
-            const fp = fingerprintEnrollment(row, byEmployee.get(no));
+            const fp = fingerprintEnrollment(row, fingerprintsForUser(byEmployee, row));
             const valid = hikvisionValidSummary(row);
             return (
               <tr key={no || idx} className="border-t border-slate-100">
