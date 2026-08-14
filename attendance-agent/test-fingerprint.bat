@@ -7,9 +7,10 @@ if exist "%INSTALLDIR%\settings-ui.js" (
   cd /d "%~dp0"
 )
 echo.
-echo Place a finger on the Hikvision terminal, wait for the beep, then press any key.
+echo After this starts, PLACE YOUR FINGER on the Hikvision terminal.
+echo You have 90 seconds. Press any key to begin the wait.
 pause >nul
-echo Checking the terminal...
+echo Waiting 90 seconds for a new punch...
 node "%CD%\settings-ui.js" --fingerprint
 echo.
 pause

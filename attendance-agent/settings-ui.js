@@ -7,6 +7,7 @@
 import http from "node:http";
 import { exec } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import {
   SETTINGS_UI_PORT,
   SETTINGS_UI_URL,
@@ -215,9 +216,9 @@ function htmlPage(installer = false) {
         <div class="section" id="fpSection">
           <h2>Test fingerprint (local)</h2>
           <p class="hint" style="margin-bottom:12px">
-            Place a finger on the Hikvision terminal, then click the button. The result opens as a new
-            page (this avoids browser “network error” on long ISAPI calls). You can also run
-            <strong>test-fingerprint.bat</strong> in the agent folder.
+            Click the button <strong>first</strong>, then place a finger on the terminal.
+            You will get <strong>90 seconds</strong> on a waiting page. Keep this settings
+            window and the Command/service running.
           </p>
           <div class="actions" style="margin-top:0">
             <button type="submit" class="primary" name="fpPush" value="0" formaction="/fp-test" formmethod="post">Check fingerprint now</button>
@@ -347,7 +348,7 @@ function htmlPage(installer = false) {
       const dest = e.submitter && e.submitter.getAttribute("formaction");
       if (dest === "/fp-test") {
         const status = el("fpStatus");
-        status.textContent = "Checking the terminal — wait for the result page. Keep the Command window open.";
+        status.textContent = "Starting 90-second wait — place your finger on the terminal after the next page opens.";
         status.style.color = "#64748b";
         return;
       }
@@ -423,6 +424,139 @@ function fingerprintResultHtml(result) {
   <p><a href="/">Back to settings</a></p>
   <p style="opacity:.7;font-size:13px">If this page is blank or the browser errors, run <code>test-fingerprint.bat</code> in the agent folder — the Command window shows the real Hikvision error.</p>
 </div></body></html>`;
+}
+
+const fingerprintWaits = new Map();
+
+function eventKey(event) {
+  return `${event.serial_no || ""}|${event.employee_no}|${event.punched_at}`;
+}
+
+function fingerprintWaitingHtml(secondsLeft, waitId, host) {
+  const left = Math.max(0, Number(secondsLeft) || 0);
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta http-equiv="refresh" content="3;url=/fp-wait?id=${encodeURIComponent(waitId)}" />
+<title>Waiting for fingerprint</title>
+<style>
+  body { font-family: Segoe UI, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:32px; text-align:center; }
+  .card { max-width:640px; margin:0 auto; background:#1e293b; border-radius:12px; padding:32px; }
+  .secs { font-size:64px; font-weight:700; color:#93c5fd; margin:16px 0; }
+  a { color:#93c5fd; }
+</style></head>
+<body><div class="card">
+  <h1>Place your finger on the terminal now</h1>
+  <p>Device ${host || ""} — wait for the accept beep. This page stays open for 90 seconds.</p>
+  <p class="secs">${left}s</p>
+  <p>Checking every 3 seconds. Do not close this tab.</p>
+  <p><a href="/">Cancel — back to settings</a></p>
+</div></body></html>`;
+}
+
+async function snapshotEventKeys(config) {
+  try {
+    const events = await fetchAcsEvents(config, new Date(Date.now() - 15 * 60 * 1000), new Date());
+    return new Set((events || []).map(eventKey));
+  } catch {
+    return new Set();
+  }
+}
+
+async function startFingerprintWait(config, push) {
+  const id = randomUUID().replace(/-/g, "").slice(0, 12);
+  const keys = await snapshotEventKeys(config);
+  fingerprintWaits.set(id, {
+    push: Boolean(push),
+    deadline: Date.now() + 90_000,
+    keys,
+    host: config.hikvision?.host || "",
+  });
+  return id;
+}
+
+async function applyFoundPunch(config, latest, push, events) {
+  const lines = [
+    `Found ${events.length} new event(s); latest:`,
+    `  employee: ${latest.employee_no}`,
+    `  time:     ${latest.punched_at}`,
+    `  verify:   ${latest.verification_method || "—"}`,
+    `  status:   ${latest.attendance_status || "—"}`,
+  ];
+  if (!push) {
+    return { ok: true, detail: lines.join("\n"), latest, events };
+  }
+  if (!config.deviceId || !config.centrixApiUrl || !config.centrixToken) {
+    lines.push("Cannot push: Centrix deviceId / API URL / token missing.");
+    return { ok: false, detail: lines.join("\n"), latest, events };
+  }
+  const url = `${centrixDeviceBase(config)}/agent/ingest-events`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: centrixAuthHeaders(config),
+    body: JSON.stringify({
+      agent_version: AGENT_VERSION,
+      events: [
+        {
+          employee_no: latest.employee_no,
+          employee_name: latest.employee_name,
+          punched_at: latest.punched_at,
+          attendance_status: latest.attendance_status,
+          verification_method: latest.verification_method,
+          card_no: latest.card_no,
+          serial_no: latest.serial_no,
+          major: latest.major,
+          minor: latest.minor,
+          raw: latest.raw,
+        },
+      ],
+    }),
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    lines.push(`Centrix ingest failed HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return { ok: false, detail: lines.join("\n"), latest, events };
+  }
+  lines.push(
+    `Sent to Centrix — stored=${json?.stored ?? 0} applied=${json?.applied ?? 0} skipped=${json?.skipped ?? 0}`,
+  );
+  return { ok: true, detail: lines.join("\n"), latest, events, ingest: json };
+}
+
+async function pollFingerprintWait(id) {
+  const session = fingerprintWaits.get(id);
+  if (!session) {
+    return { kind: "missing" };
+  }
+  const config = normalizeConfig(ensureConfigFile());
+  const left = Math.max(0, Math.ceil((session.deadline - Date.now()) / 1000));
+  let events = [];
+  try {
+    events = await fetchAcsEvents(config, new Date(Date.now() - 15 * 60 * 1000), new Date());
+  } catch (err) {
+    if (left <= 0) {
+      fingerprintWaits.delete(id);
+      return { kind: "timeout", host: session.host, detail: err.message };
+    }
+    return { kind: "waiting", left, id, host: session.host };
+  }
+  const fresh = (events || []).filter((event) => !session.keys.has(eventKey(event)));
+  if (fresh.length) {
+    fingerprintWaits.delete(id);
+    const latest = fresh[fresh.length - 1];
+    const result = await applyFoundPunch(config, latest, session.push, fresh);
+    return { kind: "done", result };
+  }
+  if (left <= 0) {
+    fingerprintWaits.delete(id);
+    return { kind: "timeout", host: session.host };
+  }
+  return { kind: "waiting", left, id, host: session.host };
 }
 
 function sendJson(res, status, payload) {
@@ -682,21 +816,48 @@ export function runSettingsUi(options = {}) {
           return;
         }
 
-        if (req.method === "GET" && url.pathname === "/fp-test") {
+        if (req.method === "GET" && url.pathname === "/fp-wait") {
+          const id = url.searchParams.get("id") || "";
+          const poll = await pollFingerprintWait(id);
           res.writeHead(200, {
             "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store",
           });
-          const push = url.searchParams.get("push") === "1";
-          try {
-            const result = await testFingerprintLocal(normalizeConfig(ensureConfigFile()), {
-              push,
-              lookbackSeconds: 900,
-            });
-            res.end(fingerprintResultHtml(result));
-          } catch (err) {
-            res.end(fingerprintResultHtml({ ok: false, detail: err.message || String(err) }));
+          if (poll.kind === "done") {
+            res.end(fingerprintResultHtml(poll.result));
+            return;
           }
+          if (poll.kind === "waiting") {
+            res.end(fingerprintWaitingHtml(poll.left, poll.id, poll.host));
+            return;
+          }
+          if (poll.kind === "timeout") {
+            res.end(
+              fingerprintResultHtml({
+                ok: false,
+                detail:
+                  `No new punch from ${poll.host || "the terminal"} in 90 seconds.\n` +
+                  "Place a finger after the waiting page opens, wait for the accept beep, then try again.\n" +
+                  (poll.detail ? `Last error: ${poll.detail}` : ""),
+              }),
+            );
+            return;
+          }
+          res.end(
+            fingerprintResultHtml({
+              ok: false,
+              detail: "This wait session expired. Go back to settings and click Check fingerprint now again.",
+            }),
+          );
+          return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/fp-test") {
+          const push = url.searchParams.get("push") === "1";
+          const config = normalizeConfig(ensureConfigFile());
+          const id = await startFingerprintWait(config, push);
+          res.writeHead(302, { Location: `/fp-wait?id=${encodeURIComponent(id)}` });
+          res.end();
           return;
         }
 
@@ -721,30 +882,13 @@ export function runSettingsUi(options = {}) {
           const wantsHtml =
             url.pathname === "/fp-test" ||
             String(req.headers.accept || "").includes("text/html");
+          const id = await startFingerprintWait(config, push);
           if (wantsHtml) {
-            res.writeHead(200, {
-              "Content-Type": "text/html; charset=utf-8",
-              "Cache-Control": "no-store",
-            });
+            res.writeHead(302, { Location: `/fp-wait?id=${encodeURIComponent(id)}` });
+            res.end();
+            return;
           }
-          try {
-            const result = await testFingerprintLocal(config, {
-              push,
-              lookbackSeconds: Number(body.lookback_seconds) || 900,
-            });
-            if (wantsHtml) {
-              res.end(fingerprintResultHtml(result));
-            } else {
-              sendJson(res, 200, { ok: Boolean(result.ok), detail: result.detail || "" });
-            }
-          } catch (err) {
-            const detail = err.message || String(err);
-            if (wantsHtml) {
-              res.end(fingerprintResultHtml({ ok: false, detail }));
-            } else {
-              sendJson(res, 200, { ok: false, detail });
-            }
-          }
+          sendJson(res, 200, { ok: true, wait_id: id, wait_url: `/fp-wait?id=${id}` });
           return;
         }
 
@@ -832,15 +976,35 @@ const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === proces
 if (isDirectRun && process.argv.includes("--fingerprint")) {
   const push = process.argv.includes("--push");
   const config = normalizeConfig(ensureConfigFile());
-  console.log(
-    push
-      ? "Checking Hikvision and sending the latest punch to Centrix…"
-      : "Checking Hikvision for a recent fingerprint punch…",
-  );
-  testFingerprintLocal(config, { push, lookbackSeconds: 900 })
-    .then((result) => {
-      console.log(result.detail || (result.ok ? "OK" : "Failed"));
-      process.exit(result.ok ? 0 : 1);
+  console.log("Place your finger on the Hikvision terminal NOW.");
+  console.log("Waiting 90 seconds for a new punch...");
+  snapshotEventKeys(config)
+    .then(async (keys) => {
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        const left = Math.ceil((deadline - Date.now()) / 1000);
+        process.stdout.write(`\r${left}s left — waiting for a new punch...   `);
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        let events = [];
+        try {
+          events = await fetchAcsEvents(
+            config,
+            new Date(Date.now() - 15 * 60 * 1000),
+            new Date(),
+          );
+        } catch (err) {
+          process.stdout.write(`\n${err.message}\n`);
+          continue;
+        }
+        const fresh = (events || []).filter((event) => !keys.has(eventKey(event)));
+        if (fresh.length) {
+          const result = await applyFoundPunch(config, fresh[fresh.length - 1], push, fresh);
+          console.log(`\n${result.detail || (result.ok ? "OK" : "Failed")}`);
+          process.exit(result.ok ? 0 : 1);
+        }
+      }
+      console.log("\nNo new punch in 90 seconds. Enroll the person, beep on the terminal, then run this again.");
+      process.exit(1);
     })
     .catch((err) => {
       console.error(err.message || err);
