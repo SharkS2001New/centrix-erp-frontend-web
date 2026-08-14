@@ -278,25 +278,41 @@ async function main() {
   const skipUi = process.argv.includes("--no-setup-ui");
   let config = ensureConfigFile();
 
-  if (!isConfigReady(config)) {
-    const missing = missingConfigFields(config).join(", ");
-    if (once || skipUi) {
-      console.error(
-        `[attendance-agent] Config incomplete (${missing}). Open settings: npm run setup  →  ${SETTINGS_UI_URL}`,
-      );
-      process.exit(1);
-    }
-    console.log(`[attendance-agent] First-run setup needed (${missing || "incomplete"}). Opening settings UI…`);
+  if (!once && !skipUi) {
     const { runSettingsUi } = await import("./settings-ui.js");
-    await runSettingsUi({ openBrowser: true, waitUntilReady: true });
-    config = ensureConfigFile();
-    if (!isConfigReady(config)) {
-      console.error(
-        `[attendance-agent] Still incomplete after settings UI. Missing: ${missingConfigFields(config).join(", ")}`,
+    const needSetup = !isConfigReady(config);
+    if (needSetup) {
+      console.log(
+        `[attendance-agent] First-run setup needed (${missingConfigFields(config).join(", ") || "incomplete"}). Opening settings UI…`,
       );
-      process.exit(1);
+    } else {
+      console.log(`[attendance-agent] Settings UI on ${SETTINGS_UI_URL} (stays up with this service)`);
     }
-    console.log("[attendance-agent] Settings saved. Starting sync…");
+    const settings = runSettingsUi({
+      openBrowser: needSetup,
+      waitUntilReady: needSetup,
+      keepOpen: true,
+    });
+    if (needSetup) {
+      await settings;
+      config = ensureConfigFile();
+      if (!isConfigReady(config)) {
+        console.error(
+          `[attendance-agent] Still incomplete after settings UI. Missing: ${missingConfigFields(config).join(", ")}`,
+        );
+        process.exit(1);
+      }
+      console.log("[attendance-agent] Settings saved. Starting sync…");
+    } else {
+      settings.catch((err) => {
+        console.warn(`[attendance-agent] settings UI: ${err.message || err}`);
+      });
+    }
+  } else if (!isConfigReady(config)) {
+    console.error(
+      `[attendance-agent] Config incomplete (${missingConfigFields(config).join(", ")}). Open settings: npm run setup  →  ${SETTINGS_UI_URL}`,
+    );
+    process.exit(1);
   }
 
   if (once) {

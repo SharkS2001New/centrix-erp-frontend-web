@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.2.5";
+export const AGENT_VERSION = "2.2.6";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.

@@ -6,6 +6,15 @@ if exist "%INSTALLDIR%\settings-ui.js" (
 ) else (
   cd /d "%~dp0"
 )
+set SETTINGS_URL=http://127.0.0.1:9251/
 echo Opening CentrixAttendanceAgent settings...
+curl -s -o nul --connect-timeout 2 %SETTINGS_URL%
+if not errorlevel 1 (
+  echo Settings are already running ^(Windows service^). Opening the browser...
+  start "" "%SETTINGS_URL%"
+  goto :eof
+)
+echo Starting settings UI. Leave this window open, or use the Windows service instead.
+start "" "%SETTINGS_URL%"
 node "%CD%\settings-ui.js"
 if errorlevel 1 pause

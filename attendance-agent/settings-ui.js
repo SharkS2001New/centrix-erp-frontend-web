@@ -632,13 +632,14 @@ async function testFingerprintLocal(config, { push = false, lookbackSeconds = 12
 }
 
 /**
- * @param {{ openBrowser?: boolean, waitUntilReady?: boolean, installer?: boolean }} [options]
+ * @param {{ openBrowser?: boolean, waitUntilReady?: boolean, installer?: boolean, keepOpen?: boolean }} [options]
  * @returns {Promise<{ ready: boolean, alreadyRunning?: boolean }>}
  */
 export function runSettingsUi(options = {}) {
   const open = options.openBrowser !== false;
   const waitUntilReady = Boolean(options.waitUntilReady);
   const installer = Boolean(options.installer);
+  const keepOpen = Boolean(options.keepOpen);
 
   return new Promise((resolve, reject) => {
     ensureConfigFile();
@@ -647,10 +648,12 @@ export function runSettingsUi(options = {}) {
     const finish = (result) => {
       if (settled) return;
       settled = true;
-      try {
-        server.close();
-      } catch {
-        /* ignore */
+      if (!keepOpen) {
+        try {
+          server.close();
+        } catch {
+          /* ignore */
+        }
       }
       resolve(result);
     };
@@ -672,6 +675,24 @@ export function runSettingsUi(options = {}) {
           const view = publicConfigView(ensureConfigFile());
           res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
           res.end(JSON.stringify(view));
+          return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/fp-test") {
+          res.writeHead(200, {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+          });
+          const push = url.searchParams.get("push") === "1";
+          try {
+            const result = await testFingerprintLocal(normalizeConfig(ensureConfigFile()), {
+              push,
+              lookbackSeconds: 120,
+            });
+            res.end(fingerprintResultHtml(result));
+          } catch (err) {
+            res.end(fingerprintResultHtml({ ok: false, detail: err.message || String(err) }));
+          }
           return;
         }
 
@@ -751,14 +772,9 @@ export function runSettingsUi(options = {}) {
           }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(payload));
-          // Never auto-close on a plain /api/config save — fingerprint test used to
-          // POST that first, which shut the server down and produced a bogus
-          // "lost contact with 127.0.0.1:9251" error.
           const testedOk = url.pathname === "/api/save-and-test" && payload.test?.ok;
-          if (waitUntilReady && url.pathname === "/api/save-and-test" && view.ready && testedOk) {
-            setTimeout(() => finish({ ready: true }), 1200);
-          } else if (waitUntilReady && !installer && url.pathname === "/api/config" && view.ready) {
-            setTimeout(() => finish({ ready: true }), 400);
+          if (waitUntilReady && view.ready && (testedOk || (url.pathname === "/api/config" && !installer))) {
+            setTimeout(() => finish({ ready: true }), testedOk ? 1200 : 400);
           }
           return;
         }
@@ -799,7 +815,10 @@ export function runSettingsUi(options = {}) {
       if (open) openBrowser(SETTINGS_UI_URL);
     });
 
-    const shutdown = () => finish({ ready: isConfigReady(ensureConfigFile()) });
+    const shutdown = () => {
+      if (keepOpen) return;
+      finish({ ready: isConfigReady(ensureConfigFile()) });
+    };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
   });
@@ -824,7 +843,7 @@ if (isDirectRun && process.argv.includes("--fingerprint")) {
       process.exit(1);
     });
 } else if (isDirectRun) {
-  runSettingsUi({ openBrowser: true }).catch((err) => {
+  runSettingsUi({ openBrowser: true, keepOpen: true }).catch((err) => {
     console.error(err.message || err);
     process.exit(1);
   });
