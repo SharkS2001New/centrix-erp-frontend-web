@@ -9,6 +9,7 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { P } from "@/lib/permission-codes";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { ATTENDANCE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { HrDateField, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
 import {
   CatalogPageShell,
   Field,
@@ -1113,7 +1114,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
           : "Who has clocked in today — live sessions from terminals, company phone, and the sales app"
       }
       action={
-        <div className="flex flex-wrap items-center gap-2">
+        <HrPageActions>
           <Link href={isHistory ? "/hr/attendance" : "/hr/attendance/history"} className={SECONDARY_BTN_CLASS}>
             {isHistory ? "Today's attendance" : "Previous attendance"}
           </Link>
@@ -1192,7 +1193,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
             </button>
             </>
           ) : null}
-        </div>
+        </HrPageActions>
       }
     >
       {!isHistory ? (
@@ -1345,23 +1346,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
         </>
       ) : (
         <>
-          <div className="mb-4 flex flex-wrap items-end gap-3 theme-panel rounded-xl border p-4 shadow-sm">
-            <Field label="From">
-              <input
-                type="date"
-                value={historyFromDate}
-                onChange={(e) => setHistoryFromDate(e.target.value)}
-                className={inputClassName()}
-              />
-            </Field>
-            <Field label="To">
-              <input
-                type="date"
-                value={historyToDate}
-                onChange={(e) => setHistoryToDate(e.target.value)}
-                className={inputClassName()}
-              />
-            </Field>
+          <HrFilterToolbar>
+            <HrDateField label="From" value={historyFromDate} onChange={setHistoryFromDate} />
+            <HrDateField label="To" value={historyToDate} onChange={setHistoryToDate} />
             <Field label="Search employee">
               <SearchInput
                 value={recordSearch}
@@ -1369,7 +1356,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 placeholder="Search by employee name"
               />
             </Field>
-          </div>
+          </HrFilterToolbar>
 
           <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">

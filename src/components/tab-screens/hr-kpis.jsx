@@ -13,6 +13,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { KPI_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { P } from "@/lib/permission-codes";
 import { useConfirm } from "@/lib/use-confirm";
@@ -225,7 +226,7 @@ export function HrKpisScreen() {
           </p>
         </div>
         {canManage ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <HrPageActions>
             <CatalogListExport
               title="Organization KPIs"
               filename="organization-kpis"
@@ -238,17 +239,19 @@ export function HrKpisScreen() {
             <PrimaryButton type="button" onClick={openCreate}>
               Add organization KPI
             </PrimaryButton>
-          </div>
+          </HrPageActions>
         ) : (
-          <CatalogListExport
-            title="Organization KPIs"
-            filename="organization-kpis"
-            apiPath="/organization-kpis"
-            columns={KPI_EXPORT_COLUMNS}
-            totalCount={orgKpis.length}
-            getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
-          />
+          <HrPageActions>
+            <CatalogListExport
+              title="Organization KPIs"
+              filename="organization-kpis"
+              apiPath="/organization-kpis"
+              columns={KPI_EXPORT_COLUMNS}
+              totalCount={orgKpis.length}
+              getSearchParams={() => ({ per_page: 200 })}
+              disabled={loading}
+            />
+          </HrPageActions>
         )}
       </div>
 

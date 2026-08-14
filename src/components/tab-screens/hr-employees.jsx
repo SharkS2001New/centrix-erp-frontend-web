@@ -11,6 +11,7 @@ import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   CatalogPageShell,
   FilterSelect,
+  FilterToolbar,
   IconButton,
   PaginationBar,
   PencilIcon,
@@ -28,6 +29,7 @@ import {
   formatWorkShiftLabel,
 } from "@/components/hr/hr-shared";
 import { EmployeeImportExport } from "@/components/hr/employee-import-export";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -295,7 +297,7 @@ export function HrEmployeesScreen() {
       title="Employees"
       subtitle="Manage staff records and departments"
       action={
-        <div className="flex flex-wrap items-center gap-2">
+        <HrPageActions>
           <button
             type="button"
             onClick={() => void reloadAll()}
@@ -320,12 +322,12 @@ export function HrEmployeesScreen() {
             </button>
           ) : null}
           <Link
-          href="/hr/employees/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
-        >
-          Add employee
-        </Link>
-        </div>
+            href="/hr/employees/new"
+            className="inline-flex h-[38px] items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+          >
+            Add employee
+          </Link>
+        </HrPageActions>
       }
       banner={
         !loading ? (
@@ -338,7 +340,7 @@ export function HrEmployeesScreen() {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-end gap-3">
+        <FilterToolbar>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -361,7 +363,7 @@ export function HrEmployeesScreen() {
               { value: "inactive", label: "Inactive" },
             ]}
           />
-        </div>
+        </FilterToolbar>
       }
     >
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">

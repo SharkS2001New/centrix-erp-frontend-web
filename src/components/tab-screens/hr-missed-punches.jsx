@@ -18,6 +18,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { formatTimeForApi } from "@/components/hr/hr-shared";
 
 function displayField(value) {
@@ -223,7 +224,7 @@ export function HrMissedPunchesScreen() {
       title="Missed punches"
       subtitle="Unapplied terminal scans and forgotten evening clock-outs for HR to confirm"
       action={
-        <div className="flex flex-wrap gap-2">
+        <HrPageActions>
           {canRetry && tab === "unapplied" ? (
             <>
               <button
@@ -288,7 +289,7 @@ export function HrMissedPunchesScreen() {
               disabled={loading}
             />
           )}
-        </div>
+        </HrPageActions>
       }
     >
       <AttendanceGapsBanner counts={gapCounts} />

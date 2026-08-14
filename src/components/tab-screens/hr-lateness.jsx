@@ -12,6 +12,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { HrDateField, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
 function daysAgo(days) {
@@ -120,25 +121,7 @@ export function HrLatenessScreen() {
       title="Lateness"
       subtitle="Late clock-in (after shift start + grace), late return from lunch, and overall lateness deducted on payroll."
       action={
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="text-sm text-slate-600">
-            From
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="ml-2 rounded-md border border-slate-300 px-2 py-1"
-            />
-          </label>
-          <label className="text-sm text-slate-600">
-            To
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="ml-2 rounded-md border border-slate-300 px-2 py-1"
-            />
-          </label>
+        <HrPageActions>
           <button type="button" className={SECONDARY_BTN_CLASS} onClick={load} disabled={loading}>
             Refresh
           </button>
@@ -150,7 +133,13 @@ export function HrLatenessScreen() {
             getInlineRows={fetchAllLatenessRows}
             disabled={loading}
           />
-        </div>
+        </HrPageActions>
+      }
+      toolbar={
+        <HrFilterToolbar>
+          <HrDateField label="From" value={fromDate} onChange={setFromDate} />
+          <HrDateField label="To" value={toDate} onChange={setToDate} />
+        </HrFilterToolbar>
       }
     >
       {loading && rows.length === 0 ? (

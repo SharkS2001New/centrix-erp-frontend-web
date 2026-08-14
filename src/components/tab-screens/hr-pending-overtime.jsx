@@ -16,6 +16,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 
 const PENDING_OT_EXPORT_COLUMNS = [
   { key: "work_date", label: "Date" },
@@ -120,8 +121,8 @@ export function HrPendingOvertimeScreen() {
       title="Pending overtimes"
       subtitle="Late clock-out past shift end is logged here. Approve to pay it, or deny to drop it and reset clock-out to the shift end time."
       action={
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/hr/overtime" className="text-sm font-medium text-[#185FA5] hover:underline">
+        <HrPageActions>
+          <Link href="/hr/overtime" className={SECONDARY_BTN_CLASS}>
             Approved overtime
           </Link>
           <button type="button" className={SECONDARY_BTN_CLASS} onClick={load} disabled={loading}>
@@ -135,7 +136,7 @@ export function HrPendingOvertimeScreen() {
             getInlineRows={fetchAllPendingRows}
             disabled={loading}
           />
-        </div>
+        </HrPageActions>
       }
     >
       {loading && rows.length === 0 ? (

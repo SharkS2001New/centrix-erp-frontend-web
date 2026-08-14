@@ -15,6 +15,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 
 function displayField(value) {
   if (value == null) return "—";
@@ -94,7 +95,7 @@ export function HrDuplicatePunchesScreen() {
       title="Duplicate punches"
       subtitle="Extra terminal scans in the same hour. Only the first successful punch counts for attendance."
       action={
-        <div className="flex flex-wrap gap-2">
+        <HrPageActions>
           <CatalogListExport
             title="Duplicate punches"
             filename="duplicate-punches"
@@ -122,7 +123,7 @@ export function HrDuplicatePunchesScreen() {
               {busy ? "Dismissing…" : "Dismiss all"}
             </PrimaryButton>
           ) : null}
-        </div>
+        </HrPageActions>
       }
     >
       <AttendanceGapsBanner counts={gapCounts} />

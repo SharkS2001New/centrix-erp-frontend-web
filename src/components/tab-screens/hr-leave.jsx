@@ -5,6 +5,7 @@ import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { LEAVE_DAY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { LeaveAssignmentSection } from "@/components/hr/leave-assignment-section";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { isAdminUser } from "@/components/hr/hr-shared";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -23,12 +24,14 @@ export function HrLeaveScreen() {
           : "View leave history and submit applications for administrator approval."
       }
       action={
-        <CatalogListExport
-          title="Leave days"
-          apiPath="/employee-leave-days"
-          columns={LEAVE_DAY_EXPORT_COLUMNS}
-          getSearchParams={() => ({ per_page: 200 })}
-        />
+        <HrPageActions>
+          <CatalogListExport
+            title="Leave days"
+            apiPath="/employee-leave-days"
+            columns={LEAVE_DAY_EXPORT_COLUMNS}
+            getSearchParams={() => ({ per_page: 200 })}
+          />
+        </HrPageActions>
       }
     >
       <LeaveAssignmentSection highlightLeaveDayId={highlightLeaveDayId} />

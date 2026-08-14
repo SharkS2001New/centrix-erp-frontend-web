@@ -18,6 +18,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { PAYROLL_RUN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   EMPTY_PAY_PERIOD_FORM,
@@ -409,7 +410,7 @@ export function HrPayrollScreen() {
       title="Payroll runs"
       subtitle="Monthly payrolls and payments — open a run to review, approve, or pay"
       action={
-        <div className="flex flex-wrap items-center gap-2">
+        <HrPageActions>
           {tab === "runs" ? (
             <CatalogListExport
               title="Payroll runs"
@@ -444,7 +445,7 @@ export function HrPayrollScreen() {
           ) : (
             <PrimaryButton onClick={openAddPeriodModal}>Add period</PrimaryButton>
           )}
-        </div>
+        </HrPageActions>
       }
       banner={
         !loading && tab === "runs" ? (

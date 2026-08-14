@@ -7,6 +7,7 @@ import {
   PrimaryButton,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { HrFilterToolbar } from "@/components/hr/hr-list-toolbar";
 import { useAuth } from "@/contexts/auth-context";
 import { canApproveLeaveRequests } from "@/lib/approval-permissions";
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
@@ -474,18 +475,16 @@ export function EmployeeLeaveHub({
 
       {tab === "leave" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[15px] font-medium text-slate-900">Leave</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Search an employee to view balances and leave history.
-              </p>
-            </div>
+          <h2 className="text-[15px] font-medium text-slate-900">Leave</h2>
+          <p className="mt-1 mb-4 text-sm text-slate-500">
+            Search an employee to view balances and leave history.
+          </p>
+          <HrFilterToolbar>
+            <div className="min-w-[16rem] max-w-xl">{employeeSearch}</div>
             <PrimaryButton type="button" onClick={openCreateTab}>
               Create leave
             </PrimaryButton>
-          </div>
-          <div className="mt-4">{employeeSearch}</div>
+          </HrFilterToolbar>
           {loadingEmployee ? (
             <p className="mt-4 text-sm text-slate-500">Loading employee leave data…</p>
           ) : selectedEmployee ? (

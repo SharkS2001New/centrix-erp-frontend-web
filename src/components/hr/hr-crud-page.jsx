@@ -12,6 +12,7 @@ import {
   PrimaryButton,
   SearchInput,
   PaginationBar,
+  FilterToolbar,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
   TABLE_BODY_ROW_CLASS,
@@ -21,6 +22,7 @@ import {
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { exportColumnsFromHrCrud } from "@/lib/catalog-list-exports";
+import { HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 /**
@@ -219,7 +221,7 @@ export function HrCrudPage({
         ) : !embedded && title ? (
           <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
         ) : null}
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <FilterToolbar>
           {searchFilter ? (
             <SearchInput
               value={search}
@@ -246,7 +248,7 @@ export function HrCrudPage({
               disabled={loading}
             />
           ) : null}
-        </div>
+        </FilterToolbar>
       </div>
 
       {error && (
@@ -356,20 +358,22 @@ export function HrCrudPage({
       subtitle={subtitle}
       action={
         exportEnabled && exportColumns.length > 0 ? (
-          <CatalogListExport
-            title={resolvedExportTitle}
-            filename={exportFilename ?? resolvedExportTitle}
-            apiPath={apiPath}
-            columns={exportColumns}
-            totalCount={total || filtered.length}
-            getSearchParams={() => ({
-              per_page: 200,
-              ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
-              ...(listSearchParams ?? {}),
-            })}
-            getInlineRows={getInlineExportRows}
-            disabled={loading}
-          />
+          <HrPageActions>
+            <CatalogListExport
+              title={resolvedExportTitle}
+              filename={exportFilename ?? resolvedExportTitle}
+              apiPath={apiPath}
+              columns={exportColumns}
+              totalCount={total || filtered.length}
+              getSearchParams={() => ({
+                per_page: 200,
+                ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+                ...(listSearchParams ?? {}),
+              })}
+              getInlineRows={getInlineExportRows}
+              disabled={loading}
+            />
+          </HrPageActions>
         ) : null
       }
     >
