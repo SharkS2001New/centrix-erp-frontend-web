@@ -21,6 +21,8 @@ import {
   deviceBaseUrl,
   fetchWithDigest,
   fetchAcsEvents,
+  fetchHikvisionLocalTime,
+  searchHikvisionUsers,
   AGENT_VERSION,
   centrixAuthHeaders,
   centrixDeviceBase,
@@ -468,6 +470,7 @@ async function startFingerprintWait(config, push) {
   fingerprintWaits.set(id, {
     push: Boolean(push),
     deadline: Date.now() + 90_000,
+    startedAt: Date.now(),
     keys,
     host: config.hikvision?.host || "",
   });
@@ -528,6 +531,94 @@ async function applyFoundPunch(config, latest, push, events) {
   return { ok: true, detail: lines.join("\n"), latest, events, ingest: json };
 }
 
+async function diagnoseNoNewPunch(config, { startedAt, host } = {}) {
+  const lines = [];
+  const pcNow = new Date();
+  lines.push("Could not see a NEW punch during the 90-second wait. Diagnosis:");
+  lines.push(`PC time: ${pcNow.toLocaleString()}`);
+
+  try {
+    const time = await fetchHikvisionLocalTime(config);
+    if (time.date) {
+      const skewMin = Math.round(Math.abs(time.date.getTime() - pcNow.getTime()) / 60000);
+      lines.push(`Terminal clock: ${time.date.toLocaleString()} (${time.raw})`);
+      if (skewMin > 10) {
+        lines.push(
+          `ISSUE: Terminal clock is wrong — about ${skewMin} minute(s) off this PC. Punches fall outside the search window.`,
+        );
+        lines.push("FIX: On the Hikvision, set Date/Time to match this PC (or turn on NTP). Then test again.");
+      } else {
+        lines.push(`Terminal clock matches this PC (within ${Math.max(0, skewMin)} min). Not a clock-skew issue.`);
+      }
+    } else {
+      lines.push(`Terminal clock could not be parsed. Raw: ${time.raw || "empty"}`);
+    }
+  } catch (err) {
+    lines.push(`Could not read terminal clock: ${err.message}`);
+  }
+
+  let users = [];
+  let userTotal = 0;
+  try {
+    const found = await searchHikvisionUsers(config, 20);
+    users = found.users;
+    userTotal = found.total;
+    if (userTotal < 1) {
+      lines.push("ISSUE: Person is not enrolled on the terminal (0 people / no employee ID).");
+      lines.push(
+        "FIX: On the device, add a person whose ID matches the Centrix employee code, enroll their fingerprint, then retry.",
+      );
+    } else {
+      const sample = users
+        .filter((u) => u.employeeNo)
+        .slice(0, 5)
+        .map((u) => u.employeeNo + (u.name ? ` (${u.name})` : ""))
+        .join(", ");
+      lines.push(`Terminal has ${userTotal} enrolled person(s)${sample ? `: ${sample}` : ""}.`);
+    }
+  } catch (err) {
+    lines.push(`Could not list enrolled people: ${err.message}`);
+  }
+
+  let dayEvents = [];
+  try {
+    dayEvents = await fetchAcsEvents(config, new Date(pcNow.getTime() - 24 * 60 * 60 * 1000), pcNow);
+  } catch (err) {
+    lines.push(`Could not list punches from the last 24 hours: ${err.message}`);
+  }
+
+  if (dayEvents.length) {
+    const latest = dayEvents[dayEvents.length - 1];
+    lines.push(
+      `Latest punch already on the device: employee ${latest.employee_no} at ${latest.punched_at} (${latest.verification_method || "unknown verify"}).`,
+    );
+    const latestDate = new Date(latest.punched_at);
+    if (!Number.isNaN(latestDate.getTime()) && startedAt && latestDate.getTime() < startedAt - 5000) {
+      lines.push(
+        "ISSUE: Finger was placed before you clicked (or the beep was earlier than this wait). That punch is too old for this test.",
+      );
+      lines.push(
+        "FIX: Click Check fingerprint now first, wait until you see the countdown page, THEN place your finger and wait for the accept beep.",
+      );
+    }
+  } else if (userTotal > 0) {
+    lines.push("ISSUE: People are enrolled, but there are 0 punches in the last 24 hours.");
+    lines.push(
+      "FIX: Enroll a fingerprint on the terminal for one of those IDs, then place that finger during the countdown (after the waiting page is showing).",
+    );
+  }
+
+  if (!lines.some((line) => line.startsWith("ISSUE:"))) {
+    lines.push("ISSUE: No new punch arrived during the 90-second countdown.");
+    lines.push(
+      "FIX: With the countdown still on screen, place an enrolled finger and wait for the green/accept beep — not before clicking, and not after the timer hits 0.",
+    );
+  }
+
+  lines.push(`Device: ${host || config.hikvision?.host || "?"}`);
+  return lines.join("\n");
+}
+
 async function pollFingerprintWait(id) {
   const session = fingerprintWaits.get(id);
   if (!session) {
@@ -541,7 +632,8 @@ async function pollFingerprintWait(id) {
   } catch (err) {
     if (left <= 0) {
       fingerprintWaits.delete(id);
-      return { kind: "timeout", host: session.host, detail: err.message };
+      const detail = await diagnoseNoNewPunch(config, session).catch(() => err.message);
+      return { kind: "timeout", host: session.host, detail };
     }
     return { kind: "waiting", left, id, host: session.host };
   }
@@ -554,7 +646,8 @@ async function pollFingerprintWait(id) {
   }
   if (left <= 0) {
     fingerprintWaits.delete(id);
-    return { kind: "timeout", host: session.host };
+    const detail = await diagnoseNoNewPunch(config, session);
+    return { kind: "timeout", host: session.host, detail };
   }
   return { kind: "waiting", left, id, host: session.host };
 }
@@ -835,10 +928,7 @@ export function runSettingsUi(options = {}) {
             res.end(
               fingerprintResultHtml({
                 ok: false,
-                detail:
-                  `No new punch from ${poll.host || "the terminal"} in 90 seconds.\n` +
-                  "Place a finger after the waiting page opens, wait for the accept beep, then try again.\n" +
-                  (poll.detail ? `Last error: ${poll.detail}` : ""),
+                detail: poll.detail || `No new punch from ${poll.host || "the terminal"} in 90 seconds.`,
               }),
             );
             return;
@@ -980,7 +1070,8 @@ if (isDirectRun && process.argv.includes("--fingerprint")) {
   console.log("Waiting 90 seconds for a new punch...");
   snapshotEventKeys(config)
     .then(async (keys) => {
-      const deadline = Date.now() + 90_000;
+      const startedAt = Date.now();
+      const deadline = startedAt + 90_000;
       while (Date.now() < deadline) {
         const left = Math.ceil((deadline - Date.now()) / 1000);
         process.stdout.write(`\r${left}s left — waiting for a new punch...   `);
@@ -1003,7 +1094,11 @@ if (isDirectRun && process.argv.includes("--fingerprint")) {
           process.exit(result.ok ? 0 : 1);
         }
       }
-      console.log("\nNo new punch in 90 seconds. Enroll the person, beep on the terminal, then run this again.");
+      const diagnosis = await diagnoseNoNewPunch(config, {
+        startedAt,
+        host: config.hikvision?.host,
+      });
+      console.log(`\n${diagnosis}`);
       process.exit(1);
     })
     .catch((err) => {

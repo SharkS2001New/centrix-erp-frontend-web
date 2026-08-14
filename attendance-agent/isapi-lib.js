@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.2.8";
+export const AGENT_VERSION = "2.2.9";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -329,6 +329,67 @@ export function centrixAuthHeaders(config) {
 
 export function centrixDeviceBase(config) {
   return `${String(config.centrixApiUrl).replace(/\/$/, "")}/attendance-clock-devices/${config.deviceId}/hikvision`;
+}
+
+/** Read Hikvision local clock (XML or JSON). */
+export async function fetchHikvisionLocalTime(config) {
+  const hik = config.hikvision || {};
+  const url = `${deviceBaseUrl(hik)}/ISAPI/System/time`;
+  const res = await fetchWithDigest(url, {
+    method: "GET",
+    username: hik.username || "admin",
+    password: hik.password || "",
+    accept: "application/xml, application/json",
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`System/time HTTP ${res.status}: ${text.slice(0, 180)}`);
+  }
+  const jsonMatch = text.match(/"localTime"\s*:\s*"([^"]+)"/);
+  const xmlMatch = text.match(/<localTime>([^<]+)<\/localTime>/i);
+  const raw = jsonMatch?.[1] || xmlMatch?.[1] || "";
+  if (!raw) {
+    return { raw: text.slice(0, 200), date: null };
+  }
+  const date = new Date(raw);
+  return { raw, date: Number.isNaN(date.getTime()) ? null : date };
+}
+
+/** First page of persons stored on the terminal. */
+export async function searchHikvisionUsers(config, maxResults = 20) {
+  const hik = config.hikvision || {};
+  const url = `${deviceBaseUrl(hik)}/ISAPI/AccessControl/UserInfo/Search?format=json`;
+  const res = await fetchWithDigest(url, {
+    method: "POST",
+    username: hik.username || "admin",
+    password: hik.password || "",
+    body: {
+      UserInfoSearchCond: {
+        searchID: randomUUID().replace(/-/g, "").slice(0, 16),
+        searchResultPosition: 0,
+        maxResults,
+      },
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`UserInfo search HTTP ${res.status}: ${text.slice(0, 180)}`);
+  }
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+  const search = payload?.UserInfoSearch ?? payload;
+  const list = search?.UserInfo ?? search?.InfoList ?? [];
+  const rows = Array.isArray(list) ? list : list && typeof list === "object" ? [list] : [];
+  const total = Number(search?.totalMatches ?? search?.numOfMatches ?? rows.length);
+  const users = rows.map((row) => ({
+    employeeNo: String(row.employeeNo ?? row.employeeNoString ?? "").trim(),
+    name: row.name ? String(row.name) : "",
+  }));
+  return { users, total: Number.isFinite(total) ? total : users.length };
 }
 
 export function mapDirection(status) {
