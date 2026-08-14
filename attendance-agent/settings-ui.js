@@ -513,7 +513,7 @@ async function quickTest(config) {
   return { ok, detail: lines.join("\n") };
 }
 
-async function testFingerprintLocal(config, { push = false, lookbackSeconds = 120 } = {}) {
+async function testFingerprintLocal(config, { push = false, lookbackSeconds = 900 } = {}) {
   const hik = config.hikvision || {};
   if (!hik.host) {
     return { ok: false, detail: "Device LAN IP is required." };
@@ -547,7 +547,8 @@ async function testFingerprintLocal(config, { push = false, lookbackSeconds = 12
     return { ok: false, detail: err.message || String(err) };
   }
 
-  const from = new Date(Date.now() - Math.max(15, lookbackSeconds) * 1000);
+  const lookback = Math.max(120, Number(lookbackSeconds) || 120);
+  const from = new Date(Date.now() - lookback * 1000);
   const to = new Date();
   let events;
   try {
@@ -556,16 +557,19 @@ async function testFingerprintLocal(config, { push = false, lookbackSeconds = 12
     return {
       ok: false,
       detail:
-        `Device is reachable, but reading punches failed:\n${err.message || String(err)}\n` +
-        "Place a finger on the terminal, wait for the beep, then try again.",
+        `Device is reachable at ${hik.host}, but reading punches failed:\n${err.message || String(err)}`,
     };
   }
   if (!events.length) {
     return {
       ok: false,
       detail:
-        `No events from ${hik.host} in the last ${lookbackSeconds}s.\n` +
-        "Place a finger on the terminal, wait for acceptance, then try again.",
+        `Reached ${hik.host} (ISAPI OK) but found 0 punches in the last ${Math.round(lookback / 60)} minutes.\n` +
+        "Do this in order:\n" +
+        "1. Enroll the person on the terminal (same ID as Centrix employee code).\n" +
+        "2. Place a finger, wait for the green/accept beep.\n" +
+        "3. Click Check fingerprint now within a minute.\n" +
+        "If you already beeped, the terminal clock may not match this PC — check the date/time on the Hikvision.",
     };
   }
 
@@ -687,7 +691,7 @@ export function runSettingsUi(options = {}) {
           try {
             const result = await testFingerprintLocal(normalizeConfig(ensureConfigFile()), {
               push,
-              lookbackSeconds: 120,
+              lookbackSeconds: 900,
             });
             res.end(fingerprintResultHtml(result));
           } catch (err) {
@@ -726,7 +730,7 @@ export function runSettingsUi(options = {}) {
           try {
             const result = await testFingerprintLocal(config, {
               push,
-              lookbackSeconds: Number(body.lookback_seconds) || 120,
+              lookbackSeconds: Number(body.lookback_seconds) || 900,
             });
             if (wantsHtml) {
               res.end(fingerprintResultHtml(result));
@@ -833,7 +837,7 @@ if (isDirectRun && process.argv.includes("--fingerprint")) {
       ? "Checking Hikvision and sending the latest punch to Centrix…"
       : "Checking Hikvision for a recent fingerprint punch…",
   );
-  testFingerprintLocal(config, { push, lookbackSeconds: 180 })
+  testFingerprintLocal(config, { push, lookbackSeconds: 900 })
     .then((result) => {
       console.log(result.detail || (result.ok ? "OK" : "Failed"));
       process.exit(result.ok ? 0 : 1);

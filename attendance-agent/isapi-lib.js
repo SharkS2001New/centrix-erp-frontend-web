@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.2.6";
+export const AGENT_VERSION = "2.2.7";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -340,9 +340,9 @@ export function mapDirection(status) {
 
 export function normalizeEventRow(row) {
   const employeeNo = String(
-    row.employeeNoString ?? row.employeeNo ?? row.cardNo ?? "",
+    row.employeeNoString ?? row.employeeNo ?? row.EmployeeNo ?? row.cardNo ?? "",
   ).trim();
-  const punchedAt = String(row.time ?? row.dateTime ?? "").trim();
+  const punchedAt = String(row.time ?? row.dateTime ?? row.Time ?? "").trim();
   if (!employeeNo || !punchedAt) return null;
 
   return {
@@ -371,7 +371,6 @@ export function normalizeEventRow(row) {
 export async function fetchAcsEvents(config, fromDate, toDate) {
   const hik = config.hikvision || {};
   const url = `${deviceBaseUrl(hik)}/ISAPI/AccessControl/AcsEvent?format=json`;
-  const searchId = randomUUID().replace(/-/g, "").slice(0, 16);
   const from = fromDate instanceof Date ? fromDate : new Date(fromDate);
   const to = toDate instanceof Date ? toDate : new Date(toDate);
 
@@ -386,6 +385,8 @@ export async function fetchAcsEvents(config, fromDate, toDate) {
     },
   ];
   const filters = [
+    { major: 5, minor: 75 },
+    { major: 5, minor: 0 },
     { major: 0, minor: 0, eventAttribute: "attendance" },
     { major: 0, minor: 0 },
   ];
@@ -398,9 +399,12 @@ export async function fetchAcsEvents(config, fromDate, toDate) {
   }
 
   let lastError = null;
+  let emptyAttempts = 0;
   for (const baseCond of candidates) {
+    const searchId = randomUUID().replace(/-/g, "").slice(0, 16);
     try {
       const events = [];
+      let rawRows = 0;
       let position = 0;
       for (let page = 0; page < 20; page += 1) {
         const body = {
@@ -435,25 +439,42 @@ export async function fetchAcsEvents(config, fromDate, toDate) {
           }
           throw new Error(msg);
         }
-        const list = payload?.AcsEvent?.InfoList ?? payload?.AcsEvent?.infoList ?? [];
+        const acs = payload?.AcsEvent ?? payload?.acsEvent ?? payload;
+        const list = acs?.InfoList ?? acs?.infoList ?? [];
         const rows = Array.isArray(list) ? list : list && typeof list === "object" ? [list] : [];
+        rawRows += rows.length;
         for (const row of rows) {
           const normalized = normalizeEventRow(row);
           if (normalized) events.push(normalized);
         }
-        const matches = Number(payload?.AcsEvent?.numOfMatches ?? rows.length);
+        const matches = Number(acs?.numOfMatches ?? rows.length);
         position += Math.max(1, matches);
-        const status = String(payload?.AcsEvent?.responseStatusStrg ?? "").toLowerCase();
+        const status = String(acs?.responseStatusStrg ?? "").toLowerCase();
         if (matches < 1 || rows.length < 1 || status !== "more") {
-          events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
-          return events;
+          break;
         }
       }
-      events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
-      return events;
+      if (events.length) {
+        events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
+        return events;
+      }
+      if (rawRows > 0) {
+        lastError = new Error(
+          `Hikvision returned ${rawRows} event row(s) but none had employee ID + time. Enroll the person with an employee number matching Centrix.`,
+        );
+      } else {
+        emptyAttempts += 1;
+      }
     } catch (err) {
       lastError = err;
     }
+  }
+
+  if (emptyAttempts > 0 && !lastError) {
+    return [];
+  }
+  if (emptyAttempts > 0) {
+    return [];
   }
 
   throw lastError ?? new Error("Hikvision AcsEvent search failed.");
