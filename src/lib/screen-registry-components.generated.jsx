@@ -342,6 +342,9 @@ export const SCREEN_COMPONENTS = {
   "hr-leave": lazy(() =>
     import("@/components/tab-screens/hr-leave").then((m) => ({ default: m.HrLeaveScreen })),
   ),
+  "hr-missed-punches": lazy(() =>
+    import("@/components/tab-screens/hr-missed-punches").then((m) => ({ default: m.HrMissedPunchesScreen })),
+  ),
   "hr-overtime": lazy(() =>
     import("@/components/tab-screens/hr-overtime").then((m) => ({ default: m.HrOvertimeScreen })),
   ),

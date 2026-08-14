@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.3.0";
+export const AGENT_VERSION = "2.3.2";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -399,28 +399,88 @@ export function mapDirection(status) {
   return "auto";
 }
 
+function usableString(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    const text = String(value).trim();
+    if (!text || text === "undefined" || text === "null") continue;
+    return text;
+  }
+  return null;
+}
+
+function punchedAtNairobi(raw) {
+  const text = usableString(raw);
+  if (!text) return null;
+  if (/Z|[+-]\d{2}:?\d{2}$/.test(text)) return text;
+  const normalized = text.includes("T") ? text : text.replace(" ", "T");
+  const withSeconds = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)
+    ? `${normalized}:00`
+    : normalized;
+  return `${withSeconds}+03:00`;
+}
+
+function mapVerifyMode(row) {
+  const raw = usableString(
+    row.currentVerifyMode,
+    row.CurrentVerifyMode,
+    row.verifyMode,
+    row.VerifyMode,
+  );
+  if (raw && /finger|card|face|iris|password|pin|pw/i.test(raw)) {
+    return raw.toLowerCase();
+  }
+  const n = Number(raw);
+  const byNumber = {
+    1: "card",
+    2: "fingerprint",
+    3: "card",
+    4: "fingerprint",
+    5: "card+fingerprint",
+    8: "face",
+    15: "fingerprint",
+  };
+  if (Number.isFinite(n) && byNumber[n]) return byNumber[n];
+  const minor = Number(row.minor);
+  if (minor === 75) return "fingerprint";
+  return raw;
+}
+
+function mapAttendanceStatus(row) {
+  const raw = usableString(
+    row.attendanceStatus,
+    row.AttendanceStatus,
+    row.status,
+    row.label,
+  );
+  if (raw && raw !== "undefined") return raw;
+  const minor = Number(row.minor);
+  if (minor === 75) return "checkIn";
+  return null;
+}
+
 export function normalizeEventRow(row) {
-  const employeeNo = String(
-    row.employeeNoString ?? row.employeeNo ?? row.EmployeeNo ?? row.cardNo ?? "",
-  ).trim();
-  const punchedAt = String(row.time ?? row.dateTime ?? row.Time ?? "").trim();
+  const employeeNo = usableString(
+    row.employeeNoString,
+    row.employeeNo,
+    row.EmployeeNo,
+    row.cardNo,
+  );
+  const punchedAt = punchedAtNairobi(row.time ?? row.dateTime ?? row.Time);
   if (!employeeNo || !punchedAt) return null;
 
+  const attendanceStatus = mapAttendanceStatus(row);
   return {
     employee_no: employeeNo,
-    employee_name: row.name ? String(row.name) : null,
+    employee_name: usableString(row.name),
     punched_at: punchedAt,
-    attendance_status: row.attendanceStatus ? String(row.attendanceStatus) : null,
-    verification_method: row.currentVerifyMode
-      ? String(row.currentVerifyMode)
-      : row.verifyMode
-        ? String(row.verifyMode)
-        : null,
-    card_no: row.cardNo ? String(row.cardNo) : null,
-    serial_no: row.serialNo ? String(row.serialNo) : null,
+    attendance_status: attendanceStatus,
+    verification_method: mapVerifyMode(row),
+    card_no: usableString(row.cardNo, row.CardNo),
+    serial_no: usableString(row.serialNo, row.SerialNo),
     major: row.major != null ? Number(row.major) : null,
     minor: row.minor != null ? Number(row.minor) : null,
-    direction: mapDirection(row.attendanceStatus),
+    direction: mapDirection(attendanceStatus),
     raw: row,
   };
 }

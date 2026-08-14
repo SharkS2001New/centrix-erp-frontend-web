@@ -41,7 +41,6 @@ import {
   formatAttendanceLoginChannel,
   formatAttendanceSource,
   attendanceLoginChannelBadgeClass,
-  isCompanyMobileAttendanceEnabled,
 } from "@/lib/hr-settings";
 import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
 import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
@@ -77,7 +76,6 @@ export function HrAttendanceScreen() {
   const confirm = useConfirm();
   const canManageSettings = hasPermission(P.hr.manage);
   const canApproveWaivers = canApproveLatenessWaivers({ hasPermission, capabilities });
-  const companyMobileEnabled = isCompanyMobileAttendanceEnabled(capabilities?.module_settings);
   const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
   const [tab, setTab] = useState("active");
   const [employees, setEmployees] = useState([]);
@@ -122,23 +120,14 @@ export function HrAttendanceScreen() {
   const loadActive = useCallback(async () => {
     setActiveLoading(true);
     try {
-      const requestDefs = [];
-
-      if (companyMobileEnabled) {
-        requestDefs.push({
-          key: "sessions",
-          promise: apiRequest("/attendance/company-mobile-sessions", {
-            searchParams: { per_page: 50, open_only: 1 },
-          }),
-        });
-      } else {
-        requestDefs.push({
+      const requestDefs = [
+        {
           key: "sessions",
           promise: apiRequest("/attendance/clock-sessions", {
-            searchParams: { per_page: 50, open_only: 1 },
+            searchParams: { per_page: 100, today: 1, premises: 1 },
           }),
-        });
-      }
+        },
+      ];
 
       if (fieldAttendanceEnabled) {
         requestDefs.push({
@@ -178,7 +167,7 @@ export function HrAttendanceScreen() {
     } finally {
       setActiveLoading(false);
     }
-  }, [companyMobileEnabled, fieldAttendanceEnabled]);
+  }, [fieldAttendanceEnabled]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -262,14 +251,37 @@ export function HrAttendanceScreen() {
     }
   }, [tab, loadHistory]);
 
-  const openSessions = useMemo(() => {
-    if (companyMobileEnabled) {
-      return sessions.filter((s) => s.is_open !== false && !s.clock_out_at);
+  const openSessions = useMemo(
+    () => sessions.filter((s) => !s.clock_out_at),
+    [sessions],
+  );
+
+  const closedTodaySessions = useMemo(
+    () => sessions.filter((s) => s.clock_out_at),
+    [sessions],
+  );
+
+  function sessionEmployeeLabel(s) {
+    return composeEmployeeDisplayName(s.employee) || s.employee_name || `#${s.employee_id}`;
+  }
+
+  function sessionTimeLabel(value) {
+    if (!value) return "—";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      const text = String(value);
+      return `${formatShortDate(text)} ${text.slice(11, 16)}`;
     }
-    return sessions.filter(
-      (s) => !s.clock_out_at && (!s.source || s.source === "clock_device"),
-    );
-  }, [companyMobileEnabled, sessions]);
+    return new Intl.DateTimeFormat("en-KE", {
+      timeZone: "Africa/Nairobi",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(parsed);
+  }
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
 
@@ -842,14 +854,26 @@ export function HrAttendanceScreen() {
               <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
                 Admin → Settings → HR &amp; Payroll
               </Link>
+              . Unmapped or failed terminal scans are on{" "}
+              <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
+                Missed punches
+              </Link>
               .
             </p>
-          ) : null}
+          ) : (
+            <p className="mb-4 text-sm text-slate-600">
+              Terminal punches that did not apply to a person are listed under{" "}
+              <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
+                Missed punches
+              </Link>
+              .
+            </p>
+          )}
 
           <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
             <h2 className="text-[15px] font-medium text-slate-900">Premises — on shift now</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Employees currently signed in at premises via clock device or company phone.
+              Employees currently signed in at premises via fingerprint terminal or company phone.
             </p>
             {activeLoading ? (
               <p className="mt-3 text-sm text-slate-500">Loading…</p>
@@ -860,30 +884,46 @@ export function HrAttendanceScreen() {
                 {openSessions.map((s) => (
                   <li key={`premises-${s.id}`} className="py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-900">
-                        {companyMobileEnabled
-                          ? s.employee_name || `#${s.employee_id}`
-                          : composeEmployeeDisplayName(s.employee) || `#${s.employee_id}`}
-                      </p>
+                      <p className="font-medium text-slate-900">{sessionEmployeeLabel(s)}</p>
                       <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
-                        Premises
+                        On shift
                       </span>
                     </div>
                     <p className="text-xs text-slate-500">
-                      {companyMobileEnabled ? (
-                        <>
-                          {formatAttendanceSource("company_mobile")} · In {formatShortDate(s.clock_in_at)}{" "}
-                          {String(s.clock_in_at).slice(11, 16)}
-                          {s.clock_in_geofence_distance_metres != null
-                            ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
-                            : ""}
-                        </>
-                      ) : (
-                        <>
-                          {formatAttendanceSource("clock_device")} · Device {s.device_identifier || "—"} · In{" "}
-                          {formatShortDate(s.clock_in_at)} {String(s.clock_in_at).slice(11, 16)}
-                        </>
-                      )}
+                      {formatAttendanceSource(s.source || "clock_device")} · Device {s.device_identifier || "—"} ·
+                      In {sessionTimeLabel(s.clock_in_at)}
+                      {s.clock_in_geofence_distance_metres != null
+                        ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
+                        : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
+            <h2 className="text-[15px] font-medium text-slate-900">Premises — clocked today</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Completed fingerprint / premises sessions for today. These also appear on Records.
+            </p>
+            {activeLoading ? (
+              <p className="mt-3 text-sm text-slate-500">Loading…</p>
+            ) : closedTodaySessions.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No completed premises sessions yet today.</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {closedTodaySessions.map((s) => (
+                  <li key={`closed-${s.id}`} className="py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-slate-900">{sessionEmployeeLabel(s)}</p>
+                      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                        Clocked out
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {formatAttendanceSource(s.source || "clock_device")} · Device {s.device_identifier || "—"} ·
+                      In {sessionTimeLabel(s.clock_in_at)} · Out {sessionTimeLabel(s.clock_out_at)}
                     </p>
                   </li>
                 ))}

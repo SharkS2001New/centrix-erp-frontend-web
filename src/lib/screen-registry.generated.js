@@ -540,6 +540,10 @@ function match_hr_leave(pathname) {
   return pathname === "/hr/leave";
 }
 
+function match_hr_missed_punches(pathname) {
+  return pathname === "/hr/missed-punches";
+}
+
 function match_hr_overtime(pathname) {
   return pathname === "/hr/overtime";
 }
@@ -1553,6 +1557,12 @@ export const SCREEN_REGISTRY = [
     title: "Leave",
     route: "/hr/leave",
     match: match_hr_leave,
+  },
+  {
+    id: "hr-missed-punches",
+    title: "Missed punches",
+    route: "/hr/missed-punches",
+    match: match_hr_missed_punches,
   },
   {
     id: "hr-overtime",

@@ -44,11 +44,6 @@ import { fetchRoutesCached, fetchUsersCached } from "@/lib/reference-data-cache"
 
 const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-customers-sort";
-const SHOP_DEBTORS_COLUMN_STORAGE_KEY = "centrix-erp-shop-debtors-visible-columns";
-const SHOP_DEBTORS_SORT_STORAGE_KEY = "centrix-erp-shop-debtors-sort";
-
-/** Columns hidden by default on Shop Debtors (no route customers on this page). */
-const SHOP_DEBTORS_HIDDEN_BY_DEFAULT = new Set(["route", "customer_type"]);
 
 const CUSTOMER_COLUMNS = [
   {
@@ -178,32 +173,27 @@ function migrateColumnIds(ids) {
   return out;
 }
 
-function defaultVisibleColumnIds(shopDebtorsOnly = false) {
-  return CUSTOMER_COLUMNS.filter((c) => {
-    if (!c.defaultVisible) return false;
-    if (shopDebtorsOnly && SHOP_DEBTORS_HIDDEN_BY_DEFAULT.has(c.id)) return false;
-    return true;
-  }).map((c) => c.id);
+function defaultVisibleColumnIds() {
+  return CUSTOMER_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
 }
 
-function normalizeColumnIds(ids, shopDebtorsOnly = false) {
+function normalizeColumnIds(ids) {
   const valid = new Set(CUSTOMER_COLUMNS.map((c) => c.id));
   const normalized = migrateColumnIds(ids ?? []).filter((id) => valid.has(id));
   for (const col of CUSTOMER_COLUMNS) {
     if (col.required && !normalized.includes(col.id)) normalized.push(col.id);
   }
-  return normalized.length ? normalized : defaultVisibleColumnIds(shopDebtorsOnly);
+  return normalized.length ? normalized : defaultVisibleColumnIds();
 }
 
-function readStoredColumnIds(shopDebtorsOnly = false) {
-  const storageKey = shopDebtorsOnly ? SHOP_DEBTORS_COLUMN_STORAGE_KEY : COLUMN_STORAGE_KEY;
-  if (typeof window === "undefined") return defaultVisibleColumnIds(shopDebtorsOnly);
+function readStoredColumnIds() {
+  if (typeof window === "undefined") return defaultVisibleColumnIds();
   try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return defaultVisibleColumnIds(shopDebtorsOnly);
-    return normalizeColumnIds(JSON.parse(raw), shopDebtorsOnly);
+    const raw = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (!raw) return defaultVisibleColumnIds();
+    return normalizeColumnIds(JSON.parse(raw));
   } catch {
-    return defaultVisibleColumnIds(shopDebtorsOnly);
+    return defaultVisibleColumnIds();
   }
 }
 
@@ -307,13 +297,13 @@ function renderCell(colId, customer, handlers) {
   }
 }
 
-export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
+export function CustomersListScreen() {
   const router = useRouter();
   const confirm = useConfirm();
   const { capabilities, user } = useAuth();
   const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
-  const columnStorageKey = shopDebtorsOnly ? SHOP_DEBTORS_COLUMN_STORAGE_KEY : COLUMN_STORAGE_KEY;
-  const sortStorageKey = shopDebtorsOnly ? SHOP_DEBTORS_SORT_STORAGE_KEY : SORT_STORAGE_KEY;
+  const columnStorageKey = COLUMN_STORAGE_KEY;
+  const sortStorageKey = SORT_STORAGE_KEY;
 
   const [customers, setCustomers] = useState([]);
   const [totalCustomers, setTotalCustomers] = useState(0);
@@ -328,9 +318,7 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const { sort, sortDir, sortActive, toggleSort, clearSort } = useTableSort(sortStorageKey);
-  const [visibleColumnIds, setVisibleColumnIds] = useState(() =>
-    defaultVisibleColumnIds(shopDebtorsOnly),
-  );
+  const [visibleColumnIds, setVisibleColumnIds] = useState(() => defaultVisibleColumnIds());
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const {
@@ -343,14 +331,9 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
     isSomeOnPageSelected,
   } = usePageRowSelection();
 
-  const listFilters = useMemo(
-    () => (shopDebtorsOnly ? { customer_type: "debtor" } : {}),
-    [shopDebtorsOnly],
-  );
-
   useEffect(() => {
-    setVisibleColumnIds(readStoredColumnIds(shopDebtorsOnly));
-  }, [shopDebtorsOnly]);
+    setVisibleColumnIds(readStoredColumnIds());
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(columnStorageKey, JSON.stringify(visibleColumnIds));
@@ -371,15 +354,10 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
   const loadReferenceData = useCallback(async () => {
     try {
       const orgId = user?.organization_id;
-      const summaryParams = shopDebtorsOnly
-        ? { "filter[customer_type]": "debtor" }
-        : undefined;
       const [routes, usersData, statsRes] = await Promise.all([
         fetchRoutesCached(orgId),
         fetchUsersCached(orgId),
-        apiRequest("/customers/summary", {
-          searchParams: summaryParams,
-        }).catch(() => null),
+        apiRequest("/customers/summary").catch(() => null),
       ]);
       setRoutes(routes ?? []);
       setUsers(usersData ?? []);
@@ -389,7 +367,7 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
     } finally {
       setLoading(false);
     }
-  }, [shopDebtorsOnly, user?.organization_id]);
+  }, [user?.organization_id]);
 
   const loadCustomers = useCallback(async () => {
     setListLoading(true);
@@ -406,7 +384,6 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
         q: debouncedSearch,
         sort,
         sortDir,
-        filters: listFilters,
         extra: { status },
       });
       const custRes = await apiRequest("/customers", { searchParams });
@@ -419,7 +396,7 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, deletedFilter, sort, sortDir, listFilters]);
+  }, [page, pageSize, debouncedSearch, deletedFilter, sort, sortDir]);
 
   const reloadAll = useCallback(async () => {
     await Promise.all([loadReferenceData(), loadCustomers()]);
@@ -432,10 +409,9 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
       page: 1,
       perPage: 100,
       q: debouncedSearch,
-      filters: listFilters,
       extra: { status },
     });
-  }, [debouncedSearch, deletedFilter, listFilters]);
+  }, [debouncedSearch, deletedFilter]);
 
   useEffect(() => {
     loadReferenceData();
@@ -446,8 +422,8 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
   }, [loadCustomers]);
 
   const resetColumns = useCallback(() => {
-    setVisibleColumnIds(defaultVisibleColumnIds(shopDebtorsOnly));
-  }, [shopDebtorsOnly]);
+    setVisibleColumnIds(defaultVisibleColumnIds());
+  }, []);
 
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -587,13 +563,11 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
 
   return (
     <CatalogPageShell
-      title={shopDebtorsOnly ? "Shop debtors" : "Customers"}
+      title="Customers"
       subtitle={
-        shopDebtorsOnly
-          ? "Credit customers for direct checkout and pay-now orders — route customers are excluded"
-          : routeCustomersOnly
-            ? "Manage route customers assigned to delivery routes"
-            : "Manage debtors and route customers"
+        routeCustomersOnly
+          ? "Manage route customers assigned to delivery routes"
+          : "Manage debtors and route customers"
       }
       action={
         <div className="flex flex-wrap items-center gap-2">
@@ -623,22 +597,15 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
       banner={
         !listRefresh.showInitialLoading ? (
           <div
-            className={`mb-6 grid gap-4 sm:grid-cols-2 ${
-              shopDebtorsOnly ? "lg:grid-cols-3" : "lg:grid-cols-4"
-            }`}
+            className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
           >
-            <StatCard
-              label={shopDebtorsOnly ? "Active shop debtors" : "Active customers"}
-              value={stats.active.toLocaleString()}
-            />
+            <StatCard label="Active customers" value={stats.active.toLocaleString()} />
             <StatCard label="New this month" value={stats.newThisMonth.toLocaleString()} />
             <StatCard
               label="Outstanding balance"
               value={formatKesCompact(stats.outstanding)}
             />
-            {shopDebtorsOnly ? null : (
-              <StatCard label="On routes" value={stats.onRoutes.toLocaleString()} />
-            )}
+            <StatCard label="On routes" value={stats.onRoutes.toLocaleString()} />
           </div>
         ) : null
       }
@@ -647,24 +614,15 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={shopDebtorsOnly ? "Search shop debtor…" : "Search customer…"}
+            placeholder="Search customer…"
           />
           <FilterSelect
             value={deletedFilter}
             onChange={(e) => setDeletedFilter(e.target.value)}
             options={[
-              {
-                value: "active",
-                label: shopDebtorsOnly ? "Active shop debtors" : "Active customers",
-              },
-              {
-                value: "deleted",
-                label: shopDebtorsOnly ? "Deleted shop debtors" : "Deleted customers",
-              },
-              {
-                value: "all",
-                label: shopDebtorsOnly ? "All shop debtors" : "All customers",
-              },
+              { value: "active", label: "Active customers" },
+              { value: "deleted", label: "Deleted customers" },
+              { value: "all", label: "All customers" },
             ]}
           />
           <ColumnPicker
@@ -723,7 +681,7 @@ export function CustomersListScreen({ shopDebtorsOnly = false } = {}) {
                         colSpan={visibleColumns.length + 1}
                         className="px-4 py-12 text-center text-slate-500"
                       >
-                        {shopDebtorsOnly ? "No shop debtors found." : "No customers found."}
+                        No customers found.
                       </td>
                     </tr>
                   ) : (

@@ -3,11 +3,11 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { CustomersListScreen } from "@/components/customers/customers-list-screen";
+import SalesOrdersListScreen from "@/components/sales/sales-orders-list-screen";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 import { P } from "@/lib/permission-codes";
 
-/** Shop / till credit customers only — excludes route customers. */
+/** Unpaid / partial orders for debtor customers (not route, not mobile). */
 export function CustomersShopDebtorsScreen() {
   const router = useRouter();
   const { capabilities, hasPermission, hasNavPermission } = useAuth();
@@ -19,11 +19,11 @@ export function CustomersShopDebtorsScreen() {
 
   useEffect(() => {
     if (!allowed) {
-      router.replace("/customers");
+      router.replace("/sales/orders");
     }
   }, [allowed, router]);
 
   if (!allowed) return null;
 
-  return <CustomersListScreen shopDebtorsOnly />;
+  return <SalesOrdersListScreen shopDebtorsOnly />;
 }

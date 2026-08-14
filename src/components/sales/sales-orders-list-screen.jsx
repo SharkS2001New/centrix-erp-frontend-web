@@ -303,7 +303,9 @@ export default function SalesOrdersListScreen({
   queueSlug = null,
   routeOrdersOnly = false,
   routeOrdersDateRangeDays = 30,
+  shopDebtorsOnly = false,
 }) {
+  const paymentQueueSlug = shopDebtorsOnly ? "unpaid" : queueSlug;
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
@@ -329,11 +331,12 @@ export default function SalesOrdersListScreen({
     [queueSlug, orgWorkflow, includeMobileOrders, includeWhatsappOrders, capabilities],
   );
   const ordersTabTitle = useMemo(() => {
+    if (shopDebtorsOnly) return "Shop debtors";
     if (routeOrdersOnly) {
       return formatNavLabel(queueConfig?.title ?? "Route orders");
     }
     return formatNavLabel(queueConfig?.title ?? "All Orders");
-  }, [routeOrdersOnly, queueConfig?.title]);
+  }, [shopDebtorsOnly, routeOrdersOnly, queueConfig?.title]);
   useTabTitle(ordersTabTitle);
   const statusOptions = useMemo(() => {
     const options = workflowStatusFilterOptions(orgWorkflow);
@@ -343,10 +346,14 @@ export default function SalesOrdersListScreen({
     return options;
   }, [orgWorkflow, queueConfig?.slug]);
   const includeExternalPos = isExternalPosEnabled(capabilities);
-  const sourceOptions = useMemo(
-    () => orderSourceFilterOptions(includeMobileOrders, includeExternalPos, includeWhatsappOrders),
-    [includeMobileOrders, includeExternalPos, includeWhatsappOrders],
-  );
+  const sourceOptions = useMemo(() => {
+    const options = orderSourceFilterOptions(
+      includeMobileOrders && !shopDebtorsOnly,
+      includeExternalPos,
+      includeWhatsappOrders && !shopDebtorsOnly,
+    );
+    return options;
+  }, [includeMobileOrders, includeExternalPos, includeWhatsappOrders, shopDebtorsOnly]);
 
   const [rows, setRows] = useState([]);
   const [orderSummary, setOrderSummary] = useState(null);
@@ -393,8 +400,8 @@ export default function SalesOrdersListScreen({
     [capabilities?.module_settings, queueConfig?.slug],
   );
   const ordersColumnStorageKey = useMemo(
-    () => buildOrdersColumnStorageKey(user, queueSlug),
-    [user, queueSlug],
+    () => buildOrdersColumnStorageKey(user, shopDebtorsOnly ? "shop-debtors" : queueSlug),
+    [user, queueSlug, shopDebtorsOnly],
   );
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
@@ -496,8 +503,9 @@ export default function SalesOrdersListScreen({
   }, [tableSortActive, tableSort, tableSortDir]);
 
   useEffect(() => {
-    const range =
-      routeOrdersOnly && routeOrdersDateRangeDays
+    const range = shopDebtorsOnly
+      ? defaultDateRange(365)
+      : routeOrdersOnly && routeOrdersDateRangeDays
         ? defaultDateRange(routeOrdersDateRangeDays)
         : queueConfig?.dateRangeDays
           ? defaultDateRange(queueConfig.dateRangeDays)
@@ -513,6 +521,7 @@ export default function SalesOrdersListScreen({
     queueSlug,
     routeOrdersOnly,
     routeOrdersDateRangeDays,
+    shopDebtorsOnly,
   ]);
 
   useEffect(() => {
@@ -604,6 +613,7 @@ export default function SalesOrdersListScreen({
   const sourceColumnAvailable = !routeOrdersOnly && sourceOptions.length > 2;
   const discountColumnAvailable = shouldShowSalesDiscountColumn(capabilities?.module_settings);
   const paymentBreakdownColumnsAvailable =
+    shopDebtorsOnly ||
     ["unpaid", "partial"].includes(
       String(queueConfig?.fixedPaymentStatusFilter ?? "").toLowerCase(),
     ) ||
@@ -725,8 +735,11 @@ export default function SalesOrdersListScreen({
         // filtering to Paid looked like the cancel "was counting but not in the UI".
         extra.exclude_statuses = "cancelled,expired";
       }
-      if (queueConfig?.requireOutstandingBalance) {
+      if (queueConfig?.requireOutstandingBalance || shopDebtorsOnly) {
         extra.outstanding_balance = 1;
+      }
+      if (shopDebtorsOnly) {
+        extra.shop_debtors = 1;
       }
       if (routeOrdersOnly) {
         extra.route_orders = 1;
@@ -791,6 +804,7 @@ export default function SalesOrdersListScreen({
       effectiveStatusFilter,
       queueConfig,
       routeOrdersOnly,
+      shopDebtorsOnly,
       routeFilter,
       cashierFilter,
       ordersListSort,
@@ -1395,13 +1409,13 @@ export default function SalesOrdersListScreen({
   }
 
   function openCollectPayment(sale) {
-    if (!sale?.id || !canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)) return;
+    if (!sale?.id || !canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)) return;
     setPaySale(sale);
   }
 
   async function convertPaymentStatus(sale, direction) {
     if (!sale?.id) return;
-    const allowed = canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities, direction);
+    const allowed = canConvertPaymentStatusOnQueue(sale, paymentQueueSlug, capabilities, direction);
     if (!allowed) return;
     const path =
       direction === "unpaid"
@@ -1696,13 +1710,23 @@ export default function SalesOrdersListScreen({
       onView: () => viewOrder(sale),
       onEdit: () => openEditOrder(sale),
       onReturn: () => router.push(`/sales/returns/new?sale_id=${sale.id}`),
-      onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
+      onCollectPayment: canCollectPaymentOnQueue(
+        sale,
+        paymentQueueSlug,
+        null,
+        capabilities,
+      )
         ? () => openCollectPayment(sale)
         : null,
-      onConvertToPaid: canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities, "paid")
+      onConvertToPaid: canConvertPaymentStatusOnQueue(
+        sale,
+        paymentQueueSlug,
+        capabilities,
+        "paid",
+      )
         ? () => void convertPaymentStatus(sale, "paid")
         : null,
-      onConvertToUnpaid: canConvertPaymentStatusOnQueue(sale, queueSlug, capabilities, "unpaid")
+      onConvertToUnpaid: canConvertPaymentStatusOnQueue(sale, paymentQueueSlug, capabilities, "unpaid")
         ? () => void convertPaymentStatus(sale, "unpaid")
         : null,
       onPrintThermal: () => printOrder(sale, "receipt"),
@@ -1711,7 +1735,7 @@ export default function SalesOrdersListScreen({
       onAdvance: routeOrdersOnly ? null : (status) => handleAdvance(sale, status),
       onCancel: routeOrdersOnly ? null : () => handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, queueSlug, router]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, paymentQueueSlug, router]);
 
   useEffect(() => {
     setPage(1);
@@ -1756,12 +1780,16 @@ export default function SalesOrdersListScreen({
     <CatalogPageShell
       navigationReady={!loading}
       title={
-        routeOrdersOnly
-          ? (queueConfig?.title ?? "Route orders")
-          : queueConfig?.title ?? "All Orders"
+        shopDebtorsOnly
+          ? "Shop debtors"
+          : routeOrdersOnly
+            ? (queueConfig?.title ?? "Route orders")
+            : queueConfig?.title ?? "All Orders"
       }
         subtitle={
-          routeOrdersOnly
+          shopDebtorsOnly
+            ? "Unpaid and partially paid orders for debtor customers — route and mobile orders are excluded"
+            : routeOrdersOnly
             ? (queueConfig?.subtitle
               ?? `Route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only — change status in Sales → Orders.`)
             : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
@@ -2140,7 +2168,9 @@ export default function SalesOrdersListScreen({
                           colSpan={columnCount}
                           className="px-5 py-10 text-center text-sm text-slate-500"
                         >
-                          No orders match your filters.
+                          {shopDebtorsOnly
+                            ? "No unpaid debtor orders match your filters."
+                            : "No orders match your filters."}
                         </td>
                       </tr>
                     ) : (
@@ -2179,7 +2209,7 @@ export default function SalesOrdersListScreen({
                             printAriaLabel={orderPrintAriaLabel}
                             onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
                             onCollectPayment={
-                              canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
+                              canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)
                                 ? () => openCollectPayment(sale)
                                 : null
                             }
@@ -2223,7 +2253,7 @@ export default function SalesOrdersListScreen({
                             showDiscountColumn={showDiscountColumn}
                             showApprovalColumn={showApprovalColumn}
                             showRejectionStrip={showRejectionStrip}
-                            queueSlug={queueSlug}
+                            queueSlug={paymentQueueSlug}
                             onApproveActionRequest={approveActionRequest}
                             onRejectActionRequest={rejectActionRequest}
                             canApproveDiscounts={canApproveDiscounts}

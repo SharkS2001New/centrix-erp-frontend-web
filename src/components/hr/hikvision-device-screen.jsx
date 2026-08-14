@@ -888,6 +888,31 @@ function UserTable({ users }) {
   );
 }
 
+function displayEventField(value) {
+  if (value == null) return "—";
+  const text = String(value).trim();
+  if (!text || text === "undefined" || text === "null") return "—";
+  return text;
+}
+
+function formatEventTime(value) {
+  if (value == null || value === "") return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return displayEventField(value);
+  }
+  return new Intl.DateTimeFormat("en-KE", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(parsed);
+}
+
 function EventTable({ events }) {
   if (!events?.length) {
     return <p className="text-sm text-slate-500">No stored events yet. Run Sync now.</p>;
@@ -897,7 +922,7 @@ function EventTable({ events }) {
       <table className="w-full min-w-[720px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
-            <th className="px-3 py-2">Time</th>
+            <th className="px-3 py-2">Time (Africa/Nairobi)</th>
             <th className="px-3 py-2">Employee</th>
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2">Verify</th>
@@ -908,13 +933,15 @@ function EventTable({ events }) {
         <tbody>
           {events.map((row) => (
             <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
-              <td className="px-3 py-2 text-xs">{row.event_time ?? "—"}</td>
-              <td className="px-3 py-2 font-mono text-xs">{row.employee_no ?? "—"}</td>
-              <td className="px-3 py-2 text-xs">{row.attendance_status ?? "—"}</td>
-              <td className="px-3 py-2 text-xs">{row.verification_method ?? "—"}</td>
+              <td className="px-3 py-2 text-xs">
+                {formatEventTime(row.event_time_local || row.event_time)}
+              </td>
+              <td className="px-3 py-2 font-mono text-xs">{displayEventField(row.employee_no)}</td>
+              <td className="px-3 py-2 text-xs">{displayEventField(row.attendance_status)}</td>
+              <td className="px-3 py-2 text-xs">{displayEventField(row.verification_method)}</td>
               <td className="px-3 py-2 text-xs">{row.processed_at ? "Yes" : "Pending"}</td>
               <td className="max-w-[220px] truncate px-3 py-2 text-xs text-red-700" title={row.process_error || ""}>
-                {row.process_error || "—"}
+                {displayEventField(row.process_error)}
               </td>
             </tr>
           ))}
