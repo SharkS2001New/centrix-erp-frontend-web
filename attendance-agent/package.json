@@ -1,6 +1,6 @@
 {
   "name": "centrix-attendance-agent",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "private": true,
   "description": "On-LAN bridge: proxy Hikvision ISAPI for Centrix cloud and push attendance punches",
   "type": "module",

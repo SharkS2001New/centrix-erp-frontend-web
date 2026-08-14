@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.2.4";
+export const AGENT_VERSION = "2.2.5";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -154,11 +154,18 @@ export function describeNetworkError(err, targetUrl = "") {
  */
 function hikvisionRequest(url, { method = "GET", headers = {}, body = null, timeoutMs = 20000 } = {}) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      fn(value);
+    };
+
     let parsed;
     try {
       parsed = new URL(url);
-    } catch (err) {
-      reject(new Error(`Invalid Hikvision URL: ${url}`));
+    } catch {
+      done(reject, new Error(`Invalid Hikvision URL: ${url}`));
       return;
     }
 
@@ -196,7 +203,7 @@ function hikvisionRequest(url, { method = "GET", headers = {}, body = null, time
           for (const [key, value] of Object.entries(res.headers || {})) {
             headerMap[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
           }
-          resolve({
+          done(resolve, {
             status: res.statusCode || 0,
             ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
             headers: {
@@ -218,10 +225,11 @@ function hikvisionRequest(url, { method = "GET", headers = {}, body = null, time
     );
 
     req.on("timeout", () => {
-      req.destroy(new Error(`Timed out after ${timeoutMs}ms connecting to ${parsed.hostname}`));
+      req.destroy();
+      done(reject, new Error(describeNetworkError(new Error(`Timed out after ${timeoutMs}ms`), url)));
     });
     req.on("error", (err) => {
-      reject(new Error(describeNetworkError(err, url)));
+      done(reject, new Error(describeNetworkError(err, url)));
     });
     if (payload) req.write(payload);
     req.end();

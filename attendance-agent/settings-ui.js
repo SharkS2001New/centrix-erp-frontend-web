@@ -215,12 +215,13 @@ function htmlPage(installer = false) {
         <div class="section" id="fpSection">
           <h2>Test fingerprint (local)</h2>
           <p class="hint" style="margin-bottom:12px">
-            Place a finger on the Hikvision terminal, then click the button. This reads events from the
-            device on this LAN and can push the punch to Centrix immediately.
+            Place a finger on the Hikvision terminal, then click the button. The result opens as a new
+            page (this avoids browser “network error” on long ISAPI calls). You can also run
+            <strong>test-fingerprint.bat</strong> in the agent folder.
           </p>
           <div class="actions" style="margin-top:0">
-            <button type="button" class="primary" id="fpBtn">Check fingerprint now</button>
-            <button type="button" class="secondary" id="fpPushBtn">Check &amp; send to Centrix</button>
+            <button type="submit" class="primary" name="fpPush" value="0" formaction="/fp-test" formmethod="post">Check fingerprint now</button>
+            <button type="submit" class="secondary" name="fpPush" value="1" formaction="/fp-test" formmethod="post">Check &amp; send to Centrix</button>
           </div>
           <div id="fpStatus" style="margin-top:12px;font-size:13px;white-space:pre-wrap;line-height:1.45"></div>
         </div>
@@ -342,58 +343,18 @@ function htmlPage(installer = false) {
       }
     }
 
-    el("form").addEventListener("submit", (e) => { e.preventDefault(); void save(false); });
-    el("testBtn").addEventListener("click", () => void save(true));
-
-    async function runFingerprintTest(push) {
-      const status = el("fpStatus");
-      const fpBtn = el("fpBtn");
-      const fpPushBtn = el("fpPushBtn");
-      fpBtn.disabled = true;
-      fpPushBtn.disabled = true;
-      status.textContent = push
-        ? "Reading terminal and sending to Centrix…"
-        : "Reading recent punches from the terminal…";
-      status.style.color = "#64748b";
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 90000);
-      try {
-        const res = await fetch("/api/test-fingerprint", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...readForm(),
-            push: Boolean(push),
-            lookback_seconds: 120,
-          }),
-          signal: ctrl.signal,
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || data.message || "Fingerprint test failed");
-        status.textContent = data.detail || (data.ok ? "OK" : "No punch found");
-        status.style.color = data.ok ? "#166534" : "#92400e";
-        setBanner(data.ok ? "ok" : "warn", data.ok
-          ? (push ? "Punch found and sent to Centrix (if configured)." : "Punch found on the terminal.")
-          : (data.detail || "No recent punch. Place a finger on the terminal, wait for the beep, then try again."));
-      } catch (err) {
-        const raw = err && err.name === "AbortError"
-          ? "Timed out after 90s waiting for the terminal. Check LAN IP / port 80, then try again."
-          : (err && err.message ? String(err.message) : String(err));
-        const msg = /failed to fetch|networkerror|network error when attempting to fetch/i.test(raw)
-          ? "The settings window closed or the local agent restarted before the test finished. Leave this black Command window open, then click Check fingerprint now again."
-          : raw;
-        status.textContent = msg;
-        status.style.color = "#991b1b";
-        setBanner("err", msg);
-      } finally {
-        clearTimeout(timer);
-        fpBtn.disabled = false;
-        fpPushBtn.disabled = false;
+    el("form").addEventListener("submit", (e) => {
+      const dest = e.submitter && e.submitter.getAttribute("formaction");
+      if (dest === "/fp-test") {
+        const status = el("fpStatus");
+        status.textContent = "Checking the terminal — wait for the result page. Keep the Command window open.";
+        status.style.color = "#64748b";
+        return;
       }
-    }
-
-    el("fpBtn").addEventListener("click", () => void runFingerprintTest(false));
-    el("fpPushBtn").addEventListener("click", () => void runFingerprintTest(true));
+      e.preventDefault();
+      void save(false);
+    });
+    el("testBtn").addEventListener("click", () => void save(true));
     load().catch((err) => setBanner("err", err.message || String(err)));
   </script>
 </body>
@@ -405,7 +366,63 @@ async function readBody(req) {
   for await (const chunk of req) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return {};
+  const ct = String(req.headers["content-type"] || "");
+  if (ct.includes("application/x-www-form-urlencoded")) {
+    return Object.fromEntries(new URLSearchParams(raw).entries());
+  }
   return JSON.parse(raw);
+}
+
+function configFromPostedBody(body, current) {
+  const hikIn = body.hikvision && typeof body.hikvision === "object" ? body.hikvision : {};
+  const postedPassword = String(hikIn.password ?? body.password ?? "");
+  const useHttpsRaw = hikIn.useHttps ?? body.useHttps;
+  const useHttps =
+    useHttpsRaw === true ||
+    useHttpsRaw === "on" ||
+    useHttpsRaw === "1" ||
+    useHttpsRaw === "true";
+  return normalizeConfig({
+    ...current,
+    centrixApiUrl: body.centrixApiUrl || current.centrixApiUrl,
+    centrixToken: String(body.centrixToken || "").trim() || current.centrixToken,
+    deviceNo: body.deviceNo || current.deviceNo,
+    deviceId: body.deviceId || current.deviceId,
+    pollIntervalSeconds: body.pollIntervalSeconds || current.pollIntervalSeconds,
+    lookbackMinutes: body.lookbackMinutes || current.lookbackMinutes,
+    hikvision: {
+      ...current.hikvision,
+      host: hikIn.host || body.host || current.hikvision.host,
+      port: hikIn.port || body.port || current.hikvision.port,
+      username: hikIn.username || body.username || current.hikvision.username,
+      password: postedPassword || current.hikvision.password,
+      useHttps: useHttpsRaw == null || useHttpsRaw === "" ? current.hikvision.useHttps : useHttps,
+    },
+  });
+}
+
+function fingerprintResultHtml(result) {
+  const ok = Boolean(result?.ok);
+  const detail = String(result?.detail || "No detail")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8" /><title>Fingerprint test</title>
+<style>
+  body { font-family: Segoe UI, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; padding:32px; }
+  .card { max-width:720px; margin:0 auto; background:#1e293b; border-radius:12px; padding:24px; }
+  pre { white-space:pre-wrap; line-height:1.45; background:#0f172a; padding:16px; border-radius:8px; }
+  a { color:#93c5fd; }
+  .ok { color:#86efac; }
+  .bad { color:#fca5a5; }
+</style></head>
+<body><div class="card">
+  <p class="${ok ? "ok" : "bad"}"><strong>${ok ? "Fingerprint test" : "Fingerprint test failed"}</strong></p>
+  <pre>${detail}</pre>
+  <p><a href="/">Back to settings</a></p>
+  <p style="opacity:.7;font-size:13px">If this page is blank or the browser errors, run <code>test-fingerprint.bat</code> in the agent folder — the Command window shows the real Hikvision error.</p>
+</div></body></html>`;
 }
 
 function sendJson(res, status, payload) {
@@ -658,35 +675,50 @@ export function runSettingsUi(options = {}) {
           return;
         }
 
-        if (req.method === "POST" && url.pathname === "/api/test-fingerprint") {
+        if (
+          req.method === "POST" &&
+          (url.pathname === "/fp-test" || url.pathname === "/api/test-fingerprint")
+        ) {
           const body = await readBody(req);
           const current = normalizeConfig(ensureConfigFile());
-          if (!String(body.centrixToken || "").trim() && current.centrixToken) {
-            body.centrixToken = current.centrixToken;
+          const merged = configFromPostedBody(body, current);
+          let config = merged;
+          try {
+            config = saveConfig(merged);
+          } catch {
+            /* still test even if Program Files config is not writable */
           }
-          if (
-            body.hikvision &&
-            !String(body.hikvision.password || "") &&
-            current.hikvision.password
-          ) {
-            body.hikvision.password = current.hikvision.password;
+          const push =
+            body.push === true ||
+            body.push === "1" ||
+            body.fpPush === "1" ||
+            body.fpPush === 1;
+          const wantsHtml =
+            url.pathname === "/fp-test" ||
+            String(req.headers.accept || "").includes("text/html");
+          if (wantsHtml) {
+            res.writeHead(200, {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-store",
+            });
           }
-          const config = saveConfig({
-            ...current,
-            ...body,
-            hikvision: { ...current.hikvision, ...(body.hikvision || {}) },
-          });
           try {
             const result = await testFingerprintLocal(config, {
-              push: Boolean(body.push),
+              push,
               lookbackSeconds: Number(body.lookback_seconds) || 120,
             });
-            sendJson(res, 200, {
-              ok: Boolean(result.ok),
-              detail: result.detail || "",
-            });
+            if (wantsHtml) {
+              res.end(fingerprintResultHtml(result));
+            } else {
+              sendJson(res, 200, { ok: Boolean(result.ok), detail: result.detail || "" });
+            }
           } catch (err) {
-            sendJson(res, 200, { ok: false, detail: err.message || String(err) });
+            const detail = err.message || String(err);
+            if (wantsHtml) {
+              res.end(fingerprintResultHtml({ ok: false, detail }));
+            } else {
+              sendJson(res, 200, { ok: false, detail });
+            }
           }
           return;
         }
@@ -738,9 +770,9 @@ export function runSettingsUi(options = {}) {
       }
     });
 
-    server.requestTimeout = 0;
-    server.headersTimeout = 0;
-    server.timeout = 0;
+    server.requestTimeout = 600000;
+    server.headersTimeout = 600000;
+    server.timeout = 600000;
 
     server.on("error", (err) => {
       if (err && err.code === "EADDRINUSE") {
@@ -774,7 +806,24 @@ export function runSettingsUi(options = {}) {
 }
 
 const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-if (isDirectRun) {
+if (isDirectRun && process.argv.includes("--fingerprint")) {
+  const push = process.argv.includes("--push");
+  const config = normalizeConfig(ensureConfigFile());
+  console.log(
+    push
+      ? "Checking Hikvision and sending the latest punch to Centrix…"
+      : "Checking Hikvision for a recent fingerprint punch…",
+  );
+  testFingerprintLocal(config, { push, lookbackSeconds: 180 })
+    .then((result) => {
+      console.log(result.detail || (result.ok ? "OK" : "Failed"));
+      process.exit(result.ok ? 0 : 1);
+    })
+    .catch((err) => {
+      console.error(err.message || err);
+      process.exit(1);
+    });
+} else if (isDirectRun) {
   runSettingsUi({ openBrowser: true }).catch((err) => {
     console.error(err.message || err);
     process.exit(1);
