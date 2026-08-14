@@ -194,6 +194,89 @@ export function AttendanceClockSettingsPanel() {
               </p>
             )}
 
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-medium text-slate-900">Punch time windows (Africa/Nairobi)</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Fingerprint scans are classified by these hours. The first punch of the day is always
+                clock-in. Extra morning scans are ignored (they do not clock the person out). Late is
+                marked when the first clock-in is after the late-after time.
+              </p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <Field label="Morning clock-in from">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.morning_clock_in_from || "08:00"}
+                    onChange={(e) => setForm((f) => ({ ...f, morning_clock_in_from: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Morning clock-in to">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.morning_clock_in_to || "10:00"}
+                    onChange={(e) => setForm((f) => ({ ...f, morning_clock_in_to: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Lunch clock-out from">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.lunch_clock_out_from || "12:30"}
+                    onChange={(e) => setForm((f) => ({ ...f, lunch_clock_out_from: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Lunch clock-out to">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.lunch_clock_out_to || "14:00"}
+                    onChange={(e) => setForm((f) => ({ ...f, lunch_clock_out_to: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Lunch clock-in from">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.lunch_clock_in_from || "13:00"}
+                    onChange={(e) => setForm((f) => ({ ...f, lunch_clock_in_from: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Lunch clock-in to">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.lunch_clock_in_to || "16:00"}
+                    onChange={(e) => setForm((f) => ({ ...f, lunch_clock_in_to: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Evening clock-out from">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.evening_clock_out_from || "16:00"}
+                    onChange={(e) => setForm((f) => ({ ...f, evening_clock_out_from: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Evening clock-out to">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.evening_clock_out_to || "22:00"}
+                    onChange={(e) => setForm((f) => ({ ...f, evening_clock_out_to: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Late after (first clock-in)">
+                  <input
+                    type="time"
+                    className={inputClassName()}
+                    value={form.clock_in_late_after || "08:15"}
+                    onChange={(e) => setForm((f) => ({ ...f, clock_in_late_after: e.target.value }))}
+                  />
+                </Field>
+              </div>
+            </div>
+
             <PrimaryButton type="submit" disabled={saving} showIcon={false}>
               {saving ? "Saving…" : "Save attendance method"}
             </PrimaryButton>

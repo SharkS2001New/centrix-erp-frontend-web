@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.3.2";
+export const AGENT_VERSION = "2.3.3";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -412,11 +412,11 @@ function usableString(...values) {
 function punchedAtNairobi(raw) {
   const text = usableString(raw);
   if (!text) return null;
-  if (/Z|[+-]\d{2}:?\d{2}$/.test(text)) return text;
-  const normalized = text.includes("T") ? text : text.replace(" ", "T");
+  const stripped = text.replace(/[Zz]$/, "").replace(/[+-]\d{2}:?\d{2}$/, "");
+  const normalized = stripped.includes("T") ? stripped : stripped.replace(" ", "T");
   const withSeconds = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)
     ? `${normalized}:00`
-    : normalized;
+    : normalized.replace(/\.\d+$/, "");
   return `${withSeconds}+03:00`;
 }
 

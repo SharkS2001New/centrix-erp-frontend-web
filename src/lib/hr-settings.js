@@ -27,6 +27,15 @@ export const HR_PAYROLL_DEFAULTS = {
   company_fingerprint_match_threshold: 0.85,
   company_fingerprint_auto_enroll_on_clock: true,
   company_mobile_verification_method: "face_or_fingerprint",
+  morning_clock_in_from: "08:00",
+  morning_clock_in_to: "10:00",
+  lunch_clock_out_from: "12:30",
+  lunch_clock_out_to: "14:00",
+  lunch_clock_in_from: "13:00",
+  lunch_clock_in_to: "16:00",
+  evening_clock_out_from: "16:00",
+  evening_clock_out_to: "22:00",
+  clock_in_late_after: "08:15",
 };
 
 export function mergeHrPayrollSettings(moduleSettings) {
@@ -136,6 +145,15 @@ export function hrPayrollFormFromApi(res) {
         : hr.company_mobile_verification_method === "face_or_device_biometric"
           ? "face_or_fingerprint"
           : hr.company_mobile_verification_method || "face_or_fingerprint",
+    morning_clock_in_from: hr.morning_clock_in_from || "08:00",
+    morning_clock_in_to: hr.morning_clock_in_to || "10:00",
+    lunch_clock_out_from: hr.lunch_clock_out_from || "12:30",
+    lunch_clock_out_to: hr.lunch_clock_out_to || "14:00",
+    lunch_clock_in_from: hr.lunch_clock_in_from || "13:00",
+    lunch_clock_in_to: hr.lunch_clock_in_to || "16:00",
+    evening_clock_out_from: hr.evening_clock_out_from || "16:00",
+    evening_clock_out_to: hr.evening_clock_out_to || "22:00",
+    clock_in_late_after: hr.clock_in_late_after || "08:15",
   };
 }
 
@@ -166,5 +184,14 @@ export function hrPayrollPayloadFromForm(form) {
     company_fingerprint_auto_enroll_on_clock: Boolean(form.company_fingerprint_auto_enroll_on_clock),
     company_mobile_verification_method:
       form.company_mobile_verification_method || "face_or_fingerprint",
+    morning_clock_in_from: form.morning_clock_in_from || "08:00",
+    morning_clock_in_to: form.morning_clock_in_to || "10:00",
+    lunch_clock_out_from: form.lunch_clock_out_from || "12:30",
+    lunch_clock_out_to: form.lunch_clock_out_to || "14:00",
+    lunch_clock_in_from: form.lunch_clock_in_from || "13:00",
+    lunch_clock_in_to: form.lunch_clock_in_to || "16:00",
+    evening_clock_out_from: form.evening_clock_out_from || "16:00",
+    evening_clock_out_to: form.evening_clock_out_to || "22:00",
+    clock_in_late_after: form.clock_in_late_after || "08:15",
   };
 }
