@@ -98,6 +98,21 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
     creditNote?.credit_date ?? customerReturn.return_date ?? customerReturn.created_at,
   );
   const reason = resolveCustomerReturnReason(customerReturn, creditNote);
+  let lines = customerReturn.lines ?? [];
+  if (!lines.length) {
+    const fallbackTotal = Number(customerReturn.total_amount ?? 0);
+    if (fallbackTotal > 0) {
+      lines = [
+        {
+          product_name: reason !== "—" ? reason : "Credit adjustment",
+          return_qty: 1,
+          quantity: 1,
+          unit_price: fallbackTotal,
+          amount: fallbackTotal,
+        },
+      ];
+    }
+  }
   const lineRows = buildCustomerReturnLineRows(lines, uomById, customerReturn);
   const totalAmount = Number(customerReturn.total_amount ?? 0) || lineRows.reduce((s, r) => s + r._amount, 0);
 
@@ -131,17 +146,17 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
       : "";
 
   const leftMeta = buildMetaFieldRows([
+    { label: "CREDIT NOTE NO:", value: documentNo },
     { label: "RETURN REF NO #:", value: customerReturn.return_no ?? "—" },
     { label: "CUSTOMER NAME:", value: customerName },
     { label: "PHONE NUMBER:", value: customer?.phone_number ?? customer?.additional_phone ?? "—" },
-    { label: "RETURN DATE:", value: returnDate },
+    { label: "CREDIT DATE:", value: returnDate },
     { label: "K.R.A Pin:", value: customer?.kra_pin ?? "—" },
     {
       label: "TERMS OF PAYMENT:",
       value: customer?.terms_of_payment ?? customerReturn.refund_method ?? "—",
     },
     { label: "ORIGINAL INVOICE:", value: originalInvoice },
-    { label: "DOCUMENT NO:", value: documentNo },
   ]);
 
   const itemsTable = buildDocItemsTable({
@@ -152,7 +167,7 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
       { key: "amount", label: "AMOUNT", align: "right" },
     ],
     rows: lineRows,
-    emptyLabel: "No returned items",
+    emptyLabel: "No credited items",
   });
 
   const refundMethod = customerReturn.refund_method ?? "CASH";
@@ -396,17 +411,17 @@ export function buildCreditNotePreviewHtml(customerReturn, options = {}) {
     const totalAmount =
       Number(doc.total_amount ?? 0) || lineRows.reduce((s, r) => s + r._amount, 0);
     const leftMeta = buildMetaFieldRows([
+      { label: "CREDIT NOTE NO:", value: documentNo },
       { label: "RETURN REF NO #:", value: doc.return_no ?? "—" },
       { label: "CUSTOMER NAME:", value: customerName },
       { label: "PHONE NUMBER:", value: customer?.phone_number ?? customer?.additional_phone ?? "—" },
-      { label: "RETURN DATE:", value: returnDate },
+      { label: "CREDIT DATE:", value: returnDate },
       { label: "K.R.A Pin:", value: customer?.kra_pin ?? "—" },
       {
         label: "TERMS OF PAYMENT:",
         value: customer?.terms_of_payment ?? doc.refund_method ?? "—",
       },
       { label: "ORIGINAL INVOICE:", value: originalInvoice },
-      { label: "DOCUMENT NO:", value: documentNo },
     ]);
     const itemsTable = buildDocItemsTable({
       columns: [

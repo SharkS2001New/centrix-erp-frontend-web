@@ -30,7 +30,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
       <input
         type="checkbox"
         className="mt-1"
-        checked={checked}
+        checked={Boolean(checked)}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />

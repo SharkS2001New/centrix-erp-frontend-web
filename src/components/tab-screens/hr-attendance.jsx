@@ -1125,6 +1125,43 @@ export function HrAttendanceScreen({ mode = "today" }) {
           >
             {syncingPunches ? "Refreshing…" : "Refresh attendance"}
           </button>
+          {!isHistory ? (
+            <CatalogListExport
+              title="Today's attendance"
+              filename="todays-attendance"
+              columns={[
+                { key: "employee", label: "Employee" },
+                { key: "status", label: "Status" },
+                { key: "clock_in", label: "Clock in" },
+                { key: "lunch_out", label: "Lunch out" },
+                { key: "lunch_in", label: "Lunch in" },
+                { key: "clock_out", label: "Clock out" },
+                { key: "hours_worked", label: "No of hours worked", align: "right" },
+                { key: "device", label: "Device" },
+                { key: "source", label: "Source" },
+              ]}
+              totalCount={todayDays.length}
+              getInlineRows={async () =>
+                todayDays.map((day) => ({
+                  employee: sessionEmployeeLabel(day.lastSession),
+                  status:
+                    day.status === "clocked_out"
+                      ? "Left for home"
+                      : day.status === "at_lunch"
+                        ? "At lunch"
+                        : "On shift",
+                  clock_in: sessionTimeLabel(day.clockIn),
+                  lunch_out: day.lunchRequired ? sessionTimeLabel(day.lunchOut) : "",
+                  lunch_in: day.lunchRequired ? sessionTimeLabel(day.lunchIn) : "",
+                  clock_out: sessionTimeLabel(day.clockOut),
+                  hours_worked: formatHoursWorked(day.hoursWorked),
+                  device: day.device || "",
+                  source: formatAttendanceSource(day.source),
+                }))
+              }
+              disabled={activeLoading}
+            />
+          ) : null}
           {canAddManualAttendance ? (
             <PrimaryButton type="button" onClick={openCreateManual}>
               Add Manual attendance

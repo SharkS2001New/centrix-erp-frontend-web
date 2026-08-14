@@ -465,6 +465,7 @@ async function performApiRequest(path, url, options = {}) {
       credentials: apiFetchCredentials(),
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
+      ...(options.cache ? { cache: options.cache } : {}),
     });
 
     const text = await res.text();

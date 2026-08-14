@@ -82,7 +82,7 @@ export function formatAttendanceSource(source, sourceLabel) {
   if (source === "company_mobile") return "Premises (company phone)";
   if (source === "clock_device") return "Premises (clock)";
   if (source === "manual") return "Manual entry";
-  if (source === "hr_applied") return "Applied by HR";
+  if (source === "hr_applied") return "Applied by HR manually";
   return source ? String(source).replace(/_/g, " ") : "—";
 }
 
@@ -98,7 +98,7 @@ export function formatAttendanceLoginChannel(source, channelLabel) {
   const channel = attendanceLoginChannel(source);
   if (channel === "mobile_sales") return "Mobile sales app";
   if (channel === "premises") return "Premises";
-  if (source === "hr_applied") return "Applied by HR";
+  if (source === "hr_applied") return "Applied by HR manually";
   return "Manual entry";
 }
 

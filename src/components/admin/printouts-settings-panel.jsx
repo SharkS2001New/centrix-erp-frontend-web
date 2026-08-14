@@ -92,7 +92,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
       <input
         type="checkbox"
         className="mt-1"
-        checked={checked}
+        checked={Boolean(checked)}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
@@ -1122,8 +1122,8 @@ export function PrintoutsSettingsPanel({
     }
   }, [activeTab, visibleTabs]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       // Loading-sheet column flags live under distribution settings, but the API is also
@@ -1279,7 +1279,7 @@ export function PrintoutsSettingsPanel({
         }
       }
 
-      await load();
+      await load({ silent: true });
       if (afterSave) await afterSave();
       setMessage("Printout settings saved.");
     } catch (e) {

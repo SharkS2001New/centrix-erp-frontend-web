@@ -161,14 +161,14 @@ export function HrMissedPunchesScreen() {
     if (!row?.id) return;
     const ok = await confirm({
       title: "Apply punch to attendance",
-      message: `Apply this terminal punch for ${displayField(row.employee_name)} (${displayField(row.employee_no)}) to attendance? It will count as Applied by HR.`,
+      message: `Apply this terminal punch for ${displayField(row.employee_name)} (${displayField(row.employee_no)}) to attendance? It will count as Applied by HR manually.`,
       confirmLabel: "Apply",
     });
     if (!ok) return;
     setApplyingId(row.id);
     try {
       await apiRequest(`/attendance/missed-punches/events/${row.id}/apply`, { method: "POST" });
-      notifySuccess("Punch applied to attendance as Applied by HR.");
+      notifySuccess("Punch applied to attendance as Applied by HR manually.");
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not apply punch");
@@ -301,7 +301,7 @@ export function HrMissedPunchesScreen() {
         <Link href="/hr/duplicate-punches" className="font-medium text-[#185FA5] hover:underline">
           Duplicate punches
         </Link>
-        . Apply an unapplied punch when the person had a genuine reason — it counts on attendance as Applied by HR.
+        . Apply an unapplied punch when the person had a genuine reason — it counts on attendance as Applied by HR manually.
       </p>
 
       <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1">

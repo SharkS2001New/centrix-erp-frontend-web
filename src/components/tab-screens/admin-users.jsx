@@ -611,7 +611,7 @@ export function AdminUsersScreen() {
       });
       await loadUserPermissions(viewUser.id);
       if (viewUser.id === user?.id) {
-        await refreshCapabilities();
+        await refreshCapabilities({ force: true });
       }
     } catch (e) {
       setPermError(e instanceof ApiError ? e.message : "Failed to save permissions");

@@ -127,7 +127,7 @@ export function HrAbsentsScreen() {
   return (
     <CatalogPageShell
       title="Absents"
-      subtitle="Scheduled work days with no clock-in. Mark absents for past dates, then review the list."
+      subtitle="Creates absent records for past scheduled workdays with no clock-in (never today or future). Hours stay 0."
       action={
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm text-slate-600">
@@ -167,6 +167,12 @@ export function HrAbsentsScreen() {
         </div>
       }
     >
+      <p className="mb-4 text-sm text-slate-600">
+        <strong className="font-medium text-slate-800">Mark absents</strong> writes an explicit absent row for
+        each active employee who was scheduled to work in the date range but has no attendance. Today and future
+        dates are skipped so a late clock-in is not overwritten. Payroll already treats a missing day as unpaid;
+        this list is for HR registers and audit. Hours worked stay 0.
+      </p>
       {loading && rows.length === 0 ? (
         <p className="text-sm text-slate-600">Loading…</p>
       ) : rows.length === 0 ? (

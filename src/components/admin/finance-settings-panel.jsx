@@ -13,7 +13,7 @@ import { useConfirm } from "@/lib/use-confirm";
 function Toggle({ checked, onChange, label, description }) {
   return (
     <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
-      <input type="checkbox" className="mt-1" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" className="mt-1" checked={Boolean(checked)} onChange={(e) => onChange(e.target.checked)} />
       <span>
         <span className="theme-heading block text-sm font-medium">{label}</span>
         {description ? <span className="theme-subtext mt-0.5 block text-xs">{description}</span> : null}

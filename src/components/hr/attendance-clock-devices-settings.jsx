@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError, apiV1BaseUrl } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
@@ -38,6 +38,10 @@ export function AttendanceClockDevicesSettings() {
   });
   const [downloading, setDownloading] = useState(false);
   const [connectionTestingId, setConnectionTestingId] = useState(null);
+  const [probeById, setProbeById] = useState({});
+  const probedKeyRef = useRef("");
+  const devicesRef = useRef(devices);
+  devicesRef.current = devices;
   const [editDevice, setEditDevice] = useState(null);
   const [editForm, setEditForm] = useState({
     location: "",
@@ -68,21 +72,41 @@ export function AttendanceClockDevicesSettings() {
     load();
   }, [load]);
 
-  async function testDeviceConnection(device) {
+  async function testDeviceConnection(device, { silent = false } = {}) {
     setConnectionTestingId(device.id);
+    setProbeById((prev) => ({
+      ...prev,
+      [device.id]: { ...(prev[device.id] || {}), testing: true },
+    }));
     try {
       const result = await apiRequest(
         organizationApiPath(`/attendance-clock-devices/${device.id}/hikvision/test-connection`),
-        { method: "POST" },
+        { method: "POST", loading: false },
       );
-      if (result.online) {
-        notifySuccess(result.message ?? `CentrixAttendanceAgent is connected for ${device.device_no}.`);
-      } else {
-        notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
+      setProbeById((prev) => ({
+        ...prev,
+        [device.id]: {
+          testing: false,
+          online: Boolean(result.online),
+          error: result.error || null,
+          message: result.message || null,
+          checkedAt: Date.now(),
+        },
+      }));
+      if (!silent) {
+        if (result.online) {
+          notifySuccess(result.message ?? `CentrixAttendanceAgent is connected for ${device.device_no}.`);
+        } else {
+          notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
+        }
       }
-      await load();
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Connection test failed");
+      const msg = e instanceof ApiError ? e.message : "Connection test failed";
+      setProbeById((prev) => ({
+        ...prev,
+        [device.id]: { testing: false, online: false, error: msg, checkedAt: Date.now() },
+      }));
+      if (!silent) notifyError(msg);
     } finally {
       setConnectionTestingId(null);
     }
@@ -227,6 +251,24 @@ export function AttendanceClockDevicesSettings() {
   }
 
   const activeDevices = devices.filter((d) => d.is_active !== false);
+  const deviceIdsKey = activeDevices.map((d) => d.id).join(",");
+
+  useEffect(() => {
+    if (loading || !deviceIdsKey) return undefined;
+    if (probedKeyRef.current === deviceIdsKey) return undefined;
+    probedKeyRef.current = deviceIdsKey;
+    let cancelled = false;
+    const list = devicesRef.current.filter((d) => d.is_active !== false);
+    (async () => {
+      for (const device of list) {
+        if (cancelled) return;
+        await testDeviceConnection(device, { silent: true });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, deviceIdsKey]);
 
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
@@ -236,8 +278,8 @@ export function AttendanceClockDevicesSettings() {
           <p className="mt-1 text-xs text-slate-500">
             Centrix is cloud-hosted and cannot reach a LAN device IP directly. Register the terminal
             below, then download <strong>CentrixAttendanceAgent</strong> for that device. Install it on
-            an office PC on the same network as the Hikvision. Test connection checks that Centrix can
-            talk to the agent.
+            an office PC on the same network as the Hikvision. Agent status is checked automatically
+            when you open this page.
           </p>
         </div>
         <button
@@ -277,7 +319,7 @@ export function AttendanceClockDevicesSettings() {
                   ) : (
                     <p className="mt-0.5 text-xs text-amber-700">LAN IP not set — required for agent</p>
                   )}
-                  <AgentStatusLine device={device} />
+                  <AgentStatusLine device={device} probe={probeById[device.id]} />
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                 <button
@@ -290,10 +332,12 @@ export function AttendanceClockDevicesSettings() {
                 <button
                   type="button"
                   className={SECONDARY_BTN_CLASS}
-                  disabled={connectionTestingId === device.id}
+                  disabled={connectionTestingId === device.id || probeById[device.id]?.testing}
                   onClick={() => void testDeviceConnection(device)}
                 >
-                  {connectionTestingId === device.id ? "Testing…" : "Test connection"}
+                  {connectionTestingId === device.id || probeById[device.id]?.testing
+                    ? "Checking…"
+                    : "Recheck"}
                 </button>
                 <Link
                   href={`/admin/attendance-clock/${device.id}`}
@@ -543,8 +587,8 @@ export function AttendanceClockDevicesSettings() {
           <li>Unzip on a Windows PC on the same LAN as the terminal.</li>
           <li>Install Node.js 20+ if needed, then run <code>install-windows.bat</code> as Administrator.</li>
           <li>
-            Windows installs the service using the Centrix download (no local settings form). Use{" "}
-            <code>open-settings.bat</code> to Test connection.
+            Windows installs the service using the Centrix download (no local settings form). Agent
+            status is shown automatically in Centrix when you open Attendance clock-in.
           </li>
         </ol>
       </FormModal>
@@ -558,14 +602,37 @@ function isAgentOnline(device) {
   return Date.now() - seen < 90_000;
 }
 
-function AgentStatusLine({ device }) {
-  const online = isAgentOnline(device);
+function AgentStatusLine({ device, probe }) {
+  const testing = Boolean(probe?.testing);
+  const probed = probe && !probe.testing && probe.checkedAt;
+  const online = probed ? Boolean(probe.online) : isAgentOnline(device);
+  const detail = probed
+    ? probe.online
+      ? probe.message || "Centrix can reach the office agent."
+      : probe.error || "CentrixAttendanceAgent is not reachable."
+    : device.agent_last_seen_at
+      ? `last seen ${new Date(device.agent_last_seen_at).toLocaleString()}`
+      : "download and install on a LAN PC";
+
   return (
-    <p className={`mt-1 text-[11px] ${online ? "text-emerald-700" : "text-amber-700"}`}>
-      CentrixAttendanceAgent {online ? "online" : "offline"}
-      {device.agent_last_seen_at ? ` — last seen ${new Date(device.agent_last_seen_at).toLocaleString()}` : ""}
-      {!online ? " — download and install on a LAN PC" : ""}
-    </p>
+    <div
+      className={`mt-2 rounded-md border px-2.5 py-1.5 text-xs ${
+        testing
+          ? "border-slate-200 bg-slate-50 text-slate-600"
+          : online
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-amber-200 bg-amber-50 text-amber-900"
+      }`}
+    >
+      <p className="font-semibold">
+        {testing
+          ? "Checking CentrixAttendanceAgent…"
+          : online
+            ? "CentrixAttendanceAgent online"
+            : "CentrixAttendanceAgent offline"}
+      </p>
+      <p className="mt-0.5">{detail}</p>
+    </div>
   );
 }
 
@@ -596,7 +663,8 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
           Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is preconfigured
           with Centrix URL, token, and device settings. On a LAN PC: unzip →{" "}
           <code>install-windows.bat</code> as Administrator (Node 20+). The installer uses that config
-          and installs the Windows service. Use <code>open-settings.bat</code> to Test connection.
+          and installs the Windows service. Agent status is checked automatically in Centrix when you
+          open Attendance clock-in.
         </li>
         <li>
           The agent talks to the Hikvision on the LAN and to Centrix online — attendance punches and

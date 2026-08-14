@@ -170,6 +170,11 @@ export function invalidateTabAwareDataLoad(paneHref) {
   loadedDepsByPane.delete(paneKeyFromHref(paneHref));
 }
 
+/** After org settings save, other keep-alive tabs should refetch when reactivated. */
+export function invalidateAllTabAwareDataLoads() {
+  loadedDepsByPane.clear();
+}
+
 /** Mark deps as already loaded (e.g. after hydrating from tab pane cache). */
 export function markTabAwareDataLoaded(paneHref, depsKey) {
   if (depsKey == null) return;

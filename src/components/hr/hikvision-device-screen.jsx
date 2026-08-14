@@ -86,23 +86,27 @@ export function HikvisionDeviceScreen() {
     return data;
   }, [base]);
 
-  const testConnection = useCallback(async () => {
+  const testConnection = useCallback(async ({ silent = false } = {}) => {
     setBusy(true);
     setConnectionError(null);
     try {
-      const result = await apiRequest(`${base}/test-connection`, { method: "POST" });
+      const result = await apiRequest(`${base}/test-connection`, { method: "POST", loading: false });
       if (!result.online) {
         setConnectionError(result.error ?? "CentrixAttendanceAgent is not reachable.");
-        notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
+        if (!silent) {
+          notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
+        }
       } else {
-        notifySuccess(result.message ?? "CentrixAttendanceAgent is connected.");
+        if (!silent) {
+          notifySuccess(result.message ?? "CentrixAttendanceAgent is connected.");
+        }
         await loadOverview();
         await loadDevice();
       }
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : "Connection test failed";
       setConnectionError(msg);
-      notifyError(msg);
+      if (!silent) notifyError(msg);
     } finally {
       setBusy(false);
     }
@@ -124,16 +128,18 @@ export function HikvisionDeviceScreen() {
       body.employee_no = employeeNo.trim();
     }
     let rows = [];
+    let bulkOk = false;
     try {
       const data = await apiRequest(`${base}/fingerprints/search`, {
         method: "POST",
         body,
       });
       rows = data.fingerprints ?? [];
+      bulkOk = true;
     } catch {
       rows = [];
     }
-    if (rows.length === 0 && !employeeNo.trim() && userRows.length) {
+    if (bulkOk && rows.length === 0 && !employeeNo.trim() && userRows.length) {
       const results = await Promise.allSettled(
         userRows.slice(0, 40).map((user) => {
           const no = hikvisionEmployeeNo(user);
@@ -196,6 +202,9 @@ export function HikvisionDeviceScreen() {
             /* overview may fail until first connection */
           }
         }
+        if (!cancelled) {
+          await testConnection({ silent: true });
+        }
       } catch (e) {
         if (!cancelled) {
           notifyError(e instanceof ApiError ? e.message : "Failed to load device");
@@ -207,7 +216,7 @@ export function HikvisionDeviceScreen() {
     return () => {
       cancelled = true;
     };
-  }, [deviceId, loadDevice, loadOverview]);
+  }, [deviceId, loadDevice, loadOverview, testConnection]);
 
   useEffect(() => {
     if (tab === "Employees" && featureEnabled(capabilities, "users")) {
@@ -431,8 +440,7 @@ export function HikvisionDeviceScreen() {
           {connectionError}
           {" "}
           Cloud Centrix talks to this terminal through <strong>CentrixAttendanceAgent</strong> on an
-          office PC. Download the agent for this device, install it on the same LAN as the Hikvision,
-          then try Test connection again.
+          office PC. Download the agent for this device and install it on the same LAN as the Hikvision.
         </p>
       ) : null}
 
@@ -670,8 +678,8 @@ function AgentStatusBanner({ device, overview }) {
       ) : (
         <>
           <strong>CentrixAttendanceAgent offline.</strong> Download it for this device and run it on a
-          Windows PC on the same LAN as the terminal. Test connection checks that Centrix can reach the
-          agent. Manage Hikvision (users, cards, fingerprints) also goes through the agent.
+          Windows PC on the same LAN as the terminal. Centrix checks the agent automatically when you
+          open this page. Manage Hikvision (users, cards, fingerprints) also goes through the agent.
         </>
       )}
     </div>

@@ -94,6 +94,7 @@ export function AuthProvider({ children }) {
   const capabilitiesRefreshingRef = useRef(false);
   const capabilitiesRefreshAt = useRef(0);
   const capabilitiesRefreshPromise = useRef(null);
+  const capabilitiesRefreshGen = useRef(0);
 
   const refreshCapabilities = useCallback(async ({ force = false, maxAgeMs = CAPABILITIES_REFRESH_MS } = {}) => {
     const now = Date.now();
@@ -109,22 +110,35 @@ export function AuthProvider({ children }) {
       return capabilitiesRefreshPromise.current;
     }
 
+    const gen = ++capabilitiesRefreshGen.current;
     capabilitiesRefreshingRef.current = true;
     const promise = (async () => {
       try {
-        const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
+        const caps = await apiRequest("/erp/capabilities", {
+          loading: false,
+          reportIssues: false,
+          // After settings/role saves, never join a GET that started before the mutation.
+          dedupe: force ? false : undefined,
+          cache: force ? "no-store" : undefined,
+        });
+        if (gen !== capabilitiesRefreshGen.current) {
+          return caps;
+        }
         const versionBumped = capabilitiesVersionChanged(cached, caps);
         setCapabilities(caps);
         setStoredCapabilities(caps);
         syncLocalPrintingFromCapabilities(caps);
+        syncStoredWorkspace(caps?.workspaces ?? []);
         capabilitiesRefreshAt.current = Date.now();
         if (versionBumped) {
           invalidateReferenceDataCache();
         }
         return caps;
       } finally {
-        capabilitiesRefreshPromise.current = null;
-        capabilitiesRefreshingRef.current = false;
+        if (gen === capabilitiesRefreshGen.current) {
+          capabilitiesRefreshPromise.current = null;
+          capabilitiesRefreshingRef.current = false;
+        }
       }
     })();
 
@@ -215,6 +229,7 @@ export function AuthProvider({ children }) {
     // Drop prior-org capabilities refresh so a late org-1 response cannot overwrite org-2.
     capabilitiesRefreshAt.current = 0;
     capabilitiesRefreshPromise.current = null;
+    capabilitiesRefreshGen.current += 1;
     clearLocalPrintingSettingsCache();
 
     setSession(res.token, res.user, res.organization, res.memberships ?? [], channel);
@@ -603,6 +618,7 @@ export function AuthProvider({ children }) {
     invalidateReportBuilderTemplateCache();
     capabilitiesRefreshAt.current = 0;
     capabilitiesRefreshPromise.current = null;
+    capabilitiesRefreshGen.current += 1;
 
     // 2) Fire-and-forget server revoke (keepalive survives hard navigation).
     if (hadSession) {

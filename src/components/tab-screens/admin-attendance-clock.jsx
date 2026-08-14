@@ -9,7 +9,7 @@ export function AdminAttendanceClockScreen() {
   return (
     <CatalogPageShell
       title="Attendance clock-in"
-      subtitle="Choose how staff clock in, register fingerprint terminals, and download the Centrix Attendance Agent"
+      subtitle="Attendance method, fingerprint terminals, and Centrix Attendance Agent"
       banner={
         <AdminBreadcrumb
           items={[

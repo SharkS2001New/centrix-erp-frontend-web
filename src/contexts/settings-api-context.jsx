@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { invalidateAllTabAwareDataLoads } from "@/contexts/tab-pane-activity-context";
 
 const SettingsApiContext = createContext({
   settingsPath: (section) => `/erp/settings/${section}`,
@@ -41,6 +42,10 @@ export function useSettingsAfterSave(onAfterSave) {
   return useCallback(async () => {
     // Force-refresh so module_settings toggles apply instantly across the app.
     const caps = await refreshCapabilities({ force: true });
+    invalidateAllTabAwareDataLoads();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("centrix:capabilities-refreshed"));
+    }
     if (onAfterSave) {
       await onAfterSave();
     }

@@ -740,7 +740,11 @@ export function salesOrganizationFormFromApi(res) {
 
 /** Clear sales form keys that do not apply to the organization's enabled modules. */
 export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
-  const modules = capabilities?.modules ?? {};
+  const modules = capabilities?.modules;
+  // Incomplete/stale capabilities (empty modules map) must not uncheck saved toggles.
+  if (!modules || typeof modules !== "object" || Object.keys(modules).length === 0) {
+    return form;
+  }
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
   const next = { ...form };

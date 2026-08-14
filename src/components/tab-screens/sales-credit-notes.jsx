@@ -25,7 +25,7 @@ import { CreditNotesTabs } from "@/components/sales/credit-notes-tabs";
 import { CustomerReturnActionDialog } from "@/components/sales/customer-return-actions";
 import { CustomerReturnDetailModal } from "@/components/sales/customer-return-detail-modal";
 import { printCustomerReturn } from "@/components/sales/credit-note-print";
-import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
+import { ReturnStatusBadge, customerReturnReturnedByName } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { defaultDateRange } from "@/lib/datetime";
 import { useAuth } from "@/contexts/auth-context";
@@ -56,13 +56,62 @@ function resolveCreditNoteRow(row) {
   };
 }
 
+function collectCreditNotePrintLines(row, customerReturn) {
+  const nested = customerReturn?.lines ?? row?.lines ?? [];
+  if (Array.isArray(nested) && nested.length > 0) return nested;
+  const total = Number(row?.total_amount ?? customerReturn?.total_amount ?? 0);
+  const reason = String(row?.reason ?? customerReturn?.reason ?? "").trim();
+  if (total > 0) {
+    return [
+      {
+        product_name: reason || "Credit adjustment",
+        product_code: "",
+        return_qty: 1,
+        quantity: 1,
+        unit_price: total,
+        amount: total,
+        uom: "—",
+      },
+    ];
+  }
+  return [];
+}
+
 function printableFromCreditNoteRow(row) {
-  const customerReturn = row.customerReturn ?? row.customer_return;
-  if (!customerReturn) return row;
+  const customerReturn = row.customerReturn ?? row.customer_return ?? null;
+  const nestedNote = customerReturn?.credit_note ?? customerReturn?.creditNote ?? null;
+  const lines = collectCreditNotePrintLines(row, customerReturn);
+  const base = customerReturn ? { ...customerReturn } : { ...row };
   return {
-    ...customerReturn,
-    credit_note: row,
-    creditNote: row,
+    ...base,
+    lines,
+    return_no: row.return_no ?? base.return_no,
+    reason: row.reason ?? base.reason,
+    notes: row.notes ?? base.notes,
+    refund_method: row.refund_method ?? base.refund_method,
+    total_amount: row.total_amount ?? base.total_amount,
+    processed_by_name:
+      row.processed_by_name ??
+      base.processed_by_name ??
+      customerReturnReturnedByName(row) ??
+      customerReturnReturnedByName(customerReturn),
+    credit_note: {
+      ...(nestedNote && typeof nestedNote === "object" ? nestedNote : {}),
+      credit_note_no: row.credit_note_no ?? nestedNote?.credit_note_no ?? base.return_no,
+      credit_date: row.credit_date ?? nestedNote?.credit_date ?? base.return_date,
+      kra_status: row.kra_status ?? nestedNote?.kra_status,
+      kra_cu_inv_no: row.kra_cu_inv_no ?? nestedNote?.kra_cu_inv_no,
+      kra_invoice_number: row.kra_invoice_number ?? nestedNote?.kra_invoice_number,
+      kra_receipt_signature: row.kra_receipt_signature ?? nestedNote?.kra_receipt_signature,
+      kra_signature_link: row.kra_signature_link ?? nestedNote?.kra_signature_link,
+      kra_serial_number: row.kra_serial_number ?? nestedNote?.kra_serial_number,
+      kra_timestamp: row.kra_timestamp ?? nestedNote?.kra_timestamp,
+      kra_refund_reason_code: row.kra_refund_reason_code ?? nestedNote?.kra_refund_reason_code,
+      kra_relevant_invoice_number:
+        row.kra_relevant_invoice_number ?? nestedNote?.kra_relevant_invoice_number,
+    },
+    sale: row.sale ?? base.sale,
+    customer: row.customer ?? base.customer,
   };
 }
 
@@ -272,10 +321,8 @@ export function SalesCreditNotesScreen() {
     async (row) => {
       try {
         let printable = printableFromCreditNoteRow(row);
-        if (!printable.lines?.length) {
-          const full = await apiRequest(`/credit-notes/${row.id}`);
-          printable = printableFromCreditNoteRow(resolveCreditNoteRow(full));
-        }
+        const full = await apiRequest(`/credit-notes/${row.id}`);
+        printable = printableFromCreditNoteRow(resolveCreditNoteRow(full));
         await printCustomerReturn(printable, {
           organization,
           generalSettings: generalSettings(),
