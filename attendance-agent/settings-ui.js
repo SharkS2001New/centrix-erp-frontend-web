@@ -369,16 +369,20 @@ function htmlPage(installer = false) {
           body: JSON.stringify({ push: Boolean(push), lookback_seconds: 120 }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Fingerprint test failed");
+        if (!res.ok) throw new Error(data.detail || data.message || "Fingerprint test failed");
         status.textContent = data.detail || (data.ok ? "OK" : "No punch found");
         status.style.color = data.ok ? "#166534" : "#92400e";
         setBanner(data.ok ? "ok" : "warn", data.ok
           ? (push ? "Punch found and sent to Centrix (if configured)." : "Punch found on the terminal.")
-          : "No recent punch. Place a finger on the terminal, wait for the beep, then try again.");
+          : (data.detail || "No recent punch. Place a finger on the terminal, wait for the beep, then try again."));
       } catch (err) {
-        status.textContent = err.message || String(err);
+        const raw = err && err.message ? String(err.message) : String(err);
+        const msg = /failed to fetch|networkerror|network error when attempting to fetch/i.test(raw)
+          ? "Lost contact with the local agent settings service (http://127.0.0.1:9251). Keep open-settings.bat running, then try again."
+          : raw;
+        status.textContent = msg;
         status.style.color = "#991b1b";
-        setBanner("err", err.message || String(err));
+        setBanner("err", msg);
       } finally {
         fpBtn.disabled = false;
         fpPushBtn.disabled = false;

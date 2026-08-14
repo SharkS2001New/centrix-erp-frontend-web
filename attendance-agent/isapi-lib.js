@@ -4,8 +4,10 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import http from "node:http";
+import https from "node:https";
 
-export const AGENT_VERSION = "2.2.1";
+export const AGENT_VERSION = "2.2.3";
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -42,55 +44,216 @@ export function basicAuthHeader(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
-/**
- * Node/undici often surfaces LAN failures as cryptic "network connection error" / "fetch failed".
- * Unwrap causes and turn them into actionable text for the settings UI.
- */
-export function describeNetworkError(err, targetUrl = "") {
-  const parts = [];
-  let cur = err;
-  for (let i = 0; i < 4 && cur; i += 1) {
-    const msg = String(cur.message || cur).trim();
-    if (msg && !parts.includes(msg)) parts.push(msg);
-    const code = cur.code || cur.cause?.code;
-    if (code && !parts.includes(String(code))) parts.push(String(code));
-    cur = cur.cause;
-  }
-  const joined = parts.join(" — ");
-  const lower = joined.toLowerCase();
-  const isLanFail =
-    /network connection error|fetch failed|econnrefused|econnreset|etimedout|enotfound|ehostunreach|enetunreach|socket hang up|other side closed|connect timeout/i.test(
-      lower,
-    );
-
-  if (!isLanFail) {
-    return joined || "Unknown network error";
-  }
-
-  let hostHint = targetUrl;
+function targetHostPort(targetUrl = "") {
   try {
-    if (targetUrl) {
-      const u = new URL(targetUrl);
-      hostHint = `${u.hostname}:${u.port || (u.protocol === "https:" ? 443 : 80)}`;
-    }
+    if (!targetUrl) return "";
+    const u = new URL(targetUrl);
+    const port = u.port || (u.protocol === "https:" ? "443" : "80");
+    return `${u.hostname}:${port}`;
   } catch {
-    /* keep raw */
+    return targetUrl;
   }
-
-  return (
-    `Cannot reach Hikvision at ${hostHint || "the configured LAN address"}. ` +
-    "Confirm this PC is on the same office LAN, the Device LAN IP is correct, HTTP port is 80 " +
-    "(not 8000), Windows Firewall allows Node, and you can open the device web page from this PC. " +
-    `(Detail: ${joined})`
-  );
 }
 
-async function rawFetch(url, init) {
-  try {
-    return await fetch(url, init);
-  } catch (err) {
-    throw new Error(describeNetworkError(err, url));
+function collectErrorFacts(err) {
+  const messages = [];
+  const codes = [];
+  let syscall = "";
+  let address = "";
+  let port = "";
+  let cur = err;
+  for (let i = 0; i < 6 && cur; i += 1) {
+    const msg = String(cur.message || cur).trim();
+    if (msg && !messages.includes(msg)) messages.push(msg);
+    const code = cur.code || cur.errno;
+    if (code != null && !codes.includes(String(code))) codes.push(String(code));
+    if (!syscall && cur.syscall) syscall = String(cur.syscall);
+    if (!address && cur.address) address = String(cur.address);
+    if (!port && cur.port) port = String(cur.port);
+    cur = cur.cause;
   }
+  return { messages, codes, syscall, address, port };
+}
+
+/**
+ * Turn Node/browser network noise into a specific LAN diagnosis.
+ */
+export function describeNetworkError(err, targetUrl = "") {
+  const existing = String(err?.message || err || "").trim();
+  if (
+    /^(Nothing accepted the connection|Timed out waiting|Could not resolve|This PC has no route|HTTPS to |Could not complete HTTP to |Hikvision request to )/i.test(
+      existing,
+    )
+  ) {
+    return existing;
+  }
+
+  const { messages, codes, syscall, address, port } = collectErrorFacts(err);
+  const blob = [...messages, ...codes, syscall].join(" ").toLowerCase();
+  const host = targetHostPort(targetUrl) || (address && port ? `${address}:${port}` : address);
+  const where = host ? `Hikvision at ${host}` : "the Hikvision terminal";
+
+  if (/econnrefused/.test(blob)) {
+    return (
+      `Nothing accepted the connection on ${where}. ` +
+      "Wrong LAN IP or port (use HTTP 80, not 8000), or ISAPI/web is disabled on the device."
+    );
+  }
+  if (/etimedout|timed out|timeout/.test(blob)) {
+    return (
+      `Timed out waiting for ${where}. ` +
+      "The IP may be wrong, the device is slow/offline, or a firewall is dropping the packets. Ping that IP from this PC."
+    );
+  }
+  if (/enotfound|err_name_not_resolved|getaddrinfo/.test(blob)) {
+    return (
+      `Could not resolve the device hostname for ${where}. ` +
+      "Use the numeric LAN IP (example 192.168.100.215), not a name the PC cannot look up."
+    );
+  }
+  if (/ehostunreach|enetunreach/.test(blob)) {
+    return (
+      `This PC has no route to ${where}. ` +
+      "Wi‑Fi guest isolation or a different subnet — browse to the device IP from this same PC to confirm."
+    );
+  }
+  if (/cert|unauthorised|unauthorized|self[- ]signed|unable to verify/.test(blob) && /https/.test(String(targetUrl))) {
+    return (
+      `HTTPS to ${where} failed certificate checks. ` +
+      "Uncheck “Device uses HTTPS on LAN” unless the terminal is actually on HTTPS."
+    );
+  }
+  if (/econnreset|socket hang up|other side closed|econnaborted|epipe/.test(blob)) {
+    return (
+      `${where} closed the HTTP connection. ` +
+      "Usually wrong protocol (HTTP vs HTTPS), the device rejected digest auth, or firmware dropped keep-alive. " +
+      "Confirm username/password and that HTTPS is only enabled if the device uses it."
+    );
+  }
+  if (/network.?error|fetch failed|fetch resource|und_err/.test(blob)) {
+    return (
+      `Could not complete HTTP to ${where}. ` +
+      "Same-LAN is not enough if the agent cannot finish ISAPI (digest auth / closed socket). " +
+      "Open the device web page from this PC, confirm port 80, then try again." +
+      (codes[0] ? ` (code ${codes[0]})` : "")
+    );
+  }
+
+  const joined = messages
+    .filter((m) => !/network.?error when attempting to fetch resource/i.test(m))
+    .join(" — ");
+  return joined
+    ? `Hikvision request to ${where} failed: ${joined}`
+    : `Hikvision request to ${where} failed.`;
+}
+
+/**
+ * Node's built-in fetch (undici) often fails against Hikvision firmware:
+ * digest 401 + keep-alive reuse → "NetworkError when attempting to fetch resource."
+ * Use node:http/https, IPv4, Connection: close, and always drain the 401 body.
+ */
+function hikvisionRequest(url, { method = "GET", headers = {}, body = null, timeoutMs = 20000 } = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (err) {
+      reject(new Error(`Invalid Hikvision URL: ${url}`));
+      return;
+    }
+
+    const isHttps = parsed.protocol === "https:";
+    const lib = isHttps ? https : http;
+    const payload = body == null ? null : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
+    const reqHeaders = {
+      Connection: "close",
+      Accept: headers.Accept || headers.accept || "application/json",
+      ...headers,
+    };
+    if (payload) {
+      reqHeaders["Content-Type"] = reqHeaders["Content-Type"] || reqHeaders["content-type"] || "application/json";
+      reqHeaders["Content-Length"] = String(payload.length);
+    }
+
+    const req = lib.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search}`,
+        method,
+        headers: reqHeaders,
+        family: 4,
+        timeout: timeoutMs,
+        rejectUnauthorized: false,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const buffer = Buffer.concat(chunks);
+          const headerMap = {};
+          for (const [key, value] of Object.entries(res.headers || {})) {
+            headerMap[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
+          }
+          resolve({
+            status: res.statusCode || 0,
+            ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
+            headers: {
+              get(name) {
+                return headerMap[String(name).toLowerCase()] ?? null;
+              },
+              forEach(callback) {
+                for (const [key, value] of Object.entries(headerMap)) {
+                  callback(value, key);
+                }
+              },
+            },
+            async text() {
+              return buffer.toString("utf8");
+            },
+          });
+        });
+      },
+    );
+
+    req.on("timeout", () => {
+      req.destroy(new Error(`Timed out after ${timeoutMs}ms connecting to ${parsed.hostname}`));
+    });
+    req.on("error", (err) => {
+      reject(new Error(describeNetworkError(err, url)));
+    });
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+function digestAuthorization(wwwAuthenticate, { method, url, username, password }) {
+  const parts = Object.fromEntries(
+    [...String(wwwAuthenticate).matchAll(/(\w+)=(?:"([^"]+)"|([^\s,]+))/g)].map((m) => [
+      m[1].toLowerCase(),
+      m[2] ?? m[3],
+    ]),
+  );
+  const realm = parts.realm || "";
+  const nonce = parts.nonce || "";
+  const qop = (parts.qop || "auth").split(",")[0].trim();
+  const opaque = parts.opaque;
+  const algorithm = parts.algorithm || "MD5";
+  const nc = "00000001";
+  const cnonce = randomUUID().replace(/-/g, "").slice(0, 16);
+  const uri = new URL(url).pathname + new URL(url).search;
+  const ha1 = createHash("md5").update(`${username}:${realm}:${password}`).digest("hex");
+  const ha2 = createHash("md5").update(`${method}:${uri}`).digest("hex");
+  const response = createHash("md5")
+    .update(qop ? `${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}` : `${ha1}:${nonce}:${ha2}`)
+    .digest("hex");
+  return (
+    `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", ` +
+    `algorithm=${algorithm}, response="${response}"` +
+    (qop ? `, qop=${qop}, nc=${nc}, cnonce="${cnonce}"` : "") +
+    (opaque ? `, opaque="${opaque}"` : "")
+  );
 }
 
 /** Digest auth helper for Hikvision ISAPI (common on DS-K1T series). */
@@ -98,62 +261,46 @@ export async function fetchWithDigest(
   url,
   { method = "GET", body, username, password, headers = {}, accept = "application/json" } = {},
 ) {
-  const first = await rawFetch(url, {
-    method,
-    headers: {
-      Accept: accept,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...headers,
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
+  const commonHeaders = {
+    Accept: accept,
+    ...headers,
+  };
+  if (body != null && !commonHeaders["Content-Type"] && !commonHeaders["content-type"]) {
+    commonHeaders["Content-Type"] = "application/json";
+  }
 
+  let first;
+  try {
+    first = await hikvisionRequest(url, { method, headers: commonHeaders, body });
+  } catch (err) {
+    throw new Error(describeNetworkError(err, url));
+  }
   if (first.status !== 401) return first;
 
   const www = first.headers.get("www-authenticate") || "";
-  if (!/digest/i.test(www)) {
-    return rawFetch(url, {
+  try {
+    if (!/digest/i.test(www)) {
+      return await hikvisionRequest(url, {
+        method,
+        headers: {
+          ...commonHeaders,
+          Authorization: basicAuthHeader(username, password),
+        },
+        body,
+      });
+    }
+
+    return await hikvisionRequest(url, {
       method,
       headers: {
-        Accept: accept,
-        Authorization: basicAuthHeader(username, password),
-        ...(body ? { "Content-Type": "application/json" } : {}),
-        ...headers,
+        ...commonHeaders,
+        Authorization: digestAuthorization(www, { method, url, username, password }),
       },
-      body: body != null ? JSON.stringify(body) : undefined,
+      body,
     });
+  } catch (err) {
+    throw new Error(describeNetworkError(err, url));
   }
-
-  const parts = Object.fromEntries(
-    [...www.matchAll(/(\w+)=(?:"([^"]+)"|([^\s,]+))/g)].map((m) => [m[1].toLowerCase(), m[2] ?? m[3]]),
-  );
-  const realm = parts.realm || "";
-  const nonce = parts.nonce || "";
-  const qop = parts.qop || "auth";
-  const opaque = parts.opaque;
-  const nc = "00000001";
-  const cnonce = randomUUID().replace(/-/g, "").slice(0, 16);
-  const uri = new URL(url).pathname + new URL(url).search;
-  const ha1 = createHash("md5").update(`${username}:${realm}:${password}`).digest("hex");
-  const ha2 = createHash("md5").update(`${method}:${uri}`).digest("hex");
-  const response = createHash("md5")
-    .update(`${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}`)
-    .digest("hex");
-  const auth =
-    `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", ` +
-    `algorithm=MD5, response="${response}", qop=${qop}, nc=${nc}, cnonce="${cnonce}"` +
-    (opaque ? `, opaque="${opaque}"` : "");
-
-  return rawFetch(url, {
-    method,
-    headers: {
-      Accept: accept,
-      Authorization: auth,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...headers,
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
 }
 
 export function headersToObject(response) {
