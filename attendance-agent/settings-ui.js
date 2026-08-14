@@ -355,20 +355,20 @@ function htmlPage(installer = false) {
         ? "Reading terminal and sending to Centrix…"
         : "Reading recent punches from the terminal…";
       status.style.color = "#64748b";
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90000);
       try {
-        // Save current form values first so LAN IP / password are current.
-        const body = readForm();
-        await fetch("/api/config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
         const res = await fetch("/api/test-fingerprint", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ push: Boolean(push), lookback_seconds: 120 }),
+          body: JSON.stringify({
+            ...readForm(),
+            push: Boolean(push),
+            lookback_seconds: 120,
+          }),
+          signal: ctrl.signal,
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || data.message || "Fingerprint test failed");
         status.textContent = data.detail || (data.ok ? "OK" : "No punch found");
         status.style.color = data.ok ? "#166534" : "#92400e";
@@ -376,14 +376,17 @@ function htmlPage(installer = false) {
           ? (push ? "Punch found and sent to Centrix (if configured)." : "Punch found on the terminal.")
           : (data.detail || "No recent punch. Place a finger on the terminal, wait for the beep, then try again."));
       } catch (err) {
-        const raw = err && err.message ? String(err.message) : String(err);
+        const raw = err && err.name === "AbortError"
+          ? "Timed out after 90s waiting for the terminal. Check LAN IP / port 80, then try again."
+          : (err && err.message ? String(err.message) : String(err));
         const msg = /failed to fetch|networkerror|network error when attempting to fetch/i.test(raw)
-          ? "Lost contact with the local agent settings service (http://127.0.0.1:9251). Keep open-settings.bat running, then try again."
+          ? "The settings window closed or the local agent restarted before the test finished. Leave this black Command window open, then click Check fingerprint now again."
           : raw;
         status.textContent = msg;
         status.style.color = "#991b1b";
         setBanner("err", msg);
       } finally {
+        clearTimeout(timer);
         fpBtn.disabled = false;
         fpPushBtn.disabled = false;
       }
@@ -403,6 +406,24 @@ async function readBody(req) {
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return {};
   return JSON.parse(raw);
+}
+
+function sendJson(res, status, payload) {
+  if (res.headersSent || res.writableEnded) return;
+  try {
+    res.writeHead(status, {
+      "Content-Type": "application/json",
+      Connection: "close",
+      "Cache-Control": "no-store",
+    });
+    res.end(JSON.stringify(payload));
+  } catch {
+    try {
+      res.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 async function quickTest(config) {
@@ -639,17 +660,33 @@ export function runSettingsUi(options = {}) {
 
         if (req.method === "POST" && url.pathname === "/api/test-fingerprint") {
           const body = await readBody(req);
-          const config = normalizeConfig(ensureConfigFile());
+          const current = normalizeConfig(ensureConfigFile());
+          if (!String(body.centrixToken || "").trim() && current.centrixToken) {
+            body.centrixToken = current.centrixToken;
+          }
+          if (
+            body.hikvision &&
+            !String(body.hikvision.password || "") &&
+            current.hikvision.password
+          ) {
+            body.hikvision.password = current.hikvision.password;
+          }
+          const config = saveConfig({
+            ...current,
+            ...body,
+            hikvision: { ...current.hikvision, ...(body.hikvision || {}) },
+          });
           try {
             const result = await testFingerprintLocal(config, {
               push: Boolean(body.push),
               lookbackSeconds: Number(body.lookback_seconds) || 120,
             });
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(result));
+            sendJson(res, 200, {
+              ok: Boolean(result.ok),
+              detail: result.detail || "",
+            });
           } catch (err) {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ ok: false, message: err.message || String(err) }));
+            sendJson(res, 200, { ok: false, detail: err.message || String(err) });
           }
           return;
         }
@@ -682,9 +719,14 @@ export function runSettingsUi(options = {}) {
           }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(payload));
+          // Never auto-close on a plain /api/config save — fingerprint test used to
+          // POST that first, which shut the server down and produced a bogus
+          // "lost contact with 127.0.0.1:9251" error.
           const testedOk = url.pathname === "/api/save-and-test" && payload.test?.ok;
-          if (waitUntilReady && view.ready && (!installer || testedOk)) {
-            setTimeout(() => finish({ ready: true }), testedOk ? 1200 : 400);
+          if (waitUntilReady && url.pathname === "/api/save-and-test" && view.ready && testedOk) {
+            setTimeout(() => finish({ ready: true }), 1200);
+          } else if (waitUntilReady && !installer && url.pathname === "/api/config" && view.ready) {
+            setTimeout(() => finish({ ready: true }), 400);
           }
           return;
         }
@@ -692,10 +734,13 @@ export function runSettingsUi(options = {}) {
         res.writeHead(404, { "Content-Type": "text/plain" });
         res.end("Not found");
       } catch (err) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ message: err.message || String(err) }));
+        sendJson(res, 500, { ok: false, message: err.message || String(err) });
       }
     });
+
+    server.requestTimeout = 0;
+    server.headersTimeout = 0;
+    server.timeout = 0;
 
     server.on("error", (err) => {
       if (err && err.code === "EADDRINUSE") {
