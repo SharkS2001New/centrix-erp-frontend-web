@@ -51,7 +51,9 @@ export function AdminRolesScreen() {
   }, [adminPath]);
 
   const capabilitiesRef = useRef(capabilities);
-  capabilitiesRef.current = capabilities;
+  useEffect(() => {
+    capabilitiesRef.current = capabilities;
+  }, [capabilities]);
 
   const loadPermissionsCatalog = useCallback(async () => {
     const res = await apiRequest(adminPath("/roles/permissions/matrix"));

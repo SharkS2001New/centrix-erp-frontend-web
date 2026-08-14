@@ -40,7 +40,7 @@ export function AttendanceClockDevicesSettings() {
   const [connectionTestingId, setConnectionTestingId] = useState(null);
   const [probeById, setProbeById] = useState({});
   const probedKeyRef = useRef("");
-  const devicesRef = useRef(devices);
+  const devicesRef = useRef([]);
   const [editDevice, setEditDevice] = useState(null);
   const [editForm, setEditForm] = useState({
     location: "",
