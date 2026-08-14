@@ -911,7 +911,7 @@ function hikvisionFingerLabel(id) {
 function hikvisionFingerTypeLabel(row) {
   const raw = String(row?.fingerType ?? row?.FingerType ?? "").trim();
   if (!raw) return "Normal";
-  return HIKVISION_FINGER_TYPE_LABELS[raw] ?? raw.replace(/FP$/i, "") || raw;
+  return HIKVISION_FINGER_TYPE_LABELS[raw] ?? (raw.replace(/FP$/i, "") || raw);
 }
 
 function hikvisionCount(row, ...keys) {
