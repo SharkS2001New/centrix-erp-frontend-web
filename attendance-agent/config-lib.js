@@ -83,7 +83,7 @@ export function saveConfig(config) {
   return normalized;
 }
 
-/** True when the agent can poll without opening the settings UI. */
+/** True when the agent has a complete config.json from the Centrix download. */
 export function isConfigReady(config) {
   const c = normalizeConfig(config || {});
   return Boolean(

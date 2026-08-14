@@ -40,12 +40,14 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { invalidateReferenceResource } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { P } from "@/lib/permission-codes";
 
 
 export function HrEmployeesScreen() {
   const confirm = useConfirm();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canSyncClock = hasPermission(P.hr.employees.edit) || hasPermission(P.hr.manage);
 
   const [employees, setEmployees] = useState([]);
   const [totalEmployees, setTotalEmployees] = useState(0);
@@ -60,6 +62,7 @@ export function HrEmployeesScreen() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [syncingClock, setSyncingClock] = useState(false);
   const {
     selectedIds,
     selectedCount,
@@ -239,6 +242,54 @@ export function HrEmployeesScreen() {
     }
   }
 
+  async function syncEmployeesToClockDevices() {
+    setSyncingClock(true);
+    try {
+      const listRes = await apiRequest("/attendance-clock-devices", {
+        searchParams: { per_page: 200 },
+      });
+      const rows = Array.isArray(listRes?.data) ? listRes.data : Array.isArray(listRes) ? listRes : [];
+      const clocks = rows.filter(
+        (row) =>
+          String(row.provider || "").toLowerCase() === "hikvision" &&
+          row.is_active !== false &&
+          String(row.host || "").trim() !== "",
+      );
+      if (!clocks.length) {
+        notifyError("No active Hikvision clock devices found. Register one under Admin → Attendance clock-in.");
+        return;
+      }
+      let created = 0;
+      let updated = 0;
+      const errors = [];
+      for (const device of clocks) {
+        try {
+          const result = await apiRequest(
+            `/attendance-clock-devices/${device.id}/hikvision/sync/employees-to-device`,
+            { method: "POST" },
+          );
+          created += Number(result.created ?? 0);
+          updated += Number(result.updated ?? 0);
+          if (Array.isArray(result.errors) && result.errors.length) {
+            errors.push(...result.errors);
+          }
+        } catch (e) {
+          errors.push(e instanceof ApiError ? e.message : `Device ${device.device_no} sync failed`);
+        }
+      }
+      notifySuccess(
+        `Clock devices updated — created ${created}, updated ${updated} on ${clocks.length} device${clocks.length === 1 ? "" : "s"}.`,
+      );
+      if (errors.length) {
+        notifyError(String(errors[0]));
+      }
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not sync employees to clock devices");
+    } finally {
+      setSyncingClock(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Employees"
@@ -258,6 +309,16 @@ export function HrEmployeesScreen() {
             exportSearchParams={buildExportSearchParams}
             onImported={reloadAll}
           />
+          {canSyncClock ? (
+            <button
+              type="button"
+              disabled={syncingClock || loading}
+              onClick={() => void syncEmployeesToClockDevices()}
+              className={SECONDARY_BTN_CLASS}
+            >
+              {syncingClock ? "Syncing…" : "Sync employees on clock-in device"}
+            </button>
+          ) : null}
           <Link
           href="/hr/employees/new"
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"

@@ -662,7 +662,13 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       {
         href: "/hr/attendance",
-        label: "Attendance",
+        label: "Today's attendance",
+        module: "hr_payroll",
+        permission: P.hr.attendance.view,
+      },
+      {
+        href: "/hr/attendance/history",
+        label: "Previous attendance",
         module: "hr_payroll",
         permission: P.hr.attendance.view,
       },
@@ -679,6 +685,18 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hr.attendance.view,
       },
       {
+        href: "/hr/absents",
+        label: "Absents",
+        module: "hr_payroll",
+        permission: P.hr.attendance.view,
+      },
+      {
+        href: "/hr/lateness",
+        label: "Lateness",
+        module: "hr_payroll",
+        permission: P.hr.attendance.view,
+      },
+      {
         href: "/hr/leave",
         label: "Leave",
         module: "hr_payroll",
@@ -689,6 +707,12 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Shifts",
         module: "hr_payroll",
         permission: P.hr.shifts.view,
+      },
+      {
+        href: "/hr/pending-overtime",
+        label: "Pending overtimes",
+        module: "hr_payroll",
+        permission: P.hr.overtime.view,
       },
       {
         href: "/hr/overtime",

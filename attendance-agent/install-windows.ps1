@@ -74,21 +74,19 @@ if (-not $csc) {
 }
 
 Write-Host ""
-Write-Host "Opening the connection setup screen..." -ForegroundColor Cyan
-Write-Host "Confirm Centrix URL, token, device ID, LAN IP, port 80, username and password."
-Write-Host "Click  Save, test & continue  when the test passes."
-Write-Host ""
-
-$setup = @"
-import { ensureConfigFile, isConfigReady } from './config-lib.js';
-import { runSettingsUi } from './settings-ui.js';
-ensureConfigFile();
-const result = await runSettingsUi({ openBrowser: true, waitUntilReady: true, installer: true });
-if (!result.ready && !isConfigReady(ensureConfigFile())) process.exit(1);
+Write-Host "Checking config.json from the Centrix download..." -ForegroundColor Cyan
+$check = @"
+import { ensureConfigFile, isConfigReady, missingConfigFields } from './config-lib.js';
+const config = ensureConfigFile();
+if (!isConfigReady(config)) {
+  console.error('config.json is incomplete (' + missingConfigFields(config).join(', ') + ').');
+  console.error('Re-download CentrixAttendanceAgent from Administration after saving the device LAN IP and password.');
+  process.exit(1);
+}
 "@
-$setup | & node --input-type=module
+$check | & node --input-type=module
 if ($LASTEXITCODE -ne 0) {
-  Write-Host "Connection setup incomplete. Fix the settings, then re-run install-windows.bat." -ForegroundColor Yellow
+  Write-Host "Installer stopped. Fix the download in Centrix, then re-run install-windows.bat." -ForegroundColor Yellow
   exit 1
 }
 
@@ -162,6 +160,7 @@ Write-Host ""
 Write-Host "Installed Windows service '$ServiceName' (Automatic / delayed start)." -ForegroundColor Green
 Write-Host "Manage it in services.msc, or: net start $ServiceName / net stop $ServiceName"
 Write-Host "The agent talks to the Hikvision on this LAN and to Centrix online."
-Write-Host "Change connection details later: $InstallDir\open-settings.bat"
+Write-Host "Test connection later: $InstallDir\open-settings.bat"
+Write-Host "Change IP or password in Centrix Administration, then download the agent again."
 Write-Host "Remove the service: uninstall-windows.bat (Run as Administrator)"
 Write-Host "Logs: $logDir"

@@ -1,6 +1,6 @@
 {
   "name": "centrix-attendance-agent",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "private": true,
   "description": "On-LAN bridge: proxy Hikvision ISAPI for Centrix cloud and push attendance punches",
   "type": "module",
@@ -10,7 +10,7 @@
     "once": "node agent.js --once",
     "doctor": "node doctor.js",
     "setup": "node setup.js",
-    "settings": "node settings-ui.js"
+    "status": "node settings-ui.js"
   },
   "engines": {
     "node": ">=20"

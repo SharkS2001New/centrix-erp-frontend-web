@@ -109,6 +109,7 @@ import {
   describeMobileOrderMergeSelection,
 } from "@/lib/sales";
 import { P } from "@/lib/permission-codes";
+import { canCollectSalePayments } from "@/lib/access-control";
 import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
@@ -1408,8 +1409,16 @@ export default function SalesOrdersListScreen({
     return fulfillment.requestTransition(sale, targetStatus);
   }
 
+  const canCollectPayments = canCollectSalePayments({ hasPermission });
+
   function openCollectPayment(sale) {
-    if (!sale?.id || !canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)) return;
+    if (
+      !sale?.id ||
+      !canCollectPayments ||
+      !canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)
+    ) {
+      return;
+    }
     setPaySale(sale);
   }
 
@@ -1710,14 +1719,11 @@ export default function SalesOrdersListScreen({
       onView: () => viewOrder(sale),
       onEdit: () => openEditOrder(sale),
       onReturn: () => router.push(`/sales/returns/new?sale_id=${sale.id}`),
-      onCollectPayment: canCollectPaymentOnQueue(
-        sale,
-        paymentQueueSlug,
-        null,
-        capabilities,
-      )
-        ? () => openCollectPayment(sale)
-        : null,
+      onCollectPayment:
+        canCollectPayments &&
+        canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)
+          ? () => openCollectPayment(sale)
+          : null,
       onConvertToPaid: canConvertPaymentStatusOnQueue(
         sale,
         paymentQueueSlug,
@@ -1735,7 +1741,7 @@ export default function SalesOrdersListScreen({
       onAdvance: routeOrdersOnly ? null : (status) => handleAdvance(sale, status),
       onCancel: routeOrdersOnly ? null : () => handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, paymentQueueSlug, router]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, paymentQueueSlug, router, canCollectPayments]);
 
   useEffect(() => {
     setPage(1);
@@ -2209,6 +2215,7 @@ export default function SalesOrdersListScreen({
                             printAriaLabel={orderPrintAriaLabel}
                             onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
                             onCollectPayment={
+                              canCollectPayments &&
                               canCollectPaymentOnQueue(sale, paymentQueueSlug, null, capabilities)
                                 ? () => openCollectPayment(sale)
                                 : null

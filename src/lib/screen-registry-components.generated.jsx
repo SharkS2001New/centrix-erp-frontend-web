@@ -45,6 +45,9 @@ export const SCREEN_COMPONENTS = {
   "fulfillment-orders-expired": lazy(() =>
     import("@/components/tab-screens/fulfillment-orders-expired").then((m) => ({ default: m.FulfillmentOrdersExpiredScreen })),
   ),
+  "hr-attendance-history": lazy(() =>
+    import("@/components/tab-screens/hr-attendance-history").then((m) => ({ default: m.HrAttendanceHistoryScreen })),
+  ),
   "hr-employees-new": lazy(() =>
     import("@/components/tab-screens/hr-employees-new").then((m) => ({ default: m.HrEmployeesNewScreen })),
   ),
@@ -333,6 +336,9 @@ export const SCREEN_COMPONENTS = {
   "hr-duplicate-punches": lazy(() =>
     import("@/components/tab-screens/hr-duplicate-punches").then((m) => ({ default: m.HrDuplicatePunchesScreen })),
   ),
+  "hr-absents": lazy(() =>
+    import("@/components/tab-screens/hr-absents").then((m) => ({ default: m.HrAbsentsScreen })),
+  ),
   "hr-employees": lazy(() =>
     import("@/components/tab-screens/hr-employees").then((m) => ({ default: m.HrEmployeesScreen })),
   ),
@@ -345,11 +351,17 @@ export const SCREEN_COMPONENTS = {
   "hr-leave": lazy(() =>
     import("@/components/tab-screens/hr-leave").then((m) => ({ default: m.HrLeaveScreen })),
   ),
+  "hr-lateness": lazy(() =>
+    import("@/components/tab-screens/hr-lateness").then((m) => ({ default: m.HrLatenessScreen })),
+  ),
   "hr-missed-punches": lazy(() =>
     import("@/components/tab-screens/hr-missed-punches").then((m) => ({ default: m.HrMissedPunchesScreen })),
   ),
   "hr-overtime": lazy(() =>
     import("@/components/tab-screens/hr-overtime").then((m) => ({ default: m.HrOvertimeScreen })),
+  ),
+  "hr-pending-overtime": lazy(() =>
+    import("@/components/tab-screens/hr-pending-overtime").then((m) => ({ default: m.HrPendingOvertimeScreen })),
   ),
   "hr-payroll": lazy(() =>
     import("@/components/tab-screens/hr-payroll").then((m) => ({ default: m.HrPayrollScreen })),

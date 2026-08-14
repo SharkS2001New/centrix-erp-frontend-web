@@ -14,15 +14,11 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { LiveFingerprintTestModal } from "@/components/hr/live-fingerprint-test-modal";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 const TABS = [
   "Overview",
   "Employees",
-  "Fingerprints",
-  "Cards",
-  "Attendance",
   "Synchronization",
   "Capabilities",
 ];
@@ -64,12 +60,7 @@ export function HikvisionDeviceScreen() {
   const [overview, setOverview] = useState(null);
   const [capabilities, setCapabilities] = useState(null);
   const [users, setUsers] = useState([]);
-  const [cards, setCards] = useState([]);
   const [fingerprints, setFingerprints] = useState([]);
-  const [fingerprintMeta, setFingerprintMeta] = useState(null);
-  const [cardForm, setCardForm] = useState({ employeeNo: "", cardNo: "", cardType: "normalCard" });
-  const [showCardForm, setShowCardForm] = useState(false);
-  const [fpEmployeeFilter, setFpEmployeeFilter] = useState("");
   const [unmappedUsers, setUnmappedUsers] = useState([]);
   const [centrixEmployees, setCentrixEmployees] = useState([]);
   const [mapSelections, setMapSelections] = useState({});
@@ -77,7 +68,6 @@ export function HikvisionDeviceScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
-  const [fingerprintTestOpen, setFingerprintTestOpen] = useState(false);
 
   const loadDevice = useCallback(async () => {
     if (!isNumericRouteId(deviceId)) return null;
@@ -123,32 +113,45 @@ export function HikvisionDeviceScreen() {
       method: "POST",
       body: { maxResults: 100 },
     });
-    setUsers(data.users ?? []);
+    const rows = data.users ?? [];
+    setUsers(rows);
+    return rows;
   }, [base]);
 
-  const loadCards = useCallback(async () => {
-    const data = await apiRequest(`${base}/cards/search`, {
-      method: "POST",
-      body: { maxResults: 30 },
-    });
-    setCards(data.cards ?? []);
-  }, [base]);
-
-  const loadFingerprints = useCallback(async (employeeNo = "") => {
+  const loadFingerprints = useCallback(async (employeeNo = "", userRows = []) => {
     const body = { maxResults: 100 };
     if (employeeNo.trim()) {
       body.employee_no = employeeNo.trim();
     }
-    const data = await apiRequest(`${base}/fingerprints/search`, {
-      method: "POST",
-      body,
-    });
-    setFingerprints(data.fingerprints ?? []);
-  }, [base]);
-
-  const loadFingerprintMeta = useCallback(async () => {
-    const data = await apiRequest(`${base}/fingerprints/capabilities`);
-    setFingerprintMeta(data);
+    let rows = [];
+    try {
+      const data = await apiRequest(`${base}/fingerprints/search`, {
+        method: "POST",
+        body,
+      });
+      rows = data.fingerprints ?? [];
+    } catch {
+      rows = [];
+    }
+    if (rows.length === 0 && !employeeNo.trim() && userRows.length) {
+      const results = await Promise.allSettled(
+        userRows.slice(0, 40).map((user) => {
+          const no = hikvisionEmployeeNo(user);
+          if (!no) return Promise.resolve({ fingerprints: [] });
+          return apiRequest(`${base}/fingerprints/search`, {
+            method: "POST",
+            body: { maxResults: 10, employee_no: no },
+          });
+        }),
+      );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          rows.push(...(result.value.fingerprints ?? []));
+        }
+      }
+    }
+    setFingerprints(rows);
+    return rows;
   }, [base]);
 
   const loadUnmappedFromDevice = useCallback(async () => {
@@ -208,24 +211,14 @@ export function HikvisionDeviceScreen() {
 
   useEffect(() => {
     if (tab === "Employees" && featureEnabled(capabilities, "users")) {
-      void loadUsers().catch((err) => {
-        notifyError(err instanceof ApiError ? err.message : "Could not load device employees");
-      });
-      if (featureEnabled(capabilities, "fingerprints")) {
-        void loadFingerprints("").catch((err) => {
-          notifyError(err instanceof ApiError ? err.message : "Could not load fingerprint enrollment");
-        });
-      }
-    }
-    if (tab === "Cards" && featureEnabled(capabilities, "cards")) {
-      void loadCards().catch(() => {});
-    }
-    if (tab === "Fingerprints" && featureEnabled(capabilities, "fingerprints")) {
-      void loadFingerprintMeta().catch(() => {});
-      void loadFingerprints(fpEmployeeFilter).catch(() => {});
-    }
-    if (tab === "Attendance") {
-      void loadStoredEvents().catch(() => {});
+      void (async () => {
+        try {
+          const rows = await loadUsers();
+          await loadFingerprints("", rows);
+        } catch (err) {
+          notifyError(err instanceof ApiError ? err.message : "Could not load device employees");
+        }
+      })();
     }
     if (tab === "Synchronization") {
       void loadCentrixEmployees().catch(() => {});
@@ -237,11 +230,7 @@ export function HikvisionDeviceScreen() {
     tab,
     capabilities,
     loadUsers,
-    loadCards,
     loadFingerprints,
-    loadFingerprintMeta,
-    fpEmployeeFilter,
-    loadStoredEvents,
     loadCentrixEmployees,
     refreshCapabilities,
   ]);
@@ -376,72 +365,6 @@ export function HikvisionDeviceScreen() {
     }
   }
 
-  async function saveCard() {
-    if (!cardForm.employeeNo.trim() || !cardForm.cardNo.trim()) {
-      notifyError("Employee No and Card No are required.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await apiRequest(`${base}/cards`, {
-        method: "POST",
-        body: {
-          employeeNo: cardForm.employeeNo.trim(),
-          cardNo: cardForm.cardNo.trim(),
-          cardType: cardForm.cardType || "normalCard",
-        },
-      });
-      notifySuccess("Card added on device.");
-      setCardForm({ employeeNo: "", cardNo: "", cardType: "normalCard" });
-      setShowCardForm(false);
-      await loadCards();
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Could not add card");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteCardRow(row) {
-    const employeeNo = row.employeeNo ?? row.EmployeeNo ?? "";
-    const cardNo = row.cardNo ?? row.CardNo ?? "";
-    if (!employeeNo || !cardNo) return;
-    if (!window.confirm(`Delete card ${cardNo} for ${employeeNo}?`)) return;
-    setBusy(true);
-    try {
-      await apiRequest(`${base}/cards`, {
-        method: "DELETE",
-        body: { employeeNo, cardNo },
-      });
-      notifySuccess("Card deleted.");
-      await loadCards();
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Could not delete card");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteFingerprintRow(row) {
-    const employeeNo = row.employeeNo ?? row.EmployeeNo ?? "";
-    const fingerPrintID = row.fingerPrintID ?? row.FingerPrintID;
-    if (!employeeNo || fingerPrintID == null) return;
-    if (!window.confirm(`Delete fingerprint ${fingerPrintID} for ${employeeNo}?`)) return;
-    setBusy(true);
-    try {
-      await apiRequest(`${base}/fingerprints`, {
-        method: "DELETE",
-        body: { employeeNo, fingerPrintID: Number(fingerPrintID) },
-      });
-      notifySuccess("Fingerprint deleted.");
-      await loadFingerprints(fpEmployeeFilter);
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Could not delete fingerprint");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const deviceInfo = useMemo(
     () => device?.device_info_json ?? overview?.device?.device_info_json ?? {},
     [device, overview],
@@ -496,14 +419,6 @@ export function HikvisionDeviceScreen() {
         <div className="flex flex-wrap gap-2">
           <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void testConnection()}>
             {busy ? "Testing…" : "Test connection"}
-          </PrimaryButton>
-          <PrimaryButton
-            type="button"
-            showIcon={false}
-            disabled={busy}
-            onClick={() => setFingerprintTestOpen(true)}
-          >
-            Test fingerprint
           </PrimaryButton>
           <Link href="/admin/attendance-clock" className={SECONDARY_BTN_CLASS}>
             Back
@@ -608,10 +523,10 @@ export function HikvisionDeviceScreen() {
                   type="button"
                   className={SECONDARY_BTN_CLASS}
                   onClick={() => {
-                    void loadUsers();
-                    if (featureEnabled(caps, "fingerprints")) {
-                      void loadFingerprints("");
-                    }
+                    void (async () => {
+                      const rows = await loadUsers();
+                      await loadFingerprints("", rows);
+                    })();
                   }}
                 >
                   Refresh
@@ -623,145 +538,6 @@ export function HikvisionDeviceScreen() {
                 Fingerprints here mean templates stored on the device, not a live scan.
               </p>
               <UserTable users={users} fingerprints={fingerprints} />
-            </>
-          )}
-        </section>
-      ) : null}
-
-      {tab === "Fingerprints" ? (
-        <section className="space-y-3">
-          {!featureEnabled(caps, "fingerprints") ? (
-            <UnsupportedNotice feature="Fingerprint management" />
-          ) : (
-            <>
-              {fingerprintMeta?.remote_enrollment_supported ? (
-                <p className="text-sm text-slate-600">
-                  Remote enrollment is supported on this firmware. Sync the employee to the device
-                  first, then capture on the terminal.
-                </p>
-              ) : (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  {fingerprintMeta?.enrollment_message ??
-                    "Fingerprint enrollment must be completed on the terminal."}
-                </p>
-              )}
-              <div className="flex flex-wrap items-end gap-2">
-                <Field label="Filter by employeeNo">
-                  <input
-                    className={inputClassName}
-                    value={fpEmployeeFilter}
-                    onChange={(e) => setFpEmployeeFilter(e.target.value)}
-                    placeholder="Optional employee code"
-                  />
-                </Field>
-                <button
-                  type="button"
-                  className={SECONDARY_BTN_CLASS}
-                  onClick={() => void loadFingerprints(fpEmployeeFilter)}
-                >
-                  Search
-                </button>
-              </div>
-              <FingerprintTable
-                fingerprints={fingerprints}
-                onDelete={(row) => void deleteFingerprintRow(row)}
-                busy={busy}
-              />
-            </>
-          )}
-        </section>
-      ) : null}
-
-      {tab === "Cards" ? (
-        <section className="space-y-3">
-          {!featureEnabled(caps, "cards") ? (
-            <UnsupportedNotice feature="Card management" />
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-2">
-                <PrimaryButton
-                  type="button"
-                  showIcon={false}
-                  disabled={busy}
-                  onClick={() => setShowCardForm((v) => !v)}
-                >
-                  {showCardForm ? "Cancel" : "Add card"}
-                </PrimaryButton>
-                <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => void loadCards()}>
-                  Refresh
-                </button>
-              </div>
-              {showCardForm ? (
-                <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-3">
-                  <Field label="Employee No">
-                    <input
-                      className={inputClassName}
-                      value={cardForm.employeeNo}
-                      onChange={(e) => setCardForm((f) => ({ ...f, employeeNo: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Card No">
-                    <input
-                      className={inputClassName}
-                      value={cardForm.cardNo}
-                      onChange={(e) => setCardForm((f) => ({ ...f, cardNo: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Type">
-                    <input
-                      className={inputClassName}
-                      value={cardForm.cardType}
-                      onChange={(e) => setCardForm((f) => ({ ...f, cardType: e.target.value }))}
-                    />
-                  </Field>
-                  <div className="sm:col-span-3">
-                    <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void saveCard()}>
-                      Save card on device
-                    </PrimaryButton>
-                  </div>
-                </div>
-              ) : null}
-              <p className="text-xs text-slate-500">
-                Cards are linked to Hikvision <code className="rounded bg-slate-100 px-1">employeeNo</code>{" "}
-                like 0003, matching the Centrix employee number.
-              </p>
-              <CardTable cards={cards} onDelete={(row) => void deleteCardRow(row)} busy={busy} />
-            </>
-          )}
-        </section>
-      ) : null}
-
-      {tab === "Attendance" ? (
-        <section className="space-y-3">
-          {!featureEnabled(caps, "events") ? (
-            <UnsupportedNotice feature="Access / attendance events" />
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-2">
-                <PrimaryButton
-                  type="button"
-                  showIcon={false}
-                  disabled={busy}
-                  onClick={() => void syncAttendance()}
-                >
-                  Sync now
-                </PrimaryButton>
-                <PrimaryButton
-                  type="button"
-                  showIcon={false}
-                  disabled={busy}
-                  onClick={() => void reprocessPending()}
-                >
-                  Retry pending punches
-                </PrimaryButton>
-              </div>
-              <p className="text-xs text-slate-500">
-                Punches push automatically while <strong>CentrixAttendanceAgent</strong> is running (interval
-                is set in Admin → Attendance clock-in, default 60 minutes). Sync now is only needed to pull
-                immediately. Raw events are stored first; Centrix then applies clock in/out. Use Retry after
-                mapping an employee if punches were stuck as Pending.
-              </p>
-              <EventTable events={storedEvents} />
             </>
           )}
         </section>
@@ -852,13 +628,6 @@ export function HikvisionDeviceScreen() {
           </pre>
         </section>
       ) : null}
-
-      <LiveFingerprintTestModal
-        open={fingerprintTestOpen}
-        device={device}
-        organizationApiPath={organizationApiPath}
-        onClose={() => setFingerprintTestOpen(false)}
-      />
     </CatalogPageShell>
   );
 }
@@ -965,13 +734,21 @@ function hikvisionCount(row, ...keys) {
     const n = Number(row[key]);
     if (Number.isFinite(n)) return n;
   }
-  const nested = row?.fingerPrint ?? row?.FingerPrint;
+  const nested = row?.fingerPrint ?? row?.FingerPrint ?? row?.FP ?? row?.fingerPrintList;
+  if (Array.isArray(nested)) {
+    const templates = nested.filter(
+      (item) => item && typeof item === "object" && (item.fingerPrintID != null || item.FingerPrintID != null),
+    );
+    if (templates.length) return templates.length;
+  }
   if (nested && typeof nested === "object") {
     for (const key of ["numOfFP", "count", "num", "NumOfFP"]) {
       const n = Number(nested[key]);
       if (Number.isFinite(n)) return n;
     }
     if (nested.enable === true || nested.enable === "true") return 1;
+    const list = nested.FingerPrintInfo ?? nested.InfoList ?? nested.list;
+    if (Array.isArray(list) && list.length) return list.length;
   }
   return 0;
 }
@@ -1018,10 +795,23 @@ function fingerprintsForUser(byEmployee, user) {
   return rows;
 }
 
+function nestedFingerprintRows(user) {
+  const nested = user?.fingerPrint ?? user?.FingerPrint ?? user?.FP ?? user?.fingerPrintList;
+  if (Array.isArray(nested)) {
+    return nested.filter((item) => item && typeof item === "object");
+  }
+  if (nested && typeof nested === "object") {
+    const list = nested.FingerPrintInfo ?? nested.InfoList ?? nested.list;
+    if (Array.isArray(list)) return list;
+    if (nested.fingerPrintID != null || nested.FingerPrintID != null) return [nested];
+  }
+  return [];
+}
+
 function fingerprintEnrollment(user, fps) {
-  const listed = fps ?? [];
+  const listed = [...(fps ?? []), ...nestedFingerprintRows(user)];
   const count = Math.max(
-    hikvisionCount(user, "numOfFP", "NumOfFP", "numOfFingerPrint", "NumOfFingerPrint"),
+    hikvisionCount(user, "numOfFP", "NumOfFP", "numOfFingerPrint", "NumOfFingerPrint", "fingerPrintNum"),
     listed.length,
   );
   if (count <= 0) {

@@ -79,6 +79,7 @@ export const P = {
       edit: "sales.orders.edit",
       approve: "sales.orders.approve",
     },
+    collect_payment: { create: "sales.collect_payment.create" },
     discounts: {
       give: "sales.discounts.give",
     },

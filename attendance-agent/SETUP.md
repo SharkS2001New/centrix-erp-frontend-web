@@ -56,10 +56,11 @@ Centrix matches punches by that code (with or without `EMP#` prefix). Wrong ID =
 1. In Centrix → **Administration → Attendance clock-in**, click **Download agent zip** for the terminal.
 2. Unzip on a PC on the **same LAN** as the Hikvision (with internet to Centrix). Prefer `C:\Centrix\attendance-agent`.
 3. Install **Node.js 20+** if needed: https://nodejs.org/
-4. Double-click **`install-windows.bat`** and accept the Administrator prompt. A browser opens so you can confirm **all connection details** (Centrix URL, token, device ID, LAN IP, port **80**, username, password). Click **Save, test & continue**.
+4. Double-click **`install-windows.bat`** and accept the Administrator prompt. The installer uses **config.json** from this zip (set in Centrix before download) and installs the Windows service.
 5. The installer copies the agent to `C:\Program Files\Centrix\AttendanceAgent` and installs the **CentrixAttendanceAgent** Windows service (starts automatically with Windows).
 
-If you need to change settings later: `open-settings.bat` or `npm run setup`.
+To **Test connection**: `open-settings.bat` or `npm run setup`.
+To change IP or password: update the device in Centrix and download the agent again.
 To remove the service: `uninstall-windows.bat` (Run as Administrator).
 
 The zip already includes `config.json` with Centrix API URL, a dedicated agent token, and `deviceId` / `deviceNo`.

@@ -72,13 +72,13 @@ function attendanceCountsInPayroll(status) {
   return ["present", "late", "half_day"].includes(status);
 }
 
-export function HrAttendanceScreen() {
+export function HrAttendanceScreen({ mode = "today" }) {
+  const isHistory = mode === "history";
   const { capabilities, hasPermission, user } = useAuth();
   const confirm = useConfirm();
   const canManageSettings = hasPermission(P.hr.manage);
   const canApproveWaivers = canApproveLatenessWaivers({ hasPermission, capabilities });
   const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
-  const [tab, setTab] = useState("active");
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
@@ -88,8 +88,8 @@ export function HrAttendanceScreen() {
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
   const [activeLoading, setActiveLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyFromDate, setHistoryFromDate] = useState(() => daysAgoCalendarDate(7));
-  const [historyToDate, setHistoryToDate] = useState(() => todayCalendarDate());
+  const [historyFromDate, setHistoryFromDate] = useState(() => daysAgoCalendarDate(1));
+  const [historyToDate, setHistoryToDate] = useState(() => daysAgoCalendarDate(1));
   const [recordSearch, setRecordSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
@@ -97,6 +97,10 @@ export function HrAttendanceScreen() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState(null);
   const [editingRecord, setEditingRecord] = useState(null);
+  const [punchEditDay, setPunchEditDay] = useState(null);
+  const [punchEditIn, setPunchEditIn] = useState("");
+  const [punchEditOut, setPunchEditOut] = useState("");
+  const [punchEditSaving, setPunchEditSaving] = useState(false);
   const [dayHint, setDayHint] = useState(null);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
   const [employeePickerFilter, setEmployeePickerFilter] = useState("");
@@ -251,13 +255,7 @@ export function HrAttendanceScreen() {
     }
   }, [employees.length]);
 
-  useTabAwareDataLoad(loadActive);
-
-  useEffect(() => {
-    if (tab === "records") {
-      loadHistory();
-    }
-  }, [tab, loadHistory]);
+  useTabAwareDataLoad(isHistory ? loadHistory : loadActive);
 
   function sessionEmployeeLabel(s) {
     return composeEmployeeDisplayName(s.employee) || s.employee_name || `#${s.employee_id}`;
@@ -281,6 +279,34 @@ export function HrAttendanceScreen() {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
+    }).format(parsed);
+  }
+
+  function sessionHm(value) {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return String(value).slice(11, 16);
+    }
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Nairobi",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(parsed);
+  }
+
+  function sessionCalendarDate(value) {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return String(value).slice(0, 10);
+    }
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Nairobi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
     }).format(parsed);
   }
 
@@ -509,6 +535,57 @@ export function HrAttendanceScreen() {
     setSelectedEmployeeIds([]);
   }
 
+  function openPunchEdit(day) {
+    setPunchEditDay(day);
+    setPunchEditIn(sessionHm(day.clockIn));
+    setPunchEditOut(sessionHm(day.clockOut));
+  }
+
+  async function savePunchEdit(e) {
+    e.preventDefault();
+    if (!punchEditDay?.sessions?.length) return;
+    const inApi = formatTimeForApi(punchEditIn);
+    if (!inApi) {
+      notifyError("Set a clock-in time.");
+      return;
+    }
+    const outApi = punchEditOut ? formatTimeForApi(punchEditOut) : null;
+    const sessions = punchEditDay.sessions;
+    const first = sessions[0];
+    const last = sessions[sessions.length - 1];
+    const date = sessionCalendarDate(first.clock_in_at || punchEditDay.clockIn);
+    setPunchEditSaving(true);
+    try {
+      if (first.id === last.id) {
+        await apiRequest(`/attendance/clock-sessions/${first.id}`, {
+          method: "PATCH",
+          body: {
+            clock_in_at: `${date} ${inApi}`,
+            ...(outApi ? { clock_out_at: `${date} ${outApi}` } : {}),
+          },
+        });
+      } else {
+        await apiRequest(`/attendance/clock-sessions/${first.id}`, {
+          method: "PATCH",
+          body: { clock_in_at: `${date} ${inApi}` },
+        });
+        if (outApi) {
+          await apiRequest(`/attendance/clock-sessions/${last.id}`, {
+            method: "PATCH",
+            body: { clock_out_at: `${date} ${outApi}` },
+          });
+        }
+      }
+      notifySuccess("Punch times updated.");
+      setPunchEditDay(null);
+      await loadActive();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not update punch times");
+    } finally {
+      setPunchEditSaving(false);
+    }
+  }
+
   async function deleteClockSession(session) {
     const name = sessionEmployeeLabel(session);
     const ok = await confirm(
@@ -680,7 +757,7 @@ export function HrAttendanceScreen() {
     setSyncingPunches(true);
     try {
       const body =
-        tab === "records"
+        isHistory
           ? { from: historyFromDate, to: historyToDate }
           : {};
       let result;
@@ -714,9 +791,10 @@ export function HrAttendanceScreen() {
       if (result.errors?.length) {
         notifyError(String(result.errors[0]));
       }
-      await loadActive();
-      if (tab === "records") {
+      if (isHistory) {
         await loadHistory();
+      } else {
+        await loadActive();
       }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not sync punches");
@@ -982,10 +1060,17 @@ export function HrAttendanceScreen() {
 
   return (
     <CatalogPageShell
-      title="Attendance"
-      subtitle="Premises clock-in, company phone, mobile sales app, and manual records — missing scheduled days are marked absent for payroll"
+      title={isHistory ? "Previous attendance" : "Today's attendance"}
+      subtitle={
+        isHistory
+          ? "Yesterday’s clock-in records by default. Change the dates or search by employee name."
+          : "Who has clocked in today — live sessions from terminals, company phone, and the sales app"
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <Link href={isHistory ? "/hr/attendance" : "/hr/attendance/history"} className={SECONDARY_BTN_CLASS}>
+            {isHistory ? "Today's attendance" : "Previous attendance"}
+          </Link>
           <button
             type="button"
             disabled={syncingPunches || activeLoading || historyLoading}
@@ -994,10 +1079,10 @@ export function HrAttendanceScreen() {
           >
             {syncingPunches ? "Refreshing…" : "Refresh attendance"}
           </button>
-          {tab === "records" ? (
+          {isHistory ? (
             <>
             <CatalogListExport
-              title="Attendance"
+              title="Previous attendance"
               apiPath="/employee-attendance"
               columns={ATTENDANCE_EXPORT_COLUMNS}
               totalCount={recordsTotal || records.length}
@@ -1025,28 +1110,7 @@ export function HrAttendanceScreen() {
         </div>
       }
     >
-      <div className="mb-6 inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setTab("active")}
-          className={`rounded-md px-4 py-2 text-sm font-medium transition ${
-            tab === "active" ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
-          }`}
-        >
-          Active today
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("records")}
-          className={`rounded-md px-4 py-2 text-sm font-medium transition ${
-            tab === "records" ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
-          }`}
-        >
-          Records
-        </button>
-      </div>
-
-      {tab === "active" ? (
+      {!isHistory ? (
         <>
           {fieldAttendanceEnabled ? (
             <FieldRepHrLinkageBanner linkage={fieldRepLinkage} canManage={canManageSettings} />
@@ -1149,8 +1213,15 @@ export function HrAttendanceScreen() {
                           <td className="px-4 py-3 text-right">
                             <button
                               type="button"
+                              onClick={() => openPunchEdit(day)}
+                              className="text-[#185FA5] hover:underline"
+                            >
+                              Edit times
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => void deleteClockSession(day.lastSession)}
-                              className="text-red-600 hover:underline"
+                              className="ml-3 text-red-600 hover:underline"
                             >
                               Delete last punch
                             </button>
@@ -1191,19 +1262,17 @@ export function HrAttendanceScreen() {
               <SearchInput
                 value={recordSearch}
                 onChange={(e) => setRecordSearch(e.target.value)}
-                placeholder="Name, code, or status"
+                placeholder="Search by employee name"
               />
             </Field>
           </div>
 
           <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
-              <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
+              <h2 className="text-[15px] font-medium text-slate-900">Previous attendance</h2>
               <p className="mt-1 text-sm text-slate-500">
-                One row per employee per day with clock in, lunch out, lunch in, and clock out.
-                Lunch columns follow the shift (hidden as — when the shift has no lunch). Paid hours
-                exclude unpaid lunch and time after shift end. Overtime ≥ 1 hour creates a pending OT
-                draft for HR approval.
+                Showing yesterday unless you change the date range. Search by employee name to narrow
+                the list. One row per employee per day with clock in, lunch out, lunch in, and clock out.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -1567,7 +1636,7 @@ export function HrAttendanceScreen() {
             {dayHint.existing_attendance?.source
               ? `, ${formatAttendanceSource(dayHint.existing_attendance.source, dayHint.existing_attendance.source_label).toLowerCase()}`
               : ""}
-            ). You cannot add a second record — edit the existing one in the Records tab.
+            ). You cannot add a second record — edit the existing one in Previous attendance.
           </p>
         ) : null}
         {editingRecord && dayHint?.blocks_attendance ? (
@@ -1731,6 +1800,27 @@ export function HrAttendanceScreen() {
             </ul>
           </div>
         ) : null}
+      </FormDrawer>
+
+      <FormDrawer
+        title={`Edit punch times${punchEditDay ? ` — ${sessionEmployeeLabel(punchEditDay.lastSession)}` : ""}`}
+        open={Boolean(punchEditDay)}
+        onClose={() => setPunchEditDay(null)}
+        onSubmit={savePunchEdit}
+        saving={punchEditSaving}
+        submitLabel="Save times"
+      >
+        <p className="text-sm text-slate-600">
+          Correct the device times when someone punched late, or the clock was wrong. Hours and lateness are rebuilt
+          from these punches.
+        </p>
+        <HrTimePickerField label="Clock in" value={punchEditIn} onChange={setPunchEditIn} required defaultPeriod="AM" />
+        <HrTimePickerField
+          label="Clock out"
+          value={punchEditOut}
+          onChange={setPunchEditOut}
+          defaultPeriod="PM"
+        />
       </FormDrawer>
     </CatalogPageShell>
   );

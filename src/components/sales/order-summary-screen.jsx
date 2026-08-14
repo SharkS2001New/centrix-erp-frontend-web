@@ -62,6 +62,7 @@ import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled, shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
 import { canDirectCancelOrders } from "@/lib/approval-permissions";
+import { canCollectSalePayments } from "@/lib/access-control";
 import { AppBreadcrumb, orderDetailBreadcrumbParent } from "@/components/layout/app-breadcrumb";
 import {
   disposePrintWindow,
@@ -687,7 +688,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const balanceDue = saleBalanceDue(sale, totalPaid);
   const paymentStatusKey = String(sale?.payment_status ?? "").toLowerCase();
   const showPaymentBreakdownCards = paymentStatusKey === "partial";
-  const canRecordPayment = !readOnlyWorkflow && canRecordOrderPayment(sale, totalPaid, capabilities);
+  const canRecordPayment =
+    !readOnlyWorkflow &&
+    canCollectSalePayments({ hasPermission }) &&
+    canRecordOrderPayment(sale, totalPaid, capabilities);
   const canMarkPaid = !readOnlyWorkflow && canConvertToPaid(sale, capabilities);
   const canMarkUnpaid = !readOnlyWorkflow && canConvertToUnpaid(sale, capabilities);
   const paymentStatusHint = orderPaymentStatusHint(sale, totalPaid, capabilities);

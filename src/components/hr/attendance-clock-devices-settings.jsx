@@ -6,7 +6,6 @@ import { apiRequest, ApiError, apiV1BaseUrl } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, FormModal, inputClassName, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { LiveFingerprintTestModal } from "@/components/hr/live-fingerprint-test-modal";
 import {
   downloadAttendanceAgentPackage,
 } from "@/lib/attendance-agent-download";
@@ -39,7 +38,6 @@ export function AttendanceClockDevicesSettings() {
   });
   const [downloading, setDownloading] = useState(false);
   const [connectionTestingId, setConnectionTestingId] = useState(null);
-  const [fingerprintTestDevice, setFingerprintTestDevice] = useState(null);
   const [editDevice, setEditDevice] = useState(null);
   const [editForm, setEditForm] = useState({
     location: "",
@@ -88,18 +86,6 @@ export function AttendanceClockDevicesSettings() {
     } finally {
       setConnectionTestingId(null);
     }
-  }
-
-  function startFingerprintTest(device) {
-    if (!device?.host) {
-      notifyError("Set the device LAN IP before testing fingerprint.");
-      return;
-    }
-    if (device.provider !== "hikvision") {
-      notifyError("Fingerprint test is only available for Hikvision devices.");
-      return;
-    }
-    setFingerprintTestDevice(device);
   }
 
   function openEdit(device) {
@@ -308,13 +294,6 @@ export function AttendanceClockDevicesSettings() {
                   onClick={() => void testDeviceConnection(device)}
                 >
                   {connectionTestingId === device.id ? "Testing…" : "Test connection"}
-                </button>
-                <button
-                  type="button"
-                  className={SECONDARY_BTN_CLASS}
-                  onClick={() => startFingerprintTest(device)}
-                >
-                  Test fingerprint
                 </button>
                 <Link
                   href={`/admin/attendance-clock/${device.id}`}
@@ -564,18 +543,11 @@ export function AttendanceClockDevicesSettings() {
           <li>Unzip on a Windows PC on the same LAN as the terminal.</li>
           <li>Install Node.js 20+ if needed, then run <code>install-windows.bat</code> as Administrator.</li>
           <li>
-            Confirm connection details in the browser, then Save, test &amp; continue. Windows installs
-            the <strong>CentrixAttendanceAgent</strong> service (starts with Windows).
+            Windows installs the service using the Centrix download (no local settings form). Use{" "}
+            <code>open-settings.bat</code> to Test connection.
           </li>
         </ol>
       </FormModal>
-
-      <LiveFingerprintTestModal
-        open={Boolean(fingerprintTestDevice)}
-        device={fingerprintTestDevice}
-        organizationApiPath={organizationApiPath}
-        onClose={() => setFingerprintTestDevice(null)}
-      />
     </div>
   );
 }
@@ -623,8 +595,8 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
         <li>
           Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is preconfigured
           with Centrix URL, token, and device settings. On a LAN PC: unzip →{" "}
-          <code>install-windows.bat</code> as Administrator (Node 20+). The installer opens a setup
-          screen for every connection detail, then installs the Windows service.
+          <code>install-windows.bat</code> as Administrator (Node 20+). The installer uses that config
+          and installs the Windows service. Use <code>open-settings.bat</code> to Test connection.
         </li>
         <li>
           The agent talks to the Hikvision on the LAN and to Centrix online — attendance punches and

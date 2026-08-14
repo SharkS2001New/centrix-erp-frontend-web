@@ -587,7 +587,7 @@ export default function MobileFieldAttendanceScreen({
         <p className="mb-4 text-sm text-slate-600">
           Unified HR view:{" "}
           <Link href="/hr/attendance" className="font-medium text-[#185FA5] hover:underline">
-            Time &amp; attendance → Attendance
+            Time &amp; attendance → Today's attendance
           </Link>
           .
         </p>
@@ -595,7 +595,7 @@ export default function MobileFieldAttendanceScreen({
         <p className="mb-4 text-sm text-slate-600">
           HR view:{" "}
           <Link href="/hr/attendance#field-sessions" className="font-medium text-[#185FA5] hover:underline">
-            Time &amp; attendance → Attendance
+            Time &amp; attendance → Today's attendance
           </Link>
           .
         </p>

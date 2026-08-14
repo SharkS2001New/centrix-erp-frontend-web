@@ -50,6 +50,16 @@ const PREFERRED_SCREENS = {
     exportName: "ProductsDeletedScreen",
     title: "Deleted products",
   },
+  "hr-attendance": {
+    importPath: "@/components/tab-screens/hr-attendance",
+    exportName: "HrAttendanceScreen",
+    title: "Today's attendance",
+  },
+  "hr-attendance-history": {
+    importPath: "@/components/tab-screens/hr-attendance-history",
+    exportName: "HrAttendanceHistoryScreen",
+    title: "Previous attendance",
+  },
   "hr-payroll": {
     importPath: "@/components/tab-screens/hr-payroll",
     exportName: "HrPayrollScreen",

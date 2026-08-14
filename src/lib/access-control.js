@@ -113,6 +113,16 @@ export function canManagePayments({ hasPermission = () => false } = {}) {
   );
 }
 
+/** Backoffice Collect payment / complete remaining balance on a sales order. */
+export function canCollectSalePayments({ hasPermission = () => false } = {}) {
+  return (
+    hasPermission("payments.manage") ||
+    hasPermission(P.sales.collect_payment.create) ||
+    hasPermission(P.payments.sale_payments.create) ||
+    hasPermission(P.payments.sale_payments.edit)
+  );
+}
+
 export function buildAccessContext({
   user,
   organization,

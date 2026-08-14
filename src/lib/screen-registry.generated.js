@@ -17,10 +17,6 @@ function match_fulfillment_trips_id_close(pathname) {
   return true;
 }
 
-function match_hr_duplicate_punches(pathname) {
-  return pathname === "/hr/duplicate-punches";
-}
-
 function match_hr_employees_id_edit(pathname) {
   const m = pathname.match("^/hr/employees/([^/]+)/edit$");
   if (!m) return false;
@@ -80,6 +76,10 @@ function match_fulfillment_orders_cancelled(pathname) {
 
 function match_fulfillment_orders_expired(pathname) {
   return pathname === "/fulfillment/orders/expired";
+}
+
+function match_hr_attendance_history(pathname) {
+  return pathname === "/hr/attendance/history";
 }
 
 function match_hr_employees_new(pathname) {
@@ -528,6 +528,14 @@ function match_hr_departments(pathname) {
   return pathname === "/hr/departments";
 }
 
+function match_hr_duplicate_punches(pathname) {
+  return pathname === "/hr/duplicate-punches";
+}
+
+function match_hr_absents(pathname) {
+  return pathname === "/hr/absents";
+}
+
 function match_hr_employees(pathname) {
   return pathname === "/hr/employees";
 }
@@ -544,12 +552,20 @@ function match_hr_leave(pathname) {
   return pathname === "/hr/leave";
 }
 
+function match_hr_lateness(pathname) {
+  return pathname === "/hr/lateness";
+}
+
 function match_hr_missed_punches(pathname) {
   return pathname === "/hr/missed-punches";
 }
 
 function match_hr_overtime(pathname) {
   return pathname === "/hr/overtime";
+}
+
+function match_hr_pending_overtime(pathname) {
+  return pathname === "/hr/pending-overtime";
 }
 
 function match_hr_payroll(pathname) {
@@ -967,6 +983,12 @@ export const SCREEN_REGISTRY = [
     title: "Expired",
     route: "/fulfillment/orders/expired",
     match: match_fulfillment_orders_expired,
+  },
+  {
+    id: "hr-attendance-history",
+    title: "Previous attendance",
+    route: "/hr/attendance/history",
+    match: match_hr_attendance_history,
   },
   {
     id: "hr-employees-new",
@@ -1516,7 +1538,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "hr-attendance",
-    title: "Attendance",
+    title: "Today's attendance",
     route: "/hr/attendance",
     match: match_hr_attendance,
   },
@@ -1540,9 +1562,15 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "hr-duplicate-punches",
-    title: "Duplicate punches",
+    title: "Duplicate Punches",
     route: "/hr/duplicate-punches",
     match: match_hr_duplicate_punches,
+  },
+  {
+    id: "hr-absents",
+    title: "Absents",
+    route: "/hr/absents",
+    match: match_hr_absents,
   },
   {
     id: "hr-employees",
@@ -1569,8 +1597,14 @@ export const SCREEN_REGISTRY = [
     match: match_hr_leave,
   },
   {
+    id: "hr-lateness",
+    title: "Lateness",
+    route: "/hr/lateness",
+    match: match_hr_lateness,
+  },
+  {
     id: "hr-missed-punches",
-    title: "Missed punches",
+    title: "Missed Punches",
     route: "/hr/missed-punches",
     match: match_hr_missed_punches,
   },
@@ -1579,6 +1613,12 @@ export const SCREEN_REGISTRY = [
     title: "Overtime",
     route: "/hr/overtime",
     match: match_hr_overtime,
+  },
+  {
+    id: "hr-pending-overtime",
+    title: "Pending Overtimes",
+    route: "/hr/pending-overtime",
+    match: match_hr_pending_overtime,
   },
   {
     id: "hr-payroll",

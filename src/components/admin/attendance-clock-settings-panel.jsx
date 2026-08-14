@@ -6,7 +6,8 @@ import { hrPayrollFormFromApi, hrPayrollPayloadFromForm } from "@/lib/hr-setting
 import { AttendanceClockDevicesSettings } from "@/components/hr/attendance-clock-devices-settings";
 import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-devices-panel";
 import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
-import { Field, PrimaryButton, FormModal, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, FormModal, inputClassName, SearchableSelect, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+import { SettingsSubTabBar } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
@@ -20,6 +21,7 @@ export function AttendanceClockSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [pageTab, setPageTab] = useState("devices");
 
   useEffect(() => {
     let cancelled = false;
@@ -63,67 +65,28 @@ export function AttendanceClockSettingsPanel() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-slate-50/90 p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">How to configure</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Org admin guide — same idea as Local printing: Centrix stays in the cloud; a small agent on
-              an office PC reaches the LAN fingerprint terminal.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setGuideOpen(true)}
-            className="text-xs font-medium text-[#185FA5] hover:underline"
-          >
-            Full setup guide
-          </button>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SettingsSubTabBar
+          tabs={[
+            { id: "devices", label: "Clock device" },
+            { id: "method", label: "How staff clock in" },
+          ]}
+          activeTab={pageTab}
+          onTabChange={setPageTab}
+          ariaLabel="Attendance clock-in sections"
+        />
+        <button
+          type="button"
+          onClick={() => setGuideOpen(true)}
+          className={SECONDARY_BTN_CLASS}
+        >
+          Setup guide
+        </button>
+      </div>
 
-        {isClockDevice ? (
-          <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-            <li>
-              Set attendance method to <strong>Clock device</strong> below and save.
-            </li>
-            <li>
-              On the Hikvision: static LAN IP, enable <strong>ISAPI</strong>, enroll staff with the same
-              ID as Centrix <strong>employee code</strong>.
-            </li>
-            <li>
-              Register the terminal under <strong>Clock devices</strong> (device number, LAN IP, password).
-            </li>
-            <li>
-              Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is
-              preconfigured with Centrix URL, token, and device number.
-            </li>
-            <li>
-              On a Windows PC on the same LAN: unzip → install Node.js 20+ if needed → run{" "}
-              <code className="rounded bg-white px-1 text-xs">install-windows.bat</code> as Administrator.
-              Confirm connection details, then Save, test &amp; continue. That installs the{" "}
-              <strong>CentrixAttendanceAgent</strong> Windows service.
-            </li>
-            <li>
-              Punches appear under <strong>HR → Attendance</strong>. Re-open agent settings anytime with{" "}
-              <code className="rounded bg-white px-1 text-xs">open-settings.bat</code>.
-            </li>
-          </ol>
-        ) : (
-          <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-            <li>
-              Set attendance method to <strong>Company mobile</strong> below and save.
-            </li>
-            <li>Set premises location / geofence and verification method.</li>
-            <li>Register shared company phones under mobile devices.</li>
-            <li>Staff clock in from the company phone app at the premises.</li>
-            <li className="text-slate-500">
-              Fingerprint terminal agent download is available when method is{" "}
-              <strong>Clock device</strong>.
-            </li>
-          </ol>
-        )}
-      </section>
+      {pageTab === "devices" ? <AttendanceClockDevicesSettings /> : null}
 
+      {pageTab === "method" ? (
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">How staff clock in</h2>
         <p className="mt-1 text-sm text-slate-500">
@@ -302,10 +265,9 @@ export function AttendanceClockSettingsPanel() {
           </form>
         )}
       </section>
+      ) : null}
 
-      {isClockDevice ? <AttendanceClockDevicesSettings /> : null}
-
-      {!isClockDevice ? (
+      {pageTab === "method" && !isClockDevice ? (
         <div className="space-y-4">
           <CompanyPremisesPanel embedded />
           <AttendanceMobileDevicesPanel embedded />
@@ -348,11 +310,11 @@ function AttendanceConfigureGuideModal({ open, onClose }) {
           <ol className="mt-1 list-decimal space-y-1 pl-5 text-slate-600">
             <li>Install Node.js 20+ from nodejs.org if needed.</li>
             <li>Unzip the download.</li>
-            <li>
-              Run <code>install-windows.bat</code> as Administrator. Confirm connection details in the
-              browser, then Save, test &amp; continue. Windows installs the{" "}
-              <strong>CentrixAttendanceAgent</strong> service.
-            </li>
+          <li>
+            Run <code>install-windows.bat</code> as Administrator. The zip is already configured from
+            Centrix. Windows installs the <strong>CentrixAttendanceAgent</strong> service. Use{" "}
+            <code>open-settings.bat</code> only to <strong>Test connection</strong>.
+          </li>
           </ol>
         </div>
         <div>

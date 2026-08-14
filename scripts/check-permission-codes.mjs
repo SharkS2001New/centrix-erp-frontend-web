@@ -26,6 +26,7 @@ const REQUIRED_CODES = [
   "sales.orders.create",
   "sales.orders.edit",
   "sales.orders.approve",
+  "sales.collect_payment.create",
   "sales.discounts.give",
   "admin.discount_approvals.approve",
   "purchasing.lpo.approve",

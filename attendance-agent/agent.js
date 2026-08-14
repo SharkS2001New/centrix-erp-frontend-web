@@ -408,43 +408,21 @@ async function runCatchupWithRetry(config) {
 async function main() {
   const once = process.argv.includes("--once");
   const skipUi = process.argv.includes("--no-setup-ui");
-  let config = ensureConfigFile();
+  const config = ensureConfigFile();
+
+  if (!isConfigReady(config)) {
+    console.error(
+      `[attendance-agent] Config incomplete (${missingConfigFields(config).join(", ")}). Re-download CentrixAttendanceAgent from Administration → Attendance clock-in.`,
+    );
+    process.exit(1);
+  }
 
   if (!once && !skipUi) {
     const { runSettingsUi } = await import("./settings-ui.js");
-    const needSetup = !isConfigReady(config);
-    if (needSetup) {
-      console.log(
-        `[attendance-agent] First-run setup needed (${missingConfigFields(config).join(", ") || "incomplete"}). Opening settings UI…`,
-      );
-    } else {
-      console.log(`[attendance-agent] Settings UI on ${SETTINGS_UI_URL} (stays up with this service)`);
-    }
-    const settings = runSettingsUi({
-      openBrowser: needSetup,
-      waitUntilReady: needSetup,
-      keepOpen: true,
+    console.log(`[attendance-agent] Test connection page on ${SETTINGS_UI_URL}`);
+    runSettingsUi({ openBrowser: false, keepOpen: true }).catch((err) => {
+      console.warn(`[attendance-agent] status page: ${err.message || err}`);
     });
-    if (needSetup) {
-      await settings;
-      config = ensureConfigFile();
-      if (!isConfigReady(config)) {
-        console.error(
-          `[attendance-agent] Still incomplete after settings UI. Missing: ${missingConfigFields(config).join(", ")}`,
-        );
-        process.exit(1);
-      }
-      console.log("[attendance-agent] Settings saved. Starting sync…");
-    } else {
-      settings.catch((err) => {
-        console.warn(`[attendance-agent] settings UI: ${err.message || err}`);
-      });
-    }
-  } else if (!isConfigReady(config)) {
-    console.error(
-      `[attendance-agent] Config incomplete (${missingConfigFields(config).join(", ")}). Open settings: npm run setup  →  ${SETTINGS_UI_URL}`,
-    );
-    process.exit(1);
   }
 
   if (once) {
@@ -462,7 +440,7 @@ async function main() {
   console.log(
     `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${attendanceIntervalSec}s (admin can change this in Centrix)`,
   );
-  console.log(`[attendance-agent] Re-open settings anytime: npm run setup  (${SETTINGS_UI_URL})`);
+  console.log(`[attendance-agent] Test connection in a browser: ${SETTINGS_UI_URL}`);
 
   const pollCommands = async () => {
     try {

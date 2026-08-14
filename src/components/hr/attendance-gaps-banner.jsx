@@ -28,8 +28,8 @@ export function AttendanceGapsBanner({ counts, compact = false }) {
   }
   if (missingOut) {
     parts.push(
-      <Link key="out" href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
-        {missingOut} missing clock-out{missingOut === 1 ? "" : "s"}
+      <Link key="out" href="/hr/missed-punches?tab=forgotten" className="font-medium text-[#185FA5] hover:underline">
+        {missingOut} forgotten clock-out{missingOut === 1 ? "" : "s"}
       </Link>,
     );
   }

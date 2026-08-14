@@ -95,9 +95,9 @@ export function HrDuplicatePunchesScreen() {
     >
       <AttendanceGapsBanner counts={gapCounts} />
       <p className="mb-6 text-sm text-slate-600">
-        These scans are logged so HR can see every fingerprint. They do not change{" "}
+        These scans are logged so HR can see every fingerprint.         They do not change{" "}
         <Link href="/hr/attendance" className="font-medium text-[#185FA5] hover:underline">
-          Attendance
+          Today's attendance
         </Link>
         . Unmapped scans stay on{" "}
         <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
@@ -157,7 +157,7 @@ export function HrDuplicatePunchesScreen() {
         )}
         <div className="mt-4">
           <Link href="/hr/attendance" className={SECONDARY_BTN_CLASS}>
-            Open attendance
+            Open today's attendance
           </Link>
         </div>
       </section>

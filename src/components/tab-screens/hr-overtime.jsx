@@ -14,10 +14,11 @@ export function HrOvertimeScreen() {
   return (
     <HrCrudPage
       title="Overtime"
-      subtitle="Amount = hours × rate (fixed per hour or derived from monthly salary and shift)"
+      subtitle="Approved and paid overtime. Late clock-out first appears on Pending overtimes until it is approved."
       addButtonLabel="Add overtime"
       drawerWide
       apiPath="/employee-overtime"
+      listSearchParams={{ "filter[status]": "approved,paid" }}
       loadExtra={async () => {
         const res = await apiRequest("/employees", { searchParams: { per_page: 200 } });
         const employees = (res.data ?? []).filter((e) => e.shift_id != null);
@@ -54,7 +55,7 @@ export function HrOvertimeScreen() {
         rate_mode: row?.rate_mode ?? "from_salary",
         hourly_rate: row?.hourly_rate != null ? String(row.hourly_rate) : "",
         rate_multiplier: "1",
-        status: row?.status ?? "pending",
+        status: row?.status ?? "approved",
         notes: row?.notes ?? "",
       })}
       buildBody={(form, orgId) => ({
@@ -145,10 +146,8 @@ export function HrOvertimeScreen() {
             value={form.status}
             onChange={(v) => setForm((p) => ({ ...p, status: v }))}
             options={[
-              { value: "pending", label: "Pending" },
               { value: "approved", label: "Approved" },
               { value: "paid", label: "Paid" },
-              { value: "rejected", label: "Rejected" },
             ]}
           />
         </>

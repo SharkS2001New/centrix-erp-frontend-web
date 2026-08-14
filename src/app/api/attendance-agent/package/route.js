@@ -21,9 +21,9 @@ Preconfigured package from Centrix → Administration → Attendance clock-in.
 1. Unzip this folder anywhere (e.g. C:\\Centrix\\attendance-agent).
 2. Install Node.js 20+ if needed: https://nodejs.org/
 3. Double-click **install-windows.bat** and accept the Administrator prompt.
-   A browser opens so you can confirm every connection detail (Centrix URL, token, device ID, LAN IP, port 80, username, password). Click **Save, test & continue**.
+   The zip is already configured from Centrix (no local settings form).
 4. Windows installs the **CentrixAttendanceAgent** service (starts automatically with Windows). No GitHub download is required.
-5. Change settings later: **open-settings.bat**. Remove: **uninstall-windows.bat** (Administrator).
+5. Test connection later: **open-settings.bat**. Change IP or password in Centrix, then download the agent again. Remove: **uninstall-windows.bat** (Administrator).
 
 Punches and Manage Hikvision actions go through this agent.
 Keep this folder private — config.json includes a Centrix API token.
