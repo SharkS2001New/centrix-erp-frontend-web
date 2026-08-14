@@ -20,6 +20,7 @@ import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
 } from "@/lib/print-typography";
+import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -683,6 +684,7 @@ export function buildPickingListHtml({
   includeShelfLocation = true,
   uomByProductCode = null,
   layout = null,
+  printSettings = null,
 } = {}) {
   const salesLayout = isSalesPickingLayout(pickingList, layout);
   const branding = brandingWithDocumentLogo(
@@ -808,7 +810,8 @@ export function buildPickingListHtml({
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(docTitle)}</title>
-  <style>${pickingListPrintStyles(generalSettings, { salesLayout, includeShelfLocation })}</style>
+  <style>${pickingListPrintStyles(generalSettings, { salesLayout, includeShelfLocation })}
+  ${orgDocumentTemplateCss(printSettings?.picking_list_document_template, { layout: "classic" })}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   ${pagesHtml}
@@ -833,6 +836,7 @@ export async function printPickingList({
   includeShelfLocation = true,
   uomByProductCode = null,
   layout = null,
+  printSettings = null,
 } = {}) {
   const html = buildPickingListHtml({
     organization,
@@ -845,6 +849,7 @@ export async function printPickingList({
     includeShelfLocation,
     uomByProductCode,
     layout,
+    printSettings,
   });
   return printHtmlDocument(html, {
     jobType: "picking_list",

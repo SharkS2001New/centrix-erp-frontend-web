@@ -20,6 +20,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { isDistributionOpsEnabled, isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { tripStatusLabel } from "@/lib/trip-status";
 import {
@@ -283,6 +284,7 @@ export function MobilePickingScreen() {
         ),
         printedBy: user?.full_name ?? user?.username ?? null,
         includeShelfLocation,
+        printSettings: resolveLoadingSheetPrintSettings(capabilities?.module_settings?.distribution),
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Could not print picking list");

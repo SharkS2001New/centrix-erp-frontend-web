@@ -9,7 +9,7 @@ export const ORG_DOCUMENT_DESIGN_TEMPLATES = [
   {
     id: "default",
     label: "Default (current layout)",
-    description: "Keep the existing invoice / proforma / credit note / LPO look unchanged.",
+    description: "Keep the current printout layout unchanged.",
   },
   { id: "modern", label: "Modern", description: "Clean blue accent header — Stripe-inspired." },
   { id: "classic", label: "Classic formal", description: "Traditional bordered stationery with serif accents." },
@@ -66,10 +66,16 @@ const THEME_MAP = {
 
 /** Settings keys per printout kind. */
 export const DOCUMENT_TEMPLATE_SETTING_KEYS = {
+  receipt: "receipt_document_template",
   invoice: "invoice_document_template",
   proforma: "proforma_document_template",
   credit_note: "credit_note_document_template",
+  hospitality_check: "hospitality_check_document_template",
   lpo: "lpo_document_template",
+  loading_sheet: "loading_sheet_document_template",
+  picking_list: "picking_list_document_template",
+  trip_chart: "trip_chart_document_template",
+  payroll_receipt: "payroll_receipt_document_template",
 };
 
 export function resolveOrgDocumentTemplateId(value) {
@@ -91,7 +97,7 @@ export function orgDocumentTemplateTheme(templateId) {
 /**
  * Theme overlay CSS for org A4 documents.
  * @param {string} templateId
- * @param {{ layout?: "professional"|"classic" }} [options]
+ * @param {{ layout?: "professional"|"classic"|"thermal" }} [options]
  */
 export function orgDocumentTemplateCss(templateId, { layout = "professional" } = {}) {
   const theme = orgDocumentTemplateTheme(templateId);
@@ -148,12 +154,14 @@ export function orgDocumentTemplateCss(templateId, { layout = "professional" } =
       ${top ? `border-top: 4px solid ${accent};` : ""}
       ${stripe ? `border-left: 5px solid ${accent}; padding-left: 10px;` : ""}
     }
-    .doc-title {
+    .doc-title, .receipt h2 {
       color: ${solid ? "#fff" : accent};
       ${solid ? `background: ${accent}; padding: 8px 10px; text-decoration: none;` : `text-decoration-color: ${accent};`}
       ${solid ? "border-radius: 4px;" : ""}
     }
-    .org-brand .org-name, .brand-name { color: ${accent}; }
+    .org-brand .org-name, .brand-name, .receipt-head .org, .receipt-head .org-name { color: ${accent}; }
+    .net-section { border-top-color: ${accent}; }
+    .amt-table tr.net .amt, .amt-table tr.emphasis.net .amt { color: ${accent}; }
     table.items th {
       color: ${accent};
       border-top: 2px solid ${accent} !important;
@@ -177,6 +185,28 @@ export function orgDocumentTemplateCss(templateId, { layout = "professional" } =
     @media print {
       body { background: #fff !important; }
     }
+  `;
+  }
+
+  if (layout === "thermal") {
+    return `
+    /* Org document theme: ${resolveOrgDocumentTemplateId(templateId)} */
+    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    ${serifHint}
+    .receipt {
+      ${theme.border ? `outline: 1px solid ${accent}; outline-offset: 2px;` : ""}
+      ${top ? `border-top: 3px solid ${accent}; padding-top: 4px;` : ""}
+      ${stripe ? `border-left: 3px solid ${accent}; padding-left: 4px;` : ""}
+    }
+    .doc-title {
+      color: ${accent};
+      ${solid ? `border-bottom: 2px solid ${accent}; padding-bottom: 4px;` : ""}
+    }
+    .company-name, .org-name { color: ${accent}; }
+    .table thead th { color: ${accent}; }
+    .meta-label { color: ${accent}; }
+    .divider { border-top-color: ${accent}99; }
+    .summary-table tr.amount-line-grand .amount-value { color: ${accent}; }
   `;
   }
 
@@ -237,19 +267,56 @@ export function orgDocumentTemplateCss(templateId, { layout = "professional" } =
 
 export function documentTemplateFormDefaults() {
   return {
+    receipt_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
     invoice_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
     proforma_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
     credit_note_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+    hospitality_check_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
     lpo_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+    loading_sheet_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+    picking_list_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+    trip_chart_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+    payroll_receipt_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
   };
 }
 
 export function documentTemplateFormFromSales(sales = {}) {
   return {
+    receipt_document_template: resolveOrgDocumentTemplateId(sales.receipt_document_template),
     invoice_document_template: resolveOrgDocumentTemplateId(sales.invoice_document_template),
     proforma_document_template: resolveOrgDocumentTemplateId(sales.proforma_document_template),
     credit_note_document_template: resolveOrgDocumentTemplateId(
       sales.credit_note_document_template,
+    ),
+  };
+}
+
+export function documentTemplateFormFromHospitality(hospitality = {}) {
+  return {
+    hospitality_check_document_template: resolveOrgDocumentTemplateId(
+      hospitality.hospitality_check_document_template,
+    ),
+  };
+}
+
+export function documentTemplateFormFromDistribution(distribution = {}) {
+  return {
+    loading_sheet_document_template: resolveOrgDocumentTemplateId(
+      distribution.loading_sheet_document_template,
+    ),
+    picking_list_document_template: resolveOrgDocumentTemplateId(
+      distribution.picking_list_document_template,
+    ),
+    trip_chart_document_template: resolveOrgDocumentTemplateId(
+      distribution.trip_chart_document_template,
+    ),
+  };
+}
+
+export function documentTemplateFormFromGeneral(general = {}) {
+  return {
+    payroll_receipt_document_template: resolveOrgDocumentTemplateId(
+      general.payroll_receipt_document_template,
     ),
   };
 }
@@ -262,10 +329,41 @@ export function documentTemplateFormFromProcurement(procurement = {}) {
 
 export function documentTemplateSalesPayloadFromForm(form = {}) {
   return {
+    receipt_document_template: resolveOrgDocumentTemplateId(form.receipt_document_template),
     invoice_document_template: resolveOrgDocumentTemplateId(form.invoice_document_template),
     proforma_document_template: resolveOrgDocumentTemplateId(form.proforma_document_template),
     credit_note_document_template: resolveOrgDocumentTemplateId(
       form.credit_note_document_template,
+    ),
+  };
+}
+
+export function documentTemplateHospitalityPayloadFromForm(form = {}) {
+  return {
+    hospitality_check_document_template: resolveOrgDocumentTemplateId(
+      form.hospitality_check_document_template,
+    ),
+  };
+}
+
+export function documentTemplateDistributionPayloadFromForm(form = {}) {
+  return {
+    loading_sheet_document_template: resolveOrgDocumentTemplateId(
+      form.loading_sheet_document_template,
+    ),
+    picking_list_document_template: resolveOrgDocumentTemplateId(
+      form.picking_list_document_template,
+    ),
+    trip_chart_document_template: resolveOrgDocumentTemplateId(
+      form.trip_chart_document_template,
+    ),
+  };
+}
+
+export function documentTemplateGeneralPayloadFromForm(form = {}) {
+  return {
+    payroll_receipt_document_template: resolveOrgDocumentTemplateId(
+      form.payroll_receipt_document_template,
     ),
   };
 }

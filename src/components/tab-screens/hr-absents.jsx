@@ -3,14 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import { notifyError, notifySuccess } from "@/lib/notify";
-import { P } from "@/lib/permission-codes";
-import { useAuth } from "@/contexts/auth-context";
+import { notifyError } from "@/lib/notify";
 import { composeEmployeeDisplayName, formatHoursWorked } from "@/components/hr/hr-shared";
 import {
   CatalogPageShell,
   PaginationBar,
-  PrimaryButton,
   SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
@@ -42,14 +39,11 @@ const ABSENT_EXPORT_COLUMNS = [
 ];
 
 export function HrAbsentsScreen() {
-  const { hasPermission } = useAuth();
-  const canManage = hasPermission(P.hr.manage);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [fromDate, setFromDate] = useState(daysAgo(14));
   const [toDate, setToDate] = useState(daysAgo(1));
 
@@ -105,29 +99,12 @@ export function HrAbsentsScreen() {
     return all.map(mapAbsentExportRow);
   }
 
-  async function markAbsents() {
-    setBusy(true);
-    try {
-      const result = await apiRequest("/employee-attendance/mark-absents", {
-        method: "POST",
-        body: { from_date: fromDate, to_date: toDate },
-      });
-      const n = Number(result.created_count ?? result.created ?? 0);
-      notifySuccess(n > 0 ? `Marked ${n} absent day${n === 1 ? "" : "s"}.` : "No new absents to mark.");
-      await load();
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Could not mark absents");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
 
   return (
     <CatalogPageShell
       title="Absents"
-      subtitle="Creates absent records for past scheduled workdays with no clock-in (never today or future). Hours stay 0."
+      subtitle="Past scheduled workdays with no clock-in. Hours worked stay 0."
       action={
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm text-slate-600">
@@ -159,20 +136,9 @@ export function HrAbsentsScreen() {
             getInlineRows={fetchAllAbsentRows}
             disabled={loading}
           />
-          {canManage ? (
-            <PrimaryButton type="button" onClick={markAbsents} disabled={busy}>
-              Mark absents
-            </PrimaryButton>
-          ) : null}
         </div>
       }
     >
-      <p className="mb-4 text-sm text-slate-600">
-        <strong className="font-medium text-slate-800">Mark absents</strong> writes an explicit absent row for
-        each active employee who was scheduled to work in the date range but has no attendance. Today and future
-        dates are skipped so a late clock-in is not overwritten. Payroll already treats a missing day as unpaid;
-        this list is for HR registers and audit. Hours worked stay 0.
-      </p>
       {loading && rows.length === 0 ? (
         <p className="text-sm text-slate-600">Loading…</p>
       ) : rows.length === 0 ? (

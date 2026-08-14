@@ -21,6 +21,7 @@ import {
   orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
+import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 
 function formatKes(amount) {
   const n = Number(amount) || 0;
@@ -911,7 +912,8 @@ export function buildLoadingListHtml({
 <head>
   <meta charset="utf-8" />
   <title>Loading List — ${escapeHtml(routeName)}</title>
-  <style>${loadingSheetPrintStyles(generalSettings)}</style>
+  <style>${loadingSheetPrintStyles(generalSettings)}
+  ${orgDocumentTemplateCss(printSettings?.loading_sheet_document_template, { layout: "classic" })}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   ${watermark}

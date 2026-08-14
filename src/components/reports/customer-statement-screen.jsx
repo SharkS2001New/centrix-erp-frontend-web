@@ -8,13 +8,7 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { formatReportKes, formatReportCell } from "@/lib/reports/format";
-import {
-  buildReportMeta,
-  normalizeExportColumns,
-  printReportTable,
-  reportPrintedAt,
-} from "@/lib/reports/export";
-import { resolveReportBranding } from "@/lib/reports/report-branding";
+import { printCustomerStatement } from "@/lib/reports/customer-statement-print";
 import { defaultDateRange } from "@/lib/datetime";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
@@ -97,43 +91,72 @@ export function CustomerStatementScreen() {
 
   const lines = useMemo(() => {
     if (!data) return [];
-    const rows = [];
+    const opening = Number(data.summary?.opening_balance ?? 0);
+    const openingDate = data.summary?.from_date;
+    const rest = [];
     for (const inv of data.invoices ?? []) {
-      rows.push({
+      const debit = Number(inv.statement_debit ?? inv.invoice_total) || 0;
+      const invoiceNo = inv.invoice_number || `INV-${inv.id}`;
+      rest.push({
         id: `inv-${inv.id}`,
+        type: "invoice",
         date: inv.invoice_date,
-        document: inv.invoice_number,
-        description: "Invoice",
-        debit: Number(inv.statement_debit ?? inv.invoice_total) || 0,
+        document: invoiceNo,
+        description: `Invoice No.${invoiceNo}`,
+        debit,
         credit: 0,
+        amount: debit,
       });
     }
     for (const note of data.credit_notes ?? []) {
-      rows.push({
+      const credit = Number(note.total_amount) || 0;
+      const cnNo = note.credit_note_no ?? note.return_no ?? `CN-${note.id}`;
+      const against = note.invoice_number ? ` (Invoice No.${note.invoice_number})` : "";
+      rest.push({
         id: `cn-${note.id}`,
+        type: "credit_note",
         date: note.credit_date,
-        document: note.credit_note_no ?? note.return_no ?? `CN-${note.id}`,
-        description: "Credit Note",
+        document: cnNo,
+        description: `Credit Note No.${cnNo}${against}`,
         debit: 0,
-        credit: Number(note.total_amount) || 0,
+        credit,
+        amount: -credit,
       });
     }
     for (const pay of data.payments ?? []) {
-      rows.push({
+      const credit = Number(pay.amount_paid) || 0;
+      const ref = pay.reference_number ?? `PAY-${pay.id}`;
+      rest.push({
         id: `pay-${pay.id}`,
+        type: "payment",
         date: pay.date_paid,
-        document: pay.reference_number ?? `PAY-${pay.id}`,
-        description: "Payment",
+        document: ref,
+        description: `Payment ${ref}`,
         debit: 0,
-        credit: Number(pay.amount_paid) || 0,
+        credit,
+        amount: -credit,
       });
     }
-    rows.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    let balance = 0;
-    return rows.map((row) => {
-      balance += row.debit - row.credit;
-      return { ...row, balance };
-    });
+    rest.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    let balance = opening;
+    return [
+      {
+        id: "forward",
+        type: "forward",
+        date: openingDate,
+        document: "",
+        description: "Balance Forward",
+        debit: opening > 0 ? opening : 0,
+        credit: opening < 0 ? Math.abs(opening) : 0,
+        amount: opening,
+        hideAmount: opening === 0,
+        balance: opening,
+      },
+      ...rest.map((row) => {
+        balance += row.debit - row.credit;
+        return { ...row, balance };
+      }),
+    ];
   }, [data]);
 
   const outstanding = summary?.outstanding_balance ?? customer?.current_balance ?? 0;
@@ -151,35 +174,21 @@ export function CustomerStatementScreen() {
     [],
   );
 
-  const branding = useMemo(
-    () => resolveReportBranding({ organization, generalSettings: generalSettings() }),
-    [organization, generalSettings],
-  );
-
   const handlePrint = useCallback(() => {
     if (!customer) return;
     try {
-      printReportTable({
-        meta: buildReportMeta({
-          organizationName: branding.organizationName,
-          title: "Customer Statement",
-          subtitle: customer.customer_name,
-          printedAt: reportPrintedAt(),
-          extraLines: [
-            `Customer: ${customer.customer_name} (#${customer.customer_num})`,
-            `Outstanding balance: ${formatReportKes(outstanding)}`,
-            `Credit limit: ${formatReportKes(creditLimit)}`,
-          ],
-        }),
-        columns: normalizeExportColumns(columns),
-        rows: lines,
-        branding,
+      printCustomerStatement({
+        customer,
+        lines,
+        summary,
+        aging: data?.aging ?? null,
+        organization,
         generalSettings: generalSettings(),
       });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Print failed");
     }
-  }, [branding, columns, creditLimit, customer, lines, outstanding]);
+  }, [customer, data?.aging, generalSettings, lines, organization, summary]);
 
   return (
     <ReportPageShell

@@ -41,7 +41,7 @@ export const PRINT_FOOTER_LABELS = {
   loading_sheet: "Loading sheet footer",
   picking_list: "Picking list footer",
   trip_chart: "Trip chart list footer",
-  payroll_receipt: "HR payroll receipt (payslip) footer",
+  payroll_receipt: "Salary payment receipt footer",
 };
 
 export const RECEIPT_POWERED_BY_LINE = `Designed & Developed By ${PRINT_POWERED_BY}`;

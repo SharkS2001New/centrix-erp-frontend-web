@@ -807,6 +807,7 @@ export function FulfillmentTripsIdScreen() {
                     "trip_chart",
                   ),
                   printedBy: user?.full_name ?? user?.username ?? null,
+                  printSettings: resolveLoadingSheetPrintSettings(capabilities?.module_settings?.distribution),
                 });
               } catch (e) {
                 notifyError(e instanceof ApiError ? e.message : "Could not refresh trip chart for print");
@@ -841,6 +842,7 @@ export function FulfillmentTripsIdScreen() {
                   ),
                   printedBy: user?.full_name ?? user?.username ?? null,
                   includeShelfLocation,
+                  printSettings: resolveLoadingSheetPrintSettings(capabilities?.module_settings?.distribution),
                 });
               } catch (e) {
                 notifyError(e instanceof ApiError ? e.message : "Could not refresh picking list for print");

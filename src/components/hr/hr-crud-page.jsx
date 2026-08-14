@@ -208,17 +208,17 @@ export function HrCrudPage({
 
   const content = (
     <>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-4 space-y-3">
         {embedded && title ? (
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
-            {subtitle ? <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p> : null}
+            {subtitle ? (
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{subtitle}</p>
+            ) : null}
           </div>
         ) : !embedded && title ? (
           <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
-        ) : (
-          <span />
-        )}
+        ) : null}
         <div className="flex flex-wrap items-center justify-end gap-2">
           {searchFilter ? (
             <SearchInput

@@ -79,7 +79,7 @@ const PRINTOUT_TABS = [
   { id: "loading_sheet", label: "Loading sheets", requiresRoutePrintouts: true },
   { id: "picking_list", label: "Picking lists", requiresRoutePrintouts: true },
   { id: "trip_chart", label: "Trip chart lists", requiresRoutePrintouts: true },
-  { id: "payroll_receipt", label: "Payroll receipts", requiresHrPayroll: true },
+  { id: "payroll_receipt", label: "Salary payment receipts", requiresHrPayroll: true },
 ];
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -393,6 +393,12 @@ function ThermalReceiptsTab({ form, setForm, hasMobileSales, organization = null
           (credit notes, GRNs, supplier returns) use numbers under Admin → Company profile.
         </p>
       </div>
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="receipt_document_template"
+        label="Document template"
+      />
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -786,6 +792,12 @@ function LoadingSheetsTab({ form, setForm, hasDistribution = false, hasMobileSal
           save under General.
         </p>
       ) : null}
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="loading_sheet_document_template"
+        label="Document template"
+      />
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -822,6 +834,12 @@ function PickingListsTab({ form, setForm }) {
         title="Picking lists"
         description="Warehouse pick sheets for Distribution trip charts and mobile route orders. Lines are ordered from highest quantity to lowest."
       />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="picking_list_document_template"
+        label="Document template"
+      />
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -853,6 +871,12 @@ function TripChartListsTab({ form, setForm }) {
         title="Trip chart lists"
         description="Customer stop lists printed from a trip chart (Distribution or mobile field sales)."
       />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="trip_chart_document_template"
+        label="Document template"
+      />
       <PrintFontSettingsFields
         form={form}
         setForm={setForm}
@@ -883,6 +907,12 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
       <SectionHeading
         title="Hotel & Bar check receipts"
         description="80mm guest checks for Hotel POS — same thermal customization as retail (fonts, logo, footer, payment instructions), laid out like a hotel F&B bill."
+      />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="hospitality_check_document_template"
+        label="Document template"
       />
       <Field label="Receipt copies">
         <SearchableSelect
@@ -1008,8 +1038,14 @@ function PayrollReceiptsTab({ form, setForm }) {
   return (
     <div className="space-y-3">
       <SectionHeading
-        title="HR payroll receipts (payslips)"
-        description="Printed and emailed payslips from payroll runs. Uses the same organization logo/header settings as other documents."
+        title="Salary payment receipts"
+        description="Printed and emailed salary payment receipts from payroll runs. Uses the same organization logo/header settings as other documents."
+      />
+      <DocumentTemplateSelect
+        form={form}
+        setForm={setForm}
+        settingKey="payroll_receipt_document_template"
+        label="Document template"
       />
       <PrintFontSettingsFields
         form={form}

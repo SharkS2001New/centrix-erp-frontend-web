@@ -31,6 +31,13 @@ describe("org document print templates", () => {
     expect(classic).toContain("#0f172a");
   });
 
+  it("emits thermal-safe overlay css", () => {
+    const css = orgDocumentTemplateCss("modern", { layout: "thermal" });
+    expect(css).toContain("#2563eb");
+    expect(css).toContain(".receipt");
+    expect(css).not.toContain("table.pro-items");
+  });
+
   it("includes theme overlay in professional styles when selected", () => {
     const css = professionalA4Styles(null, "lpo", "safari");
     expect(css).toContain("Org document theme: safari");

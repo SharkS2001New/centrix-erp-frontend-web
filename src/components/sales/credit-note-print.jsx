@@ -87,7 +87,6 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
   } = options;
 
   const creditNote = customerReturn.credit_note ?? customerReturn.creditNote ?? null;
-  const lines = customerReturn.lines ?? [];
   const sale = customerReturn.sale ?? null;
   const customer = customerReturn.customer ?? sale?.customer ?? null;
   const customerName =
@@ -98,11 +97,11 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
     creditNote?.credit_date ?? customerReturn.return_date ?? customerReturn.created_at,
   );
   const reason = resolveCustomerReturnReason(customerReturn, creditNote);
-  let lines = customerReturn.lines ?? [];
-  if (!lines.length) {
+  let documentLines = customerReturn.lines ?? [];
+  if (!documentLines.length) {
     const fallbackTotal = Number(customerReturn.total_amount ?? 0);
     if (fallbackTotal > 0) {
-      lines = [
+      documentLines = [
         {
           product_name: reason !== "—" ? reason : "Credit adjustment",
           return_qty: 1,
@@ -113,7 +112,7 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
       ];
     }
   }
-  const lineRows = buildCustomerReturnLineRows(lines, uomById, customerReturn);
+  const lineRows = buildCustomerReturnLineRows(documentLines, uomById, customerReturn);
   const totalAmount = Number(customerReturn.total_amount ?? 0) || lineRows.reduce((s, r) => s + r._amount, 0);
 
   const kraSource =

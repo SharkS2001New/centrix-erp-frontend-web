@@ -107,7 +107,7 @@ export const PRINT_FONT_VARIANTS = {
     fallbackVariant: "loading_sheet",
   },
   payroll_receipt: {
-    label: "HR payroll receipt (payslip)",
+    label: "Salary payment receipt",
     typographyVariant: "payroll_receipt",
     defaultFamily: "times",
     defaultScale: "standard",

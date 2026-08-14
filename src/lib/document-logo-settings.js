@@ -94,7 +94,7 @@ export const DOCUMENT_LOGO_VARIANTS = {
     defaultSize: "medium",
   },
   payroll_receipt: {
-    label: "Payroll receipt",
+    label: "Salary payment receipt",
     defaultShow: true,
     defaultPosition: "center",
     defaultSize: "medium",

@@ -220,6 +220,7 @@ export function DistributionLoadingListsScreen() {
           "trip_chart",
         ),
         printedBy: user?.full_name ?? user?.username ?? null,
+        printSettings: loadingListPrintSettings,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Could not refresh trip chart for print");
@@ -251,6 +252,7 @@ export function DistributionLoadingListsScreen() {
         ),
         printedBy: user?.full_name ?? user?.username ?? null,
         includeShelfLocation,
+        printSettings: loadingListPrintSettings,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Could not refresh picking list for print");

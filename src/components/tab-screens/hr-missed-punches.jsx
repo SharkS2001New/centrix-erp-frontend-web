@@ -161,7 +161,7 @@ export function HrMissedPunchesScreen() {
     if (!row?.id) return;
     const ok = await confirm({
       title: "Apply punch to attendance",
-      message: `Apply this terminal punch for ${displayField(row.employee_name)} (${displayField(row.employee_no)}) to attendance? It will count as Applied by HR manually.`,
+      message: `Apply this terminal punch for ${displayField(row.employee_name)} to attendance? It will count as Applied by HR manually.`,
       confirmLabel: "Apply",
     });
     if (!ok) return;
@@ -245,8 +245,8 @@ export function HrMissedPunchesScreen() {
               filename="unapplied-terminal-punches"
               columns={[
                 { key: "time", label: "Time" },
-                { key: "employee_no", label: "Terminal ID" },
-                { key: "employee_name", label: "Name on device" },
+                { key: "employee_name", label: "Employee" },
+                { key: "employee_code", label: "Code" },
                 { key: "device", label: "Device" },
                 { key: "reason", label: "Reason" },
               ]}
@@ -254,8 +254,8 @@ export function HrMissedPunchesScreen() {
               getInlineRows={async () =>
                 unapplied.map((row) => ({
                   time: formatWhen(row.event_time_local || row.event_time),
-                  employee_no: displayField(row.employee_no),
                   employee_name: displayField(row.employee_name),
+                  employee_code: displayField(row.employee_code),
                   device: `${displayField(row.device_no)}${row.device_location ? ` · ${row.device_location}` : ""}`,
                   reason: displayField(row.reason_short || row.process_error),
                 }))
@@ -339,12 +339,11 @@ export function HrMissedPunchesScreen() {
             <p className="mt-3 text-sm text-slate-500">No unapplied terminal punches.</p>
           ) : (
             <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[720px] text-left text-sm">
+              <table className="w-full min-w-[640px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2">Time</th>
-                    <th className="px-3 py-2">Terminal ID</th>
-                    <th className="px-3 py-2">Name on device</th>
+                    <th className="px-3 py-2">Employee</th>
                     <th className="px-3 py-2">Device</th>
                     <th className="px-3 py-2">Reason</th>
                     {canRetry ? <th className="px-3 py-2">Action</th> : null}
@@ -354,8 +353,12 @@ export function HrMissedPunchesScreen() {
                   {paged.map((row) => (
                     <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
                       <td className="px-3 py-2 text-xs">{formatWhen(row.event_time_local || row.event_time)}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{displayField(row.employee_no)}</td>
-                      <td className="px-3 py-2 text-xs">{displayField(row.employee_name)}</td>
+                      <td className="px-3 py-2 text-sm">
+                        {displayField(row.employee_name)}
+                        {row.employee_code ? (
+                          <span className="ml-2 font-mono text-xs text-slate-500">{displayField(row.employee_code)}</span>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2 text-xs">
                         {displayField(row.device_no)}
                         {row.device_location ? ` · ${row.device_location}` : ""}
@@ -527,7 +530,7 @@ export function HrMissedPunchesScreen() {
             <h2 className="text-[15px] font-medium text-slate-900">Punch reason</h2>
             <p className="mt-1 text-xs text-slate-500">
               {formatWhen(reasonRow.event_time_local || reasonRow.event_time)} ·{" "}
-              {displayField(reasonRow.employee_name)} ({displayField(reasonRow.employee_no)})
+              {displayField(reasonRow.employee_name)}
             </p>
             <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">
               {displayField(reasonRow.process_error)}

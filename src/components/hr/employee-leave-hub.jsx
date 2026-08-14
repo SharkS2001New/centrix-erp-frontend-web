@@ -179,6 +179,7 @@ export function EmployeeLeaveHub({
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const canApproveLeave = canApproveLeaveRequests({ hasPermission, capabilities });
 
+  const [tab, setTab] = useState("leave");
   const [pendingLeaves, setPendingLeaves] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [selectedEmployeeLabel, setSelectedEmployeeLabel] = useState("");
@@ -273,6 +274,7 @@ export function EmployeeLeaveHub({
       return;
     }
 
+    setTab(record.approval_status === "pending" ? "pending" : "leave");
     setHighlightedLeaveDayId(targetId);
     const timer = window.setTimeout(() => {
       leaveRowRefs.current.get(targetId)?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -284,16 +286,19 @@ export function EmployeeLeaveHub({
     };
   }, [employeeLeaves, highlightLeaveDayId, loadingEmployee, pendingLeaves, selectedEmployeeId]);
 
-  function openCreate() {
+  function emptyCreateForm() {
+    return buildOffDayEmptyForm({
+      presetEmployeeId: selectedEmployeeId,
+      presetEmployeeLabel: selectedEmployeeLabel,
+    });
+  }
+
+  function openCreateTab() {
     setEditing(null);
-    setForm(
-      buildOffDayEmptyForm({
-        presetEmployeeId: selectedEmployeeId,
-        presetEmployeeLabel: selectedEmployeeLabel,
-      }),
-    );
+    setDrawerOpen(false);
     setFormError(null);
-    setDrawerOpen(true);
+    setForm(emptyCreateForm());
+    setTab("create");
   }
 
   function openEdit(row) {
@@ -324,6 +329,7 @@ export function EmployeeLeaveHub({
     }
     setSaving(true);
     setFormError(null);
+    const wasEditing = Boolean(editing);
     try {
       const body = buildOffDayBody(form);
       if (editing) {
@@ -334,8 +340,16 @@ export function EmployeeLeaveHub({
         notifySuccess("Leave application submitted for admin approval.");
       }
       setDrawerOpen(false);
+      setEditing(null);
       if (!selectedEmployeeId && body.employee_id) {
         setSelectedEmployeeId(String(body.employee_id));
+      }
+      if (!wasEditing) {
+        setForm(buildOffDayEmptyForm({
+          presetEmployeeId: String(body.employee_id ?? selectedEmployeeId),
+          presetEmployeeLabel: selectedEmployeeLabel,
+        }));
+        setTab("pending");
       }
       await Promise.all([loadPending(), loadEmployeeData(selectedEmployeeId || String(body.employee_id))]);
       onSaved?.();
@@ -398,86 +412,160 @@ export function EmployeeLeaveHub({
     }
   }
 
+  const tabClass = (id) =>
+    `rounded-md px-4 py-2 text-sm font-medium transition ${
+      tab === id ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
+    }`;
+
+  const pendingCount = pendingLeaves.length;
+
+  function closeEditDrawer() {
+    setDrawerOpen(false);
+    setEditing(null);
+    setFormError(null);
+    if (tab === "create") {
+      setForm(emptyCreateForm());
+    }
+  }
+
+  const employeeSearch = (
+    <div className="max-w-xl">
+      <label className="mb-1 block text-sm font-medium text-slate-700">Search employee</label>
+      <PosSearchableSelect
+        value={selectedEmployeeId}
+        onChange={(value, option) => {
+          setSelectedEmployeeId(value);
+          setSelectedEmployeeLabel(option?.label ?? "");
+        }}
+        options={selectedEmployeeOptions}
+        loadOptions={loadEmployeeOptions}
+        placeholder="Search by name, code, or payroll #…"
+        searchPlaceholder="Type to search employees…"
+        idleSearchLabel="Type at least one character to search"
+        emptyLabel="No matching employees"
+        minSearchLength={1}
+      />
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      <section className="theme-panel rounded-xl border p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-[15px] font-medium text-slate-900">Create leave application</h2>
+    <div className="space-y-4">
+      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+        <button type="button" onClick={() => setTab("leave")} className={tabClass("leave")}>
+          Leave
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (tab !== "create") openCreateTab();
+          }}
+          className={tabClass("create")}
+        >
+          Create leave
+        </button>
+        <button type="button" onClick={() => setTab("pending")} className={tabClass("pending")}>
+          Pending approvals{pendingCount > 0 ? ` (${pendingCount})` : ""}
+        </button>
+      </div>
+
+      {error ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      ) : null}
+
+      {tab === "leave" ? (
+        <section className="theme-panel rounded-xl border p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[15px] font-medium text-slate-900">Leave</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Search an employee to view balances and leave history.
+              </p>
+            </div>
+            <PrimaryButton type="button" onClick={openCreateTab}>
+              Create leave
+            </PrimaryButton>
+          </div>
+          <div className="mt-4">{employeeSearch}</div>
+          {loadingEmployee ? (
+            <p className="mt-4 text-sm text-slate-500">Loading employee leave data…</p>
+          ) : selectedEmployee ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-slate-900">{composeEmployeeDisplayName(selectedEmployee)}</p>
+                  <p className="text-xs text-slate-500">{selectedEmployee.employee_code ?? "—"}</p>
+                </div>
+                {employeeBalances ? (
+                  <div className="flex flex-wrap gap-2">
+                    <BalancePill label="Annual left" available={employeeBalances.annual?.available ?? 0} />
+                    <BalancePill label="Sick left" available={employeeBalances.sick?.available ?? 0} />
+                    <BalancePill label="Off days left" available={employeeBalances.off_days?.available ?? 0} />
+                  </div>
+                ) : null}
+              </div>
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Leave history
+                </p>
+                <LeaveRecordsTable
+                  records={employeeLeaves}
+                  canApproveLeave={canApproveLeave}
+                  onApprove={approve}
+                  onReject={reject}
+                  onEdit={openEdit}
+                  onDelete={remove}
+                  onPrint={printLeave}
+                  highlightedLeaveDayId={highlightedLeaveDayId}
+                  leaveRowRefs={leaveRowRefs}
+                  emptyLabel="No leave applications for this employee yet."
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">
+              Search and select an employee to view balances and leave history.
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {tab === "create" ? (
+        <section className="theme-panel rounded-xl border p-5 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-[15px] font-medium text-slate-900">Create leave</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Search an employee, enter leave dates and reason, then submit for administrator approval.
+              Enter leave dates and a reason, then submit for administrator approval.
             </p>
           </div>
-          <PrimaryButton type="button" onClick={openCreate}>
-            New leave application
-          </PrimaryButton>
-        </div>
-
-        <div className="mt-4 max-w-xl">
-          <label className="mb-1 block text-sm font-medium text-slate-700">Search employee</label>
-          <PosSearchableSelect
-            value={selectedEmployeeId}
-            onChange={(value, option) => {
-              setSelectedEmployeeId(value);
-              setSelectedEmployeeLabel(option?.label ?? "");
-            }}
-            options={selectedEmployeeOptions}
-            loadOptions={loadEmployeeOptions}
-            placeholder="Search by name, code, or payroll #…"
-            searchPlaceholder="Type to search employees…"
-            idleSearchLabel="Type at least one character to search"
-            emptyLabel="No matching employees"
-            minSearchLength={1}
-          />
-        </div>
-
-        {loadingEmployee ? (
-          <p className="mt-4 text-sm text-slate-500">Loading employee leave data…</p>
-        ) : selectedEmployee ? (
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-medium text-slate-900">{composeEmployeeDisplayName(selectedEmployee)}</p>
-                <p className="text-xs text-slate-500">{selectedEmployee.employee_code ?? "—"}</p>
-              </div>
-              {employeeBalances ? (
-                <div className="flex flex-wrap gap-2">
-                  <BalancePill label="Annual left" available={employeeBalances.annual?.available ?? 0} />
-                  <BalancePill label="Sick left" available={employeeBalances.sick?.available ?? 0} />
-                  <BalancePill label="Off days left" available={employeeBalances.off_days?.available ?? 0} />
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Leave history
-              </p>
-              <LeaveRecordsTable
-                records={employeeLeaves}
-                canApproveLeave={canApproveLeave}
-                onApprove={approve}
-                onReject={reject}
-                onEdit={openEdit}
-                onDelete={remove}
-                onPrint={printLeave}
-                highlightedLeaveDayId={highlightedLeaveDayId}
-                leaveRowRefs={leaveRowRefs}
-                emptyLabel="No leave applications for this employee yet."
+          {form ? (
+            <form onSubmit={save} className="space-y-4">
+              <HrOffDayAssignmentFields
+                form={form}
+                setForm={setForm}
+                extra={{
+                  editingRow: null,
+                  presetEmployeeId: selectedEmployeeId,
+                  presetEmployeeLabel: selectedEmployeeLabel,
+                }}
+                setLeavePreview={setLeavePreview}
               />
-            </div>
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-slate-500">
-            Search and select an employee to view balances and leave history.
-          </p>
-        )}
-      </section>
+              {formError ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {formError}
+                </p>
+              ) : null}
+              <PrimaryButton type="submit" disabled={saving}>
+                {saving ? "Submitting…" : "Submit for approval"}
+              </PrimaryButton>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
 
-      {canApproveLeave || pendingLeaves.length > 0 ? (
+      {tab === "pending" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <div className="mb-3">
-            <h2 className="text-[15px] font-medium text-slate-900">Pending approval</h2>
+            <h2 className="text-[15px] font-medium text-slate-900">Pending approvals</h2>
             <p className="mt-1 text-sm text-slate-500">
               Leave applications waiting for administrator approval.
             </p>
@@ -501,19 +589,15 @@ export function EmployeeLeaveHub({
         </section>
       ) : null}
 
-      {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-      ) : null}
-
-      {form ? (
+      {form && editing ? (
         <FormDrawer
-          title={editing ? "Edit leave application" : "New leave application"}
+          title="Edit leave application"
           open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
+          onClose={closeEditDrawer}
           onSubmit={save}
           saving={saving}
           error={formError}
-          submitLabel={editing ? "Save changes" : "Submit for approval"}
+          submitLabel="Save changes"
           wide
         >
           <HrOffDayAssignmentFields

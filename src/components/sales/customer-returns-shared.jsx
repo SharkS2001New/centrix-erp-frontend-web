@@ -178,13 +178,11 @@ export function returnLineCountId(line) {
   return String(line.sale_item_id ?? line.product_code ?? "line");
 }
 
-/** Packaging levels shown when entering a Centrix return qty. */
+/** Packaging levels shown when entering a Centrix return qty.
+ * Dual UOM products (bag + kg) always get pack and small inputs, including retail lines.
+ * Credit is proportional to base qty — never pack qty × conversion factor × pack price. */
 export function returnQtyInputLevels(line, uom) {
-  const levels = uomStockTakeLevels(uom);
-  if (Number(line?.on_wholesale_retail) === 1) {
-    return levels.filter((level) => level.key === "small");
-  }
-  return levels;
+  return uomStockTakeLevels(uom);
 }
 
 /** Build empty hierarchy count fields for a return line. */

@@ -28,6 +28,7 @@ import {
   THERMAL_CONTENT_WIDTH_MM,
   THERMAL_PAPER_WIDTH_MM,
 } from "@/lib/thermal-receipt-layout";
+import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 
 const DEFAULT_HOTEL_FOOTER = [
   "You were served by: {username}",
@@ -287,6 +288,7 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
       .footer-text { font-size: ${fpx(8, true)}; }
       .footer-powered-by { font-size: ${fpx(7, true)}; }
     }
+    ${orgDocumentTemplateCss(printSettings?.hospitality_check_document_template, { layout: "thermal" })}
   </style>
 </head>
 <body class="centrix-print-thermal">

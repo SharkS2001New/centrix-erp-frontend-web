@@ -36,7 +36,7 @@ export function GovernmentDeductionsAside() {
   const refById = new Map((reference?.items ?? []).map((i) => [i.id, i]));
 
   return (
-    <div className="theme-panel rounded-xl border p-4 shadow-sm lg:sticky lg:top-6">
+    <div className="theme-panel rounded-xl border p-4 shadow-sm">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
         Government deductions (Kenya)
       </h2>

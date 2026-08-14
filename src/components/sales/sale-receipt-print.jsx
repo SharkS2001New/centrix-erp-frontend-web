@@ -42,6 +42,7 @@ import {
 } from "@/lib/thermal-receipt-layout";
 import { combineIdenticalSaleItemsForPrint } from "@/lib/sale-receipt-line-combine";
 import { resolveSaleReceiptChangeGiven, resolveSaleReceiptTopupAmount } from "@/lib/checkout-payment-splits";
+import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 
 function tendersFromSalePayments(sale) {
   const payments = Array.isArray(sale?.payments) ? sale.payments : [];
@@ -545,6 +546,7 @@ export function buildSaleReceiptHtml(
       .kra-etims-caption { font-size: ${px(8, true)}; padding: 0 1px; overflow-wrap: anywhere; word-break: break-word; }
       .kra-buyer-pin, .kra-buyer-detail { font-size: ${px(9, true)}; font-weight: 700; }
     }
+    ${orgDocumentTemplateCss(salesSettings?.receipt_document_template, { layout: "thermal" })}
   </style>
 </head>
 <body class="centrix-print-thermal">

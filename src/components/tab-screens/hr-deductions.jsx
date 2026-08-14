@@ -489,6 +489,7 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
 
 export function HrDeductionsScreen() {
   const [typesVersion, setTypesVersion] = useState(0);
+  const [tab, setTab] = useState("govt");
   const bumpTypes = useCallback(() => setTypesVersion((v) => v + 1), []);
 
   const loadEmployeesExtra = useCallback(async () => {
@@ -505,17 +506,29 @@ export function HrDeductionsScreen() {
     return { employees: emps.data ?? [], types: types.data ?? [] };
   }, [typesVersion]);
 
+  const tabClass = (id) =>
+    `rounded-lg px-3 py-1.5 text-sm font-medium ${
+      tab === id ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
+    }`;
+
   return (
     <CatalogPageShell
       title="Deductions"
       subtitle="Government statutory deductions and custom payroll deductions"
     >
-      <div className="grid gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-4">
-          <GovernmentDeductionsAside />
-        </div>
+      <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1">
+        <button type="button" className={tabClass("govt")} onClick={() => setTab("govt")}>
+          Govt deductions
+        </button>
+        <button type="button" className={tabClass("other")} onClick={() => setTab("other")}>
+          Other deductions
+        </button>
+      </div>
 
-        <div className="space-y-10 lg:col-span-8">
+      {tab === "govt" ? (
+        <GovernmentDeductionsAside />
+      ) : (
+        <div className="space-y-10">
           <HrCrudPage
             embedded
             title="Other deductions"
@@ -714,7 +727,7 @@ export function HrDeductionsScreen() {
             )}
           />
         </div>
-      </div>
+      )}
     </CatalogPageShell>
   );
 }

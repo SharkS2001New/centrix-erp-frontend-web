@@ -41,7 +41,6 @@ export function AttendanceClockDevicesSettings() {
   const [probeById, setProbeById] = useState({});
   const probedKeyRef = useRef("");
   const devicesRef = useRef(devices);
-  devicesRef.current = devices;
   const [editDevice, setEditDevice] = useState(null);
   const [editForm, setEditForm] = useState({
     location: "",
@@ -72,7 +71,11 @@ export function AttendanceClockDevicesSettings() {
     load();
   }, [load]);
 
-  async function testDeviceConnection(device, { silent = false } = {}) {
+  useEffect(() => {
+    devicesRef.current = devices;
+  }, [devices]);
+
+  const testDeviceConnection = useCallback(async (device, { silent = false } = {}) => {
     setConnectionTestingId(device.id);
     setProbeById((prev) => ({
       ...prev,
@@ -110,7 +113,7 @@ export function AttendanceClockDevicesSettings() {
     } finally {
       setConnectionTestingId(null);
     }
-  }
+  }, [organizationApiPath]);
 
   function openEdit(device) {
     setEditDevice(device);
@@ -268,7 +271,7 @@ export function AttendanceClockDevicesSettings() {
     return () => {
       cancelled = true;
     };
-  }, [loading, deviceIdsKey]);
+  }, [loading, deviceIdsKey, testDeviceConnection]);
 
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">

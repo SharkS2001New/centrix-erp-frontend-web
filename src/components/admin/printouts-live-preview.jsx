@@ -63,7 +63,7 @@ const PREVIEW_OPTION_LABELS = {
   loading_sheet: "Loading sheet",
   picking_list: "Picking list",
   trip_chart: "Trip chart list",
-  payroll_receipt: "Payroll receipt (payslip)",
+  payroll_receipt: "Salary payment receipt",
 };
 
 const PREVIEW_TYPOGRAPHY_VARIANT = {
@@ -234,6 +234,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       printedBy: "Preview",
       includeShelfLocation: !salesLayout,
       layout: salesLayout ? "sales" : "distribution",
+      printSettings: loadingSheetPrintPayloadFromForm(form),
     });
   }
 
@@ -245,6 +246,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       trip: sample.trip,
       documentFooterText: resolvePrintFooter(general, "trip_chart"),
       printedBy: "Preview",
+      printSettings: loadingSheetPrintPayloadFromForm(form),
     });
   }
 

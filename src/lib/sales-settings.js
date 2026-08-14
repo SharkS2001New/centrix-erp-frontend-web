@@ -813,6 +813,7 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     pos_receipt_payment_details: _posReceiptPaymentDetails,
     route_receipt_payment_details: _routeReceiptPaymentDetails,
     invoice_valid_days: _invoiceValidDays,
+    receipt_document_template: _receiptDocumentTemplate,
     invoice_document_template: _invoiceDocumentTemplate,
     invoice_print_delivery_terms: _invoicePrintDeliveryTerms,
     invoice_print_footer_lines: _invoicePrintFooterLines,

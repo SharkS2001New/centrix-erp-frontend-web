@@ -16,8 +16,10 @@ import {
   orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
+import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 
 const PAYROLL_PRINT_VARIANT = "payroll_receipt";
+const PAYROLL_DOCUMENT_TITLE = "Salary Payment Receipt";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -112,10 +114,10 @@ function buildReceiptHtml(line, employee, options) {
       : "";
 
   const head = orgHeaderHtml
-    ? `<header class="receipt-head branded">${orgHeaderHtml}<h2>Payroll receipt</h2><p class="period">${escapeHtml(periodText)}</p></header>`
+    ? `<header class="receipt-head branded">${orgHeaderHtml}<h2>${PAYROLL_DOCUMENT_TITLE}</h2><p class="period">${escapeHtml(periodText)}</p></header>`
     : `<header class="receipt-head">
         <div class="org">${escapeHtml(orgName)}</div>
-        <h2>Payroll receipt</h2>
+        <h2>${PAYROLL_DOCUMENT_TITLE}</h2>
         <p class="period">${escapeHtml(periodText)}</p>
       </header>`;
 
@@ -404,6 +406,7 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
         max-width: 210mm;
       }
     }
+    ${orgDocumentTemplateCss(generalSettings?.payroll_receipt_document_template, { layout: "classic" })}
   `;
 }
 
@@ -443,7 +446,7 @@ export function buildPayrollReceiptDocument({
     }),
   );
   const pages = buildReceiptPages(receiptsHtml, { single });
-  const title = single ? "Payroll receipt" : "Payroll receipts";
+  const title = single ? PAYROLL_DOCUMENT_TITLE : `${PAYROLL_DOCUMENT_TITLE}s`;
 
   return `<!DOCTYPE html>
 <html>

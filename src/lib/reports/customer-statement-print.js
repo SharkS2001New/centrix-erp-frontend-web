@@ -3,10 +3,10 @@ import {
   escapeHtml,
   formatDocAmount,
   formatDocDate,
-  printBrandedA4Document,
   resolveDocumentBranding,
 } from "@/lib/branded-document-print";
 import { brandingWithDocumentLogo } from "@/lib/document-logo-settings";
+import { printHtmlDocument } from "@/lib/print-dispatch";
 
 function money(value) {
   const n = Number(value) || 0;
@@ -40,15 +40,11 @@ export function buildCustomerStatementPrintHtml({
   const amountDue = Number(summary?.amount_due ?? summary?.outstanding_balance ?? 0);
   const totalPaid = Number(summary?.total_paid ?? 0);
   const totalCredits = Number(summary?.total_credits ?? 0);
-  const paidAndCredits = totalPaid + totalCredits;
 
   const rowHtml = (lines ?? [])
     .map((row) => {
       const amount = Number(row.amount) || 0;
-      const amountCell =
-        row.hideAmount || amount === 0
-          ? ""
-          : money(amount);
+      const amountCell = row.hideAmount || (amount === 0 && row.type === "forward") ? "" : money(amount);
       return `<tr>
         <td>${escapeHtml(formatDocDate(row.date))}</td>
         <td>${escapeHtml(row.description)}</td>
@@ -86,7 +82,6 @@ export function buildCustomerStatementPrintHtml({
   const bodyHtml = `
     <div class="statement-head">
       <div>
-        <div class="doc-title" style="text-align:left;margin:4px 0 10px;">Statement</div>
         <p><span class="meta-label">TO:</span> ${escapeHtml(customer?.customer_name ?? "—")}</p>
         <p>${escapeHtml(customerAddress(customer))}</p>
       </div>
@@ -111,47 +106,37 @@ export function buildCustomerStatementPrintHtml({
     </table>
     <div class="totals-row">
       <div class="totals-box">
-        <p><strong>Amount:</strong> Ksh${escapeHtml(formatDocAmount(amountDue + paidAndCredits))}</p>
-        <p><strong>Paid / credits:</strong> (${escapeHtml(formatDocAmount(paidAndCredits))})</p>
+        <p><strong>Amount:</strong> Ksh${escapeHtml(formatDocAmount(amountDue + totalPaid))}</p>
+        <p><strong>Paid:</strong> (${escapeHtml(formatDocAmount(totalPaid))})</p>
+        ${totalCredits ? `<p><strong>Credit notes:</strong> (${escapeHtml(formatDocAmount(totalCredits))})</p>` : ""}
         <p><strong>Balance:</strong> Ksh${escapeHtml(formatDocAmount(amountDue))}</p>
       </div>
     </div>
     ${agingRow}
   `;
 
-  return buildBrandedA4DocumentHtml({
+  const html = buildBrandedA4DocumentHtml({
     title: "Statement",
     branding,
     organization,
     generalSettings,
     bodyHtml,
     printedBy: null,
-  }).replace(
+  });
+
+  return html.replace(
     "</style>",
     `
-    .statement-head { display:flex; justify-content:space-between; gap:24px; margin-bottom:12px; }
+    .statement-head { display:flex; justify-content:space-between; gap:24px; margin-bottom:12px; align-items:flex-start; }
     .statement-meta { text-align:right; }
     .statement-meta p, .statement-head p { margin:2px 0; }
     table.aging-table { margin-top:16px; }
+    .doc-title { text-align:left; font-size:22px; letter-spacing:0.04em; }
     </style>`,
   );
 }
 
 export function printCustomerStatement(payload) {
   const html = buildCustomerStatementPrintHtml(payload);
-  return printBrandedA4Document({
-    title: "Statement",
-    branding: brandingWithDocumentLogo(
-      resolveDocumentBranding({
-        organization: payload.organization,
-        generalSettings: payload.generalSettings,
-      }),
-      payload.generalSettings,
-      "invoice",
-    ),
-    organization: payload.organization,
-    generalSettings: payload.generalSettings,
-    bodyHtml: "",
-    rawHtml: html,
-  });
+  return printHtmlDocument(html, { jobType: "document" });
 }

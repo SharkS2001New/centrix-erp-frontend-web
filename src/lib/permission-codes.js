@@ -281,6 +281,7 @@ export const P = {
     assist: { create: "ai.assist.create" },
   },
   hr: {
+    view: "hr.view",
     manage: "hr.manage",
     employees: { view: "hr.employees.view", create: "hr.employees.create", edit: "hr.employees.edit", delete: "hr.employees.delete" },
     departments: { view: "hr.departments.view" },

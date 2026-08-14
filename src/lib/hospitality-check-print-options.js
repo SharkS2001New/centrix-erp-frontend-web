@@ -34,6 +34,7 @@ export function normalizeHospitalityCheckPrintSettings(settings = null) {
     check_receipt_payment_details: h.check_receipt_payment_details ?? null,
     use_same_print_phones_for_check: h.use_same_print_phones_for_check !== false,
     check_print_phones: h.check_print_phones ?? { tel1: "", tel2: "" },
+    hospitality_check_document_template: h.hospitality_check_document_template ?? "default",
   };
 }
 

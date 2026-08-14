@@ -1,4 +1,13 @@
+import {
+  DEFAULT_DOCUMENT_TEMPLATE_ID,
+  documentTemplateFormFromDistribution,
+  documentTemplateDistributionPayloadFromForm,
+} from "@/lib/document-print-templates";
+
 export const LOADING_SHEET_PRINT_DEFAULTS = {
+  loading_sheet_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+  picking_list_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
+  trip_chart_document_template: DEFAULT_DOCUMENT_TEMPLATE_ID,
   loading_sheet_footer_lines: "",
   loading_sheet_show_signatures: true,
   loading_sheet_show_qty_column: true,
@@ -50,6 +59,7 @@ export function loadingSheetPrintFormFromApi(res) {
     loading_sheet_show_trip_expenses: distribution.loading_sheet_show_trip_expenses !== false,
     loading_sheet_show_trip_profit: distribution.loading_sheet_show_trip_profit !== false,
     loading_sheet_default_checked_by: String(distribution.loading_sheet_default_checked_by ?? ""),
+    ...documentTemplateFormFromDistribution(distribution),
   };
 }
 
@@ -63,6 +73,7 @@ export function loadingSheetPrintPayloadFromForm(form) {
     loading_sheet_show_trip_expenses: Boolean(form.loading_sheet_show_trip_expenses),
     loading_sheet_show_trip_profit: Boolean(form.loading_sheet_show_trip_profit),
     loading_sheet_default_checked_by: String(form.loading_sheet_default_checked_by ?? "").trim(),
+    ...documentTemplateDistributionPayloadFromForm(form),
   };
 }
 

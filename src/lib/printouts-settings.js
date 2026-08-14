@@ -35,6 +35,15 @@ import {
 import { emptyPrintPhones } from "@/lib/document-print-phones";
 import { isPlatformMobileOrdersEnabled } from "@/lib/platform-org-features";
 import { salesOrganizationFormFromApi } from "@/lib/sales-settings";
+import {
+  documentTemplateFormDefaults,
+  documentTemplateFormFromGeneral,
+  documentTemplateFormFromHospitality,
+  documentTemplateFormFromSales,
+  documentTemplateGeneralPayloadFromForm,
+  documentTemplateHospitalityPayloadFromForm,
+  documentTemplateSalesPayloadFromForm,
+} from "@/lib/document-print-templates";
 
 export const EMPTY_PRINTOUTS_FORM = {
   document_footer_text: "",
@@ -42,6 +51,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   document_header_display: "auto",
   ...printFontFormDefaults(),
   ...documentLogoFormDefaults(),
+  ...documentTemplateFormDefaults(),
   print_footer_receipt: defaultReceiptBodyFooterForAdmin(),
   print_footer_a4_invoice: "",
   print_footer_hospitality_check:
@@ -96,14 +106,11 @@ export const EMPTY_PRINTOUTS_FORM = {
     note: "",
   },
   invoice_valid_days: "7",
-  invoice_document_template: "default",
-  credit_note_document_template: "default",
   invoice_print_delivery_terms: "",
   invoice_print_footer_lines: "",
   print_footer_credit_note: "",
   proforma_valid_days: String(PROFORMA_PRINT_DEFAULTS.proforma_valid_days),
   show_print_proforma_invoice_option: true,
-  proforma_document_template: "default",
   show_proforma_payment_details: true,
   proforma_payment_details: {
     title: "Payment details",
@@ -128,7 +135,6 @@ export const EMPTY_PRINTOUTS_FORM = {
   proforma_print_phones: emptyPrintPhones(),
   use_same_print_phones_for_lpo: true,
   lpo_print_phones: emptyPrintPhones(),
-  lpo_document_template: "default",
   lpo_print_delivery_notes: "",
   lpo_print_kebs_warning: "",
   lpo_print_vat_note: "",
@@ -157,7 +163,7 @@ export const PRINTOUT_KIND_LABELS = {
   loading_sheet: "Loading sheets",
   picking_list: "Picking lists",
   trip_chart: "Trip chart lists",
-  payroll_receipt: "HR payroll receipts (payslips)",
+  payroll_receipt: "Salary payment receipts",
 };
 
 /**
@@ -276,6 +282,7 @@ export function printoutsGeneralFormFromApi(res) {
     ...printFontFormFromGeneral(merged),
     ...documentLogoFormFromGeneral(merged),
     ...printFooterFormFromGeneral(merged),
+    ...documentTemplateFormFromGeneral(merged),
   };
 }
 
@@ -295,6 +302,7 @@ export function printoutsSalesFormFromApi(res) {
     ...invoicePrintFormFromApi(sales),
     ...proformaPrintFormFromApi(sales),
     ...creditNotePrintFormFromApi(sales),
+    ...documentTemplateFormFromSales(sales),
   };
 }
 
@@ -355,6 +363,7 @@ export function printoutsHospitalityFormFromApi(res = {}) {
       tel1: String(phones.tel1 ?? ""),
       tel2: String(phones.tel2 ?? ""),
     },
+    ...documentTemplateFormFromHospitality(h),
   };
 }
 
@@ -385,6 +394,7 @@ export function printoutsHospitalityPayloadFromForm(form) {
       tel1: String(form.check_print_phones?.tel1 ?? "").trim(),
       tel2: String(form.check_print_phones?.tel2 ?? "").trim(),
     },
+    ...documentTemplateHospitalityPayloadFromForm(form),
   };
 }
 
@@ -396,6 +406,7 @@ export function printoutsGeneralPayloadFromForm(form) {
     ...printFontPayloadFromForm(form),
     ...documentLogoPayloadFromForm(form),
     ...printFooterPayloadFromForm(form),
+    ...documentTemplateGeneralPayloadFromForm(form),
   };
 }
 
@@ -428,6 +439,7 @@ export function printoutsSalesPayloadFromForm(form) {
     ...invoicePrintPayloadFromForm(form),
     ...proformaPrintPayloadFromForm(form),
     ...creditNotePrintPayloadFromForm(form),
+    ...documentTemplateSalesPayloadFromForm(form),
   };
 }
 

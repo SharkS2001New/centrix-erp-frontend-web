@@ -17,6 +17,7 @@ import {
   orgPrintInkStyles,
 } from "@/lib/print-typography";
 import { saleCustomerLabel } from "@/lib/sales";
+import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -199,6 +200,7 @@ export function buildTripChartListHtml({
   financialSummary = null,
   documentFooterText = null,
   printedBy = null,
+  printSettings = null,
 } = {}) {
   const branding = brandingWithDocumentLogo(
     resolveReportBranding({
@@ -248,7 +250,8 @@ export function buildTripChartListHtml({
 <head>
   <meta charset="utf-8" />
   <title>Trip Chart List${meta.tripCode ? ` — ${escapeHtml(meta.tripCode)}` : ""}</title>
-  <style>${tripChartListPrintStyles(generalSettings)}</style>
+  <style>${tripChartListPrintStyles(generalSettings)}
+  ${orgDocumentTemplateCss(printSettings?.trip_chart_document_template, { layout: "classic" })}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   <div class="page">

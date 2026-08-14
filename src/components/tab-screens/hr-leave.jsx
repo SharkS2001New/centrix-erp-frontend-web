@@ -16,11 +16,11 @@ export function HrLeaveScreen() {
 
   return (
     <CatalogPageShell
-      title="Leave applications"
+      title="Leave"
       subtitle={
         isAdmin
-          ? "Search an employee, submit leave with a reason, print the application, and approve pending requests."
-          : "Search an employee and submit leave applications for administrator approval."
+          ? "View leave history, create applications, and approve pending requests."
+          : "View leave history and submit applications for administrator approval."
       }
       action={
         <CatalogListExport
