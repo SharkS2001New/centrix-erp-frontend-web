@@ -36,7 +36,7 @@ export const HR_PAYROLL_DEFAULTS = {
   evening_clock_out_from: "16:00",
   evening_clock_out_to: "22:00",
   clock_in_late_after: "08:15",
-  hikvision_agent_poll_minutes: 5,
+  hikvision_agent_poll_minutes: 60,
 };
 
 export function mergeHrPayrollSettings(moduleSettings) {
@@ -155,7 +155,7 @@ export function hrPayrollFormFromApi(res) {
     evening_clock_out_from: hr.evening_clock_out_from || "16:00",
     evening_clock_out_to: hr.evening_clock_out_to || "22:00",
     clock_in_late_after: hr.clock_in_late_after || "08:15",
-    hikvision_agent_poll_minutes: String(hr.hikvision_agent_poll_minutes ?? 5),
+    hikvision_agent_poll_minutes: String(hr.hikvision_agent_poll_minutes ?? 60),
   };
 }
 
@@ -195,6 +195,6 @@ export function hrPayrollPayloadFromForm(form) {
     evening_clock_out_from: form.evening_clock_out_from || "16:00",
     evening_clock_out_to: form.evening_clock_out_to || "22:00",
     clock_in_late_after: form.clock_in_late_after || "08:15",
-    hikvision_agent_poll_minutes: Math.max(1, Math.min(60, Number(form.hikvision_agent_poll_minutes) || 5)),
+    hikvision_agent_poll_minutes: Math.max(1, Math.min(60, Number(form.hikvision_agent_poll_minutes) || 60)),
   };
 }

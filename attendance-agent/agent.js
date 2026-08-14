@@ -156,13 +156,26 @@ async function submitCommandResult(config, commandId, result) {
   }
 }
 
-function clampPollSeconds(value, fallback = 300) {
+function isAttendancePollWindow(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+  const minutes = hour * 60 + minute;
+  return minutes >= 7 * 60 + 20 || minutes <= 2 * 60;
+}
+
+function clampPollSeconds(value, fallback = 3600) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 60) return fallback;
   return Math.min(3600, Math.floor(n));
 }
 
-let attendanceIntervalSec = 300;
+let attendanceIntervalSec = 3600;
 let attendanceTimer = null;
 let runSyncFn = async () => {};
 
@@ -444,7 +457,7 @@ async function main() {
     return;
   }
 
-  attendanceIntervalSec = clampPollSeconds(config.pollIntervalSeconds, 300);
+  attendanceIntervalSec = clampPollSeconds(config.pollIntervalSeconds, 3600);
   const commandPollSec = 2;
   console.log(
     `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${attendanceIntervalSec}s (admin can change this in Centrix)`,
@@ -461,6 +474,10 @@ async function main() {
   };
 
   const runSync = async () => {
+    if (!isAttendancePollWindow()) {
+      console.log("[attendance-agent] Skipping poll outside 07:20–02:00 Africa/Nairobi");
+      return;
+    }
     try {
       await syncOnce(config);
     } catch (err) {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { AttendanceGapsBanner } from "@/components/hr/attendance-gaps-banner";
 import { P } from "@/lib/permission-codes";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -44,8 +45,10 @@ export function HrMissedPunchesScreen() {
   const canRetry = hasPermission(P.hr.manage);
   const [unapplied, setUnapplied] = useState([]);
   const [missingOut, setMissingOut] = useState([]);
+  const [gapCounts, setGapCounts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
+  const [mapping, setMapping] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +56,7 @@ export function HrMissedPunchesScreen() {
       const data = await apiRequest("/attendance/missed-punches");
       setUnapplied(data.unapplied_terminal_punches ?? []);
       setMissingOut(data.missing_clock_out ?? []);
+      setGapCounts(data.counts ?? null);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load missed punches");
       setUnapplied([]);
@@ -74,11 +78,46 @@ export function HrMissedPunchesScreen() {
       } else if (Array.isArray(result.errors) && result.errors.length) {
         notifyError(result.errors[0]);
       } else {
-        notifySuccess("No pending punches were ready to apply. Map the terminal employee ID first.");
+        notifySuccess("No pending punches were ready to apply. Try Auto-map first.");
       }
       await load();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Retry failed");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  async function autoMap() {
+    setMapping(true);
+    try {
+      const result = await apiRequest("/attendance/missed-punches/auto-map", { method: "POST" });
+      const mapped = Number(result.mapped ?? 0);
+      const applied = Number(result.applied ?? result.retried ?? 0);
+      notifySuccess(
+        `Auto-mapped ${mapped} person${mapped === 1 ? "" : "s"}` +
+          (applied ? `, applied ${applied} punch${applied === 1 ? "" : "es"}` : "") +
+          ".",
+      );
+      if (Array.isArray(result.errors) && result.errors.length) {
+        notifyError(result.errors[0]);
+      }
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Auto-map failed");
+    } finally {
+      setMapping(false);
+    }
+  }
+
+  async function closeClockOut(row) {
+    setRetrying(true);
+    try {
+      await apiRequest(`/attendance/missed-punches/${row.id}/clock-out`, { method: "POST" });
+      notifySuccess(`Clocked out ${displayField(row.employee_name)}.`);
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not add clock-out");
     } finally {
       setRetrying(false);
     }
@@ -90,12 +129,23 @@ export function HrMissedPunchesScreen() {
       subtitle="Terminal scans that did not create HR attendance, and shifts still waiting for a clock-out"
       action={
         canRetry ? (
-          <PrimaryButton type="button" disabled={retrying || loading} onClick={() => void retryPending()}>
-            {retrying ? "Retrying…" : "Retry pending punches"}
-          </PrimaryButton>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={mapping || retrying || loading}
+              onClick={() => void autoMap()}
+              className={SECONDARY_BTN_CLASS}
+            >
+              {mapping ? "Mapping…" : "Auto-map terminal IDs"}
+            </button>
+            <PrimaryButton type="button" disabled={retrying || mapping || loading} onClick={() => void retryPending()}>
+              {retrying ? "Retrying…" : "Retry pending punches"}
+            </PrimaryButton>
+          </div>
         ) : null
       }
     >
+      <AttendanceGapsBanner counts={gapCounts} />
       <p className="mb-6 text-sm text-slate-600">
         Map the terminal person ID on{" "}
         <Link href="/admin/attendance-clock" className="font-medium text-[#185FA5] hover:underline">
@@ -172,6 +222,7 @@ export function HrMissedPunchesScreen() {
                   <th className="px-3 py-2">Clock in</th>
                   <th className="px-3 py-2">Hours open</th>
                   <th className="px-3 py-2">Device</th>
+                  {canRetry ? <th className="px-3 py-2">Action</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -184,6 +235,18 @@ export function HrMissedPunchesScreen() {
                     <td className="px-3 py-2 text-xs">{formatWhen(row.clock_in_at)}</td>
                     <td className="px-3 py-2 text-xs">{row.hours_open != null ? `${row.hours_open}h` : "—"}</td>
                     <td className="px-3 py-2 text-xs">{displayField(row.device_identifier)}</td>
+                    {canRetry ? (
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          disabled={retrying}
+                          onClick={() => void closeClockOut(row)}
+                          className="text-xs font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                        >
+                          Clock out now
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

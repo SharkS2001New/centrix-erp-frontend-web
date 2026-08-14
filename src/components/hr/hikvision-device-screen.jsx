@@ -307,6 +307,27 @@ export function HikvisionDeviceScreen() {
     }
   }
 
+  async function autoMapDeviceUsers() {
+    setBusy(true);
+    try {
+      const result = await apiRequest(`${base}/sync/employees/auto-map`, { method: "POST" });
+      const mapped = Number(result.mapped ?? 0);
+      const applied = Number(result.applied ?? 0);
+      notifySuccess(
+        `Auto-mapped ${mapped} person${mapped === 1 ? "" : "s"}` +
+          (applied ? `, applied ${applied} pending punch${applied === 1 ? "" : "es"}` : "") +
+          ".",
+      );
+      await loadUnmappedFromDevice();
+      await loadOverview();
+      await loadStoredEvents();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Auto-map failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function loadUnmappedAndRefresh() {
     setBusy(true);
     try {
@@ -736,7 +757,7 @@ export function HikvisionDeviceScreen() {
               </div>
               <p className="text-xs text-slate-500">
                 Punches push automatically while <strong>CentrixAttendanceAgent</strong> is running (interval
-                is set in Admin → Attendance clock-in, default 5 minutes). Sync now is only needed to pull
+                is set in Admin → Attendance clock-in, default 60 minutes). Sync now is only needed to pull
                 immediately. Raw events are stored first; Centrix then applies clock in/out. Use Retry after
                 mapping an employee if punches were stuck as Pending.
               </p>
@@ -762,6 +783,14 @@ export function HikvisionDeviceScreen() {
               onClick={() => void syncEmployeesToDevice()}
             >
               Sync employees → device
+            </PrimaryButton>
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={busy}
+              onClick={() => void autoMapDeviceUsers()}
+            >
+              Auto-map by number / name
             </PrimaryButton>
             <PrimaryButton
               type="button"
@@ -1038,8 +1067,15 @@ function UserTable({ users, fingerprints }) {
             const fp = fingerprintEnrollment(row, fingerprintsForUser(byEmployee, row));
             const valid = hikvisionValidSummary(row);
             return (
-              <tr key={no || idx} className="border-t border-slate-100">
-                <td className="px-3 py-2 font-mono text-xs">{no || "—"}</td>
+              <tr key={`${no || "row"}-${idx}`} className="border-t border-slate-100">
+                <td className="px-3 py-2 font-mono text-xs">
+                  {no || "—"}
+                  {row.duplicateOnDevice ? (
+                    <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
+                      Duplicate on device
+                    </span>
+                  ) : null}
+                </td>
                 <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
                 <td className="px-3 py-2 text-xs text-slate-500">{row.userType ?? row.UserType ?? "—"}</td>
                 <td className="px-3 py-2">

@@ -282,7 +282,7 @@ export function AttendanceClockSettingsPanel() {
                     min={1}
                     max={60}
                     className={inputClassName()}
-                    value={form.hikvision_agent_poll_minutes || "5"}
+                    value={form.hikvision_agent_poll_minutes || "60"}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, hikvision_agent_poll_minutes: e.target.value }))
                     }
@@ -290,8 +290,9 @@ export function AttendanceClockSettingsPanel() {
                 </Field>
               </div>
               <p className="mt-3 text-xs text-slate-500">
-                The office attendance agent pushes punches on this interval without clicking Sync now.
-                Default is 5 minutes. Keep CentrixAttendanceAgent running on the LAN PC.
+                Centrix pulls punches hourly at :20 from 7:20 AM through 2:00 AM (Africa/Nairobi).
+                Overnight 2:00–7:20 is skipped because there are no punches. The office agent still
+                catch-up-syncs when the PC boots. Keep CentrixAttendanceAgent running on the LAN PC.
               </p>
             </div>
 

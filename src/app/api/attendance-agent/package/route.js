@@ -125,7 +125,7 @@ export async function POST(request) {
         useHttps: Boolean(hik.useHttps),
       },
       pollIntervalSeconds:
-        Number(config.pollIntervalSeconds) > 0 ? Number(config.pollIntervalSeconds) : 300,
+        Number(config.pollIntervalSeconds) > 0 ? Number(config.pollIntervalSeconds) : 3600,
       lookbackMinutes: Number(config.lookbackMinutes) > 0 ? Number(config.lookbackMinutes) : 10080,
     };
 

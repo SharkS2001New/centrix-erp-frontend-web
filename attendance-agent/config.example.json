@@ -10,6 +10,6 @@
     "password": "DEVICE_PASSWORD",
     "useHttps": false
   },
-  "pollIntervalSeconds": 300,
+  "pollIntervalSeconds": 3600,
   "lookbackMinutes": 10080
 }

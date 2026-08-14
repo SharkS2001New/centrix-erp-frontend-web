@@ -30,6 +30,7 @@ import {
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
+import { AttendanceGapsBanner } from "@/components/hr/attendance-gaps-banner";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 import { canApproveLatenessWaivers } from "@/lib/approval-permissions";
 import {
@@ -103,6 +104,7 @@ export function HrAttendanceScreen() {
   const [batchBusy, setBatchBusy] = useState(false);
   const [markingAbsents, setMarkingAbsents] = useState(false);
   const [syncingPunches, setSyncingPunches] = useState(false);
+  const [gapCounts, setGapCounts] = useState(null);
   const {
     selectedIds,
     selectedCount,
@@ -127,6 +129,10 @@ export function HrAttendanceScreen() {
           promise: apiRequest("/attendance/clock-sessions", {
             searchParams: { per_page: 100, today: 1, premises: 1 },
           }),
+        },
+        {
+          key: "gaps",
+          promise: apiRequest("/attendance/missed-punches"),
         },
       ];
 
@@ -155,6 +161,7 @@ export function HrAttendanceScreen() {
 
         const res = result.value;
         if (key === "sessions") setSessions(res.data ?? []);
+        if (key === "gaps") setGapCounts(res.counts ?? null);
         if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
       });
 
@@ -1044,6 +1051,8 @@ export function HrAttendanceScreen() {
           {fieldAttendanceEnabled ? (
             <FieldRepHrLinkageBanner linkage={fieldRepLinkage} canManage={canManageSettings} />
           ) : null}
+
+          <AttendanceGapsBanner counts={gapCounts} />
 
           {canManageSettings ? (
             <p className="mb-4 text-sm text-slate-600">

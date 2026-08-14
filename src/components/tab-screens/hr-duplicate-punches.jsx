@@ -4,9 +4,13 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { AttendanceGapsBanner } from "@/components/hr/attendance-gaps-banner";
+import { P } from "@/lib/permission-codes";
+import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
+  PrimaryButton,
   SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
@@ -37,14 +41,19 @@ function formatWhen(value) {
 }
 
 export function HrDuplicatePunchesScreen() {
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission(P.hr.manage) || hasPermission(P.hr.attendance.view);
   const [duplicates, setDuplicates] = useState([]);
+  const [gapCounts, setGapCounts] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiRequest("/attendance/missed-punches");
       setDuplicates(data.duplicate_punches ?? []);
+      setGapCounts(data.counts ?? null);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load duplicate punches");
       setDuplicates([]);
@@ -55,11 +64,36 @@ export function HrDuplicatePunchesScreen() {
 
   useTabAwareDataLoad(load);
 
+  async function dismiss(id = null) {
+    setBusy(true);
+    try {
+      const result = await apiRequest("/attendance/duplicate-punches/dismiss", {
+        method: "POST",
+        body: id ? { id } : {},
+      });
+      const n = Number(result.dismissed ?? 0);
+      notifySuccess(n > 0 ? `Dismissed ${n} duplicate punch${n === 1 ? "" : "es"}.` : "Nothing to dismiss.");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not dismiss");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Duplicate punches"
       subtitle="Extra terminal scans in the same hour. Only the first successful punch counts for attendance."
+      action={
+        canManage && duplicates.length > 0 ? (
+          <PrimaryButton type="button" disabled={busy || loading} onClick={() => void dismiss()}>
+            {busy ? "Dismissing…" : "Dismiss all"}
+          </PrimaryButton>
+        ) : null
+      }
     >
+      <AttendanceGapsBanner counts={gapCounts} />
       <p className="mb-6 text-sm text-slate-600">
         These scans are logged so HR can see every fingerprint. They do not change{" "}
         <Link href="/hr/attendance" className="font-medium text-[#185FA5] hover:underline">
@@ -87,6 +121,7 @@ export function HrDuplicatePunchesScreen() {
                   <th className="px-3 py-2">Name on device</th>
                   <th className="px-3 py-2">Device</th>
                   <th className="px-3 py-2">Note</th>
+                  {canManage ? <th className="px-3 py-2">Action</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -102,6 +137,18 @@ export function HrDuplicatePunchesScreen() {
                     <td className="max-w-[320px] px-3 py-2 text-xs text-slate-600">
                       {displayField(row.process_error)}
                     </td>
+                    {canManage ? (
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          disabled={busy || !row.id}
+                          onClick={() => void dismiss(row.id)}
+                          className="text-xs font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                        >
+                          Dismiss
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
