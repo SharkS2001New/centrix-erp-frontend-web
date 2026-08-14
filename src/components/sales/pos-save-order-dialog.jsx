@@ -56,10 +56,13 @@ export function PosSaveOrderDialog({
   const walkInNameRef = useRef(null);
   const amountPaidRef = useRef(null);
   const paymentMethodRef = useRef(null);
+  const handleSaveRef = useRef(() => {});
+  const submitLockRef = useRef(false);
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
+    submitLockRef.current = false;
     if (!open) return;
     const prefillName = String(prefillWalkInName ?? "").trim();
     const prefillNum = String(prefillCustomerNum ?? "").trim();
@@ -230,15 +233,7 @@ export function PosSaveOrderDialog({
     onSave?.(payload);
   }
 
-  const handleSaveRef = useRef(handleSave);
-  const submitLockRef = useRef(false);
-  useEffect(() => {
-    handleSaveRef.current = handleSave;
-  });
-
-  useEffect(() => {
-    if (!open) submitLockRef.current = false;
-  }, [open]);
+  handleSaveRef.current = handleSave;
 
   useEffect(() => {
     if (!open) return undefined;
