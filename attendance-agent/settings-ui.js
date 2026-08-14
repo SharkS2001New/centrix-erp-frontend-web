@@ -218,9 +218,9 @@ function htmlPage(installer = false) {
         <div class="section" id="fpSection">
           <h2>Test fingerprint (local)</h2>
           <p class="hint" style="margin-bottom:12px">
-            Click the button <strong>first</strong>, then place a finger on the terminal.
-            You will get <strong>90 seconds</strong> on a waiting page. Keep this settings
-            window and the Command/service running.
+            Click <strong>Check fingerprint now</strong>, wait for the countdown, then place
+            the finger. Only a punch during those 90 seconds counts. Enroll people on the
+            terminal as <strong>0003</strong> (the number only — not EMP#0003).
           </p>
           <div class="actions" style="margin-top:0">
             <button type="submit" class="primary" name="fpPush" value="0" formaction="/fp-test" formmethod="post">Check fingerprint now</button>
@@ -456,25 +456,26 @@ function fingerprintWaitingHtml(secondsLeft, waitId, host) {
 }
 
 async function snapshotEventKeys(config) {
-  try {
-    const events = await fetchAcsEvents(config, new Date(Date.now() - 15 * 60 * 1000), new Date());
-    return new Set((events || []).map(eventKey));
-  } catch {
-    return new Set();
-  }
+  return new Set();
 }
 
 async function startFingerprintWait(config, push) {
   const id = randomUUID().replace(/-/g, "").slice(0, 12);
-  const keys = await snapshotEventKeys(config);
+  const startedAt = Date.now();
   fingerprintWaits.set(id, {
     push: Boolean(push),
-    deadline: Date.now() + 90_000,
-    startedAt: Date.now(),
-    keys,
+    deadline: startedAt + 90_000,
+    startedAt,
+    keys: new Set(),
     host: config.hikvision?.host || "",
   });
   return id;
+}
+
+function isLivePunch(event, startedAt) {
+  const t = Date.parse(event.punched_at);
+  if (Number.isNaN(t)) return true;
+  return t >= startedAt - 15_000;
 }
 
 async function applyFoundPunch(config, latest, push, events) {
@@ -565,9 +566,9 @@ async function diagnoseNoNewPunch(config, { startedAt, host } = {}) {
     userTotal = found.total;
     if (userTotal < 1) {
       lines.push("ISSUE: Person is not enrolled on the terminal (0 people / no employee ID).");
-      lines.push(
-        "FIX: On the device, add a person whose ID matches the Centrix employee code, enroll their fingerprint, then retry.",
-      );
+        lines.push(
+          "FIX: On the device, add person ID 0003 (digits only, matching Centrix), enroll their fingerprint, then retry during the countdown.",
+        );
     } else {
       const sample = users
         .filter((u) => u.employeeNo)
@@ -604,7 +605,7 @@ async function diagnoseNoNewPunch(config, { startedAt, host } = {}) {
   } else if (userTotal > 0) {
     lines.push("ISSUE: People are enrolled, but there are 0 punches in the last 24 hours.");
     lines.push(
-      "FIX: Enroll a fingerprint on the terminal for one of those IDs, then place that finger during the countdown (after the waiting page is showing).",
+      "FIX: Enroll fingerprint for an ID like 0003, click Check, wait for the countdown, THEN place that finger.",
     );
   }
 
@@ -626,9 +627,11 @@ async function pollFingerprintWait(id) {
   }
   const config = normalizeConfig(ensureConfigFile());
   const left = Math.max(0, Math.ceil((session.deadline - Date.now()) / 1000));
+  const from = new Date(session.startedAt - 10_000);
+  const to = new Date();
   let events = [];
   try {
-    events = await fetchAcsEvents(config, new Date(Date.now() - 15 * 60 * 1000), new Date());
+    events = await fetchAcsEvents(config, from, to);
   } catch (err) {
     if (left <= 0) {
       fingerprintWaits.delete(id);
@@ -637,7 +640,9 @@ async function pollFingerprintWait(id) {
     }
     return { kind: "waiting", left, id, host: session.host };
   }
-  const fresh = (events || []).filter((event) => !session.keys.has(eventKey(event)));
+  const fresh = (events || []).filter(
+    (event) => isLivePunch(event, session.startedAt) && !session.keys.has(eventKey(event)),
+  );
   if (fresh.length) {
     fingerprintWaits.delete(id);
     const latest = fresh[fresh.length - 1];
@@ -1069,25 +1074,21 @@ if (isDirectRun && process.argv.includes("--fingerprint")) {
   console.log("Place your finger on the Hikvision terminal NOW.");
   console.log("Waiting 90 seconds for a new punch...");
   snapshotEventKeys(config)
-    .then(async (keys) => {
+    .then(async () => {
       const startedAt = Date.now();
       const deadline = startedAt + 90_000;
       while (Date.now() < deadline) {
         const left = Math.ceil((deadline - Date.now()) / 1000);
-        process.stdout.write(`\r${left}s left — waiting for a new punch...   `);
+        process.stdout.write(`\r${left}s left — place finger now...   `);
         await new Promise((resolve) => setTimeout(resolve, 3000));
         let events = [];
         try {
-          events = await fetchAcsEvents(
-            config,
-            new Date(Date.now() - 15 * 60 * 1000),
-            new Date(),
-          );
+          events = await fetchAcsEvents(config, new Date(startedAt - 10_000), new Date());
         } catch (err) {
           process.stdout.write(`\n${err.message}\n`);
           continue;
         }
-        const fresh = (events || []).filter((event) => !keys.has(eventKey(event)));
+        const fresh = (events || []).filter((event) => isLivePunch(event, startedAt));
         if (fresh.length) {
           const result = await applyFoundPunch(config, fresh[fresh.length - 1], push, fresh);
           console.log(`\n${result.detail || (result.ok ? "OK" : "Failed")}`);

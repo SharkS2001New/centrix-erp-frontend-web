@@ -559,8 +559,8 @@ export function HikvisionDeviceScreen() {
                 </button>
               </div>
               <p className="text-xs text-slate-500">
-                Uses Centrix <code className="rounded bg-slate-100 px-1">employee_code</code> as Hikvision{" "}
-                <code className="rounded bg-slate-100 px-1">employeeNo</code>.
+                Uses Centrix employee number as Hikvision <code className="rounded bg-slate-100 px-1">employeeNo</code>{" "}
+                like <strong>0003</strong> (not EMP#0003). Enroll fingerprints on the terminal with that ID.
               </p>
               <UserTable users={users} />
             </>
@@ -663,7 +663,7 @@ export function HikvisionDeviceScreen() {
               ) : null}
               <p className="text-xs text-slate-500">
                 Cards are linked to Hikvision <code className="rounded bg-slate-100 px-1">employeeNo</code>{" "}
-                matching Centrix employee codes.
+                like 0003, matching the Centrix employee number.
               </p>
               <CardTable cards={cards} onDelete={(row) => void deleteCardRow(row)} busy={busy} />
             </>
