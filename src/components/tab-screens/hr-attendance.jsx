@@ -102,6 +102,7 @@ export function HrAttendanceScreen() {
   const [bulkResult, setBulkResult] = useState(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [markingAbsents, setMarkingAbsents] = useState(false);
+  const [syncingPunches, setSyncingPunches] = useState(false);
   const {
     selectedIds,
     selectedCount,
@@ -592,6 +593,43 @@ export function HrAttendanceScreen() {
     }
   }
 
+  async function syncFromDevices() {
+    setSyncingPunches(true);
+    try {
+      const result = await apiRequest("/attendance/sync-from-devices", {
+        method: "POST",
+        body:
+          tab === "records"
+            ? { from: historyFromDate, to: historyToDate }
+            : {},
+      });
+      const devices = Number(result.devices ?? 0);
+      const pulled = Number(result.pulled ?? 0);
+      const applied = Number(result.applied ?? 0);
+      const retried = Number(result.retried ?? 0);
+      if (devices === 0) {
+        notifySuccess("No Hikvision clocks to sync. Attendance list refreshed.");
+      } else {
+        notifySuccess(
+          `Synced ${devices} clock${devices === 1 ? "" : "s"} — pulled ${pulled}, applied ${applied}` +
+            (retried ? `, retried ${retried}` : "") +
+            ".",
+        );
+      }
+      if (result.errors?.length) {
+        notifyError(String(result.errors[0]));
+      }
+      await loadActive();
+      if (tab === "records") {
+        await loadHistory();
+      }
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not sync punches");
+    } finally {
+      setSyncingPunches(false);
+    }
+  }
+
   async function markMissingAsAbsent() {
     const ok = await confirm({
       title: "Mark missing as absent?",
@@ -807,8 +845,17 @@ export function HrAttendanceScreen() {
       title="Attendance"
       subtitle="Premises clock-in, company phone, mobile sales app, and manual records — missing scheduled days are marked absent for payroll"
       action={
-        tab === "records" ? (
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={syncingPunches || activeLoading || historyLoading}
+            onClick={() => void syncFromDevices()}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {syncingPunches ? "Refreshing…" : "Refresh attendance"}
+          </button>
+          {tab === "records" ? (
+            <>
             <CatalogListExport
               title="Attendance"
               apiPath="/employee-attendance"
@@ -833,8 +880,9 @@ export function HrAttendanceScreen() {
             <PrimaryButton type="button" onClick={openCreateManual}>
               Create attendance
             </PrimaryButton>
-          </div>
-        ) : null
+            </>
+          ) : null}
+        </div>
       }
     >
       <div className="mb-6 inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
@@ -870,7 +918,7 @@ export function HrAttendanceScreen() {
               <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
                 Admin → Settings → HR &amp; Payroll
               </Link>
-              . Unmapped or failed terminal scans are on{" "}
+              . Unmapped, failed, or duplicate terminal scans are on{" "}
               <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
                 Missed punches
               </Link>
@@ -878,7 +926,7 @@ export function HrAttendanceScreen() {
             </p>
           ) : (
             <p className="mb-4 text-sm text-slate-600">
-              Terminal punches that did not apply to a person are listed under{" "}
+              Terminal punches that did not apply, plus extra scans in the same hour, are listed under{" "}
               <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
                 Missed punches
               </Link>
@@ -891,7 +939,8 @@ export function HrAttendanceScreen() {
               <h2 className="text-[15px] font-medium text-slate-900">Premises today</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Each clock session (Africa/Nairobi). Lunch in/out appears as a second row. Delete a
-                wrong punch; remaining punches rebuild the day.
+                wrong punch; remaining punches rebuild the day. Use <strong>Refresh attendance</strong> to pull
+                new fingerprint punches from office clocks into this list.
               </p>
             </div>
             {activeLoading ? (
