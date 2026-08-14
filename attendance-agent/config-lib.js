@@ -51,7 +51,7 @@ export function emptyConfig() {
       password: "",
       useHttps: false,
     },
-    pollIntervalSeconds: 60,
+    pollIntervalSeconds: 300,
     lookbackMinutes: 360,
   };
 }
@@ -72,7 +72,7 @@ export function normalizeConfig(raw) {
       useHttps: Boolean(hik.useHttps),
     },
     pollIntervalSeconds:
-      Number(raw?.pollIntervalSeconds) > 0 ? Number(raw.pollIntervalSeconds) : 60,
+      Number(raw?.pollIntervalSeconds) > 0 ? Number(raw.pollIntervalSeconds) : 300,
     lookbackMinutes: Number(raw?.lookbackMinutes) > 0 ? Number(raw.lookbackMinutes) : 360,
   };
 }

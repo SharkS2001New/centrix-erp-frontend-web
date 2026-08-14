@@ -27,6 +27,28 @@ const TABS = [
   "Capabilities",
 ];
 
+/** Hikvision ISAPI fingerPrintID 1–10 (right hand, then left). */
+const HIKVISION_FINGER_NAMES = {
+  1: "Right thumb",
+  2: "Right index",
+  3: "Right middle",
+  4: "Right ring",
+  5: "Right little",
+  6: "Left thumb",
+  7: "Left index",
+  8: "Left middle",
+  9: "Left ring",
+  10: "Left little",
+};
+
+const HIKVISION_FINGER_TYPE_LABELS = {
+  normalFP: "Normal",
+  duressFP: "Duress",
+  patrolFP: "Patrol",
+  superFP: "Super",
+  dismissFP: "Dismiss",
+};
+
 function featureEnabled(capabilities, key) {
   return Boolean(capabilities?.features?.[key]);
 }
@@ -99,7 +121,7 @@ export function HikvisionDeviceScreen() {
   const loadUsers = useCallback(async () => {
     const data = await apiRequest(`${base}/users/search`, {
       method: "POST",
-      body: { maxResults: 30 },
+      body: { maxResults: 100 },
     });
     setUsers(data.users ?? []);
   }, [base]);
@@ -113,7 +135,7 @@ export function HikvisionDeviceScreen() {
   }, [base]);
 
   const loadFingerprints = useCallback(async (employeeNo = "") => {
-    const body = { maxResults: 30 };
+    const body = { maxResults: 100 };
     if (employeeNo.trim()) {
       body.employee_no = employeeNo.trim();
     }
@@ -187,6 +209,9 @@ export function HikvisionDeviceScreen() {
   useEffect(() => {
     if (tab === "Employees" && featureEnabled(capabilities, "users")) {
       void loadUsers().catch(() => {});
+      if (featureEnabled(capabilities, "fingerprints")) {
+        void loadFingerprints("").catch(() => {});
+      }
     }
     if (tab === "Cards" && featureEnabled(capabilities, "cards")) {
       void loadCards().catch(() => {});
@@ -561,8 +586,9 @@ export function HikvisionDeviceScreen() {
               <p className="text-xs text-slate-500">
                 Uses Centrix employee number as Hikvision <code className="rounded bg-slate-100 px-1">employeeNo</code>{" "}
                 like <strong>0003</strong> (not EMP#0003). Enroll fingerprints on the terminal with that ID.
+                Fingerprints here mean templates stored on the device, not a live scan.
               </p>
-              <UserTable users={users} />
+              <UserTable users={users} fingerprints={fingerprints} />
             </>
           )}
         </section>
@@ -696,9 +722,10 @@ export function HikvisionDeviceScreen() {
                 </PrimaryButton>
               </div>
               <p className="text-xs text-slate-500">
-                Sync pulls events through <strong>CentrixAttendanceAgent</strong> on the office LAN.
-                Raw events are stored first; Centrix then applies clock in/out. Use Retry after mapping
-                an employee if punches were stuck as Pending.
+                Punches push automatically while <strong>CentrixAttendanceAgent</strong> is running (interval
+                is set in Admin → Attendance clock-in, default 5 minutes). Sync now is only needed to pull
+                immediately. Raw events are stored first; Centrix then applies clock in/out. Use Retry after
+                mapping an employee if punches were stuck as Pending.
               </p>
               <EventTable events={storedEvents} />
             </>
@@ -858,30 +885,143 @@ function UnsupportedNotice({ feature }) {
   );
 }
 
-function UserTable({ users }) {
+function hikvisionEmployeeNo(row) {
+  return String(row?.employeeNo ?? row?.EmployeeNo ?? "").trim();
+}
+
+function hikvisionFingerId(row) {
+  const n = Number(row?.fingerPrintID ?? row?.FingerPrintID);
+  return Number.isInteger(n) && n >= 1 && n <= 10 ? n : null;
+}
+
+function hikvisionFingerLabel(id) {
+  if (id == null) return "Unknown finger";
+  return HIKVISION_FINGER_NAMES[id] ?? `Finger ${id}`;
+}
+
+function hikvisionFingerTypeLabel(row) {
+  const raw = String(row?.fingerType ?? row?.FingerType ?? "").trim();
+  if (!raw) return "Normal";
+  return HIKVISION_FINGER_TYPE_LABELS[raw] ?? raw.replace(/FP$/i, "") || raw;
+}
+
+function hikvisionCount(row, ...keys) {
+  for (const key of keys) {
+    if (row?.[key] == null) continue;
+    const n = Number(row[key]);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function hikvisionVerifyModeLabel(row) {
+  const raw = String(row?.userVerifyMode ?? row?.UserVerifyMode ?? "").trim();
+  if (!raw) return "Device default";
+  return raw.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function hikvisionValidSummary(row) {
+  const valid = row?.Valid ?? row?.valid;
+  if (!valid || typeof valid !== "object") return { enabled: null, label: "—" };
+  const enabled = valid.enable === true || valid.enable === "true" || valid.enable === 1;
+  const begin = String(valid.beginTime ?? valid.BeginTime ?? "").replace("T", " ").slice(0, 16);
+  const end = String(valid.endTime ?? valid.EndTime ?? "").replace("T", " ").slice(0, 16);
+  const range = [begin, end].filter(Boolean).join(" → ");
+  if (!enabled) return { enabled: false, label: range ? `Disabled · ${range}` : "Disabled" };
+  return { enabled: true, label: range || "Active" };
+}
+
+function groupFingerprintsByEmployee(fingerprints) {
+  const map = new Map();
+  for (const row of fingerprints ?? []) {
+    const no = hikvisionEmployeeNo(row);
+    if (!no) continue;
+    if (!map.has(no)) map.set(no, []);
+    map.get(no).push(row);
+  }
+  return map;
+}
+
+function fingerprintEnrollment(user, fps) {
+  const listed = fps ?? [];
+  const count = Math.max(
+    hikvisionCount(user, "numOfFP", "NumOfFP", "numOfFingerPrint", "NumOfFingerPrint"),
+    listed.length,
+  );
+  if (count <= 0) {
+    return { enrolled: false, count: 0, fingersLabel: "Not enrolled" };
+  }
+  const names = listed.map((fp) => {
+    const name = hikvisionFingerLabel(hikvisionFingerId(fp));
+    const type = hikvisionFingerTypeLabel(fp);
+    return type !== "Normal" ? `${name} (${type})` : name;
+  });
+  const unique = [...new Set(names)];
+  return {
+    enrolled: true,
+    count,
+    fingersLabel: unique.length ? unique.join(", ") : `${count} enrolled`,
+  };
+}
+
+function UserTable({ users, fingerprints }) {
+  const byEmployee = useMemo(() => groupFingerprintsByEmployee(fingerprints), [fingerprints]);
   if (!users?.length) {
     return <p className="text-sm text-slate-500">No persons on device (or not loaded yet).</p>;
   }
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200">
-      <table className="w-full min-w-[480px] text-left text-sm">
+      <table className="w-full min-w-[960px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
             <th className="px-3 py-2">Employee No</th>
             <th className="px-3 py-2">Name</th>
             <th className="px-3 py-2">Type</th>
+            <th className="px-3 py-2">Fingerprint</th>
+            <th className="px-3 py-2">Fingers</th>
+            <th className="px-3 py-2">Verify</th>
+            <th className="px-3 py-2">Valid</th>
+            <th className="px-3 py-2">Cards</th>
+            <th className="px-3 py-2">Face</th>
           </tr>
         </thead>
         <tbody>
-          {users.map((row, idx) => (
-            <tr key={idx} className="border-t border-slate-100">
-              <td className="px-3 py-2 font-mono text-xs">
-                {row.employeeNo ?? row.EmployeeNo ?? "—"}
-              </td>
-              <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
-              <td className="px-3 py-2 text-xs text-slate-500">{row.userType ?? "—"}</td>
-            </tr>
-          ))}
+          {users.map((row, idx) => {
+            const no = hikvisionEmployeeNo(row);
+            const fp = fingerprintEnrollment(row, byEmployee.get(no));
+            const valid = hikvisionValidSummary(row);
+            return (
+              <tr key={no || idx} className="border-t border-slate-100">
+                <td className="px-3 py-2 font-mono text-xs">{no || "—"}</td>
+                <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
+                <td className="px-3 py-2 text-xs text-slate-500">{row.userType ?? row.UserType ?? "—"}</td>
+                <td className="px-3 py-2">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      fp.enrolled
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-amber-100 text-amber-900"
+                    }`}
+                  >
+                    {fp.enrolled ? `Enrolled (${fp.count})` : "Not enrolled"}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs text-slate-700">{fp.fingersLabel}</td>
+                <td className="px-3 py-2 text-xs text-slate-500">{hikvisionVerifyModeLabel(row)}</td>
+                <td className="px-3 py-2 text-xs">
+                  <span className={valid.enabled === false ? "text-red-700" : "text-slate-600"}>
+                    {valid.label}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs text-slate-500">
+                  {hikvisionCount(row, "numOfCard", "NumOfCard")}
+                </td>
+                <td className="px-3 py-2 text-xs text-slate-500">
+                  {hikvisionCount(row, "numOfFace", "NumOfFace")}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -1006,7 +1146,8 @@ function FingerprintTable({ fingerprints, onDelete, busy }) {
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
             <th className="px-3 py-2">Employee No</th>
-            <th className="px-3 py-2">Fingerprint ID</th>
+            <th className="px-3 py-2">Finger</th>
+            <th className="px-3 py-2">ID</th>
             <th className="px-3 py-2">Type</th>
             <th className="px-3 py-2" />
           </tr>
@@ -1017,11 +1158,14 @@ function FingerprintTable({ fingerprints, onDelete, busy }) {
               <td className="px-3 py-2 font-mono text-xs">
                 {row.employeeNo ?? row.EmployeeNo ?? "—"}
               </td>
+              <td className="px-3 py-2 text-xs text-slate-700">
+                {hikvisionFingerLabel(hikvisionFingerId(row))}
+              </td>
               <td className="px-3 py-2 font-mono text-xs">
                 {row.fingerPrintID ?? row.FingerPrintID ?? "—"}
               </td>
               <td className="px-3 py-2 text-xs text-slate-500">
-                {row.fingerType ?? row.FingerType ?? "—"}
+                {hikvisionFingerTypeLabel(row)}
               </td>
               <td className="px-3 py-2">
                 <button

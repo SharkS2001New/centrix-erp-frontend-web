@@ -14,7 +14,7 @@ import { useConfirm } from "@/lib/use-confirm";
 
 const CHANNELS = [
   { id: "pos", label: "POS" },
-  { id: "mobile", label: "Mobile" },
+  { id: "mobile", label: "Mobile orders" },
   { id: "backend", label: "Backoffice" },
 ];
 

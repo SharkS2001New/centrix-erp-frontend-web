@@ -56,7 +56,6 @@ export function PosSaveOrderDialog({
   const walkInNameRef = useRef(null);
   const amountPaidRef = useRef(null);
   const paymentMethodRef = useRef(null);
-  const handleSaveRef = useRef(() => {});
   const submitLockRef = useRef(false);
 
   useEffect(() => setMounted(true), []);
@@ -172,68 +171,69 @@ export function PosSaveOrderDialog({
     }
   }
 
-  function focusAmountPaid() {
-    window.setTimeout(() => {
-      amountPaidRef.current?.focus();
-      amountPaidRef.current?.select?.();
-    }, 0);
-  }
-
-  function handleSave(submitMode = "save") {
-    if (saving || submitLockRef.current) return;
-    if (customerMode === "walkin") {
-      const name = walkInName.trim().toUpperCase();
-      if (!name) {
-        setLocalError("Enter the walk-in customer's name.");
-        walkInNameRef.current?.focus();
-        return;
+  const handleSave = useCallback(
+    (submitMode = "save") => {
+      if (saving) return;
+      if (customerMode === "walkin") {
+        const name = walkInName.trim().toUpperCase();
+        if (!name) {
+          setLocalError("Enter the walk-in customer's name.");
+          return false;
+        }
+        const payload = { walkIn: true, walkInName: name, hold: submitMode === "hold" };
+        if (capturePaid && submitMode === "hold") {
+          const raw = String(amountPaid).replace(/,/g, "").trim();
+          const paid = raw === "" ? 0 : Number(raw);
+          if (!Number.isFinite(paid) || paid < 0) {
+            setLocalError("Enter a valid amount paid (0 or more).");
+            return false;
+          }
+          payload.heldAmountPaid = Math.round(paid * 100) / 100;
+          payload.heldPaymentMethodCode = resolvedPaymentMethod;
+        }
+        onSave?.(payload);
+        return true;
       }
-      const payload = { walkIn: true, walkInName: name, hold: submitMode === "hold" };
+      if (!customerNum) {
+        setLocalError(
+          isHold
+            ? "Search and select an existing customer to hold this order."
+            : "Search and select an existing customer to save this order.",
+        );
+        return false;
+      }
+      const customer = linkedCustomer;
+      if (!customer) {
+        setLocalError("Search and select a valid customer.");
+        return false;
+      }
+      const payload = { walkIn: false, customer, hold: submitMode === "hold" };
       if (capturePaid && submitMode === "hold") {
         const raw = String(amountPaid).replace(/,/g, "").trim();
         const paid = raw === "" ? 0 : Number(raw);
         if (!Number.isFinite(paid) || paid < 0) {
           setLocalError("Enter a valid amount paid (0 or more).");
-          focusAmountPaid();
-          return;
+          return false;
         }
         payload.heldAmountPaid = Math.round(paid * 100) / 100;
         payload.heldPaymentMethodCode = resolvedPaymentMethod;
       }
-      submitLockRef.current = true;
       onSave?.(payload);
-      return;
-    }
-    if (!customerNum) {
-      setLocalError(
-        isHold
-          ? "Search and select an existing customer to hold this order."
-          : "Search and select an existing customer to save this order.",
-      );
-      return;
-    }
-    const customer = linkedCustomer;
-    if (!customer) {
-      setLocalError("Search and select a valid customer.");
-      return;
-    }
-    const payload = { walkIn: false, customer, hold: submitMode === "hold" };
-    if (capturePaid && submitMode === "hold") {
-      const raw = String(amountPaid).replace(/,/g, "").trim();
-      const paid = raw === "" ? 0 : Number(raw);
-      if (!Number.isFinite(paid) || paid < 0) {
-        setLocalError("Enter a valid amount paid (0 or more).");
-        focusAmountPaid();
-        return;
-      }
-      payload.heldAmountPaid = Math.round(paid * 100) / 100;
-      payload.heldPaymentMethodCode = resolvedPaymentMethod;
-    }
-    submitLockRef.current = true;
-    onSave?.(payload);
-  }
-
-  handleSaveRef.current = handleSave;
+      return true;
+    },
+    [
+      saving,
+      customerMode,
+      walkInName,
+      capturePaid,
+      amountPaid,
+      resolvedPaymentMethod,
+      customerNum,
+      isHold,
+      linkedCustomer,
+      onSave,
+    ],
+  );
 
   useEffect(() => {
     if (!open) return undefined;
@@ -259,30 +259,34 @@ export function PosSaveOrderDialog({
         if (el === walkInNameRef.current || el?.dataset?.holdField === "name") {
           e.preventDefault();
           e.stopPropagation();
-          handleSaveRef.current("hold");
+          if (submitLockRef.current) return;
+          if (handleSave("hold")) submitLockRef.current = true;
           return;
         }
         if (el === amountPaidRef.current || el?.dataset?.holdField === "amount") {
           e.preventDefault();
           e.stopPropagation();
-          handleSaveRef.current("hold");
+          if (submitLockRef.current) return;
+          if (handleSave("hold")) submitLockRef.current = true;
           return;
         }
         if (el === paymentMethodRef.current || el?.dataset?.holdField === "method") {
           e.preventDefault();
           e.stopPropagation();
-          handleSaveRef.current("hold");
+          if (submitLockRef.current) return;
+          if (handleSave("hold")) submitLockRef.current = true;
           return;
         }
       }
 
       e.preventDefault();
       e.stopPropagation();
-      handleSaveRef.current(isHold ? "hold" : "save");
+      if (submitLockRef.current) return;
+      if (handleSave(isHold ? "hold" : "save")) submitLockRef.current = true;
     }
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [open, saving, onClose, isHold, capturePaid]);
+  }, [open, saving, onClose, isHold, capturePaid, handleSave]);
 
   if (!open || !mounted) return null;
 
@@ -495,7 +499,10 @@ export function PosSaveOrderDialog({
               ref={primaryActionRef}
               type="button"
               disabled={saving || prefillLoading}
-              onClick={() => handleSave("hold")}
+              onClick={() => {
+                if (submitLockRef.current) return;
+                if (handleSave("hold")) submitLockRef.current = true;
+              }}
               className="theme-accent-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Holding…" : "Hold order"}
@@ -505,7 +512,10 @@ export function PosSaveOrderDialog({
               ref={primaryActionRef}
               type="button"
               disabled={saving || prefillLoading}
-              onClick={() => handleSave("save")}
+              onClick={() => {
+                if (submitLockRef.current) return;
+                if (handleSave("save")) submitLockRef.current = true;
+              }}
               className="theme-primary-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save order"}

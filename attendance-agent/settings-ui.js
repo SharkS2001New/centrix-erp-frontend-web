@@ -181,8 +181,9 @@ function htmlPage(installer = false) {
             <p class="hint">Prefills from the Admin download. Needed so Manage Hikvision can proxy through this agent.</p>
           </div>
           <div>
-            <label for="pollIntervalSeconds">Attendance poll (seconds)</label>
+            <label for="pollIntervalSeconds">Local fallback poll (seconds)</label>
             <input id="pollIntervalSeconds" name="pollIntervalSeconds" type="number" min="60" step="30" />
+            <p class="hint">Used until Centrix admin auto-sync interval is received (default 5 minutes).</p>
           </div>
           <div>
             <label for="lookbackMinutes">Lookback (minutes)</label>
@@ -262,7 +263,7 @@ function htmlPage(installer = false) {
         : "Required — re-download agent from Centrix Admin if missing";
       el("deviceNo").value = cfg.deviceNo || "";
       el("deviceId").value = cfg.deviceId || "";
-      el("pollIntervalSeconds").value = cfg.pollIntervalSeconds || 60;
+      el("pollIntervalSeconds").value = cfg.pollIntervalSeconds || 300;
       el("lookbackMinutes").value = cfg.lookbackMinutes || 360;
       el("host").value = (cfg.hikvision && cfg.hikvision.host) || "";
       el("port").value = (cfg.hikvision && cfg.hikvision.port) || 80;
@@ -284,7 +285,7 @@ function htmlPage(installer = false) {
         centrixToken: el("centrixToken").value.trim() || existingToken,
         deviceNo: el("deviceNo").value.trim(),
         deviceId: el("deviceId").value ? Number(el("deviceId").value) : null,
-        pollIntervalSeconds: Number(el("pollIntervalSeconds").value) || 60,
+        pollIntervalSeconds: Number(el("pollIntervalSeconds").value) || 300,
         lookbackMinutes: Number(el("lookbackMinutes").value) || 360,
         hikvision: {
           host: el("host").value.trim(),

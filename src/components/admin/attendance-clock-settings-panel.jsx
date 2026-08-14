@@ -197,9 +197,11 @@ export function AttendanceClockSettingsPanel() {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-sm font-medium text-slate-900">Punch time windows (Africa/Nairobi)</h3>
               <p className="mt-1 text-xs text-slate-500">
-                Fingerprint scans are classified by these hours. The first punch of the day is always
-                clock-in. Extra morning scans are ignored (they do not clock the person out). Late is
-                marked when the first clock-in is after the late-after time.
+                Fingerprint scans are classified from each employee’s <strong>work shift</strong>
+                (start, lunch midpoint, end). These hours are the fallback when someone has no shift.
+                The first punch of the day is always clock-in. Extra scans in the same hour, or outside
+                lunch/evening windows while already clocked in, are ignored. Late is shift start plus
+                the late-after grace (08:15 means 15 minutes after shift start).
               </p>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <Field label="Morning clock-in from">
@@ -274,7 +276,23 @@ export function AttendanceClockSettingsPanel() {
                     onChange={(e) => setForm((f) => ({ ...f, clock_in_late_after: e.target.value }))}
                   />
                 </Field>
+                <Field label="Auto-sync interval (minutes)">
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    className={inputClassName()}
+                    value={form.hikvision_agent_poll_minutes || "5"}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, hikvision_agent_poll_minutes: e.target.value }))
+                    }
+                  />
+                </Field>
               </div>
+              <p className="mt-3 text-xs text-slate-500">
+                The office attendance agent pushes punches on this interval without clicking Sync now.
+                Default is 5 minutes. Keep CentrixAttendanceAgent running on the LAN PC.
+              </p>
             </div>
 
             <PrimaryButton type="submit" disabled={saving} showIcon={false}>

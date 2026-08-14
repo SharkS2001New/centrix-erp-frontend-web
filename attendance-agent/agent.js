@@ -156,6 +156,34 @@ async function submitCommandResult(config, commandId, result) {
   }
 }
 
+function clampPollSeconds(value, fallback = 300) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 60) return fallback;
+  return Math.min(3600, Math.floor(n));
+}
+
+let attendanceIntervalSec = 300;
+let attendanceTimer = null;
+let runSyncFn = async () => {};
+
+function applyRemotePollInterval(seconds) {
+  const next = clampPollSeconds(seconds, attendanceIntervalSec);
+  if (next === attendanceIntervalSec) return;
+  attendanceIntervalSec = next;
+  console.log(
+    `[attendance-agent] Auto-sync every ${attendanceIntervalSec}s (Centrix admin setting)`,
+  );
+  scheduleAttendance();
+}
+
+function scheduleAttendance() {
+  if (attendanceTimer) clearTimeout(attendanceTimer);
+  attendanceTimer = setTimeout(async () => {
+    await runSyncFn();
+    scheduleAttendance();
+  }, attendanceIntervalSec * 1000);
+}
+
 async function pollCentrixCommands(config) {
   if (!config.deviceId) return 0;
 
@@ -168,6 +196,10 @@ async function pollCentrixCommands(config) {
     throw new Error(`Command poll HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
   const payload = await res.json();
+  const remotePoll = Number(payload?.poll_interval_seconds);
+  if (Number.isFinite(remotePoll) && remotePoll >= 60) {
+    applyRemotePollInterval(remotePoll);
+  }
   const commands = payload?.commands ?? [];
   let handled = 0;
 
@@ -325,10 +357,10 @@ async function main() {
     return;
   }
 
-  const intervalSec = Math.max(30, Number(config.pollIntervalSeconds ?? 60));
+  attendanceIntervalSec = clampPollSeconds(config.pollIntervalSeconds, 300);
   const commandPollSec = 2;
   console.log(
-    `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${intervalSec}s`,
+    `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${attendanceIntervalSec}s (admin can change this in Centrix)`,
   );
   console.log(`[attendance-agent] Re-open settings anytime: npm run setup  (${SETTINGS_UI_URL})`);
 
@@ -349,10 +381,11 @@ async function main() {
     }
   };
 
+  runSyncFn = runSync;
   await pollCommands();
   await runSync();
+  scheduleAttendance();
   setInterval(pollCommands, commandPollSec * 1000);
-  setInterval(runSync, intervalSec * 1000);
 }
 
 main().catch((err) => {
