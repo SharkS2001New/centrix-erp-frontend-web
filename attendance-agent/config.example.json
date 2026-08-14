@@ -11,5 +11,5 @@
     "useHttps": false
   },
   "pollIntervalSeconds": 300,
-  "lookbackMinutes": 360
+  "lookbackMinutes": 10080
 }

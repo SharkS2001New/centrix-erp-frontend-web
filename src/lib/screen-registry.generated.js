@@ -17,6 +17,10 @@ function match_fulfillment_trips_id_close(pathname) {
   return true;
 }
 
+function match_hr_duplicate_punches(pathname) {
+  return pathname === "/hr/duplicate-punches";
+}
+
 function match_hr_employees_id_edit(pathname) {
   const m = pathname.match("^/hr/employees/([^/]+)/edit$");
   if (!m) return false;
@@ -1533,6 +1537,12 @@ export const SCREEN_REGISTRY = [
     title: "Departments",
     route: "/hr/departments",
     match: match_hr_departments,
+  },
+  {
+    id: "hr-duplicate-punches",
+    title: "Duplicate punches",
+    route: "/hr/duplicate-punches",
+    match: match_hr_duplicate_punches,
   },
   {
     id: "hr-employees",

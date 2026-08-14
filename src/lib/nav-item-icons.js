@@ -130,6 +130,7 @@ export const NAV_HREF_ICONS = {
   "/hr/positions": "list",
   "/hr/attendance": "clock",
   "/hr/missed-punches": "alert",
+  "/hr/duplicate-punches": "layers",
   "/hr/field-attendance": "map",
   "/hr/leave": "calendar",
   "/hr/shifts": "clipboard",

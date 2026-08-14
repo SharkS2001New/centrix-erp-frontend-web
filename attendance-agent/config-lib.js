@@ -52,7 +52,7 @@ export function emptyConfig() {
       useHttps: false,
     },
     pollIntervalSeconds: 300,
-    lookbackMinutes: 360,
+    lookbackMinutes: 10080,
   };
 }
 
@@ -73,7 +73,7 @@ export function normalizeConfig(raw) {
     },
     pollIntervalSeconds:
       Number(raw?.pollIntervalSeconds) > 0 ? Number(raw.pollIntervalSeconds) : 300,
-    lookbackMinutes: Number(raw?.lookbackMinutes) > 0 ? Number(raw.lookbackMinutes) : 360,
+    lookbackMinutes: Number(raw?.lookbackMinutes) > 0 ? Number(raw.lookbackMinutes) : 10080,
   };
 }
 

@@ -43,7 +43,6 @@ export function HrMissedPunchesScreen() {
   const { hasPermission } = useAuth();
   const canRetry = hasPermission(P.hr.manage);
   const [unapplied, setUnapplied] = useState([]);
-  const [duplicates, setDuplicates] = useState([]);
   const [missingOut, setMissingOut] = useState([]);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
@@ -53,12 +52,10 @@ export function HrMissedPunchesScreen() {
     try {
       const data = await apiRequest("/attendance/missed-punches");
       setUnapplied(data.unapplied_terminal_punches ?? []);
-      setDuplicates(data.duplicate_punches ?? []);
       setMissingOut(data.missing_clock_out ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load missed punches");
       setUnapplied([]);
-      setDuplicates([]);
       setMissingOut([]);
     } finally {
       setLoading(false);
@@ -90,7 +87,7 @@ export function HrMissedPunchesScreen() {
   return (
     <CatalogPageShell
       title="Missed punches"
-      subtitle="Terminal scans that did not create HR attendance, extra scans logged as duplicates, and shifts still waiting for a clock-out"
+      subtitle="Terminal scans that did not create HR attendance, and shifts still waiting for a clock-out"
       action={
         canRetry ? (
           <PrimaryButton type="button" disabled={retrying || loading} onClick={() => void retryPending()}>
@@ -107,6 +104,10 @@ export function HrMissedPunchesScreen() {
         (Hikvision → Employees), then retry. Successful punches appear on{" "}
         <Link href="/hr/attendance" className="font-medium text-[#185FA5] hover:underline">
           Attendance
+        </Link>
+        . Extra scans in the same hour are on{" "}
+        <Link href="/hr/duplicate-punches" className="font-medium text-[#185FA5] hover:underline">
+          Duplicate punches
         </Link>
         .
       </p>
@@ -143,48 +144,6 @@ export function HrMissedPunchesScreen() {
                       {row.device_location ? ` · ${row.device_location}` : ""}
                     </td>
                     <td className="max-w-[280px] truncate px-3 py-2 text-xs text-red-700" title={row.process_error || ""}>
-                      {displayField(row.process_error)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-[15px] font-medium text-slate-900">Duplicate punches</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Extra terminal scans in the same hour. Only the first successful punch counts for attendance; these extras are logged here.
-        </p>
-        {loading ? (
-          <p className="mt-3 text-sm text-slate-500">Loading…</p>
-        ) : duplicates.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No duplicate punches.</p>
-        ) : (
-          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Time</th>
-                  <th className="px-3 py-2">Terminal ID</th>
-                  <th className="px-3 py-2">Name on device</th>
-                  <th className="px-3 py-2">Device</th>
-                  <th className="px-3 py-2">Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {duplicates.map((row) => (
-                  <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
-                    <td className="px-3 py-2 text-xs">{formatWhen(row.event_time_local || row.event_time)}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{displayField(row.employee_no)}</td>
-                    <td className="px-3 py-2 text-xs">{displayField(row.employee_name)}</td>
-                    <td className="px-3 py-2 text-xs">
-                      {displayField(row.device_no)}
-                      {row.device_location ? ` · ${row.device_location}` : ""}
-                    </td>
-                    <td className="max-w-[320px] px-3 py-2 text-xs text-slate-600">
                       {displayField(row.process_error)}
                     </td>
                   </tr>

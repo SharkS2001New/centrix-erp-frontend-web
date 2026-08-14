@@ -102,6 +102,8 @@ Then clock **out** and confirm the session closes.
 | Agent skips employee | Person ID ≠ employee code |
 | No events pulled | No punches in lookback window, or AcsEvent filter |
 
+The agent does **not** delete punches from the terminal. When the office PC was off, turn it on: **CentrixAttendanceAgent** starts with Windows and catch-up runs immediately (retries if the network is still coming up). After that it keeps polling on the admin interval.
+
 ---
 
 ## What’s next after go-live

@@ -6,6 +6,7 @@ Centrix in the cloud cannot open `192.168.x.x`. This agent runs on an office PC
 (or mini-PC) on the **same LAN as the terminal**:
 
 - Polls ISAPI attendance punches and posts them to Centrix
+- **On PC boot, catch-up is automatic** — punches stay on the terminal while the agent is off; when Windows starts the service, it pulls the backlog and posts it
 - **Proxies all Manage Hikvision ISAPI commands** from Centrix cloud (users, cards, fingerprints, test connection, sync)
 
 ```

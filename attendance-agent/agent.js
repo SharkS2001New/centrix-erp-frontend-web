@@ -220,75 +220,139 @@ async function pollCentrixCommands(config) {
   return handled;
 }
 
-async function syncOnce(config) {
-  const state = loadJson(STATE_PATH, {}) || {};
-  const lookback = Math.max(5, Number(config.lookbackMinutes ?? 360));
-  const from = state.lastEventAt
-    ? new Date(new Date(state.lastEventAt).getTime() - 60_000)
-    : new Date(Date.now() - lookback * 60_000);
-  const to = new Date();
+const CATCHUP_LOOKBACK_MINUTES = 7 * 24 * 60;
+const CATCHUP_OVERLAP_MS = 5 * 60 * 1000;
+const MAX_CATCHUP_WINDOWS = 30;
 
-  console.log(`[attendance-agent] Polling ${config.hikvision.host} from ${from.toISOString()} …`);
-  const events = await fetchAcsEvents(config, from, to);
-  console.log(`[attendance-agent] Pulled ${events.length} event(s)`);
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  if (events.length === 0) {
-    state.lastSyncedAt = new Date().toISOString();
-    saveState(state);
-    return { applied: 0, skipped: 0, pulled: 0 };
-  }
+function eventTimeMs(event) {
+  const n = new Date(event?.punched_at).getTime();
+  return Number.isFinite(n) ? n : null;
+}
 
+function laterPunchedAt(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  return String(b) > String(a) ? b : a;
+}
+
+async function ingestEventBatch(config, state, events) {
   let applied = 0;
   let skipped = 0;
-  let lastEventAt = state.lastEventAt || null;
+  let lastEventAt = null;
+  let failed = false;
+
+  if (!events.length) {
+    return { applied, skipped, lastEventAt, failed };
+  }
 
   if (config.deviceId) {
     try {
       const result = await postIngestEvents(config, events);
       applied = Number(result?.applied ?? 0);
       skipped = Number(result?.skipped ?? 0);
-      lastEventAt = events[events.length - 1]?.punched_at ?? lastEventAt;
+      lastEventAt = events[events.length - 1]?.punched_at ?? null;
       console.log(
         `[attendance-agent] Ingest stored=${result?.stored ?? 0} applied=${applied} skipped=${skipped}`,
       );
+      return { applied, skipped, lastEventAt, failed: false };
     } catch (err) {
       console.warn(`[attendance-agent] Ingest failed, falling back to clock-punch: ${err.message}`);
-      for (const event of events) {
-        const key = `${event.employee_no}|${event.punched_at}|${event.serial_no ?? ""}`;
-        if (state.seen?.[key]) {
-          skipped += 1;
-          continue;
+    }
+  }
+
+  for (const event of events) {
+    const key = `${event.employee_no}|${event.punched_at}|${event.serial_no ?? ""}`;
+    if (state.seen?.[key]) {
+      skipped += 1;
+      if (!failed) lastEventAt = laterPunchedAt(lastEventAt, event.punched_at);
+      continue;
+    }
+    try {
+      await postPunchLegacy(config, event);
+      applied += 1;
+      state.seen = state.seen || {};
+      state.seen[key] = Date.now();
+      if (!failed) lastEventAt = laterPunchedAt(lastEventAt, event.punched_at);
+    } catch (e) {
+      failed = true;
+      skipped += 1;
+      console.warn(`[attendance-agent] skip ${event.employee_no}: ${e.message}`);
+    }
+  }
+
+  return { applied, skipped, lastEventAt, failed };
+}
+
+async function syncOnce(config) {
+  const state = loadJson(STATE_PATH, {}) || {};
+  const lookback = Math.max(
+    CATCHUP_LOOKBACK_MINUTES,
+    Number(config.lookbackMinutes ?? CATCHUP_LOOKBACK_MINUTES),
+  );
+  const initialFrom = state.lastEventAt
+    ? new Date(new Date(state.lastEventAt).getTime() - CATCHUP_OVERLAP_MS)
+    : new Date(Date.now() - lookback * 60_000);
+  const initialTo = new Date();
+
+  console.log(
+    `[attendance-agent] Catch-up ${config.hikvision.host} from ${initialFrom.toISOString()} (punches stay on the terminal until posted)`,
+  );
+
+  const queue = [{ from: initialFrom, to: initialTo }];
+  let applied = 0;
+  let skipped = 0;
+  let pulled = 0;
+  let maxEventAt = state.lastEventAt || null;
+  let failed = false;
+  let windows = 0;
+
+  while (queue.length && windows < MAX_CATCHUP_WINDOWS) {
+    windows += 1;
+    const { from, to } = queue.shift();
+    if (!(from instanceof Date) || !(to instanceof Date) || from.getTime() >= to.getTime()) {
+      continue;
+    }
+
+    const { events, truncated } = await fetchAcsEvents(config, from, to);
+    console.log(
+      `[attendance-agent] Pulled ${events.length} event(s)${truncated ? " (window full — splitting)" : ""}`,
+    );
+    pulled += events.length;
+
+    if (events.length) {
+      const result = await ingestEventBatch(config, state, events);
+      applied += result.applied;
+      skipped += result.skipped;
+      failed = failed || result.failed;
+      if (!result.failed) {
+        maxEventAt = laterPunchedAt(maxEventAt, result.lastEventAt);
+      }
+    }
+
+    if (truncated && events.length) {
+      const times = events.map(eventTimeMs).filter((n) => n != null);
+      if (times.length) {
+        const oldest = new Date(Math.min(...times) - 1000);
+        const newest = new Date(Math.max(...times));
+        if (oldest.getTime() > from.getTime()) {
+          queue.push({ from, to: oldest });
         }
-        try {
-          await postPunchLegacy(config, event);
-          applied += 1;
-          state.seen = state.seen || {};
-          state.seen[key] = Date.now();
-          lastEventAt = event.punched_at;
-        } catch (e) {
-          skipped += 1;
-          console.warn(`[attendance-agent] skip ${event.employee_no}: ${e.message}`);
+        if (newest.getTime() < to.getTime()) {
+          queue.push({ from: newest, to });
         }
       }
     }
-  } else {
-    for (const event of events) {
-      const key = `${event.employee_no}|${event.punched_at}|${event.serial_no ?? ""}`;
-      if (state.seen?.[key]) {
-        skipped += 1;
-        continue;
-      }
-      try {
-        await postPunchLegacy(config, event);
-        applied += 1;
-        state.seen = state.seen || {};
-        state.seen[key] = Date.now();
-        lastEventAt = event.punched_at;
-      } catch (err) {
-        skipped += 1;
-        console.warn(`[attendance-agent] skip ${event.employee_no}: ${err.message}`);
-      }
-    }
+  }
+
+  if (windows >= MAX_CATCHUP_WINDOWS && queue.length) {
+    failed = true;
+    console.warn(
+      `[attendance-agent] Catch-up paused after ${windows} windows; remaining punches will sync on the next poll.`,
+    );
   }
 
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -297,12 +361,35 @@ async function syncOnce(config) {
       if (Number(ts) < cutoff) delete state.seen[k];
     }
   }
-  state.lastEventAt = lastEventAt || state.lastEventAt || null;
+  if (!failed) {
+    state.lastEventAt = maxEventAt || state.lastEventAt || null;
+  }
   state.lastSyncedAt = new Date().toISOString();
   saveState(state);
 
-  console.log(`[attendance-agent] Done applied=${applied} skipped=${skipped}`);
-  return { applied, skipped, pulled: events.length };
+  console.log(`[attendance-agent] Done applied=${applied} skipped=${skipped} pulled=${pulled}`);
+  return { applied, skipped, pulled };
+}
+
+async function runCatchupWithRetry(config) {
+  const delaysMs = [0, 10_000, 20_000, 30_000, 60_000, 60_000];
+  let lastError = null;
+  for (let i = 0; i < delaysMs.length; i += 1) {
+    if (delaysMs[i]) {
+      console.log(`[attendance-agent] Retrying catch-up in ${delaysMs[i] / 1000}s (device or network may still be coming up)`);
+      await sleep(delaysMs[i]);
+    }
+    try {
+      await syncOnce(config);
+      return;
+    } catch (err) {
+      lastError = err;
+      console.error(`[attendance-agent] catch-up attempt ${i + 1} failed: ${err.message}`);
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
 }
 
 async function main() {
@@ -383,7 +470,11 @@ async function main() {
 
   runSyncFn = runSync;
   await pollCommands();
-  await runSync();
+  try {
+    await runCatchupWithRetry(config);
+  } catch (err) {
+    console.error(`[attendance-agent] startup catch-up failed: ${err.message}`);
+  }
   scheduleAttendance();
   setInterval(pollCommands, commandPollSec * 1000);
 }

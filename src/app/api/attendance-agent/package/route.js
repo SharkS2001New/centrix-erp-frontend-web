@@ -126,7 +126,7 @@ export async function POST(request) {
       },
       pollIntervalSeconds:
         Number(config.pollIntervalSeconds) > 0 ? Number(config.pollIntervalSeconds) : 300,
-      lookbackMinutes: Number(config.lookbackMinutes) > 0 ? Number(config.lookbackMinutes) : 360,
+      lookbackMinutes: Number(config.lookbackMinutes) > 0 ? Number(config.lookbackMinutes) : 10080,
     };
 
     const body = await zipDirectoryStore(root, ZIP_ROOT, {

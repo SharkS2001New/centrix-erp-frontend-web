@@ -330,6 +330,9 @@ export const SCREEN_COMPONENTS = {
   "hr-departments": lazy(() =>
     import("@/components/tab-screens/hr-departments").then((m) => ({ default: m.HrDepartmentsScreen })),
   ),
+  "hr-duplicate-punches": lazy(() =>
+    import("@/components/tab-screens/hr-duplicate-punches").then((m) => ({ default: m.HrDuplicatePunchesScreen })),
+  ),
   "hr-employees": lazy(() =>
     import("@/components/tab-screens/hr-employees").then((m) => ({ default: m.HrEmployeesScreen })),
   ),

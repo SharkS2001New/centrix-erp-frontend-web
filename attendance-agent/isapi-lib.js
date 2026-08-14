@@ -7,7 +7,10 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.4.1";
+export const AGENT_VERSION = "2.5.0";
+export const ACS_EVENT_PAGE_SIZE = 30;
+/** ~6,000 events per time window; catch-up splits the window if the device has more. */
+export const ACS_EVENT_MAX_PAGES = 200;
 
 /**
  * Format for Hikvision AcsEvent search — local wall clock with offset, never trailing Z.
@@ -530,13 +533,14 @@ export async function fetchAcsEvents(config, fromDate, toDate) {
       const events = [];
       let rawRows = 0;
       let position = 0;
-      for (let page = 0; page < 20; page += 1) {
+      let truncated = false;
+      for (let page = 0; page < ACS_EVENT_MAX_PAGES; page += 1) {
         const body = {
           AcsEventCond: {
             ...baseCond,
             searchID: searchId,
             searchResultPosition: position,
-            maxResults: 30,
+            maxResults: ACS_EVENT_PAGE_SIZE,
           },
         };
         const res = await fetchWithDigest(url, {
@@ -577,10 +581,13 @@ export async function fetchAcsEvents(config, fromDate, toDate) {
         if (matches < 1 || rows.length < 1 || status !== "more") {
           break;
         }
+        if (page === ACS_EVENT_MAX_PAGES - 1) {
+          truncated = true;
+        }
       }
       if (events.length) {
         events.sort((a, b) => String(a.punched_at).localeCompare(String(b.punched_at)));
-        return events;
+        return { events, truncated };
       }
       if (rawRows > 0) {
         lastError = new Error(
@@ -595,10 +602,10 @@ export async function fetchAcsEvents(config, fromDate, toDate) {
   }
 
   if (emptyAttempts > 0 && !lastError) {
-    return [];
+    return { events: [], truncated: false };
   }
   if (emptyAttempts > 0) {
-    return [];
+    return { events: [], truncated: false };
   }
 
   throw lastError ?? new Error("Hikvision AcsEvent search failed.");

@@ -673,6 +673,12 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hr.attendance.view,
       },
       {
+        href: "/hr/duplicate-punches",
+        label: "Duplicate punches",
+        module: "hr_payroll",
+        permission: P.hr.attendance.view,
+      },
+      {
         href: "/hr/leave",
         label: "Leave",
         module: "hr_payroll",

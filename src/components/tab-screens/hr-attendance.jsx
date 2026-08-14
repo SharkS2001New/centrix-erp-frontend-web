@@ -1051,17 +1051,25 @@ export function HrAttendanceScreen() {
               <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
                 Admin → Settings → HR &amp; Payroll
               </Link>
-              . Unmapped, failed, or duplicate terminal scans are on{" "}
+              . Unmapped or failed terminal scans are on{" "}
               <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
                 Missed punches
+              </Link>
+              . Extra scans in the same hour are on{" "}
+              <Link href="/hr/duplicate-punches" className="font-medium text-[#185FA5] hover:underline">
+                Duplicate punches
               </Link>
               .
             </p>
           ) : (
             <p className="mb-4 text-sm text-slate-600">
-              Terminal punches that did not apply, plus extra scans in the same hour, are listed under{" "}
+              Terminal punches that did not apply are listed under{" "}
               <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
                 Missed punches
+              </Link>
+              . Extra scans in the same hour are on{" "}
+              <Link href="/hr/duplicate-punches" className="font-medium text-[#185FA5] hover:underline">
+                Duplicate punches
               </Link>
               .
             </p>
@@ -1073,7 +1081,7 @@ export function HrAttendanceScreen() {
               <p className="mt-1 text-sm text-slate-500">
                 One row per person: clock in, lunch out, lunch in, and clock out (leave for home),
                 following that employee’s shift. Extra fingerprint scans in the same hour do not
-                change these times — they appear under Missed punches. Use{" "}
+                change these times — they appear under Duplicate punches. Use{" "}
                 <strong>Refresh attendance</strong> to pull new punches from office clocks.
               </p>
             </div>

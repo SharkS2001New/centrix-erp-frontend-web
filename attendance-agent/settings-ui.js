@@ -28,6 +28,11 @@ import {
   centrixDeviceBase,
 } from "./isapi-lib.js";
 
+function acsEventList(result) {
+  if (Array.isArray(result)) return result;
+  return Array.isArray(result?.events) ? result.events : [];
+}
+
 function openBrowser(url) {
   const platform = process.platform;
   let cmd;
@@ -186,8 +191,9 @@ function htmlPage(installer = false) {
             <p class="hint">Used until Centrix admin auto-sync interval is received (default 5 minutes).</p>
           </div>
           <div>
-            <label for="lookbackMinutes">Lookback (minutes)</label>
+            <label for="lookbackMinutes">First-start lookback (minutes)</label>
             <input id="lookbackMinutes" name="lookbackMinutes" type="number" min="5" step="5" />
+            <p class="hint">Used only when this PC has never synced. After that, catch-up starts from the last punch sent. Default 10080 = 7 days. Punches stay on the terminal; the agent posts them automatically when this service starts.</p>
           </div>
         </div>
 
@@ -264,7 +270,7 @@ function htmlPage(installer = false) {
       el("deviceNo").value = cfg.deviceNo || "";
       el("deviceId").value = cfg.deviceId || "";
       el("pollIntervalSeconds").value = cfg.pollIntervalSeconds || 300;
-      el("lookbackMinutes").value = cfg.lookbackMinutes || 360;
+      el("lookbackMinutes").value = cfg.lookbackMinutes || 10080;
       el("host").value = (cfg.hikvision && cfg.hikvision.host) || "";
       el("port").value = (cfg.hikvision && cfg.hikvision.port) || 80;
       el("username").value = (cfg.hikvision && cfg.hikvision.username) || "admin";
@@ -286,7 +292,7 @@ function htmlPage(installer = false) {
         deviceNo: el("deviceNo").value.trim(),
         deviceId: el("deviceId").value ? Number(el("deviceId").value) : null,
         pollIntervalSeconds: Number(el("pollIntervalSeconds").value) || 300,
-        lookbackMinutes: Number(el("lookbackMinutes").value) || 360,
+        lookbackMinutes: Number(el("lookbackMinutes").value) || 10080,
         hikvision: {
           host: el("host").value.trim(),
           port: Number(el("port").value) || 80,
@@ -584,7 +590,9 @@ async function diagnoseNoNewPunch(config, { startedAt, host } = {}) {
 
   let dayEvents = [];
   try {
-    dayEvents = await fetchAcsEvents(config, new Date(pcNow.getTime() - 24 * 60 * 60 * 1000), pcNow);
+    dayEvents = acsEventList(
+      await fetchAcsEvents(config, new Date(pcNow.getTime() - 24 * 60 * 60 * 1000), pcNow),
+    );
   } catch (err) {
     lines.push(`Could not list punches from the last 24 hours: ${err.message}`);
   }
@@ -632,7 +640,7 @@ async function pollFingerprintWait(id) {
   const to = new Date();
   let events = [];
   try {
-    events = await fetchAcsEvents(config, from, to);
+    events = acsEventList(await fetchAcsEvents(config, from, to));
   } catch (err) {
     if (left <= 0) {
       fingerprintWaits.delete(id);
@@ -785,7 +793,7 @@ async function testFingerprintLocal(config, { push = false, lookbackSeconds = 90
   const to = new Date();
   let events;
   try {
-    events = await fetchAcsEvents(config, from, to);
+    events = acsEventList(await fetchAcsEvents(config, from, to));
   } catch (err) {
     return {
       ok: false,
@@ -1084,7 +1092,7 @@ if (isDirectRun && process.argv.includes("--fingerprint")) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         let events = [];
         try {
-          events = await fetchAcsEvents(config, new Date(startedAt - 10_000), new Date());
+          events = acsEventList(await fetchAcsEvents(config, new Date(startedAt - 10_000), new Date()));
         } catch (err) {
           process.stdout.write(`\n${err.message}\n`);
           continue;

@@ -21,7 +21,8 @@ import { DonutChart, CHART_COLORS } from "@/components/reports/report-charts";
 const HR_LINKS = [
   { href: "/hr/employees", title: "Employees", desc: "Staff records and contracts" },
   { href: "/hr/attendance", title: "Attendance", desc: "Clock-in and timesheets" },
-  { href: "/hr/missed-punches", title: "Missed punches", desc: "Unmapped scans, duplicate punches, and forgotten clock-outs" },
+  { href: "/hr/missed-punches", title: "Missed punches", desc: "Unmapped terminal scans and forgotten clock-outs" },
+  { href: "/hr/duplicate-punches", title: "Duplicate punches", desc: "Extra scans in the same hour; first punch still counts" },
   { href: "/hr/leave", title: "Leave & off days", desc: "Leave requests and balances" },
   { href: "/hr/payroll", title: "Payroll", desc: "Pay runs and payslips" },
   { href: "/hr/overtime", title: "Overtime", desc: "Overtime entries" },
