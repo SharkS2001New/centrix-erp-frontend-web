@@ -579,7 +579,16 @@ export function HikvisionDeviceScreen() {
                 >
                   Sync Centrix → device
                 </PrimaryButton>
-                <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => void loadUsers()}>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  onClick={() => {
+                    void loadUsers();
+                    if (featureEnabled(caps, "fingerprints")) {
+                      void loadFingerprints("");
+                    }
+                  }}
+                >
                   Refresh
                 </button>
               </div>
