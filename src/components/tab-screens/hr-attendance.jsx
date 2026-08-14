@@ -13,10 +13,13 @@ import {
   CatalogPageShell,
   Field,
   FormDrawer,
+  IconButton,
+  PencilIcon,
   PrimaryButton,
   PaginationBar,
   SECONDARY_BTN_CLASS,
   SearchInput,
+  TrashIcon,
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -36,7 +39,11 @@ import { canApproveLatenessWaivers } from "@/lib/approval-permissions";
 import {
   composeEmployeeDisplayName,
   computeAttendanceHours,
+  elapsedAttendanceHours,
+  formatHoursWorked,
   formatTimeForApi,
+  attendanceLatenessParts,
+  formatAttendanceLateness,
 } from "@/components/hr/hr-shared";
 import {
   formatAttendanceLoginChannel,
@@ -77,14 +84,19 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const { capabilities, hasPermission, user } = useAuth();
   const confirm = useConfirm();
   const canManageSettings = hasPermission(P.hr.manage);
+  const canAddManualAttendance =
+    hasPermission(P.hr.attendance.create) || hasPermission(P.hr.manage);
   const canApproveWaivers = canApproveLatenessWaivers({ hasPermission, capabilities });
   const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [records, setRecords] = useState([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyPageSize, setHistoryPageSize] = useState(50);
+  const [todayPage, setTodayPage] = useState(1);
+  const [todayPageSize, setTodayPageSize] = useState(25);
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
   const [activeLoading, setActiveLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -92,6 +104,12 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const [historyToDate, setHistoryToDate] = useState(() => daysAgoCalendarDate(1));
   const [recordSearch, setRecordSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    if (isHistory) return undefined;
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [isHistory]);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
   const [manualSaving, setManualSaving] = useState(false);
@@ -109,6 +127,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const [markingAbsents, setMarkingAbsents] = useState(false);
   const [syncingPunches, setSyncingPunches] = useState(false);
   const [gapCounts, setGapCounts] = useState(null);
+  const [clockDeviceCount, setClockDeviceCount] = useState(null);
   const {
     selectedIds,
     selectedCount,
@@ -138,6 +157,10 @@ export function HrAttendanceScreen({ mode = "today" }) {
           key: "gaps",
           promise: apiRequest("/attendance/missed-punches"),
         },
+        {
+          key: "clockDevices",
+          promise: apiRequest("/attendance-clock-devices", { searchParams: { per_page: 5 } }),
+        },
       ];
 
       if (fieldAttendanceEnabled) {
@@ -166,6 +189,10 @@ export function HrAttendanceScreen({ mode = "today" }) {
         const res = result.value;
         if (key === "sessions") setSessions(res.data ?? []);
         if (key === "gaps") setGapCounts(res.counts ?? null);
+        if (key === "clockDevices") {
+          const total = Number(res.meta?.total ?? res.total ?? (res.data ?? []).length ?? 0);
+          setClockDeviceCount(Number.isFinite(total) ? total : (res.data ?? []).length);
+        }
         if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
       });
 
@@ -220,7 +247,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const selectedWaiveableCount = useMemo(
     () =>
       selectedRecords.filter(
-        (r) => Number(r.late_minutes) > 0 && !r.lateness_waived && !r.pending_waiver,
+        (r) => attendanceLatenessParts(r).total > 0 && !r.lateness_waived && !r.pending_waiver,
       ).length,
     [selectedRecords],
   );
@@ -228,7 +255,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const selectedUndoWaiveCount = useMemo(
     () =>
       selectedRecords.filter(
-        (r) => Number(r.late_minutes) > 0 && r.lateness_waived && !r.pending_waiver,
+        (r) => attendanceLatenessParts(r).total > 0 && r.lateness_waived && !r.pending_waiver,
       ).length,
     [selectedRecords],
   );
@@ -354,6 +381,14 @@ export function HrAttendanceScreen({ mode = "today" }) {
       let status = "on_shift";
       if (clockOut) status = "clocked_out";
       else if (lunchOut && !lunchIn) status = "at_lunch";
+      const hoursWorked = elapsedAttendanceHours({
+        clockIn: first?.clock_in_at ?? null,
+        clockOut,
+        lunchOut,
+        lunchIn,
+        lunchRequired: lunch,
+        nowMs,
+      });
       return {
         employeeId: first?.employee_id,
         employee,
@@ -365,11 +400,22 @@ export function HrAttendanceScreen({ mode = "today" }) {
         clockOut,
         lunchRequired: lunch,
         status,
+        hoursWorked,
         device: last?.device_identifier || first?.device_identifier,
         source: last?.source || first?.source,
       };
     });
-  }, [todaySessions]);
+  }, [todaySessions, nowMs]);
+
+  const todayTotal = todayDays.length;
+  const todayTotalPages = Math.max(1, Math.ceil(todayTotal / todayPageSize) || 1);
+  const todaySafePage = Math.min(todayPage, todayTotalPages);
+  const pagedTodayDays = todayDays.slice(
+    (todaySafePage - 1) * todayPageSize,
+    todaySafePage * todayPageSize,
+  );
+
+  const showDeviceColumn = clockDeviceCount == null || clockDeviceCount > 1;
 
   function shiftLunchRequired(shift) {
     if (!shift) return true;
@@ -655,7 +701,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
 
   async function waiveSelectedLateness(waived) {
     const eligible = selectedRecords.filter(
-      (r) => Number(r.late_minutes) > 0 && !r.pending_waiver,
+      (r) => attendanceLatenessParts(r).total > 0 && !r.pending_waiver,
     );
     const ids = eligible
       .filter((r) => (waived ? !r.lateness_waived : !!r.lateness_waived))
@@ -737,7 +783,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
     const ok = await confirm({
       title: "Approve lateness waiver?",
       message: pending.waive
-        ? `Approve waiving ${pending.late_minutes ?? record.late_minutes}m late? Paid hours will be restored for payroll.`
+        ? `Approve waiving ${pending.late_minutes ?? attendanceLatenessParts(record).total}m late (clock-in and lunch)? Paid hours will be restored for payroll.`
         : "Approve undoing this lateness waiver? Late minutes will reduce paid hours again.",
       confirmLabel: "Approve",
     });
@@ -892,7 +938,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
     let reason = record.lateness_waiver_reason ?? "";
     if (waived) {
       const entered = window.prompt(
-        `Request to waive ${record.late_minutes} minutes late for ${composeEmployeeDisplayName(record.employee) || "employee"}?\nRequires manager approval. Optional reason:`,
+        `Request to waive ${attendanceLatenessParts(record).total} minutes late for ${composeEmployeeDisplayName(record.employee) || "employee"}?\nRequires manager approval. Optional reason:`,
         reason || "",
       );
       if (entered === null) return;
@@ -1079,6 +1125,11 @@ export function HrAttendanceScreen({ mode = "today" }) {
           >
             {syncingPunches ? "Refreshing…" : "Refresh attendance"}
           </button>
+          {canAddManualAttendance ? (
+            <PrimaryButton type="button" onClick={openCreateManual}>
+              Add Manual attendance
+            </PrimaryButton>
+          ) : null}
           {isHistory ? (
             <>
             <CatalogListExport
@@ -1102,9 +1153,6 @@ export function HrAttendanceScreen({ mode = "today" }) {
             >
               {markingAbsents ? "Marking…" : "Mark missing as absent"}
             </button>
-            <PrimaryButton type="button" onClick={openCreateManual}>
-              Create attendance
-            </PrimaryButton>
             </>
           ) : null}
         </div>
@@ -1173,13 +1221,14 @@ export function HrAttendanceScreen({ mode = "today" }) {
                       <th className="px-4 py-3">Lunch out</th>
                       <th className="px-4 py-3">Lunch in</th>
                       <th className="px-4 py-3">Clock out</th>
-                      <th className="px-4 py-3">Device</th>
+                      <th className="px-4 py-3">No of hours worked</th>
+                      {showDeviceColumn ? <th className="px-4 py-3">Device</th> : null}
                       <th className="px-4 py-3">Source</th>
                       {canManageSettings ? <th className="px-4 py-3 text-right">Actions</th> : null}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {todayDays.map((day) => (
+                    {pagedTodayDays.map((day) => (
                       <tr key={day.employeeId} className="theme-table-body-row">
                         <td className="px-4 py-3 font-medium text-slate-900">
                           {sessionEmployeeLabel(day.lastSession)}
@@ -1207,24 +1256,30 @@ export function HrAttendanceScreen({ mode = "today" }) {
                           {day.lunchRequired ? sessionTimeLabel(day.lunchIn) : "—"}
                         </td>
                         <td className="px-4 py-3 tabular-nums text-slate-700">{sessionTimeLabel(day.clockOut)}</td>
-                        <td className="px-4 py-3 text-slate-600">{day.device || "—"}</td>
+                        <td className="px-4 py-3 tabular-nums text-slate-700">
+                          {formatHoursWorked(day.hoursWorked)}
+                          {day.hoursWorked != null && !day.clockOut ? (
+                            <span className="text-slate-400"> so far</span>
+                          ) : null}
+                        </td>
+                        {showDeviceColumn ? (
+                          <td className="px-4 py-3 text-slate-600">{day.device || "—"}</td>
+                        ) : null}
                         <td className="px-4 py-3 text-slate-600">{formatAttendanceSource(day.source)}</td>
                         {canManageSettings ? (
                           <td className="px-4 py-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => openPunchEdit(day)}
-                              className="text-[#185FA5] hover:underline"
-                            >
-                              Edit times
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void deleteClockSession(day.lastSession)}
-                              className="ml-3 text-red-600 hover:underline"
-                            >
-                              Delete last punch
-                            </button>
+                            <div className="inline-flex justify-end gap-1">
+                              <IconButton label="Edit times" onClick={() => openPunchEdit(day)}>
+                                <PencilIcon />
+                              </IconButton>
+                              <IconButton
+                                label="Delete last punch"
+                                danger
+                                onClick={() => void deleteClockSession(day.lastSession)}
+                              >
+                                <TrashIcon />
+                              </IconButton>
+                            </div>
                           </td>
                         ) : null}
                       </tr>
@@ -1233,6 +1288,18 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 </table>
               </div>
             )}
+            <PaginationBar
+              page={todaySafePage}
+              totalPages={todayTotalPages}
+              total={todayTotal}
+              pageSize={todayPageSize}
+              onChange={setTodayPage}
+              onPageSizeChange={(size) => {
+                setTodayPageSize(size);
+                setTodayPage(1);
+              }}
+              pageSizeOptions={[10, 25, 50, 100]}
+            />
           </section>
 
           {fieldAttendanceEnabled ? (
@@ -1291,8 +1358,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
                     <th className="px-4 py-3">Lunch out</th>
                     <th className="px-4 py-3">Lunch in</th>
                     <th className="px-4 py-3">Clock out</th>
-                    <th className="px-4 py-3">Paid / exp.</th>
-                    <th className="px-4 py-3">Late</th>
+                    <th className="px-4 py-3">No of hours worked</th>
+                    <th className="px-4 py-3">Late (in / lunch / total)</th>
                     <th className="px-4 py-3">Lunch</th>
                     <th className="px-4 py-3">OT</th>
                     <th className="px-4 py-3">Login channel</th>
@@ -1336,16 +1403,16 @@ export function HrAttendanceScreen({ mode = "today" }) {
                           {r.lunch_required === false ? "—" : (r.lunch_in ?? "—")}
                         </td>
                         <td className="px-4 py-3">{r.clock_out ?? r.check_out?.slice?.(0, 5) ?? "—"}</td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {r.hours_worked ?? "—"}
+                        <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                          {formatHoursWorked(r.hours_worked)}
                           {r.expected_hours != null ? (
-                            <span className="text-slate-400"> / {r.expected_hours}</span>
+                            <span className="text-slate-400"> / {formatHoursWorked(r.expected_hours)} exp.</span>
                           ) : null}
                         </td>
                         <td className="px-4 py-3">
-                          {r.late_minutes > 0 ? (
+                          {attendanceLatenessParts(r).total > 0 ? (
                             <span>
-                              {r.late_minutes}m
+                              {formatAttendanceLateness(r, "")}
                               {r.lateness_waived ? (
                                 <span className="ml-1 text-[11px] font-medium text-emerald-700">
                                   waived
@@ -1396,59 +1463,53 @@ export function HrAttendanceScreen({ mode = "today" }) {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => openEditManual(r)}
-                            className="text-[#185FA5] hover:underline"
-                          >
-                            Edit
-                          </button>
-                          {r.pending_waiver && canReviewWaiver(r) ? (
-                            <>
+                          <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                            <IconButton label="Edit" onClick={() => openEditManual(r)}>
+                              <PencilIcon />
+                            </IconButton>
+                            {r.pending_waiver && canReviewWaiver(r) ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => void reviewWaiverRequest(r, true)}
+                                  className="ml-1 text-emerald-700 hover:underline"
+                                >
+                                  Approve waive
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void reviewWaiverRequest(r, false)}
+                                  className="ml-1 text-amber-800 hover:underline"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            ) : null}
+                            {r.pending_waiver && !canReviewWaiver(r) ? (
+                              <span className="ml-1 text-xs text-amber-700">Awaiting manager</span>
+                            ) : null}
+                            {attendanceLatenessParts(r).total > 0 && !r.lateness_waived && !r.pending_waiver ? (
                               <button
                                 type="button"
-                                onClick={() => void reviewWaiverRequest(r, true)}
-                                className="ml-3 text-emerald-700 hover:underline"
+                                onClick={() => void waiveLateness(r, true)}
+                                className="ml-1 text-emerald-700 hover:underline"
                               >
-                                Approve waive
+                                Request waive
                               </button>
+                            ) : null}
+                            {attendanceLatenessParts(r).total > 0 && r.lateness_waived && !r.pending_waiver ? (
                               <button
                                 type="button"
-                                onClick={() => void reviewWaiverRequest(r, false)}
-                                className="ml-3 text-amber-800 hover:underline"
+                                onClick={() => void waiveLateness(r, false)}
+                                className="ml-1 text-amber-700 hover:underline"
                               >
-                                Reject
+                                Request undo
                               </button>
-                            </>
-                          ) : null}
-                          {r.pending_waiver && !canReviewWaiver(r) ? (
-                            <span className="ml-3 text-xs text-amber-700">Awaiting manager</span>
-                          ) : null}
-                          {r.late_minutes > 0 && !r.lateness_waived && !r.pending_waiver ? (
-                            <button
-                              type="button"
-                              onClick={() => void waiveLateness(r, true)}
-                              className="ml-3 text-emerald-700 hover:underline"
-                            >
-                              Request waive
-                            </button>
-                          ) : null}
-                          {r.late_minutes > 0 && r.lateness_waived && !r.pending_waiver ? (
-                            <button
-                              type="button"
-                              onClick={() => void waiveLateness(r, false)}
-                              className="ml-3 text-amber-700 hover:underline"
-                            >
-                              Request undo
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => deleteRecord(r)}
-                            className="ml-3 text-red-600 hover:underline"
-                          >
-                            Delete
-                          </button>
+                            ) : null}
+                            <IconButton label="Delete" danger onClick={() => void deleteRecord(r)}>
+                              <TrashIcon />
+                            </IconButton>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1456,8 +1517,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 </tbody>
               </table>
             </div>
-            {recordsTotal > historyPageSize ? (
-              <PaginationBar
+            <PaginationBar
                 page={historyPage}
                 totalPages={Math.max(1, Math.ceil(recordsTotal / historyPageSize) || 1)}
                 total={recordsTotal}
@@ -1467,9 +1527,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
                   setHistoryPageSize(size);
                   setHistoryPage(1);
                 }}
-                pageSizeOptions={[25, 50, 100]}
+                pageSizeOptions={[10, 25, 50, 100]}
               />
-            ) : null}
           </section>
 
           <BatchActionBar count={selectedCount} onClear={clearSelection}>
@@ -1511,7 +1570,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
       )}
 
       <FormDrawer
-        title={editingRecord ? "Edit attendance" : "Create attendance"}
+        title={editingRecord ? "Edit attendance" : "Add Manual attendance"}
         open={manualOpen}
         onClose={() => {
           setManualOpen(false);
@@ -1527,10 +1586,10 @@ export function HrAttendanceScreen({ mode = "today" }) {
           editingRecord
             ? "Save changes"
             : selectedEmployeeIds.length > 1
-              ? `Create for ${selectedEmployeeIds.length} employees`
+              ? `Add for ${selectedEmployeeIds.length} employees`
               : selectedEmployeeIds.length === 1
-                ? "Create attendance"
-                : "Create attendance"
+                ? "Add Manual attendance"
+                : "Add Manual attendance"
         }
         wide
       >
@@ -1741,7 +1800,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
             </Field>
           </>
         ) : null}
-        {editingRecord && (manualForm.late_minutes > 0 || editingRecord.late_minutes > 0) ? (
+        {editingRecord && (attendanceLatenessParts(manualForm).total > 0 || attendanceLatenessParts(editingRecord).total > 0) ? (
           <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
             <label className="flex items-start gap-2 text-sm text-slate-700">
               <input
@@ -1753,7 +1812,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 }
               />
               <span>
-                Waive lateness ({manualForm.late_minutes || editingRecord.late_minutes}m)
+                Waive lateness ({formatAttendanceLateness(editingRecord, `${attendanceLatenessParts(editingRecord).total}m`)})
                 <span className="mt-0.5 block text-xs text-slate-500">
                   Submits a request for the employee&apos;s manager (or HR approver) — hours change
                   only after approval.

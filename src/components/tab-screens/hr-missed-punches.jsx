@@ -9,13 +9,16 @@ import { AttendanceGapsBanner } from "@/components/hr/attendance-gaps-banner";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
 import { P } from "@/lib/permission-codes";
 import { useAuth } from "@/contexts/auth-context";
-import { formatTimeForApi } from "@/components/hr/hr-shared";
+import { useConfirm } from "@/lib/use-confirm";
 import {
   CatalogPageShell,
+  PaginationBar,
   PrimaryButton,
   SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { formatTimeForApi } from "@/components/hr/hr-shared";
 
 function displayField(value) {
   if (value == null) return "—";
@@ -58,6 +61,7 @@ function toApiDateTime(date, time24) {
 
 export function HrMissedPunchesScreen() {
   const { hasPermission } = useAuth();
+  const confirm = useConfirm();
   const canRetry = hasPermission(P.hr.manage);
   const [tab, setTab] = useState("unapplied");
   const [unapplied, setUnapplied] = useState([]);
@@ -70,6 +74,10 @@ export function HrMissedPunchesScreen() {
   const [editIn, setEditIn] = useState("");
   const [editOut, setEditOut] = useState("");
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [reasonRow, setReasonRow] = useState(null);
+  const [applyingId, setApplyingId] = useState(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -149,6 +157,26 @@ export function HrMissedPunchesScreen() {
     }
   }
 
+  async function applyUnapplied(row) {
+    if (!row?.id) return;
+    const ok = await confirm({
+      title: "Apply punch to attendance",
+      message: `Apply this terminal punch for ${displayField(row.employee_name)} (${displayField(row.employee_no)}) to attendance? It will count as Applied by HR.`,
+      confirmLabel: "Apply",
+    });
+    if (!ok) return;
+    setApplyingId(row.id);
+    try {
+      await apiRequest(`/attendance/missed-punches/events/${row.id}/apply`, { method: "POST" });
+      notifySuccess("Punch applied to attendance as Applied by HR.");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not apply punch");
+    } finally {
+      setApplyingId(null);
+    }
+  }
+
   async function saveForgotten(row, { confirmOnly = false } = {}) {
     setSaving(true);
     try {
@@ -184,26 +212,83 @@ export function HrMissedPunchesScreen() {
     [editRow, missingOut],
   );
 
+  const list = tab === "unapplied" ? unapplied : missingOut;
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const paged = list.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
     <CatalogPageShell
       title="Missed punches"
       subtitle="Unapplied terminal scans and forgotten evening clock-outs for HR to confirm"
       action={
-        canRetry && tab === "unapplied" ? (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={mapping || retrying || loading}
-              onClick={() => void autoMap()}
-              className={SECONDARY_BTN_CLASS}
-            >
-              {mapping ? "Mapping…" : "Auto-map terminal IDs"}
-            </button>
-            <PrimaryButton type="button" disabled={retrying || mapping || loading} onClick={() => void retryPending()}>
-              {retrying ? "Retrying…" : "Retry pending punches"}
-            </PrimaryButton>
-          </div>
-        ) : null
+        <div className="flex flex-wrap gap-2">
+          {canRetry && tab === "unapplied" ? (
+            <>
+              <button
+                type="button"
+                disabled={mapping || retrying || loading}
+                onClick={() => void autoMap()}
+                className={SECONDARY_BTN_CLASS}
+              >
+                {mapping ? "Mapping…" : "Auto-map terminal IDs"}
+              </button>
+              <PrimaryButton type="button" disabled={retrying || mapping || loading} onClick={() => void retryPending()}>
+                {retrying ? "Retrying…" : "Retry pending punches"}
+              </PrimaryButton>
+            </>
+          ) : null}
+          {tab === "unapplied" ? (
+            <CatalogListExport
+              title="Unapplied terminal punches"
+              filename="unapplied-terminal-punches"
+              columns={[
+                { key: "time", label: "Time" },
+                { key: "employee_no", label: "Terminal ID" },
+                { key: "employee_name", label: "Name on device" },
+                { key: "device", label: "Device" },
+                { key: "reason", label: "Reason" },
+              ]}
+              totalCount={unapplied.length}
+              getInlineRows={async () =>
+                unapplied.map((row) => ({
+                  time: formatWhen(row.event_time_local || row.event_time),
+                  employee_no: displayField(row.employee_no),
+                  employee_name: displayField(row.employee_name),
+                  device: `${displayField(row.device_no)}${row.device_location ? ` · ${row.device_location}` : ""}`,
+                  reason: displayField(row.reason_short || row.process_error),
+                }))
+              }
+              disabled={loading}
+            />
+          ) : (
+            <CatalogListExport
+              title="Forgotten clock-outs"
+              filename="forgotten-clock-outs"
+              columns={[
+                { key: "employee_name", label: "Employee" },
+                { key: "employee_code", label: "Code" },
+                { key: "clock_in", label: "Clock in" },
+                { key: "clock_out", label: "Clock out" },
+                { key: "hours", label: "Hours" },
+                { key: "status", label: "Status" },
+              ]}
+              totalCount={missingOut.length}
+              getInlineRows={async () =>
+                missingOut.map((row) => ({
+                  employee_name: displayField(row.employee_name),
+                  employee_code: displayField(row.employee_code),
+                  clock_in: formatWhen(row.clock_in_at),
+                  clock_out: row.clock_out_at ? formatWhen(row.clock_out_at) : "",
+                  hours: row.hours_open != null ? `${row.hours_open}h` : "",
+                  status: row.auto_closed ? "Auto-closed — confirm" : "Still open",
+                }))
+              }
+              disabled={loading}
+            />
+          )}
+        </div>
       }
     >
       <AttendanceGapsBanner counts={gapCounts} />
@@ -212,26 +297,32 @@ export function HrMissedPunchesScreen() {
         <Link href="/admin/attendance-clock" className="font-medium text-[#185FA5] hover:underline">
           Attendance clock-in
         </Link>
-        . Confirmed days appear on{" "}
-        <Link href="/hr/attendance" className="font-medium text-[#185FA5] hover:underline">
-          Today's attendance
-        </Link>
-        {" "}and{" "}
-        <Link href="/hr/attendance/history" className="font-medium text-[#185FA5] hover:underline">
-          Previous attendance
-        </Link>
         . Extra same-hour scans are on{" "}
         <Link href="/hr/duplicate-punches" className="font-medium text-[#185FA5] hover:underline">
           Duplicate punches
         </Link>
-        .
+        . Apply an unapplied punch when the person had a genuine reason — it counts on attendance as Applied by HR.
       </p>
 
       <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1">
-        <button type="button" className={tabClass("unapplied")} onClick={() => setTab("unapplied")}>
+        <button
+          type="button"
+          className={tabClass("unapplied")}
+          onClick={() => {
+            setTab("unapplied");
+            setPage(1);
+          }}
+        >
           Unapplied terminal{unappliedCount ? ` (${unappliedCount})` : ""}
         </button>
-        <button type="button" className={tabClass("forgotten")} onClick={() => setTab("forgotten")}>
+        <button
+          type="button"
+          className={tabClass("forgotten")}
+          onClick={() => {
+            setTab("forgotten");
+            setPage(1);
+          }}
+        >
           Forgotten clock-outs{forgottenCount ? ` (${forgottenCount})` : ""}
         </button>
       </div>
@@ -240,7 +331,7 @@ export function HrMissedPunchesScreen() {
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-[15px] font-medium text-slate-900">Unapplied terminal punches</h2>
           <p className="mt-1 text-sm text-slate-500">
-            The agent stored these scans, but Centrix could not match them to an employee or apply clock in/out.
+            These scans were stored but not counted. Apply one to attendance when HR confirms it should count.
           </p>
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">Loading…</p>
@@ -256,10 +347,11 @@ export function HrMissedPunchesScreen() {
                     <th className="px-3 py-2">Name on device</th>
                     <th className="px-3 py-2">Device</th>
                     <th className="px-3 py-2">Reason</th>
+                    {canRetry ? <th className="px-3 py-2">Action</th> : null}
                   </tr>
                 </thead>
                 <tbody>
-                  {unapplied.map((row) => (
+                  {paged.map((row) => (
                     <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
                       <td className="px-3 py-2 text-xs">{formatWhen(row.event_time_local || row.event_time)}</td>
                       <td className="px-3 py-2 font-mono text-xs">{displayField(row.employee_no)}</td>
@@ -268,15 +360,48 @@ export function HrMissedPunchesScreen() {
                         {displayField(row.device_no)}
                         {row.device_location ? ` · ${row.device_location}` : ""}
                       </td>
-                      <td className="max-w-[280px] truncate px-3 py-2 text-xs text-red-700" title={row.process_error || ""}>
-                        {displayField(row.process_error)}
+                      <td className="px-3 py-2 text-xs">
+                        <span className="text-red-700">{displayField(row.reason_short || row.process_error)}</span>
+                        {row.process_error ? (
+                          <button
+                            type="button"
+                            onClick={() => setReasonRow(row)}
+                            className="ml-2 text-[11px] font-medium text-[#185FA5] hover:underline"
+                          >
+                            View reason
+                          </button>
+                        ) : null}
                       </td>
+                      {canRetry ? (
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            disabled={applyingId === row.id || !row.id}
+                            onClick={() => void applyUnapplied(row)}
+                            className="text-xs font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                          >
+                            {applyingId === row.id ? "Applying…" : "Apply to attendance"}
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50, 100]}
+          />
         </section>
       ) : (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
@@ -303,7 +428,7 @@ export function HrMissedPunchesScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {missingOut.map((row) => (
+                  {paged.map((row) => (
                     <tr key={row.id} className="border-t border-slate-100 align-top">
                       <td className="px-3 py-2 text-sm">
                         {displayField(row.employee_name)}
@@ -355,6 +480,18 @@ export function HrMissedPunchesScreen() {
               </table>
             </div>
           )}
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50, 100]}
+          />
 
           {editing && canRetry ? (
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -376,13 +513,33 @@ export function HrMissedPunchesScreen() {
             </div>
           ) : null}
 
-          <div className="mt-4">
-            <Link href="/hr/attendance" className={SECONDARY_BTN_CLASS}>
-              Open attendance records
-            </Link>
-          </div>
         </section>
       )}
+      {reasonRow ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/30"
+            aria-label="Close reason"
+            onClick={() => setReasonRow(null)}
+          />
+          <div className="theme-panel theme-modal fixed left-1/2 top-1/2 z-50 w-[min(32rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border p-5 shadow-xl">
+            <h2 className="text-[15px] font-medium text-slate-900">Punch reason</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {formatWhen(reasonRow.event_time_local || reasonRow.event_time)} ·{" "}
+              {displayField(reasonRow.employee_name)} ({displayField(reasonRow.employee_no)})
+            </p>
+            <p className="mt-3 whitespace-pre-wrap text-sm text-slate-800">
+              {displayField(reasonRow.process_error)}
+            </p>
+            <div className="mt-4 flex justify-end">
+              <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setReasonRow(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </CatalogPageShell>
   );
 }

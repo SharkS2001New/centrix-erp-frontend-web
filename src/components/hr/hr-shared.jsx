@@ -434,6 +434,33 @@ export function composeEmployeeDisplayName(source) {
   return String(source.full_name ?? "").trim();
 }
 
+export function attendanceLatenessParts(row) {
+  const clockIn = Number(row?.late_minutes ?? 0) || 0;
+  const lunch = Number(row?.lunch_late_minutes ?? 0) || 0;
+  const total = Number(row?.total_late_minutes ?? clockIn + lunch) || 0;
+  return { clockIn, lunch, total };
+}
+
+export function formatAttendanceLateness(row, empty = "—") {
+  const { clockIn, lunch, total } = attendanceLatenessParts(row);
+  if (total <= 0) return empty;
+  if (clockIn > 0 && lunch > 0) return `${total}m (in ${clockIn}m · lunch ${lunch}m)`;
+  if (lunch > 0) return `${total}m lunch`;
+  return `${total}m`;
+}
+
+export function payrollLatenessLabel(attendance, lateMinutes) {
+  const clockIn = Number(attendance?.clock_in_late_minutes_total ?? 0) || 0;
+  const lunch = Number(attendance?.lunch_late_minutes_total ?? 0) || 0;
+  const total = Number(lateMinutes ?? attendance?.late_minutes_total ?? clockIn + lunch) || 0;
+  if (total <= 0) return "";
+  if (clockIn > 0 && lunch > 0) {
+    return `Lateness (${total} min: ${clockIn} clock-in + ${lunch} lunch)`;
+  }
+  if (lunch > 0 && clockIn <= 0) return `Lateness from lunch (${total} min)`;
+  return `Lateness (${total} min)`;
+}
+
 export function employeeToForm(employee) {
   const bankAccounts = employeeBankAccounts(employee);
   const hasParts =
@@ -825,6 +852,8 @@ export function payrollBreakdownSections(line, employee) {
     },
   ];
 
+  const attendance = payroll.attendance;
+
   // Compact payable composition when useful (non-zero components differ from a single lump).
   const payableDetail = [];
   if (useProration || periodAllowances > 0 || overtime > 0 || latenessAmount > 0) {
@@ -844,13 +873,12 @@ export function payrollBreakdownSections(line, employee) {
     }
     if (latenessAmount > 0) {
       payableDetail.push({
-        label: `Lateness held (${lateMinutes} min)`,
+        label: payrollLatenessLabel(attendance, lateMinutes) || `Lateness held (${lateMinutes} min)`,
         value: latenessAmount,
       });
     }
   }
 
-  const attendance = payroll.attendance;
   const attendanceNote =
     attendance && useProration
       ? [
@@ -868,7 +896,19 @@ export function payrollBreakdownSections(line, employee) {
           Number(attendance.non_deductible_off_days ?? 0) > 0
             ? `${attendance.non_deductible_off_days} non-deductible off`
             : null,
-          lateMinutes > 0 ? `${lateMinutes} min late` : null,
+          lateMinutes > 0
+            ? [
+                Number(attendance.clock_in_late_minutes_total ?? 0) > 0
+                  ? `${attendance.clock_in_late_minutes_total} min late clock-in`
+                  : null,
+                Number(attendance.lunch_late_minutes_total ?? 0) > 0
+                  ? `${attendance.lunch_late_minutes_total} min late from lunch`
+                  : null,
+                `${lateMinutes} min late overall`,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : null,
         ]
           .filter(Boolean)
           .join(" · ")
@@ -884,7 +924,7 @@ export function payrollBreakdownSections(line, employee) {
   const latenessDeduction =
     latenessAmount > 0
       ? {
-          label: `Lateness (${lateMinutes} min)`,
+          label: payrollLatenessLabel(attendance, lateMinutes) || `Lateness (${lateMinutes} min)`,
           value: latenessAmount,
         }
       : null;
@@ -1340,6 +1380,48 @@ export function computeAttendanceHours(checkIn, checkOut, options = {}) {
   const hours = (outSec - inSec) / 3600;
   if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return null;
   return Math.round(hours * 100) / 100;
+}
+
+function timestampMs(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.getTime();
+}
+
+/**
+ * Elapsed hours on premises: clock-in → clock-out (or now), minus lunch when both
+ * lunch-out and lunch-in exist. While at lunch, counts only up to lunch-out.
+ */
+export function elapsedAttendanceHours({
+  clockIn,
+  clockOut = null,
+  lunchOut = null,
+  lunchIn = null,
+  lunchRequired = true,
+  nowMs = Date.now(),
+} = {}) {
+  const start = timestampMs(clockIn);
+  if (start == null) return null;
+  const out = timestampMs(clockOut);
+  const lOut = lunchRequired ? timestampMs(lunchOut) : null;
+  const lIn = lunchRequired ? timestampMs(lunchIn) : null;
+  const end = out ?? (lOut != null && lIn == null ? lOut : nowMs);
+  if (end < start) return null;
+  let ms = end - start;
+  if (lOut != null && lIn != null && lIn > lOut) {
+    ms -= lIn - lOut;
+  }
+  const hours = ms / 3_600_000;
+  if (!Number.isFinite(hours) || hours < 0 || hours > 24) return null;
+  return Math.round(hours * 100) / 100;
+}
+
+export function formatHoursWorked(hours) {
+  if (hours == null || hours === "") return "—";
+  const n = Number(hours);
+  if (!Number.isFinite(n)) return "—";
+  return n.toFixed(2);
 }
 
 /** Full breakdown for line detail sidebar. */

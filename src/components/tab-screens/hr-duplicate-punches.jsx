@@ -10,10 +10,11 @@ import { P } from "@/lib/permission-codes";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
+  PaginationBar,
   PrimaryButton,
-  SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 
 function displayField(value) {
   if (value == null) return "—";
@@ -42,11 +43,13 @@ function formatWhen(value) {
 
 export function HrDuplicatePunchesScreen() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission(P.hr.manage) || hasPermission(P.hr.attendance.view);
+  const canManage = hasPermission(P.hr.manage) || hasPermission(P.hr.duplicate_punches.view);
   const [duplicates, setDuplicates] = useState([]);
   const [gapCounts, setGapCounts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,25 +84,50 @@ export function HrDuplicatePunchesScreen() {
     }
   }
 
+  const total = duplicates.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const paged = duplicates.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
     <CatalogPageShell
       title="Duplicate punches"
       subtitle="Extra terminal scans in the same hour. Only the first successful punch counts for attendance."
       action={
-        canManage && duplicates.length > 0 ? (
-          <PrimaryButton type="button" disabled={busy || loading} onClick={() => void dismiss()}>
-            {busy ? "Dismissing…" : "Dismiss all"}
-          </PrimaryButton>
-        ) : null
+        <div className="flex flex-wrap gap-2">
+          <CatalogListExport
+            title="Duplicate punches"
+            filename="duplicate-punches"
+            columns={[
+              { key: "time", label: "Time" },
+              { key: "employee_no", label: "Terminal ID" },
+              { key: "employee_name", label: "Name on device" },
+              { key: "device", label: "Device" },
+              { key: "note", label: "Note" },
+            ]}
+            totalCount={total}
+            getInlineRows={async () =>
+              duplicates.map((row) => ({
+                time: formatWhen(row.event_time_local || row.event_time),
+                employee_no: displayField(row.employee_no),
+                employee_name: displayField(row.employee_name),
+                device: `${displayField(row.device_no)}${row.device_location ? ` · ${row.device_location}` : ""}`,
+                note: displayField(row.process_error),
+              }))
+            }
+            disabled={loading}
+          />
+          {canManage && duplicates.length > 0 ? (
+            <PrimaryButton type="button" disabled={busy || loading} onClick={() => void dismiss()}>
+              {busy ? "Dismissing…" : "Dismiss all"}
+            </PrimaryButton>
+          ) : null}
+        </div>
       }
     >
       <AttendanceGapsBanner counts={gapCounts} />
       <p className="mb-6 text-sm text-slate-600">
-        These scans are logged so HR can see every fingerprint.         They do not change{" "}
-        <Link href="/hr/attendance" className="font-medium text-[#185FA5] hover:underline">
-          Today's attendance
-        </Link>
-        . Unmapped scans stay on{" "}
+        These scans are logged so HR can see every fingerprint. They do not change attendance. Unmapped scans stay on{" "}
         <Link href="/hr/missed-punches" className="font-medium text-[#185FA5] hover:underline">
           Missed punches
         </Link>
@@ -125,7 +153,7 @@ export function HrDuplicatePunchesScreen() {
                 </tr>
               </thead>
               <tbody>
-                {duplicates.map((row) => (
+                {paged.map((row) => (
                   <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
                     <td className="px-3 py-2 text-xs">{formatWhen(row.event_time_local || row.event_time)}</td>
                     <td className="px-3 py-2 font-mono text-xs">{displayField(row.employee_no)}</td>
@@ -155,11 +183,18 @@ export function HrDuplicatePunchesScreen() {
             </table>
           </div>
         )}
-        <div className="mt-4">
-          <Link href="/hr/attendance" className={SECONDARY_BTN_CLASS}>
-            Open today's attendance
-          </Link>
-        </div>
+        <PaginationBar
+          page={safePage}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+          pageSizeOptions={[10, 25, 50, 100]}
+        />
       </section>
     </CatalogPageShell>
   );

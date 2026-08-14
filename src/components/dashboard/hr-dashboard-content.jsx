@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
@@ -18,35 +18,43 @@ import {
 } from "@/components/dashboard/dashboard-shared";
 import { DonutChart, CHART_COLORS } from "@/components/reports/report-charts";
 
+import { P } from "@/lib/permission-codes";
+import { useAuth } from "@/contexts/auth-context";
+
 const HR_LINKS = [
-  { href: "/hr/employees", title: "Employees", desc: "Staff records and contracts" },
-  { href: "/hr/attendance", title: "Today's attendance", desc: "Who is in today" },
-  { href: "/hr/attendance/history", title: "Previous attendance", desc: "Yesterday’s records; filter by date or employee" },
-  { href: "/hr/missed-punches", title: "Missed punches", desc: "Unapplied terminal scans and forgotten clock-outs" },
-  { href: "/hr/duplicate-punches", title: "Duplicate punches", desc: "Extra scans in the same hour; first punch still counts" },
-  { href: "/hr/absents", title: "Absents", desc: "Scheduled days with no clock-in" },
-  { href: "/hr/lateness", title: "Lateness", desc: "Late clock-in and late return from lunch" },
-  { href: "/hr/leave", title: "Leave & off days", desc: "Leave requests and balances" },
-  { href: "/hr/payroll", title: "Payroll", desc: "Pay runs and payslips" },
-  { href: "/hr/pending-overtime", title: "Pending overtimes", desc: "Late clock-out awaiting approve or deny" },
-  { href: "/hr/overtime", title: "Overtime", desc: "Approved overtime entries" },
-  { href: "/hr/allowances", title: "Allowances", desc: "Recurring allowances" },
-  { href: "/hr/deductions", title: "Deductions", desc: "Statutory and other deductions" },
-  { href: "/reports/leave-balance", title: "Leave balance", desc: "Annual, sick, and off-day balances" },
-  { href: "/reports/attendance-register", title: "Attendance register", desc: "Daily check-in/out and paid hours" },
-  { href: "/reports/lateness-list", title: "Lateness list", desc: "Late arrivals and waivers" },
-  { href: "/reports/payroll-summary", title: "Payroll summary", desc: "Payroll runs summary" },
-  { href: "/reports/statutory-deductions", title: "Statutory deductions", desc: "Gross, PAYE, NSSF, SHIF, Housing Levy, Net" },
-  { href: "/reports/bank-transfer", title: "Bank transfer", desc: "Net pay bank payment file" },
-  { href: "/reports/nssf-remittance", title: "NSSF remittance", desc: "Member + employer NSSF statement" },
-  { href: "/reports/other-deductions", title: "Other deductions", desc: "Custom deductions by pay period" },
-  { href: "/reports/headcount", title: "Headcount", desc: "Workforce by department and branch" },
-  { href: "/reports/contract-expiry", title: "Contract expiry", desc: "Upcoming contract end dates" },
-  { href: "/reports/staff-turnover", title: "Staff turnover", desc: "Turnover rate by department" },
-  { href: "/reports/hr-dashboard-kpi", title: "Workforce summary", desc: "Organization-wide headcount, payroll, and contracts" },
+  { href: "/hr/employees", title: "Employees", desc: "Staff records and contracts", permission: P.hr.employees.view },
+  { href: "/hr/attendance", title: "Today's attendance", desc: "Who is in today", permission: P.hr.attendance.view },
+  { href: "/hr/attendance/history", title: "Previous attendance", desc: "Yesterday’s records; filter by date or employee", permission: P.hr.attendance_history.view },
+  { href: "/hr/missed-punches", title: "Missed punches", desc: "Unapplied terminal scans and forgotten clock-outs", permission: P.hr.missed_punches.view },
+  { href: "/hr/duplicate-punches", title: "Duplicate punches", desc: "Extra scans in the same hour; first punch still counts", permission: P.hr.duplicate_punches.view },
+  { href: "/hr/absents", title: "Absents", desc: "Scheduled days with no clock-in", permission: P.hr.absents.view },
+  { href: "/hr/lateness", title: "Lateness", desc: "Late clock-in and late return from lunch", permission: P.hr.lateness.view },
+  { href: "/hr/leave", title: "Leave & off days", desc: "Leave requests and balances", permission: P.hr.leave.view },
+  { href: "/hr/payroll", title: "Payroll", desc: "Pay runs and payslips", permission: P.hr.payroll.view },
+  { href: "/hr/pending-overtime", title: "Pending overtimes", desc: "Late clock-out awaiting approve or deny", permission: P.hr.pending_overtime.view },
+  { href: "/hr/overtime", title: "Overtime", desc: "Approved overtime entries", permission: P.hr.overtime.view },
+  { href: "/hr/allowances", title: "Allowances", desc: "Recurring allowances", permission: P.hr.allowances.view },
+  { href: "/hr/deductions", title: "Deductions", desc: "Statutory and other deductions", permission: P.hr.deductions.view },
+  { href: "/reports/leave-balance", title: "Leave balance", desc: "Annual, sick, and off-day balances", permission: P.hr.leave.view },
+  { href: "/reports/attendance-register", title: "Attendance register", desc: "Daily check-in/out and paid hours", permission: P.hr.attendance.view },
+  { href: "/reports/lateness-list", title: "Lateness list", desc: "Clock-in late, lunch late, overall lateness, and waivers", permission: P.hr.lateness.view },
+  { href: "/reports/payroll-summary", title: "Payroll summary", desc: "Payroll runs summary", permission: P.hr.payroll.view },
+  { href: "/reports/statutory-deductions", title: "Statutory deductions", desc: "Gross, PAYE, NSSF, SHIF, Housing Levy, Net", permission: P.hr.payroll.view },
+  { href: "/reports/bank-transfer", title: "Bank transfer", desc: "Net pay bank payment file", permission: P.hr.payroll.view },
+  { href: "/reports/nssf-remittance", title: "NSSF remittance", desc: "Member + employer NSSF statement", permission: P.hr.payroll.view },
+  { href: "/reports/other-deductions", title: "Other deductions", desc: "Custom deductions by pay period", permission: P.hr.payroll.view },
+  { href: "/reports/headcount", title: "Headcount", desc: "Workforce by department and branch", permission: P.hr.employees.view },
+  { href: "/reports/contract-expiry", title: "Contract expiry", desc: "Upcoming contract end dates", permission: P.hr.employees.view },
+  { href: "/reports/staff-turnover", title: "Staff turnover", desc: "Turnover rate by department", permission: P.hr.employees.view },
+  { href: "/reports/hr-dashboard-kpi", title: "Workforce summary", desc: "Organization-wide headcount, payroll, and contracts", permission: P.hr.employees.view },
 ];
 
 export function HrDashboardContent() {
+  const { hasPermission } = useAuth();
+  const links = useMemo(
+    () => HR_LINKS.filter((link) => !link.permission || hasPermission(link.permission)),
+    [hasPermission],
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -211,7 +219,7 @@ export function HrDashboardContent() {
           </DashboardSection>
 
           <DashboardSection title="HR tools">
-            <DashboardQuickLinks links={HR_LINKS} />
+            <DashboardQuickLinks links={links} />
           </DashboardSection>
         </div>
       )}

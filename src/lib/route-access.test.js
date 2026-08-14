@@ -77,12 +77,21 @@ describe("route-access", () => {
     ).toBe(false);
   });
 
-  it("evaluates workspace ownership against an explicit target workspace", () => {
+  it("allows missed punches with its own permission", () => {
     expect(
-      canAccessRoute("/dashboard", baseCtx, { workspaceId: "backoffice" }),
+      canAccessRoute("/hr/missed-punches", {
+        ...baseCtx,
+        hasPermission: (code) => code === "hr.missed_punches.view",
+      }),
     ).toBe(true);
+  });
+
+  it("denies missed punches when only today's attendance is granted", () => {
     expect(
-      canAccessRoute("/dashboard", baseCtx, { workspaceId: "pos" }),
+      canAccessRoute("/hr/missed-punches", {
+        ...baseCtx,
+        hasPermission: (code) => code === "hr.attendance.view",
+      }),
     ).toBe(false);
   });
 });

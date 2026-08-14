@@ -10,15 +10,28 @@ import { useAuth } from "@/contexts/auth-context";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
 import {
   CatalogPageShell,
+  PaginationBar,
   PrimaryButton,
   SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+
+const PENDING_OT_EXPORT_COLUMNS = [
+  { key: "work_date", label: "Date" },
+  { key: "employee", label: "Employee" },
+  { key: "hours", label: "Hours", align: "right" },
+  { key: "amount", label: "Amount", align: "right" },
+  { key: "notes", label: "Notes" },
+];
 
 export function HrPendingOvertimeScreen() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission(P.hr.manage);
+  const canManage = hasPermission(P.hr.pending_overtime.approve) || hasPermission(P.hr.manage);
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
@@ -28,25 +41,50 @@ export function HrPendingOvertimeScreen() {
     try {
       const [ot, emp] = await Promise.all([
         apiRequest("/employee-overtime", {
-          searchParams: { "filter[status]": "pending", per_page: 200 },
+          searchParams: { "filter[status]": "pending", per_page: pageSize, page },
         }),
         apiRequest("/employees", { searchParams: { per_page: 200 } }),
       ]);
       setRows(ot.data ?? []);
+      setTotal(Number(ot.meta?.total ?? ot.total ?? ot.data?.length ?? 0));
       setEmployees(emp.data ?? []);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load pending overtime");
       setRows([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize]);
 
   useTabAwareDataLoad(load);
 
   function employeeName(row) {
     const emp = employees.find((e) => e.id === row.employee_id) ?? row.employee;
     return emp ? composeEmployeeDisplayName(emp) : "—";
+  }
+
+  async function fetchAllPendingRows() {
+    const all = [];
+    let p = 1;
+    for (;;) {
+      const data = await apiRequest("/employee-overtime", {
+        searchParams: { "filter[status]": "pending", per_page: 200, page: p },
+      });
+      const batch = data.data ?? [];
+      all.push(...batch);
+      const n = Number(data.meta?.total ?? all.length);
+      if (all.length >= n || batch.length === 0) break;
+      p += 1;
+      if (p > 100) break;
+    }
+    return all.map((r) => ({
+      work_date: formatShortDate(r.work_date),
+      employee: employeeName(r),
+      hours: r.hours,
+      amount: formatHrKesFull(r.amount),
+      notes: r.notes || "",
+    }));
   }
 
   async function approve(id) {
@@ -75,6 +113,8 @@ export function HrPendingOvertimeScreen() {
     }
   }
 
+  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+
   return (
     <CatalogPageShell
       title="Pending overtimes"
@@ -87,15 +127,23 @@ export function HrPendingOvertimeScreen() {
           <button type="button" className={SECONDARY_BTN_CLASS} onClick={load} disabled={loading}>
             Refresh
           </button>
+          <CatalogListExport
+            title="Pending overtimes"
+            filename="pending-overtimes"
+            columns={PENDING_OT_EXPORT_COLUMNS}
+            totalCount={total}
+            getInlineRows={fetchAllPendingRows}
+            disabled={loading}
+          />
         </div>
       }
     >
-      {loading ? (
+      {loading && rows.length === 0 ? (
         <p className="text-sm text-slate-600">Loading…</p>
       ) : rows.length === 0 ? (
         <p className="text-sm text-slate-600">No pending overtime.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className={`overflow-x-auto ${loading ? "opacity-60" : ""}`}>
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
@@ -143,6 +191,18 @@ export function HrPendingOvertimeScreen() {
           </table>
         </div>
       )}
+      <PaginationBar
+        page={Math.min(page, totalPages)}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        onChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        pageSizeOptions={[10, 25, 50, 100]}
+      />
     </CatalogPageShell>
   );
 }

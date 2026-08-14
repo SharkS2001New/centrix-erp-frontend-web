@@ -310,20 +310,18 @@ export function HrCrudPage({
         </div>
       )}
 
-      {total > pageSize || totalPages > 1 ? (
-        <PaginationBar
-          page={Math.min(page, totalPages)}
-          totalPages={totalPages}
-          total={total}
-          pageSize={pageSize}
-          onChange={setPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size);
-            setPage(1);
-          }}
-          pageSizeOptions={[25, 50, 100]}
-        />
-      ) : null}
+      <PaginationBar
+        page={Math.min(page, totalPages)}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        onChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+        pageSizeOptions={[10, 25, 50, 100]}
+      />
 
       {form && (
         <FormDrawer
@@ -363,8 +361,12 @@ export function HrCrudPage({
             filename={exportFilename ?? resolvedExportTitle}
             apiPath={apiPath}
             columns={exportColumns}
-            totalCount={filtered.length}
-            getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
+            totalCount={total || filtered.length}
+            getSearchParams={() => ({
+              per_page: 200,
+              ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+              ...(listSearchParams ?? {}),
+            })}
             getInlineRows={getInlineExportRows}
             disabled={loading}
           />

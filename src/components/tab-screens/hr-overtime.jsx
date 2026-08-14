@@ -24,6 +24,41 @@ export function HrOvertimeScreen() {
         const employees = (res.data ?? []).filter((e) => e.shift_id != null);
         return { employees };
       }}
+      exportTitle="Overtime"
+      exportFilename="overtime"
+      exportColumns={[
+        { key: "employee", label: "Employee" },
+        { key: "work_date", label: "Date" },
+        { key: "hours", label: "Hours" },
+        { key: "rate_mode", label: "Rate" },
+        { key: "amount", label: "Amount" },
+        { key: "status", label: "Status" },
+        { key: "notes", label: "Notes" },
+      ]}
+      getExportRows={async () => {
+        const all = [];
+        let page = 1;
+        for (;;) {
+          const res = await apiRequest("/employee-overtime", {
+            searchParams: { "filter[status]": "approved,paid", per_page: 200, page },
+          });
+          const batch = res.data ?? [];
+          all.push(...batch);
+          const n = Number(res.meta?.total ?? all.length);
+          if (all.length >= n || batch.length === 0) break;
+          page += 1;
+          if (page > 100) break;
+        }
+        return all.map((r) => ({
+          employee: r.employee ? composeEmployeeDisplayName(r.employee) : "",
+          work_date: formatShortDate(r.work_date),
+          hours: r.hours,
+          rate_mode: r.rate_mode === "fixed_hourly" ? "Fixed / hr" : "From salary",
+          amount: formatHrKesFull(r.amount),
+          status: r.status || "",
+          notes: r.notes || "",
+        }));
+      }}
       columns={[
         {
           key: "employee_id",

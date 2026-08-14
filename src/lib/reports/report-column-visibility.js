@@ -165,6 +165,11 @@ const REPORT_COLUMN_LABELS = {
   net_pay: "Net Pay",
   employer_nssf: "Employer NSSF",
   employer_housing: "Employer Housing",
+  late_minutes: "Late clock-in (min)",
+  lunch_late_minutes: "Late from lunch (min)",
+  total_late_minutes: "Overall late (min)",
+  lateness_waived: "Lateness waived",
+  lateness_waiver_reason: "Waiver reason",
 };
 
 /**

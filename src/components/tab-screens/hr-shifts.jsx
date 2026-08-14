@@ -1,6 +1,7 @@
 "use client";
 
-import { Field, formatShortDate, inputClassName } from "@/components/catalog/catalog-shared";
+import { useState } from "react";
+import { CatalogPageShell, Field, formatShortDate, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrCrudPage } from "@/components/hr/hr-crud-page";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeHrPayrollSettings } from "@/lib/hr-settings";
@@ -18,15 +19,52 @@ function padTime(t) {
 export function HrShiftsScreen() {
   const { capabilities } = useAuth();
   const hrDefaults = mergeHrPayrollSettings(capabilities?.module_settings);
+  const [tab, setTab] = useState("shifts");
+
+  const tabClass = (id) =>
+    `rounded-md px-4 py-2 text-sm font-medium transition ${
+      tab === id ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
+    }`;
 
   return (
-    <>
+    <CatalogPageShell
+      title="Shifts"
+      subtitle="Work hours for attendance and payroll, plus organization public holidays"
+    >
+      <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-1">
+        <button type="button" onClick={() => setTab("shifts")} className={tabClass("shifts")}>
+          Work shift
+        </button>
+        <button type="button" onClick={() => setTab("holidays")} className={tabClass("holidays")}>
+          Public holidays
+        </button>
+      </div>
+
+      {tab === "shifts" ? (
     <HrCrudPage
+      embedded
       title="Work shifts"
       subtitle="Weekday and weekend/holiday hours, plus separate lunch settings when needed"
       addButtonLabel="Add shift"
       drawerWide
       apiPath="/work-shifts"
+      exportTitle="Work shifts"
+      exportFilename="work-shifts"
+      exportColumns={[
+        { key: "shift_code", label: "Code" },
+        { key: "shift_name", label: "Name" },
+        { key: "start_time", label: "Start" },
+        { key: "end_time", label: "End" },
+        { key: "works_saturday", label: "Saturday" },
+        { key: "works_sunday", label: "Sunday" },
+        { key: "works_public_holidays", label: "Public holidays" },
+        { key: "use_alternate_hours", label: "Alt hours" },
+        { key: "alternate_start_time", label: "Alt start" },
+        { key: "alternate_end_time", label: "Alt end" },
+        { key: "lunch_minutes", label: "Lunch (min)" },
+        { key: "lunch_required", label: "Lunch required" },
+        { key: "is_active", label: "Active" },
+      ]}
       columns={[
         { key: "shift_code", label: "Code" },
         { key: "shift_name", label: "Name" },
@@ -396,14 +434,20 @@ export function HrShiftsScreen() {
         </>
       )}
     />
-
-    <div className="mt-10">
+      ) : (
       <HrCrudPage
         embedded
         title="Public holidays"
         subtitle="Organization-wide holidays; attendance respects each shift’s “works on public holidays” setting"
         addButtonLabel="Add holiday"
         apiPath="/organization-holidays"
+        exportTitle="Public holidays"
+        exportFilename="public-holidays"
+        exportColumns={[
+          { key: "holiday_date", label: "Date" },
+          { key: "name", label: "Name" },
+          { key: "is_active", label: "Active" },
+        ]}
         columns={[
           {
             key: "holiday_date",
@@ -467,7 +511,7 @@ export function HrShiftsScreen() {
           </>
         )}
       />
-    </div>
-    </>
+      )}
+    </CatalogPageShell>
   );
 }

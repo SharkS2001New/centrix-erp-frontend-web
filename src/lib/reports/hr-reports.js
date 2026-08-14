@@ -4,13 +4,13 @@ export const HR_REPORT_DEFS = [
   {
     key: "attendance-register",
     label: "Attendance register",
-    subtitle: "Daily check-in/out, paid hours, lunch, and status",
+    subtitle: "Daily check-in/out, paid hours, lunch, lateness, and status",
     icon: "clipboard",
   },
   {
     key: "lateness-list",
     label: "Lateness list",
-    subtitle: "Late arrivals with waiver status and reasons",
+    subtitle: "Late clock-in, late return from lunch, overall lateness, and waivers",
     icon: "alert",
   },
   { key: "payroll-summary", label: "Payroll summary", subtitle: "Payroll run totals and breakdown", icon: "receipt" },
