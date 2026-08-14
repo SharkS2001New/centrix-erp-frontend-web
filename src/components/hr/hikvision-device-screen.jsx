@@ -99,7 +99,7 @@ export function HikvisionDeviceScreen() {
   const loadUsers = useCallback(async () => {
     const data = await apiRequest(`${base}/users/search`, {
       method: "POST",
-      body: { maxResults: 50 },
+      body: { maxResults: 30 },
     });
     setUsers(data.users ?? []);
   }, [base]);
@@ -107,13 +107,13 @@ export function HikvisionDeviceScreen() {
   const loadCards = useCallback(async () => {
     const data = await apiRequest(`${base}/cards/search`, {
       method: "POST",
-      body: { maxResults: 50 },
+      body: { maxResults: 30 },
     });
     setCards(data.cards ?? []);
   }, [base]);
 
   const loadFingerprints = useCallback(async (employeeNo = "") => {
-    const body = { maxResults: 50 };
+    const body = { maxResults: 30 };
     if (employeeNo.trim()) {
       body.employee_no = employeeNo.trim();
     }
