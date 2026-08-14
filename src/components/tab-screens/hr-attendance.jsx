@@ -251,18 +251,14 @@ export function HrAttendanceScreen() {
     }
   }, [tab, loadHistory]);
 
-  const openSessions = useMemo(
-    () => sessions.filter((s) => !s.clock_out_at),
-    [sessions],
-  );
-
-  const closedTodaySessions = useMemo(
-    () => sessions.filter((s) => s.clock_out_at),
-    [sessions],
-  );
-
   function sessionEmployeeLabel(s) {
     return composeEmployeeDisplayName(s.employee) || s.employee_name || `#${s.employee_id}`;
+  }
+
+  function sessionTimestamp(value) {
+    if (!value) return 0;
+    const t = new Date(value).getTime();
+    return Number.isNaN(t) ? 0 : t;
   }
 
   function sessionTimeLabel(value) {
@@ -270,18 +266,20 @@ export function HrAttendanceScreen() {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
       const text = String(value);
-      return `${formatShortDate(text)} ${text.slice(11, 16)}`;
+      return text.slice(11, 16) || text;
     }
     return new Intl.DateTimeFormat("en-KE", {
       timeZone: "Africa/Nairobi",
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     }).format(parsed);
   }
+
+  const todaySessions = useMemo(
+    () => [...sessions].sort((a, b) => sessionTimestamp(a.clock_in_at) - sessionTimestamp(b.clock_in_at)),
+    [sessions],
+  );
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
 
@@ -425,6 +423,24 @@ export function HrAttendanceScreen() {
 
   function clearEmployeeSelection() {
     setSelectedEmployeeIds([]);
+  }
+
+  async function deleteClockSession(session) {
+    const name = sessionEmployeeLabel(session);
+    const ok = await confirm(
+      confirmDeleteOptions(
+        `this punch for ${name}`,
+        `Delete the ${sessionTimeLabel(session.clock_in_at)}${session.clock_out_at ? `–${sessionTimeLabel(session.clock_out_at)}` : ""} punch for ${name}? The attendance day is rebuilt from remaining punches.`,
+      ),
+    );
+    if (!ok) return;
+    try {
+      await apiRequest(`/attendance/clock-sessions/${session.id}`, { method: "DELETE" });
+      notifySuccess("Punch deleted.");
+      await loadActive();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Delete failed");
+    }
   }
 
   async function deleteRecord(record) {
@@ -870,64 +886,69 @@ export function HrAttendanceScreen() {
             </p>
           )}
 
-          <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
-            <h2 className="text-[15px] font-medium text-slate-900">Premises — on shift now</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Employees currently signed in at premises via fingerprint terminal or company phone.
-            </p>
+          <section className="mb-8 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="text-[15px] font-medium text-slate-900">Premises today</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Each clock session (Africa/Nairobi). Lunch in/out appears as a second row. Delete a
+                wrong punch; remaining punches rebuild the day.
+              </p>
+            </div>
             {activeLoading ? (
-              <p className="mt-3 text-sm text-slate-500">Loading…</p>
-            ) : openSessions.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No one is on shift at premises right now.</p>
+              <p className="px-5 py-6 text-sm text-slate-500">Loading…</p>
+            ) : todaySessions.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-slate-500">No premises clock-ins yet today.</p>
             ) : (
-              <ul className="mt-3 divide-y divide-slate-100">
-                {openSessions.map((s) => (
-                  <li key={`premises-${s.id}`} className="py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-900">{sessionEmployeeLabel(s)}</p>
-                      <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
-                        On shift
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      {formatAttendanceSource(s.source || "clock_device")} · Device {s.device_identifier || "—"} ·
-                      In {sessionTimeLabel(s.clock_in_at)}
-                      {s.clock_in_geofence_distance_metres != null
-                        ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
-                        : ""}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
-            <h2 className="text-[15px] font-medium text-slate-900">Premises — clocked today</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Completed fingerprint / premises sessions for today. These also appear on Records.
-            </p>
-            {activeLoading ? (
-              <p className="mt-3 text-sm text-slate-500">Loading…</p>
-            ) : closedTodaySessions.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No completed premises sessions yet today.</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-slate-100">
-                {closedTodaySessions.map((s) => (
-                  <li key={`closed-${s.id}`} className="py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-900">{sessionEmployeeLabel(s)}</p>
-                      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                        Clocked out
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      {formatAttendanceSource(s.source || "clock_device")} · Device {s.device_identifier || "—"} ·
-                      In {sessionTimeLabel(s.clock_in_at)} · Out {sessionTimeLabel(s.clock_out_at)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Employee</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Clock in</th>
+                      <th className="px-4 py-3">Clock out</th>
+                      <th className="px-4 py-3">Device</th>
+                      <th className="px-4 py-3">Source</th>
+                      {canManageSettings ? <th className="px-4 py-3 text-right">Actions</th> : null}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {todaySessions.map((s) => (
+                      <tr key={s.id} className="theme-table-body-row">
+                        <td className="px-4 py-3 font-medium text-slate-900">{sessionEmployeeLabel(s)}</td>
+                        <td className="px-4 py-3">
+                          {!s.clock_out_at ? (
+                            <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
+                              On shift
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                              Clocked out
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-slate-700">{sessionTimeLabel(s.clock_in_at)}</td>
+                        <td className="px-4 py-3 tabular-nums text-slate-700">
+                          {s.clock_out_at ? sessionTimeLabel(s.clock_out_at) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{s.device_identifier || "—"}</td>
+                        <td className="px-4 py-3 text-slate-600">{formatAttendanceSource(s.source)}</td>
+                        {canManageSettings ? (
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => void deleteClockSession(s)}
+                              className="text-red-600 hover:underline"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
 

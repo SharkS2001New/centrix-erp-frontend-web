@@ -66,6 +66,7 @@ import {
   formatCashSalesNumber,
   formatPosBrowseLabel,
   formatSaleKes,
+  resolveFreshWorkspacePosNum,
   resolvePosBrowseNumber,
   resolvePosNextBrowseNumber,
   resolvePosSessionTicketNumber,
@@ -257,6 +258,8 @@ import {
   seedLocalPosTicketSeqFromSale,
   resolvePosTicketForCheckout,
   saveLocalPosCart,
+  emptyLocalPosCart,
+  invalidateStaleLocalCartWrites,
   savePreviousOrderEditDraft,
   summarizeLocalPosCart,
   upsertLocalPosCartLine,
@@ -942,53 +945,6 @@ function mergeFreshWorkspaceCart(next, preservedPosNum) {
     next_pos_order_num: preserved,
     next_pos_order_date: next.next_pos_order_date ?? todayPosOrderDate(),
   };
-}
-
-function resolveFreshWorkspacePosNum(
-  activeCart,
-  sessionOrders,
-  pendingSale = null,
-  issuedPosMax = null,
-  floatSessionId = null,
-) {
-  let maxPos = 0;
-  if (issuedPosMax != null && Number(issuedPosMax) > 0) {
-    maxPos = Number(issuedPosMax);
-  }
-  const activeSession = Number(floatSessionId);
-  const scopedSession =
-    Number.isFinite(activeSession) && activeSession > 0 ? activeSession : null;
-  const rows = [...(sessionOrders ?? [])];
-  if (pendingSale) rows.unshift(pendingSale);
-  for (const row of rows) {
-    // After Z/reopen, ignore tickets stamped to a *different* float session so
-    // Cash Sales # restarts at 1. Null/0 (legacy / offline stamp missing) still
-    // counts — same rule as the previous-order browse list.
-    if (scopedSession != null) {
-      const rowSession = Number(row?.float_session_id ?? 0);
-      if (rowSession > 0 && rowSession !== scopedSession) continue;
-    }
-    const n = Number(resolvePosSessionTicketNumber(row) ?? 0);
-    if (n > maxPos) maxPos = n;
-  }
-  // Only count the active cart when it is an in-progress sale. A blank workspace
-  // already shows last+1 on next_pos_order_num — treating that as issued would
-  // make F8 jump an extra ticket (10 → 11 after F10 already prepared #10).
-  const inProgress =
-    (activeCart?.lines?.length ?? 0) > 0 ||
-    Boolean(activeCart?.held_order_num && activeCart?.superseded_sale_id) ||
-    Boolean(activeCart?.offline_client_sale_uuid);
-  if (inProgress) {
-    const activePos =
-      resolvePosSessionTicketNumber(activeCart) ?? resolvePosNextBrowseNumber(activeCart);
-    if (activePos != null && activePos > maxPos) maxPos = activePos;
-  }
-  const sessionNext = maxPos > 0 ? maxPos + 1 : null;
-  // Session / outbox sequence — do not jump to server watermark+1 (reserved block).
-  // No issued tickets yet → always start at Cash Sales #1 (never inherit gaps).
-  // Callers must pass outbox-backed issuedPosMax (or null), never meta-only phantoms.
-  if (sessionNext != null) return sessionNext;
-  return 1;
 }
 
 /** Sync next Cash Sales # — raises with local/outbox hints so pending uploads never rewind the till. */
@@ -2478,6 +2434,8 @@ export function PosScreen({ standalone = false }) {
   const cartCommitChainRef = useRef(Promise.resolve());
   /** >0 while enqueueCartCommit tasks are still running — F10 uses this for a fast idle check. */
   const cartCommitPendingRef = useRef(0);
+  /** Drop queued line commits after hold / fresh workspace so they cannot restore parked lines. */
+  const cartCommitGenerationRef = useRef(0);
   const editAutosaveTimerRef = useRef(null);
   const editAutosaveInFlightRef = useRef(false);
   const editAutosaveRerunRef = useRef(null);
@@ -4622,9 +4580,15 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   function enqueueCartCommit(task) {
+    const generation = cartCommitGenerationRef.current;
     cartCommitPendingRef.current += 1;
+    const wrapped = async () => {
+      if (generation !== cartCommitGenerationRef.current) return;
+      if (isFreshWorkspacePlaceholder(cartRef.current)) return;
+      return task();
+    };
     const run = cartCommitChainRef.current
-      .then(task, task)
+      .then(wrapped, wrapped)
       .finally(() => {
         cartCommitPendingRef.current = Math.max(0, cartCommitPendingRef.current - 1);
       });
@@ -8607,14 +8571,15 @@ export function PosScreen({ standalone = false }) {
 
   /**
    * After a local hold: unlock the till immediately with an empty workspace,
-   * then clear the old TemporaryCart / bootstrap the next cart in the background
-   * (same pattern as F10 / post-checkout).
-   *
-   * Critical: await TemporaryCart line DELETE and fetch with applyState:false so
-   * loadCashierCart cannot re-paint held lines over the empty placeholder.
+   * then clear IndexedDB (and the old TemporaryCart when online) so parked lines
+   * cannot come back from a late saveLocalPosCart / loadCashierCart race.
    */
   async function clearWorkspaceAfterLocalHold(activeCart) {
     setSaveOrderOpen(false);
+    posShortcutStateRef.current = {
+      ...posShortcutStateRef.current,
+      saveOrderOpen: false,
+    };
     setSaveOrderError(null);
     closePaymentDialog({ force: true });
     setPaymentError(null);
@@ -8627,8 +8592,10 @@ export function PosScreen({ standalone = false }) {
     clearClassicLineSelection();
     void clearPreviousOrderEditDraft().catch(() => {});
 
-    // Holding parks IndexedDB only — invalidate any in-flight held restore materialize.
-    // (applyFreshWorkspacePlaceholder also bumps this.)
+    invalidateStaleLocalCartWrites();
+    cartCommitGenerationRef.current += 1;
+    freshWorkspaceGenerationRef.current += 1;
+
     const serverId = isServerPosCartId(activeCart?.id) ? Number(activeCart.id) : null;
     const quickPeek = resolveImmediateNextPosTicket(
       activeCart,
@@ -8652,18 +8619,42 @@ export function PosScreen({ standalone = false }) {
       markServerCartConsumed(serverId);
     }
 
-    const clearPromise =
-      serverId != null
-        ? apiRequest(`/sales/carts/${serverId}/lines`, {
-            method: "DELETE",
-            loading: false,
-            reportIssues: false,
-          }).catch(() => null)
-        : Promise.resolve(null);
+    const emptyLocal = emptyLocalPosCart({
+      branch_id: activeCart?.branch_id ?? user?.branch_id ?? null,
+      till_id: activeCart?.till_id ?? tillId ?? null,
+      float_session_id: activeCart?.float_session_id ?? floatSessionId ?? null,
+      channel: activeCart?.channel ?? channel,
+    });
+    if (quickPeek != null) {
+      emptyLocal.next_pos_order_num = quickPeek;
+    }
 
-    void clearLocalPosCart().catch(() => {});
+    try {
+      await clearLocalPosCart();
+      const saved = await saveLocalPosCart(emptyLocal);
+      const presented = presentLocalOfflineCart(saved);
+      const live = cartRef.current;
+      if (isFreshWorkspacePlaceholder(live) || (live?.lines?.length ?? 0) === 0) {
+        const merged = mergeFreshWorkspaceCart(presented, quickPeek);
+        cartRef.current = merged;
+        setCart(merged);
+      }
+    } catch {
+      /* placeholder already on screen — next scan will ensureCart */
+    }
 
-    const generation = ++freshWorkspaceGenerationRef.current;
+    const generation = freshWorkspaceGenerationRef.current;
+
+    if (serverId == null) {
+      return;
+    }
+
+    const clearPromise = apiRequest(`/sales/carts/${serverId}/lines`, {
+      method: "DELETE",
+      loading: false,
+      reportIssues: false,
+    }).catch(() => null);
+
     void (async () => {
       try {
         await clearPromise;
@@ -8681,11 +8672,10 @@ export function PosScreen({ standalone = false }) {
         }
         if (!next || !isServerPosCartId(next.id)) return;
 
-        // Never reattach the held TemporaryCart's lines (DELETE race / same cart id).
         let cleaned = stripOfflineSaleMarkers(next);
         if (
-          serverId != null &&
-          (Number(cleaned?.id) === Number(serverId) || isServerCartConsumed(cleaned.id))
+          Number(cleaned?.id) === Number(serverId) ||
+          isServerCartConsumed(cleaned.id)
         ) {
           cleaned = {
             ...cleaned,
@@ -8697,7 +8687,7 @@ export function PosScreen({ standalone = false }) {
             _editDraftDirty: undefined,
           };
         }
-        if ((cleaned.lines?.length ?? 0) > 0 && serverId != null) {
+        if ((cleaned.lines?.length ?? 0) > 0) {
           cleaned = { ...cleaned, lines: [] };
         }
 
@@ -8710,27 +8700,7 @@ export function PosScreen({ standalone = false }) {
           setEditOrderNo(String(quickPeek));
         }
       } catch {
-        if (generation !== freshWorkspaceGenerationRef.current) return;
-        const live = cartRef.current;
-        if (
-          !isFreshWorkspacePlaceholder(live) &&
-          ((live?.lines?.length ?? 0) > 0 || live?.held_order_num)
-        ) {
-          return;
-        }
-        try {
-          const empty = await loadOrCreateLocalPosCart({
-            branch_id: activeCart?.branch_id ?? user?.branch_id ?? null,
-            till_id: activeCart?.till_id ?? null,
-            float_session_id: activeCart?.float_session_id ?? floatSessionId ?? null,
-          });
-          if (generation !== freshWorkspaceGenerationRef.current) return;
-          const presented = presentLocalOfflineCart(empty);
-          cartRef.current = presented;
-          setCart(presented);
-        } catch {
-          /* placeholder remains — next scan will ensureCart */
-        }
+        /* local empty cart already persisted */
       }
     })();
   }
@@ -8745,7 +8715,14 @@ export function PosScreen({ standalone = false }) {
     }
     setLeaveGuardBusy(true);
     setStatusMessage(null);
+    let claimedHold = false;
     try {
+      if (holdInFlightRef.current) {
+        completeLeaveNavigation(href);
+        return;
+      }
+      holdInFlightRef.current = true;
+      claimedHold = true;
       const park = await parkCartLocally(activeCart, {
         walkIn: true,
         walkInName: prefilledEditCustomerName.trim() || "Walk-in (auto-held)",
@@ -8765,6 +8742,7 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(e instanceof ApiError ? e.message : e?.message || "Failed to hold sale before leaving");
       setLeaveGuardOpen(false);
     } finally {
+      if (claimedHold) holdInFlightRef.current = false;
       setLeaveGuardBusy(false);
     }
   }
@@ -9369,6 +9347,8 @@ export function PosScreen({ standalone = false }) {
   const freshWorkspaceGenerationRef = useRef(0);
   /** Prevents a second F8 while confirm / bootstrap from the first press is still running. */
   const freshWorkspaceInFlightRef = useRef(false);
+  /** One local hold at a time — Enter repeat / Alt+H must not park the same cart twice. */
+  const holdInFlightRef = useRef(false);
   /** Shared TemporaryCart create after optimistic F8 clear (first scan reuses this). */
   const freshCartBootstrapRef = useRef(null);
 
@@ -11234,6 +11214,9 @@ export function PosScreen({ standalone = false }) {
     heldAmountPaid,
     heldPaymentMethodCode,
   } = {}) {
+    if (hold && holdInFlightRef.current) {
+      return;
+    }
     const activeCartEarly = cartRef.current ?? cart;
     if (!(activeCartEarly?.lines?.length > 0)) {
       const message = hold
@@ -11242,6 +11225,14 @@ export function PosScreen({ standalone = false }) {
       setSaveOrderError(message);
       flashPosShortcutMessage(message);
       return;
+    }
+    if (hold) {
+      holdInFlightRef.current = true;
+      setSaveOrderOpen(false);
+      posShortcutStateRef.current = {
+        ...posShortcutStateRef.current,
+        saveOrderOpen: false,
+      };
     }
     if (!hold && !activeCartEarly?.id) {
       const message = "Add items before saving this order.";
@@ -11264,7 +11255,7 @@ export function PosScreen({ standalone = false }) {
     setSaveOrderError(null);
     setStatusMessage(null);
     try {
-      const activeCart = cartRef.current ?? cart;
+      const activeCart = hold ? activeCartEarly : cartRef.current ?? cart;
       if (!(activeCart?.lines?.length > 0)) {
         const message = hold
           ? "Add items before holding this order."
@@ -11294,8 +11285,6 @@ export function PosScreen({ standalone = false }) {
               }
             : {}),
         });
-        // Unlock till immediately — server DELETE / next cart bootstrap run in background.
-        setBusy(false);
         await clearWorkspaceAfterLocalHold(activeCart);
         const who = walkIn
           ? holdWalkInName
@@ -11397,10 +11386,18 @@ export function PosScreen({ standalone = false }) {
               ? "Failed to hold order"
               : "Failed to save order";
       setSaveOrderError(message);
+      if (hold) {
+        setSaveOrderOpen(true);
+        posShortcutStateRef.current = {
+          ...posShortcutStateRef.current,
+          saveOrderOpen: true,
+        };
+      }
       if (standalone || !saveOrderOpen) {
         notifyError(message);
       }
     } finally {
+      if (hold) holdInFlightRef.current = false;
       setBusy(false);
     }
   }

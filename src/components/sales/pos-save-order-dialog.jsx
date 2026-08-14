@@ -177,6 +177,7 @@ export function PosSaveOrderDialog({
   }
 
   function handleSave(submitMode = "save") {
+    if (saving || submitLockRef.current) return;
     if (customerMode === "walkin") {
       const name = walkInName.trim().toUpperCase();
       if (!name) {
@@ -196,6 +197,7 @@ export function PosSaveOrderDialog({
         payload.heldAmountPaid = Math.round(paid * 100) / 100;
         payload.heldPaymentMethodCode = resolvedPaymentMethod;
       }
+      submitLockRef.current = true;
       onSave?.(payload);
       return;
     }
@@ -224,13 +226,19 @@ export function PosSaveOrderDialog({
       payload.heldAmountPaid = Math.round(paid * 100) / 100;
       payload.heldPaymentMethodCode = resolvedPaymentMethod;
     }
+    submitLockRef.current = true;
     onSave?.(payload);
   }
 
   const handleSaveRef = useRef(handleSave);
+  const submitLockRef = useRef(false);
   useEffect(() => {
     handleSaveRef.current = handleSave;
   });
+
+  useEffect(() => {
+    if (!open) submitLockRef.current = false;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;

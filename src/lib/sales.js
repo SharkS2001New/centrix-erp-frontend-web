@@ -298,6 +298,47 @@ export function resolvePosNextBrowseNumber(saleOrCart) {
   return null;
 }
 
+/**
+ * Next Cash Sales # for a blank till after checkout / hold / F8.
+ *
+ * Only tickets that were actually issued (`pos_order_num` on a sale or claimed
+ * checkout cart) advance the sequence. `next_pos_order_num` on an open cart is
+ * the ticket about to be sold — treating it as issued skipped a number on Hold
+ * and F8 (10 in the box → next sale became 12).
+ */
+export function resolveFreshWorkspacePosNum(
+  activeCart,
+  sessionOrders,
+  pendingSale = null,
+  issuedPosMax = null,
+  floatSessionId = null,
+) {
+  let maxPos = 0;
+  if (issuedPosMax != null && Number(issuedPosMax) > 0) {
+    maxPos = Number(issuedPosMax);
+  }
+  const activeSession = Number(floatSessionId);
+  const scopedSession =
+    Number.isFinite(activeSession) && activeSession > 0 ? activeSession : null;
+  const rows = [...(sessionOrders ?? [])];
+  if (pendingSale) rows.unshift(pendingSale);
+  for (const row of rows) {
+    if (scopedSession != null) {
+      const rowSession = Number(row?.float_session_id ?? 0);
+      if (rowSession > 0 && rowSession !== scopedSession) continue;
+    }
+    const n = Number(resolvePosSessionTicketNumber(row) ?? 0);
+    if (n > maxPos) maxPos = n;
+  }
+  // Claimed checkout cart (pos_order_num set) counts. An open new sale only has
+  // next_pos_order_num — that must not bump last+1 or Hold/F8 skip a ticket.
+  const issuedOnCart = resolvePosSessionTicketNumber(activeCart);
+  if (issuedOnCart != null && issuedOnCart > maxPos) maxPos = issuedOnCart;
+  const sessionNext = maxPos > 0 ? maxPos + 1 : null;
+  if (sessionNext != null) return sessionNext;
+  return 1;
+}
+
 /** Display label for POS browse / captions (plain digits for POS ticket). */
 export function formatPosBrowseLabel(saleOrCart) {
   const n = resolvePosBrowseNumber(saleOrCart);

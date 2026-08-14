@@ -5,6 +5,7 @@ import {
   isOrderEditActionVisible,
   isOrderEditVisible,
   resolvePaymentMethodByCode,
+  resolveFreshWorkspacePosNum,
   resolvePosBrowseNumber,
   resolvePosNextBrowseNumber,
   resolvePosSessionTicketNumber,
@@ -523,5 +524,41 @@ describe("resolvePosBrowseNumber", () => {
   it("does not fall back to org order_num on session rows", () => {
     expect(resolvePosBrowseNumber({ order_num: 7801, channel: "pos" })).toBeNull();
     expect(resolvePosBrowseNumber({ pos_order_num: 5, order_num: 7801 })).toBe(5);
+  });
+});
+
+describe("resolveFreshWorkspacePosNum", () => {
+  it("does not skip a ticket when holding or F8-clearing an open cart that only has next_pos_order_num", () => {
+    const sessionOrders = [{ pos_order_num: 9, float_session_id: 4 }];
+    const openCart = {
+      lines: [{ product_code: "A", quantity: 1 }],
+      next_pos_order_num: 10,
+      float_session_id: 4,
+    };
+    expect(resolveFreshWorkspacePosNum(openCart, sessionOrders, null, null, 4)).toBe(10);
+  });
+
+  it("advances after a checkout cart that already claimed pos_order_num", () => {
+    const sessionOrders = [{ pos_order_num: 9, float_session_id: 4 }];
+    const checkoutCart = {
+      lines: [{ product_code: "A", quantity: 1 }],
+      pos_order_num: 10,
+      next_pos_order_num: 10,
+      float_session_id: 4,
+    };
+    expect(
+      resolveFreshWorkspacePosNum(checkoutCart, sessionOrders, checkoutCart, null, 4),
+    ).toBe(11);
+  });
+
+  it("uses pendingSale ticket when the workspace cart has not been stamped yet", () => {
+    const sessionOrders = [{ pos_order_num: 9, float_session_id: 4 }];
+    const openCart = {
+      lines: [{ product_code: "A", quantity: 1 }],
+      next_pos_order_num: 10,
+      float_session_id: 4,
+    };
+    const pendingSale = { pos_order_num: 10, float_session_id: 4 };
+    expect(resolveFreshWorkspacePosNum(openCart, sessionOrders, pendingSale, null, 4)).toBe(11);
   });
 });

@@ -801,46 +801,78 @@ export async function loadOrCreateLocalPosCart(seed = {}) {
   return cart;
 }
 
-export async function saveLocalPosCart(cart) {
-  // Guard: if the outbox row for this cart is already pending/syncing/synced it means
-  // checkout was completed. Late autosave calls (edit timer, optimistic line flush)
-  // must not overwrite the completed-sale cart into IDB and potentially re-surface
-  // those lines on the next new order workspace.
-  if (cart.offline_client_sale_uuid) {
-    const outboxUuid = String(cart.offline_client_sale_uuid).trim();
-    if (outboxUuid) {
-      let outboxStatus = null;
-      try {
-        const row = await idbGetOutboxSale(outboxUuid);
-        outboxStatus = row?.sync_status ?? null;
-      } catch {
-        /* non-fatal */
-      }
-      if (
-        outboxStatus === "pending" ||
-        outboxStatus === "syncing" ||
-        outboxStatus === "synced"
-      ) {
-        // Checkout already queued — silently discard this stale write.
-        return cart;
-      }
-    }
-  }
+/**
+ * Bump this before wiping the local cart after hold / checkout so in-flight
+ * saveLocalPosCart calls cannot write the parked/sold lines back to IndexedDB.
+ */
+let localCartWriteEpoch = 0;
+let localCartWriteChain = Promise.resolve();
 
-  const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
-  await idbPutLocalCart(next);
-  // Revising a queued offline sale mid-edit only (`sync_status: editing`).
-  // After F10 checkout the outbox is pending — late line saves must not rewrite it
-  // or reattach the next ticket to the old client_sale_uuid.
-  if (next.offline_client_sale_uuid) {
-    const row = await idbGetOutboxSale(String(next.offline_client_sale_uuid)).catch(() => null);
-    if (row?.sync_status === "editing") {
-      await syncOutboxSaleFromLocalEditCart(next).catch((e) => {
-        console.error("Failed to mirror offline edit into outbox", e);
-      });
+export function invalidateStaleLocalCartWrites() {
+  localCartWriteEpoch += 1;
+  return localCartWriteEpoch;
+}
+
+export function currentLocalCartWriteEpoch() {
+  return localCartWriteEpoch;
+}
+
+function enqueueLocalCartWrite(task) {
+  const run = localCartWriteChain.then(task, task);
+  localCartWriteChain = run.catch(() => {});
+  return run;
+}
+
+export async function saveLocalPosCart(cart) {
+  const epochAtEntry = localCartWriteEpoch;
+  const hasLines = (cart?.lines?.length ?? 0) > 0;
+  return enqueueLocalCartWrite(async () => {
+    if (hasLines && localCartWriteEpoch !== epochAtEntry) {
+      return cart;
     }
-  }
-  return next;
+    // Guard: if the outbox row for this cart is already pending/syncing/synced it means
+    // checkout was completed. Late autosave calls (edit timer, optimistic line flush)
+    // must not overwrite the completed-sale cart into IDB and potentially re-surface
+    // those lines on the next new order workspace.
+    if (cart.offline_client_sale_uuid) {
+      const outboxUuid = String(cart.offline_client_sale_uuid).trim();
+      if (outboxUuid) {
+        let outboxStatus = null;
+        try {
+          const row = await idbGetOutboxSale(outboxUuid);
+          outboxStatus = row?.sync_status ?? null;
+        } catch {
+          /* non-fatal */
+        }
+        if (
+          outboxStatus === "pending" ||
+          outboxStatus === "syncing" ||
+          outboxStatus === "synced"
+        ) {
+          return cart;
+        }
+      }
+    }
+
+    if (hasLines && localCartWriteEpoch !== epochAtEntry) {
+      return cart;
+    }
+
+    const next = { ...cart, id: "active", updated_at_ms: Date.now(), offline: true };
+    if (hasLines && localCartWriteEpoch !== epochAtEntry) {
+      return cart;
+    }
+    await idbPutLocalCart(next);
+    if (next.offline_client_sale_uuid) {
+      const row = await idbGetOutboxSale(String(next.offline_client_sale_uuid)).catch(() => null);
+      if (row?.sync_status === "editing") {
+        await syncOutboxSaleFromLocalEditCart(next).catch((e) => {
+          console.error("Failed to mirror offline edit into outbox", e);
+        });
+      }
+    }
+    return next;
+  });
 }
 
 const PREVIOUS_ORDER_EDIT_DRAFT_ID = "previous_order_edit";
@@ -1370,7 +1402,9 @@ export async function resolvePreviousOrderEditServerCartId(cart) {
 }
 
 export async function clearLocalPosCart() {
-  await idbClearLocalCart("active");
+  return enqueueLocalCartWrite(async () => {
+    await idbClearLocalCart("active");
+  });
 }
 
 /** Normalize server (or mixed) cart lines into local offline line shape. */
