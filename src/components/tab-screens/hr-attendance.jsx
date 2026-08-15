@@ -9,7 +9,7 @@ import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { P } from "@/lib/permission-codes";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { ATTENDANCE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
-import { HrDateField, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
+import { HrDateField, HrFilterButton, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
 import {
   CatalogPageShell,
   Field,
@@ -103,8 +103,10 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyFromDate, setHistoryFromDate] = useState(() => daysAgoCalendarDate(1));
   const [historyToDate, setHistoryToDate] = useState(() => daysAgoCalendarDate(1));
+  const [appliedHistoryFrom, setAppliedHistoryFrom] = useState(() => daysAgoCalendarDate(1));
+  const [appliedHistoryTo, setAppliedHistoryTo] = useState(() => daysAgoCalendarDate(1));
   const [recordSearch, setRecordSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
 
   useEffect(() => {
     if (isHistory) return undefined;
@@ -138,11 +140,6 @@ export function HrAttendanceScreen({ mode = "today" }) {
     isAllOnPageSelected,
     isSomeOnPageSelected,
   } = usePageRowSelection();
-
-  useEffect(() => {
-    const handle = window.setTimeout(() => setDebouncedSearch(recordSearch.trim()), 300);
-    return () => window.clearTimeout(handle);
-  }, [recordSearch]);
 
   const loadActive = useCallback(async () => {
     setActiveLoading(true);
@@ -216,9 +213,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
         searchParams: {
           per_page: historyPageSize,
           page: historyPage,
-          from_date: historyFromDate,
-          to_date: historyToDate,
-          ...(debouncedSearch ? { q: debouncedSearch } : {}),
+          from_date: appliedHistoryFrom,
+          to_date: appliedHistoryTo,
+          ...(appliedSearch ? { q: appliedSearch } : {}),
         },
       });
       setRecords(attendanceRes.data ?? []);
@@ -232,11 +229,11 @@ export function HrAttendanceScreen({ mode = "today" }) {
     } finally {
       setHistoryLoading(false);
     }
-  }, [debouncedSearch, historyFromDate, historyToDate, historyPage, historyPageSize, clearSelection]);
+  }, [appliedSearch, appliedHistoryFrom, appliedHistoryTo, historyPage, historyPageSize, clearSelection]);
 
   useEffect(() => {
     setHistoryPage(1);
-  }, [debouncedSearch, historyFromDate, historyToDate]);
+  }, [appliedSearch, appliedHistoryFrom, appliedHistoryTo]);
 
   const recordPageIds = useMemo(() => records.map((r) => r.id), [records]);
 
@@ -805,7 +802,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
     try {
       const body =
         isHistory
-          ? { from: historyFromDate, to: historyToDate }
+          ? { from: appliedHistoryFrom, to: appliedHistoryTo }
           : {};
       let result;
       try {
@@ -898,7 +895,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
   async function markMissingAsAbsent() {
     const ok = await confirm({
       title: "Mark missing as absent?",
-      message: `For ${historyFromDate} to ${historyToDate}, create absent records for active employees who were scheduled to work but have no attendance. Today and future dates are never marked. Leave/off days are skipped.`,
+      message: `For ${appliedHistoryFrom} to ${appliedHistoryTo}, create absent records for active employees who were scheduled to work but have no attendance. Today and future dates are never marked. Leave/off days are skipped.`,
       confirmLabel: "Mark absents",
     });
     if (!ok) return;
@@ -908,8 +905,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
       const res = await apiRequest("/employee-attendance/mark-absents", {
         method: "POST",
         body: {
-          from_date: historyFromDate,
-          to_date: historyToDate,
+          from_date: appliedHistoryFrom,
+          to_date: appliedHistoryTo,
         },
       });
       const created = Number(res.created_count ?? 0);
@@ -1177,9 +1174,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
               totalCount={recordsTotal || records.length}
               getSearchParams={() => ({
                 per_page: 200,
-                from_date: historyFromDate,
-                to_date: historyToDate,
-                ...(debouncedSearch ? { q: debouncedSearch } : {}),
+                from_date: appliedHistoryFrom,
+                to_date: appliedHistoryTo,
+                ...(appliedSearch ? { q: appliedSearch } : {}),
               })}
               disabled={historyLoading}
             />
@@ -1356,6 +1353,23 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 placeholder="Search by employee name"
               />
             </Field>
+            <HrFilterButton
+              loading={historyLoading}
+              onClick={() => {
+                const nextSearch = recordSearch.trim();
+                setAppliedHistoryFrom(historyFromDate);
+                setAppliedHistoryTo(historyToDate);
+                setAppliedSearch(nextSearch);
+                setHistoryPage(1);
+                if (
+                  historyFromDate === appliedHistoryFrom &&
+                  historyToDate === appliedHistoryTo &&
+                  nextSearch === appliedSearch
+                ) {
+                  void loadHistory();
+                }
+              }}
+            />
           </HrFilterToolbar>
 
           <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">

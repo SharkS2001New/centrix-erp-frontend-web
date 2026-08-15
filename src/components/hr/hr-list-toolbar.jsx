@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, FILTER_CONTROL_CLASS, FilterToolbar } from "@/components/catalog/catalog-shared";
+import { Field, FILTER_CONTROL_CLASS, FilterToolbar, PrimaryButton } from "@/components/catalog/catalog-shared";
 
 /** Title-row actions: Refresh, Export, Add — same alignment as inventory/sales. */
 export function HrPageActions({ children }) {
@@ -22,5 +22,15 @@ export function HrDateField({ label, value, onChange }) {
         onChange={(e) => onChange(e.target.value)}
       />
     </Field>
+  );
+}
+
+export function HrFilterButton({ onClick, loading = false, disabled = false }) {
+  return (
+    <div className="pb-0.5">
+      <PrimaryButton type="button" showIcon={false} disabled={disabled || loading} onClick={onClick}>
+        {loading ? "Loading…" : "Filter"}
+      </PrimaryButton>
+    </div>
   );
 }

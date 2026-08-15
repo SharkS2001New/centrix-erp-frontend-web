@@ -14,6 +14,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
+import { HrFilterButton } from "@/components/hr/hr-list-toolbar";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
 import { CustomerLocationMapEmbed } from "@/components/customers/customer-location-map-embed";
 import { EntityPhotoDisplay, fieldAttendancePhotoFileUrl } from "@/components/media/entity-photo-display";
@@ -126,9 +127,13 @@ export default function MobileFieldAttendanceScreen({
     : hasPermission?.("sales.manage");
 
   const today = todayCalendarDate();
-  const [fromDate, setFromDate] = useState(isActiveEmbedded ? today : daysAgoCalendarDate(7));
+  const initialFrom = isActiveEmbedded ? today : daysAgoCalendarDate(7);
+  const [fromDate, setFromDate] = useState(initialFrom);
   const [toDate, setToDate] = useState(today);
+  const [appliedFrom, setAppliedFrom] = useState(initialFrom);
+  const [appliedTo, setAppliedTo] = useState(today);
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 350);
   const [openOnly, setOpenOnly] = useState(isActiveEmbedded);
   const [rows, setRows] = useState([]);
@@ -141,16 +146,20 @@ export default function MobileFieldAttendanceScreen({
   const [saveMessage, setSaveMessage] = useState(null);
   const [reopening, setReopening] = useState(false);
 
+  const queryFrom = isHr ? appliedFrom : fromDate;
+  const queryTo = isHr ? appliedTo : toDate;
+  const querySearch = isHr ? appliedSearch : debouncedSearch.trim();
+
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({
-        from_date: fromDate,
-        to_date: toDate,
+        from_date: queryFrom,
+        to_date: queryTo,
         per_page: "100",
       });
-      if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
+      if (querySearch) params.set("q", querySearch);
       if (openOnly) params.set("open_only", "1");
 
       const res = await apiRequest(`${apiBase}?${params.toString()}`);
@@ -164,7 +173,7 @@ export default function MobileFieldAttendanceScreen({
     } finally {
       setLoading(false);
     }
-  }, [apiBase, fromDate, toDate, debouncedSearch, openOnly, isHr]);
+  }, [apiBase, queryFrom, queryTo, querySearch, openOnly, isHr]);
 
   useEffect(() => {
     if (!allowed) return;
@@ -319,6 +328,20 @@ export default function MobileFieldAttendanceScreen({
             <input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} />
             Active sessions only
           </label>
+          {isHr ? (
+            <HrFilterButton
+              loading={loading}
+              onClick={() => {
+                const nextSearch = search.trim();
+                setAppliedFrom(fromDate);
+                setAppliedTo(toDate);
+                setAppliedSearch(nextSearch);
+                if (fromDate === appliedFrom && toDate === appliedTo && nextSearch === appliedSearch) {
+                  void loadRows();
+                }
+              }}
+            />
+          ) : null}
           <PrimaryButton type="button" showIcon={false} onClick={loadRows} disabled={loading}>
             {loading ? "Loading…" : "Refresh"}
           </PrimaryButton>

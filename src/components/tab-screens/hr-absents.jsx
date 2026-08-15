@@ -12,7 +12,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
-import { HrDateField, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
+import { HrDateField, HrFilterButton, HrFilterToolbar, HrPageActions } from "@/components/hr/hr-list-toolbar";
 import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 
 function daysAgo(days) {
@@ -47,10 +47,12 @@ export function HrAbsentsScreen() {
   const [loading, setLoading] = useState(true);
   const [fromDate, setFromDate] = useState(daysAgo(14));
   const [toDate, setToDate] = useState(daysAgo(1));
+  const [appliedFrom, setAppliedFrom] = useState(daysAgo(14));
+  const [appliedTo, setAppliedTo] = useState(daysAgo(1));
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate]);
+  }, [appliedFrom, appliedTo]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,8 +60,8 @@ export function HrAbsentsScreen() {
       const data = await apiRequest("/employee-attendance", {
         searchParams: {
           "filter[status]": "absent",
-          from_date: fromDate,
-          to_date: toDate,
+          from_date: appliedFrom,
+          to_date: appliedTo,
           per_page: pageSize,
           page,
         },
@@ -73,7 +75,7 @@ export function HrAbsentsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, page, pageSize]);
+  }, [appliedFrom, appliedTo, page, pageSize]);
 
   useTabAwareDataLoad(load);
 
@@ -84,8 +86,8 @@ export function HrAbsentsScreen() {
       const data = await apiRequest("/employee-attendance", {
         searchParams: {
           "filter[status]": "absent",
-          from_date: fromDate,
-          to_date: toDate,
+          from_date: appliedFrom,
+          to_date: appliedTo,
           per_page: 200,
           page: p,
         },
@@ -125,6 +127,15 @@ export function HrAbsentsScreen() {
         <HrFilterToolbar>
           <HrDateField label="From" value={fromDate} onChange={setFromDate} />
           <HrDateField label="To" value={toDate} onChange={setToDate} />
+          <HrFilterButton
+            loading={loading}
+            onClick={() => {
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+              setPage(1);
+              if (fromDate === appliedFrom && toDate === appliedTo) void load();
+            }}
+          />
         </HrFilterToolbar>
       }
     >
