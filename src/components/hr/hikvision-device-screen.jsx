@@ -94,11 +94,11 @@ export function HikvisionDeviceScreen() {
       if (!result.online) {
         setConnectionError(result.error ?? "CentrixAttendanceAgent is not reachable.");
         if (!silent) {
-          notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
+        notifyError(result.error ?? "CentrixAttendanceAgent is not reachable.");
         }
       } else {
         if (!silent) {
-          notifySuccess(result.message ?? "CentrixAttendanceAgent is connected.");
+        notifySuccess(result.message ?? "CentrixAttendanceAgent is connected.");
         }
         await loadOverview();
         await loadDevice();
@@ -130,10 +130,10 @@ export function HikvisionDeviceScreen() {
     let rows = [];
     let bulkOk = false;
     try {
-      const data = await apiRequest(`${base}/fingerprints/search`, {
-        method: "POST",
-        body,
-      });
+    const data = await apiRequest(`${base}/fingerprints/search`, {
+      method: "POST",
+      body,
+    });
       rows = data.fingerprints ?? [];
       bulkOk = true;
     } catch {
@@ -885,15 +885,15 @@ function UserTable({ users, fingerprints }) {
             const valid = hikvisionValidSummary(row);
             return (
               <tr key={`${no || "row"}-${idx}`} className="border-t border-slate-100">
-                <td className="px-3 py-2 font-mono text-xs">
+              <td className="px-3 py-2 font-mono text-xs">
                   {no || "—"}
                   {row.duplicateOnDevice ? (
                     <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
                       Duplicate on device
                     </span>
                   ) : null}
-                </td>
-                <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
+              </td>
+              <td className="px-3 py-2">{row.name ?? row.Name ?? "—"}</td>
                 <td className="px-3 py-2 text-xs text-slate-500">{row.userType ?? row.UserType ?? "—"}</td>
                 <td className="px-3 py-2">
                   <span
@@ -919,7 +919,7 @@ function UserTable({ users, fingerprints }) {
                 <td className="px-3 py-2 text-xs text-slate-500">
                   {hikvisionCount(row, "numOfFace", "NumOfFace")}
                 </td>
-              </tr>
+            </tr>
             );
           })}
         </tbody>

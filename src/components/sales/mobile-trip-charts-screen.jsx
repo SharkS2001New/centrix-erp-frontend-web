@@ -24,6 +24,7 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { formatTonnage, loadTonnageFromDocuments } from "@/lib/load-weight";
+import { isLoadTonnageEnabled, resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 
 function formatDisplayDate(dateStr) {
   if (!dateStr) return "—";

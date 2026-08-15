@@ -227,17 +227,17 @@ export function HrMissedPunchesScreen() {
         <HrPageActions>
           {canRetry && tab === "unapplied" ? (
             <>
-              <button
-                type="button"
-                disabled={mapping || retrying || loading}
-                onClick={() => void autoMap()}
-                className={SECONDARY_BTN_CLASS}
-              >
-                {mapping ? "Mapping…" : "Auto-map terminal IDs"}
-              </button>
-              <PrimaryButton type="button" disabled={retrying || mapping || loading} onClick={() => void retryPending()}>
-                {retrying ? "Retrying…" : "Retry pending punches"}
-              </PrimaryButton>
+            <button
+              type="button"
+              disabled={mapping || retrying || loading}
+              onClick={() => void autoMap()}
+              className={SECONDARY_BTN_CLASS}
+            >
+              {mapping ? "Mapping…" : "Auto-map terminal IDs"}
+            </button>
+            <PrimaryButton type="button" disabled={retrying || mapping || loading} onClick={() => void retryPending()}>
+              {retrying ? "Retrying…" : "Retry pending punches"}
+            </PrimaryButton>
             </>
           ) : null}
           {tab === "unapplied" ? (
@@ -330,40 +330,40 @@ export function HrMissedPunchesScreen() {
 
       {tab === "unapplied" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-[15px] font-medium text-slate-900">Unapplied terminal punches</h2>
-          <p className="mt-1 text-sm text-slate-500">
+        <h2 className="text-[15px] font-medium text-slate-900">Unapplied terminal punches</h2>
+        <p className="mt-1 text-sm text-slate-500">
             These scans were stored but not counted. Apply one to attendance when HR confirms it should count.
-          </p>
-          {loading ? (
-            <p className="mt-3 text-sm text-slate-500">Loading…</p>
-          ) : unapplied.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500">No unapplied terminal punches.</p>
-          ) : (
-            <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+        </p>
+        {loading ? (
+          <p className="mt-3 text-sm text-slate-500">Loading…</p>
+        ) : unapplied.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No unapplied terminal punches.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Time</th>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Time</th>
                     <th className="px-3 py-2">Employee</th>
-                    <th className="px-3 py-2">Device</th>
-                    <th className="px-3 py-2">Reason</th>
+                  <th className="px-3 py-2">Device</th>
+                  <th className="px-3 py-2">Reason</th>
                     {canRetry ? <th className="px-3 py-2">Action</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
+                </tr>
+              </thead>
+              <tbody>
                   {paged.map((row) => (
-                    <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
-                      <td className="px-3 py-2 text-xs">{formatWhen(row.event_time_local || row.event_time)}</td>
+                  <tr key={row.id ?? row.event_key} className="border-t border-slate-100">
+                    <td className="px-3 py-2 text-xs">{formatWhen(row.event_time_local || row.event_time)}</td>
                       <td className="px-3 py-2 text-sm">
                         {displayField(row.employee_name)}
                         {row.employee_code ? (
                           <span className="ml-2 font-mono text-xs text-slate-500">{displayField(row.employee_code)}</span>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2 text-xs">
-                        {displayField(row.device_no)}
-                        {row.device_location ? ` · ${row.device_location}` : ""}
-                      </td>
+                    <td className="px-3 py-2 text-xs">
+                      {displayField(row.device_no)}
+                      {row.device_location ? ` · ${row.device_location}` : ""}
+                    </td>
                       <td className="px-3 py-2 text-xs">
                         <span className="text-red-700">{displayField(row.reason_short || row.process_error)}</span>
                         {row.process_error ? (
@@ -386,14 +386,14 @@ export function HrMissedPunchesScreen() {
                           >
                             {applyingId === row.id ? "Applying…" : "Apply to attendance"}
                           </button>
-                        </td>
+                    </td>
                       ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
           <PaginationBar
             page={safePage}
             totalPages={totalPages}
@@ -406,46 +406,46 @@ export function HrMissedPunchesScreen() {
             }}
             pageSizeOptions={[10, 25, 50, 100]}
           />
-        </section>
+      </section>
       ) : (
-        <section className="theme-panel rounded-xl border p-5 shadow-sm">
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-[15px] font-medium text-slate-900">Forgotten clock-outs</h2>
-          <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-slate-500">
             Evening punch missing. At 02:00 Centrix auto-closes the day at the employee’s shift end so hours exist for
             payroll. Confirm that time, or set the real clock-in / clock-out.
-          </p>
-          {loading ? (
-            <p className="mt-3 text-sm text-slate-500">Loading…</p>
-          ) : missingOut.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500">No forgotten clock-outs.</p>
-          ) : (
-            <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+        </p>
+        {loading ? (
+          <p className="mt-3 text-sm text-slate-500">Loading…</p>
+        ) : missingOut.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No forgotten clock-outs.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[800px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Employee</th>
-                    <th className="px-3 py-2">Clock in</th>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Employee</th>
+                  <th className="px-3 py-2">Clock in</th>
                     <th className="px-3 py-2">Clock out</th>
                     <th className="px-3 py-2">Hours</th>
                     <th className="px-3 py-2">Status</th>
-                    {canRetry ? <th className="px-3 py-2">Action</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
+                  {canRetry ? <th className="px-3 py-2">Action</th> : null}
+                </tr>
+              </thead>
+              <tbody>
                   {paged.map((row) => (
                     <tr key={row.id} className="border-t border-slate-100 align-top">
-                      <td className="px-3 py-2 text-sm">
-                        {displayField(row.employee_name)}
-                        <span className="ml-2 font-mono text-xs text-slate-500">{displayField(row.employee_code)}</span>
-                      </td>
-                      <td className="px-3 py-2 text-xs">{formatWhen(row.clock_in_at)}</td>
+                    <td className="px-3 py-2 text-sm">
+                      {displayField(row.employee_name)}
+                      <span className="ml-2 font-mono text-xs text-slate-500">{displayField(row.employee_code)}</span>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{formatWhen(row.clock_in_at)}</td>
                       <td className="px-3 py-2 text-xs">
                         {row.clock_out_at ? formatWhen(row.clock_out_at) : "—"}
                         {!row.clock_out_at && row.suggested_clock_out_at ? (
                           <div className="text-[11px] text-slate-500">Shift end {formatWhen(row.suggested_clock_out_at)}</div>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2 text-xs">{row.hours_open != null ? `${row.hours_open}h` : "—"}</td>
+                    <td className="px-3 py-2 text-xs">{row.hours_open != null ? `${row.hours_open}h` : "—"}</td>
                       <td className="px-3 py-2 text-xs">
                         {row.auto_closed ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-900">
@@ -455,8 +455,8 @@ export function HrMissedPunchesScreen() {
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">Still open</span>
                         )}
                       </td>
-                      {canRetry ? (
-                        <td className="px-3 py-2">
+                    {canRetry ? (
+                      <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
                             {row.auto_closed ? (
                               <button
@@ -468,22 +468,22 @@ export function HrMissedPunchesScreen() {
                                 Confirm shift end
                               </button>
                             ) : null}
-                            <button
-                              type="button"
+                        <button
+                          type="button"
                               onClick={() => startEdit(row)}
                               className="text-xs font-medium text-[#185FA5] hover:underline"
-                            >
+                        >
                               Set times
-                            </button>
+                        </button>
                           </div>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
           <PaginationBar
             page={safePage}
             totalPages={totalPages}
@@ -514,10 +514,10 @@ export function HrMissedPunchesScreen() {
                   Cancel
                 </button>
               </div>
-            </div>
+        </div>
           ) : null}
 
-        </section>
+      </section>
       )}
       {reasonRow ? (
         <>

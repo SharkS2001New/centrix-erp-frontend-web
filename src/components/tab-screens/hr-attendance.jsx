@@ -1515,11 +1515,11 @@ export function HrAttendanceScreen({ mode = "today" }) {
           <section className="mb-8 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Today</h2>
-              <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-slate-500">
                 One table for every capture method. Source shows whether the row came from a
                 fingerprint or clock device, a company phone on premises, the mobile sales app, or
                 attendance added by HR.
-              </p>
+            </p>
             </div>
             {activeLoading ? (
               <p className="px-5 py-6 text-sm text-slate-500">Loading…</p>
@@ -1562,9 +1562,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
                               At lunch
                             </span>
                           ) : (
-                            <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
+                      <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
                               On shift
-                            </span>
+                      </span>
                           )}
                         </td>
                         <td className="px-4 py-3 tabular-nums text-slate-700">{sessionTimeLabel(day.clockIn)}</td>
@@ -1805,45 +1805,45 @@ export function HrAttendanceScreen({ mode = "today" }) {
                             <IconButton label="Edit" onClick={() => openEditManual(r)}>
                               <PencilIcon />
                             </IconButton>
-                            {r.pending_waiver && canReviewWaiver(r) ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void reviewWaiverRequest(r, true)}
+                          {r.pending_waiver && canReviewWaiver(r) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void reviewWaiverRequest(r, true)}
                                   className="ml-1 text-emerald-700 hover:underline"
-                                >
-                                  Approve waive
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void reviewWaiverRequest(r, false)}
+                              >
+                                Approve waive
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void reviewWaiverRequest(r, false)}
                                   className="ml-1 text-amber-800 hover:underline"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            ) : null}
-                            {r.pending_waiver && !canReviewWaiver(r) ? (
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                          {r.pending_waiver && !canReviewWaiver(r) ? (
                               <span className="ml-1 text-xs text-amber-700">Awaiting manager</span>
-                            ) : null}
+                          ) : null}
                             {attendanceLatenessParts(r).total > 0 && !r.lateness_waived && !r.pending_waiver ? (
-                              <button
-                                type="button"
-                                onClick={() => void waiveLateness(r, true)}
+                            <button
+                              type="button"
+                              onClick={() => void waiveLateness(r, true)}
                                 className="ml-1 text-emerald-700 hover:underline"
-                              >
-                                Request waive
-                              </button>
-                            ) : null}
+                            >
+                              Request waive
+                            </button>
+                          ) : null}
                             {attendanceLatenessParts(r).total > 0 && r.lateness_waived && !r.pending_waiver ? (
-                              <button
-                                type="button"
-                                onClick={() => void waiveLateness(r, false)}
+                            <button
+                              type="button"
+                              onClick={() => void waiveLateness(r, false)}
                                 className="ml-1 text-amber-700 hover:underline"
-                              >
-                                Request undo
-                              </button>
-                            ) : null}
+                            >
+                              Request undo
+                            </button>
+                          ) : null}
                             <IconButton label="Delete" danger onClick={() => void deleteRecord(r)}>
                               <TrashIcon />
                             </IconButton>

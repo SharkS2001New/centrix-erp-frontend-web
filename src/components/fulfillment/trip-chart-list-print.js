@@ -19,6 +19,7 @@ import {
 import { saleCustomerLabel } from "@/lib/sales";
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 import { formatTonnage, loadTonnageFromDocuments } from "@/lib/load-weight";
+import { isLoadTonnageEnabled } from "@/lib/loading-sheet-print-settings";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -239,6 +240,7 @@ export function buildTripChartListHtml({
     Number(financialSummary?.total_amount) ||
     rows.reduce((sum, row) => sum + (Number(row.order_total) || 0), 0);
   const tonnage = loadTonnageFromDocuments({ pickingList, loadingList, trip });
+  const showTonnage = isLoadTonnageEnabled(printSettings);
   const vehicleTonnageLabel = tonnage.vehicleMaxKg
     ? formatTonnage(tonnage.vehicleMaxKg)
     : "Not set";
@@ -286,8 +288,12 @@ export function buildTripChartListHtml({
       ${meta.scheduledDate ? `<p class="meta-line">Date: ${escapeHtml(formatPrintDisplayDate(meta.scheduledDate))}</p>` : ""}
       ${meta.vehicle ? `<p class="meta-line">Vehicle: ${escapeHtml(meta.vehicle)}</p>` : ""}
       ${meta.driver ? `<p class="meta-line">Driver: ${escapeHtml(meta.driver)}</p>` : ""}
-      <p class="meta-line">Vehicle tonnage: ${escapeHtml(vehicleTonnageLabel)}</p>
-      <p class="meta-line">Picking list tonnage: ${escapeHtml(pickingTonnageLabel)}</p>
+      ${
+        showTonnage
+          ? `<p class="meta-line">Vehicle tonnage: ${escapeHtml(vehicleTonnageLabel)}</p>
+      <p class="meta-line">Picking list tonnage: ${escapeHtml(pickingTonnageLabel)}</p>`
+          : ""
+      }
     </div>
     <table>
       <thead>
@@ -303,13 +309,17 @@ export function buildTripChartListHtml({
       <div class="summary-row"><span>Customers delivering to</span><strong>${customerCount}</strong></div>
       <div class="summary-row"><span>Orders on trip</span><strong>${orderCount}</strong></div>
       <div class="summary-row strong"><span>Total amount vehicle is carrying</span><strong>KES ${formatKes(grandTotal)}</strong></div>
-      <div class="summary-row"><span>Vehicle tonnage</span><strong>${escapeHtml(vehicleTonnageLabel)}</strong></div>
+      ${
+        showTonnage
+          ? `<div class="summary-row"><span>Vehicle tonnage</span><strong>${escapeHtml(vehicleTonnageLabel)}</strong></div>
       <div class="summary-row${tonnage.overCapacity ? " strong" : ""}"><span>Picking list tonnage</span><strong>${escapeHtml(pickingTonnageLabel)}${
-        tonnage.overCapacity ? " (over capacity)" : ""
-      }</strong></div>
+            tonnage.overCapacity ? " (over capacity)" : ""
+          }</strong></div>
       ${
         remainingKg != null
           ? `<div class="summary-row"><span>Remaining capacity</span><strong>${escapeHtml(formatTonnage(remainingKg, { empty: "0 t" }))}</strong></div>`
+          : ""
+      }`
           : ""
       }
     </div>

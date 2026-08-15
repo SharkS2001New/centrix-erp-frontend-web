@@ -16,6 +16,7 @@ export const LOADING_SHEET_PRINT_DEFAULTS = {
   loading_sheet_show_trip_expenses: true,
   loading_sheet_show_trip_profit: true,
   loading_sheet_default_checked_by: "",
+  show_load_tonnage: true,
 };
 
 export function resolveLoadingSheetPrintSettings(distribution = {}) {
@@ -31,6 +32,7 @@ export function resolveLoadingSheetColumnFlags(printSettings = {}) {
     showTotal: settings.loading_sheet_show_total !== false,
     showTripExpenses: settings.loading_sheet_show_trip_expenses !== false,
     showTripProfit: settings.loading_sheet_show_trip_profit !== false,
+    showLoadTonnage: settings.show_load_tonnage !== false,
   };
 }
 
@@ -59,6 +61,7 @@ export function loadingSheetPrintFormFromApi(res) {
     loading_sheet_show_trip_expenses: distribution.loading_sheet_show_trip_expenses !== false,
     loading_sheet_show_trip_profit: distribution.loading_sheet_show_trip_profit !== false,
     loading_sheet_default_checked_by: String(distribution.loading_sheet_default_checked_by ?? ""),
+    show_load_tonnage: distribution.show_load_tonnage !== false,
     ...documentTemplateFormFromDistribution(distribution),
   };
 }
@@ -73,8 +76,16 @@ export function loadingSheetPrintPayloadFromForm(form) {
     loading_sheet_show_trip_expenses: Boolean(form.loading_sheet_show_trip_expenses),
     loading_sheet_show_trip_profit: Boolean(form.loading_sheet_show_trip_profit),
     loading_sheet_default_checked_by: String(form.loading_sheet_default_checked_by ?? "").trim(),
+    show_load_tonnage: form.show_load_tonnage !== false,
     ...documentTemplateDistributionPayloadFromForm(form),
   };
+}
+
+/** Picking list + trip chart tonnage (screen and print). Default on. */
+export function isLoadTonnageEnabled(source = {}) {
+  const distribution =
+    source?.module_settings?.distribution ?? source?.distribution ?? source;
+  return mergeLoadingSheetPrintSettings(distribution).show_load_tonnage !== false;
 }
 
 export function resolveLoadingSheetFooterLines(printSettings = {}) {

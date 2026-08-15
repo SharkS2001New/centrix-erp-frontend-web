@@ -20,6 +20,17 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
+export function LoadTonnageToggle({ form, setForm }) {
+  return (
+    <Toggle
+      label="Show picking list and trip chart tonnage"
+      description="Weight column and load vs vehicle capacity on picking lists and trip charts (screen and print). Turn off if this organization does not use product weights."
+      checked={form.show_load_tonnage !== false}
+      onChange={(v) => setForm((f) => ({ ...f, show_load_tonnage: v }))}
+    />
+  );
+}
+
 const LABELS = {
   loading: {
     fontNote:
@@ -67,6 +78,7 @@ export function LoadingListPrintSettingsFields({
   return (
     <div className="space-y-3">
       {showFontNote ? <p className="theme-subtext text-xs">{copy.fontNote}</p> : null}
+      <LoadTonnageToggle form={form} setForm={setForm} />
       <Toggle
         label="Show quantity column"
         description={copy.qtyDescription}

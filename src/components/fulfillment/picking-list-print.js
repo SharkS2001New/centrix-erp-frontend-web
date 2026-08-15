@@ -22,6 +22,7 @@ import {
 } from "@/lib/print-typography";
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
 import { formatTonnage, pickingLineWeightKg, summarizePickingTonnage } from "@/lib/load-weight";
+import { isLoadTonnageEnabled } from "@/lib/loading-sheet-print-settings";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -298,27 +299,30 @@ function normalizePickingLines(lines, uomByProductCode) {
 }
 
 /** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid. */
-function salesPickingGridColumns() {
-  return "4% 22% 18% 20% 14% 22%";
+function salesPickingGridColumns(showTonnage = true) {
+  return showTonnage ? "4% 22% 18% 20% 14% 22%" : "4% 26% 22% 22% 26%";
 }
 
-function distributionPickingGridColumns(includeShelfLocation = true) {
-  return includeShelfLocation ? "5% 10% 26% 12% 12% 12% 13%" : "5% 38% 13% 13% 13% 18%";
+function distributionPickingGridColumns(includeShelfLocation = true, showTonnage = true) {
+  if (includeShelfLocation) {
+    return showTonnage ? "5% 10% 26% 12% 12% 12% 13%" : "5% 12% 32% 17% 17% 17%";
+  }
+  return showTonnage ? "5% 38% 13% 13% 13% 18%" : "5% 46% 16% 16% 17%";
 }
 
-function buildSalesPickingHead() {
+function buildSalesPickingHead(showTonnage = true) {
   return `
     <div class="pick-head" role="row">
       <div class="col-no">No.</div>
       <div class="col-product">Product Name</div>
       <div class="col-qty">Quantity</div>
       <div class="col-price">Price</div>
-      <div class="col-weight">Weight</div>
+      ${showTonnage ? '<div class="col-weight">Weight</div>' : ""}
       <div class="col-total">Line amount</div>
     </div>`;
 }
 
-function buildDistributionPickingHead(includeShelfLocation = true) {
+function buildDistributionPickingHead(includeShelfLocation = true, showTonnage = true) {
   return `
     <div class="pick-head" role="row">
       <div class="col-no">No.</div>
@@ -327,11 +331,11 @@ function buildDistributionPickingHead(includeShelfLocation = true) {
       <div class="col-qty">Requested</div>
       <div class="col-picked">Picked</div>
       <div class="col-shortage">Shortage</div>
-      <div class="col-weight">Weight</div>
+      ${showTonnage ? '<div class="col-weight">Weight</div>' : ""}
     </div>`;
 }
 
-function buildDistributionPickingLineRows(lines, includeShelfLocation = true) {
+function buildDistributionPickingLineRows(lines, includeShelfLocation = true, showTonnage = true) {
   return lines
     .map((line) => {
       const hasShortage = Number(line.shortage_qty) > 0.0001;
@@ -352,14 +356,14 @@ function buildDistributionPickingLineRows(lines, includeShelfLocation = true) {
           <div class="col-qty">${escapeHtml(line.quantity_label)}</div>
           <div class="col-picked">${escapeHtml(line.picked_label)}</div>
           <div class="col-shortage">${line.shortage_qty > 0.0001 ? escapeHtml(line.shortage_label) : "—"}</div>
-          <div class="col-weight">${escapeHtml(line.weight_label)}</div>
+          ${showTonnage ? `<div class="col-weight">${escapeHtml(line.weight_label)}</div>` : ""}
         </div>
       </div>`;
     })
     .join("");
 }
 
-function buildSalesPickingLineRows(lines) {
+function buildSalesPickingLineRows(lines, showTonnage = true) {
   return lines
     .map((line) => {
       const qtyGhost = line.retail_breakdown
@@ -381,7 +385,7 @@ function buildSalesPickingLineRows(lines) {
             ${qtyGhost}
           </div>
           <div class="col-price">${priceMain}</div>
-          <div class="col-weight">${escapeHtml(line.weight_label)}</div>
+          ${showTonnage ? `<div class="col-weight">${escapeHtml(line.weight_label)}</div>` : ""}
           <div class="col-total">${formatKes(line.line_total)}</div>
         </div>
       </div>`;
@@ -484,14 +488,14 @@ export function chunkPickingLinesForPrint(lines, options = {}) {
 
 function pickingListPrintStyles(
   generalSettings,
-  { salesLayout = false, includeShelfLocation = true } = {},
+  { salesLayout = false, includeShelfLocation = true, showTonnage = true } = {},
 ) {
   const printPx = createOrgPrintPx(generalSettings, "picking_list");
   const px = printPx.body;
   const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "picking_list");
   const gridColumns = salesLayout
-    ? salesPickingGridColumns()
-    : distributionPickingGridColumns(includeShelfLocation);
+    ? salesPickingGridColumns(showTonnage)
+    : distributionPickingGridColumns(includeShelfLocation, showTonnage);
   const sharedPrintLayout = `
     @page { size: A4; margin: 0; }
     html { height: auto; }
@@ -708,6 +712,7 @@ export function buildPickingListHtml({
   printSettings = null,
 } = {}) {
   const salesLayout = isSalesPickingLayout(pickingList, layout);
+  const showTonnage = isLoadTonnageEnabled(printSettings);
   const branding = brandingWithDocumentLogo(
     resolveReportBranding({ organization, generalSettings, organizationNameFallback: organizationName }),
     generalSettings,
@@ -730,7 +735,7 @@ export function buildPickingListHtml({
   let summaryHtml;
 
   if (salesLayout) {
-    tableHead = buildSalesPickingHead();
+    tableHead = buildSalesPickingHead(showTonnage);
     const orderTotal =
       pickingList?.order_total_value != null
         ? Number(pickingList.order_total_value)
@@ -743,20 +748,28 @@ export function buildPickingListHtml({
     summaryHtml = `
       <div class="summary-box">
         <div class="summary-row"><span>Totals Value of Order</span><strong>KES ${formatKes(orderTotal)}</strong></div>
-        <div class="summary-row"><span>Picking list tonnage</span><strong>${escapeHtml(formatTonnage(tonnage.totalKg))}${escapeHtml(missingNote)}</strong></div>
+        ${
+          showTonnage
+            ? `<div class="summary-row"><span>Picking list tonnage</span><strong>${escapeHtml(formatTonnage(tonnage.totalKg))}${escapeHtml(missingNote)}</strong></div>`
+            : ""
+        }
       </div>`;
   } else {
     const totalRequired = lines.reduce((sum, line) => sum + Number(line.required_qty || 0), 0);
     const totalPicked = lines.reduce((sum, line) => sum + Number(line.picked_qty || 0), 0);
     const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
     const tonnage = summarizePickingTonnage(pickingList, lines);
-    tableHead = buildDistributionPickingHead(includeShelfLocation);
+    tableHead = buildDistributionPickingHead(includeShelfLocation, showTonnage);
     summaryHtml = `
       <div class="summary-box">
         <div class="summary-row"><span>Total requested</span><strong>${formatQty(totalRequired)}</strong></div>
         <div class="summary-row"><span>Total picked</span><strong>${formatQty(totalPicked)}</strong></div>
         <div class="summary-row"><span>Total shortage</span><strong>${formatQty(totalShortage)}</strong></div>
-        <div class="summary-row"><span>Picking list tonnage</span><strong>${escapeHtml(formatTonnage(tonnage.totalKg))}</strong></div>
+        ${
+          showTonnage
+            ? `<div class="summary-row"><span>Picking list tonnage</span><strong>${escapeHtml(formatTonnage(tonnage.totalKg))}</strong></div>`
+            : ""
+        }
       </div>`;
   }
 
@@ -769,8 +782,8 @@ export function buildPickingListHtml({
 
   const linesBlockForChunk = (chunkLines) => {
     const chunkRows = salesLayout
-      ? buildSalesPickingLineRows(chunkLines)
-      : buildDistributionPickingLineRows(chunkLines, includeShelfLocation);
+      ? buildSalesPickingLineRows(chunkLines, showTonnage)
+      : buildDistributionPickingLineRows(chunkLines, includeShelfLocation, showTonnage);
     return chunkRows
       ? `<div class="pick-lines">${chunkRows}</div>`
       : `<div class="pick-line-wrap"><div class="pick-line empty">No products to pick</div></div>`;
@@ -839,7 +852,7 @@ export function buildPickingListHtml({
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(docTitle)}</title>
-  <style>${pickingListPrintStyles(generalSettings, { salesLayout, includeShelfLocation })}
+  <style>${pickingListPrintStyles(generalSettings, { salesLayout, includeShelfLocation, showTonnage })}
   ${orgDocumentTemplateCss(printSettings?.picking_list_document_template, { layout: "classic" })}</style>
 </head>
 <body class="has-doc-print-edge-footer">

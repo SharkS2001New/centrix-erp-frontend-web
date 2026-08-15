@@ -26,7 +26,7 @@ import { PrintFontSettingsFields } from "@/components/admin/print-font-settings-
 import { DocumentLogoSettingsFields } from "@/components/admin/document-logo-settings-fields";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
-import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
+import { LoadingListPrintSettingsFields, LoadTonnageToggle } from "@/components/admin/loading-list-print-settings-fields";
 import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview";
 import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
@@ -851,6 +851,7 @@ function PickingListsTab({ form, setForm }) {
         setForm={setForm}
         variantKey="picking_list"
       />
+      <LoadTonnageToggle form={form} setForm={setForm} />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
           title="Document footer"
@@ -888,6 +889,7 @@ function TripChartListsTab({ form, setForm }) {
         setForm={setForm}
         variantKey="trip_chart"
       />
+      <LoadTonnageToggle form={form} setForm={setForm} />
       <div className="border-t border-slate-200 pt-4">
         <SectionHeading
           title="Document footer"

@@ -19,6 +19,7 @@ export const DISTRIBUTION_DEFAULTS = {
   dispatch_board_processed_only: true,
   enable_fulfillment_guidance: false,
   enable_product_shelf_location: false,
+  show_load_tonnage: true,
   mobile_enable_driver_app: true,
   mobile_enable_driver_attendance: false,
 };
@@ -104,6 +105,7 @@ export function mergeDistributionSettings(capabilities) {
     dispatchBoardProcessedOnly: distribution.dispatch_board_processed_only !== false,
     enableFulfillmentGuidance: Boolean(distribution.enable_fulfillment_guidance),
     enableProductShelfLocation: Boolean(distribution.enable_product_shelf_location),
+    showLoadTonnage: distribution.show_load_tonnage !== false,
     mobileEnableDriverApp: distribution.mobile_enable_driver_app !== false,
     mobileEnableDriverAttendance: Boolean(distribution.mobile_enable_driver_attendance),
   };
@@ -129,6 +131,7 @@ export function distributionFormFromApi(res) {
     dispatch_board_processed_only: distribution.dispatch_board_processed_only !== false,
     enable_fulfillment_guidance: Boolean(distribution.enable_fulfillment_guidance),
     enable_product_shelf_location: Boolean(distribution.enable_product_shelf_location),
+    show_load_tonnage: distribution.show_load_tonnage !== false,
     mobile_enable_driver_app: distribution.mobile_enable_driver_app !== false,
     mobile_enable_driver_attendance: Boolean(distribution.mobile_enable_driver_attendance),
     ...loadingSheetPrintFormFromApi({ distribution }),
@@ -158,6 +161,7 @@ export function distributionPayloadFromForm(form) {
     ...(form.enable_product_shelf_location != null
       ? { enable_product_shelf_location: Boolean(form.enable_product_shelf_location) }
       : {}),
+    show_load_tonnage: form.show_load_tonnage !== false,
     mobile_enable_driver_app: Boolean(form.mobile_enable_driver_app),
     mobile_enable_driver_attendance: Boolean(form.mobile_enable_driver_attendance),
     ...loadingSheetPrintPayloadFromForm(form),
