@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolvePrintoutSections } from "@/lib/printouts-settings";
+import {
+  printoutsDistributionPayloadFromForm,
+  printoutsFormFromApis,
+  resolvePrintoutSections,
+} from "@/lib/printouts-settings";
 
 describe("resolvePrintoutSections", () => {
   it("limits small shop (sales only) to sales docs", () => {
@@ -40,5 +44,13 @@ describe("resolvePrintoutSections", () => {
       "picking_list",
       "trip_chart",
     ]);
+  });
+
+  it("keeps the admin tonnage switch in the default printout form and payload", () => {
+    const form = printoutsFormFromApis({});
+    expect(form.show_load_tonnage).toBe(true);
+
+    const payload = printoutsDistributionPayloadFromForm({ show_load_tonnage: false });
+    expect(payload.show_load_tonnage).toBe(false);
   });
 });
