@@ -13,7 +13,7 @@ import {
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import {
   DistributionDeliveryAlerts,
   SalesCustomerOrderAlerts,
@@ -51,6 +51,7 @@ export function NotificationsSettingsPanel({
 }) {
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("sms");
@@ -70,12 +71,22 @@ export function NotificationsSettingsPanel({
   useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("notifications"))
-      .then((res) => setForm(notificationsFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load notification settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("notifications")
+      .then((res) => {
+        if (!cancelled && res) setForm(notificationsFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load notification settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function handleSave(e) {
     e.preventDefault();

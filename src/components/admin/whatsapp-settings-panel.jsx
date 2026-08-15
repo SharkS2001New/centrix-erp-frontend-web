@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { whatsappFormFromApi, whatsappPayloadFromForm } from "@/lib/whatsapp-settings";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
@@ -37,6 +37,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath, organizationApiPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(whatsappFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
@@ -48,7 +49,7 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
     const usersPath = organizationApiPath("/users");
     const branchesPath = organizationApiPath("/branches");
     Promise.all([
-      apiRequest(settingsPath("whatsapp")),
+      getSettings("whatsapp"),
       fetchUsersCached(undefined, { path: usersPath }).catch(() => []),
       branchesPath === "/branches"
         ? fetchBranchesCached().catch(() => [])
@@ -57,13 +58,13 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
             .catch(() => []),
     ])
       .then(([res, usersData, branchesData]) => {
-        setForm(whatsappFormFromApi(res));
+        if (res) setForm(whatsappFormFromApi(res));
         setUsers(Array.isArray(usersData) ? usersData : []);
         setBranches(Array.isArray(branchesData) ? branchesData : []);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load WhatsApp settings"))
       .finally(() => setLoading(false));
-  }, [setError, settingsPath, organizationApiPath]);
+  }, [getSettings, setError, organizationApiPath]);
 
   async function copyWebhookUrl() {
     if (!form.webhook_url) return;

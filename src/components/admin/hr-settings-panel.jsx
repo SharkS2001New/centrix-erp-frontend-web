@@ -9,7 +9,7 @@ import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-
 import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -37,6 +37,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(hrPayrollFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("leave");
@@ -54,12 +55,22 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
   useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("hr"))
-      .then((res) => setForm(hrPayrollFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load HR settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("hr")
+      .then((res) => {
+        if (!cancelled && res) setForm(hrPayrollFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load HR settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function handleSavePayroll(e) {
     e.preventDefault();

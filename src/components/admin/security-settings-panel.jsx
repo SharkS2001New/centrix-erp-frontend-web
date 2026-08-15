@@ -9,7 +9,7 @@ import {
 } from "@/lib/security-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -26,6 +26,7 @@ function Toggle({ checked, onChange, label, description }) {
 export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(securityFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("sessions");
@@ -41,12 +42,22 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
   useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("security"))
-      .then((res) => setForm(securityFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load security settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("security")
+      .then((res) => {
+        if (!cancelled && res) setForm(securityFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load security settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function handleSave(e) {
     e.preventDefault();

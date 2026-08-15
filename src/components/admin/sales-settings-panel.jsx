@@ -606,11 +606,7 @@ export function SalesSettingsPanel({
         method: "PATCH",
         body: salesOrganizationPayloadFromForm(salesForm, capabilities),
       });
-      const caps = (await afterSave?.()) ?? capabilities;
-      const salesRes = await apiRequest(settingsPath("sales"));
-      setSalesForm(
-        sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(salesRes), caps),
-      );
+      await afterSave?.();
       setMessage("Sales settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save settings");

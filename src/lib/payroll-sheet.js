@@ -20,16 +20,8 @@ export const PAYROLL_SHEET_COLUMNS = [
 
 const NUMERIC_KEYS = PAYROLL_SHEET_COLUMNS.filter((col) => col.align === "right").map((col) => col.key);
 
-function periodBasicFromMeta(meta, payroll) {
-  const contractBasic = Number(
-    payroll.contract_monthly_salary ?? meta.basic_salary ?? 0,
-  );
-  if (payroll.use_attendance_proration && Number(payroll.expected_work_days) > 0) {
-    const daily = Number(payroll.daily_rate ?? 0);
-    const paid = Number(payroll.paid_work_days ?? 0);
-    if (daily > 0 && paid > 0) return Math.round(daily * paid * 100) / 100;
-  }
-  return Number(meta.basic_salary ?? contractBasic);
+function contractBasicFromMeta(meta, payroll) {
+  return Number(payroll.contract_monthly_salary ?? meta.basic_salary ?? 0);
 }
 
 function advanceAmount(payroll) {
@@ -69,9 +61,10 @@ function lineGrossPay(line, meta) {
   if (fromLine > 0) return fromLine;
 
   const payroll = meta?.payroll ?? {};
-  const basic = periodBasicFromMeta(meta, payroll);
+  const periodBasic = Number(payroll.period_basic ?? 0);
   const overtime = Number(payroll.overtime ?? 0);
-  const reconstructed = basic + overtime;
+  const reconstructed =
+    (periodBasic > 0 ? periodBasic : contractBasicFromMeta(meta, payroll)) + overtime;
   return reconstructed > 0 ? reconstructed : fromLine;
 }
 
@@ -119,7 +112,7 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
   return {
     no: index + 1,
     name,
-    basic_salary: periodBasicFromMeta(meta, payroll),
+    basic_salary: contractBasicFromMeta(meta, payroll),
     overtime: Number(payroll.overtime ?? 0),
     gross_salary: grossPay,
     advance: advanceAmount(payroll),

@@ -353,6 +353,15 @@ function getInflightDedupeKey(method, urlString) {
   return `GET:${urlString}`;
 }
 
+/** Org settings must never be served from the browser HTTP cache after Save. */
+export function isOrgSettingsApiPath(path) {
+  const normalized = String(path ?? "");
+  return (
+    /\/erp\/settings(?:\/|$|\?)/i.test(normalized) ||
+    /\/admin\/organizations\/\d+\/settings(?:\/|$|\?)/i.test(normalized)
+  );
+}
+
 /** True when fetch/AbortController cancelled the request (expected control flow). */
 export function isAbortError(error) {
   if (!error) return false;
@@ -415,7 +424,9 @@ export async function apiRequest(path, options = {}) {
   // Never share in-flight GETs that carry an AbortSignal — aborting one waiter
   // would reject every other caller of the same URL (POS product search did this).
   const dedupeKey =
-    options.signal || options.dedupe === false
+    options.signal ||
+    options.dedupe === false ||
+    (method === "GET" && isOrgSettingsApiPath(path))
       ? null
       : getInflightDedupeKey(method, url.toString());
 
@@ -459,13 +470,17 @@ async function performApiRequest(path, url, options = {}) {
       headers["Content-Type"] = "application/json";
     }
 
+    const cacheMode =
+      options.cache ??
+      (method === "GET" && isOrgSettingsApiPath(path) ? "no-store" : undefined);
+
     const res = await fetch(url.toString(), {
       method,
       headers,
       credentials: apiFetchCredentials(),
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
-      ...(options.cache ? { cache: options.cache } : {}),
+      ...(cacheMode ? { cache: cacheMode } : {}),
     });
 
     const text = await res.text();

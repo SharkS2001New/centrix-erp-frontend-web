@@ -1315,7 +1315,6 @@ export function PrintoutsSettingsPanel({
         }
       }
 
-      await load({ silent: true });
       if (afterSave) await afterSave();
       setMessage("Printout settings saved.");
     } catch (e) {

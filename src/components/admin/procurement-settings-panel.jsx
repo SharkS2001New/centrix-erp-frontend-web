@@ -7,7 +7,7 @@ import {
   procurementPayloadFromForm,
 } from "@/lib/procurement-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -24,16 +24,27 @@ function Toggle({ checked, onChange, label, description }) {
 export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(procurementFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("procurement"))
-      .then((res) => setForm(procurementFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load procurement settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("procurement")
+      .then((res) => {
+        if (!cancelled && res) setForm(procurementFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load procurement settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function handleSave(e) {
     e.preventDefault();

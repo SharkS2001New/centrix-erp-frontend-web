@@ -792,7 +792,7 @@ export function payrollBreakdownSections(line, employee) {
       ?? payroll.contract_gross_for_statutory
       ?? contractBasic + monthlyAllowance + overtime,
   );
-  const periodBasic = Number(meta.basic_salary ?? payrollBasicFromMeta(payroll, contractBasic));
+  const periodBasic = payrollPeriodBasicFromMeta(payroll, contractBasic);
   const allowanceLines = payroll.allowance_lines ?? [];
   const periodAllowances = Number(meta.allowances ?? payroll.allowances_period ?? 0);
   const payable = Number(
@@ -827,7 +827,7 @@ export function payrollBreakdownSections(line, employee) {
       : 0;
   const daysHint =
     useProration && expectedDays > 0
-      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days`
+      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days through yesterday`
       : null;
   // When lateness is listed under deductions, show payable before that cut so the slip balances:
   // (payable + lateness) − (statutory + other + lateness) = net.
@@ -846,8 +846,8 @@ export function payrollBreakdownSections(line, employee) {
       emphasis: true,
       hint: useProration
         ? latenessAmount > 0
-          ? "Full-month calendar pay before lateness deduction"
-          : "Full-month calendar pay (Sundays & holidays included)"
+          ? "Completed days through yesterday, before lateness deduction"
+          : "Completed days through yesterday (today not included)"
         : "Amount before deductions",
     },
   ];
@@ -882,12 +882,12 @@ export function payrollBreakdownSections(line, employee) {
   const attendanceNote =
     attendance && useProration
       ? [
-          `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days`,
+          `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days through yesterday`,
           Number(attendance.rest_days_paid ?? 0) > 0
             ? `${formatPayrollDays(attendance.rest_days_paid)} rest days (Sun/holiday) included`
             : null,
           remainingDays > 0
-            ? `${formatPayrollDays(remainingDays)} remaining days credited`
+            ? `${formatPayrollDays(remainingDays)} remaining days not paid (today incomplete)`
             : null,
           Number(attendance.absent_days ?? 0) > 0 ? `${attendance.absent_days} absent` : null,
           Number(attendance.unpaid_leave_days ?? 0) > 0
@@ -983,7 +983,9 @@ function payrollDeductionRows(payroll, otherTotal) {
   return [];
 }
 
-function payrollBasicFromMeta(payroll, contractBasic) {
+function payrollPeriodBasicFromMeta(payroll, contractBasic) {
+  const stored = Number(payroll.period_basic ?? 0);
+  if (stored > 0) return stored;
   if (payroll.use_attendance_proration && payroll.expected_work_days > 0) {
     const daily = Number(payroll.daily_rate ?? 0);
     const paid = Number(payroll.paid_work_days ?? 0);

@@ -10,7 +10,7 @@ import {
 } from "@/lib/inventory-settings";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { useAuth } from "@/contexts/auth-context";
 import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 
@@ -41,6 +41,7 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
   const hospitality = isHospitalityIndustry(capabilities);
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(inventoryFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(hospitality ? "alerts" : "selling");
@@ -61,12 +62,22 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
   useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("inventory"))
-      .then((res) => setForm(inventoryFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load inventory settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("inventory")
+      .then((res) => {
+        if (!cancelled && res) setForm(inventoryFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load inventory settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function handleSave(e) {
     e.preventDefault();

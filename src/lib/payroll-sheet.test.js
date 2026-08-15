@@ -58,6 +58,30 @@ describe("payroll-sheet", () => {
     expect(numeric.loan_absent).toBe(200);
   });
 
+  it("keeps basic salary as contract gross when attendance proration is on", () => {
+    const line = {
+      ...sampleLine,
+      gross_pay: 3612.9,
+      statutory_meta: {
+        ...sampleLine.statutory_meta,
+        basic_salary: 8000,
+        period_gross: 3612.9,
+        payroll: {
+          ...sampleLine.statutory_meta.payroll,
+          contract_monthly_salary: 8000,
+          period_basic: 3612.9,
+          use_attendance_proration: true,
+          expected_work_days: 31,
+          paid_work_days: 14,
+          daily_rate: 258.06,
+        },
+      },
+    };
+    const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
+    expect(numeric.basic_salary).toBe(8000);
+    expect(numeric.gross_salary).toBe(3612.9);
+  });
+
   it("falls back to statutory_meta when gross_pay and net_pay are zero on the line", () => {
     const line = {
       ...sampleLine,

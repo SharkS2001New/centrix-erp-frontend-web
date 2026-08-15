@@ -12,7 +12,7 @@ import {
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -40,6 +40,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
   const { isSuperAdmin } = useAuth();
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(distributionFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("routes");
@@ -56,14 +57,22 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
   useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("distribution"))
+    getSettings("distribution")
       .then((distributionRes) => {
-        setForm(distributionFormFromApi(distributionRes));
+        if (!cancelled && distributionRes) setForm(distributionFormFromApi(distributionRes));
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load distribution settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load distribution settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function handleSave(e) {
     e.preventDefault();

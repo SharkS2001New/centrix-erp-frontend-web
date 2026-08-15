@@ -5,7 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { aiFormFromApi, aiPayloadFromForm, AI_INSIGHT_DIGESTS } from "@/lib/ai-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -39,16 +39,27 @@ function patchInsights(setForm, patch) {
 export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(aiFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("ai"))
-      .then((res) => setForm(aiFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load AI settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("ai")
+      .then((res) => {
+        if (!cancelled && res) setForm(aiFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load AI settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function saveAiSettings() {
     setSaving(true);

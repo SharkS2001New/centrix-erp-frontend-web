@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled, kraDeviceOpsPayloadFromForm } from "@/lib/finance-settings";
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -39,8 +39,9 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const confirm = useConfirm();
   const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
-  const { settingsPath } = useSettingsApi();
+  const { settingsPath, bumpSettingsSaveGen } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(financeFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [kraHealthTesting, setKraHealthTesting] = useState(false);
@@ -50,12 +51,23 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const [activeTab, setActiveTab] = useState("kra");
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("finance"))
-      .then((res) => setForm(financeFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load finance settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("finance")
+      .then((res) => {
+        if (cancelled || !res) return;
+        setForm(financeFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load finance settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   function setMpesa(field, value) {
     setForm((f) => ({ ...f, mpesa: { ...f.mpesa, [field]: value } }));
@@ -121,12 +133,26 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   async function saveFinanceSettings() {
     setSaving(true);
     setError(null);
+    bumpSettingsSaveGen?.();
     try {
+      const payload = financePayloadFromForm(form, { includeMpesa: mpesaAllowed, includeAccounting: false });
       const res = await apiRequest(settingsPath("finance"), {
         method: "PATCH",
-        body: financePayloadFromForm(form, { includeMpesa: mpesaAllowed, includeAccounting: false }),
+        body: payload,
       });
-      setForm(financeFormFromApi(res));
+      const saved = financeFormFromApi(res);
+      setForm({
+        ...saved,
+        enable_kra_device: Boolean(payload.enable_kra_device),
+        default_submit_kra: Boolean(payload.default_submit_kra),
+        kra_device_test_mode: Boolean(payload.kra_device_test_mode),
+        kra_bypass_above_amount:
+          payload.kra_bypass_above_amount == null ? "" : String(payload.kra_bypass_above_amount),
+        kra_device_ip: payload.kra_device_ip,
+        kra_device_hardware_ip: payload.kra_device_hardware_ip,
+        kra_serial_number: payload.kra_serial_number,
+        kra_plu_register_path: payload.kra_plu_register_path,
+      });
 
       if (afterSave) await afterSave();
       notifySuccess("Finance settings saved.");

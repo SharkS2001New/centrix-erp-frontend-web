@@ -14,27 +14,39 @@ import {
   generalPayloadFromForm,
 } from "@/lib/general-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
-import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
+import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 
 export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
-  const { settingsPath } = useSettingsApi();
+  const { settingsPath, bumpSettingsSaveGen } = useSettingsApi();
   const afterSave = useSettingsAfterSave(onAfterSave);
+  const getSettings = useSettingsGet();
   const [form, setForm] = useState(generalFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    apiRequest(settingsPath("general"))
-      .then((res) => setForm(generalFormFromApi(res)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load general settings"))
-      .finally(() => setLoading(false));
-  }, [setError, settingsPath]);
+    getSettings("general")
+      .then((res) => {
+        if (!cancelled && res) setForm(generalFormFromApi(res));
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof ApiError ? e.message : "Failed to load general settings");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSettings, setError]);
 
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
     setError(null);
     setMessage(null);
+    bumpSettingsSaveGen?.();
     try {
       const res = await apiRequest(settingsPath("general"), {
         method: "PATCH",

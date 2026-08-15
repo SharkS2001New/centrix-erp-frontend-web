@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
@@ -64,6 +64,7 @@ export function OrganizationSettingsContent({
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const tabFromUrl = normalizeSettingsTabId(searchParams?.get("tab"));
   const [tab, setTab] = useState(
     tabFromUrl && !LEGACY_THEMES_TAB_IDS.has(tabFromUrl) ? tabFromUrl : "general",
@@ -97,6 +98,14 @@ export function OrganizationSettingsContent({
       setTab(visibleTabs[0].id);
     }
   }, [visibleTabs, tab]);
+
+  const selectTab = (nextTab) => {
+    setTab(nextTab);
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("tab", nextTab);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const panelProps = {
     saving,
@@ -135,7 +144,7 @@ export function OrganizationSettingsContent({
             <button
               key={item.id}
               type="button"
-              onClick={() => setTab(item.id)}
+              onClick={() => selectTab(item.id)}
               className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
                 tab === item.id
                   ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
