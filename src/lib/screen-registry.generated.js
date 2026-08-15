@@ -696,6 +696,10 @@ function match_sales_picking_lists(pathname) {
   return pathname === "/sales/picking-lists";
 }
 
+function match_sales_trip_charts(pathname) {
+  return pathname === "/sales/trip-charts";
+}
+
 function match_sales_pos(pathname) {
   return pathname === "/sales/pos";
 }
@@ -1859,6 +1863,12 @@ export const SCREEN_REGISTRY = [
     title: "Tills",
     route: "/sales/tills",
     match: match_sales_tills,
+  },
+  {
+    id: "sales-trip-charts",
+    title: "Trip Chart",
+    route: "/sales/trip-charts",
+    match: match_sales_trip_charts,
   },
   {
     id: "sales-vouchers",

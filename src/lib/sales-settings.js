@@ -905,6 +905,16 @@ export function shouldShowMobilePickingLists(capabilities) {
   return shouldShowMobileLoadingSheets(capabilities);
 }
 
+/** Backoffice trip chart lists for mobile route orders when Distribution is not enabled. */
+export function shouldShowMobileTripCharts(capabilities) {
+  return shouldShowMobileLoadingSheets(capabilities);
+}
+
+/** Vehicles and drivers in Field sales when Distribution is off. */
+export function shouldShowMobileFleetNav(capabilities) {
+  return shouldShowMobileLoadingSheets(capabilities);
+}
+
 export function shouldShowMobileFieldAttendance(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;
   if (!isOrgMobileSalesEnabled(capabilities)) return false;

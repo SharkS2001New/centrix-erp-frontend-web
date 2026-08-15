@@ -7,7 +7,7 @@ export function HrFieldAttendanceScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/hr/attendance#field-sessions");
+    router.replace("/hr/attendance");
   }, [router]);
 
   return null;

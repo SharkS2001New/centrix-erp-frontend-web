@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { shouldShowMobileFleetNav } from "@/lib/sales-settings";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import {
@@ -63,6 +64,7 @@ export function FulfillmentDriversScreen() {
   const drawerOptionsLoadedRef = useRef(false);
   const { user, capabilities } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
+  const fleetEnabled = distributionEnabled || shouldShowMobileFleetNav(capabilities);
 
   const [drivers, setDrivers] = useState([]);
   const [total, setTotal] = useState(0);
@@ -97,7 +99,7 @@ export function FulfillmentDriversScreen() {
   } = usePageRowSelection();
 
   const loadReferenceData = useCallback(async () => {
-    if (!distributionEnabled) {
+    if (!fleetEnabled) {
       setRoutes([]);
       setVehicles([]);
       return;
@@ -113,10 +115,10 @@ export function FulfillmentDriversScreen() {
     } catch {
       /* non-blocking — filter/form selects degrade gracefully */
     }
-  }, [distributionEnabled, user?.organization_id]);
+  }, [fleetEnabled, user?.organization_id]);
 
   const loadDrivers = useCallback(async () => {
-    if (!distributionEnabled) {
+    if (!fleetEnabled) {
       setDrivers([]);
       setTotal(0);
       setTotalPages(1);
@@ -148,7 +150,7 @@ export function FulfillmentDriversScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [distributionEnabled, page, pageSize, debouncedSearch, statusFilter, routeFilter]);
+  }, [fleetEnabled, page, pageSize, debouncedSearch, statusFilter, routeFilter]);
 
   const loadDrawerOptions = useCallback(async () => {
     if (drawerOptionsLoadedRef.current) return;
@@ -336,11 +338,12 @@ export function FulfillmentDriversScreen() {
     });
   }, [debouncedSearch, statusFilter, routeFilter]);
 
-  if (!distributionEnabled) {
+  if (!fleetEnabled) {
     return (
       <CatalogPageShell title="Drivers" subtitle="Manage delivery drivers and assignments">
         <p className="text-sm text-slate-500">
-          Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
+          Enable Distribution, or turn on mobile field sales, to manage drivers in{" "}
+          <OrgSettingsPlatformHint area="Organization settings" />.
         </p>
       </CatalogPageShell>
     );

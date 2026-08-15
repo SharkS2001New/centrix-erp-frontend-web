@@ -30,6 +30,7 @@ import {
   fulfillmentPickedBaseQty,
   fulfillmentPickedDisplayQty,
 } from "@/lib/fulfillment-quantity";
+import { formatTonnage, pickingLineWeightKg, summarizePickingTonnage } from "@/lib/load-weight";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -184,6 +185,7 @@ export function MobilePickingScreen() {
   }, [trips, search]);
 
   const pickLines = pickingList?.lines ?? [];
+  const pickTonnage = summarizePickingTonnage(pickingList, pickLines);
   const pickingEditable = pickingList?.status === "open" || pickingList?.status === "completed";
   const totalShortage = pickLines.reduce((sum, line) => {
     const required = Number(line.required_qty) || 0;
@@ -342,7 +344,7 @@ export function MobilePickingScreen() {
           <p className="text-sm text-slate-500">Loading picking list…</p>
         ) : (
           <>
-            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="theme-panel rounded-xl border p-4">
                 <p className="text-xs uppercase text-slate-500">Lines</p>
                 <p className="mt-1 text-2xl font-semibold text-slate-900">{pickLines.length}</p>
@@ -351,6 +353,19 @@ export function MobilePickingScreen() {
                 <p className="text-xs uppercase text-slate-500">Shortage</p>
                 <p className={`mt-1 text-2xl font-semibold ${totalShortage > 0 ? "text-amber-700" : "text-slate-900"}`}>
                   {formatQty(totalShortage)}
+                </p>
+              </div>
+              <div className="theme-panel rounded-xl border p-4">
+                <p className="text-xs uppercase text-slate-500">Load tonnage</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">
+                  {formatTonnage(pickTonnage.totalKg)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {pickTonnage.vehicleMaxKg
+                    ? `Vehicle ${formatTonnage(pickTonnage.vehicleMaxKg)}`
+                    : pickTonnage.missingCount > 0
+                      ? `${pickTonnage.missingCount} missing weight`
+                      : "From product weight"}
                 </p>
               </div>
               <div className="theme-panel rounded-xl border p-4">
@@ -400,6 +415,8 @@ export function MobilePickingScreen() {
                         </h3>
                         <p className="mt-1 text-sm text-slate-600">
                           Requested: {formatFulfillmentQty(required, line, uomByProductCode)}
+                          {" · "}
+                          {line.weight_missing ? "Weight not set" : formatTonnage(pickingLineWeightKg(line))}
                         </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">

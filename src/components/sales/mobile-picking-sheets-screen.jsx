@@ -25,6 +25,7 @@ import {
   formatRouteNamesPhrase,
 } from "@/components/fulfillment/picking-list-print";
 import { formatSaleKes } from "@/lib/sales";
+import { formatTonnage, pickingLineWeightKg, summarizePickingTonnage } from "@/lib/load-weight";
 import {
   getMobileSheetsDefaultDateRange,
   shouldShowMobilePickingLists,
@@ -234,6 +235,7 @@ export default function MobilePickingSheetsScreen() {
     pickingList?.order_total_value != null
       ? Number(pickingList.order_total_value)
       : (detail?.orders ?? []).reduce((sum, order) => sum + Number(order.order_total || 0), 0);
+  const pickTonnage = summarizePickingTonnage(pickingList, pickLines);
 
   function printFromDetail(freshPick, routeNames) {
     printPickingList({
@@ -534,6 +536,9 @@ export default function MobilePickingSheetsScreen() {
                   <p className="theme-text-muted text-xs">
                     {pickingList.order_count} order{pickingList.order_count === 1 ? "" : "s"} ·{" "}
                     {pickLines.length} product{pickLines.length === 1 ? "" : "s"}
+                    {" · "}
+                    {formatTonnage(pickTonnage.totalKg)} load
+                    {pickTonnage.vehicleMaxKg ? ` / ${formatTonnage(pickTonnage.vehicleMaxKg)} vehicle` : ""}
                   </p>
                 </div>
                 {!pickingList.combined ? (
@@ -560,6 +565,7 @@ export default function MobilePickingSheetsScreen() {
                       <th className="px-3 py-2 text-left">Product Name</th>
                       <th className="px-3 py-2 text-left">Quantity</th>
                       <th className="px-3 py-2 text-left">Price</th>
+                      <th className="px-3 py-2 text-right">Weight</th>
                       <th className="px-3 py-2 text-right">Line amount</th>
                     </tr>
                   </thead>
@@ -579,6 +585,9 @@ export default function MobilePickingSheetsScreen() {
                         </td>
                         <td className="px-3 py-2 text-xs">
                           {formatPickingPriceLabel(line) || "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {line.weight_missing ? "—" : formatTonnage(pickingLineWeightKg(line))}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {formatSaleKes(line.line_total)}

@@ -244,6 +244,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       organization: organizationForPrint,
       generalSettings: general,
       trip: sample.trip,
+      pickingList: sample.pickingList,
       documentFooterText: resolvePrintFooter(general, "trip_chart"),
       printedBy: "Preview",
       printSettings: loadingSheetPrintPayloadFromForm(form),

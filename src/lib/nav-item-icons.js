@@ -64,6 +64,7 @@ export const NAV_HREF_ICONS = {
   "/sales/orders/queues/mobile": "mobile",
   "/sales/loading-sheets": "clipboard",
   "/sales/picking-lists": "clipboard",
+  "/sales/trip-charts": "logistics",
   "/notifications": "bell",
   "/sales/field-attendance": "map",
 

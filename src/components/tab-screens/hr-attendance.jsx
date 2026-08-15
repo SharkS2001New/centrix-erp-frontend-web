@@ -94,6 +94,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [todayRecords, setTodayRecords] = useState([]);
+  const [todayFieldSessions, setTodayFieldSessions] = useState([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [records, setRecords] = useState([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
@@ -148,12 +149,15 @@ export function HrAttendanceScreen({ mode = "today" }) {
 
   const loadActive = useCallback(async () => {
     setActiveLoading(true);
+    if (!fieldAttendanceEnabled) {
+      setTodayFieldSessions([]);
+    }
     try {
       const requestDefs = [
         {
           key: "sessions",
           promise: apiRequest("/attendance/clock-sessions", {
-            searchParams: { per_page: 200, today: 1, premises: 1 },
+            searchParams: { per_page: 200, today: 1 },
           }),
         },
         {
@@ -179,6 +183,16 @@ export function HrAttendanceScreen({ mode = "today" }) {
 
       if (fieldAttendanceEnabled) {
         requestDefs.push({
+          key: "fieldSessions",
+          promise: apiRequest("/attendance/field-sessions", {
+            searchParams: {
+              from_date: todayCalendarDate(),
+              to_date: todayCalendarDate(),
+              per_page: 200,
+            },
+          }),
+        });
+        requestDefs.push({
           key: "fieldRepLinkage",
           promise: apiRequest("/attendance/field-rep-hr-linkage", { searchParams: { days: 30 } }),
         });
@@ -203,6 +217,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
         const res = result.value;
         if (key === "sessions") setSessions(res.data ?? []);
         if (key === "todayAttendance") setTodayRecords(res.data ?? []);
+        if (key === "fieldSessions") setTodayFieldSessions(res.data ?? []);
         if (key === "gaps") setGapCounts(res.counts ?? null);
         if (key === "clockDevices") {
           const total = Number(res.meta?.total ?? res.total ?? (res.data ?? []).length ?? 0);
@@ -300,7 +315,21 @@ export function HrAttendanceScreen({ mode = "today" }) {
   useTabAwareDataLoad(isHistory ? loadHistory : loadActive);
 
   function sessionEmployeeLabel(s) {
-    return composeEmployeeDisplayName(s.employee) || s.employee_name || `#${s.employee_id}`;
+    return (
+      composeEmployeeDisplayName(s?.employee) ||
+      s?.employee_name ||
+      s?.user_name ||
+      s?.username ||
+      (s?.employee_id != null ? `#${s.employee_id}` : "—")
+    );
+  }
+
+  function attendanceSourceKey(source) {
+    if (source === "field_rep") return "field_rep";
+    if (source === "company_mobile") return "company_mobile";
+    if (source === "hr_applied") return "hr_applied";
+    if (source === "manual") return "manual";
+    return source || "clock_device";
   }
 
   function sessionTimestamp(value) {
@@ -364,18 +393,19 @@ export function HrAttendanceScreen({ mode = "today" }) {
   );
 
   const todayDays = useMemo(() => {
-    const byEmployee = new Map();
+    const byEmployeeSource = new Map();
     for (const session of todaySessions) {
-      const key = String(session.employee_id);
-      if (!byEmployee.has(key)) byEmployee.set(key, []);
-      byEmployee.get(key).push(session);
+      const key = `${session.employee_id}:${attendanceSourceKey(session.source)}`;
+      if (!byEmployeeSource.has(key)) byEmployeeSource.set(key, []);
+      byEmployeeSource.get(key).push(session);
     }
-    const fromSessions = [...byEmployee.values()].map((group) => {
+    const fromSessions = [...byEmployeeSource.values()].map((group) => {
       const sorted = [...group].sort(
         (a, b) => sessionTimestamp(a.clock_in_at) - sessionTimestamp(b.clock_in_at),
       );
       const employee = sorted[0]?.employee;
-      const lunch = shiftLunchRequired(employee?.shift);
+      const source = attendanceSourceKey(sorted[sorted.length - 1]?.source || sorted[0]?.source);
+      const lunch = source === "field_rep" ? false : shiftLunchRequired(employee?.shift);
       const first = sorted[0];
       const second = sorted[1];
       const last = sorted[sorted.length - 1];
@@ -411,6 +441,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
         nowMs,
       });
       return {
+        rowKey: `${first?.employee_id}:${source}`,
         employeeId: first?.employee_id,
         employee,
         sessions: sorted,
@@ -423,54 +454,118 @@ export function HrAttendanceScreen({ mode = "today" }) {
         status,
         hoursWorked,
         device: last?.device_identifier || first?.device_identifier,
-        source: last?.source || first?.source,
+        source,
         attendanceRecord: null,
       };
     });
-    const sessionEmployeeIds = new Set(fromSessions.map((day) => String(day.employeeId)));
-    const fromRecords = todayRecords
-      .filter((row) => !sessionEmployeeIds.has(String(row.employee_id)))
-      .map((row) => {
-        const date = String(row.attendance_date ?? "").slice(0, 10);
-        const clockIn = attendanceDateTime(date, row.clock_in || row.check_in);
-        const clockOut = attendanceDateTime(date, row.clock_out || row.check_out);
-        const lunchOut = attendanceDateTime(date, row.lunch_out);
-        const lunchIn = attendanceDateTime(date, row.lunch_in);
-        const lunchRequired = row.source === "field_rep" ? false : row.lunch_required !== false;
-        const hoursWorked = clockOut
-          ? Number(row.hours_worked ?? 0)
-          : elapsedAttendanceHours({
-              clockIn,
-              clockOut: null,
-              lunchOut: lunchRequired ? lunchOut : null,
-              lunchIn: lunchRequired ? lunchIn : null,
-              lunchRequired,
-              nowMs,
-            });
-        return {
-          employeeId: row.employee_id,
+    const seenKeys = new Set(fromSessions.map((day) => day.rowKey));
+    const fromRecords = todayRecords.flatMap((row) => {
+      const source = attendanceSourceKey(row.source);
+      const rowKey = `${row.employee_id}:${source}`;
+      if (seenKeys.has(rowKey)) {
+        const existing = fromSessions.find((day) => day.rowKey === rowKey);
+        if (existing && !existing.attendanceRecord) existing.attendanceRecord = row;
+        return [];
+      }
+      seenKeys.add(rowKey);
+      const date = String(row.attendance_date ?? "").slice(0, 10);
+      const clockIn = attendanceDateTime(date, row.clock_in || row.check_in);
+      const clockOut = attendanceDateTime(date, row.clock_out || row.check_out);
+      const lunchOut = attendanceDateTime(date, row.lunch_out);
+      const lunchIn = attendanceDateTime(date, row.lunch_in);
+      const lunchRequired = source === "field_rep" ? false : row.lunch_required !== false;
+      const hoursWorked = clockOut
+        ? Number(row.hours_worked ?? 0)
+        : elapsedAttendanceHours({
+            clockIn,
+            clockOut: null,
+            lunchOut: lunchRequired ? lunchOut : null,
+            lunchIn: lunchRequired ? lunchIn : null,
+            lunchRequired,
+            nowMs,
+          });
+      return [{
+        rowKey,
+        employeeId: row.employee_id,
+        employee: row.employee,
+        sessions: [],
+        lastSession: {
           employee: row.employee,
-          sessions: [],
-          lastSession: {
-            employee: row.employee,
-            employee_id: row.employee_id,
-            source: row.source,
-            device_identifier: row.device_identifier,
-          },
-          clockIn,
-          lunchOut,
-          lunchIn,
-          clockOut,
-          lunchRequired,
-          status: clockOut ? "clocked_out" : lunchOut && !lunchIn ? "at_lunch" : "on_shift",
-          hoursWorked,
-          device: row.device_identifier,
+          employee_id: row.employee_id,
           source: row.source,
-          attendanceRecord: row,
-        };
-      });
-    return [...fromSessions, ...fromRecords];
-  }, [todaySessions, todayRecords, nowMs]);
+          device_identifier: row.device_identifier,
+        },
+        clockIn,
+        lunchOut,
+        lunchIn,
+        clockOut,
+        lunchRequired,
+        status: clockOut ? "clocked_out" : lunchOut && !lunchIn ? "at_lunch" : "on_shift",
+        hoursWorked,
+        device: row.device_identifier,
+        source,
+        attendanceRecord: row,
+      }];
+    });
+    const byFieldUser = new Map();
+    for (const session of todayFieldSessions) {
+      const userId = String(session.user_id ?? session.id);
+      if (!byFieldUser.has(userId)) byFieldUser.set(userId, []);
+      byFieldUser.get(userId).push(session);
+    }
+    const fromField = [...byFieldUser.values()].flatMap((group) => {
+      const sorted = [...group].sort(
+        (a, b) => sessionTimestamp(a.sign_in_at) - sessionTimestamp(b.sign_in_at),
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const employeeId = first?.hr_link?.employee_id ?? null;
+      const rowKey = employeeId != null ? `${employeeId}:field_rep` : `user:${first?.user_id}:field_rep`;
+      if (seenKeys.has(rowKey)) return [];
+      seenKeys.add(rowKey);
+      const employeeName = first?.hr_link?.employee_name || first?.user_name || first?.username;
+      const clockOut = last?.sign_out_at ?? null;
+      const hoursWorked = clockOut
+        ? sorted.reduce((sum, item) => sum + Number(item.work_hours ?? 0), 0)
+        : elapsedAttendanceHours({
+            clockIn: first?.sign_in_at ?? null,
+            clockOut: null,
+            lunchOut: null,
+            lunchIn: null,
+            lunchRequired: false,
+            nowMs,
+          });
+      let status = "on_shift";
+      if (clockOut) status = "clocked_out";
+      else if (last?.is_suspended) status = "at_lunch";
+      return [{
+        rowKey,
+        employeeId: employeeId ?? `user:${first?.user_id}`,
+        employee: employeeId ? { id: employeeId, full_name: employeeName } : null,
+        sessions: [],
+        lastSession: {
+          employee: employeeId ? { id: employeeId, full_name: employeeName } : null,
+          employee_id: employeeId,
+          employee_name: employeeName,
+          user_name: first?.user_name,
+          username: first?.username,
+          source: "field_rep",
+          device_identifier: last?.device_identifier || first?.device_identifier,
+        },
+        clockIn: first?.sign_in_at ?? null,
+        lunchOut: null,
+        lunchIn: null,
+        clockOut,
+        lunchRequired: false,
+        status,
+        hoursWorked,
+        device: last?.device_identifier || first?.device_identifier,
+        source: "field_rep",
+        attendanceRecord: null,
+      }];
+    });
+    return [...fromSessions, ...fromRecords, ...fromField];
+  }, [todaySessions, todayRecords, todayFieldSessions, nowMs]);
 
   const todayTotal = todayDays.length;
   const todayTotalPages = Math.max(1, Math.ceil(todayTotal / todayPageSize) || 1);
@@ -1335,10 +1430,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Today</h2>
               <p className="mt-1 text-sm text-slate-500">
-                One row per person from every capture method: fingerprint or clock device, company
-                phone, mobile sales route sign-in, and attendance added by HR. Extra fingerprint
-                scans in the same hour appear under Duplicate punches. Use{" "}
-                <strong>Refresh attendance</strong> to pull new punches from office clocks.
+                One table for every capture method. Source shows whether the row came from a
+                fingerprint or clock device, a company phone on premises, the mobile sales app, or
+                attendance added by HR.
               </p>
             </div>
             {activeLoading ? (
@@ -1364,7 +1458,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {pagedTodayDays.map((day) => (
-                      <tr key={day.employeeId} className="theme-table-body-row">
+                      <tr key={day.rowKey || `${day.employeeId}:${day.source}`} className="theme-table-body-row">
                         <td className="px-4 py-3 font-medium text-slate-900">
                           {sessionEmployeeLabel(day.lastSession)}
                         </td>
@@ -1456,10 +1550,6 @@ export function HrAttendanceScreen({ mode = "today" }) {
               pageSizeOptions={[10, 25, 50, 100]}
             />
           </section>
-
-          {fieldAttendanceEnabled ? (
-            <MobileFieldAttendanceScreen variant="hr" embedded embeddedMode="active" />
-          ) : null}
         </>
       ) : (
         <>

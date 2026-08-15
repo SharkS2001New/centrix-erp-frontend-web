@@ -8,6 +8,7 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { shouldShowMobileFleetNav } from "@/lib/sales-settings";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import {
   CatalogPageShell,
@@ -36,6 +37,7 @@ import {
   vehicleToForm,
 } from "@/components/fulfillment/fulfillment-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { formatTonnage } from "@/lib/load-weight";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
@@ -50,6 +52,7 @@ export function FulfillmentVehiclesScreen() {
   const confirm = useConfirm();
   const { user, capabilities } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
+  const fleetEnabled = distributionEnabled || shouldShowMobileFleetNav(capabilities);
 
   const [vehicles, setVehicles] = useState([]);
   const [total, setTotal] = useState(0);
@@ -79,7 +82,7 @@ export function FulfillmentVehiclesScreen() {
   } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
-    if (!distributionEnabled) {
+    if (!fleetEnabled) {
       setVehicles([]);
       setTotal(0);
       setTotalPages(1);
@@ -110,7 +113,7 @@ export function FulfillmentVehiclesScreen() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [distributionEnabled, page, pageSize, debouncedSearch, statusFilter]);
+  }, [fleetEnabled, page, pageSize, debouncedSearch, statusFilter]);
 
   useTabAwareDataLoad(loadData);
 
@@ -256,11 +259,12 @@ export function FulfillmentVehiclesScreen() {
     });
   }, [debouncedSearch, statusFilter]);
 
-  if (!distributionEnabled) {
+  if (!fleetEnabled) {
     return (
-      <CatalogPageShell title="Vehicles" subtitle="Fleet registration and vehicle status">
+      <CatalogPageShell title="Vehicles" subtitle="Fleet registration, status, and load capacity">
         <p className="text-sm text-slate-500">
-          Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
+          Enable Distribution, or turn on mobile field sales, to manage vehicles in{" "}
+          <OrgSettingsPlatformHint area="Organization settings" />.
         </p>
       </CatalogPageShell>
     );
@@ -362,6 +366,9 @@ export function FulfillmentVehiclesScreen() {
                     {vehicle.plate_number || vehicle.vehicle_code}
                   </p>
                   <p className="mt-0.5 text-sm text-slate-600">{vehicle.vehicle_name}</p>
+                  {vehicle.max_weight_kg ? (
+                    <p className="mt-1 text-xs text-slate-500">Capacity {formatTonnage(vehicle.max_weight_kg)}</p>
+                  ) : null}
                   <div className="mt-3">
                     <VehicleStatusBadge active={vehicle.is_active !== false} />
                   </div>
@@ -428,16 +435,19 @@ export function FulfillmentVehiclesScreen() {
             placeholder="KBX123A"
           />
         </Field>
-        <Field label="Max load weight (kg)">
+        <Field label="Max load (tonnes)">
           <input
             type="number"
             min="0"
             step="any"
-            value={form.max_weight_kg}
-            onChange={(e) => updateField("max_weight_kg", e.target.value)}
+            value={form.max_load_tonnes}
+            onChange={(e) => updateField("max_load_tonnes", e.target.value)}
             className={inputClassName()}
-            placeholder="e.g. 3500"
+            placeholder="e.g. 8"
           />
+          <p className="mt-1 text-xs text-slate-500">
+            How many tonnes this vehicle should carry. Example: 8 for an 8-tonne lorry (stored as 8,000 kg).
+          </p>
         </Field>
         <Field label="Max volume (m³)">
           <input

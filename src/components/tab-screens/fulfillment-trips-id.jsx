@@ -26,7 +26,8 @@ import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print"
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { isDistributionOpsEnabled, isProductShelfLocationEnabled } from "@/lib/distribution-settings";
-import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { formatTonnage, loadTonnageFromDocuments } from "@/lib/load-weight";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 import { TripWorkflowBanner } from "@/components/fulfillment/trip-workflow-banner";
 import { formatTripProfitMargin, tripStatusLabel } from "@/lib/trip-status";
@@ -428,6 +429,7 @@ export function FulfillmentTripsIdScreen() {
 
   const lines = loadingList?.lines ?? [];
   const pickLines = pickingList?.lines ?? [];
+  const tripLoad = loadTonnageFromDocuments({ pickingList, loadingList, trip });
   const loadingLocked = loadingList?.status && loadingList.status !== "open";
   const pickingComplete =
     pickingList?.status === "completed" || pickingList?.status === "locked" || loadingLocked;
@@ -627,7 +629,7 @@ export function FulfillmentTripsIdScreen() {
             {trip.vehicle?.plate_number ?? trip.vehicle?.vehicle_name ?? "—"}
           </p>
           {trip.vehicle?.max_weight_kg ? (
-            <p className="text-xs text-slate-500">Max {trip.vehicle.max_weight_kg} kg</p>
+            <p className="text-xs text-slate-500">Max {formatTonnage(trip.vehicle.max_weight_kg)}</p>
           ) : null}
           {canAssignCrew && !hasVehicle ? (
             <button
@@ -638,6 +640,20 @@ export function FulfillmentTripsIdScreen() {
               Set vehicle
             </button>
           ) : null}
+        </div>
+        <div>
+          <p className="text-xs uppercase text-slate-500">Load tonnage</p>
+          <p className={`mt-1 font-medium ${tripLoad.overCapacity ? "text-amber-700" : "text-slate-900"}`}>
+            {formatTonnage(tripLoad.totalKg)}
+            {tripLoad.vehicleMaxKg ? ` / ${formatTonnage(tripLoad.vehicleMaxKg)}` : ""}
+          </p>
+          <p className="text-xs text-slate-500">
+            {tripLoad.overCapacity
+              ? "Over vehicle capacity"
+              : tripLoad.missingCount > 0
+                ? `${tripLoad.missingCount} products missing weight`
+                : "Picking list vs vehicle"}
+          </p>
         </div>
         <div>
           <p className="text-xs uppercase text-slate-500">Orders</p>
@@ -792,14 +808,20 @@ export function FulfillmentTripsIdScreen() {
             onClick={async () => {
               setBusy(true);
               try {
-                const tripRes = await apiRequest(`/dispatch-trips/${id}`);
+                const [tripRes, pickRes] = await Promise.all([
+                  apiRequest(`/dispatch-trips/${id}`),
+                  apiRequest(`/dispatch-trips/${id}/picking-list`).catch(() => null),
+                ]);
                 const freshTrip = tripRes;
+                const freshPick = pickRes?.picking_list ?? pickRes ?? pickingList;
                 setTrip(freshTrip);
+                if (freshPick) setPickingList(freshPick);
                 printTripChartList({
                   organization,
                   generalSettings: generalSettings(),
                   organizationName: organization?.organization_name ?? organization?.company_name ?? "Trip Chart List",
                   trip: freshTrip,
+                  pickingList: freshPick,
                   sales: freshTrip.sales,
                   financialSummary: freshTrip.financial_summary,
                   documentFooterText: resolvePrintFooter(

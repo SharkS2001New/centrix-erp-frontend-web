@@ -229,7 +229,7 @@ export const VEHICLE_EXPORT_COLUMNS = [
   { key: "vehicle_code", label: "Code" },
   { key: "vehicle_name", label: "Name" },
   { key: "plate_number", label: "Plate" },
-  { key: "max_weight_kg", label: "Max weight kg", align: "right" },
+  { key: "max_weight_kg", label: "Max kg", align: "right" },
   { key: "is_active", label: "Active" },
 ];
 

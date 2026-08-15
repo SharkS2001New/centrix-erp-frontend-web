@@ -279,10 +279,19 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     if (item.href === "/fulfillment/routes" || item.href?.startsWith("/fulfillment/routes/")) {
       return true;
     }
+    if (item.href === "/fulfillment/drivers" || item.href?.startsWith("/fulfillment/drivers/")) {
+      return true;
+    }
+    if (item.href === "/fulfillment/vehicles" || item.href?.startsWith("/fulfillment/vehicles/")) {
+      return true;
+    }
     if (item.href === "/sales/loading-sheets" || item.href?.startsWith("/sales/loading-sheets/")) {
       return true;
     }
     if (item.href === "/sales/picking-lists" || item.href?.startsWith("/sales/picking-lists/")) {
+      return true;
+    }
+    if (item.href === "/sales/trip-charts" || item.href?.startsWith("/sales/trip-charts/")) {
       return true;
     }
     if (item.href === "/fulfillment/loading-lists" || item.href?.startsWith("/fulfillment/loading-lists/")) {
@@ -340,12 +349,18 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 
   if (
     workspaceId === "backoffice" &&
-    (pathname === "/fulfillment/routes" ||
+    (      pathname === "/fulfillment/routes" ||
       pathname.startsWith("/fulfillment/routes/") ||
+      pathname === "/fulfillment/drivers" ||
+      pathname.startsWith("/fulfillment/drivers/") ||
+      pathname === "/fulfillment/vehicles" ||
+      pathname.startsWith("/fulfillment/vehicles/") ||
       pathname === "/sales/loading-sheets" ||
       pathname.startsWith("/sales/loading-sheets/") ||
       pathname === "/sales/picking-lists" ||
       pathname.startsWith("/sales/picking-lists/") ||
+      pathname === "/sales/trip-charts" ||
+      pathname.startsWith("/sales/trip-charts/") ||
       pathname === "/fulfillment/loading-lists" ||
       pathname.startsWith("/fulfillment/loading-lists/"))
   ) {

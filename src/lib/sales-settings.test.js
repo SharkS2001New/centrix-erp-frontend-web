@@ -20,6 +20,7 @@ import {
   shouldShowDistributionLoadingLists,
   shouldShowLoadingListNav,
   shouldShowMobileLoadingSheets,
+  shouldShowMobileTripCharts,
   shouldShowSalesDiscountColumn,
   showBackofficeLineDiscountEdit,
   showPosLineDiscountField,
@@ -383,6 +384,7 @@ describe("sales-settings mobile loading sheets", () => {
   it("shows field-sales loading sheets when mobile is on and distribution ops are off", () => {
     expect(shouldShowMobileLoadingSheets(mobileCaps)).toBe(true);
     expect(shouldShowLoadingListNav(mobileCaps)).toBe(true);
+    expect(shouldShowMobileTripCharts(mobileCaps)).toBe(true);
     expect(loadingListNavHref(mobileCaps)).toBe("/sales/loading-sheets");
   });
 
@@ -393,6 +395,7 @@ describe("sales-settings mobile loading sheets", () => {
       distribution_ops_enabled: true,
     };
     expect(shouldShowMobileLoadingSheets(caps)).toBe(false);
+    expect(shouldShowMobileTripCharts(caps)).toBe(false);
     expect(shouldShowDistributionLoadingLists(caps)).toBe(true);
     expect(loadingListNavHref(caps)).toBe("/fulfillment/loading-lists");
   });

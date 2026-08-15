@@ -212,6 +212,7 @@ export function DistributionLoadingListsScreen() {
         organizationName,
         trip: freshTrip,
         loadingList: freshList,
+        pickingList: detail?.picking_list ?? null,
         sales: freshTrip.sales,
         orders: freshList.orders,
         financialSummary,

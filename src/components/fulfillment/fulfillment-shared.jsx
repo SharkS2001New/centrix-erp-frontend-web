@@ -21,7 +21,7 @@ export const EMPTY_VEHICLE_FORM = {
   vehicle_code: "",
   vehicle_name: "",
   plate_number: "",
-  max_weight_kg: "",
+  max_load_tonnes: "",
   max_volume_m3: "",
   is_active: true,
 };
@@ -41,11 +41,12 @@ export function driverToForm(driver) {
 }
 
 export function vehicleToForm(vehicle) {
+  const maxKg = Number(vehicle.max_weight_kg);
   return {
     vehicle_code: vehicle.vehicle_code ?? "",
     vehicle_name: vehicle.vehicle_name ?? "",
     plate_number: vehicle.plate_number ?? "",
-    max_weight_kg: vehicle.max_weight_kg != null ? String(vehicle.max_weight_kg) : "",
+    max_load_tonnes: Number.isFinite(maxKg) ? String(maxKg / 1000) : "",
     max_volume_m3: vehicle.max_volume_m3 != null ? String(vehicle.max_volume_m3) : "",
     is_active: vehicle.is_active !== false,
   };
@@ -66,14 +67,15 @@ export function buildDriverBody(form, branchId) {
 }
 
 export function buildVehicleBody(form, branchId) {
-  const maxWeight = form.max_weight_kg === "" ? null : Number(form.max_weight_kg);
+  const maxTonnes = form.max_load_tonnes === "" ? null : Number(form.max_load_tonnes);
+  const maxWeightKg = Number.isFinite(maxTonnes) ? maxTonnes * 1000 : null;
   const maxVolume = form.max_volume_m3 === "" ? null : Number(form.max_volume_m3);
   return {
     branch_id: branchId,
     vehicle_code: form.vehicle_code.trim(),
     vehicle_name: form.vehicle_name.trim(),
     plate_number: form.plate_number.trim() || null,
-    max_weight_kg: Number.isFinite(maxWeight) ? maxWeight : null,
+    max_weight_kg: maxWeightKg,
     max_volume_m3: Number.isFinite(maxVolume) ? maxVolume : null,
     is_active: form.is_active,
   };

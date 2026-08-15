@@ -21,6 +21,7 @@ import {
   orgPrintInkStyles,
 } from "@/lib/print-typography";
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
+import { formatTonnage, pickingLineWeightKg, summarizePickingTonnage } from "@/lib/load-weight";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -222,8 +223,14 @@ function resolveRouteHeader({ pickingList, trip }) {
     trip?.vehicle?.plate_number ??
     trip?.vehicle?.vehicle_name ??
     pickingList?.trip?.vehicle?.plate_number ??
+    pickingList?.vehicle?.plate_number ??
+    pickingList?.vehicle?.vehicle_name ??
     null;
-  const driver = trip?.driver?.full_name ?? pickingList?.trip?.driver?.full_name ?? null;
+  const driver =
+    trip?.driver?.full_name ??
+    pickingList?.trip?.driver?.full_name ??
+    pickingList?.driver?.full_name ??
+    null;
   const combined = Boolean(pickingList?.combined) || names.length > 1;
 
   return { routeNames, routeNamesPhrase, tripCode, vehicle, driver, combined, routeNameList: names };
@@ -283,18 +290,20 @@ function normalizePickingLines(lines, uomByProductCode) {
       line_total: Number(line.line_total ?? 0),
       pack_breakdown:
         line.pack_breakdown && line.pack_breakdown !== requestedLabel ? line.pack_breakdown : "",
+      weight_label: line.weight_missing
+        ? "—"
+        : formatTonnage(pickingLineWeightKg(line), { empty: "—" }),
     };
   });
 }
 
 /** CSS grid tracks — block rows (not <tr>) so Chromium honors break-inside:avoid. */
 function salesPickingGridColumns() {
-  // Give Line amount more than the old 17% so 1,234,567.89 is not clipped.
-  return "5% 26% 22% 24% 23%";
+  return "4% 22% 18% 20% 14% 22%";
 }
 
 function distributionPickingGridColumns(includeShelfLocation = true) {
-  return includeShelfLocation ? "5% 12% 34% 13% 13% 13%" : "5% 46% 13% 13% 13%";
+  return includeShelfLocation ? "5% 10% 26% 12% 12% 12% 13%" : "5% 38% 13% 13% 13% 18%";
 }
 
 function buildSalesPickingHead() {
@@ -304,6 +313,7 @@ function buildSalesPickingHead() {
       <div class="col-product">Product Name</div>
       <div class="col-qty">Quantity</div>
       <div class="col-price">Price</div>
+      <div class="col-weight">Weight</div>
       <div class="col-total">Line amount</div>
     </div>`;
 }
@@ -317,6 +327,7 @@ function buildDistributionPickingHead(includeShelfLocation = true) {
       <div class="col-qty">Requested</div>
       <div class="col-picked">Picked</div>
       <div class="col-shortage">Shortage</div>
+      <div class="col-weight">Weight</div>
     </div>`;
 }
 
@@ -341,6 +352,7 @@ function buildDistributionPickingLineRows(lines, includeShelfLocation = true) {
           <div class="col-qty">${escapeHtml(line.quantity_label)}</div>
           <div class="col-picked">${escapeHtml(line.picked_label)}</div>
           <div class="col-shortage">${line.shortage_qty > 0.0001 ? escapeHtml(line.shortage_label) : "—"}</div>
+          <div class="col-weight">${escapeHtml(line.weight_label)}</div>
         </div>
       </div>`;
     })
@@ -369,6 +381,7 @@ function buildSalesPickingLineRows(lines) {
             ${qtyGhost}
           </div>
           <div class="col-price">${priceMain}</div>
+          <div class="col-weight">${escapeHtml(line.weight_label)}</div>
           <div class="col-total">${formatKes(line.line_total)}</div>
         </div>
       </div>`;
@@ -569,6 +582,11 @@ function pickingListPrintStyles(
     .pick-line > div { padding: 0 ${px(6)}; }
     .col-no { text-align: center; }
     .col-price { overflow-wrap: break-word; }
+    .col-weight {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
     .col-total {
       text-align: right;
       white-space: nowrap;
@@ -636,7 +654,10 @@ function pickingListPrintStyles(
     }
     .pick-line > div { padding: 0 ${px(6)}; }
     .col-no { text-align: center; }
-    .col-qty, .col-picked, .col-shortage { text-align: right; }
+    .col-qty, .col-picked, .col-shortage, .col-weight, .col-total {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     .ghost { font-size: ${px(10)}; color: #64748b; margin-top: ${px(2)}; }
     .pick-line.shortage { background: #fff7ed; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: ${px(24)}; margin-top: ${px(24)}; }
@@ -714,20 +735,28 @@ export function buildPickingListHtml({
       pickingList?.order_total_value != null
         ? Number(pickingList.order_total_value)
         : lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
+    const tonnage = summarizePickingTonnage(pickingList, lines);
+    const missingNote =
+      tonnage.missingCount > 0
+        ? ` · ${tonnage.missingCount} product${tonnage.missingCount === 1 ? "" : "s"} missing weight`
+        : "";
     summaryHtml = `
       <div class="summary-box">
         <div class="summary-row"><span>Totals Value of Order</span><strong>KES ${formatKes(orderTotal)}</strong></div>
+        <div class="summary-row"><span>Picking list tonnage</span><strong>${escapeHtml(formatTonnage(tonnage.totalKg))}${escapeHtml(missingNote)}</strong></div>
       </div>`;
   } else {
     const totalRequired = lines.reduce((sum, line) => sum + Number(line.required_qty || 0), 0);
     const totalPicked = lines.reduce((sum, line) => sum + Number(line.picked_qty || 0), 0);
     const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
+    const tonnage = summarizePickingTonnage(pickingList, lines);
     tableHead = buildDistributionPickingHead(includeShelfLocation);
     summaryHtml = `
       <div class="summary-box">
         <div class="summary-row"><span>Total requested</span><strong>${formatQty(totalRequired)}</strong></div>
         <div class="summary-row"><span>Total picked</span><strong>${formatQty(totalPicked)}</strong></div>
         <div class="summary-row"><span>Total shortage</span><strong>${formatQty(totalShortage)}</strong></div>
+        <div class="summary-row"><span>Picking list tonnage</span><strong>${escapeHtml(formatTonnage(tonnage.totalKg))}</strong></div>
       </div>`;
   }
 
@@ -881,6 +910,9 @@ export function samplePickingListPreviewData({ salesLayout = false } = {}) {
             wholesale_unit_prices: [2250],
             retail_unit_prices: [48],
             line_total: 45000,
+            required_qty: 530,
+            product_weight: 1,
+            line_weight_kg: 530,
           },
           {
             product_name: "SUGAR 50 KG",
@@ -890,6 +922,9 @@ export function samplePickingListPreviewData({ salesLayout = false } = {}) {
             wholesale_pack_label: "Bag",
             wholesale_unit_prices: [6000],
             line_total: 24000,
+            required_qty: 200,
+            product_weight: 1,
+            line_weight_kg: 200,
           },
           {
             product_name: "RICE BIRIYANI",
@@ -899,6 +934,9 @@ export function samplePickingListPreviewData({ salesLayout = false } = {}) {
             retail_pack_label: "kg",
             retail_unit_prices: [90],
             line_total: 18500,
+            required_qty: 25,
+            product_weight: 1,
+            line_weight_kg: 25,
           },
         ],
       },
@@ -930,6 +968,8 @@ export function samplePickingListPreviewData({ salesLayout = false } = {}) {
           shortage_qty: 2,
           shelf_location: "A1",
           pack_breakdown: "20 bag",
+          product_weight: 25,
+          line_weight_kg: 500,
         },
         {
           product_name: "SUGAR 50 KG",
@@ -938,6 +978,8 @@ export function samplePickingListPreviewData({ salesLayout = false } = {}) {
           shortage_qty: 0,
           shelf_location: "B3",
           pack_breakdown: "4 bag",
+          product_weight: 50,
+          line_weight_kg: 200,
         },
       ],
     },

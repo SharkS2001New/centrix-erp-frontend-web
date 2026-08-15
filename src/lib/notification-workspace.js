@@ -50,6 +50,7 @@ const PREFIXES_BY_WORKSPACE = {
     "/till-management",
     "/fulfillment/routes",
     "/sales/picking-lists",
+    "/sales/trip-charts",
     "/fulfillment/loading-lists",
   ],
   admin: ["/admin", "/vats"],

@@ -111,6 +111,8 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toContain("Quantity");
     expect(html).toContain("Price");
     expect(html).toContain("Line amount");
+    expect(html).toContain("Weight");
+    expect(html).toContain("Picking list tonnage");
     expect(html).toContain("Totals Value of Order");
     expect(html).not.toContain(">Shortage<");
     expect(html).not.toContain("Total shortage");
@@ -234,7 +236,7 @@ describe("buildPickingListHtml sales layout", () => {
     expect(html).toMatch(/\.print-page\s*\{[^}]*width:\s*210mm/);
     expect(html).toMatch(/@media print[\s\S]*\.print-page\s*\{[\s\S]*?width:\s*100%/);
     expect(html).toMatch(/\.col-total\s*\{[^}]*white-space:\s*nowrap/);
-    expect(html).toContain("5% 26% 22% 24% 23%");
+    expect(html).toContain("4% 22% 18% 20% 14% 22%");
   });
 
   it("titles combined lists with natural-language route names", () => {

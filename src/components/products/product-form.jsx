@@ -693,7 +693,9 @@ export const ProductFormFields = memo(function ProductFormFields({
             placeholder="Optional"
           />
           <p className="mt-1 text-xs text-slate-500">
-            Used to calculate total order weight when loading deliveries onto a vehicle.
+            Kilograms per stock unit (the same unit inventory uses — usually kg). Line weight is this
+            value × quantity. Example: weight 1 kg on 50 kg of sugar = 50 kg (0.05 t) on the picking
+            list. Used to total vehicle tonnage when loading.
           </p>
         </Field>
       ) : null}

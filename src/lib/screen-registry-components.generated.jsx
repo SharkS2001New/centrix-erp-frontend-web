@@ -481,6 +481,9 @@ export const SCREEN_COMPONENTS = {
   "sales-tills": lazy(() =>
     import("@/components/tab-screens/sales-tills").then((m) => ({ default: m.SalesTillsScreen })),
   ),
+  "sales-trip-charts": lazy(() =>
+    import("@/components/tab-screens/sales-trip-charts").then((m) => ({ default: m.SalesTripChartsScreen })),
+  ),
   "sales-vouchers": lazy(() =>
     import("@/components/tab-screens/sales-vouchers").then((m) => ({ default: m.SalesVouchersScreen })),
   ),

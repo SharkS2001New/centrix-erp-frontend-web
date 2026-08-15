@@ -18,6 +18,7 @@ import {
 } from "@/lib/print-typography";
 import { saleCustomerLabel } from "@/lib/sales";
 import { orgDocumentTemplateCss } from "@/lib/document-print-templates";
+import { formatTonnage, loadTonnageFromDocuments } from "@/lib/load-weight";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -32,7 +33,7 @@ function formatKes(amount) {
   return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function resolveTripMeta({ trip, loadingList }) {
+function resolveTripMeta({ trip, loadingList, pickingList } = {}) {
   const routeNames =
     (Array.isArray(trip?.route_names) && trip.route_names.length
       ? trip.route_names.join(" · ")
@@ -42,16 +43,27 @@ function resolveTripMeta({ trip, loadingList }) {
       ? loadingList.trip.route_names.join(" · ")
       : null) ??
     loadingList?.route?.route_name ??
+    pickingList?.route?.route_name ??
     "—";
 
-  const tripCode = trip?.trip_code ?? loadingList?.trip?.trip_code ?? null;
+  const tripCode = trip?.trip_code ?? loadingList?.trip?.trip_code ?? pickingList?.list_number ?? null;
   const vehicle =
     trip?.vehicle?.plate_number ??
     trip?.vehicle?.vehicle_name ??
     loadingList?.trip?.vehicle?.plate_number ??
+    loadingList?.vehicle?.plate_number ??
+    loadingList?.vehicle?.vehicle_name ??
+    pickingList?.vehicle?.plate_number ??
+    pickingList?.vehicle?.vehicle_name ??
     null;
-  const driver = trip?.driver?.full_name ?? loadingList?.trip?.driver?.full_name ?? null;
-  const scheduledDate = trip?.scheduled_date ?? loadingList?.trip?.scheduled_date ?? null;
+  const driver =
+    trip?.driver?.full_name ??
+    loadingList?.trip?.driver?.full_name ??
+    loadingList?.driver?.full_name ??
+    pickingList?.driver?.full_name ??
+    null;
+  const scheduledDate =
+    trip?.scheduled_date ?? loadingList?.trip?.scheduled_date ?? loadingList?.list_date ?? pickingList?.list_date ?? null;
 
   return { routeNames, tripCode, vehicle, driver, scheduledDate };
 }
@@ -195,6 +207,7 @@ export function buildTripChartListHtml({
   organizationName = "Trip Chart List",
   trip = null,
   loadingList = null,
+  pickingList = null,
   sales = null,
   orders = null,
   financialSummary = null,
@@ -211,7 +224,7 @@ export function buildTripChartListHtml({
     generalSettings,
     "trip_chart",
   );
-  const meta = resolveTripMeta({ trip, loadingList });
+  const meta = resolveTripMeta({ trip, loadingList, pickingList });
   const rows = buildTripChartCustomerRows({
     sales: sales ?? trip?.sales,
     orders: orders ?? loadingList?.orders,
@@ -225,6 +238,13 @@ export function buildTripChartListHtml({
   const grandTotal =
     Number(financialSummary?.total_amount) ||
     rows.reduce((sum, row) => sum + (Number(row.order_total) || 0), 0);
+  const tonnage = loadTonnageFromDocuments({ pickingList, loadingList, trip });
+  const vehicleTonnageLabel = tonnage.vehicleMaxKg
+    ? formatTonnage(tonnage.vehicleMaxKg)
+    : "Not set";
+  const pickingTonnageLabel = formatTonnage(tonnage.totalKg);
+  const remainingKg =
+    tonnage.vehicleMaxKg != null ? Math.max(0, tonnage.vehicleMaxKg - tonnage.totalKg) : null;
 
   const rowHtml =
     rows.length > 0
@@ -266,6 +286,8 @@ export function buildTripChartListHtml({
       ${meta.scheduledDate ? `<p class="meta-line">Date: ${escapeHtml(formatPrintDisplayDate(meta.scheduledDate))}</p>` : ""}
       ${meta.vehicle ? `<p class="meta-line">Vehicle: ${escapeHtml(meta.vehicle)}</p>` : ""}
       ${meta.driver ? `<p class="meta-line">Driver: ${escapeHtml(meta.driver)}</p>` : ""}
+      <p class="meta-line">Vehicle tonnage: ${escapeHtml(vehicleTonnageLabel)}</p>
+      <p class="meta-line">Picking list tonnage: ${escapeHtml(pickingTonnageLabel)}</p>
     </div>
     <table>
       <thead>
@@ -281,6 +303,15 @@ export function buildTripChartListHtml({
       <div class="summary-row"><span>Customers delivering to</span><strong>${customerCount}</strong></div>
       <div class="summary-row"><span>Orders on trip</span><strong>${orderCount}</strong></div>
       <div class="summary-row strong"><span>Total amount vehicle is carrying</span><strong>KES ${formatKes(grandTotal)}</strong></div>
+      <div class="summary-row"><span>Vehicle tonnage</span><strong>${escapeHtml(vehicleTonnageLabel)}</strong></div>
+      <div class="summary-row${tonnage.overCapacity ? " strong" : ""}"><span>Picking list tonnage</span><strong>${escapeHtml(pickingTonnageLabel)}${
+        tonnage.overCapacity ? " (over capacity)" : ""
+      }</strong></div>
+      ${
+        remainingKg != null
+          ? `<div class="summary-row"><span>Remaining capacity</span><strong>${escapeHtml(formatTonnage(remainingKg, { empty: "0 t" }))}</strong></div>`
+          : ""
+      }
     </div>
     <div class="signatures">
       <div>
@@ -323,7 +354,7 @@ export function sampleTripChartListPreviewData() {
       trip_code: "TC-42",
       scheduled_date: today,
       route_names: ["East Route"],
-      vehicle: { plate_number: "KDA 123A" },
+      vehicle: { plate_number: "KDA 123A", max_weight_kg: 8000 },
       driver: { full_name: "John Driver" },
       sales: [
         {
@@ -339,6 +370,10 @@ export function sampleTripChartListPreviewData() {
           customer_num: 204,
         },
       ],
+    },
+    pickingList: {
+      total_weight_kg: 7550,
+      vehicle_max_weight_kg: 8000,
     },
   };
 }

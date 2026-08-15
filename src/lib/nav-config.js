@@ -2,7 +2,7 @@ import { buildCatalogReportNavItems } from "@/lib/reports/report-nav";
 import { canViewReport, ORDER_QUEUE_VIEW_PERMISSIONS, P } from "@/lib/permission-codes";
 import { hasOperationalModule, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
-import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, shouldShowMobilePickingLists, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled, shouldShowLoadingListNav } from "@/lib/sales-settings";
+import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, shouldShowMobilePickingLists, shouldShowMobileTripCharts, shouldShowMobileFleetNav, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled, shouldShowLoadingListNav } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isKraDeviceConfigured, isMpesaC2bReconciliationEnabled } from "@/lib/finance-settings";
@@ -39,7 +39,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -255,6 +255,17 @@ const NAV_SECTION_DEFINITIONS = [
         requireMobilePickingListNav: true,
       },
       {
+        href: "/sales/trip-charts",
+        label: "Trip Chart",
+        module: "sales.backend",
+        permissionAny: [
+          P.sales.loading_sheets.view,
+          P.fulfillment.trips.view,
+          P.sales.order_queues.mobile.view,
+        ],
+        requireMobileTripChartNav: true,
+      },
+      {
         href: "/sales/field-attendance",
         label: "Field attendance",
         module: "sales.backend",
@@ -269,6 +280,26 @@ const NAV_SECTION_DEFINITIONS = [
           P.mobile_sales.routes.view,
           P.sales.order_queues.mobile.view,
         ],
+      },
+      {
+        href: "/fulfillment/drivers",
+        label: "Drivers",
+        moduleAny: ["sales.mobile", "sales.backend"],
+        permissionAny: [
+          P.fulfillment.drivers.view,
+          P.sales.order_queues.mobile.view,
+        ],
+        requireMobileFleetNav: true,
+      },
+      {
+        href: "/fulfillment/vehicles",
+        label: "Vehicles",
+        moduleAny: ["sales.mobile", "sales.backend"],
+        permissionAny: [
+          P.fulfillment.vehicles.view,
+          P.sales.order_queues.mobile.view,
+        ],
+        requireMobileFleetNav: true,
       },
     ],
   },
@@ -1268,6 +1299,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireMobileLoadingSheets && !shouldShowMobileLoadingSheets(capabilities)) return false;
   if (item.requireLoadingListNav && !shouldShowLoadingListNav(capabilities)) return false;
   if (item.requireMobilePickingListNav && !shouldShowMobilePickingLists(capabilities)) return false;
+  if (item.requireMobileTripChartNav && !shouldShowMobileTripCharts(capabilities)) return false;
+  if (item.requireMobileFleetNav && !shouldShowMobileFleetNav(capabilities)) return false;
   if (item.requireMultiBranchCatalog && !isMultiBranchCatalog(capabilities)) return false;
   if (item.requireMobileFieldAttendance && !shouldShowMobileFieldAttendance(capabilities)) return false;
   if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;

@@ -157,7 +157,10 @@ export function HrPayrollScreen() {
     [orgPeriods],
   );
 
-  const scheduleEnforced = runSchedule?.enforce_month_end_run_schedule !== false;
+  const scheduleEnforced =
+    typeof runSchedule?.enforce_month_end_run_schedule === "boolean"
+      ? runSchedule.enforce_month_end_run_schedule
+      : hrSettings.enforce_month_end_run_schedule !== false;
 
   const runnablePeriods = useMemo(() => {
     if (!scheduleEnforced) {
@@ -189,7 +192,10 @@ export function HrPayrollScreen() {
       for (const p of ensured) byId.set(p.id, p);
       return [...byId.values()];
     });
-    const enforce = schedule?.enforce_month_end_run_schedule !== false;
+    const enforce =
+      typeof schedule?.enforce_month_end_run_schedule === "boolean"
+        ? schedule.enforce_month_end_run_schedule
+        : hrSettings.enforce_month_end_run_schedule !== false;
     if (!enforce) {
       const all = await apiRequest("/pay-periods", { searchParams: { per_page: 50 } });
       const list = all.data ?? [];
@@ -226,7 +232,7 @@ export function HrPayrollScreen() {
       return [];
     }
     return runnable;
-  }, [capabilities?.module_settings, organizationId, runSchedule]);
+  }, [capabilities?.module_settings, hrSettings.enforce_month_end_run_schedule, organizationId, runSchedule]);
 
   async function openGenerateDrawer() {
     setRunError(null);
@@ -667,12 +673,20 @@ export function HrPayrollScreen() {
       >
         <div className="mb-4 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
           <p className="font-semibold text-slate-800">When can payroll run?</p>
-          {(runSchedule?.rules ?? [
-            "Payroll may run for the current month only on that month's last calendar day.",
-            `Payroll for the previous month may run during the first ${graceDays} days of the following month.`,
-            "Upcoming (future) months cannot be processed.",
-            "Payroll runs can be deleted until they are marked as paid.",
-          ]).map((rule) => (
+          {(runSchedule?.rules ?? (scheduleEnforced
+            ? [
+                "Payroll may run for the current month only on that month's last calendar day.",
+                `Payroll for the previous month may run during the first ${graceDays} days of the following month.`,
+                "Upcoming (future) months cannot be processed.",
+                "Payroll runs can be deleted until they are marked as paid.",
+              ]
+            : [
+                "Month-end schedule enforcement is off.",
+                "Payroll may run for the current or any past month at any time.",
+                "Upcoming (future) months cannot be processed.",
+                "Payroll runs can be deleted until they are marked as paid.",
+              ]
+          )).map((rule) => (
             <p key={rule}>• {rule}</p>
           ))}
         </div>
