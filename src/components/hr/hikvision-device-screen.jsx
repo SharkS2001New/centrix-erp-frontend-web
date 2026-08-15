@@ -250,13 +250,32 @@ export function HikvisionDeviceScreen() {
     setBusy(true);
     try {
       const result = await apiRequest(`${base}/sync/employees-to-device`, { method: "POST" });
+      const skipped = Number(result.skipped ?? 0);
       notifySuccess(
-        `Sync complete — created ${result.created ?? 0}, updated ${result.updated ?? 0}.`,
+        `Sync complete — created ${result.created ?? 0}, updated ${result.updated ?? 0}` +
+          (skipped ? `, skipped ${skipped} already on the device` : "") +
+          ".",
       );
+      if (Array.isArray(result.notices) && result.notices.length) {
+        notifySuccess(result.notices[0]);
+      }
+      const leftoverErrors = (result.errors ?? []).filter(
+        (message) => !/deviceUserAlreadyExist|0x60007002|already exists on the device/i.test(String(message)),
+      );
+      if (leftoverErrors.length) {
+        notifyError(String(leftoverErrors[0]));
+      }
       await loadUsers();
       await loadOverview();
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Employee sync failed");
+      const text = e instanceof ApiError ? e.message : "Employee sync failed";
+      if (/deviceUserAlreadyExist|0x60007002|already exists on the device/i.test(text)) {
+        notifySuccess("Employee already exists on the device — skipped.");
+        await loadUsers();
+        await loadOverview();
+      } else {
+        notifyError(text);
+      }
     } finally {
       setBusy(false);
     }

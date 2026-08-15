@@ -120,9 +120,20 @@ function isCheckoutProcessing(saving, step) {
 }
 
 function PosDialogShell({ title, children, footer, overlay, onClose, saving, embedded = false }) {
+  const ignoreCloseUntilRef = useRef(0);
+
+  useEffect(() => {
+    ignoreCloseUntilRef.current = Date.now() + 1200;
+  }, []);
+
+  function requestClose() {
+    if (Date.now() < ignoreCloseUntilRef.current) return;
+    if (!saving) onClose?.();
+  }
+
   useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === "Escape" && !saving) onClose?.();
+      if (e.key === "Escape") requestClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -131,11 +142,13 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving, emb
   return renderPosModalPortal(
     <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
       {!embedded ? (
-        <button
-          type="button"
+        <div
           className="absolute inset-0"
-          aria-label="Close"
-          onClick={onClose}
+          aria-hidden="true"
+          onMouseDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            requestClose();
+          }}
         />
       ) : null}
       <div role="dialog" aria-modal="true" className={`${posModalPanelClass(embedded)} ${POS_DIALOG_SHELL}`}>
@@ -2146,7 +2159,7 @@ export function PosPaymentPanel({
           <button
             type="button"
             disabled={isCheckoutProcessing(saving, step) || step !== "payment"}
-            onClick={onClose}
+            onClick={() => onClose?.({ force: true })}
             className={POS_DIALOG_SECONDARY_BTN}
           >
             <span className="text-lg">✕</span>

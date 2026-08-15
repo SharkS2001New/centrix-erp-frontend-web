@@ -70,6 +70,8 @@ const EMPTY_MANUAL = {
   hours_worked: "",
   notes: "",
   lunch_taken: true,
+  lunch_out: "",
+  lunch_in: "",
   lateness_waived: false,
   lateness_waiver_reason: "",
 };
@@ -91,6 +93,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [todayRecords, setTodayRecords] = useState([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [records, setRecords] = useState([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
@@ -120,6 +123,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const [editingRecord, setEditingRecord] = useState(null);
   const [punchEditDay, setPunchEditDay] = useState(null);
   const [punchEditIn, setPunchEditIn] = useState("");
+  const [punchEditLunchOut, setPunchEditLunchOut] = useState("");
+  const [punchEditLunchIn, setPunchEditLunchIn] = useState("");
   const [punchEditOut, setPunchEditOut] = useState("");
   const [punchEditSaving, setPunchEditSaving] = useState(false);
   const [dayHint, setDayHint] = useState(null);
@@ -148,7 +153,18 @@ export function HrAttendanceScreen({ mode = "today" }) {
         {
           key: "sessions",
           promise: apiRequest("/attendance/clock-sessions", {
-            searchParams: { per_page: 100, today: 1, premises: 1 },
+            searchParams: { per_page: 200, today: 1, premises: 1 },
+          }),
+        },
+        {
+          key: "todayAttendance",
+          promise: apiRequest("/employee-attendance", {
+            searchParams: {
+              from_date: todayCalendarDate(),
+              to_date: todayCalendarDate(),
+              per_page: 200,
+              page: 1,
+            },
           }),
         },
         {
@@ -186,6 +202,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
 
         const res = result.value;
         if (key === "sessions") setSessions(res.data ?? []);
+        if (key === "todayAttendance") setTodayRecords(res.data ?? []);
         if (key === "gaps") setGapCounts(res.counts ?? null);
         if (key === "clockDevices") {
           const total = Number(res.meta?.total ?? res.total ?? (res.data ?? []).length ?? 0);
@@ -335,6 +352,12 @@ export function HrAttendanceScreen({ mode = "today" }) {
     }).format(parsed);
   }
 
+  function attendanceDateTime(date, time) {
+    if (!date || !time) return null;
+    const hm = String(time).length >= 8 ? String(time).slice(0, 8) : `${String(time).slice(0, 5)}:00`;
+    return `${String(date).slice(0, 10)}T${hm}+03:00`;
+  }
+
   const todaySessions = useMemo(
     () => [...sessions].sort((a, b) => sessionTimestamp(a.clock_in_at) - sessionTimestamp(b.clock_in_at)),
     [sessions],
@@ -347,7 +370,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
       if (!byEmployee.has(key)) byEmployee.set(key, []);
       byEmployee.get(key).push(session);
     }
-    return [...byEmployee.values()].map((group) => {
+    const fromSessions = [...byEmployee.values()].map((group) => {
       const sorted = [...group].sort(
         (a, b) => sessionTimestamp(a.clock_in_at) - sessionTimestamp(b.clock_in_at),
       );
@@ -401,9 +424,53 @@ export function HrAttendanceScreen({ mode = "today" }) {
         hoursWorked,
         device: last?.device_identifier || first?.device_identifier,
         source: last?.source || first?.source,
+        attendanceRecord: null,
       };
     });
-  }, [todaySessions, nowMs]);
+    const sessionEmployeeIds = new Set(fromSessions.map((day) => String(day.employeeId)));
+    const fromRecords = todayRecords
+      .filter((row) => !sessionEmployeeIds.has(String(row.employee_id)))
+      .map((row) => {
+        const date = String(row.attendance_date ?? "").slice(0, 10);
+        const clockIn = attendanceDateTime(date, row.clock_in || row.check_in);
+        const clockOut = attendanceDateTime(date, row.clock_out || row.check_out);
+        const lunchOut = attendanceDateTime(date, row.lunch_out);
+        const lunchIn = attendanceDateTime(date, row.lunch_in);
+        const lunchRequired = row.source === "field_rep" ? false : row.lunch_required !== false;
+        const hoursWorked = clockOut
+          ? Number(row.hours_worked ?? 0)
+          : elapsedAttendanceHours({
+              clockIn,
+              clockOut: null,
+              lunchOut: lunchRequired ? lunchOut : null,
+              lunchIn: lunchRequired ? lunchIn : null,
+              lunchRequired,
+              nowMs,
+            });
+        return {
+          employeeId: row.employee_id,
+          employee: row.employee,
+          sessions: [],
+          lastSession: {
+            employee: row.employee,
+            employee_id: row.employee_id,
+            source: row.source,
+            device_identifier: row.device_identifier,
+          },
+          clockIn,
+          lunchOut,
+          lunchIn,
+          clockOut,
+          lunchRequired,
+          status: clockOut ? "clocked_out" : lunchOut && !lunchIn ? "at_lunch" : "on_shift",
+          hoursWorked,
+          device: row.device_identifier,
+          source: row.source,
+          attendanceRecord: row,
+        };
+      });
+    return [...fromSessions, ...fromRecords];
+  }, [todaySessions, todayRecords, nowMs]);
 
   const todayTotal = todayDays.length;
   const todayTotalPages = Math.max(1, Math.ceil(todayTotal / todayPageSize) || 1);
@@ -548,6 +615,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
       hours_worked: record.hours_worked != null ? String(record.hours_worked) : "",
       notes: record.notes ?? "",
       lunch_taken: record.lunch_status === "taken",
+      lunch_out: record.lunch_out?.slice?.(0, 5) ?? "",
+      lunch_in: record.lunch_in?.slice?.(0, 5) ?? "",
       lateness_waived: !!record.lateness_waived,
       lateness_waiver_reason: record.lateness_waiver_reason ?? "",
       late_minutes: record.late_minutes ?? 0,
@@ -582,44 +651,46 @@ export function HrAttendanceScreen({ mode = "today" }) {
   function openPunchEdit(day) {
     setPunchEditDay(day);
     setPunchEditIn(sessionHm(day.clockIn));
+    setPunchEditLunchOut(sessionHm(day.lunchOut));
+    setPunchEditLunchIn(sessionHm(day.lunchIn));
     setPunchEditOut(sessionHm(day.clockOut));
   }
 
   async function savePunchEdit(e) {
     e.preventDefault();
-    if (!punchEditDay?.sessions?.length) return;
     const inApi = formatTimeForApi(punchEditIn);
     if (!inApi) {
       notifyError("Set a clock-in time.");
       return;
     }
+    const lunchOutApi = punchEditLunchOut ? formatTimeForApi(punchEditLunchOut) : null;
+    const lunchInApi = punchEditLunchIn ? formatTimeForApi(punchEditLunchIn) : null;
     const outApi = punchEditOut ? formatTimeForApi(punchEditOut) : null;
-    const sessions = punchEditDay.sessions;
-    const first = sessions[0];
-    const last = sessions[sessions.length - 1];
-    const date = sessionCalendarDate(first.clock_in_at || punchEditDay.clockIn);
+    if (lunchInApi && !lunchOutApi) {
+      notifyError("Set lunch out before lunch in.");
+      return;
+    }
+    const first = punchEditDay?.sessions?.[0];
+    const date =
+      sessionCalendarDate(first?.clock_in_at || punchEditDay.clockIn) ||
+      todayCalendarDate();
+    if (!punchEditDay?.employeeId) {
+      notifyError("Employee is missing for this attendance row.");
+      return;
+    }
     setPunchEditSaving(true);
     try {
-      if (first.id === last.id) {
-        await apiRequest(`/attendance/clock-sessions/${first.id}`, {
-          method: "PATCH",
-          body: {
-            clock_in_at: `${date} ${inApi}`,
-            ...(outApi ? { clock_out_at: `${date} ${outApi}` } : {}),
-          },
-        });
-      } else {
-        await apiRequest(`/attendance/clock-sessions/${first.id}`, {
-          method: "PATCH",
-          body: { clock_in_at: `${date} ${inApi}` },
-        });
-        if (outApi) {
-          await apiRequest(`/attendance/clock-sessions/${last.id}`, {
-            method: "PATCH",
-            body: { clock_out_at: `${date} ${outApi}` },
-          });
-        }
-      }
+      await apiRequest("/attendance/clock-sessions/day-times", {
+        method: "POST",
+        body: {
+          employee_id: Number(punchEditDay.employeeId),
+          attendance_date: date,
+          clock_in_at: `${date} ${inApi}`,
+          lunch_out_at: lunchOutApi ? `${date} ${lunchOutApi}` : null,
+          lunch_in_at: lunchInApi ? `${date} ${lunchInApi}` : null,
+          clock_out_at: outApi ? `${date} ${outApi}` : null,
+        },
+      });
       notifySuccess("Punch times updated.");
       setPunchEditDay(null);
       await loadActive();
@@ -653,7 +724,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
     if (!ok) return;
     try {
       await apiRequest(`/employee-attendance/${record.id}`, { method: "DELETE" });
-      await loadHistory();
+      if (isHistory) await loadHistory();
+      else await loadActive();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }
@@ -998,6 +1070,19 @@ export function HrAttendanceScreen({ mode = "today" }) {
       setManualSaving(true);
       setManualError(null);
       try {
+        const lunchOutApi =
+          timesRequired && lunchAppliesToSelection && manualForm.lunch_taken
+            ? formatTimeForApi(manualForm.lunch_out)
+            : null;
+        const lunchInApi =
+          timesRequired && lunchAppliesToSelection && manualForm.lunch_taken
+            ? formatTimeForApi(manualForm.lunch_in)
+            : null;
+        if (manualForm.lunch_taken && lunchAppliesToSelection && (lunchInApi || lunchOutApi) && (!lunchOutApi || !lunchInApi)) {
+          setManualError("Set both lunch out and lunch in, or leave both blank.");
+          setManualSaving(false);
+          return;
+        }
         await apiRequest(`/employee-attendance/${editingRecord.id}`, {
           method: "PUT",
           body: {
@@ -1016,12 +1101,26 @@ export function HrAttendanceScreen({ mode = "today" }) {
               : null,
           },
         });
+        if (checkInApi) {
+          await apiRequest("/attendance/clock-sessions/day-times", {
+            method: "POST",
+            body: {
+              employee_id: Number(manualForm.employee_id),
+              attendance_date: manualForm.attendance_date,
+              clock_in_at: `${manualForm.attendance_date} ${checkInApi}`,
+              lunch_out_at: lunchOutApi ? `${manualForm.attendance_date} ${lunchOutApi}` : null,
+              lunch_in_at: lunchInApi ? `${manualForm.attendance_date} ${lunchInApi}` : null,
+              clock_out_at: checkOutApi ? `${manualForm.attendance_date} ${checkOutApi}` : null,
+            },
+          });
+        }
         setManualOpen(false);
         setEditingRecord(null);
         setManualForm(EMPTY_MANUAL);
         setDayHint(null);
         setBulkResult(null);
-        await loadHistory();
+        if (isHistory) await loadHistory();
+        else await loadActive();
       } catch (err) {
         setManualError(err instanceof ApiError ? err.message : "Save failed");
       } finally {
@@ -1065,7 +1164,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
             ? `Saved ${created} attendance record${created === 1 ? "" : "s"}; skipped ${skipped}.`
             : `Saved ${created} attendance record${created === 1 ? "" : "s"}.`,
         );
-        await loadHistory();
+        if (isHistory) await loadHistory();
+        else await loadActive();
         if (skipped === 0) {
           setManualOpen(false);
           setManualForm(EMPTY_MANUAL);
@@ -1108,7 +1208,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
       subtitle={
         isHistory
           ? "Yesterday’s clock-in records by default. Change the dates or search by employee name."
-          : "Who has clocked in today — live sessions from terminals, company phone, and the sales app"
+          : "Who is in today — office clocks, company phone, mobile sales route, and manual entries"
       }
       action={
         <HrPageActions>
@@ -1233,18 +1333,18 @@ export function HrAttendanceScreen({ mode = "today" }) {
 
           <section className="mb-8 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
-              <h2 className="text-[15px] font-medium text-slate-900">Premises today</h2>
+              <h2 className="text-[15px] font-medium text-slate-900">Today</h2>
               <p className="mt-1 text-sm text-slate-500">
-                One row per person: clock in, lunch out, lunch in, and clock out (leave for home),
-                following that employee’s shift. Extra fingerprint scans in the same hour do not
-                change these times — they appear under Duplicate punches. Use{" "}
+                One row per person from every capture method: fingerprint or clock device, company
+                phone, mobile sales route sign-in, and attendance added by HR. Extra fingerprint
+                scans in the same hour appear under Duplicate punches. Use{" "}
                 <strong>Refresh attendance</strong> to pull new punches from office clocks.
               </p>
             </div>
             {activeLoading ? (
               <p className="px-5 py-6 text-sm text-slate-500">Loading…</p>
             ) : todayDays.length === 0 ? (
-              <p className="px-5 py-6 text-sm text-slate-500">No premises clock-ins yet today.</p>
+              <p className="px-5 py-6 text-sm text-slate-500">No attendance recorded yet today.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -1304,16 +1404,36 @@ export function HrAttendanceScreen({ mode = "today" }) {
                         {canManageSettings ? (
                           <td className="px-4 py-3 text-right">
                             <div className="inline-flex justify-end gap-1">
-                              <IconButton label="Edit times" onClick={() => openPunchEdit(day)}>
-                                <PencilIcon />
-                              </IconButton>
-                              <IconButton
-                                label="Delete last punch"
-                                danger
-                                onClick={() => void deleteClockSession(day.lastSession)}
-                              >
-                                <TrashIcon />
-                              </IconButton>
+                              {day.sessions?.length ? (
+                                <>
+                                  <IconButton label="Edit times" onClick={() => openPunchEdit(day)}>
+                                    <PencilIcon />
+                                  </IconButton>
+                                  <IconButton
+                                    label="Delete last punch"
+                                    danger
+                                    onClick={() => void deleteClockSession(day.lastSession)}
+                                  >
+                                    <TrashIcon />
+                                  </IconButton>
+                                </>
+                              ) : day.attendanceRecord ? (
+                                <>
+                                  <IconButton
+                                    label="Edit attendance"
+                                    onClick={() => openEditManual(day.attendanceRecord)}
+                                  >
+                                    <PencilIcon />
+                                  </IconButton>
+                                  <IconButton
+                                    label="Delete attendance"
+                                    danger
+                                    onClick={() => void deleteRecord(day.attendanceRecord)}
+                                  >
+                                    <TrashIcon />
+                                  </IconButton>
+                                </>
+                              ) : null}
                             </div>
                           </td>
                         ) : null}
@@ -1377,7 +1497,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
               <h2 className="text-[15px] font-medium text-slate-900">Previous attendance</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Showing yesterday unless you change the date range. Search by employee name to narrow
-                the list. One row per employee per day with clock in, lunch out, lunch in, and clock out.
+                the list. Includes clock device, company phone, mobile sales route, and manual entries.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -1813,6 +1933,22 @@ export function HrAttendanceScreen({ mode = "today" }) {
                     {manualForm.lunch_taken ? "Taken" : "Skipped"}
                   </span>
                 </p>
+                {manualForm.lunch_taken ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <HrTimePickerField
+                      label="Lunch out"
+                      value={manualForm.lunch_out}
+                      onChange={(v) => updateManualTime("lunch_out", v)}
+                      defaultPeriod="PM"
+                    />
+                    <HrTimePickerField
+                      label="Lunch in"
+                      value={manualForm.lunch_in}
+                      onChange={(v) => updateManualTime("lunch_in", v)}
+                      defaultPeriod="PM"
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : (
               <p className="text-xs text-slate-500">
@@ -1908,10 +2044,26 @@ export function HrAttendanceScreen({ mode = "today" }) {
         submitLabel="Save times"
       >
         <p className="text-sm text-slate-600">
-          Correct the device times when someone punched late, or the clock was wrong. Hours and lateness are rebuilt
-          from these punches.
+          Correct clock in, lunch out, lunch in, and clock out. Hours and lateness are rebuilt from these
+          punches.
         </p>
         <HrTimePickerField label="Clock in" value={punchEditIn} onChange={setPunchEditIn} required defaultPeriod="AM" />
+        {punchEditDay?.lunchRequired !== false ? (
+          <>
+            <HrTimePickerField
+              label="Lunch out"
+              value={punchEditLunchOut}
+              onChange={setPunchEditLunchOut}
+              defaultPeriod="PM"
+            />
+            <HrTimePickerField
+              label="Lunch in"
+              value={punchEditLunchIn}
+              onChange={setPunchEditLunchIn}
+              defaultPeriod="PM"
+            />
+          </>
+        ) : null}
         <HrTimePickerField
           label="Clock out"
           value={punchEditOut}

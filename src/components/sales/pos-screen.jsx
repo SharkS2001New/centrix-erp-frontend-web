@@ -2003,6 +2003,9 @@ export function PosScreen({ standalone = false }) {
     completedSaleRef.current = null;
     setSessionPosOrders([]);
     setEditSourceSale(null);
+    setEditOrderNo("");
+    setReceiptPrintStatus(null);
+    receiptPrintStatusRef.current = null;
     setStatusMessage(null);
   }
 
@@ -2055,8 +2058,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleZReportSignOut() {
-    // Closing without Print Z must not truncate IndexedDB — wipe only after Z print.
-    leavePosAfterZ();
+    // Close session / Sign out on the Z dialog must print, wipe IndexedDB, then leave
+    // so the next float starts at Cash Sales #1. The modal Close button already prints.
+    await handleZReportPrinted();
   }
 
   async function handleSuspendSession() {
@@ -2270,7 +2274,7 @@ export function PosScreen({ standalone = false }) {
   const paymentOpenRef = useRef(false);
   /** Ignore Esc/backdrop close for a beat after open (same F10 keystroke race). */
   const paymentOpenedAtRef = useRef(0);
-  const PAYMENT_DIALOG_CLOSE_GRACE_MS = 450;
+  const PAYMENT_DIALOG_CLOSE_GRACE_MS = 1200;
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
   const [heldOrdersOpen, setHeldOrdersOpen] = useState(false);
   const [heldOrdersCount, setHeldOrdersCount] = useState(0);
@@ -2293,6 +2297,9 @@ export function PosScreen({ standalone = false }) {
   /** Sale loaded for POS order edit — used for Reprint receipt while revising. */
   const [editSourceSale, setEditSourceSale] = useState(null);
   const [receiptPrintStatus, setReceiptPrintStatus] = useState(null);
+  /** Live print step — F10 keyup must not read a stale shortcut snapshot. */
+  const receiptPrintStatusRef = useRef(null);
+  receiptPrintStatusRef.current = receiptPrintStatus;
   const [orderEditError, setOrderEditError] = useState(null);
   const [sessionPosOrders, setSessionPosOrders] = useState([]);
   const sessionPosOrdersRef = useRef([]);
@@ -4821,7 +4828,11 @@ export function PosScreen({ standalone = false }) {
   function openPaymentDialog() {
     paymentOpenRef.current = true;
     paymentOpenedAtRef.current = Date.now();
+    // Drop leftover "printed" from the previous ticket so F10 keyup cannot treat
+    // this newly opened checkout as ORDER COMPLETE and immediately close it.
+    receiptPrintStatusRef.current = null;
     parkScanForOverlay();
+    setReceiptPrintStatus(null);
     setPaymentError(null);
     setPaymentOpen(true);
   }
@@ -13910,7 +13921,7 @@ export function PosScreen({ standalone = false }) {
 
   async function openCompletePayment() {
     // Payment already open on ORDER COMPLETE — F10/Enter means start the next order.
-    if (paymentOpenRef.current && receiptPrintStatus) {
+    if (paymentOpenRef.current && receiptPrintStatusRef.current) {
       void handleContinueNextOrder();
       return;
     }
@@ -14328,7 +14339,10 @@ export function PosScreen({ standalone = false }) {
 
         // Prefer live ref — React state lags and let a second F10 reopen/flicker the dialog.
         if ((state.paymentOpen || paymentOpenRef.current) && key === "F10") {
-          if (state.receiptPrintStatus) {
+          const openedAgo = Date.now() - paymentOpenedAtRef.current;
+          // Same F10 keydown just opened checkout — do not treat keyup as "next order".
+          if (openedAgo < 1200) return;
+          if (receiptPrintStatusRef.current) {
             void actions.handleContinueNextOrder?.();
             return;
           }
@@ -14878,7 +14892,7 @@ export function PosScreen({ standalone = false }) {
         fallbackTillName={zReportTillName}
         moduleSettings={capabilities?.module_settings}
         embedded={!standalone}
-        closeLabel="Sign out"
+        closeLabel="Close session"
         signOutAfterFinish
       />
 
@@ -16143,8 +16157,8 @@ export function PosScreen({ standalone = false }) {
 
       <PosPaymentPanel
         open={paymentOpen}
-        onClose={() => {
-          if (!closePaymentDialog()) return;
+        onClose={(opts) => {
+          if (!closePaymentDialog({ force: Boolean(opts?.force) })) return;
           setReceiptPrintStatus(null);
           setKraUploadPrompt(null);
           setKraUploadError(null);

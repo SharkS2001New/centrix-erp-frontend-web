@@ -263,7 +263,9 @@ export function HrEmployeesScreen() {
       }
       let created = 0;
       let updated = 0;
+      let skipped = 0;
       const errors = [];
+      const notices = [];
       for (const device of clocks) {
         try {
           const result = await apiRequest(
@@ -272,16 +274,37 @@ export function HrEmployeesScreen() {
           );
           created += Number(result.created ?? 0);
           updated += Number(result.updated ?? 0);
-          if (Array.isArray(result.errors) && result.errors.length) {
-            errors.push(...result.errors);
+          skipped += Number(result.skipped ?? 0);
+          if (Array.isArray(result.notices) && result.notices.length) {
+            notices.push(...result.notices);
+          }
+          for (const message of result.errors ?? []) {
+            const text = String(message);
+            if (/deviceUserAlreadyExist|0x60007002|already exists on the device/i.test(text)) {
+              skipped += 1;
+              notices.push(text);
+            } else {
+              errors.push(text);
+            }
           }
         } catch (e) {
-          errors.push(e instanceof ApiError ? e.message : `Device ${device.device_no} sync failed`);
+          const text = e instanceof ApiError ? e.message : `Device ${device.device_no} sync failed`;
+          if (/deviceUserAlreadyExist|0x60007002|already exists on the device/i.test(text)) {
+            skipped += 1;
+            notices.push(text);
+          } else {
+            errors.push(text);
+          }
         }
       }
       notifySuccess(
-        `Clock devices updated — created ${created}, updated ${updated} on ${clocks.length} device${clocks.length === 1 ? "" : "s"}.`,
+        `Clock devices updated — created ${created}, updated ${updated}` +
+          (skipped ? `, skipped ${skipped} already on the device` : "") +
+          ` on ${clocks.length} device${clocks.length === 1 ? "" : "s"}.`,
       );
+      if (notices.length && !errors.length) {
+        notifySuccess(notices[0]);
+      }
       if (errors.length) {
         notifyError(String(errors[0]));
       }
