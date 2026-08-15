@@ -52,10 +52,53 @@ describe("payroll-sheet", () => {
     expect(footer.net_pay).toContain("13,200");
   });
 
-  it("splits advance from loan/absent deductions", () => {
-    const numeric = payrollSheetNumericRow(sampleLine, 0, () => "Alex");
+  it("adds absent and lateness holds to loan/absent and keeps overtime on O/TIME", () => {
+    const line = {
+      ...sampleLine,
+      other_deductions: 500,
+      gross_pay: 9300,
+      statutory_meta: {
+        ...sampleLine.statutory_meta,
+        payroll: {
+          ...sampleLine.statutory_meta.payroll,
+          contract_monthly_salary: 8000,
+          overtime: 1300,
+          absent_amount: 500,
+          unpaid_leave_amount: 0,
+          lateness_amount: 150,
+          deductions_detail: [
+            { type: "cash_advance", amount: 300 },
+            { type: "employee_deduction", name: "Staff loan", amount: 200 },
+          ],
+        },
+      },
+    };
+    const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
+    expect(numeric.overtime).toBe(1300);
+    expect(numeric.gross_salary).toBe(9300);
     expect(numeric.advance).toBe(300);
-    expect(numeric.loan_absent).toBe(200);
+    expect(numeric.loan_absent).toBe(850);
+  });
+
+  it("reconstructs loan/absent from attendance when amounts are missing", () => {
+    const line = {
+      ...sampleLine,
+      other_deductions: 200,
+      statutory_meta: {
+        ...sampleLine.statutory_meta,
+        payroll: {
+          contract_monthly_salary: 8000,
+          overtime: 0,
+          daily_rate: 258.06,
+          expected_hours: 176,
+          deductions_detail: [{ type: "employee_deduction", name: "Staff loan", amount: 200 }],
+          attendance: { absent_days: 2, unpaid_leave_days: 0, late_minutes_total: 60 },
+        },
+      },
+    };
+    const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
+    expect(numeric.loan_absent).toBe(Math.round((200 + 2 * 258.06 + 8000 * (1 / 176)) * 100) / 100);
+    expect(numeric.overtime).toBe(0);
   });
 
   it("keeps basic salary as contract gross when attendance proration is on", () => {

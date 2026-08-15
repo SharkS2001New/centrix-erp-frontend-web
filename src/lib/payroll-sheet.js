@@ -31,13 +31,47 @@ function advanceAmount(payroll) {
     .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
 }
 
-function loanAbsentAmount(payroll, otherDeductions) {
+function loanDeductionsAmount(payroll, otherDeductions) {
   const detail = payroll?.deductions_detail ?? [];
   const nonAdvance = detail
     .filter((item) => item.type !== "cash_advance")
     .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
   if (nonAdvance > 0) return nonAdvance;
   return Math.max(0, Number(otherDeductions ?? 0) - advanceAmount(payroll));
+}
+
+function attendanceHoldAmount(payroll) {
+  const absent = Number(payroll?.absent_amount ?? 0);
+  const unpaid = Number(payroll?.unpaid_leave_amount ?? 0);
+  const lateness = Number(payroll?.lateness_amount ?? 0);
+  if (payroll?.absent_amount != null || payroll?.lateness_amount != null || payroll?.unpaid_leave_amount != null) {
+    return Math.round((absent + unpaid + lateness) * 100) / 100;
+  }
+  if (Number(payroll?.attendance_deduction ?? 0) > 0) {
+    return Math.round(Number(payroll.attendance_deduction) * 100) / 100;
+  }
+
+  const attendance = payroll?.attendance ?? {};
+  const daily = Number(payroll?.daily_rate ?? 0);
+  const contract = Number(payroll?.contract_monthly_salary ?? 0);
+  const absentDays =
+    Number(attendance.absent_days ?? payroll?.absent_days ?? 0) +
+    Number(attendance.unpaid_leave_days ?? payroll?.unpaid_leave_days ?? 0);
+  const lateMinutes = Number(
+    attendance.late_minutes_total ?? payroll?.late_minutes_total ?? 0,
+  );
+  const expectedHours = Number(payroll?.expected_hours ?? attendance.expected_hours ?? 0);
+  const fromDays = daily > 0 ? absentDays * daily : 0;
+  const fromLate =
+    lateMinutes > 0 && expectedHours > 0 && contract > 0
+      ? contract * (lateMinutes / 60 / expectedHours)
+      : 0;
+  return Math.round((fromDays + fromLate) * 100) / 100;
+}
+
+/** Loans / other non-advance deductions plus absent and lateness holds. Overtime is not deducted here. */
+function loanAbsentAmount(payroll, otherDeductions) {
+  return Math.round((loanDeductionsAmount(payroll, otherDeductions) + attendanceHoldAmount(payroll)) * 100) / 100;
 }
 
 function primaryAccountNumber(line) {

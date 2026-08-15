@@ -111,6 +111,7 @@ export function HrAttendanceScreen({ mode = "today" }) {
   const [appliedHistoryTo, setAppliedHistoryTo] = useState(() => daysAgoCalendarDate(1));
   const [recordSearch, setRecordSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [todaySearch, setTodaySearch] = useState("");
 
   useEffect(() => {
     if (isHistory) return undefined;
@@ -568,13 +569,40 @@ export function HrAttendanceScreen({ mode = "today" }) {
     return [...fromSessions, ...fromRecords, ...fromField];
   }, [todaySessions, todayRecords, todayFieldSessions, nowMs]);
 
-  const todayTotal = todayDays.length;
+  const filteredTodayDays = useMemo(() => {
+    const q = todaySearch.trim().toLowerCase();
+    if (!q) return todayDays;
+    return todayDays.filter((day) => {
+      const employee = day.employee ?? day.lastSession?.employee;
+      const haystack = [
+        sessionEmployeeLabel(day.lastSession),
+        composeEmployeeDisplayName(employee),
+        employee?.full_name,
+        employee?.first_name,
+        employee?.last_name,
+        employee?.employee_code,
+        day.lastSession?.employee_name,
+        day.lastSession?.user_name,
+        day.lastSession?.username,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [todayDays, todaySearch]);
+
+  const todayTotal = filteredTodayDays.length;
   const todayTotalPages = Math.max(1, Math.ceil(todayTotal / todayPageSize) || 1);
   const todaySafePage = Math.min(todayPage, todayTotalPages);
-  const pagedTodayDays = todayDays.slice(
+  const pagedTodayDays = filteredTodayDays.slice(
     (todaySafePage - 1) * todayPageSize,
     todaySafePage * todayPageSize,
   );
+
+  useEffect(() => {
+    setTodayPage(1);
+  }, [todaySearch, todayPageSize]);
 
   const showDeviceColumn = clockDeviceCount == null || clockDeviceCount > 1;
 
@@ -1381,9 +1409,9 @@ export function HrAttendanceScreen({ mode = "today" }) {
                 { key: "device", label: "Device" },
                 { key: "source", label: "Source" },
               ]}
-              totalCount={todayDays.length}
+              totalCount={filteredTodayDays.length}
               getInlineRows={async () =>
-                todayDays.map((day) => ({
+                filteredTodayDays.map((day) => ({
                   employee: sessionEmployeeLabel(day.lastSession),
                   status:
                     day.status === "clocked_out"
@@ -1474,6 +1502,16 @@ export function HrAttendanceScreen({ mode = "today" }) {
             </p>
           )}
 
+          <HrFilterToolbar>
+            <Field label="Search employee">
+              <SearchInput
+                value={todaySearch}
+                onChange={(e) => setTodaySearch(e.target.value)}
+                placeholder="Search by employee name"
+              />
+            </Field>
+          </HrFilterToolbar>
+
           <section className="mb-8 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Today</h2>
@@ -1487,6 +1525,10 @@ export function HrAttendanceScreen({ mode = "today" }) {
               <p className="px-5 py-6 text-sm text-slate-500">Loading…</p>
             ) : todayDays.length === 0 ? (
               <p className="px-5 py-6 text-sm text-slate-500">No attendance recorded yet today.</p>
+            ) : filteredTodayDays.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-slate-500">
+                No employees match “{todaySearch.trim()}”.
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">

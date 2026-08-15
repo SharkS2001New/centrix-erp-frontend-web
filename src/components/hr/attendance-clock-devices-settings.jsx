@@ -234,13 +234,22 @@ export function AttendanceClockDevicesSettings() {
         { method: "POST", body },
       );
 
-      const config = issued?.config;
-      if (!config?.centrixToken) {
+      const issuedConfig = issued?.config && typeof issued.config === "object" ? issued.config : {};
+      if (!issuedConfig.centrixToken) {
         throw new Error("Server did not return an agent token.");
       }
 
-      // Prefer browser-known API URL so the agent hits the same origin as this session.
-      config.centrixApiUrl = apiV1BaseUrl().replace(/\/$/, "");
+      const deviceId = Number(issuedConfig.deviceId ?? downloadDevice.id);
+      if (!Number.isFinite(deviceId) || deviceId <= 0) {
+        throw new Error("Server did not return a device id. Save the clock device, then download again.");
+      }
+
+      const config = {
+        ...issuedConfig,
+        deviceId,
+        deviceNo: String(issuedConfig.deviceNo || downloadDevice.device_no || "").trim(),
+        centrixApiUrl: apiV1BaseUrl().replace(/\/$/, ""),
+      };
 
       const { filename } = await downloadAttendanceAgentPackage(config);
       notifySuccess(`Downloaded ${filename}. Unzip on a LAN PC and run install-windows.bat as Administrator.`);

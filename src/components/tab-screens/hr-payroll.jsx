@@ -759,7 +759,7 @@ export function HrPayrollScreen() {
             className="rounded border-slate-300"
           />
           <span>
-            Prorate payable from attendance through yesterday (PAYE, NSSF, SHA still use full monthly gross)
+            Prorate payable from scheduled shift days through yesterday (PAYE, NSSF, SHA still use full monthly gross)
             {hrSettings.require_attendance_for_payroll ? (
               <span className="text-xs text-slate-500"> — required by organization settings</span>
             ) : null}

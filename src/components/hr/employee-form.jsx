@@ -825,8 +825,8 @@ export function EmployeeFormWizard({
                 <span>
                   Works specific weekdays only
                   <span className="mt-0.5 block text-xs text-slate-500">
-                    Off = Mon–Fri plus any weekend/holiday days on the shift. On = only the days
-                    below count as workdays (other days are not marked absent).
+                    Off = use the shift working days. On = only the days below count as workdays
+                    (other days are not marked absent).
                   </span>
                 </span>
               </label>

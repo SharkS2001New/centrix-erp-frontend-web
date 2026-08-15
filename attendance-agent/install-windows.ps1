@@ -75,6 +75,11 @@ if (-not $csc) {
 
 Write-Host ""
 Write-Host "Checking config.json from the Centrix download..." -ForegroundColor Cyan
+if (-not (Test-Path (Join-Path $AgentDir "config.json")) -and (Test-Path (Join-Path $AgentDir "centrix-attendance-agent\config.json"))) {
+  $AgentDir = Join-Path $AgentDir "centrix-attendance-agent"
+  Set-Location $AgentDir
+  Write-Host "Using folder $AgentDir"
+}
 $check = @"
 import { ensureConfigFile, isConfigReady, missingConfigFields } from './config-lib.js';
 const config = ensureConfigFile();

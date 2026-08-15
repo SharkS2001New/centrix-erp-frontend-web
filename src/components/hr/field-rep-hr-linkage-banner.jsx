@@ -1,6 +1,44 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/contexts/auth-context";
+import { todayCalendarDate } from "@/lib/datetime";
+
+const STORAGE_PREFIX = "centrix:field-rep-hr-linkage-dismissed";
+
+function linkageFingerprint(reps) {
+  return (Array.isArray(reps) ? reps : [])
+    .map((rep) => String(rep.user_id))
+    .filter(Boolean)
+    .sort()
+    .join(",");
+}
+
+function storageKey(organizationId) {
+  return `${STORAGE_PREFIX}:${organizationId || "org"}`;
+}
+
+function readDismissed(organizationId) {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(storageKey(organizationId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeDismissed(organizationId, payload) {
+  try {
+    window.localStorage.setItem(storageKey(organizationId), JSON.stringify(payload));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 /**
  * @param {{
@@ -21,13 +59,50 @@ import Link from "next/link";
  * }} props
  */
 export function FieldRepHrLinkageBanner({ linkage, canManage = true }) {
-  if (!linkage?.attention_needed) return null;
+  const { organization } = useAuth();
+  const orgId = organization?.id ?? null;
+  const reps = Array.isArray(linkage?.reps) ? linkage.reps : [];
+  const fingerprint = useMemo(() => linkageFingerprint(reps), [reps]);
+  const [dismissed, setDismissed] = useState(false);
 
-  const reps = Array.isArray(linkage.reps) ? linkage.reps : [];
+  useEffect(() => {
+    if (!linkage?.attention_needed) {
+      setDismissed(false);
+      return;
+    }
+    const stored = readDismissed(orgId);
+    const today = todayCalendarDate();
+    setDismissed(
+      Boolean(
+        stored &&
+          stored.date === today &&
+          stored.fingerprint === fingerprint,
+      ),
+    );
+  }, [fingerprint, linkage?.attention_needed, orgId]);
+
+  if (!linkage?.attention_needed || dismissed) return null;
+
+  function dismiss() {
+    writeDismissed(orgId, {
+      date: todayCalendarDate(),
+      fingerprint,
+    });
+    setDismissed(true);
+  }
 
   return (
     <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-      <p className="font-medium">Field attendance not counting in HR / payroll</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-medium">Field attendance not counting in HR / payroll</p>
+        <button
+          type="button"
+          onClick={dismiss}
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+        >
+          Dismiss
+        </button>
+      </div>
       <p className="mt-1 text-amber-900">{linkage.message}</p>
       <p className="mt-2 text-xs text-amber-900">
         Connect each mobile login to an employee profile: open the employee in HR → Employment →{" "}

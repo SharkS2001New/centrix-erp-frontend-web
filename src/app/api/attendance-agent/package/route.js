@@ -104,24 +104,46 @@ export async function POST(request) {
       );
     }
 
-    const required = ["centrixApiUrl", "centrixToken", "deviceNo"];
+    const required = ["centrixApiUrl", "centrixToken", "deviceId", "deviceNo"];
     for (const key of required) {
+      if (key === "deviceId") {
+        const id = Number(config.deviceId);
+        if (!Number.isFinite(id) || id <= 0) {
+          return Response.json({ message: "config.deviceId is required." }, { status: 400 });
+        }
+        continue;
+      }
       if (!String(config[key] ?? "").trim()) {
         return Response.json({ message: `config.${key} is required.` }, { status: 400 });
       }
     }
 
     const hik = config.hikvision && typeof config.hikvision === "object" ? config.hikvision : {};
+    const hikHost = String(hik.host ?? "").trim();
+    if (!hikHost) {
+      return Response.json(
+        { message: "config.hikvision.host (device LAN IP) is required." },
+        { status: 400 },
+      );
+    }
+    const hikPassword = String(hik.password ?? "");
+    if (!hikPassword) {
+      return Response.json(
+        { message: "config.hikvision.password is required. Save it on the device, then download again." },
+        { status: 400 },
+      );
+    }
+
     const normalized = {
       centrixApiUrl: String(config.centrixApiUrl).trim().replace(/\/$/, ""),
       centrixToken: String(config.centrixToken).trim(),
-      deviceId: config.deviceId != null && config.deviceId !== "" ? Number(config.deviceId) : null,
+      deviceId: Number(config.deviceId),
       deviceNo: String(config.deviceNo).trim(),
       hikvision: {
-        host: String(hik.host ?? "").trim(),
+        host: hikHost,
         port: Number(hik.port) > 0 ? Number(hik.port) : 80,
         username: String(hik.username ?? "admin").trim() || "admin",
-        password: String(hik.password ?? ""),
+        password: hikPassword,
         useHttps: Boolean(hik.useHttps),
       },
       pollIntervalSeconds:
@@ -130,7 +152,7 @@ export async function POST(request) {
     };
 
     const body = await zipDirectoryStore(root, ZIP_ROOT, {
-      skipFiles: ["config.json", "state.json"],
+      skipFiles: ["config.json", "state.json", "config.example.json"],
       extraFiles: [
         { name: "config.json", content: `${JSON.stringify(normalized, null, 2)}\n` },
         { name: "INSTALL.txt", content: installReadme() },

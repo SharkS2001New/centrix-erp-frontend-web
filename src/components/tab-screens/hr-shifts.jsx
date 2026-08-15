@@ -5,6 +5,7 @@ import { CatalogPageShell, Field, formatShortDate, inputClassName } from "@/comp
 import { HrCrudPage } from "@/components/hr/hr-crud-page";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeHrPayrollSettings } from "@/lib/hr-settings";
+import { WORK_WEEKDAY_OPTIONS } from "@/components/hr/hr-shared";
 
 function formatTime(t) {
   if (!t) return "—";
@@ -14,6 +15,25 @@ function formatTime(t) {
 function padTime(t) {
   if (!t) return t;
   return t.length === 5 ? `${t}:00` : t;
+}
+
+function weekdaysFromShift(row) {
+  if (Array.isArray(row?.work_weekdays) && row.work_weekdays.length > 0) {
+    return row.work_weekdays.map((d) => Number(d)).filter((d) => d >= 0 && d <= 6);
+  }
+  const days = [1, 2, 3, 4, 5];
+  if (row?.works_saturday) days.push(6);
+  if (row?.works_sunday) days.push(0);
+  return days;
+}
+
+function formatShiftWeekdays(row) {
+  const selected = new Set(weekdaysFromShift(row));
+  return (
+    WORK_WEEKDAY_OPTIONS.filter((d) => selected.has(d.value))
+      .map((d) => d.label)
+      .join(", ") || "—"
+  );
 }
 
 export function HrShiftsScreen() {
@@ -55,8 +75,7 @@ export function HrShiftsScreen() {
         { key: "shift_name", label: "Name" },
         { key: "start_time", label: "Start" },
         { key: "end_time", label: "End" },
-        { key: "works_saturday", label: "Saturday" },
-        { key: "works_sunday", label: "Sunday" },
+        { key: "work_weekdays", label: "Work days" },
         { key: "works_public_holidays", label: "Public holidays" },
         { key: "use_alternate_hours", label: "Alt hours" },
         { key: "alternate_start_time", label: "Alt start" },
@@ -74,14 +93,9 @@ export function HrShiftsScreen() {
           render: (r) => `${formatTime(r.start_time)} – ${formatTime(r.end_time)}`,
         },
         {
-          key: "works_saturday",
-          label: "Sat",
-          render: (r) => (r.works_saturday ? "Yes" : "—"),
-        },
-        {
-          key: "works_sunday",
-          label: "Sun",
-          render: (r) => (r.works_sunday ? "Yes" : "—"),
+          key: "work_weekdays",
+          label: "Work days",
+          render: (r) => formatShiftWeekdays(r),
         },
         {
           key: "works_public_holidays",
@@ -130,6 +144,7 @@ export function HrShiftsScreen() {
         lunch_required:
           row != null ? row.lunch_required !== false : hrDefaults.default_lunch_required !== false,
         crosses_midnight: !!row?.crosses_midnight,
+        work_weekdays: weekdaysFromShift(row),
         works_saturday: !!row?.works_saturday,
         works_sunday: !!row?.works_sunday,
         works_public_holidays: !!row?.works_public_holidays,
@@ -158,21 +173,26 @@ export function HrShiftsScreen() {
         lunch_minutes: form.lunch_required ? Number(form.lunch_minutes) || 60 : 0,
         lunch_required: form.lunch_required,
         crosses_midnight: form.crosses_midnight,
-        works_saturday: form.works_saturday,
-        works_sunday: form.works_sunday,
+        work_weekdays: form.work_weekdays,
+        works_saturday: (form.work_weekdays ?? []).includes(6),
+        works_sunday: (form.work_weekdays ?? []).includes(0),
         works_public_holidays: form.works_public_holidays,
         use_alternate_hours: form.use_alternate_hours,
         alternate_start_time: form.use_alternate_hours ? padTime(form.alternate_start_time) : null,
         alternate_end_time: form.use_alternate_hours ? padTime(form.alternate_end_time) : null,
         alternate_lunch_minutes:
-          (form.works_saturday || form.works_sunday || form.works_public_holidays) &&
+          ((form.work_weekdays ?? []).includes(6) ||
+            (form.work_weekdays ?? []).includes(0) ||
+            form.works_public_holidays) &&
           form.use_alternate_lunch
             ? form.alternate_lunch_required
               ? Number(form.alternate_lunch_minutes) || 0
               : 0
             : null,
         alternate_lunch_required:
-          (form.works_saturday || form.works_sunday || form.works_public_holidays) &&
+          ((form.work_weekdays ?? []).includes(6) ||
+            (form.work_weekdays ?? []).includes(0) ||
+            form.works_public_holidays) &&
           form.use_alternate_lunch
             ? !!form.alternate_lunch_required
             : null,
@@ -202,10 +222,13 @@ export function HrShiftsScreen() {
         ) {
           return "Set alternate start and end times for Saturday / Sunday / public holidays.";
         }
+        if (!form.work_weekdays?.length) {
+          return "Select at least one working day for this shift.";
+        }
         if (
           form.use_alternate_hours &&
-          !form.works_saturday &&
-          !form.works_sunday &&
+          !form.work_weekdays.includes(6) &&
+          !form.work_weekdays.includes(0) &&
           !form.works_public_holidays
         ) {
           return "Enable Saturday, Sunday, and/or public holidays to use alternate hours.";
@@ -285,23 +308,41 @@ export function HrShiftsScreen() {
             />
             Shift crosses midnight
           </label>
-          <p className="text-xs font-medium text-slate-500">Works on</p>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.works_saturday}
-              onChange={(e) => setForm((p) => ({ ...p, works_saturday: e.target.checked }))}
-            />
-            Saturday
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.works_sunday}
-              onChange={(e) => setForm((p) => ({ ...p, works_sunday: e.target.checked }))}
-            />
-            Sunday
-          </label>
+          <p className="text-xs font-medium text-slate-500">Working days</p>
+          <p className="text-xs text-slate-500">
+            Attendance and payroll only use these days. Other days are off — not marked absent.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {WORK_WEEKDAY_OPTIONS.map((d) => {
+              const checked = (form.work_weekdays ?? []).includes(d.value);
+              return (
+                <label
+                  key={d.value}
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
+                    checked
+                      ? "border-[#185FA5] bg-sky-50 text-[#185FA5]"
+                      : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={checked}
+                    onChange={() => {
+                      const current = form.work_weekdays ?? [];
+                      setForm((p) => ({
+                        ...p,
+                        work_weekdays: checked
+                          ? current.filter((x) => x !== d.value)
+                          : [...current, d.value].sort((a, b) => a - b),
+                      }));
+                    }}
+                  />
+                  {d.label}
+                </label>
+              );
+            })}
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -312,7 +353,9 @@ export function HrShiftsScreen() {
             />
             Public holidays
           </label>
-          {(form.works_saturday || form.works_sunday || form.works_public_holidays) && (
+          {((form.work_weekdays ?? []).includes(6) ||
+            (form.work_weekdays ?? []).includes(0) ||
+            form.works_public_holidays) && (
             <div className="mt-2 space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
               <label className="flex items-start gap-2 text-sm text-slate-700">
                 <input

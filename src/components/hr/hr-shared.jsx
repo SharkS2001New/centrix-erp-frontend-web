@@ -818,16 +818,21 @@ export function payrollBreakdownSections(line, employee) {
     payroll.remaining_days ?? payroll.attendance?.remaining_days ?? 0,
   );
   const expectedHours = Number(payroll.expected_hours ?? payroll.attendance?.expected_hours ?? 0);
-  const lateMinutes = Number(payroll.attendance?.late_minutes_total ?? 0);
+  const lateMinutes = Number(
+    payroll.late_minutes_total ?? payroll.attendance?.late_minutes_total ?? 0,
+  );
   // Lateness reduces paid hours (and prorated allowances). Surface the KES impact on receipts.
   const latenessAmount =
-    useProration && lateMinutes > 0 && expectedHours > 0
-      ? Math.round(((contractBasic + monthlyAllowance) * (lateMinutes / 60) / expectedHours) * 100)
-        / 100
-      : 0;
+    payroll.lateness_amount != null && payroll.lateness_amount !== ""
+      ? Number(payroll.lateness_amount)
+      : useProration && lateMinutes > 0 && expectedHours > 0
+        ? Math.round(((contractBasic + monthlyAllowance) * (lateMinutes / 60) / expectedHours) * 100)
+          / 100
+        : 0;
+  const restDaysOff = Number(payroll.attendance?.rest_days_off ?? 0);
   const daysHint =
     useProration && expectedDays > 0
-      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days through yesterday`
+      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays through yesterday`
       : null;
   // When lateness is listed under deductions, show payable before that cut so the slip balances:
   // (payable + lateness) − (statutory + other + lateness) = net.
@@ -846,8 +851,8 @@ export function payrollBreakdownSections(line, employee) {
       emphasis: true,
       hint: useProration
         ? latenessAmount > 0
-          ? "Completed days through yesterday, before lateness deduction"
-          : "Completed days through yesterday (today not included)"
+          ? "Completed scheduled days through yesterday, before lateness deduction"
+          : "Completed scheduled shift days through yesterday (today not included)"
         : "Amount before deductions",
     },
   ];
@@ -882,12 +887,12 @@ export function payrollBreakdownSections(line, employee) {
   const attendanceNote =
     attendance && useProration
       ? [
-          `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} calendar days through yesterday`,
-          Number(attendance.rest_days_paid ?? 0) > 0
-            ? `${formatPayrollDays(attendance.rest_days_paid)} rest days (Sun/holiday) included`
+          `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} scheduled workdays through yesterday`,
+          restDaysOff > 0
+            ? `${formatPayrollDays(restDaysOff)} off days (not scheduled — not absent)`
             : null,
           remainingDays > 0
-            ? `${formatPayrollDays(remainingDays)} remaining days not paid (today incomplete)`
+            ? `${formatPayrollDays(remainingDays)} remaining scheduled days not paid (today incomplete)`
             : null,
           Number(attendance.absent_days ?? 0) > 0 ? `${attendance.absent_days} absent` : null,
           Number(attendance.unpaid_leave_days ?? 0) > 0
