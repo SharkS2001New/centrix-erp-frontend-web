@@ -103,7 +103,56 @@ describe("payroll-sheet", () => {
     expect(numeric.overtime).toBe(0);
   });
 
-  it("keeps basic salary as contract gross when attendance proration is on", () => {
+  it("calculates net pay as gross minus total deductions", () => {
+    const line = {
+      ...sampleLine,
+      nssf: 480,
+      shif: 300,
+      housing_levy: 120,
+      paye: 0,
+      statutory_meta: {
+        ...sampleLine.statutory_meta,
+        payroll: {
+          ...sampleLine.statutory_meta.payroll,
+          contract_monthly_salary: 8000,
+          overtime: 0,
+          absent_amount: 500,
+          lateness_amount: 150,
+          deductions_detail: [
+            { type: "cash_advance", amount: 300 },
+            { type: "loan", name: "Staff loan", amount: 200 },
+          ],
+        },
+      },
+    };
+    const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
+    expect(numeric.total_ded).toBe(300 + 480 + 300 + 120 + 0 + 200 + 500 + 150);
+    expect(numeric.net_pay).toBe(numeric.gross_salary - numeric.total_ded);
+  });
+
+  it("skips SHA deduction when employee is marked not to pay SHA", () => {
+    const line = {
+      ...sampleLine,
+      shif: 300,
+      employee: {
+        ...sampleLine.employee,
+        pays_sha: false,
+      },
+      statutory_meta: {
+        ...sampleLine.statutory_meta,
+        payroll: {
+          ...sampleLine.statutory_meta.payroll,
+          contract_monthly_salary: 8000,
+          overtime: 0,
+        },
+      },
+    };
+    const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
+    expect(numeric.shif).toBe(0);
+    expect(numeric.total_ded).toBeLessThan(sampleLine.deductions + 300);
+  });
+
+  it("uses base salary plus overtime as gross pay even when proration is on", () => {
     const line = {
       ...sampleLine,
       gross_pay: 3612.9,
@@ -124,7 +173,7 @@ describe("payroll-sheet", () => {
     };
     const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
     expect(numeric.basic_salary).toBe(8000);
-    expect(numeric.gross_salary).toBe(3612.9);
+    expect(numeric.gross_salary).toBe(8000);
   });
 
   it("falls back to statutory_meta when gross_pay and net_pay are zero on the line", () => {

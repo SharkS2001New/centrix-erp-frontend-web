@@ -113,38 +113,31 @@ function coalesceAmount(...values) {
 }
 
 function lineGrossPay(line, meta) {
-  const fromLine = coalesceAmount(line?.gross_pay, meta?.period_gross, meta?.gross_pay);
-  if (fromLine > 0) return fromLine;
-
   const payroll = meta?.payroll ?? {};
+  const contractBasic = Number(payroll.contract_monthly_salary ?? meta?.basic_salary ?? 0);
+  const overtime = Number(payroll.overtime ?? line?.overtime ?? 0);
   const periodBasic = Number(payroll.period_basic ?? 0);
-  const overtime = Number(payroll.overtime ?? 0);
-  const reconstructed =
-    (periodBasic > 0 ? periodBasic : contractBasicFromMeta(meta, payroll)) + overtime;
-  return reconstructed > 0 ? reconstructed : fromLine;
+  const fromLine = coalesceAmount(line?.gross_pay, meta?.period_gross, meta?.gross_pay);
+
+  const baseSalary = contractBasic > 0 ? contractBasic : periodBasic > 0 ? periodBasic : 0;
+  const computedGross = baseSalary + overtime;
+  if (computedGross > 0) return Math.round(computedGross * 100) / 100;
+  return fromLine > 0 ? fromLine : 0;
 }
 
 function lineNetPay(line, meta, grossPay) {
   const direct = coalesceAmount(line?.net_pay, meta?.net_pay);
-  if (direct > 0) return direct;
-
-  // If the line already provided `deductions`, prefer that. Otherwise compute from components.
-  const providedDeductions = Number(line?.deductions ?? 0);
-  if (providedDeductions > 0 && grossPay > 0) {
-    return Math.max(0, Math.round((grossPay - providedDeductions) * 100) / 100);
-  }
-
-  // Fall back to calculated deductions when explicit field is absent.
   const payroll = meta?.payroll ?? {};
   const advance = advanceAmount(payroll);
   const nssf = Number(line?.nssf ?? 0);
-  const shif = Number(line?.shif ?? 0);
+  const shif = Number(line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0) ? 0 : (line?.shif ?? 0));
   const housing = Number(line?.housing_levy ?? 0);
   const paye = Number(line?.paye ?? 0);
   const loans = loansAmount(payroll);
   const absentism = attendanceHoldAmount(payroll);
   const damages = damagesAmount(payroll);
   const total = Math.round((advance + nssf + shif + housing + paye + loans + absentism + damages) * 100) / 100;
+
   if (grossPay > 0 && total >= 0) {
     return Math.max(0, Math.round((grossPay - total) * 100) / 100);
   }
@@ -181,7 +174,6 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
   const grossPay = lineGrossPay(line, meta);
   const netPay = lineNetPay(line, meta, grossPay);
 
-  // compute total deductions if not explicitly provided on the line
   const computedTotal = Math.round((advanceAmount(payroll) + Number(line?.nssf ?? 0) + ((line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0)) ? 0 : Number(line?.shif ?? 0)) + Number(line?.housing_levy ?? 0) + Number(line?.paye ?? 0) + loansAmount(payroll) + attendanceHoldAmount(payroll) + damagesAmount(payroll)) * 100) / 100;
 
   return {
@@ -201,7 +193,7 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
     absentism: attendanceHoldAmount(payroll),
     damages: damagesAmount(payroll),
     loans: loansAmount(payroll),
-    total_ded: Number(line?.deductions ?? 0) > 0 ? Number(line?.deductions ?? 0) : computedTotal,
+    total_ded: computedTotal,
     net_pay: netPay,
     account_number: primaryAccountNumber(line),
   };
