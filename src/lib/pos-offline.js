@@ -57,6 +57,7 @@ import {
   resolveOutboxClientUuidForCart,
   todayPosOrderDate,
 } from "@/lib/pos-offline-db";
+import { fetchStockLevelsMap, mergeProductsWithLiveStock } from "@/lib/stock-cache";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
@@ -5458,6 +5459,30 @@ export async function syncPosOfflineOutbox({
         });
         if (sale) {
           await seedLocalPosTicketSeqFromSale(sale, openFloatSessionId).catch(() => {});
+          // Refresh local IndexedDB catalog entries with live stock for SKUs affected by this sale
+          try {
+            const codes = Array.isArray(sale.items)
+              ? [...new Set(sale.items.map((it) => String(it.product_code ?? "").trim()).filter(Boolean))]
+              : [];
+            if (codes.length) {
+              const branchId = sale.branch_id ?? row.cart_seed?.branch_id ?? null;
+              const stockByCode = await fetchStockLevelsMap(null, branchId).catch(() => null);
+              if (stockByCode) {
+                const existing = await idbGetCatalogProducts(codes).catch(() => []);
+                const merged = mergeProductsWithLiveStock(existing, stockByCode);
+                if (merged && merged.length) {
+                  await idbPutCatalogProducts(merged).catch(() => {});
+                  try {
+                    upsertPosSearchProducts(merged);
+                  } catch {
+                    /* best-effort */
+                  }
+                }
+              }
+            }
+          } catch {
+            /* ignore refresh failures */
+          }
         }
       });
       done += 1;
