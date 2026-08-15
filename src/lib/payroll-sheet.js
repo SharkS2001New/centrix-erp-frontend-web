@@ -14,7 +14,6 @@ export const PAYROLL_SHEET_COLUMNS = [
   { key: "paye", label: "Paye", align: "right" },
   { key: "absentism", label: "Absentism", align: "right" },
   { key: "damages", label: "Damages", align: "right" },
-  { key: "loans", label: "Loans", align: "right" },
   { key: "total_ded", label: "Total ded", align: "right" },
   { key: "net_pay", label: "Net pay", align: "right" },
   { key: "account_number", label: "Acc no", align: "left" },
@@ -60,6 +59,11 @@ function damagesAmount(payroll) {
       return t === "damage" || t === "damages" || t === "write_off" || t === "damage_write_off";
     })
     .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+}
+
+/** Combined damages includes explicit damage/write-off entries plus loan-style deductions. */
+function combinedDamagesAmount(payroll) {
+  return Math.round((damagesAmount(payroll) + loansAmount(payroll)) * 100) / 100;
 }
 
 function attendanceHoldAmount(payroll) {
@@ -133,10 +137,9 @@ function lineNetPay(line, meta, grossPay) {
   const shif = Number(line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0) ? 0 : (line?.shif ?? 0));
   const housing = Number(line?.housing_levy ?? 0);
   const paye = Number(line?.paye ?? 0);
-  const loans = loansAmount(payroll);
   const absentism = attendanceHoldAmount(payroll);
-  const damages = damagesAmount(payroll);
-  const total = Math.round((advance + nssf + shif + housing + paye + loans + absentism + damages) * 100) / 100;
+  const damages = combinedDamagesAmount(payroll);
+  const total = Math.round((advance + nssf + shif + housing + paye + absentism + damages) * 100) / 100;
 
   if (grossPay > 0 && total >= 0) {
     return Math.max(0, Math.round((grossPay - total) * 100) / 100);
@@ -174,7 +177,7 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
   const grossPay = lineGrossPay(line, meta);
   const netPay = lineNetPay(line, meta, grossPay);
 
-  const computedTotal = Math.round((advanceAmount(payroll) + Number(line?.nssf ?? 0) + ((line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0)) ? 0 : Number(line?.shif ?? 0)) + Number(line?.housing_levy ?? 0) + Number(line?.paye ?? 0) + loansAmount(payroll) + attendanceHoldAmount(payroll) + damagesAmount(payroll)) * 100) / 100;
+  const computedTotal = Math.round((advanceAmount(payroll) + Number(line?.nssf ?? 0) + ((line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0)) ? 0 : Number(line?.shif ?? 0)) + Number(line?.housing_levy ?? 0) + Number(line?.paye ?? 0) + attendanceHoldAmount(payroll) + combinedDamagesAmount(payroll)) * 100) / 100;
 
   return {
     no: index + 1,
@@ -191,8 +194,7 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
     housing: Number(line?.housing_levy ?? 0),
     paye: Number(line?.paye ?? 0),
     absentism: attendanceHoldAmount(payroll),
-    damages: damagesAmount(payroll),
-    loans: loansAmount(payroll),
+    damages: combinedDamagesAmount(payroll),
     total_ded: computedTotal,
     net_pay: netPay,
     account_number: primaryAccountNumber(line),
@@ -214,7 +216,6 @@ export function payrollSheetDisplayRow(numeric) {
     paye: formatHrKesFull(numeric.paye),
     absentism: numeric.absentism > 0 ? formatHrKesFull(numeric.absentism) : "",
     damages: numeric.damages > 0 ? formatHrKesFull(numeric.damages) : "",
-    loans: numeric.loans > 0 ? formatHrKesFull(numeric.loans) : "",
     total_ded: formatHrKesFull(numeric.total_ded),
     net_pay: formatHrKesFull(numeric.net_pay),
     account_number: numeric.account_number || "—",
@@ -236,7 +237,6 @@ export function payrollSheetExportRow(numeric) {
     paye: formatPayrollSheetExportAmount(numeric.paye),
     absentism: numeric.absentism > 0 ? formatPayrollSheetExportAmount(numeric.absentism) : "",
     damages: numeric.damages > 0 ? formatPayrollSheetExportAmount(numeric.damages) : "",
-    loans: numeric.loans > 0 ? formatPayrollSheetExportAmount(numeric.loans) : "",
     total_ded: formatPayrollSheetExportAmount(numeric.total_ded),
     net_pay: formatPayrollSheetExportAmount(numeric.net_pay),
     account_number: formatPayrollSheetExportAccount(numeric.account_number),
