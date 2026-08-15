@@ -12,7 +12,9 @@ export const PAYROLL_SHEET_COLUMNS = [
   { key: "shif", label: "Sha", align: "right" },
   { key: "housing", label: "Housing", align: "right" },
   { key: "paye", label: "Paye", align: "right" },
-  { key: "loan_absent", label: "Loan/ABSENT", align: "right" },
+  { key: "absentism", label: "Absentism", align: "right" },
+  { key: "damages", label: "Damages", align: "right" },
+  { key: "loans", label: "Loans", align: "right" },
   { key: "total_ded", label: "Total ded", align: "right" },
   { key: "net_pay", label: "Net pay", align: "right" },
   { key: "account_number", label: "Acc no", align: "left" },
@@ -38,6 +40,26 @@ function loanDeductionsAmount(payroll, otherDeductions) {
     .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
   if (nonAdvance > 0) return nonAdvance;
   return Math.max(0, Number(otherDeductions ?? 0) - advanceAmount(payroll));
+}
+
+function loansAmount(payroll) {
+  const detail = payroll?.deductions_detail ?? [];
+  return detail
+    .filter((item) => {
+      const t = String(item.type ?? "").toLowerCase();
+      return t === "loan" || t === "employee_deduction" || t === "staff_loan";
+    })
+    .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+}
+
+function damagesAmount(payroll) {
+  const detail = payroll?.deductions_detail ?? [];
+  return detail
+    .filter((item) => {
+      const t = String(item.type ?? "").toLowerCase();
+      return t === "damage" || t === "damages" || t === "write_off" || t === "damage_write_off";
+    })
+    .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
 }
 
 function attendanceHoldAmount(payroll) {
@@ -106,9 +128,25 @@ function lineNetPay(line, meta, grossPay) {
   const direct = coalesceAmount(line?.net_pay, meta?.net_pay);
   if (direct > 0) return direct;
 
-  const deductions = Number(line?.deductions ?? 0);
-  if (grossPay > 0 && deductions > 0) {
-    return Math.max(0, Math.round((grossPay - deductions) * 100) / 100);
+  // If the line already provided `deductions`, prefer that. Otherwise compute from components.
+  const providedDeductions = Number(line?.deductions ?? 0);
+  if (providedDeductions > 0 && grossPay > 0) {
+    return Math.max(0, Math.round((grossPay - providedDeductions) * 100) / 100);
+  }
+
+  // Fall back to calculated deductions when explicit field is absent.
+  const payroll = meta?.payroll ?? {};
+  const advance = advanceAmount(payroll);
+  const nssf = Number(line?.nssf ?? 0);
+  const shif = Number(line?.shif ?? 0);
+  const housing = Number(line?.housing_levy ?? 0);
+  const paye = Number(line?.paye ?? 0);
+  const loans = loansAmount(payroll);
+  const absentism = attendanceHoldAmount(payroll);
+  const damages = damagesAmount(payroll);
+  const total = Math.round((advance + nssf + shif + housing + paye + loans + absentism + damages) * 100) / 100;
+  if (grossPay > 0 && total >= 0) {
+    return Math.max(0, Math.round((grossPay - total) * 100) / 100);
   }
 
   return direct;
@@ -143,6 +181,9 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
   const grossPay = lineGrossPay(line, meta);
   const netPay = lineNetPay(line, meta, grossPay);
 
+  // compute total deductions if not explicitly provided on the line
+  const computedTotal = Math.round((advanceAmount(payroll) + Number(line?.nssf ?? 0) + ((line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0)) ? 0 : Number(line?.shif ?? 0)) + Number(line?.housing_levy ?? 0) + Number(line?.paye ?? 0) + loansAmount(payroll) + attendanceHoldAmount(payroll) + damagesAmount(payroll)) * 100) / 100;
+
   return {
     no: index + 1,
     name,
@@ -151,11 +192,16 @@ export function payrollSheetNumericRow(line, index, nameResolver) {
     gross_salary: grossPay,
     advance: advanceAmount(payroll),
     nssf: Number(line?.nssf ?? 0),
-    shif: Number(line?.shif ?? 0),
+    // SHA (shif) may be employee-specific; front-end display respects an employee flag if present.
+    shif: (line?.employee && (line.employee.pays_sha === false || line.employee.pays_sha === 0))
+      ? 0
+      : Number(line?.shif ?? 0),
     housing: Number(line?.housing_levy ?? 0),
     paye: Number(line?.paye ?? 0),
-    loan_absent: loanAbsentAmount(payroll, line?.other_deductions),
-    total_ded: Number(line?.deductions ?? 0),
+    absentism: attendanceHoldAmount(payroll),
+    damages: damagesAmount(payroll),
+    loans: loansAmount(payroll),
+    total_ded: Number(line?.deductions ?? 0) > 0 ? Number(line?.deductions ?? 0) : computedTotal,
     net_pay: netPay,
     account_number: primaryAccountNumber(line),
   };
@@ -174,7 +220,9 @@ export function payrollSheetDisplayRow(numeric) {
     shif: formatHrKesFull(numeric.shif),
     housing: formatHrKesFull(numeric.housing),
     paye: formatHrKesFull(numeric.paye),
-    loan_absent: numeric.loan_absent > 0 ? formatHrKesFull(numeric.loan_absent) : "",
+    absentism: numeric.absentism > 0 ? formatHrKesFull(numeric.absentism) : "",
+    damages: numeric.damages > 0 ? formatHrKesFull(numeric.damages) : "",
+    loans: numeric.loans > 0 ? formatHrKesFull(numeric.loans) : "",
     total_ded: formatHrKesFull(numeric.total_ded),
     net_pay: formatHrKesFull(numeric.net_pay),
     account_number: numeric.account_number || "—",
@@ -194,7 +242,9 @@ export function payrollSheetExportRow(numeric) {
     shif: formatPayrollSheetExportAmount(numeric.shif),
     housing: formatPayrollSheetExportAmount(numeric.housing),
     paye: formatPayrollSheetExportAmount(numeric.paye),
-    loan_absent: numeric.loan_absent > 0 ? formatPayrollSheetExportAmount(numeric.loan_absent) : "",
+    absentism: numeric.absentism > 0 ? formatPayrollSheetExportAmount(numeric.absentism) : "",
+    damages: numeric.damages > 0 ? formatPayrollSheetExportAmount(numeric.damages) : "",
+    loans: numeric.loans > 0 ? formatPayrollSheetExportAmount(numeric.loans) : "",
     total_ded: formatPayrollSheetExportAmount(numeric.total_ded),
     net_pay: formatPayrollSheetExportAmount(numeric.net_pay),
     account_number: formatPayrollSheetExportAccount(numeric.account_number),

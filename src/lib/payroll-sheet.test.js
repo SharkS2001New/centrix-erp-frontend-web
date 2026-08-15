@@ -41,7 +41,7 @@ describe("payroll-sheet", () => {
     expect(row.basic_salary).toContain("8,000");
     expect(row.shif).toContain("300");
     expect(row.advance).toContain("300");
-    expect(row.loan_absent).toContain("200");
+    expect(row.loans).toContain("200");
     expect(row.account_number).toBe("1234567890");
   });
 
@@ -77,7 +77,8 @@ describe("payroll-sheet", () => {
     expect(numeric.overtime).toBe(1300);
     expect(numeric.gross_salary).toBe(9300);
     expect(numeric.advance).toBe(300);
-    expect(numeric.loan_absent).toBe(850);
+    expect(numeric.loans).toBe(200);
+    expect(numeric.absentism).toBe(650);
   });
 
   it("reconstructs loan/absent from attendance when amounts are missing", () => {
@@ -97,7 +98,8 @@ describe("payroll-sheet", () => {
       },
     };
     const numeric = payrollSheetNumericRow(line, 0, () => "Alex");
-    expect(numeric.loan_absent).toBe(Math.round((200 + 2 * 258.06 + 8000 * (1 / 176)) * 100) / 100);
+    expect(numeric.loans).toBe(200);
+    expect(numeric.absentism).toBe(Math.round((2 * 258.06 + 8000 * (1 / 176)) * 100) / 100);
     expect(numeric.overtime).toBe(0);
   });
 

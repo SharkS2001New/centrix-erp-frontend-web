@@ -513,6 +513,7 @@ export function employeeToForm(employee) {
     kra_pin: employee.kra_pin ?? "",
     nssf_number: employee.nssf_number ?? "",
     sha_number: employee.sha_number ?? "",
+    pays_sha: employee.pays_sha !== false,
     housing_levy_number: employee.housing_levy_number ?? "",
     is_active: employee.is_active !== false && employee.employment_status !== "terminated",
     payment_accounts: paymentAccountsToForm(bankAccounts, employee.employment_type ?? "permanent"),
@@ -662,6 +663,7 @@ export function buildEmployeeBody(form, organizationId, branchId, { isEdit = fal
     nssf_number: form.nssf_number.trim() || null,
     sha_number: form.sha_number.trim() || null,
     housing_levy_number: form.housing_levy_number.trim() || null,
+    pays_sha: !!form.pays_sha,
     is_active: form.is_active && status === "active",
   };
   if (isEdit && employeeCode) {

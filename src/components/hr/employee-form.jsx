@@ -1157,6 +1157,16 @@ export function EmployeeFormWizard({
                 className={inputClassName()}
               />
             </Field>
+            <Field label="Deduct SHIF (SHA) from payroll">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!form.pays_sha}
+                  onChange={(e) => updateField("pays_sha", e.target.checked)}
+                />
+                <span className="text-sm text-slate-700">Deduct SHIF for this employee</span>
+              </label>
+            </Field>
             <Field label="Housing levy number">
               <input
                 type="text"
