@@ -138,10 +138,16 @@ export function HrPayrollRunsIdScreen() {
       setProcessing(true);
       setLines([]);
       try {
-        await apiRequest(`/payroll/runs/${runId}/process-auto`, {
-          method: "POST",
-          body: { ...options, sync: true },
-        });
+        await runQueuedTask(
+          () =>
+            apiRequest(`/payroll/runs/${runId}/process-auto`, {
+              method: "POST",
+              body: { ...options, sync: true },
+            }),
+          {
+            message: "Generating payroll…",
+          },
+        );
         await loadData();
         notifySuccess("Payroll generated.");
       } catch (e) {
