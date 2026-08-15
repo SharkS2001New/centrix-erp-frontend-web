@@ -613,13 +613,21 @@ export function HrPayrollRunsIdScreen() {
                   {run.status === "processed" ? "Reprocess payroll" : "Process payroll"}
                 </PrimaryButton>
               ) : null}
-              {run.status === "processed" && canApprove ? (
+              {run.status === "processed" && (canApprove || canProcess) ? (
                 <PrimaryButton type="button" onClick={() => setMarkPaidOpen(true)} showIcon={false}>
                   Mark as paid
                 </PrimaryButton>
               ) : null}
               {canPrintOrEmailReceipts ? (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => void loadData()}
+                    disabled={loading || processing}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Refresh
+                  </button>
                   <button
                     type="button"
                     onClick={() => exportPayrollSheetCsv()}
