@@ -167,7 +167,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       const form =
         provider === "agent"
           ? { ...agentForm, enabled: true }
-          : { printerName: "", copies: 1, useSigning: false };
+          : { printerName: "", kitchenPrinterName: agentForm.kitchenPrinterName, copies: 1, useSigning: false };
       const payload = localPrintingFromProviderForm(provider, form);
       const savedSettings = await saveLocalPrintingSettings(payload);
       setProvider(savedSettings.provider);
@@ -401,6 +401,27 @@ export function PrintAgentSettingsPanel({ compact = false }) {
               ]}
             />
           </Field>
+          <Field label="Kitchen printer (Hotel POS)">
+            <SearchableSelect
+              className={inputClassName()}
+              value={agentForm.kitchenPrinterName ?? ""}
+              disabled={!canEdit}
+              onChange={(v) => updateAgent("kitchenPrinterName", v)}
+              placeholder="None — cashier printer only"
+              options={[
+                { value: "", label: "None — cashier printer only" },
+                ...(health?.printers ?? []).map((name) => ({
+                  value: name,
+                  label: name,
+                })),
+              ]}
+            />
+          </Field>
+          <p className="theme-subtext text-xs">
+            Hotel POS receipts print one copy on the preferred printer and a second copy on the
+            kitchen printer. Leave kitchen as None to print only at the till. Retail POS is
+            unchanged.
+          </p>
           {!health?.printers?.length ? (
             <p className="theme-subtext text-xs">
               Click <strong>Test connection</strong> or <strong>Check health</strong> after installing the

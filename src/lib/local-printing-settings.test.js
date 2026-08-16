@@ -4,6 +4,7 @@ import {
   mergeLocalPrintingSettings,
   normalizeLocalPrintingSettings,
   qzConfigFromLocalPrinting,
+  resolveHotelKitchenPrinterName,
 } from "@/lib/local-printing-settings";
 
 describe("local-printing-settings", () => {
@@ -37,6 +38,7 @@ describe("local-printing-settings", () => {
     expect(agentConfigFromLocalPrinting(merged)).toMatchObject({
       enabled: true,
       printerName: "Star TSP143",
+      kitchenPrinterName: "",
       baseUrl: "http://127.0.0.1:9247",
     });
     expect(qzConfigFromLocalPrinting(merged).enabled).toBe(false);
@@ -52,5 +54,21 @@ describe("local-printing-settings", () => {
     });
     expect(merged.fallback_to_browser).toBe(true);
     expect(merged.require_qz).toBe(false);
+  });
+
+  it("keeps a kitchen printer distinct from the preferred till printer", () => {
+    const merged = mergeLocalPrintingSettings({
+      local_printing: {
+        provider: "agent",
+        printer_name: "Star TSP143",
+        kitchen_printer_name: "Kitchen EPSON",
+      },
+    });
+    expect(merged.kitchen_printer_name).toBe("Kitchen EPSON");
+    expect(resolveHotelKitchenPrinterName(merged)).toBe("Kitchen EPSON");
+    expect(resolveHotelKitchenPrinterName({ printer_name: "Star", kitchen_printer_name: "Star" })).toBe(
+      "",
+    );
+    expect(resolveHotelKitchenPrinterName({ kitchen_printer_name: "" })).toBe("");
   });
 });

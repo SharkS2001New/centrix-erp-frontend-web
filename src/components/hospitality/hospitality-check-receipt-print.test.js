@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { createOrgPrintPx } from "@/lib/print-typography";
 import { THERMAL_CONTENT_WIDTH_MM } from "@/lib/thermal-receipt-layout";
@@ -13,7 +13,34 @@ vi.mock("@/lib/print-dispatch", () => ({
   dispatchPrintJob: vi.fn(async () => ({ mode: "agent", ok: true, printer: "Star TSP143" })),
 }));
 
+vi.mock("@/lib/print-agent", () => ({
+  getPrintAgentConfig: vi.fn(() => ({
+    enabled: true,
+    baseUrl: "http://127.0.0.1:9247",
+    printerName: "Star TSP143",
+  })),
+  printViaAgent: vi.fn(async () => ({ ok: true, jobId: "kitchen-1" })),
+}));
+
+vi.mock("@/lib/local-printing-settings", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    resolveHotelKitchenPrinterName: vi.fn(() => ""),
+  };
+});
+
 import { dispatchPrintJob } from "@/lib/print-dispatch";
+import { printViaAgent } from "@/lib/print-agent";
+import { resolveHotelKitchenPrinterName } from "@/lib/local-printing-settings";
+
+const paidCheck = {
+  id: 12,
+  check_number: "HTL-9",
+  status: "paid",
+  lines: [{ description: "Soda", qty: 1, unit_price: 150, line_total: 150 }],
+  total: 150,
+};
 
 describe("resolveGuestCheckTitle", () => {
   it("prints VOID ORDER for a voided check even if the caller passed an unpaid title", () => {
@@ -26,17 +53,19 @@ describe("resolveGuestCheckTitle", () => {
 });
 
 describe("printHospitalityCheckReceipt", () => {
-  it("sends the check through Centrix Print Agent dispatch (silent when agent is on)", async () => {
+  beforeEach(() => {
     vi.stubGlobal("window", {});
-    const check = {
-      id: 12,
-      check_number: "HTL-9",
-      status: "paid",
-      lines: [{ description: "Soda", qty: 1, unit_price: 150, line_total: 150 }],
-      total: 150,
-    };
+    vi.mocked(dispatchPrintJob).mockClear().mockResolvedValue({
+      mode: "agent",
+      ok: true,
+      printer: "Star TSP143",
+    });
+    vi.mocked(printViaAgent).mockClear().mockResolvedValue({ ok: true, jobId: "kitchen-1" });
+    vi.mocked(resolveHotelKitchenPrinterName).mockReturnValue("");
+  });
 
-    const result = await printHospitalityCheckReceipt(check, {
+  it("sends the check through Centrix Print Agent dispatch (silent when agent is on)", async () => {
+    const result = await printHospitalityCheckReceipt(paidCheck, {
       title: "Paid receipt",
       printSettings: { check_receipt_copies: 1 },
     });
@@ -48,7 +77,44 @@ describe("printHospitalityCheckReceipt", () => {
         copies: 1,
       }),
     );
+    expect(printViaAgent).not.toHaveBeenCalled();
     expect(result).toMatchObject({ mode: "agent", ok: true });
+  });
+
+  it("sends a second copy to the kitchen printer when configured", async () => {
+    vi.mocked(resolveHotelKitchenPrinterName).mockReturnValue("Kitchen EPSON");
+
+    const result = await printHospitalityCheckReceipt(paidCheck, {
+      title: "Paid receipt",
+      printSettings: { check_receipt_copies: 2 },
+    });
+
+    expect(dispatchPrintJob).toHaveBeenCalledWith(expect.objectContaining({ copies: 2 }));
+    expect(printViaAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        copies: 1,
+        jobType: "receipt",
+        documentId: 12,
+        config: expect.objectContaining({ enabled: true, printerName: "Kitchen EPSON" }),
+      }),
+    );
+    expect(result).toMatchObject({
+      mode: "agent",
+      ok: true,
+      kitchen: { ok: true, printer: "Kitchen EPSON" },
+    });
+  });
+
+  it("does not print kitchen when the guest receipt used the browser dialog", async () => {
+    vi.mocked(resolveHotelKitchenPrinterName).mockReturnValue("Kitchen EPSON");
+    vi.mocked(dispatchPrintJob).mockResolvedValue({ mode: "browser", ok: true });
+
+    const result = await printHospitalityCheckReceipt(paidCheck, {
+      title: "Paid receipt",
+    });
+
+    expect(printViaAgent).not.toHaveBeenCalled();
+    expect(result.kitchen).toBeUndefined();
   });
 });
 

@@ -364,8 +364,9 @@ export function HospitalitySettingsScreen() {
             <h2 className="theme-heading text-base font-semibold">Silent Hotel POS receipts</h2>
             <p className="theme-subtext mt-1 text-sm leading-relaxed">
               Install Centrix Print Agent on the till PC and choose it below. Hotel POS then prints
-              guest checks without the browser print dialog. Layout still comes from Printouts → Hotel
-              checks. You can also open{" "}
+              guest checks without the browser print dialog. Set a kitchen printer to send a second
+              copy of each receipt there. Layout still comes from Printouts → Hotel checks. You can
+              also open{" "}
               <Link href={LOCAL_PRINTING_ADMIN_PATH} className="font-semibold underline">
                 Administration → Local printing
               </Link>

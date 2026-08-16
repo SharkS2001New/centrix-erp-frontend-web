@@ -351,6 +351,11 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
         }),
       );
       if (result?.ok) notifySuccess("Receipt sent to printer");
+      if (result?.kitchen?.ok === false) {
+        notifyError(
+          result.kitchen.error || "Guest receipt printed, but the kitchen printer failed.",
+        );
+      }
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Print failed");
     } finally {

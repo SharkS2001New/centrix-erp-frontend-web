@@ -28,6 +28,7 @@ export const PRINT_AGENT_DEFAULTS = {
   enabled: false,
   baseUrl: DEFAULT_BASE_URL,
   printerName: "",
+  kitchenPrinterName: "",
   requireAgent: false,
   fallbackToBrowser: true,
   copies: 1,
@@ -38,6 +39,7 @@ export function normalizePrintAgentConfig(raw = {}) {
     enabled: Boolean(raw.enabled),
     baseUrl: String(raw.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "") || DEFAULT_BASE_URL,
     printerName: String(raw.printerName ?? "").trim(),
+    kitchenPrinterName: String(raw.kitchenPrinterName ?? "").trim(),
     requireAgent: Boolean(raw.requireAgent),
     fallbackToBrowser: raw.fallbackToBrowser !== false,
     copies: Math.max(1, Number(raw.copies) || 1),
@@ -55,6 +57,7 @@ export function savePrintAgentConfig(next) {
     ...current,
     ...(config.enabled ? { provider: "agent" } : {}),
     printer_name: config.printerName,
+    kitchen_printer_name: config.kitchenPrinterName ?? current.kitchen_printer_name,
     copies: config.copies,
     fallback_to_browser: config.fallbackToBrowser,
   });

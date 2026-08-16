@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/api";
 export const LOCAL_PRINTING_DEFAULTS = {
   provider: "browser",
   printer_name: "",
+  kitchen_printer_name: "",
   copies: 1,
   fallback_to_browser: true,
   require_qz: false,
@@ -44,6 +45,7 @@ export function normalizeLocalPrintingSettings(raw = {}) {
   return {
     provider,
     printer_name: String(raw.printer_name ?? raw.printerName ?? "").trim(),
+    kitchen_printer_name: String(raw.kitchen_printer_name ?? raw.kitchenPrinterName ?? "").trim(),
     copies: Math.max(1, Math.min(10, Number(raw.copies) || 1)),
     // Always fall back to the browser dialog when the silent provider is missing/offline.
     fallback_to_browser: true,
@@ -106,6 +108,7 @@ export function qzConfigFromLocalPrinting(settings = getCachedLocalPrintingSetti
   return {
     enabled: s.provider === "qz",
     printerName: s.printer_name,
+    kitchenPrinterName: s.kitchen_printer_name,
     copies: s.copies,
     fallbackToBrowser: s.fallback_to_browser,
     requireQz: s.require_qz,
@@ -120,16 +123,25 @@ export function agentConfigFromLocalPrinting(settings = getCachedLocalPrintingSe
     enabled: s.provider === "agent",
     baseUrl: PRINT_AGENT_DEFAULT_BASE_URL,
     printerName: s.printer_name,
+    kitchenPrinterName: s.kitchen_printer_name,
     copies: s.copies,
     fallbackToBrowser: s.fallback_to_browser,
     requireAgent: false,
   };
 }
 
+/** Second Hotel POS destination, or empty when unset / same as the preferred printer. */
+export function resolveHotelKitchenPrinterName(settings = getCachedLocalPrintingSettings()) {
+  const s = normalizeLocalPrintingSettings(settings);
+  if (!s.kitchen_printer_name || s.kitchen_printer_name === s.printer_name) return "";
+  return s.kitchen_printer_name;
+}
+
 export function localPrintingFromProviderForm(provider, form = {}) {
   return normalizeLocalPrintingSettings({
     provider,
     printer_name: form.printerName,
+    kitchen_printer_name: form.kitchenPrinterName,
     copies: form.copies,
     use_signing: form.useSigning,
   });

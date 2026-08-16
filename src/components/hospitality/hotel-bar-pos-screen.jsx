@@ -147,6 +147,11 @@ async function printCheckReceiptSafe(
         result?.error ||
           "Receipt could not be printed. Start Centrix Print Agent (or allow the browser print dialog), then use Reprint.",
       );
+    } else if (result.kitchen?.ok === false) {
+      notifyError(
+        result.kitchen.error ||
+          "Guest receipt printed, but the kitchen printer failed. Check Centrix Print Agent and Reprint if needed.",
+      );
     }
     return result;
   } catch (e) {
