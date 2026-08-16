@@ -58,6 +58,8 @@ export const NAV_HREF_ICONS = {
   "/sales/orders/queues/whatsapp": "chat",
   "/sales/whatsapp": "chat",
   "/hospitality/orders": "list",
+  "/hospitality/orders/hotel": "building",
+  "/hospitality/orders/bar": "sales",
   "/hotel-bar-pos": "sales",
 
   // Field sales

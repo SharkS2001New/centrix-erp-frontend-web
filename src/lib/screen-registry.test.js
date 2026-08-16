@@ -24,6 +24,9 @@ describe("screen registry (full ERP)", () => {
   it("does not let [id] steal static sibling routes", () => {
     expect(resolveScreen("/customers/new")?.id).toBe("customers-new");
     expect(resolveScreen("/customers/new")?.id).not.toBe("customers-id");
+    expect(resolveScreen("/hospitality/orders/hotel")?.id).toBe("hospitality-orders-hotel");
+    expect(resolveScreen("/hospitality/orders/bar")?.id).toBe("hospitality-orders-bar");
+    expect(resolveScreen("/hospitality/orders")?.id).toBe("hospitality-orders");
   });
 
   it("matches pathname only (ignores query)", () => {

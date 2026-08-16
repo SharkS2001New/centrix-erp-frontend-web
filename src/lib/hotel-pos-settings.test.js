@@ -5,11 +5,11 @@ import {
 } from "@/lib/hotel-pos-settings";
 
 describe("resolveHotelPosPaymentConfig", () => {
-  it("includes sales POS tenders plus extra admin payment methods", () => {
+  it("follows sales payment fields when Hotel POS methods are not saved yet", () => {
     const cfg = resolveHotelPosPaymentConfig(
       { sales: { enable_equity_bank: true, enable_kcb_bank: false, enable_cheque: false } },
       {
-        capabilities: { platform_mpesa_stk_enabled: true, modules: {} },
+        capabilities: { modules: {} },
         activePaymentMethods: [
           { method_code: "CASH", method_name: "Cash", is_active: true },
           { method_code: "MPESA", method_name: "M-Pesa", is_active: true },
@@ -22,56 +22,101 @@ describe("resolveHotelPosPaymentConfig", () => {
     expect(codes).toContain("CASH");
     expect(codes).toContain("MPESA");
     expect(codes).toContain("EQUITY");
-    expect(codes).toContain("CARD");
     expect(codes).not.toContain("KCB");
+    expect(codes).not.toContain("CARD");
     expect(cfg.showCheque).toBe(false);
     expect(cfg.enableMpesaAmount).toBe(true);
   });
 
-  it("hides M-Pesa from sales toggle when platform STK is off unless catalog lists it", () => {
-    const fromSalesOnly = resolveHotelPosPaymentConfig(
-      { sales: { enable_mpesa_amount: true, enable_equity_bank: false, enable_kcb_bank: false, enable_cheque: false } },
-      {
-        capabilities: { platform_mpesa_stk_enabled: false, modules: {} },
-        activePaymentMethods: [{ method_code: "CASH", is_active: true }],
-      },
-    );
-    expect(fromSalesOnly.enableMpesaAmount).toBe(false);
-
-    const fromCatalog = resolveHotelPosPaymentConfig(
-      { sales: { enable_mpesa_amount: false, enable_equity_bank: false, enable_kcb_bank: false, enable_cheque: false } },
-      {
-        capabilities: { platform_mpesa_stk_enabled: false, modules: {} },
-        activePaymentMethods: [
-          { method_code: "CASH", is_active: true },
-          { method_code: "MPESA", method_name: "M-Pesa", is_active: true },
-        ],
-      },
-    );
-    expect(fromCatalog.enableMpesaAmount).toBe(true);
-    expect(fromCatalog.tenders.map((row) => row.code)).toContain("MPESA");
-  });
-
-  it("shows a custom admin payment method such as Equity under its own label", () => {
+  it("hides a tender when platform Hotel POS payment methods turn it off", () => {
     const cfg = resolveHotelPosPaymentConfig(
-      { sales: { enable_equity_bank: false, enable_kcb_bank: false, enable_cheque: false, enable_other_bank: false } },
+      {
+        hospitality: {
+          payment_methods: {
+            cash: true,
+            mpesa: false,
+            equity: false,
+            kcb: false,
+            other_bank: false,
+            cheque: false,
+            extra: false,
+          },
+        },
+      },
       {
         capabilities: { modules: {} },
         activePaymentMethods: [
+          { method_code: "MPESA", method_name: "M-Pesa", is_active: true },
           { method_code: "EQUITY", method_name: "Equity", is_active: true },
         ],
       },
     );
 
-    const equity = cfg.tenders.find((row) => row.code === "EQUITY");
-    expect(equity).toMatchObject({ code: "EQUITY", label: "Equity" });
+    const codes = cfg.tenders.map((row) => row.code);
+    expect(codes).toEqual(["CASH"]);
+    expect(cfg.enableMpesaAmount).toBe(false);
+  });
+
+  it("shows extra Admin payment methods only when extra is enabled", () => {
+    const cfg = resolveHotelPosPaymentConfig(
+      {
+        hospitality: {
+          payment_methods: {
+            cash: true,
+            mpesa: false,
+            equity: false,
+            kcb: false,
+            other_bank: false,
+            cheque: false,
+            extra: true,
+          },
+        },
+      },
+      {
+        capabilities: { modules: {} },
+        activePaymentMethods: [{ method_code: "CARD", method_name: "Card", is_active: true }],
+      },
+    );
+
+    expect(cfg.tenders.map((row) => row.code)).toEqual(["CASH", "CARD"]);
+  });
+
+  it("uses catalog labels for enabled bank tenders", () => {
+    const cfg = resolveHotelPosPaymentConfig(
+      {
+        hospitality: {
+          payment_methods: {
+            cash: true,
+            mpesa: false,
+            equity: true,
+            kcb: false,
+            other_bank: false,
+            cheque: false,
+            extra: false,
+          },
+        },
+      },
+      {
+        capabilities: { modules: {} },
+        activePaymentMethods: [{ method_code: "EQUITY", method_name: "Equity", is_active: true }],
+      },
+    );
+
+    expect(cfg.tenders.find((row) => row.code === "EQUITY")).toMatchObject({
+      code: "EQUITY",
+      label: "Equity",
+    });
   });
 
   it("hides M-Pesa code and cheque number unless sales toggles are on", () => {
     const off = resolveHotelPosPaymentConfig(
-      {},
       {
-        capabilities: { platform_mpesa_stk_enabled: true, modules: {} },
+        hospitality: {
+          payment_methods: { cash: true, mpesa: true, cheque: true, extra: false },
+        },
+      },
+      {
+        capabilities: { modules: {} },
         activePaymentMethods: [
           { method_code: "MPESA", requires_reference: true, is_active: true },
           { method_code: "CHEQUE", requires_reference: true, is_active: true },
@@ -82,9 +127,14 @@ describe("resolveHotelPosPaymentConfig", () => {
     expect(off.showChequeNumber).toBe(false);
 
     const on = resolveHotelPosPaymentConfig(
-      { sales: { enable_mpesa_code: true, enable_cheque: true, enable_cheque_number: true } },
       {
-        capabilities: { platform_mpesa_stk_enabled: true, modules: {} },
+        sales: { enable_mpesa_code: true, enable_cheque_number: true },
+        hospitality: {
+          payment_methods: { cash: true, mpesa: true, cheque: true, extra: false },
+        },
+      },
+      {
+        capabilities: { modules: {} },
         activePaymentMethods: [
           { method_code: "MPESA", requires_reference: false, is_active: true },
           { method_code: "CHEQUE", requires_reference: false, is_active: true },

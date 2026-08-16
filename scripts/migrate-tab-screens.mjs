@@ -80,6 +80,21 @@ const PREFERRED_SCREENS = {
     exportName: "LpoScreen",
     title: "LPO",
   },
+  "hospitality-orders": {
+    importPath: "@/components/tab-screens/hospitality-orders",
+    exportName: "HospitalityOrdersScreen",
+    title: "All orders",
+  },
+  "hospitality-orders-hotel": {
+    importPath: "@/components/tab-screens/hospitality-orders",
+    exportName: "HospitalityHotelOrdersScreen",
+    title: "Hotel orders",
+  },
+  "hospitality-orders-bar": {
+    importPath: "@/components/tab-screens/hospitality-orders",
+    exportName: "HospitalityBarOrdersScreen",
+    title: "Bar orders",
+  },
 };
 
 function walkPages(dir, out = []) {

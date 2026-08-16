@@ -23,7 +23,7 @@ import { downloadBlob, parseSpreadsheet } from "@/components/catalog/catalog-imp
 import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
 
 /** Centrix product import columns (name-based linking; IDs also accepted). */
-const PRODUCT_IMPORT_COLUMNS = [
+const RETAIL_PRODUCT_IMPORT_COLUMNS = [
   { key: "product_code", label: "Product code" },
   { key: "product_name", label: "Product name" },
   { key: "category_name", label: "Category" },
@@ -39,8 +39,8 @@ const PRODUCT_IMPORT_COLUMNS = [
   { key: "discount_value", label: "Discount value" },
   { key: "product_weight", label: "Product weight" },
   { key: "shelf_location", label: "Shelf location" },
-  { key: "stock_in_shop", label: "Shop stock" },
-  { key: "stock_in_store", label: "Store stock" },
+  { key: "stock_in_shop", label: "Shop stock", aliases: ["shop_stock", "outlet_stock"] },
+  { key: "stock_in_store", label: "Store stock", aliases: ["store_stock", "storeroom_stock"] },
   { key: "reorder_point", label: "Reorder point" },
   { key: "supplier_name", label: "Supplier" },
   { key: "supplier_id", label: "Supplier ID" },
@@ -51,7 +51,28 @@ const PRODUCT_IMPORT_COLUMNS = [
   { key: "sell_on_hotel", label: "Sell on hotel / restaurant" },
 ];
 
-const SAMPLE_HEADERS = [
+const MENU_PRODUCT_IMPORT_COLUMNS = [
+  { key: "product_code", label: "Product code" },
+  { key: "product_name", label: "Product name" },
+  { key: "category_name", label: "Category" },
+  { key: "subcategory_name", label: "Subcategory" },
+  { key: "subcategory_id", label: "Subcategory ID" },
+  { key: "measure_name", label: "Unit" },
+  { key: "unit_id", label: "Unit ID" },
+  { key: "uom_label", label: "Unit of measure" },
+  { key: "unit_price", label: "Unit price" },
+  { key: "last_cost_price", label: "Cost price" },
+  { key: "shelf_location", label: "Storeroom shelf" },
+  { key: "stock_in_shop", label: "Outlet stock", aliases: ["shop_stock", "shop stock", "outlet_stock"] },
+  { key: "stock_in_store", label: "Storeroom stock", aliases: ["store_stock", "store stock", "storeroom_stock"] },
+  { key: "reorder_point", label: "Reorder point" },
+  { key: "vat_code", label: "VAT code" },
+  { key: "vat_id", label: "VAT ID" },
+  { key: "sell_on_bar", label: "Sell on bar" },
+  { key: "sell_on_hotel", label: "Sell on hotel / restaurant" },
+];
+
+const RETAIL_SAMPLE_HEADERS = [
   "product_code",
   "product_name",
   "category_name",
@@ -74,7 +95,7 @@ const SAMPLE_HEADERS = [
   "sell_on_hotel",
 ];
 
-const SAMPLE_ROW = [
+const RETAIL_SAMPLE_ROW = [
   "SKU-001",
   "Sample product",
   "GROCERY",
@@ -97,23 +118,66 @@ const SAMPLE_ROW = [
   "true",
 ];
 
-function productImportColumns(includeShelfLocation) {
-  if (includeShelfLocation) return PRODUCT_IMPORT_COLUMNS;
-  return PRODUCT_IMPORT_COLUMNS.filter((col) => col.key !== "shelf_location");
+const MENU_SAMPLE_HEADERS = [
+  "product_code",
+  "product_name",
+  "category_name",
+  "subcategory_name",
+  "measure_name",
+  "unit_price",
+  "last_cost_price",
+  "stock_in_shop",
+  "stock_in_store",
+  "reorder_point",
+  "vat_code",
+  "sell_on_bar",
+  "sell_on_hotel",
+];
+
+const MENU_SAMPLE_ROW = [
+  "MENU-001",
+  "Club soda",
+  "Beverages",
+  "Soft drinks",
+  "Bottle",
+  "150",
+  "80",
+  "12",
+  "24",
+  "6",
+  "A",
+  "true",
+  "true",
+];
+
+function productImportColumns(includeShelfLocation, hotelCatalogue = false) {
+  const columns = hotelCatalogue ? MENU_PRODUCT_IMPORT_COLUMNS : RETAIL_PRODUCT_IMPORT_COLUMNS;
+  if (includeShelfLocation) return columns;
+  return columns.filter((col) => col.key !== "shelf_location");
 }
 
-function productSampleImportData(includeShelfLocation) {
-  if (includeShelfLocation) {
-    return { headers: SAMPLE_HEADERS, row: SAMPLE_ROW };
+function productSampleImportData(includeShelfLocation, hotelCatalogue = false) {
+  if (hotelCatalogue) {
+    return { headers: MENU_SAMPLE_HEADERS, row: MENU_SAMPLE_ROW };
   }
-  const shelfIndex = SAMPLE_HEADERS.indexOf("shelf_location");
+  if (includeShelfLocation) {
+    return { headers: RETAIL_SAMPLE_HEADERS, row: RETAIL_SAMPLE_ROW };
+  }
+  const shelfIndex = RETAIL_SAMPLE_HEADERS.indexOf("shelf_location");
   if (shelfIndex < 0) {
-    return { headers: SAMPLE_HEADERS, row: SAMPLE_ROW };
+    return { headers: RETAIL_SAMPLE_HEADERS, row: RETAIL_SAMPLE_ROW };
   }
   return {
-    headers: SAMPLE_HEADERS.filter((key) => key !== "shelf_location"),
-    row: SAMPLE_ROW.filter((_, index) => index !== shelfIndex),
+    headers: RETAIL_SAMPLE_HEADERS.filter((key) => key !== "shelf_location"),
+    row: RETAIL_SAMPLE_ROW.filter((_, index) => index !== shelfIndex),
   };
+}
+
+function parseImportFlag(value) {
+  const flag = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes"].includes(flag)) return true;
+  if (["false", "0", "no"].includes(flag)) return false;
+  return null;
 }
 
 function ImportIcon() {
@@ -136,10 +200,12 @@ function ExportIcon() {
   );
 }
 
-function ExportModal({ open, onClose, totalCount, exportSearchParams, exportColumns }) {
+function ExportModal({ open, onClose, totalCount, exportSearchParams, exportColumns, hotelCatalogue = false }) {
   const { runBackgroundTask } = useBackgroundTasks();
   const [error, setError] = useState(null);
   const columns = exportColumns?.length ? exportColumns : PRODUCT_CATALOG_EXPORT_COLUMNS;
+  const entity = hotelCatalogue ? "menu product" : "product";
+  const entityPlural = hotelCatalogue ? "menu products" : "products";
 
   if (!open) return null;
 
@@ -147,26 +213,27 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams, exportColu
     setError(null);
     const stamp = new Date().toISOString().slice(0, 10);
     const exportFormat = format === "pdf" ? "pdf" : "csv";
+    const filenameBase = hotelCatalogue ? `menu-products-${stamp}` : `products-${stamp}`;
     onClose();
     void runBackgroundTask(
       () =>
         queueReportExport({
           format: exportFormat,
           source: "product_catalog",
-          filename: `products-${stamp}`,
+          filename: filenameBase,
           columns,
           meta: serializeExportMeta({
-            title: "Products",
-            subtitle: "Product catalogue export",
+            title: hotelCatalogue ? "Menu products" : "Products",
+            subtitle: hotelCatalogue ? "Menu catalogue export" : "Product catalogue export",
             printedAt: reportPrintedAt(),
           }),
           search_params: exportSearchParams?.() ?? {},
         }),
       {
-        label: "Exporting products",
+        label: hotelCatalogue ? "Exporting menu products" : "Exporting products",
         message: "Started fetching…",
         downloadOnComplete: true,
-        downloadFilename: `products-${stamp}.${exportFormat === "pdf" ? "pdf" : exportFormat}`,
+        downloadFilename: `${filenameBase}.${exportFormat === "pdf" ? "pdf" : exportFormat}`,
       },
     ).catch(() => {
       /* Global background-task notice handles errors and success */
@@ -178,9 +245,11 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams, exportColu
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="theme-panel theme-modal w-full max-w-sm rounded-xl border p-5 shadow-xl">
-        <h2 className="text-[15px] font-medium text-slate-900">Export products</h2>
+        <h2 className="text-[15px] font-medium text-slate-900">
+          {hotelCatalogue ? "Export menu products" : "Export products"}
+        </h2>
         <p className="mt-2 text-sm text-slate-500">
-          Export all {countLabel.toLocaleString()} product{countLabel === 1 ? "" : "s"} matching your
+          Export all {countLabel.toLocaleString()} {countLabel === 1 ? entity : entityPlural} matching your
           current filters. PDF and CSV use your visible table columns.
         </p>
         {error ? (
@@ -217,29 +286,34 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams, exportColu
   );
 }
 
-function ImportModal({ open, onClose, onImported, includeShelfLocation = false }) {
+function ImportModal({ open, onClose, onImported, includeShelfLocation = false, hotelCatalogue = false }) {
   const inputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(null);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-  const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while products are imported…");
+  const { runQueuedTask, overlayNode } = useQueuedTask(
+    hotelCatalogue
+      ? "Please wait while menu products are imported…"
+      : "Please wait while products are imported…",
+  );
   const importColumns = useMemo(
-    () => productImportColumns(includeShelfLocation),
-    [includeShelfLocation],
+    () => productImportColumns(includeShelfLocation, hotelCatalogue),
+    [includeShelfLocation, hotelCatalogue],
   );
 
   if (!open) return null;
 
   function downloadSample(format) {
-    const { headers, row } = productSampleImportData(includeShelfLocation);
+    const { headers, row } = productSampleImportData(includeShelfLocation, hotelCatalogue);
     const rowText = row.join(",");
     const csv = `${headers.join(",")}\n${rowText}\n`;
+    const sampleName = hotelCatalogue ? "menu-products-import-sample" : "products-import-sample";
     if (format === "csv") {
-      downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), "products-import-sample.csv");
+      downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${sampleName}.csv`);
       return;
     }
-    void downloadExcelFromRows("products-import-sample.xlsx", "Sample", [headers, row]);
+    void downloadExcelFromRows(`${sampleName}.xlsx`, "Sample", [headers, row]);
   }
 
   function normalizeRow(row) {
@@ -267,32 +341,48 @@ function ImportModal({ open, onClose, onImported, includeShelfLocation = false }
       if (measureName) body.measure_name = measureName;
     }
 
-    const optional = [
-      "last_cost_price",
-      "discount_type",
-      "discount_percentage",
-      "discount_value",
-      "product_weight",
-      ...(includeShelfLocation ? ["shelf_location"] : []),
-      "stock_in_shop",
-      "stock_in_store",
-      "reorder_point",
-      "supplier_id",
-      "vat_id",
-      "supplier_name",
-      "vat_code",
-    ];
+    const optional = hotelCatalogue
+      ? [
+          "last_cost_price",
+          ...(includeShelfLocation ? ["shelf_location"] : []),
+          "stock_in_shop",
+          "stock_in_store",
+          "reorder_point",
+          "vat_id",
+          "vat_code",
+        ]
+      : [
+          "last_cost_price",
+          "discount_type",
+          "discount_percentage",
+          "discount_value",
+          "product_weight",
+          ...(includeShelfLocation ? ["shelf_location"] : []),
+          "stock_in_shop",
+          "stock_in_store",
+          "reorder_point",
+          "supplier_id",
+          "vat_id",
+          "supplier_name",
+          "vat_code",
+        ];
     for (const key of optional) {
       const val = row[key];
       if (val !== "" && val != null) body[key] = val;
     }
-    const sell = String(row.sell_on_retail ?? "").toLowerCase();
-    if (sell === "true" || sell === "1" || sell === "yes") body.sell_on_retail = true;
-    if (sell === "false" || sell === "0" || sell === "no") body.sell_on_retail = false;
-    for (const channelKey of ["sell_on_bar", "sell_on_hotel"]) {
-      const channel = String(row[channelKey] ?? "").toLowerCase();
-      if (channel === "true" || channel === "1" || channel === "yes") body[channelKey] = true;
-      if (channel === "false" || channel === "0" || channel === "no") body[channelKey] = false;
+    if (hotelCatalogue) {
+      body.sell_on_retail = false;
+      const bar = parseImportFlag(row.sell_on_bar);
+      const hotel = parseImportFlag(row.sell_on_hotel);
+      body.sell_on_bar = bar ?? true;
+      body.sell_on_hotel = hotel ?? true;
+    } else {
+      const sell = parseImportFlag(row.sell_on_retail);
+      if (sell !== null) body.sell_on_retail = sell;
+      for (const channelKey of ["sell_on_bar", "sell_on_hotel"]) {
+        const channel = parseImportFlag(row[channelKey]);
+        if (channel !== null) body[channelKey] = channel;
+      }
     }
     return body;
   }
@@ -375,9 +465,13 @@ function ImportModal({ open, onClose, onImported, includeShelfLocation = false }
       {createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="theme-panel theme-modal w-full max-w-md rounded-xl border p-5 shadow-xl">
-            <h2 className="text-[15px] font-medium text-slate-900">Import products</h2>
+            <h2 className="text-[15px] font-medium text-slate-900">
+              {hotelCatalogue ? "Import menu products" : "Import products"}
+            </h2>
         <p className="mt-2 text-sm text-slate-500">
-          Upload a CSV or Excel file. Stock columns are in base pieces (same as the database).
+          {hotelCatalogue
+            ? "Upload a CSV or Excel file. Outlet and storeroom columns are in base units (same as the database)."
+            : "Upload a CSV or Excel file. Stock columns are in base pieces (same as the database)."}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -408,7 +502,7 @@ function ImportModal({ open, onClose, onImported, includeShelfLocation = false }
         {error ? (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         ) : null}
-        <ImportResultPanel result={result} entityLabel="product" />
+        <ImportResultPanel result={result} entityLabel={hotelCatalogue ? "menu product" : "product"} />
         <div className="mt-4 flex justify-end">
           <button
             type="button"
@@ -427,7 +521,13 @@ function ImportModal({ open, onClose, onImported, includeShelfLocation = false }
   );
 }
 
-export function ProductImportExport({ totalCount, exportSearchParams, exportColumns, onImported }) {
+export function ProductImportExport({
+  totalCount,
+  exportSearchParams,
+  exportColumns,
+  onImported,
+  hotelCatalogue = false,
+}) {
   const { user, organization, capabilities } = useAuth();
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const [importOpen, setImportOpen] = useState(false);
@@ -436,7 +536,7 @@ export function ProductImportExport({ totalCount, exportSearchParams, exportColu
     user,
     organization,
     capabilities,
-    permission: "products.manage",
+    permission: "catalogue.products.create",
     page: "products",
   });
 
@@ -465,6 +565,7 @@ export function ProductImportExport({ totalCount, exportSearchParams, exportColu
         onClose={() => setImportOpen(false)}
         onImported={onImported}
         includeShelfLocation={includeShelfLocation}
+        hotelCatalogue={hotelCatalogue}
       />
       <ExportModal
         open={exportOpen}
@@ -472,6 +573,7 @@ export function ProductImportExport({ totalCount, exportSearchParams, exportColu
         totalCount={totalCount}
         exportSearchParams={exportSearchParams}
         exportColumns={exportColumns}
+        hotelCatalogue={hotelCatalogue}
       />
     </>
   );

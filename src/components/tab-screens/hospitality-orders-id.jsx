@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import {
   CatalogPageShell,
   PrimaryButton,
@@ -17,6 +18,7 @@ import {
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import { fetchHotelPosSettings, voidHotelCheck } from "@/lib/hospitality-pos-api";
 import { HOTEL_VOID_ORDER_NAME } from "@/lib/hotel-pos-offline";
+import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import {
   buildHospitalityCheckPrintOptions,
   normalizeHospitalityCheckPrintSettings,
@@ -39,6 +41,17 @@ function formatWhen(iso) {
   }
 }
 
+function ordersListForCheck(check) {
+  const type = String(check?.outlet?.outlet_type ?? check?.outlet?.menu_channel ?? "").toLowerCase();
+  if (type === "bar") {
+    return { href: "/hospitality/orders/bar", label: "Back to bar orders" };
+  }
+  if (type === "restaurant" || type === "hotel") {
+    return { href: "/hospitality/orders/hotel", label: "Back to hotel orders" };
+  }
+  return { href: "/hospitality/orders", label: "Back to all orders" };
+}
+
 function MetaRow({ label, children }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
@@ -51,6 +64,7 @@ function MetaRow({ label, children }) {
 export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {}) {
   const params = useParams();
   const { organization, capabilities, user } = useAuth();
+  const confirm = useConfirm();
   const checkId = checkIdProp ?? params?.id;
 
   const [check, setCheck] = useState(null);
@@ -58,6 +72,11 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
   const [printing, setPrinting] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [printSettings, setPrintSettings] = useState(null);
+  const [tablesEnabled, setTablesEnabled] = useState(
+    () =>
+      isHospitalityServiceEnabled(capabilities, "table_pos") ||
+      isHospitalityServiceEnabled(capabilities, "floor_tables"),
+  );
 
   const load = useCallback(async () => {
     if (!checkId) return;
@@ -70,6 +89,11 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
       setCheck(res?.check ?? null);
       if (settings) {
         setPrintSettings(normalizeHospitalityCheckPrintSettings(settings));
+        setTablesEnabled(
+          Boolean(settings.table_pos_enabled || settings.floor_tables_enabled) ||
+            isHospitalityServiceEnabled(capabilities, "table_pos") ||
+            isHospitalityServiceEnabled(capabilities, "floor_tables"),
+        );
       }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load order");
@@ -77,7 +101,7 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
     } finally {
       setLoading(false);
     }
-  }, [checkId]);
+  }, [checkId, capabilities]);
 
   useEffect(() => {
     void load();
@@ -118,11 +142,14 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
     const sold =
       ["paid", "settled"].includes(String(check.status ?? "").toLowerCase()) ||
       Number(check.amount_paid) > 0;
-    const ok = window.confirm(
-      sold
-        ? `Void sold check ${label}? This cancels the sale and names it ${HOTEL_VOID_ORDER_NAME}.`
-        : `Void check ${label}? This cannot be undone.`,
-    );
+    const ok = await confirm({
+      title: sold ? "Void sold order" : "Void order",
+      message: sold
+        ? `Void sold order ${label}? This cancels the sale and names it ${HOTEL_VOID_ORDER_NAME}.`
+        : `Void order ${label}? This cannot be undone.`,
+      confirmLabel: "Void",
+      destructive: true,
+    });
     if (!ok) return;
     setVoiding(true);
     try {
@@ -141,14 +168,15 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
   const outletLabel = check?.outlet?.name || check?.outlet?.code || "—";
   const payments = Array.isArray(check?.payments) ? check.payments : [];
   const lines = Array.isArray(check?.lines) ? check.lines : [];
+  const listNav = ordersListForCheck(check);
 
   if (loading) {
     return (
       <CatalogPageShell
-        title="F&B order"
-        subtitle="Loading check details…"
+        title="Order"
+        subtitle="Loading order details…"
         backHref="/hospitality/orders"
-        backLabel="Back to F&B orders"
+        backLabel="Back to all orders"
       >
         <p className="theme-subtext text-sm">Loading…</p>
       </CatalogPageShell>
@@ -158,10 +186,10 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
   if (!check) {
     return (
       <CatalogPageShell
-        title="F&B order"
+        title="Order"
         subtitle="Order not found"
         backHref="/hospitality/orders"
-        backLabel="Back to F&B orders"
+        backLabel="Back to all orders"
       >
         <p className="theme-subtext text-sm">This check could not be loaded.</p>
       </CatalogPageShell>
@@ -172,8 +200,8 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
     <CatalogPageShell
       title={`Order ${check.check_number || check.order_num}`}
       subtitle="Hotel POS order — same summary layout as backoffice: lines, totals, payments, and print."
-      backHref="/hospitality/orders"
-      backLabel="Back to F&B orders"
+      backHref={listNav.href}
+      backLabel={listNav.label}
       action={
         <div className="flex flex-wrap items-center gap-2">
           <PrimaryButton
@@ -188,7 +216,7 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
               disabled={printing || voiding}
               onClick={() => void handleVoid()}
             >
-              {voiding ? "Voiding…" : "Void check"}
+              {voiding ? "Voiding…" : "Void order"}
             </SecondaryButton>
           ) : null}
         </div>
@@ -210,13 +238,11 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
             <MetaRow label="Method">{check.payment_method_label || "—"}</MetaRow>
             <MetaRow label="Placed by">{check.opened_by_name || "—"}</MetaRow>
             <MetaRow label="Outlet">{outletLabel}</MetaRow>
-            <MetaRow label="Table">{tableLabel}</MetaRow>
+            {tablesEnabled ? <MetaRow label="Table">{tableLabel}</MetaRow> : null}
             <MetaRow label="Service">
               <span className="capitalize">{check.service_mode || "—"}</span>
             </MetaRow>
-            {guestNameEnabled || check.guest_name ? (
-              <MetaRow label="Guest">{check.guest_name || "—"}</MetaRow>
-            ) : null}
+            {guestNameEnabled ? <MetaRow label="Guest">{check.guest_name || "—"}</MetaRow> : null}
             {check.folio?.folio_number ? (
               <MetaRow label="Folio">
                 {check.folio.folio_number}

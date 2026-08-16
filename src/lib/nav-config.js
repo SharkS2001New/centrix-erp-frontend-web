@@ -950,7 +950,31 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       {
         href: "/hospitality/orders",
-        label: "F&B orders",
+        label: "All orders",
+        module: "hospitality.backend",
+        permissionAny: [
+          P.hospitality.orders.view,
+          P.hospitality.dashboard.view,
+          P.hospitality.reports.view,
+          P.hotel_bar_pos.checks.view,
+          P.hospitality.settings.view,
+        ],
+      },
+      {
+        href: "/hospitality/orders/hotel",
+        label: "Hotel orders",
+        module: "hospitality.backend",
+        permissionAny: [
+          P.hospitality.orders.view,
+          P.hospitality.dashboard.view,
+          P.hospitality.reports.view,
+          P.hotel_bar_pos.checks.view,
+          P.hospitality.settings.view,
+        ],
+      },
+      {
+        href: "/hospitality/orders/bar",
+        label: "Bar orders",
         module: "hospitality.backend",
         permissionAny: [
           P.hospitality.orders.view,

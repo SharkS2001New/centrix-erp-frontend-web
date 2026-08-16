@@ -5,7 +5,7 @@ import {
   resolveHotelPosThemeTemplate,
 } from "@/lib/hotel-pos-theme-templates";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
-import { isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
+import { resolveHotelPosPaymentMethods } from "@/lib/hotel-pos-payment-methods";
 
 export const HOTEL_POS_GRID_COLUMNS_DEFAULT = 4;
 export const HOTEL_POS_GRID_COLUMNS_ALLOWED = [4, 5];
@@ -39,9 +39,8 @@ function addTender(tenders, seen, tender) {
 }
 
 /**
- * Build Hotel POS Collect payment tenders.
- * Same sales checkout toggles as retail POS (Cash, M-Pesa, Equity, KCB, Other, Cheque),
- * plus any extra Admin → Payment methods rows (Card, custom banks, etc.).
+ * Build Hotel POS Collect payment tenders from platform Hotel POS payment method
+ * toggles. Extra Admin → Payment methods rows are opt-in.
  *
  * @param {object|null} moduleSettings
  * @param {object} options
@@ -49,11 +48,19 @@ function addTender(tenders, seen, tender) {
  * @param {Array<{ method_code?: string, method_name?: string, requires_reference?: boolean, is_active?: boolean }>} [options.activePaymentMethods]
  */
 export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
+  const capabilities = options.capabilities ?? null;
   const base = getCheckoutPaymentConfig(moduleSettings, {
     checkoutContext: "pos",
-    capabilities: options.capabilities ?? null,
+    capabilities,
   });
-  const capabilities = options.capabilities ?? null;
+  const settingsBag =
+    capabilities?.module_settings && typeof capabilities.module_settings === "object"
+      ? capabilities.module_settings
+      : moduleSettings;
+  const methods = resolveHotelPosPaymentMethods({
+    ...(settingsBag ?? {}),
+    hotel_pos_payment_methods: capabilities?.hotel_pos_payment_methods,
+  });
   const catalog = (Array.isArray(options.activePaymentMethods) ? options.activePaymentMethods : [])
     .filter((row) => row && row.is_active !== false)
     .map((row) => ({
@@ -65,11 +72,11 @@ export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
 
   const tenders = [];
   const seen = new Set();
-  const mpesaOk = Boolean(base.enableMpesaAmount) && isPlatformMpesaStkEnabled(capabilities);
-  const catalogHasMpesa = catalog.some((row) => MPESA_CODES.has(row.code));
 
-  addTender(tenders, seen, { code: "CASH", label: "Cash", kind: "cash" });
-  if (mpesaOk || catalogHasMpesa) {
+  if (methods.cash) {
+    addTender(tenders, seen, { code: "CASH", label: "Cash", kind: "cash" });
+  }
+  if (methods.mpesa) {
     const mpesaRow = catalog.find((row) => MPESA_CODES.has(row.code));
     addTender(tenders, seen, {
       code: mpesaRow?.code || "MPESA",
@@ -77,15 +84,15 @@ export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
       kind: "mpesa",
     });
   }
-  if (base.showEquityBank) {
+  if (methods.equity) {
     const row = catalog.find((r) => r.code === "EQUITY");
     addTender(tenders, seen, { code: "EQUITY", label: row?.name || "Equity Bank", kind: "bank" });
   }
-  if (base.showKcbBank) {
+  if (methods.kcb) {
     const row = catalog.find((r) => r.code === "KCB");
     addTender(tenders, seen, { code: "KCB", label: row?.name || "KCB", kind: "bank" });
   }
-  if (base.showOtherBank) {
+  if (methods.other_bank) {
     const row = catalog.find((r) => r.code === "OTHER");
     addTender(tenders, seen, {
       code: "OTHER",
@@ -93,7 +100,7 @@ export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
       kind: "bank",
     });
   }
-  if (base.showCheque) {
+  if (methods.cheque) {
     const row = catalog.find((r) => CHEQUE_CODES.has(r.code));
     addTender(tenders, seen, {
       code: row?.code || "CHEQUE",
@@ -101,25 +108,26 @@ export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
       kind: "cheque",
     });
   }
-
-  for (const row of catalog) {
-    if (MPESA_CODES.has(row.code) && !mpesaOk && !catalogHasMpesa) continue;
-    addTender(tenders, seen, {
-      code: row.code,
-      label: row.name || row.code,
-      kind: tenderKind(row.code),
-    });
+  if (methods.extra) {
+    for (const row of catalog) {
+      addTender(tenders, seen, {
+        code: row.code,
+        label: row.name || row.code,
+        kind: tenderKind(row.code),
+      });
+    }
   }
 
   const codes = new Set(tenders.map((row) => row.code));
   const otherTender = tenders.find((row) => row.code === "OTHER" || row.code === "CARD" || row.code === "BANK");
+  const mpesaOn = tenders.some((row) => row.kind === "mpesa");
 
   return {
     ...base,
     tenders,
     showCash: codes.has("CASH"),
-    enableMpesaAmount: tenders.some((row) => row.kind === "mpesa"),
-    enableMpesaCode: tenders.some((row) => row.kind === "mpesa") && base.enableMpesaCode,
+    enableMpesaAmount: mpesaOn,
+    enableMpesaCode: mpesaOn && base.enableMpesaCode,
     useBankSelect: false,
     showBankAmount: false,
     showEquityBank: codes.has("EQUITY"),

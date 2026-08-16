@@ -212,6 +212,9 @@ export function mapImportHeaders(rows, columnDefs = []) {
       aliasToKey.set(normalizeImportHeader(label), key);
     }
     aliasToKey.set(normalizeImportHeader(key.replace(/_/g, " ")), key);
+    for (const alias of col.aliases ?? []) {
+      aliasToKey.set(normalizeImportHeader(alias), key);
+    }
   }
 
   return (rows ?? []).map((row) => {

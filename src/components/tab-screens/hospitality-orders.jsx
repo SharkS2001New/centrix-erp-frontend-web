@@ -3,8 +3,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import { OrderExpandButton } from "@/components/sales/sales-orders-shared";
 import {
   CatalogPageShell,
@@ -12,14 +14,24 @@ import {
   FilterSelect,
   FILTER_CONTROL_CLASS,
   FilterToolbar,
+  IconButton,
   PaginationBar,
+  PencilIcon,
   SearchInput,
-  SecondaryButton,
+  StatCard,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { useReportRefreshUi } from "@/lib/list-refresh-ui";
+import { fetchHotelPosSettings, voidHotelCheck } from "@/lib/hospitality-pos-api";
+import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
+import { HOTEL_VOID_ORDER_NAME } from "@/lib/hotel-pos-offline";
+import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import {
+  buildHospitalityCheckPrintOptions,
+  normalizeHospitalityCheckPrintSettings,
+} from "@/lib/hospitality-check-print-options";
 
 function formatMoney(value) {
   return Number(value ?? 0).toLocaleString(undefined, {
@@ -109,8 +121,53 @@ function CheckLinesPanel({ lines }) {
   );
 }
 
-export function HospitalityOrdersScreen() {
+function canEditHotelOrder(row) {
+  const status = String(row?.status || "").toLowerCase();
+  return status === "open" || status === "unpaid" || status === "partially_paid";
+}
+
+function isVoidedHotelOrder(row) {
+  return String(row?.status || "").toLowerCase() === "void";
+}
+
+const ORDER_CHANNELS = {
+  all: {
+    title: "All orders",
+    subtitle: "Hotel restaurant and bar POS tickets — same list layout as retail and wholesale backoffice.",
+    empty: "No orders for this filter.",
+  },
+  hotel: {
+    title: "Hotel orders",
+    subtitle: "Restaurant and hotel POS tickets.",
+    empty: "No hotel orders for this filter.",
+  },
+  bar: {
+    title: "Bar orders",
+    subtitle: "Bar POS tickets.",
+    empty: "No bar orders for this filter.",
+  },
+};
+
+function outletMatchesChannel(outlet, channel) {
+  const type = String(outlet?.outlet_type ?? "").toLowerCase();
+  if (channel === "bar") return type === "bar";
+  if (channel === "hotel") return type !== "bar";
+  return true;
+}
+
+export function HospitalityHotelOrdersScreen() {
+  return <HospitalityOrdersScreen channel="hotel" />;
+}
+
+export function HospitalityBarOrdersScreen() {
+  return <HospitalityOrdersScreen channel="bar" />;
+}
+
+export function HospitalityOrdersScreen({ channel = "all" } = {}) {
   const router = useRouter();
+  const { capabilities, organization, user } = useAuth();
+  const confirm = useConfirm();
+  const copy = ORDER_CHANNELS[channel] ?? ORDER_CHANNELS.all;
   const [rows, setRows] = useState([]);
   const [outlets, setOutlets] = useState([]);
   // Default All so settled Hotel POS tickets appear like backoffice completed orders.
@@ -128,6 +185,14 @@ export function HospitalityOrdersScreen() {
   const [lastPage, setLastPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const [guestNameEnabled, setGuestNameEnabled] = useState(false);
+  const [printSettings, setPrintSettings] = useState(null);
+  const [actionBusyId, setActionBusyId] = useState(null);
+  const [tablesEnabled, setTablesEnabled] = useState(
+    () =>
+      isHospitalityServiceEnabled(capabilities, "table_pos") ||
+      isHospitalityServiceEnabled(capabilities, "floor_tables"),
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 280);
@@ -151,6 +216,33 @@ export function HospitalityOrdersScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchHotelPosSettings()
+      .then((settings) => {
+        if (cancelled || !settings) return;
+        const print = normalizeHospitalityCheckPrintSettings(settings);
+        setPrintSettings(print);
+        setGuestNameEnabled(Boolean(print.enable_check_guest_name));
+        setTablesEnabled(
+          Boolean(settings.table_pos_enabled || settings.floor_tables_enabled) ||
+            isHospitalityServiceEnabled(capabilities, "table_pos") ||
+            isHospitalityServiceEnabled(capabilities, "floor_tables"),
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setGuestNameEnabled(false);
+        setTablesEnabled(
+          isHospitalityServiceEnabled(capabilities, "table_pos") ||
+            isHospitalityServiceEnabled(capabilities, "floor_tables"),
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [capabilities]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -158,6 +250,7 @@ export function HospitalityOrdersScreen() {
         searchParams: {
           status: status || undefined,
           outlet_id: outletId || undefined,
+          channel: channel === "all" ? undefined : channel,
           q: debouncedSearch || undefined,
           from_date: appliedFrom || undefined,
           to_date: appliedTo || undefined,
@@ -169,20 +262,31 @@ export function HospitalityOrdersScreen() {
       setTotal(Number(res?.total ?? 0));
       setLastPage(Math.max(1, Number(res?.last_page ?? 1)));
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Failed to load F&B orders");
+      notifyError(e instanceof ApiError ? e.message : `Failed to load ${copy.title.toLowerCase()}`);
       setRows([]);
       setTotal(0);
       setLastPage(1);
     } finally {
       setLoading(false);
     }
-  }, [status, outletId, debouncedSearch, appliedFrom, appliedTo, page, pageSize]);
+  }, [status, outletId, debouncedSearch, appliedFrom, appliedTo, page, pageSize, channel, copy.title]);
 
   useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);
-  }, [status, outletId, debouncedSearch, appliedFrom, appliedTo, pageSize]);
+  }, [status, outletId, debouncedSearch, appliedFrom, appliedTo, pageSize, channel]);
+
+  const visibleOutlets = useMemo(
+    () => outlets.filter((outlet) => outletMatchesChannel(outlet, channel)),
+    [outlets, channel],
+  );
+
+  useEffect(() => {
+    if (!outletId) return;
+    const stillValid = visibleOutlets.some((outlet) => String(outlet.id) === String(outletId));
+    if (!stillValid) setOutletId("");
+  }, [outletId, visibleOutlets]);
 
   const allExpanded = useMemo(
     () => rows.length > 0 && rows.every((row) => expandedIds.has(row.id)),
@@ -227,12 +331,78 @@ export function HospitalityOrdersScreen() {
     setAppliedTo(toDate);
   }
 
-  const colCount = 13;
+  async function handlePrint(row) {
+    if (!row?.id || actionBusyId) return;
+    setActionBusyId(row.id);
+    try {
+      let check = row;
+      if (!Array.isArray(row.lines) || row.lines.length === 0) {
+        const res = await apiRequest(`/hospitality/checks/${row.id}`);
+        check = res?.check ?? row;
+      }
+      const result = await printHospitalityCheckReceipt(
+        check,
+        buildHospitalityCheckPrintOptions({
+          checkPrintSettings: printSettings,
+          organization,
+          capabilities,
+          user,
+          title: "Order receipt",
+        }),
+      );
+      if (result?.ok) notifySuccess("Receipt sent to printer");
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Print failed");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function handleVoid(row) {
+    if (!row?.id || actionBusyId || isVoidedHotelOrder(row)) return;
+    const label = row.check_number || row.order_num || "this order";
+    const sold =
+      ["paid", "settled"].includes(String(row.status ?? "").toLowerCase()) ||
+      Number(row.amount_paid) > 0;
+    const ok = await confirm({
+      title: sold ? "Void sold order" : "Void order",
+      message: sold
+        ? `Void sold order ${label}? This cancels the sale and names it ${HOTEL_VOID_ORDER_NAME}.`
+        : `Void order ${label}? This cannot be undone.`,
+      confirmLabel: "Void",
+      destructive: true,
+    });
+    if (!ok) return;
+    setActionBusyId(row.id);
+    try {
+      const res = await voidHotelCheck(row.id);
+      const voided = res?.check ?? { ...row, status: "void", guest_name: HOTEL_VOID_ORDER_NAME };
+      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, ...voided } : item)));
+      notifySuccess(`${voided.check_number ?? label} voided.`);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to void order");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  const dataColCount = 11 + (guestNameEnabled ? 1 : 0) + (tablesEnabled ? 1 : 0);
+  const tableColSpan = dataColCount + 1;
+  const summaryHint = lastPage > 1 ? `This page · ${rows.length} of ${total.toLocaleString()}` : "Filtered period";
+  const searchPlaceholder = [
+    "Search order #",
+    guestNameEnabled ? "guest" : null,
+    "product",
+    tablesEnabled ? "table" : null,
+    "amount…",
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <CatalogPageShell
-      title="F&B orders"
-      subtitle="Hotel POS checks in the same order-list layout as backoffice — order #, guest, amounts, method, source, and cashier."
+      title={copy.title}
+      subtitle={copy.subtitle}
       toolbar={
         <div className="space-y-3">
           <FilterToolbar>
@@ -272,8 +442,8 @@ export function HospitalityOrdersScreen() {
                 value={outletId}
                 onChange={(e) => setOutletId(e.target.value)}
                 options={[
-                  { value: "", label: "All outlets" },
-                  ...outlets.map((outlet) => ({
+                  { value: "", label: channel === "bar" ? "All bar outlets" : channel === "hotel" ? "All hotel outlets" : "All outlets" },
+                  ...visibleOutlets.map((outlet) => ({
                     value: String(outlet.id),
                     label: outlet.name || outlet.code,
                   })),
@@ -293,7 +463,7 @@ export function HospitalityOrdersScreen() {
               <SearchInput
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search order #, guest, product, table, amount…"
+                placeholder={searchPlaceholder}
                 className="w-full min-w-0 shrink"
               />
             </div>
@@ -301,28 +471,20 @@ export function HospitalityOrdersScreen() {
         </div>
       }
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-3 text-xs">
-          <span className="theme-subtext">
-            {loading ? "Loading…" : `${total.toLocaleString()} order${total === 1 ? "" : "s"}`}
-          </span>
-          {!loading && rows.length > 0 ? (
-            <>
-              <span className="rounded-full border border-[var(--theme-border)] px-2 py-0.5">
-                Amount <strong className="tabular-nums">{formatMoney(summary.amount)}</strong>
-              </span>
-              <span className="rounded-full border border-[var(--theme-border)] px-2 py-0.5">
-                Paid <strong className="tabular-nums">{formatMoney(summary.paid)}</strong>
-              </span>
-              <span className="rounded-full border border-[var(--theme-border)] px-2 py-0.5">
-                Balance <strong className="tabular-nums">{formatMoney(summary.balance)}</strong>
-              </span>
-              <span className="rounded-full border border-[var(--theme-border)] px-2 py-0.5">
-                Open <strong>{summary.openCount}</strong> · Paid <strong>{summary.paidCount}</strong>
-              </span>
-            </>
-          ) : null}
+      {!loading ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Orders"
+            value={total.toLocaleString()}
+            hint={`${summary.openCount} open · ${summary.paidCount} paid`}
+          />
+          <StatCard label="Amount" value={formatMoney(summary.amount)} hint={summaryHint} />
+          <StatCard label="Paid" value={formatMoney(summary.paid)} hint={summaryHint} />
+          <StatCard label="Balance" value={formatMoney(summary.balance)} hint={summaryHint} />
         </div>
+      ) : null}
+
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
         <button
           type="button"
           onClick={toggleExpandAll}
@@ -341,10 +503,10 @@ export function HospitalityOrdersScreen() {
             <thead>
               <tr className={TABLE_HEAD_ROW_CLASS}>
                 <th className="w-12 px-2 py-2.5" aria-label="Expand" />
-                <th className="px-3 py-2.5 font-semibold">Order</th>
-                <th className="px-3 py-2.5 font-semibold">Guest</th>
+                <th className="px-3 py-2.5 font-semibold">Order no</th>
+                {guestNameEnabled ? <th className="px-3 py-2.5 font-semibold">Guest</th> : null}
                 <th className="px-3 py-2.5 font-semibold">Outlet</th>
-                <th className="px-3 py-2.5 font-semibold">Table</th>
+                {tablesEnabled ? <th className="px-3 py-2.5 font-semibold">Table</th> : null}
                 <th className="px-3 py-2.5 font-semibold text-right">Amount</th>
                 <th className="px-3 py-2.5 font-semibold text-right">Amount paid</th>
                 <th className="px-3 py-2.5 font-semibold text-right">Balance</th>
@@ -353,14 +515,14 @@ export function HospitalityOrdersScreen() {
                 <th className="px-3 py-2.5 font-semibold">Method</th>
                 <th className="px-3 py-2.5 font-semibold">Source</th>
                 <th className="px-3 py-2.5 font-semibold">Placed by</th>
-                <th className="w-28 px-3 py-2.5 text-right font-semibold">Actions</th>
+                <th className="w-36 px-3 py-2.5 text-right font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr className={TABLE_BODY_ROW_CLASS}>
-                  <td colSpan={colCount + 1} className="px-3 py-8 text-center text-slate-500">
-                    No orders for this filter.
+                  <td colSpan={tableColSpan} className="px-3 py-8 text-center text-slate-500">
+                    {copy.empty}
                   </td>
                 </tr>
               ) : (
@@ -390,16 +552,20 @@ export function HospitalityOrdersScreen() {
                             {formatWhen(row.opened_at || row.created_at)}
                           </p>
                         </td>
-                        <td className="px-3 py-2">{row.guest_name || row.customer_name || "—"}</td>
+                        {guestNameEnabled ? (
+                          <td className="px-3 py-2">{row.guest_name || row.customer_name || "—"}</td>
+                        ) : null}
                         <td className="px-3 py-2">{row.outlet?.name || "—"}</td>
-                        <td className="px-3 py-2">
-                          {row.floor_table?.label || row.floor_table?.code || "—"}
-                          {row.folio?.room_number ? (
-                            <span className="theme-subtext block text-[10px]">
-                              Rm {row.folio.room_number}
-                            </span>
-                          ) : null}
-                        </td>
+                        {tablesEnabled ? (
+                          <td className="px-3 py-2">
+                            {row.floor_table?.label || row.floor_table?.code || "—"}
+                            {row.folio?.room_number ? (
+                              <span className="theme-subtext block text-[10px]">
+                                Rm {row.folio.room_number}
+                              </span>
+                            ) : null}
+                          </td>
+                        ) : null}
                         <td className="px-3 py-2 text-right tabular-nums">
                           {formatMoney(row.total ?? row.order_total)}
                         </td>
@@ -424,17 +590,20 @@ export function HospitalityOrdersScreen() {
                           className="px-3 py-2 text-right"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <SecondaryButton
-                            onClick={() => router.push(`/hospitality/orders/${row.id}`)}
-                          >
-                            Open
-                          </SecondaryButton>
+                          <HotelOrderRowActions
+                            row={row}
+                            busy={actionBusyId === row.id}
+                            onView={() => router.push(`/hospitality/orders/${row.id}`)}
+                            onEdit={() => router.push(`/hotel-bar-pos?resume=${row.id}`)}
+                            onPrint={() => void handlePrint(row)}
+                            onVoid={() => void handleVoid(row)}
+                          />
                         </td>
                       </tr>
                       {expanded ? (
                         <tr className={TABLE_BODY_ROW_CLASS}>
                           <td
-                            colSpan={colCount + 1}
+                            colSpan={tableColSpan}
                             className="bg-[var(--theme-surface-muted,rgba(15,23,42,0.03))] px-0 py-0"
                           >
                             <CheckLinesPanel lines={lines} />
@@ -463,5 +632,64 @@ export function HospitalityOrdersScreen() {
         </div>
       )}
     </CatalogPageShell>
+  );
+}
+
+function HotelOrderRowActions({ row, busy, onView, onEdit, onPrint, onVoid }) {
+  const voided = isVoidedHotelOrder(row);
+  const editable = canEditHotelOrder(row);
+  const editLabel = editable
+    ? "Edit"
+    : voided
+      ? "Voided orders cannot be edited"
+      : "Paid orders cannot be edited";
+
+  return (
+    <div className="flex items-center justify-end gap-0.5">
+      <IconButton label="View" onClick={onView} disabled={busy}>
+        <EyeIcon />
+      </IconButton>
+      <IconButton label={editLabel} onClick={onEdit} disabled={busy || !editable}>
+        <PencilIcon />
+      </IconButton>
+      <IconButton label="Print" onClick={onPrint} disabled={busy}>
+        <PrinterIcon />
+      </IconButton>
+      <IconButton
+        label={voided ? "Already voided" : "Void"}
+        danger
+        onClick={onVoid}
+        disabled={busy || voided}
+      >
+        <VoidIcon />
+      </IconButton>
+    </div>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function PrinterIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <path d="M6 14h12v8H6z" />
+    </svg>
+  );
+}
+
+function VoidIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M6 6l12 12" />
+    </svg>
   );
 }

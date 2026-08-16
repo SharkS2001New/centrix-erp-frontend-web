@@ -77,10 +77,21 @@ export const SUPPLIER_LIST_EXPORT_COLUMN_DEFS = {
   is_active: { key: "is_active", label: "Status" },
 };
 
-export function productExportColumnsFromVisibleIds(visibleColumnIds) {
-  return exportColumnsFromVisibleIds(visibleColumnIds, PRODUCT_LIST_EXPORT_COLUMN_DEFS, {
-    fallback: PRODUCT_CATALOG_EXPORT_COLUMNS,
-  });
+export function productExportColumnsFromVisibleIds(visibleColumnIds, { hotelCatalogue = false } = {}) {
+  const labels = hotelCatalogue
+    ? {
+        shop: { key: "shop_qty", label: "Outlet stock", align: "right" },
+        store: { key: "store_qty", label: "Storeroom stock", align: "right" },
+        pricing: { key: "menu_channels_label", label: "Menu channels" },
+      }
+    : {};
+  return exportColumnsFromVisibleIds(
+    visibleColumnIds,
+    { ...PRODUCT_LIST_EXPORT_COLUMN_DEFS, ...labels },
+    {
+      fallback: PRODUCT_CATALOG_EXPORT_COLUMNS,
+    },
+  );
 }
 
 export function customerExportColumnsFromVisibleIds(visibleColumnIds) {

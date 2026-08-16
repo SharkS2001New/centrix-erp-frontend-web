@@ -18,6 +18,7 @@ import {
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
+  workspaceCardClassName,
 } from "@/components/catalog/catalog-shared";
 import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitality-screens";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
@@ -221,7 +222,7 @@ function FrontDeskManager() {
         room_id: "",
         departure_date: defaultWalkInDepartureDate(),
       });
-      setTab("departures");
+      setTab("inhouse");
       await load();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Check-in failed");
@@ -346,8 +347,8 @@ function FrontDeskManager() {
       title="Front desk"
       subtitle={
         foliosEnabled
-          ? "Assign rooms, check guests in (opens a folio for pay-later / room charge), and check out when settled."
-          : "Assign rooms and check guests in. Collect payment at the desk — no running folio. Enable Guest folios in platform settings only if you need pay-later or charge-to-room."
+          ? "Arrivals, walk-ins, in-house stays, and checkout."
+          : "Assign rooms, check guests in, and check out."
       }
     >
       <div className="mb-4 flex flex-wrap gap-2">
@@ -557,6 +558,7 @@ function FrontDeskManager() {
               {!inHouse.length ? (
                 <tr>
                   <td colSpan={foliosEnabled ? 6 : 4} className="theme-subtext px-3 py-8 text-center">
+                    No guests in house.
                   </td>
                 </tr>
               ) : null}
@@ -566,64 +568,64 @@ function FrontDeskManager() {
       ) : null}
 
       {!loading && tab === "walkin" ? (
-        <form className="max-w-md space-y-3 rounded-xl border border-[var(--theme-border)] p-4" onSubmit={checkInWalkIn}>
-          <p className="theme-subtext text-xs">
-            {foliosEnabled ? (
-              <>
-                Check-in opens a <strong>guest folio</strong> — the running bill for room charges and F&amp;B
-                (including Hotel POS “Charge to room”).
-              </>
-            ) : (
-              <>
-                Check-in assigns the room for the stay. Collect lodging payment at the desk before handing
-                keys. Food &amp; drink is paid at the till — no charge-to-room.
-              </>
-            )}
+        <div className={`${workspaceCardClassName} max-w-xl p-5`}>
+          <h2 className="theme-heading text-base font-medium">Walk-in check-in</h2>
+          <p className="theme-subtext mt-1 mb-4 text-sm">
+            {foliosEnabled
+              ? "Assign a vacant room and open a guest folio."
+              : "Assign a vacant room. Collect lodging at the desk."}
           </p>
-          <Field label="Guest name">
-            <input
-              required
-              className={inputClassName()}
-              value={walkIn.guest_name}
-              onChange={(e) => setWalkIn((w) => ({ ...w, guest_name: e.target.value }))}
-            />
-          </Field>
-          <Field label="Phone">
-            <input
-              className={inputClassName()}
-              value={walkIn.guest_phone}
-              onChange={(e) => setWalkIn((w) => ({ ...w, guest_phone: e.target.value }))}
-            />
-          </Field>
-          <Field label="Room">
-            <SearchableSelect
-              required
-              className={inputClassName()}
-              value={walkIn.room_id}
-              onChange={(v) => setWalkIn((w) => ({ ...w, room_id: v }))}
-              placeholder="Select vacant/clean room…"
-              options={[
-                { value: "", label: "Select vacant/clean room…" },
-                ...availableRooms.map((r) => ({
-                  value: String(r.id),
-                  label: `${r.room_number} (${r.status})`,
-                })),
-              ]}
-            />
-          </Field>
-          <Field label="Expected departure">
-            <input
-              type="date"
-              required
-              className={inputClassName()}
-              value={walkIn.departure_date}
-              onChange={(e) => setWalkIn((w) => ({ ...w, departure_date: e.target.value }))}
-            />
-          </Field>
-          <PrimaryButton showIcon={false} type="submit" disabled={busy}>
-            Check in walk-in
-          </PrimaryButton>
-        </form>
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={checkInWalkIn}>
+            <Field label="Guest name">
+              <input
+                required
+                className={inputClassName()}
+                value={walkIn.guest_name}
+                onChange={(e) => setWalkIn((w) => ({ ...w, guest_name: e.target.value }))}
+              />
+            </Field>
+            <Field label="Phone">
+              <input
+                className={inputClassName()}
+                value={walkIn.guest_phone}
+                onChange={(e) => setWalkIn((w) => ({ ...w, guest_phone: e.target.value }))}
+              />
+            </Field>
+            <Field label="Room">
+              <SearchableSelect
+                required
+                className={inputClassName()}
+                value={walkIn.room_id}
+                onChange={(v) => setWalkIn((w) => ({ ...w, room_id: v }))}
+                placeholder="Select vacant/clean room…"
+                options={[
+                  { value: "", label: "Select vacant/clean room…" },
+                  ...availableRooms.map((r) => ({
+                    value: String(r.id),
+                    label: `${r.room_number} (${r.status})`,
+                  })),
+                ]}
+              />
+            </Field>
+            <Field label="Expected departure">
+              <input
+                type="date"
+                required
+                className={inputClassName()}
+                value={walkIn.departure_date}
+                onChange={(e) => setWalkIn((w) => ({ ...w, departure_date: e.target.value }))}
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <PrimaryButton showIcon={false} type="submit" disabled={busy || !availableRooms.length}>
+                Check in
+              </PrimaryButton>
+              {!availableRooms.length ? (
+                <p className="theme-subtext mt-2 text-xs">No vacant rooms available.</p>
+              ) : null}
+            </div>
+          </form>
+        </div>
       ) : null}
 
       <HotelPosPaymentPanel

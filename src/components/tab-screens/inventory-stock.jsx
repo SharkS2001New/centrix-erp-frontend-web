@@ -19,6 +19,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { defaultProductBranchId, isMultiBranchCatalog } from "@/lib/catalog-scope";
+import { catalogueStockColumnLabels, isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import {
   fetchBranchesCached,
   fetchCategoriesCached,
@@ -165,6 +167,9 @@ function readStoredColumnIds() {
 
 export function InventoryStockScreen() {
   const { user, capabilities } = useAuth();
+  const { workspaceId } = useTabWorkspace();
+  const hotelCatalogue = isHotelCatalogueContext(capabilities, workspaceId);
+  const stockLabels = catalogueStockColumnLabels(hotelCatalogue);
   const multiBranch = isMultiBranchCatalog(capabilities);
 
   const [stockRows, setStockRows] = useState([]);
@@ -358,10 +363,32 @@ export function InventoryStockScreen() {
 
   const safePage = Math.min(page, totalPages);
   const pageSlice = enriched;
-  const visibleColumns = STOCK_COLUMNS.filter((c) => visibleColumnIds.includes(c.id));
+  const labeledColumns = useMemo(
+    () =>
+      STOCK_COLUMNS.map((col) => {
+        if (col.id === "shop") return { ...col, label: stockLabels.shop };
+        if (col.id === "store") return { ...col, label: stockLabels.store };
+        if (col.id === "shop_value") return { ...col, label: stockLabels.shopCost };
+        if (col.id === "store_value") return { ...col, label: stockLabels.storeCost };
+        return col;
+      }),
+    [stockLabels],
+  );
+  const visibleColumns = labeledColumns.filter((c) => visibleColumnIds.includes(c.id));
   const exportColumns = useMemo(
-    () => visibleColumns.map((col) => STOCK_EXPORT_COLUMN_DEFS[col.id]).filter(Boolean),
-    [visibleColumns],
+    () =>
+      visibleColumns
+        .map((col) => {
+          const def = STOCK_EXPORT_COLUMN_DEFS[col.id];
+          if (!def) return null;
+          if (col.id === "shop") return { ...def, label: hotelCatalogue ? "Outlet available" : def.label };
+          if (col.id === "store") return { ...def, label: hotelCatalogue ? "Storeroom available" : def.label };
+          if (col.id === "shop_value") return { ...def, label: stockLabels.shopCost };
+          if (col.id === "store_value") return { ...def, label: stockLabels.storeCost };
+          return def;
+        })
+        .filter(Boolean),
+    [visibleColumns, hotelCatalogue, stockLabels],
   );
 
   const fetchStockExportRows = useCallback(async () => {
@@ -604,7 +631,15 @@ export function InventoryStockScreen() {
         <FilterSelect
           value={locationFilter}
           onChange={(e) => setLocationFilter(e.target.value)}
-          options={LOCATION_OPTIONS}
+          options={
+            hotelCatalogue
+              ? [
+                  { value: "all", label: "All locations" },
+                  { value: "shop", label: stockLabels.shopLong },
+                  { value: "store", label: stockLabels.storeLong },
+                ]
+              : LOCATION_OPTIONS
+          }
         />
         <button
           type="button"
@@ -633,7 +668,7 @@ export function InventoryStockScreen() {
           {columnsOpen ? (
             <div className="absolute right-0 z-20 mt-2 w-48 theme-panel rounded-xl border p-3 shadow-lg">
               <ul className="space-y-1">
-                {STOCK_COLUMNS.map((col) => (
+                {labeledColumns.map((col) => (
                   <li key={col.id}>
                     <label className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-50">
                       <input

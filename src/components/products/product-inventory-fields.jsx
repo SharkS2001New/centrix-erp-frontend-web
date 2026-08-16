@@ -100,6 +100,7 @@ export function ProductInventoryFields({
   stockReadOnly = true,
   productCode = null,
   includeShelfLocation = false,
+  hotelCatalogue = false,
 }) {
   const [guideOpen, setGuideOpen] = useState(false);
   const packName = productUom ? fullPackageLabel(productUom) : "full package";
@@ -140,7 +141,7 @@ export function ProductInventoryFields({
       <div className="md:col-span-1">
         <StockLocationFields
           location="shop"
-          label="Shop"
+          label={hotelCatalogue ? "Outlet" : "Shop"}
           form={form}
           onChange={onChange}
           uom={productUom}
@@ -151,7 +152,7 @@ export function ProductInventoryFields({
       <div className="md:col-span-1">
         <StockLocationFields
           location="store"
-          label="Store / warehouse"
+          label={hotelCatalogue ? "Storeroom" : "Store / warehouse"}
           form={form}
           onChange={onChange}
           uom={productUom}
@@ -161,7 +162,7 @@ export function ProductInventoryFields({
 
       {includeShelfLocation ? (
         <div className="md:col-span-2 xl:col-span-3">
-          <Field label="Warehouse shelf / bin">
+          <Field label={hotelCatalogue ? "Storeroom shelf / bin" : "Warehouse shelf / bin"}>
             <input
               type="text"
               value={form.shelf_location ?? ""}

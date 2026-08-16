@@ -957,6 +957,7 @@ export const ProductFormFields = memo(function ProductFormFields({
         stockReadOnly={mode !== "create"}
         productCode={mode === "edit" ? form.product_code : null}
         includeShelfLocation={includeShelfLocation}
+        hotelCatalogue={hotelCatalogue}
       />
 
       {mode === "edit" ? (

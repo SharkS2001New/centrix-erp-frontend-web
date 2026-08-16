@@ -496,7 +496,13 @@ export function FormDrawer({
             <DrawerCloseIcon />
           </button>
         </div>
-        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit?.(e);
+          }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4 [overflow-anchor:none]">
             {children}
           </div>

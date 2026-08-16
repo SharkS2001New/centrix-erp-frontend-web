@@ -54,6 +54,11 @@ import {
   normalizeHospitalityPaymentWorkflow,
 } from "@/lib/hospitality-payment-workflow";
 import {
+  HOTEL_POS_PAYMENT_METHOD_CATALOG,
+  HOTEL_POS_PAYMENT_METHOD_DEFAULTS,
+  normalizeHotelPosPaymentMethods,
+} from "@/lib/hotel-pos-payment-methods";
+import {
   CLASSIC_POS_THEME_DEFAULT,
   normalizeClassicPosThemeColors,
   normalizeClassicPosThemeTemplate,
@@ -68,7 +73,7 @@ import { OrganizationCachePanel } from "@/components/admin/organization-cache-pa
 import { PlatformFormSection } from "@/components/admin/platform-form-section";
 import { useConfirm } from "@/lib/use-confirm";
 import {
-  ADVANCED_DATA_IMPORT_PAGE_OPTIONS,
+  advancedDataImportPageOptionsForIndustry,
   advancedDataImportPagesFromApi,
   defaultAdvancedDataImportPages,
 } from "@/lib/advanced-data-import-pages";
@@ -313,6 +318,51 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
+function AdvancedDataImportPlatformFields({ salesPlatform, onPatch, industry = "commerce" }) {
+  const pages = advancedDataImportPageOptionsForIndustry(industry);
+
+  return (
+    <>
+      <Toggle
+        label="Advanced data import"
+        description="When on, users who can create catalogue records (and organization administrators) can import master data from CSV or Excel. Choose which screens show import below."
+        checked={Boolean(salesPlatform?.enable_advanced_data_import)}
+        onChange={(v) =>
+          onPatch({
+            enable_advanced_data_import: v,
+            advanced_data_import_pages:
+              v && !salesPlatform?.advanced_data_import_pages
+                ? defaultAdvancedDataImportPages()
+                : salesPlatform?.advanced_data_import_pages ?? defaultAdvancedDataImportPages(),
+          })
+        }
+      />
+      {salesPlatform?.enable_advanced_data_import ? (
+        <div className="ml-6 space-y-2 border-l border-slate-200 pl-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Import screens for this organization
+          </p>
+          {pages.map(({ key, label }) => (
+            <Toggle
+              key={key}
+              label={label}
+              checked={Boolean(salesPlatform?.advanced_data_import_pages?.[key])}
+              onChange={(enabled) =>
+                onPatch({
+                  advanced_data_import_pages: {
+                    ...(salesPlatform?.advanced_data_import_pages ?? defaultAdvancedDataImportPages()),
+                    [key]: enabled,
+                  },
+                })
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail") {
   const mobileProfiles = new Set(["wholesale_retail", "distribution"]);
   const driverProfiles = new Set(["distribution", "wholesale_retail"]);
@@ -347,6 +397,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     hotel_pos_theme_template: HOTEL_POS_THEME_DEFAULT,
     hospitality_services: { ...HOSPITALITY_SERVICE_DEFAULTS },
     hospitality_payment_workflow: { ...HOSPITALITY_PAYMENT_WORKFLOW_DEFAULTS },
+    hotel_pos_payment_methods: { ...HOTEL_POS_PAYMENT_METHOD_DEFAULTS },
     enable_mpesa_code: false,
     enable_cheque_number: false,
     enable_pos_cash_rounding: false,
@@ -431,6 +482,10 @@ export function salesPlatformFromApi(apiPayload) {
     hospitality_services: normalizeHospitalityServices(apiPayload.hospitality_services),
     hospitality_payment_workflow: normalizeHospitalityPaymentWorkflow(
       apiPayload.hospitality_payment_workflow,
+    ),
+    hotel_pos_payment_methods: normalizeHotelPosPaymentMethods(
+      apiPayload.hotel_pos_payment_methods,
+      apiPayload,
     ),
     enable_mpesa_code: Boolean(apiPayload.enable_mpesa_code),
     enable_cheque_number: Boolean(apiPayload.enable_cheque_number),
@@ -801,42 +856,7 @@ export function OrganizationPlatformSalesSettings({
             checked={Boolean(salesPlatform?.enable_whatsapp_orders)}
             onChange={(v) => patch({ enable_whatsapp_orders: v })}
           />
-          <Toggle
-            label="Advanced data import"
-            description="When on, users with the relevant manage permissions (and organization administrators) can import master data from CSV or Excel. Choose which screens show import below."
-            checked={Boolean(salesPlatform?.enable_advanced_data_import)}
-            onChange={(v) =>
-              patch({
-                enable_advanced_data_import: v,
-                advanced_data_import_pages:
-                  v && !salesPlatform?.advanced_data_import_pages
-                    ? defaultAdvancedDataImportPages()
-                    : salesPlatform?.advanced_data_import_pages ?? defaultAdvancedDataImportPages(),
-              })
-            }
-          />
-          {salesPlatform?.enable_advanced_data_import ? (
-            <div className="ml-6 space-y-2 border-l border-slate-200 pl-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Import screens for this organization
-              </p>
-              {ADVANCED_DATA_IMPORT_PAGE_OPTIONS.map(({ key, label }) => (
-                <Toggle
-                  key={key}
-                  label={label}
-                  checked={Boolean(salesPlatform?.advanced_data_import_pages?.[key])}
-                  onChange={(enabled) =>
-                    patch({
-                      advanced_data_import_pages: {
-                        ...(salesPlatform?.advanced_data_import_pages ?? defaultAdvancedDataImportPages()),
-                        [key]: enabled,
-                      },
-                    })
-                  }
-                />
-              ))}
-            </div>
-          ) : null}
+          <AdvancedDataImportPlatformFields salesPlatform={salesPlatform} onPatch={patch} />
         </div>
       )}
     </PlatformFormSection>
@@ -1258,6 +1278,10 @@ function OrganizationHotelServicesPanel({
   const workflow = normalizeHospitalityPaymentWorkflow(
     salesPlatform?.hospitality_payment_workflow,
   );
+  const posPaymentMethods = normalizeHotelPosPaymentMethods(
+    salesPlatform?.hotel_pos_payment_methods,
+    salesPlatform,
+  );
   const collectMode = salesPlatform?.hotel_pos_collect_payment !== false;
 
   async function seedHotelDemoData() {
@@ -1411,8 +1435,40 @@ function OrganizationHotelServicesPanel({
       </PlatformFormSection>
 
       <PlatformFormSection
+        title="Hotel POS payment methods"
+        description="Choose which tenders cashiers see on Collect payment. Turn a method off to hide it. Extra methods from Admin → Payment methods stay hidden unless you enable the last option."
+      >
+        <div className="space-y-2">
+          {HOTEL_POS_PAYMENT_METHOD_CATALOG.map((method) => (
+            <label
+              key={method.key}
+              className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2"
+            >
+              <input
+                type="checkbox"
+                className="mt-1 rounded border-[var(--theme-border)]"
+                checked={Boolean(posPaymentMethods[method.key])}
+                onChange={(e) =>
+                  patchSales({
+                    hotel_pos_payment_methods: normalizeHotelPosPaymentMethods({
+                      ...posPaymentMethods,
+                      [method.key]: e.target.checked,
+                    }),
+                  })
+                }
+              />
+              <span className="min-w-0">
+                <span className="theme-heading block text-sm font-medium">{method.label}</span>
+                <span className="theme-subtext block text-xs">{method.description}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </PlatformFormSection>
+
+      <PlatformFormSection
         title="Payment reference fields"
-        description="M-Pesa code and cheque number stay hidden on Hotel POS unless you enable them here. Cash, M-Pesa, Equity, KCB, Cheque, and other tenders follow Sales payment fields, plus any extra methods under Payment methods."
+        description="M-Pesa code and cheque number stay hidden on Hotel POS unless you enable them here. Which tenders appear is set under Hotel POS payment methods above."
       >
         <div className="space-y-2">
           <label className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2">
@@ -1504,6 +1560,19 @@ function OrganizationHotelServicesPanel({
   options={[{ value: 20, label: '20' }, { value: 30, label: '30' }, { value: 40, label: '40' }, { value: 50, label: '50' }]}
 />
           </OrgRegisterField>
+        </div>
+      </PlatformFormSection>
+
+      <PlatformFormSection
+        title="Menu catalogue import"
+        description="Same CSV / Excel import as Retail & Distribution Products. Enable it here — Hotel & Hospitality does not use the Sales tab."
+      >
+        <div className="space-y-3">
+          <AdvancedDataImportPlatformFields
+            salesPlatform={salesPlatform}
+            onPatch={patchSales}
+            industry="hospitality"
+          />
         </div>
       </PlatformFormSection>
 

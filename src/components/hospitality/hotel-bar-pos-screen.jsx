@@ -468,6 +468,44 @@ export function HotelBarPosScreen() {
     setSelectedFolioId("");
   }
 
+  const resumeFromUrlRef = useRef(false);
+  useEffect(() => {
+    if (resumeFromUrlRef.current || sellingLocked) return;
+    if (typeof window === "undefined") return;
+    const raw = new URLSearchParams(window.location.search).get("resume");
+    const id = Number(raw);
+    if (!Number.isFinite(id) || id <= 0) return;
+    resumeFromUrlRef.current = true;
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      try {
+        const res = await resumeHotelCheck(id);
+        if (cancelled) return;
+        const next = res?.check ?? null;
+        if (next) {
+          commitCheck(next);
+          if (next.floor_table_id) setSelectedTableId(String(next.floor_table_id));
+          setGuestNameDraft(next.guest_name ? String(next.guest_name) : "");
+          syncFolioFromCheck(next);
+          setSelectedLineId(null);
+          notifySuccess(`Opened ${next.check_number ?? "order"}`);
+        }
+        window.history.replaceState({}, "", "/hotel-bar-pos");
+      } catch (e) {
+        if (!cancelled) {
+          resumeFromUrlRef.current = false;
+          notifyError(dedupeError(e));
+        }
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sellingLocked]);
+
   useEffect(() => {
     if (!isPrintAgentEnabled()) return;
     void warmPrintAgentHealth();
@@ -802,14 +840,21 @@ export function HotelBarPosScreen() {
           active.status === "settled" ||
           active.status === "void";
         if (needsNew && !isLocalHotelCheckId(active?.id) && !active?.offline) {
+          const product = lineAddQueueRef.current.shift();
+          if (!product?.product_code) continue;
           const optimisticLines = active?.lines;
-          const opened = await startFreshCheck({ apply: false });
+          const opened = await startFreshCheck({
+            apply: false,
+            productCode: product.product_code,
+            qty: 1,
+          });
           if (!opened?.id) throw new Error("Could not open order.");
           active = opened;
           checkRef.current = optimisticLines?.length
             ? { ...opened, lines: optimisticLines }
             : opened;
           commitCheck(checkRef.current);
+          continue;
         }
         const product = lineAddQueueRef.current.shift();
         if (!product?.product_code) continue;
@@ -861,7 +906,7 @@ export function HotelBarPosScreen() {
     }
   }
 
-  async function startFreshCheck({ apply = true } = {}) {
+  async function startFreshCheck({ apply = true, productCode = null, qty = 1, roomStay = null } = {}) {
     if (sellingLocked) {
       throw new Error("Please check your internet connection");
     }
@@ -872,12 +917,22 @@ export function HotelBarPosScreen() {
     if (showTableField && selectedTableId) {
       body.floor_table_id = Number(selectedTableId);
     }
+    if (productCode) {
+      body.product_code = productCode;
+      body.qty = qty;
+    }
+    if (roomStay) {
+      body.room_id = Number(roomStay.room_id);
+      body.nights = Number(roomStay.nights);
+      body.checkout_at = roomStay.checkout_at;
+      if (roomStay.guest_name) body.guest_name = roomStay.guest_name;
+    }
     const opened = await openHotelCheck(body);
     const next = opened?.check ?? null;
     if (apply) {
       commitCheck(next);
       setSelectedLineId(null);
-      setGuestNameDraft("");
+      setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
       resetRoomChargeSelection();
     }
     return next;
@@ -1023,7 +1078,27 @@ export function HotelBarPosScreen() {
         active.status === "void";
 
       if (needsNew) {
-        active = await startFreshCheck();
+        const guest = String(roomStayDraft.guest_name ?? "").trim();
+        const roomNumber = roomStayDraft.room.room_number;
+        active = await startFreshCheck({
+          roomStay: {
+            room_id: Number(roomStayDraft.room.id),
+            nights,
+            checkout_at: checkoutIso,
+            guest_name: guest || null,
+          },
+        });
+        if (!active?.id) throw new Error("Could not open order.");
+        commitCheck(active);
+        if (guest) setGuestNameDraft(guest);
+        setRoomStayDraft(null);
+        notifySuccess(
+          `Room ${roomNumber} · ${nights} night${nights === 1 ? "" : "s"} added — collect payment to print`,
+        );
+        if (menuGroup === "rooms") {
+          void loadCatalog(debouncedSearch, { offset: 0, append: false });
+        }
+        return;
       }
       if (!active?.id) throw new Error("Could not open order.");
 
@@ -1276,7 +1351,9 @@ export function HotelBarPosScreen() {
       });
       if (printed) setLastReceiptCheck(printed);
       notifySuccess(`Order ${check.check_number} saved unpaid — receipt printed.`);
-      await startFreshCheck();
+      commitCheck(null);
+      setSelectedLineId(null);
+      resetRoomChargeSelection();
       void refreshHeldCount();
     } catch (e) {
       disposePrintWindow(printWindow);
@@ -1526,11 +1603,9 @@ export function HotelBarPosScreen() {
 
   async function handleOrderCompleteOk() {
     setOrderComplete(null);
-    try {
-      await startFreshCheck();
-    } catch (e) {
-      notifyError(dedupeError(e));
-    }
+    commitCheck(null);
+    setSelectedLineId(null);
+    resetRoomChargeSelection();
   }
 
   async function handleReprintLast() {
@@ -1693,17 +1768,6 @@ export function HotelBarPosScreen() {
             ) : null}
           </div>
           <div className="hotel-pos-header-tools relative z-[60] flex shrink-0 items-center justify-end gap-1.5 justify-self-end sm:gap-2">
-            {lastReceiptCheck ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void handleReprintLast()}
-                className="pos-header-action-btn inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wide disabled:opacity-50"
-                title={`Reprint ${lastReceiptCheck.check_number ?? "last receipt"}`}
-              >
-                Reprint
-              </button>
-            ) : null}
             <NotificationBell />
             <WorkspaceSwitcher />
             <UserAccountMenu
@@ -1720,7 +1784,7 @@ export function HotelBarPosScreen() {
             <div
               className="hotel-pos-chip-scroll flex flex-wrap items-center justify-center gap-2 overflow-x-auto pb-0.5"
               role="toolbar"
-              aria-label="Menu filter and hold"
+              aria-label="Menu filter and orders"
             >
               {visibleMenuChips.map((chip) => (
                 <button
@@ -1740,17 +1804,15 @@ export function HotelBarPosScreen() {
               <button
                 type="button"
                 title={
-                  !hasLines
-                    ? "Add items before holding"
-                    : Number(check?.amount_paid) > 0
-                      ? "Collect the remaining balance instead of holding"
-                      : "Hold this order and clear the ticket"
+                  lastReceiptCheck
+                    ? `Reprint ${lastReceiptCheck.check_number ?? "last receipt"}`
+                    : "No receipt to reprint yet"
                 }
-                disabled={busy || sellingLocked || !hasLines || Number(check?.amount_paid) > 0}
-                onClick={() => void handleHold()}
+                disabled={busy || !lastReceiptCheck}
+                onClick={() => void handleReprintLast()}
                 className="hotel-pos-chip hotel-pos-chip-action shrink-0 disabled:opacity-40"
               >
-                Hold
+                Reprint
               </button>
               <button
                 type="button"

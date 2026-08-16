@@ -44,6 +44,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import {
   hotelCatalogueListCopy,
+  catalogueStockColumnLabels,
   isHotelCatalogueContext,
   retailCatalogueListCopy,
 } from "@/lib/catalog-mode";
@@ -191,6 +192,10 @@ function resolveWeight(product, uom, retailPackage) {
   return null;
 }
 
+function isChannelEnabled(value) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
 function enrichProduct(
   product,
   subById,
@@ -221,8 +226,8 @@ function enrichProduct(
   const pricing =
     product.sell_on_retail === 1 || product.sell_on_retail === true ? "Sells W/R" : "Wholesale";
   const menuChannels = [
-    product.sell_on_bar === 1 || product.sell_on_bar === true ? "Bar" : null,
-    product.sell_on_hotel === 1 || product.sell_on_hotel === true ? "Hotel" : null,
+    isChannelEnabled(product.sell_on_bar) ? "Bar" : null,
+    isChannelEnabled(product.sell_on_hotel) ? "Hotel" : null,
   ].filter(Boolean);
 
   return {
@@ -247,6 +252,7 @@ function enrichProduct(
     store_stock_status: locationStockStatus(store, reorderPoint),
     pricing,
     menu_channels: menuChannels,
+    menu_channels_label: menuChannels.length ? menuChannels.join(", ") : "Not on POS",
     hotel_catalogue: hotelCatalogue,
     shop_qty: shop,
     store_qty: store,
@@ -434,6 +440,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
     localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(visibleColumnIds));
   }, [visibleColumnIds]);
 
+  const stockLabels = useMemo(() => catalogueStockColumnLabels(hotelCatalogue), [hotelCatalogue]);
   const visibleColumns = useMemo(
     () =>
       visibleColumnIds
@@ -443,14 +450,31 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
           if (hotelCatalogue && col.id === "pricing") {
             return { ...col, label: "Menu channels" };
           }
+          if (hotelCatalogue && col.id === "shop") {
+            return { ...col, label: stockLabels.shop };
+          }
+          if (hotelCatalogue && col.id === "store") {
+            return { ...col, label: stockLabels.store };
+          }
           return col;
         })
         .filter(Boolean),
-    [visibleColumnIds, hotelCatalogue],
+    [visibleColumnIds, hotelCatalogue, stockLabels],
   );
   const exportColumns = useMemo(
-    () => productExportColumnsFromVisibleIds(visibleColumnIds),
-    [visibleColumnIds],
+    () => productExportColumnsFromVisibleIds(visibleColumnIds, { hotelCatalogue }),
+    [visibleColumnIds, hotelCatalogue],
+  );
+  const pickerColumns = useMemo(
+    () =>
+      PRODUCT_COLUMNS.map((col) => {
+        if (!hotelCatalogue) return col;
+        if (col.id === "pricing") return { ...col, label: "Menu channels" };
+        if (col.id === "shop") return { ...col, label: stockLabels.shop };
+        if (col.id === "store") return { ...col, label: stockLabels.store };
+        return col;
+      }),
+    [hotelCatalogue, stockLabels],
   );
 
   const tableColCount = 1 + visibleColumns.length;
@@ -1021,6 +1045,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
                 exportSearchParams={buildExportSearchParams}
                 exportColumns={exportColumns}
                 onImported={reloadAll}
+                hotelCatalogue={hotelCatalogue}
               />
               <PermissionGate permission={P.catalogue.products.create}>
                 <PrimaryLink href="/products/new" permission={P.catalogue.products.create}>
@@ -1062,7 +1087,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
       </div>
       {multiBranch ? (
         <p className="theme-subtext mt-2 text-xs">
-          Shop, store, and stock filters use{" "}
+          {stockLabels.filterHint}{" "}
           {user?.branch_id
             ? "your branch"
             : branches.find((b) => String(b.id) === stockBranchId)?.branch_name ?? "the selected branch"}
@@ -1152,6 +1177,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
             visibleColumnIds={visibleColumnIds}
             onToggleColumn={toggleColumn}
             onReset={resetColumns}
+            columns={pickerColumns}
           />
       </FilterToolbar>
 
@@ -1555,6 +1581,7 @@ function ColumnPicker({
   visibleColumnIds,
   onToggleColumn,
   onReset,
+  columns = PRODUCT_COLUMNS,
 }) {
   const buttonRef = useRef(null);
   const [menuStyle, setMenuStyle] = useState(null);
@@ -1610,7 +1637,7 @@ function ColumnPicker({
                   </button>
                 </div>
                 <ul className="max-h-72 space-y-1 overflow-y-auto">
-                  {PRODUCT_COLUMNS.map((col) => {
+                  {columns.map((col) => {
                     const checked = visibleColumnIds.includes(col.id);
                     return (
                       <li key={col.id}>

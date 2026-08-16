@@ -12,7 +12,9 @@ import { notifyError } from "@/lib/notify";
 export { HotelBarPosScreen } from "@/components/hospitality/hotel-bar-pos-screen";
 
 const DASHBOARD_LINKS = [
-  { href: "/hospitality/orders", label: "F&B orders", service: null },
+  { href: "/hospitality/orders", label: "All orders", service: null },
+  { href: "/hospitality/orders/hotel", label: "Hotel orders", service: null },
+  { href: "/hospitality/orders/bar", label: "Bar orders", service: null },
   { href: "/hospitality/rooms", label: "Rooms & rate plans", service: "rooms" },
   { href: "/hospitality/reservations", label: "Reservations", service: "reservations" },
   { href: "/hospitality/front-desk", label: "Front desk", service: "front_desk" },

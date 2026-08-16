@@ -208,7 +208,7 @@ function match_fulfillment_vehicles_id(pathname) {
 function match_hospitality_orders_id(pathname) {
   const m = pathname.match("^/hospitality/orders/([^/]+)$");
   if (!m) return false;
-
+  if (["hotel", "bar"].includes(m[1])) return false;
   return true;
 }
 
@@ -486,6 +486,14 @@ function match_hospitality_night_audit(pathname) {
 
 function match_hospitality_orders(pathname) {
   return pathname === "/hospitality/orders";
+}
+
+function match_hospitality_orders_bar(pathname) {
+  return pathname === "/hospitality/orders/bar";
+}
+
+function match_hospitality_orders_hotel(pathname) {
+  return pathname === "/hospitality/orders/hotel";
 }
 
 function match_hospitality_outlets(pathname) {
@@ -1500,9 +1508,21 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "hospitality-orders",
-    title: "Orders",
+    title: "All orders",
     route: "/hospitality/orders",
     match: match_hospitality_orders,
+  },
+  {
+    id: "hospitality-orders-bar",
+    title: "Bar orders",
+    route: "/hospitality/orders/bar",
+    match: match_hospitality_orders_bar,
+  },
+  {
+    id: "hospitality-orders-hotel",
+    title: "Hotel orders",
+    route: "/hospitality/orders/hotel",
+    match: match_hospitality_orders_hotel,
   },
   {
     id: "hospitality-outlets",

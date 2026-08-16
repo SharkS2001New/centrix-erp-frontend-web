@@ -303,6 +303,12 @@ export const SCREEN_COMPONENTS = {
   "hospitality-orders": lazy(() =>
     import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityOrdersScreen })),
   ),
+  "hospitality-orders-bar": lazy(() =>
+    import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityBarOrdersScreen })),
+  ),
+  "hospitality-orders-hotel": lazy(() =>
+    import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityHotelOrdersScreen })),
+  ),
   "hospitality-outlets": lazy(() =>
     import("@/components/tab-screens/hospitality-outlets").then((m) => ({ default: m.HospitalityOutletsScreen })),
   ),

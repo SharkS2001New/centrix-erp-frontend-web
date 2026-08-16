@@ -416,7 +416,9 @@ export function HospitalitySettingsScreen() {
         <section id="pos-payment-refs" className="space-y-3">
           <h2 className="theme-heading text-base font-semibold">Hotel POS payment references</h2>
           <p className="theme-subtext text-sm">
-            Which tenders appear on Collect payment is controlled under{" "}
+            Which tenders appear on Collect payment is set by the platform administrator under
+            the organization’s Hotel services (Hotel POS payment methods). Codes and labels still
+            live in{" "}
             <Link href="/admin/payment-methods" className="font-medium text-[var(--theme-primary)] hover:underline">
               Payment methods
             </Link>
