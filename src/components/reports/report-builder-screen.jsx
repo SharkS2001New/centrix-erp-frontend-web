@@ -138,7 +138,7 @@ export function ReportBuilderScreen() {
 
   const sourceLimit = schema?.max_sources ?? maxSources;
 
-  const selectedSources = spec.sources ?? [];
+  const selectedSources = useMemo(() => spec.sources ?? [], [spec.sources]);
 
   const isMultiSource = selectedSources.length > 1;
   const isBlendMode = isMultiSource && Boolean(spec.blend_by);

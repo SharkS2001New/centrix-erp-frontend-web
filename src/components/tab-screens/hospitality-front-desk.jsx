@@ -23,6 +23,7 @@ import { HospitalityPlaceholderScreen } from "@/components/hospitality/hospitali
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { useConfirm } from "@/lib/use-confirm";
 import { addDaysToCalendarDate, todayCalendarDate } from "@/lib/datetime";
+import { occupancySourceLabel } from "@/lib/hospitality-room-numbers";
 
 function defaultWalkInDepartureDate() {
   return addDaysToCalendarDate(todayCalendarDate(), 1);
@@ -115,9 +116,24 @@ function FrontDeskManager() {
   useTabAwareDataLoad(load);
 
   const availableRooms = useMemo(
-    () => rooms.filter((r) => ["vacant", "clean"].includes(r.status) && r.is_active !== false),
+    () =>
+      rooms.filter(
+        (r) =>
+          ["vacant", "clean"].includes(r.status) &&
+          r.is_active !== false &&
+          !r.sold_check_id &&
+          r.status !== "occupied",
+      ),
     [rooms],
   );
+
+  function stayKey(row) {
+    return row.stay_key || (row.kind === "folio" ? `folio:${row.id}` : `room:${row.room_id || row.id}`);
+  }
+
+  function isFolioStay(row) {
+    return row.kind === "folio" || (Boolean(row.folio_number) && row.folio_number !== "POS stay");
+  }
 
   function roomsForArrival(row) {
     const reservedId = row.room_id ? Number(row.room_id) : null;
@@ -215,7 +231,7 @@ function FrontDeskManager() {
   }
 
   async function assignInHouseRoom(row) {
-    const roomId = Number(inHouseRoomById[row.id] || row.room_id || 0);
+    const roomId = Number(inHouseRoomById[stayKey(row)] || row.room_id || 0);
     if (!roomId) {
       notifyError("Select a room to assign.");
       return;
@@ -226,7 +242,7 @@ function FrontDeskManager() {
     }
     setBusy(true);
     try {
-      if (foliosEnabled) {
+      if (foliosEnabled && isFolioStay(row)) {
         await apiRequest(`/hospitality/front-desk/folios/${row.id}/assign-room`, {
           method: "POST",
           body: { room_id: roomId },
@@ -251,7 +267,7 @@ function FrontDeskManager() {
   async function finishCheckOut(row, { allowBalance = false } = {}) {
     setBusy(true);
     try {
-      if (foliosEnabled) {
+      if (foliosEnabled && isFolioStay(row)) {
         await apiRequest(`/hospitality/front-desk/folios/${row.id}/check-out`, {
           method: "POST",
           body: { allow_balance: allowBalance },
@@ -270,7 +286,7 @@ function FrontDeskManager() {
       notifyError(
         e instanceof ApiError
           ? e.message
-          : foliosEnabled
+          : foliosEnabled && isFolioStay(row)
             ? "Check-out failed — clear folio balance first"
             : "Check-out failed",
       );
@@ -281,7 +297,7 @@ function FrontDeskManager() {
 
   async function checkOut(row) {
     const bal = Number(row.balance ?? 0);
-    if (foliosEnabled && Math.abs(bal) > 0.009) {
+    if (foliosEnabled && isFolioStay(row) && Math.abs(bal) > 0.009) {
       setPaymentError(null);
       setCheckoutPayRow(row);
       return;
@@ -437,7 +453,7 @@ function FrontDeskManager() {
             </thead>
             <tbody>
               {departures.map((row) => (
-                <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
+                <tr key={stayKey(row)} className={TABLE_BODY_ROW_CLASS}>
                   <td className="px-3 py-2">
                     {foliosEnabled ? row.folio_number : row.guest_name}
                   </td>
@@ -475,22 +491,24 @@ function FrontDeskManager() {
                 <th className="px-3 py-2 text-left">{foliosEnabled ? "Folio" : "Guest"}</th>
                 {foliosEnabled ? <th className="px-3 py-2 text-left">Guest</th> : null}
                 <th className="px-3 py-2 text-left">Room</th>
+                <th className="px-3 py-2 text-left">Source</th>
                 {foliosEnabled ? <th className="px-3 py-2 text-right">Balance</th> : null}
                 <th className="px-3 py-2 text-left">Action</th>
               </tr>
             </thead>
             <tbody>
               {inHouse.map((row) => {
+                const key = stayKey(row);
                 const pick =
-                  inHouseRoomById[row.id] != null && inHouseRoomById[row.id] !== ""
-                    ? String(inHouseRoomById[row.id])
+                  inHouseRoomById[key] != null && inHouseRoomById[key] !== ""
+                    ? String(inHouseRoomById[key])
                     : row.room_id
                       ? String(row.room_id)
                       : "";
                 return (
-                  <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
+                  <tr key={key} className={TABLE_BODY_ROW_CLASS}>
                     <td className="px-3 py-2">
-                      {foliosEnabled ? row.folio_number : row.guest_name}
+                      {foliosEnabled ? row.folio_number || "POS stay" : row.guest_name}
                     </td>
                     {foliosEnabled ? <td className="px-3 py-2">{row.guest_name}</td> : null}
                     <td className="px-3 py-2">
@@ -502,7 +520,7 @@ function FrontDeskManager() {
                           onChange={(v) =>
                             setInHouseRoomById((prev) => ({
                               ...prev,
-                              [row.id]: v,
+                              [key]: v,
                             }))
                           }
                           placeholder="Select room…"
@@ -522,6 +540,7 @@ function FrontDeskManager() {
                         </SecondaryButton>
                       </div>
                     </td>
+                    <td className="px-3 py-2 text-xs">{occupancySourceLabel(row.occupancy_source)}</td>
                     {foliosEnabled ? (
                       <td className="px-3 py-2 text-right tabular-nums">
                         {Number(row.balance).toFixed(2)}
@@ -537,8 +556,7 @@ function FrontDeskManager() {
               })}
               {!inHouse.length ? (
                 <tr>
-                  <td colSpan={foliosEnabled ? 5 : 3} className="theme-subtext px-3 py-8 text-center">
-                    No guests in house.
+                  <td colSpan={foliosEnabled ? 6 : 4} className="theme-subtext px-3 py-8 text-center">
                   </td>
                 </tr>
               ) : null}

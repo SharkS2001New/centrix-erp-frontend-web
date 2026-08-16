@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from "react";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { useAuth } from "@/contexts/auth-context";
@@ -355,7 +355,12 @@ export function HotelBarPosScreen() {
         // ignore
       }
     })();
+    return () => {
+      mounted = false;
+    };
+  }, [assignedOutletId, menuOutlet?.id]);
 
+  useEffect(() => {
     let cancelled = false;
     apiRequest("/payment-methods", {
       searchParams: { per_page: 50, "filter[is_active]": 1 },
@@ -985,9 +990,12 @@ export function HotelBarPosScreen() {
     lineAddQueueRef.current.push(catalog);
     void flushServerLineAdds();
   }
-  handleTapProductRef.current = handleTapProduct;
 
-  async function confirmRoomStay() {
+  useLayoutEffect(() => {
+    handleTapProductRef.current = handleTapProduct;
+  });
+
+  async function confirmRoomStay(nowMs) {
     if (!roomStayDraft?.room || busy) return;
     if (sellingLocked) {
       notifyError("Please check your internet connection");
@@ -999,7 +1007,7 @@ export function HotelBarPosScreen() {
       notifyError("Choose a valid checkout date and time.");
       return;
     }
-    if (new Date(checkoutIso).getTime() <= Date.now()) {
+    if (new Date(checkoutIso).getTime() <= nowMs) {
       notifyError("Checkout time must be in the future.");
       return;
     }
@@ -2296,7 +2304,7 @@ export function HotelBarPosScreen() {
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void confirmRoomStay()}
+                onClick={() => void confirmRoomStay(Date.now())}
                 className="hotel-pos-primary-cta flex-1 rounded-xl py-3 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
               >
                 Add to ticket

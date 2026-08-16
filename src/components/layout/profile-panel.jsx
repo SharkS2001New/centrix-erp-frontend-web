@@ -48,6 +48,11 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinConfirmation, setPinConfirmation] = useState("");
+  const [pinCurrent, setPinCurrent] = useState("");
+  const [pinPassword, setPinPassword] = useState("");
+  const [savingPin, setSavingPin] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [verifyMode, setVerifyMode] = useState(false);
   const [verifyCode, setVerifyCode] = useState("");
@@ -424,6 +429,141 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
           </PrimaryButton>
         </form>
       </section>
+
+      {!requiredPasswordChange ? (
+        <section className="theme-panel rounded-xl border p-5 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Screen PIN
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            {user?.has_login_pin
+              ? "Your lock screen asks for this PIN. If someone else needs the till, they tap Change user and enter theirs."
+              : "Set a 4–6 digit PIN for hotel-style lock screen unlock. Password login still works."}
+          </p>
+          <form
+            className="mt-4 space-y-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (pin.length < 4 || pin !== pinConfirmation) {
+                notifyError(pin !== pinConfirmation ? "PIN confirmation does not match." : "PIN must be 4 to 6 digits.");
+                return;
+              }
+              setSavingPin(true);
+              try {
+                await apiRequest("/auth/me/pin", {
+                  method: "POST",
+                  body: {
+                    pin,
+                    pin_confirmation: pinConfirmation,
+                    current_password: pinPassword || currentPassword || undefined,
+                    current_pin: pinCurrent || undefined,
+                  },
+                });
+                updateProfile({ has_login_pin: true });
+                setPin("");
+                setPinConfirmation("");
+                setPinCurrent("");
+                notifySuccess("Screen PIN saved.");
+              } catch (err) {
+                notifyError(err instanceof ApiError ? err.message : "Could not save PIN.");
+              } finally {
+                setSavingPin(false);
+              }
+            }}
+          >
+            {user?.has_login_pin ? (
+              <Field label="Current PIN (or current password)">
+                <input
+                  className={inputClassName()}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={pinCurrent}
+                  onChange={(e) => setPinCurrent(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  maxLength={6}
+                />
+              </Field>
+            ) : (
+              <Field label="Current password">
+                <PasswordInput
+                  className={inputClassName()}
+                  value={pinPassword}
+                  onChange={(e) => setPinPassword(e.target.value)}
+                  required
+                />
+              </Field>
+            )}
+            {user?.has_login_pin ? (
+              <Field label="Current password (if you forgot the PIN)">
+                <PasswordInput
+                  className={inputClassName()}
+                  value={pinPassword}
+                  onChange={(e) => setPinPassword(e.target.value)}
+                />
+              </Field>
+            ) : null}
+            <Field label={user?.has_login_pin ? "New PIN" : "PIN"}>
+              <input
+                className={inputClassName()}
+                inputMode="numeric"
+                autoComplete="off"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                required
+                minLength={4}
+                maxLength={6}
+                placeholder="4–6 digits"
+              />
+            </Field>
+            <Field label="Confirm PIN">
+              <input
+                className={inputClassName()}
+                inputMode="numeric"
+                autoComplete="off"
+                value={pinConfirmation}
+                onChange={(e) => setPinConfirmation(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                required
+                minLength={4}
+                maxLength={6}
+              />
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <PrimaryButton type="submit" disabled={savingPin || pin.length < 4}>
+                {savingPin ? "Saving…" : user?.has_login_pin ? "Update PIN" : "Save PIN"}
+              </PrimaryButton>
+              {user?.has_login_pin ? (
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  disabled={savingPin}
+                  onClick={async () => {
+                    setSavingPin(true);
+                    try {
+                      await apiRequest("/auth/me/pin", {
+                        method: "DELETE",
+                        body: {
+                          current_password: currentPassword || undefined,
+                          current_pin: pinCurrent || undefined,
+                        },
+                      });
+                      updateProfile({ has_login_pin: false });
+                      setPin("");
+                      setPinConfirmation("");
+                      setPinCurrent("");
+                      notifySuccess("Screen PIN removed.");
+                    } catch (err) {
+                      notifyError(err instanceof ApiError ? err.message : "Could not remove PIN.");
+                    } finally {
+                      setSavingPin(false);
+                    }
+                  }}
+                >
+                  Remove PIN
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </section>
+      ) : null}
       </div>
       {!requiredPasswordChange ? <ProfilePasskeysSection /> : null}
       {!requiredPasswordChange ? <ProfileTwoFactorSection /> : null}

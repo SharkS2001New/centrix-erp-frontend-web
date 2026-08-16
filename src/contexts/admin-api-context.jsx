@@ -40,7 +40,7 @@ export function AdminApiProvider({ apiPrefix = "", organizationId = null, orgPay
           ? `${apiBaseOrigin()}/api/v1${apiPrefix}/logo/file`
           : `${apiBaseOrigin()}/api/v1/erp/organization/logo/file`,
     }),
-    [apiPrefix, organizationId, tenantCapabilities],
+    [apiPrefix, organizationId, tenantCapabilities, orgPayload?.organization],
   );
 
   return <AdminApiContext.Provider value={value}>{children}</AdminApiContext.Provider>;

@@ -97,7 +97,10 @@ export function HotelPosPaymentPanel({
   onCompleteOrderOk,
 }) {
   const cfg = paymentConfig ?? {};
-  const tenders = Array.isArray(cfg.tenders) ? cfg.tenders : [];
+  const tenders = useMemo(
+    () => (Array.isArray(cfg.tenders) ? cfg.tenders : []),
+    [cfg.tenders],
+  );
   const total = round2(billTotal);
 
   const [amounts, setAmounts] = useState({});

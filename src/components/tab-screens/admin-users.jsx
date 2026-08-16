@@ -74,6 +74,8 @@ const EMPTY_FORM = {
   assigned_route_ids: [],
   till_id: "auto",
   is_active: true,
+  login_pin: "",
+  clear_login_pin: false,
 };
 
 
@@ -452,6 +454,8 @@ export function AdminUsersScreen() {
           : [],
       till_id: row.till_id != null ? String(row.till_id) : "",
       is_active: row.is_active !== false,
+      login_pin: "",
+      clear_login_pin: false,
     });
     setFormError(null);
     setDrawerOpen(true);
@@ -694,6 +698,11 @@ export function AdminUsersScreen() {
       if (form.password.trim()) {
         body.password = form.password;
         body.must_change_password = form.must_change_password;
+      }
+      if (form.clear_login_pin) {
+        body.clear_login_pin = true;
+      } else if (form.login_pin.trim()) {
+        body.login_pin = form.login_pin.trim();
       }
       if (editing) {
         const updated = await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
@@ -1156,6 +1165,38 @@ export function AdminUsersScreen() {
                 }
               />
               Require password change on first sign-in
+            </label>
+          ) : null}
+          <Field label={editing && editing.has_login_pin ? "Reset screen PIN" : "Screen PIN"}>
+            <input
+              className={inputClassName()}
+              inputMode="numeric"
+              autoComplete="off"
+              value={form.login_pin}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  login_pin: e.target.value.replace(/\D/g, "").slice(0, 6),
+                  clear_login_pin: false,
+                }))
+              }
+              placeholder={editing?.has_login_pin ? "Leave blank to keep current PIN" : "4–6 digits (hotel / till unlock)"}
+              maxLength={6}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Used on the lock screen. Staff tap their name, then this PIN. Password login still works.
+            </p>
+          </Field>
+          {editing?.has_login_pin ? (
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.clear_login_pin}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, clear_login_pin: e.target.checked, login_pin: "" }))
+                }
+              />
+              Remove screen PIN
             </label>
           ) : null}
           <label className="flex items-center gap-2 text-sm text-slate-700">

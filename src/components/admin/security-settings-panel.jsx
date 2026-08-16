@@ -116,9 +116,16 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
                 onChange={(e) => setForm((f) => ({ ...f, screen_lock_minutes: e.target.value }))}
               />
               <p className="mt-1 text-xs text-slate-500">
-                Shows the lock screen; users unlock with their password or a registered passkey without signing in again.
+                Shows the lock screen. Staff with a screen PIN unlock with PIN; others use password.
+                After lock, the last user stays on screen — tap Change user to pick someone else.
               </p>
             </Field>
+            <Toggle
+              label="PIN unlock and Change user"
+              description="Hotel-style lock: last signed-in person enters their PIN. Someone else taps Change user, then their name and PIN. Turn off to keep password-only unlock."
+              checked={form.enable_pin_unlock !== false}
+              onChange={(v) => setForm((f) => ({ ...f, enable_pin_unlock: v }))}
+            />
             <Field label="Sign out after inactivity (minutes)">
               <input
                 type="number"

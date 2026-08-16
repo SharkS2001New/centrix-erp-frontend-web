@@ -638,6 +638,14 @@ export function AuthProvider({ children }) {
     [capabilities?.access_scope, user?.access_scope, user?.is_admin],
   );
 
+  const applyOperatorSession = useCallback(
+    async (res) => {
+      const channel = getStoredLoginChannel() ?? loginChannel ?? WEB_LOGIN_CHANNEL;
+      return applyAuthPayload(res, channel);
+    },
+    [applyAuthPayload, loginChannel],
+  );
+
   const patchOrganization = useCallback((partial) => {
     setOrganization((prev) => {
       const next = { ...(prev ?? {}), ...(partial ?? {}) };
@@ -666,6 +674,7 @@ export function AuthProvider({ children }) {
       loginChannel,
       switchOrganization,
       switchWorkspace,
+      applyOperatorSession,
       logout,
       refreshCapabilities,
       patchOrganization,
@@ -712,6 +721,7 @@ export function AuthProvider({ children }) {
       loginChannel,
       switchOrganization,
       switchWorkspace,
+      applyOperatorSession,
       logout,
       refreshCapabilities,
       patchOrganization,

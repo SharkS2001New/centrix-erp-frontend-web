@@ -131,7 +131,7 @@ export function ReportsHub() {
     const withCustom = mergeCustomReportsIntoCategories(permitted, workspaceTemplates);
 
     return filterReportCategoriesForWorkspace(withCustom, workspaceId, capabilities?.modules);
-  }, [catalog, customTemplates, hasPermission, workspaceId, capabilities?.modules, capabilities]);
+  }, [catalog, customTemplates, hasPermission, workspaceId, capabilities]);
   const allReports = useMemo(() => flattenReports(categories), [categories]);
 
   const filteredCategories = useMemo(() => {

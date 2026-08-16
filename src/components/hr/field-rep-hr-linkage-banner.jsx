@@ -61,7 +61,10 @@ function writeDismissed(organizationId, payload) {
 export function FieldRepHrLinkageBanner({ linkage, canManage = true }) {
   const { organization } = useAuth();
   const orgId = organization?.id ?? null;
-  const reps = Array.isArray(linkage?.reps) ? linkage.reps : [];
+  const reps = useMemo(
+    () => (Array.isArray(linkage?.reps) ? linkage.reps : []),
+    [linkage?.reps],
+  );
   const fingerprint = useMemo(() => linkageFingerprint(reps), [reps]);
   const [dismissed, setDismissed] = useState(false);
 

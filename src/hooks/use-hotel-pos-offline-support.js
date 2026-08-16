@@ -122,7 +122,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
       console.warn("Hotel POS offline prepare failed", err);
       return null;
     }
-  }, [enabled, fullyOnline, outletId]);
+  }, [enabled, fullyOnline]);
 
   const flushOutboxNow = useCallback(
     (options = {}) => {

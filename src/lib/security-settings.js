@@ -6,6 +6,7 @@ export const SECURITY_DEFAULTS = {
   password_expiry_enabled: true,
   password_expiry_days: 90,
   password_expiry_max_skips: 2,
+  enable_pin_unlock: true,
 };
 
 export function mergeSecuritySettings(moduleSettings) {
@@ -31,6 +32,7 @@ export function securityFormFromApi(res) {
     password_expiry_enabled: Boolean(security.password_expiry_enabled),
     password_expiry_days: String(security.password_expiry_days ?? 90),
     password_expiry_max_skips: String(security.password_expiry_max_skips ?? 2),
+    enable_pin_unlock: security.enable_pin_unlock !== false,
   };
 }
 
@@ -46,6 +48,7 @@ export function securityPayloadFromForm(form) {
     password_expiry_enabled: Boolean(form.password_expiry_enabled),
     password_expiry_days: Number(form.password_expiry_days) || 90,
     password_expiry_max_skips: Number(form.password_expiry_max_skips) || 2,
+    enable_pin_unlock: form.enable_pin_unlock !== false,
   };
 }
 

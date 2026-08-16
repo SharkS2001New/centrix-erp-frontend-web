@@ -62,8 +62,8 @@ export function SupplierStatementScreen() {
 
   const supplier = data?.supplier ?? null;
   const stats = data?.stats ?? null;
-  const purchases = data?.purchases ?? [];
-  const payments = data?.payments ?? [];
+  const purchases = useMemo(() => data?.purchases ?? [], [data?.purchases]);
+  const payments = useMemo(() => data?.payments ?? [], [data?.payments]);
 
   const kpis = useMemo(
     () => [

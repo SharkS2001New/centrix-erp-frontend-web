@@ -13,6 +13,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { LockScreenOverlay } from "@/components/auth/lock-screen-overlay";
 import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
 import { isScreenLocked, setScreenLocked, getStoredUser } from "@/lib/auth-storage";
+import { getAuthClientId } from "@/lib/workspace-session";
+import { mergeSecuritySettings } from "@/lib/security-settings";
 import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
 
 const LockScreenContext = createContext(null);
@@ -23,7 +25,7 @@ const DEFAULT_SCREEN_LOCK_MINUTES = 5;
 const DEFAULT_SESSION_IDLE_MINUTES = 60;
 
 export function LockScreenProvider({ children }) {
-  const { user, loading, logout, screenLockMinutes, sessionIdleMinutes } = useAuth();
+  const { user, loading, logout, screenLockMinutes, sessionIdleMinutes, capabilities, applyOperatorSession } = useAuth();
   const [locked, setLocked] = useState(() => {
     if (typeof window === "undefined") return false;
     return isScreenLocked();
@@ -31,6 +33,10 @@ export function LockScreenProvider({ children }) {
   const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState(null);
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [operators, setOperators] = useState([]);
+  const [operatorsLoading, setOperatorsLoading] = useState(false);
+  const [selectedOperator, setSelectedOperator] = useState(null);
+  const [enablePinUnlock, setEnablePinUnlock] = useState(true);
   const lockTimeoutRef = useRef(null);
   const logoutTimeoutRef = useRef(null);
   const lockedRef = useRef(false);
@@ -81,6 +87,7 @@ export function LockScreenProvider({ children }) {
     setScreenLocked(true);
     setLocked(true);
     setError(null);
+    setSelectedOperator(null);
   }, []);
 
   const clearIdleTimers = useCallback(() => {
@@ -142,6 +149,7 @@ export function LockScreenProvider({ children }) {
       });
       setScreenLocked(false);
       setLocked(false);
+      setSelectedOperator(null);
       setError(null);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -170,6 +178,7 @@ export function LockScreenProvider({ children }) {
       });
       setScreenLocked(false);
       setLocked(false);
+      setSelectedOperator(null);
       setError(null);
     } catch (e) {
       if (e?.name === "NotAllowedError") {
@@ -188,21 +197,84 @@ export function LockScreenProvider({ children }) {
     }
   }, []);
 
+  const loadOperators = useCallback(async () => {
+    setOperatorsLoading(true);
+    try {
+      const res = await apiRequest("/auth/pin-operators", { loading: false, reportIssues: false });
+      setOperators(Array.isArray(res?.data) ? res.data : []);
+      if (res?.enable_pin_unlock != null) {
+        setEnablePinUnlock(Boolean(res.enable_pin_unlock));
+      }
+    } catch {
+      setOperators([]);
+    } finally {
+      setOperatorsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!locked || !user) return undefined;
+    const security = mergeSecuritySettings(capabilities?.module_settings);
+    setEnablePinUnlock(security.enable_pin_unlock !== false);
+    void loadOperators();
+    return undefined;
+  }, [locked, user, capabilities, loadOperators]);
+
+  const unlockWithPin = useCallback(async (pin) => {
+    const target = selectedOperator ?? user;
+    if (!target?.id) return;
+    setUnlocking(true);
+    setError(null);
+    try {
+      if (String(target.id) === String(user?.id)) {
+        await apiRequest("/auth/unlock-pin", { method: "POST", body: { pin } });
+      } else {
+        const res = await apiRequest("/auth/switch-operator", {
+          method: "POST",
+          body: {
+            user_id: target.id,
+            pin,
+            client_id: getAuthClientId(),
+          },
+        });
+        if (!res?.same_user && applyOperatorSession) {
+          await applyOperatorSession(res);
+        }
+      }
+      setScreenLocked(false);
+      setLocked(false);
+      setSelectedOperator(null);
+      setError(null);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        setError("Your session ended. Use Sign out below, then sign in again.");
+      } else {
+        const body = e instanceof ApiError ? e.body : null;
+        setError(formatApiErrorMessage(body, e instanceof Error ? e.message : "Incorrect PIN."));
+      }
+    } finally {
+      setUnlocking(false);
+    }
+  }, [applyOperatorSession, selectedOperator, user]);
+
   const value = useMemo(
     () => ({
       locked,
       lockScreen,
       unlockScreen,
       unlockWithPasskey,
+      unlockWithPin,
       unlocking,
       error,
       passkeyAvailable,
       clearError: () => setError(null),
     }),
-    [locked, lockScreen, unlockScreen, unlockWithPasskey, unlocking, error, passkeyAvailable],
+    [locked, lockScreen, unlockScreen, unlockWithPasskey, unlockWithPin, unlocking, error, passkeyAvailable],
   );
 
   const lockUser = user ?? (locked ? getStoredUser() : null);
+  const pinUnlockAvailable = Boolean(lockUser?.has_login_pin || selectedOperator?.has_login_pin);
+  const changeUserAvailable = enablePinUnlock && operators.length > 0;
 
   return (
     <LockScreenContext.Provider value={value}>
@@ -213,7 +285,25 @@ export function LockScreenProvider({ children }) {
           unlocking={unlocking}
           error={error}
           passkeyAvailable={passkeyAvailable}
+          pinUnlockAvailable={pinUnlockAvailable}
+          changeUserAvailable={changeUserAvailable}
+          operators={operators}
+          operatorsLoading={operatorsLoading}
+          selectedOperator={selectedOperator}
+          onSelectOperator={(row) => {
+            setSelectedOperator(row);
+            setError(null);
+          }}
+          onChangeUser={() => {
+            setError(null);
+            void loadOperators();
+          }}
+          onBackToLastUser={() => {
+            setSelectedOperator(null);
+            setError(null);
+          }}
           onUnlock={unlockScreen}
+          onUnlockWithPin={unlockWithPin}
           onUnlockWithPasskey={unlockWithPasskey}
         />
       ) : null}
