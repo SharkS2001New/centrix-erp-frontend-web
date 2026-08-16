@@ -404,71 +404,59 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
       title={copy.title}
       subtitle={copy.subtitle}
       toolbar={
-        <div className="space-y-3">
-          <FilterToolbar>
-            <Field label="From">
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className={FILTER_CONTROL_CLASS}
-              />
-            </Field>
-            <Field label="To">
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className={FILTER_CONTROL_CLASS}
-              />
-            </Field>
-            <Field label="Status">
-              <FilterSelect
-                className={FILTER_CONTROL_CLASS}
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                options={[
-                  { value: "", label: "All" },
-                  { value: "open", label: "Open / unpaid" },
-                  { value: "unpaid", label: "Awaiting payment" },
-                  { value: "paid", label: "Paid" },
-                  { value: "void", label: "Voided" },
-                ]}
-              />
-            </Field>
-            <Field label="Outlet">
-              <FilterSelect
-                className={FILTER_CONTROL_CLASS}
-                value={outletId}
-                onChange={(e) => setOutletId(e.target.value)}
-                options={[
-                  { value: "", label: channel === "bar" ? "All bar outlets" : channel === "hotel" ? "All hotel outlets" : "All outlets" },
-                  ...visibleOutlets.map((outlet) => ({
-                    value: String(outlet.id),
-                    label: outlet.name || outlet.code,
-                  })),
-                ]}
-              />
-            </Field>
-            <button
-              type="button"
-              onClick={applyDateFilter}
-              className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
-            >
-              Filter
-            </button>
-          </FilterToolbar>
-          <div className="grid grid-cols-12 gap-3">
-            <div className="col-span-12 md:col-span-8 lg:col-span-6">
-              <SearchInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="w-full min-w-0 shrink"
-              />
-            </div>
-          </div>
-        </div>
+        <FilterToolbar>
+          <Field label="From">
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className={FILTER_CONTROL_CLASS}
+            />
+          </Field>
+          <Field label="To">
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className={FILTER_CONTROL_CLASS}
+            />
+          </Field>
+          <Field label="Status">
+            <FilterSelect
+              className={FILTER_CONTROL_CLASS}
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              options={[
+                { value: "", label: "All" },
+                { value: "open", label: "Open / unpaid" },
+                { value: "unpaid", label: "Awaiting payment" },
+                { value: "paid", label: "Paid" },
+                { value: "void", label: "Voided" },
+              ]}
+            />
+          </Field>
+          <Field label="Outlet">
+            <FilterSelect
+              className={FILTER_CONTROL_CLASS}
+              value={outletId}
+              onChange={(e) => setOutletId(e.target.value)}
+              options={[
+                { value: "", label: channel === "bar" ? "All bar outlets" : channel === "hotel" ? "All hotel outlets" : "All outlets" },
+                ...visibleOutlets.map((outlet) => ({
+                  value: String(outlet.id),
+                  label: outlet.name || outlet.code,
+                })),
+              ]}
+            />
+          </Field>
+          <button
+            type="button"
+            onClick={applyDateFilter}
+            className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+          >
+            Filter
+          </button>
+        </FilterToolbar>
       }
     >
       {!loading ? (
@@ -484,21 +472,40 @@ export function HospitalityOrdersScreen({ channel = "all" } = {}) {
         </div>
       ) : null}
 
-      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={toggleExpandAll}
-          disabled={!rows.length}
-          className="theme-secondary-btn rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
-        >
-          {allExpanded ? "Collapse all" : "Expand all"}
-        </button>
+      <div className="mb-4 grid grid-cols-12 items-start gap-3">
+        <div className="col-span-12 md:col-span-8 lg:col-span-6">
+          <SearchInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="w-full min-w-0"
+          />
+        </div>
       </div>
 
       {listRefresh.showInitialLoading ? (
         <p className="theme-subtext text-sm">Loading orders…</p>
       ) : (
         <div className={`${TABLE_SHELL_CLASS} ${listRefresh.contentClassName}`.trim()}>
+          <div className="flex flex-wrap items-center gap-3 theme-table-head-row border-b px-4 py-2">
+            <button
+              type="button"
+              onClick={toggleExpandAll}
+              disabled={!rows.length}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                allExpanded
+                  ? "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                  : "border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+              }`}
+            >
+              {allExpanded ? "Collapse all" : "Expand all"}
+            </button>
+            <p className="text-xs text-slate-500">
+              {rows.length === 0
+                ? "No orders on this page"
+                : `${rows.length} order${rows.length === 1 ? "" : "s"} on this page`}
+            </p>
+          </div>
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className={TABLE_HEAD_ROW_CLASS}>
