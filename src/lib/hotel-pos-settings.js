@@ -11,9 +11,37 @@ export const HOTEL_POS_GRID_COLUMNS_DEFAULT = 4;
 export const HOTEL_POS_GRID_COLUMNS_ALLOWED = [4, 5];
 export const HOTEL_POS_CATALOG_LIMIT_DEFAULT = 30;
 
+const MPESA_CODES = new Set(["MPESA", "M-PESA", "M_PESA"]);
+const CHEQUE_CODES = new Set(["CHEQUE", "CHECK"]);
+
+function normalizeMethodCode(value) {
+  return String(value ?? "")
+    .toUpperCase()
+    .trim();
+}
+
+function tenderKind(code) {
+  if (code === "CASH") return "cash";
+  if (MPESA_CODES.has(code)) return "mpesa";
+  if (CHEQUE_CODES.has(code)) return "cheque";
+  return "bank";
+}
+
+function addTender(tenders, seen, tender) {
+  const code = normalizeMethodCode(tender.code);
+  if (!code || seen.has(code)) return;
+  seen.add(code);
+  tenders.push({
+    code,
+    label: String(tender.label || code).trim() || code,
+    kind: tender.kind || tenderKind(code),
+  });
+}
+
 /**
- * Build Hotel POS Collect payment UI flags from org-active payment methods
- * (Admin / Platform → Payment methods). Only enabled tenders appear in the popup.
+ * Build Hotel POS Collect payment tenders.
+ * Same sales checkout toggles as retail POS (Cash, M-Pesa, Equity, KCB, Other, Cheque),
+ * plus any extra Admin → Payment methods rows (Card, custom banks, etc.).
  *
  * @param {object|null} moduleSettings
  * @param {object} options
@@ -26,85 +54,82 @@ export function resolveHotelPosPaymentConfig(moduleSettings, options = {}) {
     capabilities: options.capabilities ?? null,
   });
   const capabilities = options.capabilities ?? null;
-  const active = (Array.isArray(options.activePaymentMethods) ? options.activePaymentMethods : [])
+  const catalog = (Array.isArray(options.activePaymentMethods) ? options.activePaymentMethods : [])
     .filter((row) => row && row.is_active !== false)
     .map((row) => ({
-      code: String(row.method_code ?? "")
-        .toUpperCase()
-        .trim(),
+      code: normalizeMethodCode(row.method_code),
       name: String(row.method_name ?? "").trim(),
       requiresReference: Boolean(row.requires_reference),
     }))
     .filter((row) => row.code);
 
-  // Until methods load (or org has none yet), fall back to sales defaults without flooding banks.
-  if (active.length === 0) {
-    const mpesaOk = isPlatformMpesaStkEnabled(capabilities) && base.enableMpesaAmount;
-    return {
-      ...base,
-      showCash: true,
-      enableMpesaAmount: mpesaOk,
-      enableMpesaCode: mpesaOk && base.enableMpesaCode,
-      useBankSelect: false,
-      showBankAmount: false,
-      showEquityBank: false,
-      showKcbBank: false,
-      showOtherBank: false,
-      showCheque: false,
-      showChequeNumber: false,
-      hasBankPayments: false,
-      otherBankMethodCode: "OTHER",
-      bankOptions: [],
-    };
+  const tenders = [];
+  const seen = new Set();
+  const mpesaOk = Boolean(base.enableMpesaAmount) && isPlatformMpesaStkEnabled(capabilities);
+  const catalogHasMpesa = catalog.some((row) => MPESA_CODES.has(row.code));
+
+  addTender(tenders, seen, { code: "CASH", label: "Cash", kind: "cash" });
+  if (mpesaOk || catalogHasMpesa) {
+    const mpesaRow = catalog.find((row) => MPESA_CODES.has(row.code));
+    addTender(tenders, seen, {
+      code: mpesaRow?.code || "MPESA",
+      label: mpesaRow?.name || "M-Pesa",
+      kind: "mpesa",
+    });
+  }
+  if (base.showEquityBank) {
+    const row = catalog.find((r) => r.code === "EQUITY");
+    addTender(tenders, seen, { code: "EQUITY", label: row?.name || "Equity Bank", kind: "bank" });
+  }
+  if (base.showKcbBank) {
+    const row = catalog.find((r) => r.code === "KCB");
+    addTender(tenders, seen, { code: "KCB", label: row?.name || "KCB", kind: "bank" });
+  }
+  if (base.showOtherBank) {
+    const row = catalog.find((r) => r.code === "OTHER");
+    addTender(tenders, seen, {
+      code: "OTHER",
+      label: row?.name || base.otherBankLabel || "Other bank",
+      kind: "bank",
+    });
+  }
+  if (base.showCheque) {
+    const row = catalog.find((r) => CHEQUE_CODES.has(r.code));
+    addTender(tenders, seen, {
+      code: row?.code || "CHEQUE",
+      label: row?.name || "Cheque",
+      kind: "cheque",
+    });
   }
 
-  const codes = new Set(active.map((row) => row.code));
-  const byCode = Object.fromEntries(active.map((row) => [row.code, row]));
-  const mpesaActive = codes.has("MPESA") && isPlatformMpesaStkEnabled(capabilities);
-  const showEquity = codes.has("EQUITY");
-  const showKcb = codes.has("KCB");
-  const showBank = codes.has("BANK");
-  const showCard = codes.has("CARD");
-  const showOther = codes.has("OTHER");
-  const showCheque = codes.has("CHEQUE");
-
-  let otherBankLabel = base.otherBankLabel || "Other bank";
-  let otherBankMethodCode = "OTHER";
-  if (showCard && !showBank && !showOther) {
-    otherBankLabel = byCode.CARD?.name || "Card";
-    otherBankMethodCode = "CARD";
-  } else if (showBank && !showCard && !showOther) {
-    otherBankLabel = byCode.BANK?.name || "Bank";
-    otherBankMethodCode = "BANK";
-  } else if (showOther) {
-    otherBankLabel = byCode.OTHER?.name || otherBankLabel;
-    otherBankMethodCode = "OTHER";
-  } else if (showCard) {
-    otherBankLabel = byCode.CARD?.name || "Card";
-    otherBankMethodCode = "CARD";
-  } else if (showBank) {
-    otherBankLabel = byCode.BANK?.name || "Bank";
-    otherBankMethodCode = "BANK";
+  for (const row of catalog) {
+    if (MPESA_CODES.has(row.code) && !mpesaOk && !catalogHasMpesa) continue;
+    addTender(tenders, seen, {
+      code: row.code,
+      label: row.name || row.code,
+      kind: tenderKind(row.code),
+    });
   }
 
-  const showOtherBank = showBank || showCard || showOther;
+  const codes = new Set(tenders.map((row) => row.code));
+  const otherTender = tenders.find((row) => row.code === "OTHER" || row.code === "CARD" || row.code === "BANK");
 
   return {
     ...base,
+    tenders,
     showCash: codes.has("CASH"),
-    enableMpesaAmount: mpesaActive,
-    enableMpesaCode: mpesaActive && base.enableMpesaCode,
+    enableMpesaAmount: tenders.some((row) => row.kind === "mpesa"),
+    enableMpesaCode: tenders.some((row) => row.kind === "mpesa") && base.enableMpesaCode,
     useBankSelect: false,
     showBankAmount: false,
-    showEquityBank: showEquity,
-    showKcbBank: showKcb,
-    showOtherBank,
-    otherBankLabel,
-    otherBankMethodCode,
-    showCheque,
-    // Reference fields only when Sales (or Hotel F&B) toggles are on — not payment_methods.requires_reference.
-    showChequeNumber: showCheque && base.showChequeNumber,
-    hasBankPayments: showEquity || showKcb || showOtherBank,
+    showEquityBank: codes.has("EQUITY"),
+    showKcbBank: codes.has("KCB"),
+    showOtherBank: Boolean(otherTender && otherTender.code !== "EQUITY" && otherTender.code !== "KCB"),
+    otherBankLabel: otherTender?.label || base.otherBankLabel || "Other bank",
+    otherBankMethodCode: otherTender?.code || "OTHER",
+    showCheque: tenders.some((row) => row.kind === "cheque"),
+    showChequeNumber: tenders.some((row) => row.kind === "cheque") && base.showChequeNumber,
+    hasBankPayments: tenders.some((row) => row.kind === "bank"),
     bankOptions: [],
   };
 }

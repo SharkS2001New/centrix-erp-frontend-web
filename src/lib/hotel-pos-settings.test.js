@@ -5,55 +5,66 @@ import {
 } from "@/lib/hotel-pos-settings";
 
 describe("resolveHotelPosPaymentConfig", () => {
-  it("shows only active org payment methods", () => {
+  it("includes sales POS tenders plus extra admin payment methods", () => {
     const cfg = resolveHotelPosPaymentConfig(
-      {},
+      { sales: { enable_equity_bank: true, enable_kcb_bank: false, enable_cheque: false } },
       {
         capabilities: { platform_mpesa_stk_enabled: true, modules: {} },
         activePaymentMethods: [
           { method_code: "CASH", method_name: "Cash", is_active: true },
           { method_code: "MPESA", method_name: "M-Pesa", is_active: true },
+          { method_code: "CARD", method_name: "Card", is_active: true },
         ],
       },
     );
 
-    expect(cfg.showCash).toBe(true);
-    expect(cfg.enableMpesaAmount).toBe(true);
+    const codes = cfg.tenders.map((row) => row.code);
+    expect(codes).toContain("CASH");
+    expect(codes).toContain("MPESA");
+    expect(codes).toContain("EQUITY");
+    expect(codes).toContain("CARD");
+    expect(codes).not.toContain("KCB");
     expect(cfg.showCheque).toBe(false);
-    expect(cfg.showEquityBank).toBe(false);
-    expect(cfg.showKcbBank).toBe(false);
-    expect(cfg.showOtherBank).toBe(false);
+    expect(cfg.enableMpesaAmount).toBe(true);
   });
 
-  it("hides M-Pesa when platform STK is off", () => {
-    const cfg = resolveHotelPosPaymentConfig(
-      {},
+  it("hides M-Pesa from sales toggle when platform STK is off unless catalog lists it", () => {
+    const fromSalesOnly = resolveHotelPosPaymentConfig(
+      { sales: { enable_mpesa_amount: true, enable_equity_bank: false, enable_kcb_bank: false, enable_cheque: false } },
+      {
+        capabilities: { platform_mpesa_stk_enabled: false, modules: {} },
+        activePaymentMethods: [{ method_code: "CASH", is_active: true }],
+      },
+    );
+    expect(fromSalesOnly.enableMpesaAmount).toBe(false);
+
+    const fromCatalog = resolveHotelPosPaymentConfig(
+      { sales: { enable_mpesa_amount: false, enable_equity_bank: false, enable_kcb_bank: false, enable_cheque: false } },
       {
         capabilities: { platform_mpesa_stk_enabled: false, modules: {} },
         activePaymentMethods: [
           { method_code: "CASH", is_active: true },
-          { method_code: "MPESA", is_active: true },
+          { method_code: "MPESA", method_name: "M-Pesa", is_active: true },
+        ],
+      },
+    );
+    expect(fromCatalog.enableMpesaAmount).toBe(true);
+    expect(fromCatalog.tenders.map((row) => row.code)).toContain("MPESA");
+  });
+
+  it("shows a custom admin payment method such as Equity under its own label", () => {
+    const cfg = resolveHotelPosPaymentConfig(
+      { sales: { enable_equity_bank: false, enable_kcb_bank: false, enable_cheque: false, enable_other_bank: false } },
+      {
+        capabilities: { modules: {} },
+        activePaymentMethods: [
+          { method_code: "EQUITY", method_name: "Equity", is_active: true },
         ],
       },
     );
 
-    expect(cfg.showCash).toBe(true);
-    expect(cfg.enableMpesaAmount).toBe(false);
-  });
-
-  it("maps active Card to other-bank tender", () => {
-    const cfg = resolveHotelPosPaymentConfig(
-      {},
-      {
-        capabilities: { modules: {} },
-        activePaymentMethods: [{ method_code: "CARD", method_name: "Card", is_active: true }],
-      },
-    );
-
-    expect(cfg.showCash).toBe(false);
-    expect(cfg.showOtherBank).toBe(true);
-    expect(cfg.otherBankMethodCode).toBe("CARD");
-    expect(cfg.otherBankLabel).toBe("Card");
+    const equity = cfg.tenders.find((row) => row.code === "EQUITY");
+    expect(equity).toMatchObject({ code: "EQUITY", label: "Equity" });
   });
 
   it("hides M-Pesa code and cheque number unless sales toggles are on", () => {

@@ -196,7 +196,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
                 outletId: outletIdRef.current,
                 warmImages: true,
               });
-              await ensureHotelPosOfflineCheckNumbers({ force: false });
+              await ensureHotelPosOfflineCheckNumbers({ force: false, outletId: outletIdRef.current });
             }
           } else if (failed.length) {
             pendingFlushRef.current = false;
@@ -318,7 +318,7 @@ export function useHotelPosOfflineSupport({ enabled = true, outletId = null } = 
         outletId: outletIdRef.current,
         warmImages: true,
       });
-      void ensureHotelPosOfflineCheckNumbers({ force: false });
+      void ensureHotelPosOfflineCheckNumbers({ force: false, outletId: outletIdRef.current });
       void refreshCounts();
     }, 5 * 60 * 1000);
     return () => window.clearInterval(timer);

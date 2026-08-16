@@ -1,47 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { EntityPhotoDisplay, productPhotoFileUrl } from "@/components/media/entity-photo-display";
-import { getHotelPosOfflineImageObjectUrl } from "@/lib/hotel-pos-offline";
+import { memo, useEffect, useState } from "react";
+import {
+  peekHotelPosCachedImageUrl,
+  resolveHotelPosCachedImageUrl,
+} from "@/lib/hotel-pos-image-cache";
 
 /**
- * Prefers locally warmed IndexedDB image (offline), else authenticated API fetch.
+ * Prefers session/IndexedDB cached photo; fetches once and stores in IndexedDB.
  */
-export function HotelPosProductImage({
+export const HotelPosProductImage = memo(function HotelPosProductImage({
   productCode,
   offlineMode = false,
   alt = "Product",
   className = "h-full w-full object-cover",
   placeholderClassName = "flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400",
 }) {
-  const [localUrl, setLocalUrl] = useState(null);
+  const [src, setSrc] = useState(() => peekHotelPosCachedImageUrl(productCode));
 
   useEffect(() => {
-    let objectUrl = null;
     let cancelled = false;
-    setLocalUrl(null);
-
+    const immediate = peekHotelPosCachedImageUrl(productCode);
+    if (immediate) {
+      setSrc(immediate);
+      return undefined;
+    }
+    setSrc(null);
     if (!productCode) return undefined;
 
-    void (async () => {
-      try {
-        objectUrl = await getHotelPosOfflineImageObjectUrl(productCode);
-        if (!cancelled && objectUrl) setLocalUrl(objectUrl);
-      } catch {
-        /* fall through to network */
-      }
-    })();
+    void resolveHotelPosCachedImageUrl(productCode).then((url) => {
+      if (!cancelled && url) setSrc(url);
+    });
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [productCode]);
 
-  if (localUrl) {
+  if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={localUrl} alt={alt} className={className} />
+      <img src={src} alt={alt} className={className} />
     );
   }
 
@@ -50,11 +49,11 @@ export function HotelPosProductImage({
   }
 
   return (
-    <EntityPhotoDisplay
-      fileUrl={productPhotoFileUrl(productCode)}
-      alt={alt}
-      className={className}
-      placeholderClassName={placeholderClassName}
-    />
+    <span className={`flex items-center justify-center ${placeholderClassName}`}>
+      <span
+        className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[var(--theme-accent,#185FA5)]"
+        aria-hidden
+      />
+    </span>
   );
-}
+});

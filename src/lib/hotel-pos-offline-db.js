@@ -127,6 +127,11 @@ export async function idbGetCatalogImage(productCode) {
   );
 }
 
+export async function idbListCatalogImageCodes() {
+  const keys = (await withStore("catalog_images", "readonly", (store) => store.getAllKeys())) ?? [];
+  return keys.map((key) => String(key));
+}
+
 export async function idbClearCatalogImagesMissing(keepCodes) {
   const keep = new Set((keepCodes ?? []).map((c) => String(c)));
   const rows = (await withStore("catalog_images", "readonly", (store) => store.getAll())) ?? [];

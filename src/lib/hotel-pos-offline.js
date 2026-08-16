@@ -4,9 +4,7 @@
  * Selling while offline is locked in the UI (unlike External POS).
  */
 
-import { apiBaseOrigin, apiRequest, ApiError } from "@/lib/api";
-import { apiFetchCredentials } from "@/lib/auth-config";
-import { getToken } from "@/lib/auth-storage";
+import { apiRequest, ApiError } from "@/lib/api";
 import { fetchHotelPosCatalog } from "@/lib/hospitality-pos-api";
 import {
   idbAppendCheckNumbers,
@@ -17,8 +15,8 @@ import {
   idbCountPendingOutbox,
   idbDeleteOutboxCheck,
   idbGetAllCatalog,
-  idbGetCatalogImage,
   idbGetCatalogProduct,
+  idbListCatalogImageCodes,
   idbGetLocalCheck,
   idbGetMeta,
   idbGetOutboxCheck,
@@ -27,7 +25,6 @@ import {
   idbMarkOutboxError,
   idbMarkOutboxSynced,
   idbMarkOutboxSyncing,
-  idbPutCatalogImage,
   idbPutCatalogProducts,
   idbPutOutboxCheck,
   idbReclaimStuckSyncingOutbox,
@@ -41,7 +38,7 @@ import {
 const CATALOG_TTL_MS = 15 * 60 * 1000;
 const RESERVE_LOW = 8;
 const RESERVE_COUNT = 20;
-const IMAGE_WARM_CONCURRENCY = 4;
+const IMAGE_WARM_CONCURRENCY = 8;
 
 function roundMoney(n) {
   return Math.round(Number(n || 0) * 100) / 100;
@@ -163,34 +160,17 @@ export async function warmHotelPosOfflineImages(products = []) {
   );
   if (!withImages.length) return { warmed: 0 };
 
-  const token = getToken();
-  const origin = apiBaseOrigin();
-  let warmed = 0;
+  const { resolveHotelPosCachedImageUrl } = await import("@/lib/hotel-pos-image-cache");
+  const already = new Set(await idbListCatalogImageCodes().catch(() => []));
+  const missing = withImages.filter((p) => !already.has(String(p.product_code)));
+  let warmed = already.size;
 
-  async function fetchOne(product) {
-    const code = String(product.product_code);
-    const url = `${origin}/api/v1/products/${encodeURIComponent(code)}/image/file`;
-    try {
-      const headers = { Accept: "image/*,*/*" };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(url, {
-        headers,
-        credentials: apiFetchCredentials(),
-        cache: "force-cache",
-      });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      if (!blob || blob.size < 32) return;
-      await idbPutCatalogImage(code, blob, blob.type || "image/jpeg");
-      warmed += 1;
-    } catch {
-      /* skip */
-    }
-  }
-
-  for (let i = 0; i < withImages.length; i += IMAGE_WARM_CONCURRENCY) {
-    const slice = withImages.slice(i, i + IMAGE_WARM_CONCURRENCY);
-    await Promise.all(slice.map((p) => fetchOne(p)));
+  for (let i = 0; i < missing.length; i += IMAGE_WARM_CONCURRENCY) {
+    const slice = missing.slice(i, i + IMAGE_WARM_CONCURRENCY);
+    const urls = await Promise.all(
+      slice.map((p) => resolveHotelPosCachedImageUrl(String(p.product_code)).catch(() => null)),
+    );
+    warmed += urls.filter(Boolean).length;
   }
 
   await idbClearCatalogImagesMissing(withImages.map((p) => p.product_code));
@@ -198,11 +178,10 @@ export async function warmHotelPosOfflineImages(products = []) {
   return { warmed };
 }
 
-/** @returns {Promise<string|null>} blob: URL — caller must revoke when done */
+/** @returns {Promise<string|null>} session-cached blob URL — do not revoke */
 export async function getHotelPosOfflineImageObjectUrl(productCode) {
-  const row = await idbGetCatalogImage(productCode);
-  if (!row?.blob) return null;
-  return URL.createObjectURL(row.blob);
+  const { resolveHotelPosCachedImageUrl } = await import("@/lib/hotel-pos-image-cache");
+  return resolveHotelPosCachedImageUrl(productCode);
 }
 
 export async function searchHotelPosOfflineCatalog(query, { limit = 80, menuGroup = "" } = {}) {
@@ -228,21 +207,37 @@ export async function searchHotelPosOfflineCatalog(query, { limit = 80, menuGrou
   return rows.slice(0, limit);
 }
 
-export async function ensureHotelPosOfflineCheckNumbers({ force = false } = {}) {
+export async function ensureHotelPosOfflineCheckNumbers({ force = false, outletId = null } = {}) {
   const available = await idbCountCheckNumbers();
   if (!force && available >= RESERVE_LOW) {
     return { reserved: 0, available };
   }
   const need = Math.max(RESERVE_COUNT - available, RESERVE_COUNT);
+  const body = { count: Math.min(need, RESERVE_COUNT) };
+  if (outletId != null) body.outlet_id = Number(outletId);
   const res = await apiRequest("/hospitality/pos/check-numbers/reserve", {
     method: "POST",
-    body: { count: Math.min(need, RESERVE_COUNT) },
+    body,
     loading: false,
     reportIssues: false,
   });
   const numbers = Array.isArray(res?.numbers) ? res.numbers : [];
   if (numbers.length) {
+    try {
+      const prev = await idbGetMeta("check_numbers_outlet_id");
+      const prevKey = prev == null ? null : String(prev);
+      const newKey = outletId == null ? null : String(outletId);
+      if (prevKey !== newKey) {
+        // Different outlet: clear stale reserved numbers so we start fresh for this outlet/org
+        await idbClearStore("check_numbers");
+      }
+    } catch (e) {
+      // ignore meta read/clear errors
+    }
     await idbAppendCheckNumbers(numbers);
+    try {
+      await idbSetMeta("check_numbers_outlet_id", outletId == null ? null : String(outletId));
+    } catch {}
   }
   return { reserved: numbers.length, available: await idbCountCheckNumbers() };
 }
@@ -261,7 +256,7 @@ export async function listFailedHotelOutboxChecks() {
 
 export async function prepareHotelPosOfflineReady({ outletId = null } = {}) {
   const catalog = await warmHotelPosOfflineCatalog({ force: false, outletId, warmImages: true });
-  const numbers = await ensureHotelPosOfflineCheckNumbers({ force: false });
+  const numbers = await ensureHotelPosOfflineCheckNumbers({ force: false, outletId });
   return {
     catalogCount: catalog.count ?? 0,
     checkNumbersAvailable: numbers.available ?? 0,
@@ -280,7 +275,7 @@ export async function createLocalHotelCheck({
   let checkNumber = await idbTakeNextCheckNumber();
   if (!checkNumber) {
     try {
-      await ensureHotelPosOfflineCheckNumbers({ force: true });
+      await ensureHotelPosOfflineCheckNumbers({ force: true, outletId: outlet?.id ?? null });
     } catch {
       /* still offline */
     }
@@ -322,17 +317,15 @@ export async function createLocalHotelCheck({
   return check;
 }
 
-export async function addProductToLocalHotelCheck(check, product, qty = 1) {
+/** Sync cart math — used for instant UI before IndexedDB / server catch up. */
+export function addProductToHotelCheckInMemory(check, product, qty = 1) {
   if (!product?.product_code) {
     throw new Error("Product code is required.");
   }
-  const catalog =
-    (await idbGetCatalogProduct(product.product_code)) ??
-    product;
-  const unitPrice = roundMoney(catalog.unit_price ?? product.unit_price ?? 0);
-  const vatPct = Number(catalog.vat_percentage ?? product.vat_percentage ?? 0);
+  const unitPrice = roundMoney(product.unit_price ?? 0);
+  const vatPct = Number(product.vat_percentage ?? 0);
   const addQty = Math.max(0.0001, Number(qty) || 1);
-  const lines = [...(check.lines ?? [])];
+  const lines = [...(check?.lines ?? [])];
   const existingIdx = lines.findIndex(
     (l) => String(l.product_code) === String(product.product_code),
   );
@@ -344,28 +337,38 @@ export async function addProductToLocalHotelCheck(check, product, qty = 1) {
     line.unit_price = unitPrice;
     line.line_total = lineTotal;
     line.vat_amount = lineVatAmount(lineTotal, vatPct);
-    line.description = catalog.product_name ?? line.description;
+    line.description = product.product_name ?? line.description;
     lines[existingIdx] = line;
   } else {
     const lineTotal = roundMoney(unitPrice * addQty);
     lines.push({
       id: `local-line-${Date.now()}-${lines.length + 1}`,
-      product_id: catalog.id ?? product.id ?? null,
+      product_id: product.id ?? null,
       product_code: product.product_code,
-      description: catalog.product_name ?? product.product_name ?? product.product_code,
+      description: product.product_name ?? product.product_code,
       qty: addQty,
       unit_price: unitPrice,
       line_total: lineTotal,
       vat_amount: lineVatAmount(lineTotal, vatPct),
       sort_order: lines.length + 1,
-      image_url: catalog.image_url ?? product.image_url ?? null,
+      image_url: product.image_url ?? null,
     });
   }
-  const next = recalculateLocalHotelCheck({
+  return recalculateLocalHotelCheck({
     ...check,
     lines,
-    offline: true,
+    offline: Boolean(check?.offline || isLocalHotelCheckId(check?.id)),
   });
+}
+
+export async function addProductToLocalHotelCheck(check, product, qty = 1) {
+  if (!product?.product_code) {
+    throw new Error("Product code is required.");
+  }
+  const catalog =
+    (await idbGetCatalogProduct(product.product_code)) ??
+    product;
+  const next = addProductToHotelCheckInMemory(check, catalog, qty);
   await idbSaveLocalCheck({ ...next, id: "active" });
   return next;
 }
@@ -573,6 +576,32 @@ export function isHotelLocalFirstCheckout({ payments, folioId = null, check = nu
       Math.max(0, Number(check?.total ?? 0) - Number(check?.amount_paid ?? 0)),
   );
   return paySum + 0.01 >= due;
+}
+
+export const HOTEL_VOID_ORDER_NAME = "Void order";
+
+export function resolveHotelPosVoidTarget(ticket, lastReceipt) {
+  const statusOf = (row) => String(row?.status ?? "").toLowerCase();
+  const isVoid = (row) => statusOf(row) === "void";
+  const isEmptyDraft = (row) =>
+    Boolean(row?.id) &&
+    !(Array.isArray(row?.lines) && row.lines.length > 0) &&
+    !(Number(row?.amount_paid) > 0) &&
+    ["", "open", "ready"].includes(statusOf(row));
+
+  if (ticket?.id && !isVoid(ticket) && !isEmptyDraft(ticket)) {
+    return ticket;
+  }
+  if (lastReceipt && !isVoid(lastReceipt)) {
+    return lastReceipt;
+  }
+  return null;
+}
+
+export async function discardPendingHotelOfflineCheck(clientCheckUuid) {
+  const uuid = String(clientCheckUuid ?? "").trim();
+  if (!uuid) return false;
+  return idbDeleteOutboxCheck(uuid);
 }
 
 function isDuplicateHotelCheckError(err) {

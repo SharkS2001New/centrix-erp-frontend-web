@@ -717,6 +717,13 @@ export async function uploadProductImage(productCode, file) {
   );
 }
 
+export async function importProductImageFromUrl(productCode, url) {
+  return apiRequest(`/products/${encodeURIComponent(productCode)}/image/from-url`, {
+    method: "POST",
+    body: { url: String(url ?? "").trim() },
+  });
+}
+
 export async function deleteProductImage(productCode) {
   return apiRequest(`/products/${encodeURIComponent(productCode)}/image`, {
     method: "DELETE",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { useAuth } from "@/contexts/auth-context";
@@ -28,18 +28,22 @@ import {
   voidHotelCheck,
 } from "@/lib/hospitality-pos-api";
 import {
-  addProductToLocalHotelCheck,
+  addProductToHotelCheckInMemory,
   clearLocalHotelCheckLines,
   completeOfflineHotelCashCheck,
+  discardPendingHotelOfflineCheck,
+  HOTEL_VOID_ORDER_NAME,
   isHotelLocalFirstCheckout,
   isLocalHotelCheckId,
+  resolveHotelPosVoidTarget,
   loadPersistedLocalHotelCheck,
   patchLocalHotelCheck,
   removeLocalHotelCheckLine,
   searchHotelPosOfflineCatalog,
+  warmHotelPosOfflineImages,
   updateLocalHotelCheckLineQty,
 } from "@/lib/hotel-pos-offline";
-import { idbClearLocalCheck } from "@/lib/hotel-pos-offline-db";
+import { idbClearLocalCheck, idbGetAllCatalog, idbPutCatalogProducts, idbSaveLocalCheck } from "@/lib/hotel-pos-offline-db";
 import {
   formatHotelMoney,
   normalizeHotelPosGridColumns,
@@ -53,6 +57,7 @@ import {
 import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-workflow";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PosActionButton } from "@/components/sales/pos-action-button";
@@ -65,7 +70,7 @@ import {
   normalizeHospitalityCheckPrintSettings,
 } from "@/lib/hospitality-check-print-options";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
-import { EntityPhotoDisplay, productPhotoFileUrl } from "@/components/media/entity-photo-display";
+import { primeHotelPosImageCacheFromIndexedDb } from "@/lib/hotel-pos-image-cache";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { disposePrintWindow } from "@/lib/open-print-window";
@@ -162,8 +167,79 @@ function dedupeError(e) {
   return "Something went wrong";
 }
 
+const HotelPosCatalogTile = memo(function HotelPosCatalogTile({
+  product,
+  isRoom,
+  disabled,
+  offlineMode,
+  onTap,
+}) {
+  const hasImage = Boolean(product.has_image || product.image_url);
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onTap(product)}
+      className="hotel-pos-tile group relative flex min-h-[7.5rem] flex-col overflow-hidden text-left transition duration-150 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50"
+    >
+      <div className="hotel-pos-tile-shine pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition group-hover:opacity-100" />
+      {hasImage ? (
+        <div className="hotel-pos-tile-media relative aspect-[4/3] w-full overflow-hidden bg-[var(--theme-surface-muted)]">
+          <HotelPosProductImage
+            productCode={product.product_code}
+            offlineMode={offlineMode}
+            alt={product.product_name}
+            className="h-full w-full object-cover"
+            placeholderClassName="flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400"
+          />
+          {product.is_popular ? (
+            <span className="hotel-pos-top-badge absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+              Top
+            </span>
+          ) : null}
+        </div>
+      ) : isRoom ? (
+        <div className="hotel-pos-tile-media relative flex aspect-[4/3] w-full items-center justify-center bg-[var(--theme-surface-muted)]">
+          <span className="theme-heading text-3xl font-bold tabular-nums">
+            {product.room_number}
+          </span>
+        </div>
+      ) : null}
+      <div className="flex min-h-0 flex-1 flex-col justify-between gap-2 p-3.5">
+        <div className="flex items-start justify-between gap-2">
+          <span className="theme-heading line-clamp-2 text-[15px] font-semibold leading-snug">
+            {isRoom ? `Room ${product.room_number}` : product.product_name}
+          </span>
+          {!hasImage && !isRoom && product.is_popular ? (
+            <span className="hotel-pos-top-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+              Top
+            </span>
+          ) : null}
+        </div>
+        {isRoom && product.room_type?.name ? (
+          <p className="theme-subtext text-[11px]">{product.room_type.name}</p>
+        ) : null}
+        <div className="flex items-end justify-between gap-2">
+          <p className="text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
+            {formatHotelMoney(product.unit_price ?? product.nightly_rate)}
+            {isRoom ? (
+              <span className="theme-subtext ml-1 text-[10px] font-semibold uppercase">
+                / night
+              </span>
+            ) : null}
+          </p>
+          <span className="hotel-pos-add-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide opacity-80 group-hover:opacity-100">
+            {isRoom ? "Book" : "Add"}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+});
+
 export function HotelBarPosScreen() {
   const { capabilities, user, organization } = useAuth();
+  const confirm = useConfirm();
   const assignedOutletId =
     user?.hospitality_outlet_id ?? capabilities?.hospitality_outlet_id ?? null;
   const [menuOutlet, setMenuOutlet] = useState(null);
@@ -177,6 +253,7 @@ export function HotelBarPosScreen() {
     syncing: offlineSyncing,
     flushOutboxAfterSale,
     syncOfflineChecks,
+    refreshCounts,
   } = useHotelPosOfflineSupport({
     enabled: true,
     outletId: menuOutlet?.id ?? assignedOutletId ?? null,
@@ -206,18 +283,20 @@ export function HotelBarPosScreen() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [products, setProducts] = useState([]);
+  const catalogMapRef = useRef(new Map());
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogLoadingMore, setCatalogLoadingMore] = useState(false);
   const [catalogHasMore, setCatalogHasMore] = useState(false);
   const [catalogNextOffset, setCatalogNextOffset] = useState(null);
   const [searching, setSearching] = useState(false);
-  const [check, setCheck] = useState(null);
+  const [check, setCheckState] = useState(null);
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueChecks, setQueueChecks] = useState([]);
   const [payOpen, setPayOpen] = useState(false);
   const [payError, setPayError] = useState(null);
+  const [orderComplete, setOrderComplete] = useState(null);
   const [roomChargeEnabled, setRoomChargeEnabled] = useState(
     isHospitalityServiceEnabled(capabilities, "room_charge") &&
       isHospitalityServiceEnabled(capabilities, "folios"),
@@ -230,6 +309,15 @@ export function HotelBarPosScreen() {
   const catalogScrollRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
   const catalogRequestIdRef = useRef(0);
+  const checkRef = useRef(null);
+  const lineAddQueueRef = useRef([]);
+  const lineAddFlushingRef = useRef(false);
+  const handleTapProductRef = useRef(null);
+
+  function commitCheck(next) {
+    checkRef.current = next;
+    setCheckState(next);
+  }
 
   const showGuestField = guestNameEnabled;
   const showTableField = tablePosEnabled;
@@ -249,6 +337,25 @@ export function HotelBarPosScreen() {
   );
 
   useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        // Warm local catalog (non-blocking) then load local cache into memory map.
+        void warmHotelPosOfflineCatalog({ force: false, outletId: menuOutlet?.id ?? assignedOutletId ?? undefined });
+        const all = await idbGetAllCatalog();
+        if (!mounted) return;
+        const m = new Map();
+        for (const p of all) {
+          if (p?.product_code) m.set(String(p.product_code), p);
+        }
+        catalogMapRef.current = m;
+        void primeHotelPosImageCacheFromIndexedDb([...m.keys()]);
+        void warmHotelPosOfflineImages([...m.values()]).catch(() => {});
+      } catch (e) {
+        // ignore
+      }
+    })();
+
     let cancelled = false;
     apiRequest("/payment-methods", {
       searchParams: { per_page: 50, "filter[is_active]": 1 },
@@ -298,6 +405,7 @@ export function HotelBarPosScreen() {
   useEffect(() => {
     if (!sellingLocked) return;
     setPayOpen(false);
+    setOrderComplete(null);
     setRoomStayDraft(null);
     setBusy(false);
   }, [sellingLocked]);
@@ -470,7 +578,75 @@ export function HotelBarPosScreen() {
           setCatalogNextOffset(offset + page.length < batch.length ? offset + page.length : null);
           return;
         }
-        const res = await fetchHotelPosCatalog({
+            // If we have a warmed local catalog, show it immediately for snappy UI.
+            if (catalogMapRef.current && catalogMapRef.current.size > 0 && !String(q ?? "").trim()) {
+              const group = String(menuGroup ?? "").trim().toLowerCase();
+              const all = Array.from(catalogMapRef.current.values()).filter((p) => {
+                if (!group || group === "rooms") return true;
+                return String(p.menu_group ?? "").toLowerCase() === group;
+              });
+              const page = all.slice(offset, offset + catalogLimit);
+              setProducts((prev) => {
+                if (!append) return page;
+                const seen = new Set(prev.map((p) => p.product_code));
+                const merged = [...prev];
+                for (const item of page) {
+                  if (!seen.has(item.product_code)) {
+                    seen.add(item.product_code);
+                    merged.push(item);
+                  }
+                }
+                return merged;
+              });
+              setSearching(Boolean(String(q ?? "").trim()));
+              setCatalogHasMore(offset + page.length < all.length);
+              setCatalogNextOffset(offset + page.length < all.length ? offset + page.length : null);
+              // Still fetch a fresh page in background to update IDB and UI when ready.
+              (async () => {
+                try {
+                  const fresh = await fetchHotelPosCatalog({
+                    q,
+                    perPage: catalogLimit,
+                    popularDays: 5,
+                    offset,
+                    menuGroup,
+                    outletId: menuOutlet?.id ?? assignedOutletId ?? undefined,
+                  });
+                  const batch = Array.isArray(fresh?.items) ? fresh.items : [];
+                  // persist to IDB
+                  try {
+                    await idbPutCatalogProducts(batch);
+                    const m = new Map(catalogMapRef.current);
+                    for (const p of batch) if (p?.product_code) m.set(String(p.product_code), p);
+                    catalogMapRef.current = m;
+                    void warmHotelPosOfflineImages(batch).catch(() => {});
+                    void primeHotelPosImageCacheFromIndexedDb(
+                      batch.map((p) => p.product_code),
+                    );
+                  } catch {
+                    /* ignore */
+                  }
+                  if (requestId !== catalogRequestIdRef.current) return;
+                  setProducts((prev) => {
+                    if (!append) return batch;
+                    const seen = new Set(prev.map((p) => p.product_code));
+                    const merged = [...prev];
+                    for (const item of batch) {
+                      if (!seen.has(item.product_code)) {
+                        seen.add(item.product_code);
+                        merged.push(item);
+                      }
+                    }
+                    return merged;
+                  });
+                  applyCatalogMeta(fresh);
+                } catch {
+                  /* ignore */
+                }
+              })();
+              return;
+            }
+            const res = await fetchHotelPosCatalog({
           q,
           perPage: catalogLimit,
           popularDays: 5,
@@ -480,6 +656,17 @@ export function HotelBarPosScreen() {
         });
         if (requestId !== catalogRequestIdRef.current) return;
         const batch = Array.isArray(res?.items) ? res.items : [];
+            // Persist fetched page into IndexedDB for offline use and faster subsequent loads.
+            try {
+              await idbPutCatalogProducts(batch);
+              const m = new Map(catalogMapRef.current);
+              for (const p of batch) if (p?.product_code) m.set(String(p.product_code), p);
+              catalogMapRef.current = m;
+              void warmHotelPosOfflineImages(batch).catch(() => {});
+              void primeHotelPosImageCacheFromIndexedDb(batch.map((p) => p.product_code));
+            } catch {
+              /* ignore */
+            }
         setProducts((prev) => {
           if (!append) return batch;
           const seen = new Set(prev.map((p) => p.product_code));
@@ -530,7 +717,7 @@ export function HotelBarPosScreen() {
     void (async () => {
       const local = await loadPersistedLocalHotelCheck();
       if (local?.lines?.length) {
-        setCheck(local);
+        commitCheck(local);
       }
     })();
   }, [offlineMode]);
@@ -584,7 +771,92 @@ export function HotelBarPosScreen() {
     return () => observer.disconnect();
   }, [loadMoreCatalog, products.length, catalogHasMore]);
 
-  async function startFreshCheck() {
+  const onCatalogTap = useCallback((product) => {
+    void handleTapProductRef.current?.(product);
+  }, []);
+
+  function applyOptimisticProduct(product) {
+    const catalog = catalogMapRef.current.get(String(product.product_code)) ?? product;
+    const current = checkRef.current;
+    const next = addProductToHotelCheckInMemory(current, catalog, 1);
+    commitCheck(next);
+    return next;
+  }
+
+  async function flushServerLineAdds() {
+    if (lineAddFlushingRef.current) return;
+    lineAddFlushingRef.current = true;
+    let failed = false;
+    try {
+      while (lineAddQueueRef.current.length) {
+        let active = checkRef.current;
+        const needsNew =
+          !active?.id ||
+          active.id === "pending-open" ||
+          active.status === "paid" ||
+          active.status === "settled" ||
+          active.status === "void";
+        if (needsNew && !isLocalHotelCheckId(active?.id) && !active?.offline) {
+          const optimisticLines = active?.lines;
+          const opened = await startFreshCheck({ apply: false });
+          if (!opened?.id) throw new Error("Could not open order.");
+          active = opened;
+          checkRef.current = optimisticLines?.length
+            ? { ...opened, lines: optimisticLines }
+            : opened;
+          commitCheck(checkRef.current);
+        }
+        const product = lineAddQueueRef.current.shift();
+        if (!product?.product_code) continue;
+        if (isLocalHotelCheckId(active?.id) || active?.offline) {
+          await idbSaveLocalCheck({ ...active, id: "active" });
+          continue;
+        }
+        if (!active?.id) throw new Error("Could not open order.");
+        try {
+          const res = await addHotelCheckLine(active.id, product.product_code, 1);
+          const next = res?.check ?? null;
+          if (next) {
+            active = next;
+            const optimistic = checkRef.current;
+            if (lineAddQueueRef.current.length === 0) {
+              checkRef.current = next;
+              commitCheck(next);
+            } else {
+              checkRef.current = {
+                ...next,
+                lines: optimistic?.lines ?? next.lines,
+                subtotal: optimistic?.subtotal ?? next.subtotal,
+                vat_total: optimistic?.vat_total ?? next.vat_total,
+                total: optimistic?.total ?? next.total,
+                amount_paid: optimistic?.amount_paid ?? next.amount_paid,
+                balance_due: optimistic?.balance_due ?? next.balance_due,
+              };
+            }
+          }
+        } catch (err) {
+          lineAddQueueRef.current.unshift(product);
+          throw err;
+        }
+      }
+    } catch (err) {
+      failed = true;
+      notifyError(dedupeError(err));
+    } finally {
+      lineAddFlushingRef.current = false;
+      if (!failed && lineAddQueueRef.current.length) void flushServerLineAdds();
+    }
+  }
+
+  async function waitForPendingLineAdds() {
+    let spins = 0;
+    while ((lineAddFlushingRef.current || lineAddQueueRef.current.length) && spins < 200) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      spins += 1;
+    }
+  }
+
+  async function startFreshCheck({ apply = true } = {}) {
     if (sellingLocked) {
       throw new Error("Please check your internet connection");
     }
@@ -596,11 +868,14 @@ export function HotelBarPosScreen() {
       body.floor_table_id = Number(selectedTableId);
     }
     const opened = await openHotelCheck(body);
-    setCheck(opened?.check ?? null);
-    setSelectedLineId(null);
-    setGuestNameDraft("");
-    resetRoomChargeSelection();
-    return opened?.check ?? null;
+    const next = opened?.check ?? null;
+    if (apply) {
+      commitCheck(next);
+      setSelectedLineId(null);
+      setGuestNameDraft("");
+      resetRoomChargeSelection();
+    }
+    return next;
   }
 
   async function ensureTableAssigned(activeCheck) {
@@ -632,12 +907,12 @@ export function HotelBarPosScreen() {
           : activeCheck.floor_table,
         service_mode: "table",
       });
-      setCheck(next);
+      commitCheck(next);
       return next;
     }
     const res = await assignHotelCheckTable(activeCheck.id, Number(tableId));
     const next = res?.check ?? activeCheck;
-    setCheck(next);
+    commitCheck(next);
     return next;
   }
 
@@ -650,12 +925,12 @@ export function HotelBarPosScreen() {
       const next = await patchLocalHotelCheck(activeCheck, {
         guest_name: name || null,
       });
-      setCheck(next);
+      commitCheck(next);
       return next;
     }
     const res = await assignHotelCheckGuest(activeCheck.id, name || null);
     const next = res?.check ?? activeCheck;
-    setCheck(next);
+    commitCheck(next);
     return next;
   }
 
@@ -689,48 +964,28 @@ export function HotelBarPosScreen() {
       }
     }
 
-    setBusy(true);
-    try {
-      let active = check;
-      const needsNew =
-        !active?.id ||
-        active.status === "paid" ||
-        active.status === "settled" ||
-        active.status === "void";
+    const catalog = catalogMapRef.current.get(String(product.product_code)) ?? product;
+    const next = applyOptimisticProduct(catalog);
 
-      if (needsNew) {
-        active = await startFreshCheck();
+    if (isLocalHotelCheckId(next?.id) || next?.offline) {
+      void idbSaveLocalCheck({ ...next, id: "active" }).catch((err) =>
+        notifyError(dedupeError(err)),
+      );
+      if (showGuestField && String(guestNameDraft ?? "").trim()) {
+        void patchLocalHotelCheck(next, { guest_name: guestNameDraft.trim() })
+          .then((saved) => {
+            checkRef.current = saved;
+            commitCheck(saved);
+          })
+          .catch(() => {});
       }
-      if (!active?.id) throw new Error("Could not open check.");
-
-      if (isLocalHotelCheckId(active.id) || active.offline) {
-        let next = await addProductToLocalHotelCheck(active, product, 1);
-        if (showGuestField && String(guestNameDraft ?? "").trim()) {
-          next = await patchLocalHotelCheck(next, {
-            guest_name: guestNameDraft.trim(),
-          });
-        }
-        setCheck(next);
-        return;
-      }
-
-      const res = await addHotelCheckLine(active.id, product.product_code, 1);
-      let next = res?.check ?? null;
-      if (next?.id && showGuestField && String(guestNameDraft ?? "").trim()) {
-        try {
-          const guestRes = await assignHotelCheckGuest(next.id, guestNameDraft.trim());
-          next = guestRes?.check ?? next;
-        } catch {
-          /* guest name is optional; line add already succeeded */
-        }
-      }
-      setCheck(next);
-    } catch (e) {
-      notifyError(dedupeError(e));
-    } finally {
-      setBusy(false);
+      return;
     }
+
+    lineAddQueueRef.current.push(catalog);
+    void flushServerLineAdds();
   }
+  handleTapProductRef.current = handleTapProduct;
 
   async function confirmRoomStay() {
     if (!roomStayDraft?.room || busy) return;
@@ -751,7 +1006,8 @@ export function HotelBarPosScreen() {
 
     setBusy(true);
     try {
-      let active = check;
+      await waitForPendingLineAdds();
+      let active = checkRef.current;
       const needsNew =
         !active?.id ||
         active.status === "paid" ||
@@ -761,7 +1017,7 @@ export function HotelBarPosScreen() {
       if (needsNew) {
         active = await startFreshCheck();
       }
-      if (!active?.id) throw new Error("Could not open check.");
+      if (!active?.id) throw new Error("Could not open order.");
 
       const guest = String(roomStayDraft.guest_name ?? "").trim();
       const roomNumber = roomStayDraft.room.room_number;
@@ -772,7 +1028,7 @@ export function HotelBarPosScreen() {
         guest_name: guest || null,
       });
       const next = res?.check ?? null;
-      setCheck(next);
+      commitCheck(next);
       if (guest) setGuestNameDraft(guest);
       setRoomStayDraft(null);
       notifySuccess(
@@ -790,21 +1046,23 @@ export function HotelBarPosScreen() {
   }
 
   async function handleRemoveSelected() {
-    if (!check?.id || !selectedLineId || busy) return;
+    await waitForPendingLineAdds();
+    const ticket = checkRef.current;
+    if (!ticket?.id || !selectedLineId || busy) return;
     if (sellingLocked) {
       notifyError("Please check your internet connection");
       return;
     }
     setBusy(true);
     try {
-      if (isLocalHotelCheckId(check.id) || check.offline) {
-        const next = await removeLocalHotelCheckLine(check, selectedLineId);
-        setCheck(next);
+      if (isLocalHotelCheckId(ticket.id) || ticket.offline) {
+        const next = await removeLocalHotelCheckLine(ticket, selectedLineId);
+        commitCheck(next);
         setSelectedLineId(null);
         return;
       }
-      const res = await removeHotelCheckLine(check.id, selectedLineId);
-      setCheck(res?.check ?? null);
+      const res = await removeHotelCheckLine(ticket.id, selectedLineId);
+      commitCheck(res?.check ?? null);
       setSelectedLineId(null);
     } catch (e) {
       notifyError(dedupeError(e));
@@ -814,22 +1072,33 @@ export function HotelBarPosScreen() {
   }
 
   async function handleClear() {
+    await waitForPendingLineAdds();
+    const check = checkRef.current;
     if (!check?.id || !check.lines?.length || busy) return;
     if (sellingLocked) {
       notifyError("Please check your internet connection");
       return;
     }
-    if (!window.confirm("Clear all items from this check?")) return;
+    if (
+      !(await confirm({
+        title: "Clear order",
+        message: "Clear all items from this order?",
+        confirmLabel: "Clear",
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       if (isLocalHotelCheckId(check.id) || check.offline) {
         const next = await clearLocalHotelCheckLines(check);
-        setCheck(next);
+        commitCheck(next);
         setSelectedLineId(null);
         return;
       }
       const res = await clearHotelCheck(check.id);
-      setCheck(res?.check ?? null);
+      commitCheck(res?.check ?? null);
       setSelectedLineId(null);
     } catch (e) {
       notifyError(dedupeError(e));
@@ -839,33 +1108,91 @@ export function HotelBarPosScreen() {
   }
 
   async function handleVoid() {
-    if (!check?.id || busy) return;
-    if (sellingLocked) {
-      notifyError("Please check your internet connection");
-      return;
-    }
-    if (isLocalHotelCheckId(check.id) || check.offline) {
-      if (!window.confirm(`Discard local check ${check.check_number}?`)) return;
+    await waitForPendingLineAdds();
+    if (busy) return;
+
+    const ticket = checkRef.current;
+    const target = resolveHotelPosVoidTarget(ticket, lastReceiptCheck);
+    if (!target?.id) return;
+
+    const targetingCurrent =
+      Boolean(ticket?.id) && String(ticket.id) === String(target.id);
+    const unsoldLocal =
+      targetingCurrent &&
+      (isLocalHotelCheckId(target.id) || Boolean(target.offline)) &&
+      !target.offline_pending_sync;
+
+    if (unsoldLocal) {
+      if (
+        !(await confirm({
+          title: "Discard order",
+          message: `Discard this local order${target.check_number ? ` ${target.check_number}` : ""}?`,
+          confirmLabel: "Discard",
+          destructive: true,
+        }))
+      ) {
+        return;
+      }
       await idbClearLocalCheck().catch(() => {});
-      setCheck(null);
+      commitCheck(null);
       setSelectedLineId(null);
-      notifySuccess("Local check discarded.");
+      notifySuccess("Local order discarded.");
       return;
     }
-    if (Number(check.amount_paid) > 0) {
-      notifyError("Cannot void a check that has payments.");
-      return;
-    }
-    if (!["open", "unpaid", "held"].includes(String(check.status))) {
-      notifyError("Only open or unpaid checks can be voided.");
-      return;
-    }
-    if (!window.confirm(`Void check ${check.check_number}? This cannot be undone.`)) return;
+
+    const status = String(target.status ?? "").toLowerCase();
+    const sold = status === "paid" || status === "settled" || Number(target.amount_paid) > 0;
+    const label = target.check_number || "this order";
+    const confirmed = await confirm({
+      title: sold ? "Void sold order" : "Void order",
+      message: sold
+        ? `Void sold order ${label}? This cancels the sale and names it ${HOTEL_VOID_ORDER_NAME}.`
+        : `Void order ${label}? This cannot be undone.`,
+      confirmLabel: "Void",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
     setBusy(true);
     try {
-      await voidHotelCheck(check.id);
-      notifySuccess(`Check ${check.check_number} voided.`);
-      await startFreshCheck();
+      const serverId = Number(target.id);
+      const canVoidOnServer =
+        Number.isFinite(serverId) && serverId > 0 && !isLocalHotelCheckId(target.id);
+
+      if (canVoidOnServer) {
+        if (sellingLocked) {
+          throw new Error("Please check your internet connection");
+        }
+        const res = await voidHotelCheck(serverId);
+        const voided = res?.check ?? {
+          ...target,
+          status: "void",
+          guest_name: HOTEL_VOID_ORDER_NAME,
+        };
+        notifySuccess(
+          `${voided.check_number ?? label} voided — renamed to ${HOTEL_VOID_ORDER_NAME}.`,
+        );
+        if (lastReceiptCheck?.id && String(lastReceiptCheck.id) === String(target.id)) {
+          setLastReceiptCheck(voided);
+        }
+      } else {
+        notifySuccess(`${label} removed from the sync queue.`);
+        if (lastReceiptCheck?.id && String(lastReceiptCheck.id) === String(target.id)) {
+          setLastReceiptCheck(null);
+        }
+      }
+
+      const pendingUuid = String(target.client_check_uuid ?? "").trim();
+      if (target.offline_pending_sync && pendingUuid) {
+        await discardPendingHotelOfflineCheck(pendingUuid);
+        await refreshCounts().catch(() => {});
+      }
+
+      if (targetingCurrent) {
+        commitCheck(null);
+        setSelectedLineId(null);
+        resetRoomChargeSelection();
+      }
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -874,31 +1201,28 @@ export function HotelBarPosScreen() {
   }
 
   async function handleHold() {
+    await waitForPendingLineAdds();
+    const check = checkRef.current;
     if (!check?.id || !check.lines?.length || busy) return;
     if (sellingLocked) {
       notifyError("Please check your internet connection");
       return;
     }
     if (isLocalHotelCheckId(check.id) || check.offline) {
-      notifyError("Hold needs an online check. Pay now, or reconnect and reopen.");
-      return;
-    }
-    if (!unpaidEnabled) {
-      notifyError("Hold / unpaid orders are not enabled for this organization.");
+      notifyError("Hold needs the ticket on the server. Wait a moment and try again.");
       return;
     }
     if (Number(check.amount_paid) > 0) {
-      notifyError("This check already has payments — collect the balance instead of holding.");
+      notifyError("This order already has payments — collect the balance instead of holding.");
       return;
     }
     setBusy(true);
     try {
-      await ensureTableAssigned(check);
       let active = await ensureGuestAssigned(check);
       const res = await holdHotelCheck(active.id);
       const held = res?.check ?? active;
       notifySuccess(`Held ${held?.check_number ?? check.check_number} — open Held to resume.`);
-      setCheck(null);
+      commitCheck(null);
       setSelectedLineId(null);
       resetRoomChargeSelection();
       void refreshHeldCount();
@@ -910,13 +1234,15 @@ export function HotelBarPosScreen() {
   }
 
   async function handleSaveOrder() {
+    await waitForPendingLineAdds();
+    const check = checkRef.current;
     if (!check?.id || !check.lines?.length || busy) return;
     if (sellingLocked) {
       notifyError("Please check your internet connection");
       return;
     }
     if (isLocalHotelCheckId(check.id) || check.offline) {
-      notifyError("Save unpaid requires a server check. Pay now, or reopen after reconnect.");
+      notifyError("Save unpaid requires a server order. Pay now, or reopen after reconnect.");
       return;
     }
     if (!unpaidEnabled) {
@@ -980,7 +1306,7 @@ export function HotelBarPosScreen() {
     try {
       const res = await resumeHotelCheck(row.id);
       const next = res?.check ?? row;
-      setCheck(next);
+      commitCheck(next);
       if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
       setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
       syncFolioFromCheck(next);
@@ -1004,7 +1330,7 @@ export function HotelBarPosScreen() {
     try {
       const res = await resumeHotelCheck(row.id);
       const next = res?.check ?? row;
-      setCheck(next);
+      commitCheck(next);
       if (next?.floor_table_id) setSelectedTableId(String(next.floor_table_id));
       setGuestNameDraft(next?.guest_name ? String(next.guest_name) : "");
       syncFolioFromCheck(next);
@@ -1065,7 +1391,9 @@ export function HotelBarPosScreen() {
   }
 
   async function handlePaymentComplete({ payments, folio_id }) {
-    if (!check?.id) return;
+    await waitForPendingLineAdds();
+    const ticket = checkRef.current;
+    if (!ticket?.id) return;
     if (sellingLocked) {
       setPayError("Please check your internet connection");
       throw new Error("Please check your internet connection");
@@ -1076,14 +1404,14 @@ export function HotelBarPosScreen() {
     const printWindow = openHotelReceiptPrintWindow();
     try {
       const useLocalFirst =
-        isLocalHotelCheckId(check.id) ||
-        Boolean(check.offline) ||
-        Boolean(check.offline_client_check_uuid) ||
-        isHotelLocalFirstCheckout({ payments, folioId: folio_id, check });
+        isLocalHotelCheckId(ticket.id) ||
+        Boolean(ticket.offline) ||
+        Boolean(ticket.offline_client_check_uuid) ||
+        isHotelLocalFirstCheckout({ payments, folioId: folio_id, check: ticket });
 
       if (useLocalFirst) {
-        await ensureTableAssigned(check);
-        let active = await ensureGuestAssigned(check);
+        await ensureTableAssigned(ticket);
+        let active = await ensureGuestAssigned(ticket);
         const cashAmount = (payments ?? []).reduce(
           (sum, p) => sum + Number(p.amount ?? 0),
           0,
@@ -1104,18 +1432,20 @@ export function HotelBarPosScreen() {
           printWindow,
         });
         if (paid) setLastReceiptCheck(paid);
-        notifySuccess(
-          `Paid ${paid?.check_number ?? ""} — ${formatHotelMoney(paid?.total)}`,
-        );
         setPayOpen(false);
-        setCheck(null);
+        commitCheck(null);
         setSelectedLineId(null);
+        setOrderComplete({
+          checkNumber: paid?.check_number ?? "",
+          total: paid?.total,
+          message: `Paid ${paid?.check_number ?? ""} — ${formatHotelMoney(paid?.total)}`,
+        });
         void flushOutboxAfterSale();
         return;
       }
 
-      await ensureTableAssigned(check);
-      let active = await ensureGuestAssigned(check);
+      await ensureTableAssigned(ticket);
+      let active = await ensureGuestAssigned(ticket);
       const res = await settleHotelCheck(active.id, {
         payments,
         floor_table_id: selectedTableId ? Number(selectedTableId) : undefined,
@@ -1141,13 +1471,18 @@ export function HotelBarPosScreen() {
         const roomPaid = (payments ?? []).some(
           (p) => String(p.method_code ?? "").toUpperCase() === "ROOM",
         );
-        notifySuccess(
-          roomPaid && roomLabel
-            ? `Charged to ${roomLabel} · ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)} (receipt printed)`
-            : `Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`,
-        );
         setPayOpen(false);
-        await startFreshCheck();
+        commitCheck(null);
+        setSelectedLineId(null);
+        resetRoomChargeSelection();
+        setOrderComplete({
+          checkNumber: next?.check_number ?? "",
+          total: next?.total,
+          message:
+            roomPaid && roomLabel
+              ? `Charged to ${roomLabel} · ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`
+              : `Paid ${next?.check_number ?? ""} — ${formatHotelMoney(next?.total)}`,
+        });
         if (menuGroup === "rooms") {
           void loadCatalog(debouncedSearch, { offset: 0, append: false });
         }
@@ -1164,7 +1499,7 @@ export function HotelBarPosScreen() {
         notifySuccess(
           `Partial payment on ${next?.check_number ?? ""} — balance ${formatHotelMoney(next?.balance_due)}`,
         );
-        setCheck(next);
+        commitCheck(next);
         setPayOpen(false);
       }
       void loadCatalog(debouncedSearch, { offset: 0, append: false });
@@ -1181,15 +1516,26 @@ export function HotelBarPosScreen() {
     }
   }
 
+  async function handleOrderCompleteOk() {
+    setOrderComplete(null);
+    try {
+      await startFreshCheck();
+    } catch (e) {
+      notifyError(dedupeError(e));
+    }
+  }
+
   async function handleReprintLast() {
     if (!lastReceiptCheck || busy) return;
     const status = String(lastReceiptCheck.status ?? "").toLowerCase();
     const title =
-      status === "paid" || status === "settled"
-        ? "Paid receipt"
-        : status === "partial" || status === "partially_paid"
-          ? "Partial payment"
-          : "Unpaid order";
+      status === "void"
+        ? "VOID ORDER"
+        : status === "paid" || status === "settled"
+          ? "Paid receipt"
+          : status === "partial" || status === "partially_paid"
+            ? "Partial payment"
+            : "Unpaid order";
     await printCheckReceiptSafe(lastReceiptCheck, {
       title,
       organization,
@@ -1217,28 +1563,33 @@ export function HotelBarPosScreen() {
   }
 
   async function bumpQty(line, delta) {
-    if (!check?.id || !line?.id || busy) return;
+    await waitForPendingLineAdds();
+    const check = checkRef.current;
+    const currentLine =
+      check?.lines?.find((item) => String(item.id) === String(line.id)) ??
+      check?.lines?.find((item) => String(item.product_code) === String(line.product_code));
+    if (!check?.id || !currentLine?.id || busy) return;
     if (sellingLocked) {
       notifyError("Please check your internet connection");
       return;
     }
-    const nextQty = Number(line.qty) + delta;
+    const nextQty = Number(currentLine.qty) + delta;
     setBusy(true);
     try {
       if (isLocalHotelCheckId(check.id) || check.offline) {
         const next =
           nextQty <= 0
-            ? await removeLocalHotelCheckLine(check, line.id)
-            : await updateLocalHotelCheckLineQty(check, line.id, nextQty);
-        setCheck(next);
+            ? await removeLocalHotelCheckLine(check, currentLine.id)
+            : await updateLocalHotelCheckLineQty(check, currentLine.id, nextQty);
+        commitCheck(next);
         if (nextQty <= 0) setSelectedLineId(null);
         return;
       }
       const res =
         nextQty <= 0
-          ? await removeHotelCheckLine(check.id, line.id)
-          : await updateHotelCheckLineQty(check.id, line.id, nextQty);
-      setCheck(res?.check ?? null);
+          ? await removeHotelCheckLine(check.id, currentLine.id)
+          : await updateHotelCheckLineQty(check.id, currentLine.id, nextQty);
+      commitCheck(res?.check ?? null);
       if (nextQty <= 0) setSelectedLineId(null);
     } catch (e) {
       notifyError(dedupeError(e));
@@ -1249,6 +1600,8 @@ export function HotelBarPosScreen() {
 
   const lines = check?.lines ?? [];
   const hasLines = lines.length > 0;
+  const voidTarget = resolveHotelPosVoidTarget(check, lastReceiptCheck);
+  const canVoidCheck = Boolean(voidTarget);
   const menuChannel = menuOutlet?.menu_channel ?? null;
   const posTitle = menuChannel === "bar" ? "Bar POS" : "Restaurant POS";
   const outletAssigned = Boolean(assignedOutletId);
@@ -1298,7 +1651,7 @@ export function HotelBarPosScreen() {
             </p>
             {pendingSync > 0 ? (
               <p className="mt-3 text-xs font-medium text-amber-700">
-                {pendingSync} check(s) waiting to sync
+                {pendingSync} order(s) waiting to sync
               </p>
             ) : null}
           </div>
@@ -1381,11 +1734,11 @@ export function HotelBarPosScreen() {
                 title={
                   !hasLines
                     ? "Add items before holding"
-                    : !unpaidEnabled
-                      ? "Unpaid / hold is not enabled for this organization"
-                      : "Hold this check and clear the ticket"
+                    : Number(check?.amount_paid) > 0
+                      ? "Collect the remaining balance instead of holding"
+                      : "Hold this order and clear the ticket"
                 }
-                disabled={busy || sellingLocked || !hasLines || !unpaidEnabled}
+                disabled={busy || sellingLocked || !hasLines || Number(check?.amount_paid) > 0}
                 onClick={() => void handleHold()}
                 className="hotel-pos-chip hotel-pos-chip-action shrink-0 disabled:opacity-40"
               >
@@ -1393,7 +1746,7 @@ export function HotelBarPosScreen() {
               </button>
               <button
                 type="button"
-                title="View held and unpaid checks"
+                title="View held and unpaid orders"
                 disabled={busy || sellingLocked}
                 onClick={() => void openCollectibleList()}
                 className="hotel-pos-chip hotel-pos-chip-action shrink-0 disabled:opacity-40"
@@ -1453,73 +1806,16 @@ export function HotelBarPosScreen() {
             ) : (
               <>
                 <div className="grid gap-3" style={gridStyle}>
-                  {products.map((product) => {
-                    const hasImage = Boolean(product.has_image || product.image_url);
-                    const isRoom = Boolean(product.is_room || menuGroup === "rooms");
-                    return (
-                      <button
-                        key={product.product_code || product.id}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void handleTapProduct(product)}
-                        className="hotel-pos-tile group relative flex min-h-[7.5rem] flex-col overflow-hidden text-left transition duration-150 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50"
-                      >
-                        <div className="hotel-pos-tile-shine pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition group-hover:opacity-100" />
-                        {hasImage ? (
-                          <div className="hotel-pos-tile-media relative aspect-[4/3] w-full overflow-hidden bg-[var(--theme-surface-muted)]">
-                            <HotelPosProductImage
-                              productCode={product.product_code}
-                              offlineMode={offlineMode}
-                              alt={product.product_name}
-                              className="h-full w-full object-cover"
-                              placeholderClassName="flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-400"
-                            />
-                            {product.is_popular ? (
-                              <span className="hotel-pos-top-badge absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
-                                Top
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : isRoom ? (
-                          <div className="hotel-pos-tile-media relative flex aspect-[4/3] w-full items-center justify-center bg-[var(--theme-surface-muted)]">
-                            <span className="theme-heading text-3xl font-bold tabular-nums">
-                              {product.room_number}
-                            </span>
-                          </div>
-                        ) : null}
-                        <div className="flex min-h-0 flex-1 flex-col justify-between gap-2 p-3.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="theme-heading line-clamp-2 text-[15px] font-semibold leading-snug">
-                              {isRoom
-                                ? `Room ${product.room_number}`
-                                : product.product_name}
-                            </span>
-                            {!hasImage && !isRoom && product.is_popular ? (
-                              <span className="hotel-pos-top-badge shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide">
-                                Top
-                              </span>
-                            ) : null}
-                          </div>
-                          {isRoom && product.room_type?.name ? (
-                            <p className="theme-subtext text-[11px]">{product.room_type.name}</p>
-                          ) : null}
-                          <div className="flex items-end justify-between gap-2">
-                            <p className="text-base font-bold tabular-nums text-[var(--theme-accent-text)]">
-                              {formatHotelMoney(product.unit_price ?? product.nightly_rate)}
-                              {isRoom ? (
-                                <span className="theme-subtext ml-1 text-[10px] font-semibold uppercase">
-                                  / night
-                                </span>
-                              ) : null}
-                            </p>
-                            <span className="hotel-pos-add-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide opacity-80 group-hover:opacity-100">
-                              {isRoom ? "Book" : "Add"}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                  {products.map((product) => (
+                    <HotelPosCatalogTile
+                      key={product.product_code || product.id}
+                      product={product}
+                      isRoom={Boolean(product.is_room || menuGroup === "rooms")}
+                      disabled={busy}
+                      offlineMode={offlineMode}
+                      onTap={onCatalogTap}
+                    />
+                  ))}
                 </div>
                 <div ref={loadMoreSentinelRef} className="h-8 w-full" aria-hidden />
                 {catalogLoadingMore ? (
@@ -1554,9 +1850,9 @@ export function HotelBarPosScreen() {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--theme-accent-text)]">
-                  Check
+                  Order no
                 </p>
-                <p className="theme-heading mt-0.5 font-mono text-lg font-semibold">
+                <p className="theme-heading mt-0.5 font-mono text-2xl font-bold tracking-tight">
                   {check?.check_number ?? "New"}
                 </p>
               </div>
@@ -1681,15 +1977,11 @@ export function HotelBarPosScreen() {
                           selected ? "hotel-pos-line-selected" : ""
                         }`}
                       >
-                        {line.image_url ? (
+                        {line.product_code || line.image_url ? (
                           <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--theme-surface-muted)] ring-1 ring-[var(--theme-border)]">
-                            <EntityPhotoDisplay
-                              fileUrl={
-                                line.product_code
-                                  ? productPhotoFileUrl(line.product_code)
-                                  : undefined
-                              }
-                              imageUrl={line.image_url}
+                            <HotelPosProductImage
+                              productCode={line.product_code}
+                              offlineMode={offlineMode}
                               alt={line.description}
                               className="h-full w-full object-cover"
                               placeholderClassName="flex h-full items-center justify-center text-[9px] text-slate-400"
@@ -1798,13 +2090,13 @@ export function HotelBarPosScreen() {
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  disabled={busy || !hasLines || !unpaidEnabled || Number(check?.amount_paid) > 0}
+                  disabled={busy || !hasLines || Number(check?.amount_paid) > 0}
                   onClick={() => void handleHold()}
                   className="hotel-pos-secondary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
                   title={
-                    !unpaidEnabled
-                      ? "Hold / unpaid is not enabled"
-                      : "Hold this check and clear the ticket"
+                    Number(check?.amount_paid) > 0
+                      ? "Collect the remaining balance instead of holding"
+                      : "Hold this order and clear the ticket"
                   }
                 >
                   Hold
@@ -1822,7 +2114,7 @@ export function HotelBarPosScreen() {
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  disabled={busy || !hasLines || !unpaidEnabled}
+                  disabled={busy || !hasLines || Number(check?.amount_paid) > 0}
                   onClick={() => void handleHold()}
                   className="hotel-pos-secondary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
                 >
@@ -1845,16 +2137,11 @@ export function HotelBarPosScreen() {
             )}
             <button
               type="button"
-              disabled={
-                busy ||
-                !check?.id ||
-                Number(check?.amount_paid) > 0 ||
-                !["open", "unpaid", "held"].includes(String(check?.status))
-              }
+              disabled={busy || !canVoidCheck}
               onClick={() => void handleVoid()}
               className="hotel-pos-danger-btn mt-3 w-full rounded-xl py-3.5 text-sm font-semibold uppercase tracking-wide disabled:opacity-40"
             >
-              Void check
+              Void order
             </button>
           </div>
         </div>
@@ -2021,6 +2308,8 @@ export function HotelBarPosScreen() {
 
       <HotelPosPaymentPanel
         open={payOpen}
+        completeOrder={orderComplete}
+        onCompleteOrderOk={() => void handleOrderCompleteOk()}
         onClose={() => {
           if (!busy) setPayOpen(false);
         }}

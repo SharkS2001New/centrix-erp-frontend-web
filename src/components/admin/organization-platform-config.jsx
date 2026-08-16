@@ -1412,7 +1412,7 @@ function OrganizationHotelServicesPanel({
 
       <PlatformFormSection
         title="Payment reference fields"
-        description="M-Pesa code and cheque number stay hidden on Hotel POS unless you enable them here. Which tenders appear is still controlled under Payment methods."
+        description="M-Pesa code and cheque number stay hidden on Hotel POS unless you enable them here. Cash, M-Pesa, Equity, KCB, Cheque, and other tenders follow Sales payment fields, plus any extra methods under Payment methods."
       >
         <div className="space-y-2">
           <label className="flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2">

@@ -74,7 +74,7 @@ function HotelPosMethodBlock({
 }
 
 /**
- * Touch-first Collect payment for Hotel POS — same methods as retail POS payment config,
+ * Touch-first Collect payment for Hotel POS — tenders from sales settings + Admin payment methods,
  * with Full / Balance / Keypad taps for amounts (split-payment aware).
  */
 export function HotelPosPaymentPanel({
@@ -93,20 +93,15 @@ export function HotelPosPaymentPanel({
   title = "Collect payment",
   footerHint = null,
   secondaryAction = null,
+  completeOrder = null,
+  onCompleteOrderOk,
 }) {
   const cfg = paymentConfig ?? {};
+  const tenders = Array.isArray(cfg.tenders) ? cfg.tenders : [];
   const total = round2(billTotal);
 
-  const [cash, setCash] = useState(0);
-  const [mpesa, setMpesa] = useState(0);
+  const [amounts, setAmounts] = useState({});
   const [mpesaCode, setMpesaCode] = useState("");
-  const [equity, setEquity] = useState(0);
-  const [kcb, setKcb] = useState(0);
-  const [otherBank, setOtherBank] = useState(0);
-  const [bankType, setBankType] = useState("");
-  const [bankAmount, setBankAmount] = useState(0);
-  const [bankRef, setBankRef] = useState("");
-  const [cheque, setCheque] = useState(0);
   const [chequeNo, setChequeNo] = useState("");
   const [roomCharge, setRoomCharge] = useState(0);
   const [folioId, setFolioId] = useState("");
@@ -115,21 +110,11 @@ export function HotelPosPaymentPanel({
 
   useEffect(() => {
     if (!open) return;
-    setCash(0);
-    setMpesa(0);
+    setAmounts({});
     setMpesaCode("");
-    setEquity(0);
-    setKcb(0);
-    setOtherBank(0);
-    setBankType("");
-    setBankAmount(0);
-    setBankRef("");
-    setCheque(0);
     setChequeNo("");
     setRoomCharge(preferRoomCharge && roomChargeEnabled && total > 0 ? total : 0);
-    setFolioId(
-      preferRoomCharge && initialFolioId ? String(initialFolioId) : "",
-    );
+    setFolioId(preferRoomCharge && initialFolioId ? String(initialFolioId) : "");
     setLocalError(null);
     setKeypad(null);
   }, [open, total, preferRoomCharge, roomChargeEnabled, initialFolioId]);
@@ -138,94 +123,48 @@ export function HotelPosPaymentPanel({
     if (error) setLocalError(error);
   }, [error]);
 
+  useEffect(() => {
+    if (!completeOrder) return undefined;
+    function onKey(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onCompleteOrderOk?.();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [completeOrder, onCompleteOrderOk]);
+
+  const tenderCodes = useMemo(() => tenders.map((row) => row.code), [tenders]);
+
   const amountPaid = useMemo(() => {
-    let bank = 0;
-    if (cfg.useBankSelect) bank = bankAmount;
-    else bank = equity + kcb + otherBank;
-    return round2(
-      (cfg.showCash !== false ? cash : 0) +
-        (cfg.enableMpesaAmount ? mpesa : 0) +
-        bank +
-        (cfg.showCheque ? cheque : 0) +
-        (roomChargeEnabled ? roomCharge : 0),
-    );
-  }, [
-    cash,
-    mpesa,
-    equity,
-    kcb,
-    otherBank,
-    bankAmount,
-    cheque,
-    roomCharge,
-    roomChargeEnabled,
-    cfg.useBankSelect,
-    cfg.showCash,
-    cfg.enableMpesaAmount,
-    cfg.showCheque,
-  ]);
+    const fromTenders = tenderCodes.reduce((sum, code) => sum + n(amounts[code]), 0);
+    return round2(fromTenders + (roomChargeEnabled ? roomCharge : 0));
+  }, [amounts, tenderCodes, roomCharge, roomChargeEnabled]);
 
   const balanceDue = round2(Math.max(0, total - amountPaid));
   const changeDue = round2(Math.max(0, amountPaid - total));
 
   function amountExcluding(method) {
-    const parts = {
-      cash: cfg.showCash !== false ? cash : 0,
-      mpesa: cfg.enableMpesaAmount ? mpesa : 0,
-      equity: !cfg.useBankSelect && cfg.showEquityBank ? equity : 0,
-      kcb: !cfg.useBankSelect && cfg.showKcbBank ? kcb : 0,
-      other: !cfg.useBankSelect && cfg.showOtherBank ? otherBank : 0,
-      bank: cfg.useBankSelect && cfg.showBankAmount ? bankAmount : 0,
-      cheque: cfg.showCheque ? cheque : 0,
-      room: roomChargeEnabled ? roomCharge : 0,
-    };
-    const sum = Object.entries(parts)
-      .filter(([key]) => key !== method)
-      .reduce((acc, [, val]) => acc + n(val), 0);
-    return round2(Math.max(0, total - sum));
+    const fromTenders = tenderCodes.reduce(
+      (sum, code) => sum + (code === method ? 0 : n(amounts[code])),
+      0,
+    );
+    const room = roomChargeEnabled && method !== "ROOM" ? roomCharge : 0;
+    return round2(Math.max(0, total - fromTenders - room));
   }
 
   function setMethodAmount(method, value) {
     const v = round2(value);
-    switch (method) {
-      case "cash":
-        setCash(v);
-        break;
-      case "mpesa":
-        setMpesa(v);
-        break;
-      case "equity":
-        setEquity(v);
-        break;
-      case "kcb":
-        setKcb(v);
-        break;
-      case "other":
-        setOtherBank(v);
-        break;
-      case "bank":
-        setBankAmount(v);
-        break;
-      case "cheque":
-        setCheque(v);
-        break;
-      case "room":
-        setRoomCharge(v);
-        break;
-      default:
-        break;
+    if (method === "ROOM") {
+      setRoomCharge(v);
+      return;
     }
+    setAmounts((prev) => ({ ...prev, [method]: v }));
   }
 
   function payFull(method) {
-    // Full bill on this method; clear other tenders.
-    setCash(0);
-    setMpesa(0);
-    setEquity(0);
-    setKcb(0);
-    setOtherBank(0);
-    setBankAmount(0);
-    setCheque(0);
+    setAmounts({});
     setRoomCharge(0);
     setMethodAmount(method, total);
   }
@@ -235,16 +174,7 @@ export function HotelPosPaymentPanel({
   }
 
   function openKeypad(method, title) {
-    const current = {
-      cash,
-      mpesa,
-      equity,
-      kcb,
-      other: otherBank,
-      bank: bankAmount,
-      cheque,
-      room: roomCharge,
-    }[method];
+    const current = method === "ROOM" ? roomCharge : n(amounts[method]);
     setKeypad({ method, title, value: String(current || 0) });
   }
 
@@ -262,50 +192,25 @@ export function HotelPosPaymentPanel({
       setLocalError("Payment total is less than the bill. Use Pay balance on a method, or enter more.");
       return;
     }
-    if (cfg.enableMpesaAmount && cfg.enableMpesaCode && mpesa > 0 && !mpesaCode.trim()) {
+    const mpesaTender = tenders.find((row) => row.kind === "mpesa");
+    if (mpesaTender && cfg.enableMpesaCode && n(amounts[mpesaTender.code]) > 0 && !mpesaCode.trim()) {
       setLocalError("Enter the M-Pesa transaction code.");
       return;
     }
-    if (cfg.useBankSelect && bankAmount > 0 && !bankType) {
-      setLocalError("Select a bank.");
-      return;
-    }
-    if (cfg.showCheque && cfg.showChequeNumber && cheque > 0 && !chequeNo.trim()) {
+    const chequeTender = tenders.find((row) => row.kind === "cheque");
+    if (chequeTender && cfg.showChequeNumber && n(amounts[chequeTender.code]) > 0 && !chequeNo.trim()) {
       setLocalError("Enter the cheque number.");
       return;
     }
 
     const payments = [];
-    if (cfg.showCash !== false && cash > 0) payments.push({ method_code: "CASH", amount: cash });
-    if (cfg.enableMpesaAmount && mpesa > 0) {
-      payments.push({
-        method_code: "MPESA",
-        amount: mpesa,
-        reference: mpesaCode.trim() || null,
-      });
-    }
-    if (cfg.useBankSelect && bankAmount > 0) {
-      payments.push({
-        method_code: bankType || "BANK",
-        amount: bankAmount,
-        reference: bankRef.trim() || null,
-      });
-    } else {
-      if (cfg.showEquityBank && equity > 0) payments.push({ method_code: "EQUITY", amount: equity });
-      if (cfg.showKcbBank && kcb > 0) payments.push({ method_code: "KCB", amount: kcb });
-      if (cfg.showOtherBank && otherBank > 0) {
-        payments.push({
-          method_code: cfg.otherBankMethodCode || "OTHER",
-          amount: otherBank,
-        });
-      }
-    }
-    if (cfg.showCheque && cheque > 0) {
-      payments.push({
-        method_code: "CHEQUE",
-        amount: cheque,
-        reference: chequeNo.trim() || null,
-      });
+    for (const tender of tenders) {
+      const amount = round2(amounts[tender.code]);
+      if (amount <= 0) continue;
+      const payment = { method_code: tender.code, amount };
+      if (tender.kind === "mpesa" && mpesaCode.trim()) payment.reference = mpesaCode.trim();
+      if (tender.kind === "cheque" && chequeNo.trim()) payment.reference = chequeNo.trim();
+      payments.push(payment);
     }
     if (roomChargeEnabled && roomCharge > 0) {
       payments.push({ method_code: "ROOM", amount: roomCharge });
@@ -323,7 +228,7 @@ export function HotelPosPaymentPanel({
     }
   }
 
-  if (!open) return null;
+  if (!open && !completeOrder) return null;
 
   const methodBlockProps = {
     saving,
@@ -333,24 +238,93 @@ export function HotelPosPaymentPanel({
     onOpenKeypad: openKeypad,
   };
 
+  if (completeOrder) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/45 p-3 sm:items-center">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="hotel-pos-order-complete-title"
+          className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] shadow-2xl"
+        >
+          <div className="border-b border-[var(--theme-border)] px-4 py-3">
+            <h2
+              id="hotel-pos-order-complete-title"
+              className="text-center text-sm font-bold uppercase tracking-wide"
+            >
+              Order complete
+            </h2>
+          </div>
+          <div className="space-y-2 px-4 py-5 text-center">
+            {completeOrder.checkNumber ? (
+              <p className="text-base">
+                Order no{" "}
+                <strong className="font-mono text-2xl tracking-tight">{completeOrder.checkNumber}</strong>
+                {completeOrder.total != null ? (
+                  <span className="mt-1 block text-lg font-semibold tabular-nums">
+                    {formatHotelMoney(completeOrder.total)}
+                  </span>
+                ) : null}
+              </p>
+            ) : (
+              <p className="text-sm">Payment recorded.</p>
+            )}
+            {completeOrder.message ? (
+              <p className="text-sm text-emerald-700 dark:text-emerald-400">{completeOrder.message}</p>
+            ) : null}
+            <p className="text-sm font-medium">Press OK to continue to the next order.</p>
+          </div>
+          <div className="border-t border-[var(--theme-border)] p-3">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => onCompleteOrderOk?.()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onCompleteOrderOk?.();
+                }
+              }}
+              className="theme-primary-btn w-full rounded-xl py-3.5 text-xs font-bold uppercase"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/45 p-3 sm:items-center">
         <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] shadow-2xl">
           <div className="shrink-0 border-b border-[var(--theme-border)] px-4 py-3">
             <h2 className="text-center text-sm font-bold uppercase tracking-wide">{title}</h2>
-            <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="rounded-xl bg-[var(--theme-page-bg)] px-2 py-2">
-                <dt className="theme-subtext">Bill</dt>
-                <dd className="text-sm font-bold">{formatHotelMoney(total)}</dd>
+            <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-2xl bg-[var(--theme-page-bg)] px-2 py-4 sm:px-3 sm:py-5">
+                <dt className="text-xs font-bold uppercase tracking-wide theme-subtext sm:text-sm">Bill</dt>
+                <dd className="mt-1.5 text-3xl font-extrabold tabular-nums leading-none sm:text-4xl">
+                  {formatHotelMoney(total)}
+                </dd>
               </div>
-              <div className="rounded-xl bg-[var(--theme-page-bg)] px-2 py-2">
-                <dt className="theme-subtext">Paid</dt>
-                <dd className="text-sm font-bold">{formatHotelMoney(amountPaid)}</dd>
+              <div className="rounded-2xl bg-[var(--theme-page-bg)] px-2 py-4 sm:px-3 sm:py-5">
+                <dt className="text-xs font-bold uppercase tracking-wide theme-subtext sm:text-sm">Paid</dt>
+                <dd className="mt-1.5 text-3xl font-extrabold tabular-nums leading-none text-emerald-700 sm:text-4xl dark:text-emerald-400">
+                  {formatHotelMoney(amountPaid)}
+                </dd>
               </div>
-              <div className="rounded-xl bg-[var(--theme-page-bg)] px-2 py-2">
-                <dt className="theme-subtext">{changeDue > 0 ? "Change" : "Due"}</dt>
-                <dd className="text-sm font-bold">
+              <div className="rounded-2xl bg-[var(--theme-page-bg)] px-2 py-4 sm:px-3 sm:py-5">
+                <dt className="text-xs font-bold uppercase tracking-wide theme-subtext sm:text-sm">
+                  {changeDue > 0 ? "Change" : "Due"}
+                </dt>
+                <dd
+                  className={`mt-1.5 text-3xl font-extrabold tabular-nums leading-none sm:text-4xl ${
+                    changeDue > 0
+                      ? "text-emerald-700 dark:text-emerald-400"
+                      : "text-amber-700 dark:text-amber-400"
+                  }`}
+                >
                   {formatHotelMoney(changeDue > 0 ? changeDue : balanceDue)}
                 </dd>
               </div>
@@ -359,104 +333,23 @@ export function HotelPosPaymentPanel({
           </div>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-            {cfg.showCash !== false ? (
+            {tenders.map((tender) => (
               <HotelPosMethodBlock
+                key={tender.code}
                 {...methodBlockProps}
-                method="cash"
-                label="Cash"
-                value={cash}
-                balanceForMethod={amountExcluding("cash")}
-              />
-            ) : null}
-
-            {cfg.enableMpesaAmount ? (
-              <HotelPosMethodBlock
-                {...methodBlockProps}
-                method="mpesa"
-                label="M-Pesa"
-                value={mpesa}
-                balanceForMethod={amountExcluding("mpesa")}
+                method={tender.code}
+                label={tender.label}
+                value={n(amounts[tender.code])}
+                balanceForMethod={amountExcluding(tender.code)}
                 extra={
-                  cfg.enableMpesaCode ? (
+                  tender.kind === "mpesa" && cfg.enableMpesaCode ? (
                     <input
                       className="theme-input mt-2 w-full rounded-xl px-3 py-2 text-sm"
                       placeholder="M-Pesa code"
                       value={mpesaCode}
                       onChange={(e) => setMpesaCode(e.target.value)}
                     />
-                  ) : null
-                }
-              />
-            ) : null}
-
-            {cfg.useBankSelect && cfg.bankOptions?.length > 0 ? (
-              <div className="space-y-2">
-                <SearchableSelect
-                  className="theme-input w-full rounded-xl px-3 py-2.5 text-sm"
-                  value={bankType}
-                  onChange={setBankType}
-                  options={cfg.bankOptions.map((o) => ({
-                    value: o.value,
-                    label: o.label,
-                  }))}
-                />
-                {cfg.showBankAmount ? (
-                  <HotelPosMethodBlock
-                    {...methodBlockProps}
-                    method="bank"
-                    label="Bank"
-                    value={bankAmount}
-                    balanceForMethod={amountExcluding("bank")}
-                    extra={
-                      <input
-                        className="theme-input mt-2 w-full rounded-xl px-3 py-2 text-sm"
-                        placeholder="Bank reference"
-                        value={bankRef}
-                        onChange={(e) => setBankRef(e.target.value)}
-                      />
-                    }
-                  />
-                ) : null}
-              </div>
-            ) : null}
-
-            {!cfg.useBankSelect && cfg.showEquityBank ? (
-              <HotelPosMethodBlock
-                {...methodBlockProps}
-                method="equity"
-                label="Equity Bank"
-                value={equity}
-                balanceForMethod={amountExcluding("equity")}
-              />
-            ) : null}
-            {!cfg.useBankSelect && cfg.showKcbBank ? (
-              <HotelPosMethodBlock
-                {...methodBlockProps}
-                method="kcb"
-                label="KCB"
-                value={kcb}
-                balanceForMethod={amountExcluding("kcb")}
-              />
-            ) : null}
-            {!cfg.useBankSelect && cfg.showOtherBank ? (
-              <HotelPosMethodBlock
-                {...methodBlockProps}
-                method="other"
-                label={cfg.otherBankLabel || "Other bank"}
-                value={otherBank}
-                balanceForMethod={amountExcluding("other")}
-              />
-            ) : null}
-
-            {cfg.showCheque ? (
-              <HotelPosMethodBlock
-                {...methodBlockProps}
-                method="cheque"
-                label="Cheque"
-                value={cheque}
-                balanceForMethod={amountExcluding("cheque")}
-                extra={
-                  cfg.showChequeNumber ? (
+                  ) : tender.kind === "cheque" && cfg.showChequeNumber ? (
                     <input
                       className="theme-input mt-2 w-full rounded-xl px-3 py-2 text-sm"
                       placeholder="Cheque number"
@@ -466,15 +359,15 @@ export function HotelPosPaymentPanel({
                   ) : null
                 }
               />
-            ) : null}
+            ))}
 
             {roomChargeEnabled ? (
               <HotelPosMethodBlock
                 {...methodBlockProps}
-                method="room"
+                method="ROOM"
                 label="Room charge"
                 value={roomCharge}
-                balanceForMethod={amountExcluding("room")}
+                balanceForMethod={amountExcluding("ROOM")}
                 extra={
                   <SearchableSelect
                     className="theme-input mt-2 w-full rounded-xl px-3 py-2 text-sm"
@@ -499,16 +392,10 @@ export function HotelPosPaymentPanel({
               </p>
             ) : null}
 
-            {cfg.showCash === false &&
-            !cfg.enableMpesaAmount &&
-            !cfg.showEquityBank &&
-            !cfg.showKcbBank &&
-            !cfg.showOtherBank &&
-            !cfg.showCheque &&
-            !roomChargeEnabled ? (
+            {tenders.length === 0 && !roomChargeEnabled ? (
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
-                No payment methods are enabled for this organization. Ask a platform admin to activate
-                Cash, M-Pesa, or other methods under Payment methods.
+                No payment methods are enabled for this organization. Ask an admin to activate Cash,
+                M-Pesa, Equity, or other methods under Sales settings or Payment methods.
               </p>
             ) : null}
           </div>

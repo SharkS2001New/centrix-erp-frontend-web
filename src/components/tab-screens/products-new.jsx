@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { apiRequest, ApiError, uploadProductImage } from "@/lib/api";
+import { apiRequest, ApiError, importProductImageFromUrl, uploadProductImage } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
@@ -29,6 +29,7 @@ import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { isHttpImageUrl } from "@/components/products/product-image-field";
 
 export function ProductsNewScreen() {
   const { capabilities, user } = useAuth();
@@ -55,6 +56,8 @@ export function ProductsNewScreen() {
   const [form, setForm] = useState(EMPTY_PRODUCT_FORM);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
+  const [imageSource, setImageSource] = useState("upload");
+  const [imageUrlDraft, setImageUrlDraft] = useState("");
   const [subcategoryModalOpen, setSubcategoryModalOpen] = useState(false);
   const [generatingSku, setGeneratingSku] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,11 +106,42 @@ export function ProductsNewScreen() {
 
   const onImageSelect = useCallback((file) => {
     setIsDirty(true);
+    setImageSource("upload");
+    setImageUrlDraft("");
     setImagePreview((prev) => {
       if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
       return file ? URL.createObjectURL(file) : null;
     });
     setImageFile(file || null);
+  }, []);
+
+  const onImageSourceChange = useCallback((next) => {
+    setIsDirty(true);
+    setImageSource(next);
+    if (next === "url") {
+      setImageFile(null);
+      setImagePreview((prev) => {
+        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return null;
+      });
+    }
+  }, []);
+
+  const onImageUrlChange = useCallback((value) => {
+    setIsDirty(true);
+    setImageSource("url");
+    setImageFile(null);
+    setImageUrlDraft(value);
+  }, []);
+
+  const onImageRemove = useCallback(() => {
+    setIsDirty(true);
+    setImageFile(null);
+    setImageUrlDraft("");
+    setImagePreview((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return null;
+    });
   }, []);
 
   const onGenerateSku = useCallback(async () => {
@@ -169,6 +203,10 @@ export function ProductsNewScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
+    if (imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
+      setFormError("Enter a public http or https image URL.");
+      return;
+    }
 
     setSaving(true);
     setFormError(null);
@@ -183,7 +221,9 @@ export function ProductsNewScreen() {
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
-      if (imageFile) {
+      if (imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
+        await importProductImageFromUrl(code, imageUrlDraft);
+      } else if (imageFile) {
         await uploadProductImage(code, imageFile);
       }
       await saveRetailPackageSetting(form, code, { hotelCatalogue });
@@ -266,7 +306,12 @@ export function ProductsNewScreen() {
               vats={vats}
               globalReorderLevel={globalReorderLevel}
               imagePreview={imagePreview}
+              imageSource={imageSource}
+              imageUrl={imageUrlDraft}
+              onImageSourceChange={onImageSourceChange}
               onImageSelect={onImageSelect}
+              onImageUrlChange={onImageUrlChange}
+              onImageRemove={onImageRemove}
               onOpenSubcategoryModal={openSubcategoryModal}
               generatingSku={generatingSku}
               onGenerateSku={onGenerateSku}

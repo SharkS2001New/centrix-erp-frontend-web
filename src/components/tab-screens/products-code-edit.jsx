@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { apiRequest, ApiError, uploadProductImage } from "@/lib/api";
+import { apiRequest, ApiError, deleteProductImage, importProductImageFromUrl, uploadProductImage } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
@@ -31,6 +31,7 @@ import { productsCatalogHref } from "@/lib/products-list-state";
 import { formDraftKey } from "@/stores/form-drafts";
 import { isFormValuesEqual, useFormDraft } from "@/hooks/use-form-draft";
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { isHttpImageUrl } from "@/components/products/product-image-field";
 import { productPhotoFileUrl } from "@/components/media/entity-photo-display";
 
 export function ProductsCodeEditScreen() {
@@ -61,6 +62,10 @@ export function ProductsCodeEditScreen() {
   const [serverForm, setServerForm] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [imageFile, setImageFile] = useState(null);
+  const [imageSource, setImageSource] = useState("upload");
+  const [imageUrlDraft, setImageUrlDraft] = useState("");
+  const [hadStoredImage, setHadStoredImage] = useState(false);
+  const [imageRemoved, setImageRemoved] = useState(false);
   const [subcategoryModalOpen, setSubcategoryModalOpen] = useState(false);
   const [productLoading, setProductLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -116,7 +121,12 @@ export function ProductsCodeEditScreen() {
       setServerForm(next);
       setForm(next);
       setImageFile(null);
-      if (product.image_path || product.image_url) {
+      setImageUrlDraft("");
+      setImageSource("upload");
+      setImageRemoved(false);
+      const hasImage = Boolean(product.image_path || product.image_url);
+      setHadStoredImage(hasImage);
+      if (hasImage) {
         setImagePreview(productPhotoFileUrl(productCode));
       } else {
         setImagePreview(null);
@@ -162,11 +172,45 @@ export function ProductsCodeEditScreen() {
 
   const onImageSelect = useCallback((file) => {
     setIsDirty(true);
+    setImageRemoved(false);
+    setImageSource("upload");
+    setImageUrlDraft("");
     setImagePreview((prev) => {
       if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
       return file ? URL.createObjectURL(file) : null;
     });
     setImageFile(file || null);
+  }, []);
+
+  const onImageSourceChange = useCallback((next) => {
+    setIsDirty(true);
+    setImageSource(next);
+    if (next === "url") {
+      setImageFile(null);
+      setImagePreview((prev) => {
+        if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return null;
+      });
+    }
+  }, []);
+
+  const onImageUrlChange = useCallback((value) => {
+    setIsDirty(true);
+    setImageRemoved(false);
+    setImageSource("url");
+    setImageFile(null);
+    setImageUrlDraft(value);
+  }, []);
+
+  const onImageRemove = useCallback(() => {
+    setIsDirty(true);
+    setImageRemoved(true);
+    setImageFile(null);
+    setImageUrlDraft("");
+    setImagePreview((prev) => {
+      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return null;
+    });
   }, []);
 
   const handleSubcategoryCreated = useCallback(
@@ -220,6 +264,10 @@ export function ProductsCodeEditScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
+    if (imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
+      setFormError("Enter a public http or https image URL.");
+      return;
+    }
 
     setSaving(true);
     setFormError(null);
@@ -230,8 +278,12 @@ export function ProductsCodeEditScreen() {
         method: "PUT",
         body,
       });
-      if (imageFile) {
+      if (imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
+        await importProductImageFromUrl(productCode, imageUrlDraft);
+      } else if (imageFile) {
         await uploadProductImage(productCode, imageFile);
+      } else if (imageRemoved && hadStoredImage) {
+        await deleteProductImage(productCode);
       }
       await saveRetailPackageSetting(form, productCode, { hotelCatalogue });
       setIsDirty(false);
@@ -304,7 +356,13 @@ export function ProductsCodeEditScreen() {
               vats={vats}
               globalReorderLevel={globalReorderLevel}
               imagePreview={imagePreview}
+              imageFileUrl={!imageFile && !imageRemoved && hadStoredImage && imageSource === "upload" ? productPhotoFileUrl(productCode) : null}
+              imageSource={imageSource}
+              imageUrl={imageUrlDraft}
+              onImageSourceChange={onImageSourceChange}
               onImageSelect={onImageSelect}
+              onImageUrlChange={onImageUrlChange}
+              onImageRemove={onImageRemove}
               onOpenSubcategoryModal={openSubcategoryModal}
               allowDiscounts={allowDiscounts}
               branches={branches}

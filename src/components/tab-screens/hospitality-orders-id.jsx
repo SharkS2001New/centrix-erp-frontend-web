@@ -9,12 +9,14 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   CatalogPageShell,
   PrimaryButton,
+  SecondaryButton,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
-import { fetchHotelPosSettings } from "@/lib/hospitality-pos-api";
+import { fetchHotelPosSettings, voidHotelCheck } from "@/lib/hospitality-pos-api";
+import { HOTEL_VOID_ORDER_NAME } from "@/lib/hotel-pos-offline";
 import {
   buildHospitalityCheckPrintOptions,
   normalizeHospitalityCheckPrintSettings,
@@ -54,6 +56,7 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
   const [check, setCheck] = useState(null);
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
+  const [voiding, setVoiding] = useState(false);
   const [printSettings, setPrintSettings] = useState(null);
 
   const load = useCallback(async () => {
@@ -109,6 +112,30 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
     }
   }
 
+  async function handleVoid() {
+    if (!check?.id || String(check.status ?? "").toLowerCase() === "void") return;
+    const label = check.check_number || check.order_num || "this order";
+    const sold =
+      ["paid", "settled"].includes(String(check.status ?? "").toLowerCase()) ||
+      Number(check.amount_paid) > 0;
+    const ok = window.confirm(
+      sold
+        ? `Void sold check ${label}? This cancels the sale and names it ${HOTEL_VOID_ORDER_NAME}.`
+        : `Void check ${label}? This cannot be undone.`,
+    );
+    if (!ok) return;
+    setVoiding(true);
+    try {
+      const res = await voidHotelCheck(check.id);
+      setCheck(res?.check ?? { ...check, status: "void", guest_name: HOTEL_VOID_ORDER_NAME });
+      notifySuccess(`${label} voided — renamed to ${HOTEL_VOID_ORDER_NAME}.`);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to void order");
+    } finally {
+      setVoiding(false);
+    }
+  }
+
   const guestNameEnabled = printSettings?.enable_check_guest_name === true;
   const tableLabel = check?.floor_table?.label || check?.floor_table?.code || "—";
   const outletLabel = check?.outlet?.name || check?.outlet?.code || "—";
@@ -152,10 +179,18 @@ export function HospitalityOrderDetailScreen({ checkId: checkIdProp = null } = {
           <PrimaryButton
             showIcon={false}
             onClick={() => void handlePrint()}
-            disabled={printing}
+            disabled={printing || voiding}
           >
             {printing ? "Printing…" : "Print receipt"}
           </PrimaryButton>
+          {String(check.status ?? "").toLowerCase() !== "void" ? (
+            <SecondaryButton
+              disabled={printing || voiding}
+              onClick={() => void handleVoid()}
+            >
+              {voiding ? "Voiding…" : "Void check"}
+            </SecondaryButton>
+          ) : null}
         </div>
       }
     >

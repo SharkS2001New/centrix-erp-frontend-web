@@ -24,6 +24,7 @@ import {
   stockBaseFromForm,
   stockHierarchyToForm,
 } from "@/components/products/product-inventory-fields";
+import { ProductImageField } from "@/components/products/product-image-field";
 import {
   CustomerFormCard,
   CustomerFormPageShell,
@@ -467,6 +468,14 @@ export const ProductFormFields = memo(function ProductFormFields({
   allowDiscounts = true,
   branches = [],
   refsLoading = false,
+  imageSource = "upload",
+  imageUrl = "",
+  imagePreview = null,
+  imageFileUrl = null,
+  onImageSourceChange,
+  onImageSelect,
+  onImageUrlChange,
+  onImageRemove,
 }) {
   const { capabilities, user } = useAuth();
   const { workspaceId } = useTabWorkspace();
@@ -611,6 +620,18 @@ export const ProductFormFields = memo(function ProductFormFields({
           placeholder="Mumias Sugar 2KG"
         />
       </Field>
+
+      <ProductImageField
+        label={hotelCatalogue ? "Menu photo" : "Product image"}
+        source={imageSource}
+        imageUrl={imageUrl}
+        previewUrl={imagePreview}
+        fileUrl={imageFileUrl}
+        onSourceChange={onImageSourceChange}
+        onFileSelect={onImageSelect}
+        onUrlChange={onImageUrlChange}
+        onRemove={onImageRemove}
+      />
 
       <Field label="Sub-category" required>
         <div className="flex w-full items-stretch gap-2">

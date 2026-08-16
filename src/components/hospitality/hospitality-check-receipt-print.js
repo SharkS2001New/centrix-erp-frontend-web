@@ -300,7 +300,7 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
     <div class="doc-title">${escapeHtml(docTitle)}</div>
     ${status && !/^paid$/i.test(status) ? `<div class="doc-subtitle">${escapeHtml(status)}</div>` : ""}
     <div class="meta-grid">
-      ${checkNumber ? `<div class="meta-full"><span class="meta-label">Check #:</span> ${escapeHtml(checkNumber)}</div>` : ""}
+      ${checkNumber ? `<div class="meta-full"><span class="meta-label">Order no:</span> ${escapeHtml(checkNumber)}</div>` : ""}
       ${showDateTime ? `<div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>` : ""}
       ${showOutlet && outletLabel ? `<div class="meta-full"><span class="meta-label">Outlet:</span> ${escapeHtml(outletLabel)}</div>` : ""}
       ${tableLabel ? `<div class="meta-full"><span class="meta-label">Table:</span> ${escapeHtml(tableLabel)}</div>` : ""}
@@ -412,7 +412,7 @@ export function sampleHospitalityCheckPreviewData() {
 /** @deprecated Prefer THERMAL_PAPER_WIDTH_MM from thermal-receipt-layout — kept for callers. */
 export const HOSPITALITY_THERMAL_PAPER_WIDTH_MM = THERMAL_PAPER_WIDTH_MM;
 
-function resolveGuestCheckTitle(title, check, status) {
+export function resolveGuestCheckTitle(title, check, status) {
   const explicit = String(title ?? "").trim();
   const outletType = String(
     check?.outlet?.outlet_type ?? check?.outlet?.menu_channel ?? "",
@@ -424,6 +424,9 @@ function resolveGuestCheckTitle(title, check, status) {
   if (outletType === "bar") base = "BAR CHECK";
   else if (outletType === "restaurant" || outletType === "hotel") base = "RESTAURANT CHECK";
 
+  if (/^void$/i.test(status) || /^void order$/i.test(explicit) || /^void$/i.test(explicit)) {
+    return "VOID ORDER";
+  }
   if (/unpaid/i.test(explicit) || /^unpaid$/i.test(status)) return `${base} (UNPAID)`;
   if (/partial/i.test(explicit) || /partial/i.test(status)) return `${base} (PARTIAL)`;
   if (explicit && !/order receipt|paid receipt/i.test(explicit)) {
