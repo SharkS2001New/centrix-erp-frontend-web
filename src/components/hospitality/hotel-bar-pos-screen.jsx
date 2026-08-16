@@ -40,8 +40,9 @@ import {
   patchLocalHotelCheck,
   removeLocalHotelCheckLine,
   searchHotelPosOfflineCatalog,
-  warmHotelPosOfflineImages,
   updateLocalHotelCheckLineQty,
+  warmHotelPosOfflineCatalog,
+  warmHotelPosOfflineImages,
 } from "@/lib/hotel-pos-offline";
 import { idbClearLocalCheck, idbGetAllCatalog, idbPutCatalogProducts, idbSaveLocalCheck } from "@/lib/hotel-pos-offline-db";
 import {
@@ -85,12 +86,7 @@ import {
   warmPrintAgentHealth,
 } from "@/lib/print-agent";
 
-const MENU_FILTER_CHIPS = [
-  { id: "", label: "All", short: "All" },
-  { id: "food", label: "Food", short: "Food" },
-  { id: "drinks", label: "Drinks", short: "Drinks" },
-  { id: "rooms", label: "Rooms", short: "Rooms", requiresRooms: true },
-];
+import { filterHotelPosCatalogItems, hotelPosMenuChipsForChannel } from "@/lib/hotel-pos-menu";
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -286,10 +282,26 @@ export function HotelBarPosScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [products, setProducts] = useState([]);
   const catalogMapRef = useRef(new Map());
+  const [catalogCacheList, setCatalogCacheList] = useState([]);
+
+  const replaceCatalogMap = useCallback((nextMap) => {
+    catalogMapRef.current = nextMap;
+    setCatalogCacheList(Array.from(nextMap.values()));
+  }, []);
+
+  const upsertCatalogMapItems = useCallback((items) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    const m = new Map(catalogMapRef.current);
+    for (const p of items) {
+      if (p?.product_code) m.set(String(p.product_code), p);
+    }
+    replaceCatalogMap(m);
+  }, [replaceCatalogMap]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogLoadingMore, setCatalogLoadingMore] = useState(false);
   const [catalogHasMore, setCatalogHasMore] = useState(false);
   const [catalogNextOffset, setCatalogNextOffset] = useState(null);
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [searching, setSearching] = useState(false);
   const [check, setCheckState] = useState(null);
   const [selectedLineId, setSelectedLineId] = useState(null);
@@ -325,10 +337,16 @@ export function HotelBarPosScreen() {
   const showGuestField = guestNameEnabled;
   const showTableField = tablePosEnabled;
   const roomsServiceEnabled = isHospitalityServiceEnabled(capabilities, "rooms");
+  const menuChannel = menuOutlet?.menu_channel ?? null;
   const visibleMenuChips = useMemo(
-    () => MENU_FILTER_CHIPS.filter((chip) => !chip.requiresRooms || roomsServiceEnabled),
-    [roomsServiceEnabled],
+    () => hotelPosMenuChipsForChannel(menuChannel, { roomsEnabled: roomsServiceEnabled }),
+    [menuChannel, roomsServiceEnabled],
   );
+
+  useEffect(() => {
+    const allowed = new Set(visibleMenuChips.map((chip) => chip.id));
+    if (!allowed.has(menuGroup)) setMenuGroup("");
+  }, [visibleMenuChips, menuGroup]);
 
   const paymentConfig = useMemo(
     () =>
@@ -351,7 +369,7 @@ export function HotelBarPosScreen() {
         for (const p of all) {
           if (p?.product_code) m.set(String(p.product_code), p);
         }
-        catalogMapRef.current = m;
+        replaceCatalogMap(m);
         void primeHotelPosImageCacheFromIndexedDb([...m.keys()]);
         void warmHotelPosOfflineImages([...m.values()]).catch(() => {});
       } catch (e) {
@@ -361,7 +379,7 @@ export function HotelBarPosScreen() {
     return () => {
       mounted = false;
     };
-  }, [assignedOutletId, menuOutlet?.id]);
+  }, [assignedOutletId, menuOutlet?.id, replaceCatalogMap]);
 
   useEffect(() => {
     let cancelled = false;
@@ -577,7 +595,7 @@ export function HotelBarPosScreen() {
   }, []);
 
   const loadCatalog = useCallback(
-    async (q, { offset = 0, append = false } = {}) => {
+    async (q, { offset = 0, append = false, forceRefresh = false } = {}) => {
       const requestId = ++catalogRequestIdRef.current;
       if (append) setCatalogLoadingMore(true);
       else setCatalogLoading(true);
@@ -604,6 +622,7 @@ export function HotelBarPosScreen() {
           const batch = await searchHotelPosOfflineCatalog(q, {
             limit: catalogLimit + offset,
             menuGroup,
+            channel: menuOutlet?.menu_channel ?? null,
           });
           if (requestId !== catalogRequestIdRef.current) return;
           const page = batch.slice(offset, offset + catalogLimit);
@@ -625,12 +644,17 @@ export function HotelBarPosScreen() {
           return;
         }
             // If we have a warmed local catalog, show it immediately for snappy UI.
-            if (catalogMapRef.current && catalogMapRef.current.size > 0 && !String(q ?? "").trim()) {
+            if (
+              !forceRefresh &&
+              catalogMapRef.current &&
+              catalogMapRef.current.size > 0 &&
+              !String(q ?? "").trim()
+            ) {
               const group = String(menuGroup ?? "").trim().toLowerCase();
-              const all = Array.from(catalogMapRef.current.values()).filter((p) => {
-                if (!group || group === "rooms") return true;
-                return String(p.menu_group ?? "").toLowerCase() === group;
-              });
+              const all = filterHotelPosCatalogItems(
+                Array.from(catalogMapRef.current.values()),
+                { channel: menuOutlet?.menu_channel ?? null, menuGroup: group },
+              );
               const page = all.slice(offset, offset + catalogLimit);
               setProducts((prev) => {
                 if (!append) return page;
@@ -658,13 +682,14 @@ export function HotelBarPosScreen() {
                     menuGroup,
                     outletId: menuOutlet?.id ?? assignedOutletId ?? undefined,
                   });
-                  const batch = Array.isArray(fresh?.items) ? fresh.items : [];
+                  const batch = filterHotelPosCatalogItems(
+                    Array.isArray(fresh?.items) ? fresh.items : [],
+                    { channel: fresh?.outlet?.menu_channel ?? menuOutlet?.menu_channel ?? null, menuGroup },
+                  );
                   // persist to IDB
                   try {
                     await idbPutCatalogProducts(batch);
-                    const m = new Map(catalogMapRef.current);
-                    for (const p of batch) if (p?.product_code) m.set(String(p.product_code), p);
-                    catalogMapRef.current = m;
+                    upsertCatalogMapItems(batch);
                     void warmHotelPosOfflineImages(batch).catch(() => {});
                     void primeHotelPosImageCacheFromIndexedDb(
                       batch.map((p) => p.product_code),
@@ -701,13 +726,14 @@ export function HotelBarPosScreen() {
           outletId: menuOutlet?.id ?? assignedOutletId ?? undefined,
         });
         if (requestId !== catalogRequestIdRef.current) return;
-        const batch = Array.isArray(res?.items) ? res.items : [];
+        const batch = filterHotelPosCatalogItems(
+          Array.isArray(res?.items) ? res.items : [],
+          { channel: res?.outlet?.menu_channel ?? menuOutlet?.menu_channel ?? null, menuGroup },
+        );
             // Persist fetched page into IndexedDB for offline use and faster subsequent loads.
             try {
               await idbPutCatalogProducts(batch);
-              const m = new Map(catalogMapRef.current);
-              for (const p of batch) if (p?.product_code) m.set(String(p.product_code), p);
-              catalogMapRef.current = m;
+              upsertCatalogMapItems(batch);
               void warmHotelPosOfflineImages(batch).catch(() => {});
               void primeHotelPosImageCacheFromIndexedDb(batch.map((p) => p.product_code));
             } catch {
@@ -733,6 +759,7 @@ export function HotelBarPosScreen() {
             const batch = await searchHotelPosOfflineCatalog(q, {
               limit: catalogLimit,
               menuGroup,
+              channel: menuOutlet?.menu_channel ?? null,
             });
             setProducts(batch);
             setCatalogHasMore(false);
@@ -755,7 +782,7 @@ export function HotelBarPosScreen() {
         }
       }
     },
-    [catalogLimit, applyCatalogMeta, menuGroup, offlineMode, menuOutlet?.id, assignedOutletId],
+    [catalogLimit, applyCatalogMeta, menuGroup, offlineMode, menuOutlet?.id, menuOutlet?.menu_channel, assignedOutletId, upsertCatalogMapItems],
   );
 
   useEffect(() => {
@@ -786,6 +813,29 @@ export function HotelBarPosScreen() {
   useEffect(() => {
     void refreshHeldCount();
   }, [refreshHeldCount]);
+
+  async function handleRefreshCatalog() {
+    if (busy || catalogRefreshing || sellingLocked) return;
+    setCatalogRefreshing(true);
+    try {
+      const outletId = menuOutlet?.id ?? assignedOutletId ?? undefined;
+      await warmHotelPosOfflineCatalog({ force: true, outletId, warmImages: false });
+      const all = await idbGetAllCatalog();
+      const m = new Map();
+      for (const p of all) {
+        if (p?.product_code) m.set(String(p.product_code), p);
+      }
+      replaceCatalogMap(m);
+      setSearch("");
+      await loadCatalog("", { offset: 0, append: false, forceRefresh: true });
+      void refreshHeldCount();
+      notifySuccess("Menu refreshed");
+    } catch (e) {
+      notifyError(dedupeError(e) || "Could not refresh menu");
+    } finally {
+      setCatalogRefreshing(false);
+    }
+  }
 
   const loadMoreCatalog = useCallback(() => {
     if (catalogLoading || catalogLoadingMore || !catalogHasMore) return;
@@ -1688,19 +1738,19 @@ export function HotelBarPosScreen() {
   const hasLines = lines.length > 0;
   const voidTarget = resolveHotelPosVoidTarget(check, lastReceiptCheck);
   const canVoidCheck = Boolean(voidTarget);
-  const menuChannel = menuOutlet?.menu_channel ?? null;
   const posTitle = menuChannel === "bar" ? "Bar POS" : "Restaurant POS";
   const outletAssigned = Boolean(assignedOutletId);
   const canEditMenuPrices =
     Boolean(hasPermission?.(P.hotel_bar_pos.checks.edit)) ||
     Boolean(hasPermission?.(P.catalogue.products.edit));
-  const cachedMenuProducts = useMemo(() => {
-    const fromMap =
-      catalogMapRef.current instanceof Map && catalogMapRef.current.size > 0
-        ? Array.from(catalogMapRef.current.values())
-        : products;
-    return fromMap.filter((p) => p && !p.is_room);
-  }, [products]);
+  const cachedMenuProducts = useMemo(
+    () =>
+      filterHotelPosCatalogItems(catalogCacheList.length > 0 ? catalogCacheList : products, {
+        channel: menuChannel,
+        menuGroup: "",
+      }),
+    [catalogCacheList, products, menuChannel],
+  );
 
   function applyLocalProductPrice(productCode, unitPrice) {
     const code = String(productCode ?? "");
@@ -1709,12 +1759,10 @@ export function HotelBarPosScreen() {
     setProducts((prev) =>
       prev.map((row) => (row.product_code === code ? { ...row, unit_price: price } : row)),
     );
-    const map = new Map(catalogMapRef.current);
-    const existing = map.get(code);
+    const existing = catalogMapRef.current.get(code);
     if (existing) {
       const next = { ...existing, unit_price: price };
-      map.set(code, next);
-      catalogMapRef.current = map;
+      upsertCatalogMapItems([next]);
       void idbPutCatalogProducts([next]).catch(() => {});
     }
   }
@@ -1870,6 +1918,15 @@ export function HotelBarPosScreen() {
                 className="hotel-pos-chip hotel-pos-chip-action shrink-0 disabled:opacity-40"
               >
                 Products
+              </button>
+              <button
+                type="button"
+                title="Reload this outlet’s menu and prices"
+                disabled={busy || catalogRefreshing || sellingLocked}
+                onClick={() => void handleRefreshCatalog()}
+                className="hotel-pos-chip hotel-pos-chip-action shrink-0 disabled:opacity-40"
+              >
+                {catalogRefreshing ? "Refreshing…" : "Refresh"}
               </button>
             </div>
 

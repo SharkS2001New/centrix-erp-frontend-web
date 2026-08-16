@@ -20,7 +20,7 @@ export const PRINT_FONT_VARIANTS = {
   },
   hospitality_check: {
     label: "Hotel check receipt",
-    typographyVariant: "thermal_check",
+    typographyVariant: "thermal",
     defaultFamily: "arial",
     defaultScale: "standard",
     defaultSizePx: 11,
@@ -237,9 +237,10 @@ function resolvedVariantFont(general, variantKey, visited = new Set()) {
 
 /** Resolve font family / scale / size for a typography variant (thermal, sale_invoice, …). */
 export function resolveOrgPrintFontSettings(generalSettings = null, typographyVariant = "a4") {
+  const normalizedVariant = typographyVariant === "thermal_check" ? "thermal" : typographyVariant;
   const settingKey =
     Object.entries(PRINT_FONT_VARIANTS).find(
-      ([, config]) => config.typographyVariant === typographyVariant,
+      ([, config]) => config.typographyVariant === normalizedVariant,
     )?.[0] ?? "invoice";
 
   const config = PRINT_FONT_VARIANTS[settingKey] ?? PRINT_FONT_VARIANTS.invoice;

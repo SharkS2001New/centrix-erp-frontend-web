@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSaleInvoiceHtml } from "@/components/sales/sale-invoice-print";
 import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
+import { buildHospitalityCheckReceiptHtml } from "@/components/hospitality/hospitality-check-receipt-print";
 import { buildLpoPrintHtml } from "@/components/lpo/lpo-print-html";
 import { serializeFooterLines } from "@/lib/footer-line-format";
 import { mergeGeneralSettings } from "@/lib/general-settings";
@@ -142,6 +143,26 @@ describe("org print typography settings", () => {
     expect(html).toContain("Courier");
     expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal").body(10)}`);
     expect(html).not.toContain('style="font-size:14px;font-weight:700');
+  });
+
+  it("applies thermal receipt fonts to hotel check HTML even when hotel-specific fonts are set", () => {
+    const general = generalWithFonts({
+      print_font_hospitality_check_family: "georgia",
+      print_font_hospitality_check_scale: "compact",
+    });
+    const html = buildHospitalityCheckReceiptHtml(
+      {
+        check_number: "HTL-1",
+        status: "paid",
+        lines: [{ description: "Tea", qty: 1, unit_price: 100, line_total: 100 }],
+        total: 100,
+      },
+      { generalSettings: general, seller: { name: "Test Org" } },
+    );
+
+    expect(html).toContain("Courier");
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal").body(10)}`);
+    expect(html).not.toContain("Georgia");
   });
 
   it("uses dotted separators instead of solid lines before totals and under column headers", () => {

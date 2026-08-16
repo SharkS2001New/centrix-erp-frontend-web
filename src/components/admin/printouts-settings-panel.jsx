@@ -908,7 +908,7 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
     <div className="space-y-3">
       <SectionHeading
         title="Hotel & Bar check receipts"
-        description="80mm guest checks for Hotel POS — same thermal customization as retail (fonts, logo, footer, payment instructions), laid out like a hotel F&B bill."
+        description="80mm guest checks for Hotel POS — same fonts, type sizes, and thermal layout as retail / wholesale receipts. Guest / customer name is off by default and does not print unless you turn it on below."
       />
       <DocumentTemplateSelect
         form={form}
@@ -925,12 +925,9 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
   options={[{ value: '1', label: 'Single receipt' }, { value: '2', label: 'Double receipt' }, { value: '3', label: 'Triple receipt' }]}
 />
       </Field>
-      <PrintFontSettingsFields
-        form={form}
-        setForm={setForm}
-        variantKey="hospitality_check"
-        description="Font for Hotel / Bar thermal checks. Falls back to Thermal receipt fonts until you set these."
-      />
+      <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+        Hotel checks use the same fonts and type sizes as Thermal receipts. Change them on the Thermal receipts tab.
+      </p>
       <DocumentLogoSettingsFields
         form={form}
         setForm={setForm}
@@ -976,7 +973,7 @@ function HospitalityCheckTab({ form, setForm, organization = null }) {
       />
       <Toggle
         label="Ask for guest / customer name on Hotel POS"
-        description="Off by default (same as retail checkout). When on, cashiers can enter a name on the ticket and it prints on check receipts."
+        description="Off by default (same as retail checkout). When off, the name is not collected and never prints on the receipt. When on, cashiers can enter a name and it prints as Guest."
         checked={Boolean(form.enable_check_guest_name)}
         onChange={(v) => setForm((f) => ({ ...f, enable_check_guest_name: v }))}
       />

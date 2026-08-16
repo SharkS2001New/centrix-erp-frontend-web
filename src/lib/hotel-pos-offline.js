@@ -6,6 +6,7 @@
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchHotelPosCatalog } from "@/lib/hospitality-pos-api";
+import { filterHotelPosCatalogItems } from "@/lib/hotel-pos-menu";
 import {
   idbAppendCheckNumbers,
   idbClearCatalogImagesMissing,
@@ -184,14 +185,10 @@ export async function getHotelPosOfflineImageObjectUrl(productCode) {
   return resolveHotelPosCachedImageUrl(productCode);
 }
 
-export async function searchHotelPosOfflineCatalog(query, { limit = 80, menuGroup = "" } = {}) {
+export async function searchHotelPosOfflineCatalog(query, { limit = 80, menuGroup = "", channel = null } = {}) {
   const all = await idbGetAllCatalog();
-  const group = String(menuGroup ?? "").trim().toLowerCase();
   const trimmed = String(query ?? "").trim().toLowerCase();
-  let rows = all;
-  if (group === "food" || group === "drinks") {
-    rows = rows.filter((p) => String(p.menu_group ?? "").toLowerCase() === group);
-  }
+  let rows = filterHotelPosCatalogItems(all, { channel, menuGroup });
   if (trimmed) {
     rows = rows.filter((p) => {
       const code = String(p.product_code ?? "").toLowerCase();

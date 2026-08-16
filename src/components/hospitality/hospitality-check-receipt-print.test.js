@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { printHospitalityCheckReceipt, resolveGuestCheckTitle } from "./hospitality-check-receipt-print";
+import { mergeGeneralSettings } from "@/lib/general-settings";
+import { createOrgPrintPx } from "@/lib/print-typography";
+import { THERMAL_CONTENT_WIDTH_MM } from "@/lib/thermal-receipt-layout";
+import {
+  buildHospitalityCheckReceiptHtml,
+  printHospitalityCheckReceipt,
+  resolveGuestCheckTitle,
+  sampleHospitalityCheckPreviewData,
+} from "./hospitality-check-receipt-print";
 
 vi.mock("@/lib/print-dispatch", () => ({
   dispatchPrintJob: vi.fn(async () => ({ mode: "agent", ok: true, printer: "Star TSP143" })),
@@ -41,5 +49,75 @@ describe("printHospitalityCheckReceipt", () => {
       }),
     );
     expect(result).toMatchObject({ mode: "agent", ok: true });
+  });
+});
+
+describe("buildHospitalityCheckReceiptHtml", () => {
+  const checkWithGuest = {
+    ...sampleHospitalityCheckPreviewData(),
+    guest_name: "Jane Guest",
+    folio: { guest_name: "Jane Guest", room_number: "101", folio_number: "F-9" },
+    lines: [
+      ...sampleHospitalityCheckPreviewData().lines,
+      {
+        description: "Room stay",
+        qty: 1,
+        unit_price: 8000,
+        line_total: 8000,
+        is_room_stay: true,
+        modifiers: { type: "room_stay", room_number: "101", nights: 2 },
+      },
+    ],
+  };
+
+  it("hides guest/customer name by default even when room, folio, or nights are present", () => {
+    const html = buildHospitalityCheckReceiptHtml(checkWithGuest, { printSettings: {} });
+
+    expect(html).not.toContain("Guest:");
+    expect(html).not.toContain("Customer Name:");
+    expect(html).not.toContain("JANE GUEST");
+    expect(html).not.toContain("Jane Guest");
+    expect(html).toContain("Room:");
+    expect(html).toContain("Folio:");
+    expect(html).toContain("Nights:");
+  });
+
+  it("prints guest name only when enable_check_guest_name is on", () => {
+    const html = buildHospitalityCheckReceiptHtml(checkWithGuest, {
+      printSettings: { enable_check_guest_name: true },
+    });
+
+    expect(html).toContain('<span class="meta-label">Guest:</span> JANE GUEST');
+  });
+
+  it("uses the same thermal receipt fonts, sizes, and layout as retail/wholesale", () => {
+    const general = mergeGeneralSettings({
+      general: {
+        print_font_receipt_family: "courier",
+        print_font_receipt_scale: "large",
+        print_font_hospitality_check_family: "georgia",
+        print_font_hospitality_check_scale: "compact",
+      },
+    });
+    const html = buildHospitalityCheckReceiptHtml(sampleHospitalityCheckPreviewData(), {
+      generalSettings: general,
+      seller: { name: "Test Org" },
+    });
+    const printPx = createOrgPrintPx(general, "thermal");
+
+    expect(html).toContain("Courier");
+    expect(html).not.toContain("Georgia");
+    expect(html).toContain(`font-size: ${printPx.body(10)}`);
+    expect(html).toContain(`font-size: ${printPx.body(11)}`);
+    expect(html).toContain(`width: ${THERMAL_CONTENT_WIDTH_MM}mm`);
+    expect(html).toContain("letter-spacing: .08em; margin: 10px 0 8px;");
+    expect(html).toContain(".table col.col-desc { width: 44%; }");
+    expect(html).toContain(".table col.col-qty { width: 12%; }");
+    expect(html).toContain(".table col.col-price { width: 18%; }");
+    expect(html).toContain(".table col.col-amount { width: 26%; }");
+    expect(html).toContain(
+      ".meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 4px;",
+    );
+    expect(html).not.toContain("letter-spacing: .1em; margin: 8px 0 2px; text-transform: uppercase");
   });
 });

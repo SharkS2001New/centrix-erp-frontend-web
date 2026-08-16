@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
 import {
   fetchHotelPosCatalog,
@@ -115,8 +115,6 @@ export function HotelPosProductsPopup({
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(null);
-  const cachedRef = useRef(cachedProducts);
-  cachedRef.current = cachedProducts;
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 220);
@@ -139,7 +137,7 @@ export function HotelPosProductsPopup({
       try {
         if (offlineMode) {
           const needle = String(q ?? "").trim().toLowerCase();
-          const filtered = (cachedRef.current ?? []).filter((p) => {
+          const filtered = (cachedProducts ?? []).filter((p) => {
             if (p?.is_room) return false;
             if (!needle) return true;
             return (
@@ -180,7 +178,7 @@ export function HotelPosProductsPopup({
         setLoadingMore(false);
       }
     },
-    [open, offlineMode, outletId],
+    [open, offlineMode, outletId, cachedProducts],
   );
 
   useEffect(() => {
