@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
+import { hospitalityOutletTypeLabel } from "@/lib/hospitality-outlet-channel";
 import {
   CatalogPageShell,
   Field,
@@ -172,7 +173,7 @@ export function HospitalityOutletsScreen() {
                   <tr key={o.id} className={TABLE_BODY_ROW_CLASS}>
                     <td className="px-3 py-2 font-medium">{o.code}</td>
                     <td className="px-3 py-2">{o.name}</td>
-                    <td className="px-3 py-2 capitalize">{o.outlet_type}</td>
+                    <td className="px-3 py-2">{hospitalityOutletTypeLabel(o.outlet_type)}</td>
                     <td className="px-3 py-2">{o.is_active ? "Active" : "Inactive"}</td>
                     <td className="px-3 py-2">
                       <button
@@ -335,7 +336,7 @@ export function HospitalityOutletsScreen() {
               onChange={(v) => setForm((f) => ({ ...f, outlet_type: v }))}
               options={[
                 { value: "bar", label: "Bar" },
-                { value: "restaurant", label: "Restaurant" },
+                { value: "restaurant", label: "Hotel" },
                 { value: "other", label: "Other" },
               ]}
             />

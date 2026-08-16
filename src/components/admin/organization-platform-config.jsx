@@ -1273,7 +1273,9 @@ function OrganizationHotelServicesPanel({
   mode = "manage",
   organizationId = null,
 }) {
+  const confirm = useConfirm();
   const [seedingHotelDemo, setSeedingHotelDemo] = useState(false);
+  const [removingHotelDemo, setRemovingHotelDemo] = useState(false);
   const services = normalizeHospitalityServices(salesPlatform?.hospitality_services);
   const workflow = normalizeHospitalityPaymentWorkflow(
     salesPlatform?.hospitality_payment_workflow,
@@ -1285,7 +1287,7 @@ function OrganizationHotelServicesPanel({
   const collectMode = salesPlatform?.hotel_pos_collect_payment !== false;
 
   async function seedHotelDemoData() {
-    if (!organizationId || seedingHotelDemo) return;
+    if (!organizationId || seedingHotelDemo || removingHotelDemo) return;
     setSeedingHotelDemo(true);
     try {
       const res = await apiRequest(
@@ -1300,6 +1302,34 @@ function OrganizationHotelServicesPanel({
       notifyError(e instanceof ApiError ? e.message : "Failed to seed Hotel POS demo data");
     } finally {
       setSeedingHotelDemo(false);
+    }
+  }
+
+  async function removeHotelDemoData() {
+    if (!organizationId || seedingHotelDemo || removingHotelDemo) return;
+    const ok = await confirm({
+      title: "Remove Hotel POS data?",
+      message:
+        "This permanently deletes hotel/bar menu items, demo floor tables (T1–T6, B1–B2), and all Hotel POS orders for this organization. Outlets, rooms, and reservations are kept. This cannot be undone.",
+      confirmLabel: "Remove data",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setRemovingHotelDemo(true);
+    try {
+      const res = await apiRequest(
+        `/admin/organizations/${organizationId}/hospitality/remove-demo-data`,
+        { method: "POST" },
+      );
+      notifySuccess(
+        res?.message ??
+          `Removed ${res?.products ?? 0} menu products, ${res?.tables ?? 0} tables, and ${res?.orders ?? 0} orders.`,
+      );
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to remove Hotel POS data");
+    } finally {
+      setRemovingHotelDemo(false);
     }
   }
 
@@ -1579,16 +1609,26 @@ function OrganizationHotelServicesPanel({
       {mode === "manage" && organizationId ? (
         <PlatformFormSection
           title="Hotel POS demo data"
-          description="Seed 20 menu products (Food + Drinks), floor tables, and the main outlet for Hotel POS testing. Safe to re-run — existing HTL-* codes are updated."
+          description="Seed 20 menu products (Food + Drinks), floor tables, and the main outlet for Hotel POS testing. Safe to re-run — existing HTL-* codes are updated. Remove deletes the hotel/bar menu, demo tables, and all Hotel POS orders so you can start with real data. Outlets, rooms, and reservations are kept."
         >
-          <button
-            type="button"
-            disabled={seedingHotelDemo}
-            onClick={() => void seedHotelDemoData()}
-            className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
-          >
-            {seedingHotelDemo ? "Seeding…" : "Seed Hotel POS demo data"}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={seedingHotelDemo || removingHotelDemo}
+              onClick={() => void seedHotelDemoData()}
+              className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+            >
+              {seedingHotelDemo ? "Seeding…" : "Seed Hotel POS demo data"}
+            </button>
+            <button
+              type="button"
+              disabled={seedingHotelDemo || removingHotelDemo}
+              onClick={() => void removeHotelDemoData()}
+              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              {removingHotelDemo ? "Removing…" : "Remove Hotel POS data"}
+            </button>
+          </div>
         </PlatformFormSection>
       ) : null}
     </div>
@@ -2281,6 +2321,12 @@ export function OrganizationUsersPanel({
                     </label>
                   ))}
                 </div>
+                {enabledModules["hospitality.backend"] || enabledModules["hospitality.bar_pos"] ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Centrix ERP is web sign-in. Managers App is the mobile manager app. Which
+                    modules a user can open is controlled by their role and permissions.
+                  </p>
+                ) : null}
               </div>
 
               <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
@@ -2389,6 +2435,7 @@ export function OrganizationUsersPanel({
                   onUpdated={loadUsers}
                   detailed={detailed}
                   orgAdminCount={users.filter((u) => u.is_admin).length}
+                  loginChannelCapabilities={platformCapabilities}
                 />
               ))}
             </tbody>
@@ -2411,7 +2458,14 @@ function userIsPasswordLocked(user) {
   return Boolean(user?.password_locked ?? user?.must_change_password);
 }
 
-function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false, orgAdminCount = 0 }) {
+function OrganizationUserRow({
+  user,
+  organizationId,
+  onUpdated,
+  detailed = false,
+  orgAdminCount = 0,
+  loginChannelCapabilities,
+}) {
   const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -2577,7 +2631,9 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
           <span className="text-slate-600">Staff</span>
         )}
       </td>
-      <td className="px-4 py-2 text-xs text-slate-600">{formatLoginChannels(user.login_channels)}</td>
+      <td className="px-4 py-2 text-xs text-slate-600">
+        {formatLoginChannels(user.login_channels, loginChannelCapabilities)}
+      </td>
       <td className="px-4 py-2 text-xs text-slate-600">
         {user.last_login ? new Date(user.last_login).toLocaleString() : "—"}
       </td>

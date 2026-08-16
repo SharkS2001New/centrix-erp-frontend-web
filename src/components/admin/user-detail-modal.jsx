@@ -12,6 +12,8 @@ export function UserDetailModal({
   user,
   roleName,
   branchName,
+  outletLabel = null,
+  loginChannelCapabilities,
   matrix,
   permissionApplications,
   permissionGroups,
@@ -86,8 +88,16 @@ export function UserDetailModal({
             </div>
             <div>
               <dt className="text-xs uppercase text-slate-500">Login channels</dt>
-              <dd className="mt-0.5 text-slate-900">{formatLoginChannels(user.login_channels)}</dd>
+              <dd className="mt-0.5 text-slate-900">
+                {formatLoginChannels(user.login_channels, loginChannelCapabilities)}
+              </dd>
             </div>
+            {outletLabel ? (
+              <div>
+                <dt className="text-xs uppercase text-slate-500">POS outlet</dt>
+                <dd className="mt-0.5 text-slate-900">{outletLabel}</dd>
+              </div>
+            ) : null}
             {userHasMobileChannel(user.login_channels) ? (
               <div>
                 <dt className="text-xs uppercase text-slate-500">Assigned routes</dt>
@@ -122,7 +132,7 @@ export function UserDetailModal({
             <h3 className="text-sm font-medium text-slate-900">Permissions</h3>
             <p className="mt-1 text-xs text-slate-500">
               Permissions start from the user&apos;s role. Uncheck a role permission to revoke it for this user only,
-              or check extra boxes to grant additional rights.
+              or check extra boxes to grant additional rights. Modules this user can open follow these permissions.
             </p>
 
             {user.is_admin ? (

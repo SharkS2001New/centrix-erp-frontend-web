@@ -1,3 +1,5 @@
+import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+
 export const LOGIN_CHANNELS = [
   { value: "backoffice", label: "Backoffice" },
   { value: "pos", label: "POS (external terminal)" },
@@ -6,6 +8,21 @@ export const LOGIN_CHANNELS = [
 ];
 
 export const DEFAULT_LOGIN_CHANNELS = LOGIN_CHANNELS.map((c) => c.value);
+
+export function isHotelLoginChannelContext(capabilities) {
+  if (isHotelCatalogueContext(capabilities)) return true;
+  return Boolean(
+    capabilities?.modules?.["hospitality.backend"] || capabilities?.modules?.["hospitality.bar_pos"],
+  );
+}
+
+export function loginChannelLabel(value, capabilities) {
+  if (isHotelLoginChannelContext(capabilities)) {
+    if (value === "backoffice") return "Centrix ERP";
+    if (value === "manager") return "Managers App";
+  }
+  return LOGIN_CHANNELS.find((channel) => channel.value === value)?.label ?? value;
+}
 
 /** @param {import("@/contexts/auth-context").Capabilities | null | undefined} capabilities */
 export function allowedLoginChannelValues(capabilities) {
@@ -62,7 +79,10 @@ export function allowedLoginChannelValues(capabilities) {
 /** @param {import("@/contexts/auth-context").Capabilities | null | undefined} capabilities */
 export function availableLoginChannelsFromCapabilities(capabilities) {
   const allowed = allowedLoginChannelValues(capabilities);
-  return LOGIN_CHANNELS.filter((channel) => allowed.has(channel.value));
+  return LOGIN_CHANNELS.filter((channel) => allowed.has(channel.value)).map((channel) => ({
+    ...channel,
+    label: loginChannelLabel(channel.value, capabilities),
+  }));
 }
 
 /** @param {import("@/contexts/auth-context").Capabilities | null | undefined} capabilities */
@@ -84,10 +104,9 @@ export function normalizeLoginChannels(channels, allowedValues = null) {
   return fallback.length > 0 ? fallback : [...DEFAULT_LOGIN_CHANNELS];
 }
 
-export function formatLoginChannels(channels) {
+export function formatLoginChannels(channels, capabilities) {
   const normalized = normalizeLoginChannels(channels);
-  const labels = new Map(LOGIN_CHANNELS.map((c) => [c.value, c.label]));
-  return normalized.map((c) => labels.get(c) ?? c).join(", ");
+  return normalized.map((c) => loginChannelLabel(c, capabilities)).join(", ");
 }
 
 export function isMobileOnlyLogin(channels) {

@@ -46,6 +46,10 @@ import {
   formatLoginChannels,
   normalizeLoginChannels,
 } from "@/lib/login-channels";
+import {
+  hospitalityOutletAssignmentLabel,
+  hospitalityOutletSelectOptions,
+} from "@/lib/hospitality-outlet-channel";
 import { isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -166,6 +170,11 @@ export function AdminUsersScreen() {
   const matrix = permissionGroups;
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
+  const outletById = useMemo(
+    () => new Map(hospitalityOutlets.map((o) => [Number(o.id), o])),
+    [hospitalityOutlets],
+  );
+  const usersTableColSpan = hospitalityPosEnabled ? 9 : 8;
   const showPosTillField = posEnabled && form.login_channels.includes("pos");
   const tillOptionsForForm = useMemo(() => {
     if (!showPosTillField) return [];
@@ -816,6 +825,7 @@ export function AdminUsersScreen() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Branch</th>
                 <th className="px-4 py-3">Role</th>
+                {hospitalityPosEnabled ? <th className="px-4 py-3">Outlet</th> : null}
                 <th className="px-4 py-3">Channels</th>
                 <th className="px-4 py-3">Login</th>
                 <th className="px-4 py-3">Actions</th>
@@ -824,13 +834,13 @@ export function AdminUsersScreen() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={usersTableColSpan} className="px-4 py-8 text-center text-slate-500">
                     Loading…
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={usersTableColSpan} className="px-4 py-8 text-center text-slate-500">
                     No users found.
                   </td>
                 </tr>
@@ -862,8 +872,17 @@ export function AdminUsersScreen() {
                     <td className="px-4 py-3 text-slate-600">
                       {roleById.get(row.role_id)?.role_name ?? "—"}
                     </td>
+                    {hospitalityPosEnabled ? (
+                      <td className="px-4 py-3 text-slate-600">
+                        {row.hospitality_outlet_id
+                          ? hospitalityOutletAssignmentLabel(
+                              outletById.get(Number(row.hospitality_outlet_id)),
+                            )
+                          : "Unassigned"}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-slate-600">
-                      {formatLoginChannels(row.login_channels)}
+                      {formatLoginChannels(row.login_channels, effectiveCapabilities)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
@@ -946,6 +965,16 @@ export function AdminUsersScreen() {
           user={viewUser}
           roleName={viewRoleName}
           branchName={viewUser ? branchById.get(viewUser.branch_id)?.branch_name : null}
+          outletLabel={
+            hospitalityPosEnabled
+              ? viewUser?.hospitality_outlet_id
+                ? hospitalityOutletAssignmentLabel(
+                    outletById.get(Number(viewUser.hospitality_outlet_id)),
+                  )
+                : "Unassigned"
+              : null
+          }
+          loginChannelCapabilities={effectiveCapabilities}
           matrix={matrix}
           permissionApplications={permissionApplications}
           permissionGroups={permissionGroups}
@@ -1029,6 +1058,12 @@ export function AdminUsersScreen() {
               placeholder="Select role"
               required
             />
+            {hospitalityPosEnabled ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Which modules this user can open (Hotel Backoffice, Hotel POS, Front desk, and others)
+                is controlled by this role and the permission overrides below.
+              </p>
+            ) : null}
           </Field>
           <Field label="Allowed login channels">
             <div className="space-y-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
@@ -1055,14 +1090,13 @@ export function AdminUsersScreen() {
               ))}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Only channels enabled for this organization are listed.
-              {mobileAppEnabled
-                ? " Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
-                : posEnabled
-                  ? " External POS and backoffice are available; mobile orders are disabled."
-                  : hospitalityPosEnabled
-                    ? " Backoffice web sign-in covers Hotel Backoffice and Hotel POS. Retail external POS and mobile are not used for this hospitality organization."
-                    : " Backoffice web sign-in is available; external POS and mobile are disabled for this organization."}
+              {hospitalityPosEnabled
+                ? "Centrix ERP is web sign-in. Managers App is the mobile manager app. Modules are not chosen here — they come from the user’s role and permissions."
+                : mobileAppEnabled
+                  ? "Only channels enabled for this organization are listed. Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
+                  : posEnabled
+                    ? "Only channels enabled for this organization are listed. External POS and backoffice are available; mobile orders are disabled."
+                    : "Only channels enabled for this organization are listed. Backoffice web sign-in is available; external POS and mobile are disabled for this organization."}
             </p>
           </Field>
           {mobileAppEnabled && userHasMobileChannel(form.login_channels) ? (
@@ -1118,31 +1152,16 @@ export function AdminUsersScreen() {
             </Field>
           ) : null}
           {hospitalityPosEnabled ? (
-            <Field label="Hotel & Bar outlet">
+            <Field label="POS outlet (Hotel or Bar)">
               <HrSearchableSelect
                 value={form.hospitality_outlet_id}
                 onChange={(v) => setForm((f) => ({ ...f, hospitality_outlet_id: v }))}
-                options={[
-                  { value: "", label: "Unassigned — pick Bar or Restaurant" },
-                  ...hospitalityOutlets
-                    .filter((o) => o.is_active !== false)
-                    .map((o) => {
-                      const channel =
-                        String(o.outlet_type || "").toLowerCase() === "bar"
-                          ? "Bar menu"
-                          : "Restaurant menu";
-                      return {
-                        value: String(o.id),
-                        label: `${o.name || o.code} · ${channel}`,
-                      };
-                    }),
-                ]}
-                placeholder="Select outlet"
+                options={hospitalityOutletSelectOptions(hospitalityOutlets)}
+                placeholder="Select Hotel or Bar outlet"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Required for dual Bar + Restaurant orgs. Bar cashiers only see Bar products;
-                Restaurant cashiers only see Restaurant / Hotel products. Manage outlets under
-                Hospitality → Outlets.
+                Bar cashiers only see Bar products. Hotel cashiers only see Hotel products.
+                Leave unassigned to use any outlet. Manage outlets under Hospitality → Outlets.
               </p>
             </Field>
           ) : null}
@@ -1219,8 +1238,9 @@ export function AdminUsersScreen() {
             <div className="mt-2 border-t border-[var(--theme-border)] pt-4">
               <p className="mb-2 text-sm font-medium text-slate-800">Permission overrides (optional)</p>
               <p className="mb-3 text-xs text-slate-500">
-                Grant extra rights or deny role permissions for this user
-                {editing ? "." : " when they are created."}
+                {hospitalityPosEnabled
+                  ? "Role permissions decide which hotel modules this user can open. Grant extra rights or deny role permissions for this user only."
+                  : `Grant extra rights or deny role permissions for this user${editing ? "." : " when they are created."}`}
               </p>
               {matrixLoading && !matrixLoaded ? (
                 <p className="text-sm text-slate-500">Loading permission matrix…</p>
