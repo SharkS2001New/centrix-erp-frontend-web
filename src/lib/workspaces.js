@@ -269,6 +269,9 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     if (item.href?.startsWith("/hospitality")) {
       return true;
     }
+    if (item.href === "/admin/till-printing" || item.href === "/admin/hotel-settings") {
+      return true;
+    }
     return pathBelongsToWorkspace(item.href, "hospitality_backoffice");
   }
 
@@ -340,6 +343,15 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 
   const prefixes = WORKSPACE_PATH_PREFIXES[workspaceId] ?? [];
   if (prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return true;
+  }
+
+  if (
+    workspaceId === "hospitality_backoffice" &&
+    (pathname === "/admin/till-printing" ||
+      pathname === "/admin/hotel-settings" ||
+      pathname.startsWith("/admin/hotel-settings/"))
+  ) {
     return true;
   }
 

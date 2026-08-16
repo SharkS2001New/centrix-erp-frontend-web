@@ -58,11 +58,13 @@ import { resolveHospitalityPaymentWorkflow } from "@/lib/hospitality-payment-wor
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { P } from "@/lib/permission-codes";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PosActionButton } from "@/components/sales/pos-action-button";
 import { HotelPosPaymentPanel } from "@/components/hospitality/hotel-pos-payment-panel";
 import { HotelPosProductImage } from "@/components/hospitality/hotel-pos-product-image";
+import { HotelPosProductsPopup } from "@/components/hospitality/hotel-pos-products-popup";
 import { HotelPosStatusFooter } from "@/components/hospitality/hotel-pos-status-footer";
 import { printHospitalityCheckReceipt } from "@/components/hospitality/hospitality-check-receipt-print";
 import {
@@ -238,7 +240,7 @@ const HotelPosCatalogTile = memo(function HotelPosCatalogTile({
 });
 
 export function HotelBarPosScreen() {
-  const { capabilities, user, organization } = useAuth();
+  const { capabilities, user, organization, hasPermission } = useAuth();
   const confirm = useConfirm();
   const assignedOutletId =
     user?.hospitality_outlet_id ?? capabilities?.hospitality_outlet_id ?? null;
@@ -293,6 +295,7 @@ export function HotelBarPosScreen() {
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [productsPopupOpen, setProductsPopupOpen] = useState(false);
   const [queueChecks, setQueueChecks] = useState([]);
   const [payOpen, setPayOpen] = useState(false);
   const [payError, setPayError] = useState(null);
@@ -509,7 +512,7 @@ export function HotelBarPosScreen() {
   useEffect(() => {
     if (!isPrintAgentEnabled()) return;
     void warmPrintAgentHealth();
-  }, []);
+  }, [capabilities?.organization_id, capabilities?.module_settings?.local_printing?.provider]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1688,6 +1691,33 @@ export function HotelBarPosScreen() {
   const menuChannel = menuOutlet?.menu_channel ?? null;
   const posTitle = menuChannel === "bar" ? "Bar POS" : "Restaurant POS";
   const outletAssigned = Boolean(assignedOutletId);
+  const canEditMenuPrices =
+    Boolean(hasPermission?.(P.hotel_bar_pos.checks.edit)) ||
+    Boolean(hasPermission?.(P.catalogue.products.edit));
+  const cachedMenuProducts = useMemo(() => {
+    const fromMap =
+      catalogMapRef.current instanceof Map && catalogMapRef.current.size > 0
+        ? Array.from(catalogMapRef.current.values())
+        : products;
+    return fromMap.filter((p) => p && !p.is_room);
+  }, [products]);
+
+  function applyLocalProductPrice(productCode, unitPrice) {
+    const code = String(productCode ?? "");
+    const price = Number(unitPrice);
+    if (!code || !Number.isFinite(price)) return;
+    setProducts((prev) =>
+      prev.map((row) => (row.product_code === code ? { ...row, unit_price: price } : row)),
+    );
+    const map = new Map(catalogMapRef.current);
+    const existing = map.get(code);
+    if (existing) {
+      const next = { ...existing, unit_price: price };
+      map.set(code, next);
+      catalogMapRef.current = map;
+      void idbPutCatalogProducts([next]).catch(() => {});
+    }
+  }
   const gridStyle = useMemo(
     () => ({ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }),
     [gridColumns],
@@ -1827,6 +1857,19 @@ export function HotelBarPosScreen() {
                     {heldCount}
                   </span>
                 ) : null}
+              </button>
+              <button
+                type="button"
+                title={
+                  menuOutlet?.menu_channel_label
+                    ? `Update ${menuOutlet.menu_channel_label} menu prices`
+                    : "Update menu prices"
+                }
+                disabled={busy}
+                onClick={() => setProductsPopupOpen(true)}
+                className="hotel-pos-chip hotel-pos-chip-action shrink-0 disabled:opacity-40"
+              >
+                Products
               </button>
             </div>
 
@@ -2269,6 +2312,17 @@ export function HotelBarPosScreen() {
           </div>
         </div>
       ) : null}
+
+      <HotelPosProductsPopup
+        open={productsPopupOpen}
+        onClose={() => setProductsPopupOpen(false)}
+        outletId={menuOutlet?.id ?? assignedOutletId ?? null}
+        channelLabel={menuOutlet?.menu_channel_label ?? (menuChannel === "bar" ? "Bar" : "Restaurant")}
+        canEdit={canEditMenuPrices}
+        offlineMode={offlineMode}
+        cachedProducts={cachedMenuProducts}
+        onPriceUpdated={applyLocalProductPrice}
+      />
 
       {roomStayDraft ? (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/45 p-4 sm:items-center">

@@ -18,6 +18,16 @@ export async function fetchHotelPosCatalog({
   return apiRequest(`/hospitality/pos/catalog?${params.toString()}`, { loading: false });
 }
 
+export async function updateHotelPosCatalogPrice(productCode, unitPrice, { outletId = null } = {}) {
+  const body = { unit_price: Number(unitPrice) };
+  if (outletId) body.outlet_id = Number(outletId);
+  return apiRequest(`/hospitality/pos/catalog/${encodeURIComponent(productCode)}/price`, {
+    method: "PATCH",
+    body,
+    loading: false,
+  });
+}
+
 export async function fetchHotelPosSettings() {
   return apiRequest("/hospitality/pos/settings", { loading: false });
 }

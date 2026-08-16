@@ -338,8 +338,9 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         <div>
           <h2 className="theme-heading text-lg font-medium">{LOCAL_PRINTING_ADMIN_LABEL}</h2>
           <p className="theme-subtext mt-1 text-sm">
-            Organization-wide print method for tills using this company. Choose browser print or the Centrix
-            Print Agent for silent Windows printing of receipts and all ERP documents.
+            Organization-wide print method for this company. Choose browser print or the Centrix
+            Print Agent for silent Windows printing of Hotel POS receipts, retail POS receipts, and
+            all ERP documents.
           </p>
         </div>
         <span

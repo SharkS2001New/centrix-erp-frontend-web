@@ -14,6 +14,8 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
+import { PrintAgentSettingsPanel } from "@/components/pos/print-agent-settings-panel";
+import { LOCAL_PRINTING_ADMIN_PATH } from "@/lib/local-printing";
 import {
   DEDUCT_MODE_OPTIONS,
   emptyRecipeDraft,
@@ -343,6 +345,8 @@ export function HospitalitySettingsScreen() {
           <p className="theme-subtext mt-1 text-sm leading-relaxed">
             Copies, outlet/org name, guest name on receipt, phones, and footer are managed with other
             printouts — same place as retail receipt settings, under a dedicated Hotel checks tab.
+            Pay-now and reprint on Hotel POS send the receipt to Centrix Print Agent when Local printing
+            is set to the agent (silent, no browser dialog).
           </p>
           <Link
             href="/admin/settings"
@@ -350,6 +354,25 @@ export function HospitalitySettingsScreen() {
           >
             Organization settings → Printouts → Hotel checks →
           </Link>
+        </section>
+
+        <section
+          id="silent-printing"
+          className="space-y-3"
+        >
+          <div>
+            <h2 className="theme-heading text-base font-semibold">Silent Hotel POS receipts</h2>
+            <p className="theme-subtext mt-1 text-sm leading-relaxed">
+              Install Centrix Print Agent on the till PC and choose it below. Hotel POS then prints
+              guest checks without the browser print dialog. Layout still comes from Printouts → Hotel
+              checks. You can also open{" "}
+              <Link href={LOCAL_PRINTING_ADMIN_PATH} className="font-semibold underline">
+                Administration → Local printing
+              </Link>
+              .
+            </p>
+          </div>
+          <PrintAgentSettingsPanel compact />
         </section>
 
         <section id="setup-guide" className="space-y-3">

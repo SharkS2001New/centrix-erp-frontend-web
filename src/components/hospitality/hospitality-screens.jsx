@@ -29,6 +29,7 @@ const DASHBOARD_LINKS = [
   { href: "/inventory/receipts", label: "Goods received", service: null },
   { href: "/inventory/stock", label: "Stock on hand", service: null },
   { href: "/admin/hotel-settings", label: "Hotel F&B settings", service: null },
+  { href: "/admin/till-printing", label: "Local printing", service: null },
 ];
 
 function Kpi({ label, value, hint }) {

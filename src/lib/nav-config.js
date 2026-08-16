@@ -1021,6 +1021,20 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hospitality.night_audit.view,
         requireHospitalityService: "night_audit",
       },
+      {
+        href: "/admin/hotel-settings",
+        label: "Hotel F&B settings",
+        module: "hospitality.backend",
+        permission: P.hospitality.settings.view,
+        orgAdminOnly: true,
+      },
+      {
+        href: "/admin/till-printing",
+        label: "Local printing",
+        module: "admin",
+        permission: P.admin.till_printing.view,
+        orgAdminOnly: true,
+      },
     ],
   },
   {
