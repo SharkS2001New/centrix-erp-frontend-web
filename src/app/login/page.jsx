@@ -27,6 +27,12 @@ import { PasswordInput } from "@/components/auth/password-input";
 import { ForgotPasswordHelpDialog } from "@/components/auth/forgot-password-help-dialog";
 import { SignInProgressOverlay } from "@/components/auth/sign-in-progress-overlay";
 import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
+import { PinDots, PinKeypad } from "@/components/auth/pin-keypad";
+import {
+  clearHotelPinDeviceBinding,
+  getHotelPinDeviceBinding,
+  shouldFallbackHotelPinToPassword,
+} from "@/lib/hotel-pin-device";
 
 export default function LoginPage() {
   return (
@@ -43,7 +49,7 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const { login, loginWithPasskey, completeTwoFactorLogin, completeTwoFactorWithPasskey } = useAuth();
+  const { login, loginWithPin, loginWithPasskey, completeTwoFactorLogin, completeTwoFactorWithPasskey } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
@@ -52,6 +58,9 @@ function LoginForm() {
   const [companyCode, setCompanyCode] = useState(() => getDefaultCompanyCode());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
+  const [pinBinding, setPinBinding] = useState(() => getHotelPinDeviceBinding());
+  const [usePasswordOverride, setUsePasswordOverride] = useState(false);
   const [error, setError] = useState(null);
   const [sessionConflict, setSessionConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +75,14 @@ function LoginForm() {
 
   useEffect(() => {
     const stored = getStoredCompanyCode();
+    const bound = getHotelPinDeviceBinding();
+    if (bound) {
+      setPinBinding(bound);
+      setCompanyCode(bound.company_code);
+      setUsername(bound.username);
+      setShowOrgField(false);
+      return;
+    }
     if (stored) {
       setCompanyCode(stored);
       setShowOrgField(false);
@@ -172,9 +189,24 @@ function LoginForm() {
 
   function useDifferentOrganization() {
     clearStoredCompanyCode();
+    clearHotelPinDeviceBinding();
+    setPinBinding(null);
+    setUsePasswordOverride(false);
+    setPin("");
+    setUsername("");
+    setPassword("");
     setShowOrgField(true);
     setCompanyCode("");
     setPasskeyAvailable(false);
+  }
+
+  function useDifferentAccount() {
+    clearHotelPinDeviceBinding();
+    setPinBinding(null);
+    setUsePasswordOverride(false);
+    setPin("");
+    setUsername("");
+    setPassword("");
   }
 
   async function attemptLogin(forceLogout = false) {
@@ -221,6 +253,67 @@ function LoginForm() {
     }
   }
 
+  async function attemptPinLogin(forceLogout = false, pinValue = pin) {
+    const bound = pinBinding;
+    if (!bound?.company_code || !bound?.username) return;
+    const digits = String(pinValue ?? "").replace(/\D/g, "");
+    if (digits.length < 4) {
+      setError("Enter your 4 to 6 digit PIN.");
+      return;
+    }
+    setError(null);
+    if (!forceLogout) {
+      setSessionConflict(false);
+    }
+    startSignInProgress("login");
+    try {
+      await loginWithPin(bound.company_code, bound.username, digits, { forceLogout });
+      completeSignInProgress();
+    } catch (err) {
+      abortSignInProgress();
+      setPin("");
+      if (shouldFallbackHotelPinToPassword(err)) {
+        clearHotelPinDeviceBinding();
+        setPinBinding(null);
+        setUsePasswordOverride(true);
+        setUsername(bound.username);
+        setCompanyCode(bound.company_code);
+        setShowOrgField(false);
+        setError(
+          userFacingNetworkErrorMessage(
+            err,
+            "PIN sign-in is not available. Sign in with your password.",
+          ),
+        );
+        return;
+      }
+      if (isSessionConflictError(err)) {
+        setSessionConflict(true);
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "This account is already signed in on another device.",
+        );
+      } else {
+        setSessionConflict(false);
+        if (isLicenseExpiredApiError(err)) {
+          setError(
+            err instanceof ApiError
+              ? err.message
+              : licenseExpiredMessage(null),
+          );
+        } else {
+          setError(
+            userFacingNetworkErrorMessage(
+              err,
+              "Incorrect PIN. Try again.",
+            ),
+          );
+        }
+      }
+    }
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     if (submitting) return;
@@ -232,8 +325,18 @@ function LoginForm() {
     await attemptLogin(false);
   }
 
+  async function onPinSubmit(e) {
+    e.preventDefault();
+    if (submitting) return;
+    await attemptPinLogin(false);
+  }
+
   async function onForceLogout() {
     if (submitting) return;
+    if (showPinSignIn) {
+      await attemptPinLogin(true);
+      return;
+    }
     await attemptLogin(true);
   }
 
@@ -361,6 +464,10 @@ function LoginForm() {
   const showSigningOverlay = submitting && !passkeyBusy;
   const signingLabel =
     authFlow === "mfa" || authFlow === "mfa-resend" ? "Verifying" : "Signing in";
+  const showPinSignIn = Boolean(
+    pinBinding?.company_code && pinBinding?.username && !usePasswordOverride,
+  );
+  const pinDisplayName = pinBinding?.full_name || pinBinding?.username || "User";
 
   if (mfaChallenge?.mfa_required) {
     const isEmail = mfaChallenge.method === "email";
@@ -440,7 +547,14 @@ function LoginForm() {
         label={signingLabel}
         progress={signInProgress}
       />
-      <AuthShell title="Sign in" subtitle="Sign in with your email or username and password.">
+      <AuthShell
+        title="Sign in"
+        subtitle={
+          showPinSignIn
+            ? "This computer is locked to your hotel account. Enter your PIN."
+            : "Sign in with your email or username and password."
+        }
+      >
         <div className="relative">
           {passkeyBusy ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/85 dark:bg-slate-950/85">
@@ -455,6 +569,94 @@ function LoginForm() {
               </div>
             </div>
           ) : null}
+          {showPinSignIn ? (
+            <form
+              onSubmit={onPinSubmit}
+              className={`mt-6 space-y-4 ${submitting ? "pointer-events-none select-none" : ""}`}
+            >
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/60">
+                <p className="text-slate-600 dark:text-slate-400">
+                  Organization{" "}
+                  <span className="font-mono font-semibold text-slate-900 dark:text-white">
+                    {pinBinding.company_code}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={useDifferentOrganization}
+                  className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                  disabled={submitting}
+                >
+                  Use a different organization
+                </button>
+              </div>
+              <div className="rounded-lg border border-slate-200 px-3 py-3 text-center dark:border-slate-700">
+                <p className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  {pinDisplayName}
+                </p>
+                <p className="mt-0.5 font-mono text-xs text-slate-500 dark:text-slate-400">
+                  {pinBinding.username}
+                </p>
+              </div>
+              <div className="space-y-3">
+                <PinDots length={Math.max(4, pin.length || 4)} filled={pin.length} />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="sr-only"
+                  aria-label="PIN"
+                  disabled={submitting}
+                />
+                <PinKeypad
+                  value={pin}
+                  onChange={setPin}
+                  disabled={submitting}
+                  onSubmit={(next) => void attemptPinLogin(false, next)}
+                />
+              </div>
+              {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
+              {error ? <AuthError>{error}</AuthError> : null}
+              {sessionConflict ? (
+                <button
+                  type="button"
+                  onClick={() => void onForceLogout()}
+                  className="w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"
+                  disabled={submitting}
+                >
+                  Sign out other device and continue
+                </button>
+              ) : null}
+              <AuthSubmitButton disabled={submitting || pin.length < 4}>
+                {submitting ? "Signing in…" : "Sign in"}
+              </AuthSubmitButton>
+              <button
+                type="button"
+                className="w-full text-sm text-slate-500 hover:underline"
+                disabled={submitting}
+                onClick={() => {
+                  setUsePasswordOverride(true);
+                  setPin("");
+                  setError(null);
+                  setUsername(pinBinding.username);
+                  setCompanyCode(pinBinding.company_code);
+                  setShowOrgField(false);
+                }}
+              >
+                Use password instead
+              </button>
+              <button
+                type="button"
+                className="w-full text-sm text-slate-500 hover:underline"
+                disabled={submitting}
+                onClick={useDifferentAccount}
+              >
+                Not you? Use a different account
+              </button>
+            </form>
+          ) : (
           <form
             onSubmit={onSubmit}
             className={`mt-6 space-y-4 ${submitting ? "pointer-events-none select-none" : ""}`}
@@ -539,6 +741,20 @@ function LoginForm() {
               </button>
             </>
           ) : null}
+          {pinBinding && usePasswordOverride ? (
+            <button
+              type="button"
+              className="w-full text-sm font-medium text-emerald-700 hover:underline"
+              disabled={submitting}
+              onClick={() => {
+                setUsePasswordOverride(false);
+                setPassword("");
+                setError(null);
+              }}
+            >
+              Use PIN instead
+            </button>
+          ) : null}
           <button
             type="button"
             className="w-full text-sm text-slate-500 hover:underline"
@@ -548,6 +764,7 @@ function LoginForm() {
             Forgot password?
           </button>
           </form>
+          )}
         </div>
         <ForgotPasswordHelpDialog open={forgotPasswordOpen} onClose={() => setForgotPasswordOpen(false)} />
       </AuthShell>

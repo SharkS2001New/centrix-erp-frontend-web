@@ -31,8 +31,9 @@ export async function revokeServerAuthSession() {
 function isAuthEndpoint(path) {
   const normalized = path.startsWith("http") ? new URL(path).pathname : path;
   return (
-    normalized.includes("/auth/login") ||
-    normalized.includes("/auth/logout") ||
+        normalized.includes("/auth/login") ||
+        normalized.includes("/auth/pin-login") ||
+        normalized.includes("/auth/logout") ||
     normalized.includes("/auth/switch-workspace") ||
     normalized.includes("/auth/switch-organization")
   );

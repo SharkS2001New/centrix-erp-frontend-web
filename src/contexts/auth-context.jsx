@@ -53,6 +53,7 @@ import {
 } from "@/lib/organization-license";
 import { resolveSecurityTimeouts } from "@/lib/security-settings";
 import { syncLocalPrintingFromCapabilities, clearLocalPrintingSettingsCache } from "@/lib/local-printing-settings";
+import { syncHotelPinDeviceBinding } from "@/lib/hotel-pin-device";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
 /** Cheap version poll so demotions (Admin → Cashier) apply without a full refresh wait. */
@@ -160,6 +161,11 @@ export function AuthProvider({ children }) {
       if (!prev) return prev;
       const next = { ...prev, ...userUpdates };
       patchStoredUser(userUpdates);
+      syncHotelPinDeviceBinding({
+        user: next,
+        organization: getStoredOrganization(),
+        capabilities: getStoredCapabilities(),
+      });
       return next;
     });
   }, []);
@@ -248,6 +254,11 @@ export function AuthProvider({ children }) {
       setCapabilities(caps);
       setStoredCapabilities(caps);
       syncLocalPrintingFromCapabilities(caps);
+      syncHotelPinDeviceBinding({
+        user: res.user,
+        organization: res.organization,
+        capabilities: caps,
+      });
       capabilitiesRefreshAt.current = Date.now();
       return caps;
     } catch (e) {
@@ -563,6 +574,45 @@ export function AuthProvider({ children }) {
     [finishAuthenticatedSession],
   );
 
+  const loginWithPin = useCallback(
+    async (companyCode, username, pin, options = {}) => {
+      const { forceLogout = false } = options;
+
+      if (useCookieAuth && !forceLogout && hasAuthSession()) {
+        await revokeServerAuthSession();
+      }
+
+      const performLogin = (force) =>
+        apiRequest("/auth/pin-login", {
+          method: "POST",
+          body: {
+            company_code: companyCode.trim() ? companyCode.trim().toUpperCase() : "",
+            username,
+            pin,
+            client_id: getClientId(),
+            login_channel: WEB_LOGIN_CHANNEL,
+            ...(force ? { force_logout: true } : {}),
+          },
+          token: null,
+        });
+
+      let res;
+      try {
+        res = await performLogin(forceLogout);
+      } catch (err) {
+        if (!forceLogout && useCookieAuth && isSessionConflictError(err)) {
+          await revokeServerAuthSession();
+          res = await performLogin(true);
+        } else {
+          throw err;
+        }
+      }
+
+      return finishAuthenticatedSession(res);
+    },
+    [finishAuthenticatedSession],
+  );
+
   const switchOrganization = useCallback(
     async (companyCode) => {
       const res = await apiRequest("/auth/switch-organization", {
@@ -668,6 +718,7 @@ export function AuthProvider({ children }) {
       capabilities,
       loading,
       login,
+      loginWithPin,
       loginWithPasskey,
       completeTwoFactorLogin,
       completeTwoFactorWithPasskey,
@@ -715,6 +766,7 @@ export function AuthProvider({ children }) {
       capabilities,
       loading,
       login,
+      loginWithPin,
       loginWithPasskey,
       completeTwoFactorLogin,
       completeTwoFactorWithPasskey,
