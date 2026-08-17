@@ -3880,16 +3880,59 @@ html[data-theme="dark"] .classic-pos-qty-btn:hover:not(:disabled) {
 }
 
 .hotel-pos-chip-scroll {
-  scrollbar-width: thin;
+  flex-wrap: nowrap;
+  scrollbar-width: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
+
+.hotel-pos-chip-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.hotel-pos-chip-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-primary) 50%, transparent);
+  border-radius: 999px;
+}
+
+.hotel-pos-touch-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: auto;
+}
+
+.hotel-pos-touch-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.hotel-pos-touch-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-primary) 45%, transparent);
+  border-radius: 999px;
+}
+
+.hotel-pos-catalog-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .hotel-pos-catalog-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .hotel-pos-catalog-grid {
+    grid-template-columns: repeat(var(--hotel-pos-cols, 4), minmax(0, 1fr));
+  }
 }
 
 .hotel-pos-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  min-height: 2.35rem;
-  padding: 0.4rem 0.95rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.95rem;
   border-radius: 999px;
   border: 1px solid var(--theme-border-strong, #94a3b8);
   background: var(--theme-surface);

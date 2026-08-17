@@ -257,13 +257,13 @@ export function AttendanceClockSettingsPanel() {
                         onChange={(e) => setForm((f) => ({ ...f, clock_in_late_after: e.target.value }))}
                       />
                     </Field>
-                    <Field label="Auto-sync interval (minutes)">
+                    <Field label="Agent poll interval (minutes)">
                       <input
                         type="number"
                         min={1}
                         max={60}
                         className={inputClassName()}
-                        value={form.hikvision_agent_poll_minutes || "60"}
+                        value={form.hikvision_agent_poll_minutes || "5"}
                         onChange={(e) =>
                           setForm((f) => ({ ...f, hikvision_agent_poll_minutes: e.target.value }))
                         }
@@ -271,9 +271,10 @@ export function AttendanceClockSettingsPanel() {
                     </Field>
                   </div>
                   <p className="mt-3 text-xs text-slate-500">
-                    Centrix pulls punches hourly at :20 from 7:20 AM through 2:00 AM (Africa/Nairobi).
-                    Overnight 2:00–7:20 is skipped because there are no punches. The office agent still
-                    catch-up-syncs when the PC boots. Keep CentrixAttendanceAgent running on the LAN PC.
+                    Centrix auto-pulls new punches every hour at :20 (Africa/Nairobi), from 7:20 AM through
+                    2:00 AM. Overnight 2:00–7:20 is skipped. Keep CentrixAttendanceAgent running on the LAN
+                    PC — it uploads punches to HR and answers Centrix pull commands. Use 5 minutes (or less)
+                    for the agent poll so hourly sync can reach the terminal reliably.
                   </p>
                 </div>
 

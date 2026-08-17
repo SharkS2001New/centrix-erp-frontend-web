@@ -2,7 +2,8 @@
 
 import { forwardRef, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { isPosClassicAltShortcut, isPosFunctionKeyEvent } from "@/lib/pos-keyboard-shortcuts";
+import { useAuth } from "@/contexts/auth-context";
+import { isPosFunctionKeyEvent, isPosClassicAltShortcut } from "@/lib/pos-keyboard-shortcuts";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
 import {
@@ -10,6 +11,8 @@ import {
   productStockAtLocation,
 } from "@/lib/pos-stock";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
+import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
+import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 
@@ -89,6 +92,8 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
   const highlightCodeRef = useRef(null);
   const [menuBox, setMenuBox] = useState(null);
   const classic = variant === "classic";
+  const { capabilities } = useAuth();
+  const touchSearchKeypad = isPosTouchSearchKeypadEnabled(capabilities);
   const enablePosCashRounding = Boolean(posSalesConfig?.enablePosCashRounding);
   const idleQuery = !String(query ?? "").trim();
 
@@ -427,31 +432,31 @@ export const PosProductSearch = forwardRef(function PosProductSearch(
           {searchLabel}
         </label>
       )}
-      <input
-        ref={localInputRef}
-        type="text"
+      <TouchSearchField
+        inputRef={localInputRef}
+        enabled={touchSearchKeypad}
+        title="Search product"
+        value={query}
+        disabled={disabled}
+        placeholder={searchPlaceholder}
+        className={classic ? "classic-pos-cart-scan-input" : fieldInput}
         role="combobox"
         aria-expanded={showDropdown}
         aria-controls={listId}
         aria-autocomplete="list"
-        autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
         spellCheck={false}
-        className={classic ? "classic-pos-cart-scan-input" : fieldInput}
-        value={query}
-        disabled={disabled}
-        placeholder={searchPlaceholder}
-        onChange={(e) => {
+        onChange={(next) => {
           if (disabled) return;
-          onQueryChange(e.target.value);
+          onQueryChange(next);
           setOpen(true);
         }}
+        onKeyDown={handleInputKeyDown}
         onFocus={() => {
           if (disabled) return;
           setOpen(true);
         }}
-        onKeyDown={handleInputKeyDown}
       />
 
       {classic ? classicDropdown : null}

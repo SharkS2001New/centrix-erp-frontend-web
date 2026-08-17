@@ -36,6 +36,7 @@ export async function openHotelCheck(body = {}) {
   return apiRequest("/hospitality/pos/checks", {
     method: "POST",
     body,
+    loading: false,
   });
 }
 

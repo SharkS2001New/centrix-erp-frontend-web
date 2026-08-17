@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addProductToHotelCheckInMemory, HOTEL_VOID_ORDER_NAME, isHotelLocalFirstCheckout, resolveHotelPosVoidTarget } from "@/lib/hotel-pos-offline";
+import { addProductToHotelCheckInMemory, mergeHotelCheckFromServer, HOTEL_VOID_ORDER_NAME, isHotelLocalFirstCheckout, resolveHotelPosVoidTarget } from "@/lib/hotel-pos-offline";
 
 describe("isHotelLocalFirstCheckout", () => {
   const check = { total: 100, amount_paid: 0, balance_due: 100 };
@@ -80,6 +80,91 @@ describe("addProductToHotelCheckInMemory", () => {
     const next = addProductToHotelCheckInMemory({ id: "local:abc", lines: [] }, cola, 1);
     expect(next.offline).toBe(true);
     expect(next.id).toBe("local:abc");
+  });
+
+  it("stamps a stable client_key for list rendering", () => {
+    const next = addProductToHotelCheckInMemory(null, cola, 1);
+    expect(next.lines[0].client_key).toBe("p:COLA");
+  });
+});
+
+describe("mergeHotelCheckFromServer", () => {
+  it("keeps optimistic lines that the server has not caught up to yet", () => {
+    const optimistic = addProductToHotelCheckInMemory(
+      addProductToHotelCheckInMemory(null, {
+        product_code: "COLA",
+        product_name: "Cola",
+        unit_price: 150,
+      }, 1),
+      { product_code: "SODA", product_name: "Soda", unit_price: 100 },
+      1,
+    );
+    const server = {
+      id: 55,
+      check_number: "HTL-1",
+      status: "open",
+      lines: [
+        {
+          id: 901,
+          product_code: "COLA",
+          description: "Cola",
+          qty: 1,
+          unit_price: 150,
+          line_total: 150,
+          vat_amount: 0,
+        },
+      ],
+      subtotal: 150,
+      total: 150,
+    };
+
+    const merged = mergeHotelCheckFromServer(server, optimistic, [
+      { product_code: "SODA" },
+    ]);
+
+    expect(merged.id).toBe(55);
+    expect(merged.lines).toHaveLength(2);
+    expect(merged.lines.map((l) => l.product_code)).toEqual(["COLA", "SODA"]);
+    expect(merged.lines[0].id).toBe(901);
+    expect(merged.lines[0].client_key).toBe("p:COLA");
+    expect(merged.lines[1].product_code).toBe("SODA");
+    expect(merged.total).toBe(250);
+  });
+
+  it("keeps a higher optimistic qty while another tap is still queued", () => {
+    const optimistic = addProductToHotelCheckInMemory(
+      addProductToHotelCheckInMemory(null, {
+        product_code: "COLA",
+        product_name: "Cola",
+        unit_price: 150,
+      }, 1),
+      { product_code: "COLA", product_name: "Cola", unit_price: 150 },
+      1,
+    );
+    const server = {
+      id: 55,
+      lines: [
+        {
+          id: 901,
+          product_code: "COLA",
+          description: "Cola",
+          qty: 1,
+          unit_price: 150,
+          line_total: 150,
+          vat_amount: 0,
+        },
+      ],
+      total: 150,
+    };
+
+    const merged = mergeHotelCheckFromServer(server, optimistic, [
+      { product_code: "COLA" },
+    ]);
+
+    expect(merged.lines).toHaveLength(1);
+    expect(merged.lines[0].qty).toBe(2);
+    expect(merged.lines[0].id).toBe(901);
+    expect(merged.total).toBe(300);
   });
 });
 

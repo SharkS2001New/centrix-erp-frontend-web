@@ -78,6 +78,14 @@ function match_fulfillment_orders_expired(pathname) {
   return pathname === "/fulfillment/orders/expired";
 }
 
+function match_hospitality_orders_bar(pathname) {
+  return pathname === "/hospitality/orders/bar";
+}
+
+function match_hospitality_orders_hotel(pathname) {
+  return pathname === "/hospitality/orders/hotel";
+}
+
 function match_hr_attendance_history(pathname) {
   return pathname === "/hr/attendance/history";
 }
@@ -208,7 +216,7 @@ function match_fulfillment_vehicles_id(pathname) {
 function match_hospitality_orders_id(pathname) {
   const m = pathname.match("^/hospitality/orders/([^/]+)$");
   if (!m) return false;
-  if (["hotel", "bar"].includes(m[1])) return false;
+  if (["bar","hotel"].includes(m[1])) return false;
   return true;
 }
 
@@ -286,6 +294,13 @@ function match_sales_orders_id(pathname) {
   const m = pathname.match("^/sales/orders/([^/]+)$");
   if (!m) return false;
   if (["queues"].includes(m[1])) return false;
+  return true;
+}
+
+function match_sales_shop_debtors_status(pathname) {
+  const m = pathname.match("^/sales/shop-debtors/([^/]+)$");
+  if (!m) return false;
+
   return true;
 }
 
@@ -488,14 +503,6 @@ function match_hospitality_orders(pathname) {
   return pathname === "/hospitality/orders";
 }
 
-function match_hospitality_orders_bar(pathname) {
-  return pathname === "/hospitality/orders/bar";
-}
-
-function match_hospitality_orders_hotel(pathname) {
-  return pathname === "/hospitality/orders/hotel";
-}
-
 function match_hospitality_outlets(pathname) {
   return pathname === "/hospitality/outlets";
 }
@@ -514,6 +521,10 @@ function match_hospitality_rooms(pathname) {
 
 function match_hospitality_settings(pathname) {
   return pathname === "/hospitality/settings";
+}
+
+function match_hr_absents(pathname) {
+  return pathname === "/hr/absents";
 }
 
 function match_hr_allowances(pathname) {
@@ -540,10 +551,6 @@ function match_hr_duplicate_punches(pathname) {
   return pathname === "/hr/duplicate-punches";
 }
 
-function match_hr_absents(pathname) {
-  return pathname === "/hr/absents";
-}
-
 function match_hr_employees(pathname) {
   return pathname === "/hr/employees";
 }
@@ -556,12 +563,12 @@ function match_hr_kpis(pathname) {
   return pathname === "/hr/kpis";
 }
 
-function match_hr_leave(pathname) {
-  return pathname === "/hr/leave";
-}
-
 function match_hr_lateness(pathname) {
   return pathname === "/hr/lateness";
+}
+
+function match_hr_leave(pathname) {
+  return pathname === "/hr/leave";
 }
 
 function match_hr_missed_punches(pathname) {
@@ -572,12 +579,12 @@ function match_hr_overtime(pathname) {
   return pathname === "/hr/overtime";
 }
 
-function match_hr_pending_overtime(pathname) {
-  return pathname === "/hr/pending-overtime";
-}
-
 function match_hr_payroll(pathname) {
   return pathname === "/hr/payroll";
+}
+
+function match_hr_pending_overtime(pathname) {
+  return pathname === "/hr/pending-overtime";
 }
 
 function match_hr_positions(pathname) {
@@ -704,10 +711,6 @@ function match_sales_picking_lists(pathname) {
   return pathname === "/sales/picking-lists";
 }
 
-function match_sales_trip_charts(pathname) {
-  return pathname === "/sales/trip-charts";
-}
-
 function match_sales_pos(pathname) {
   return pathname === "/sales/pos";
 }
@@ -738,6 +741,10 @@ function match_sales_till_printing(pathname) {
 
 function match_sales_tills(pathname) {
   return pathname === "/sales/tills";
+}
+
+function match_sales_trip_charts(pathname) {
+  return pathname === "/sales/trip-charts";
 }
 
 function match_sales_vouchers(pathname) {
@@ -997,6 +1004,18 @@ export const SCREEN_REGISTRY = [
     match: match_fulfillment_orders_expired,
   },
   {
+    id: "hospitality-orders-bar",
+    title: "Bar orders",
+    route: "/hospitality/orders/bar",
+    match: match_hospitality_orders_bar,
+  },
+  {
+    id: "hospitality-orders-hotel",
+    title: "Hotel orders",
+    route: "/hospitality/orders/hotel",
+    match: match_hospitality_orders_hotel,
+  },
+  {
     id: "hr-attendance-history",
     title: "Previous attendance",
     route: "/hr/attendance/history",
@@ -1217,6 +1236,12 @@ export const SCREEN_REGISTRY = [
     title: "Orders",
     route: "/sales/orders/[id]",
     match: match_sales_orders_id,
+  },
+  {
+    id: "sales-shop-debtors-status",
+    title: "Shop Debtors",
+    route: "/sales/shop-debtors/[status]",
+    match: match_sales_shop_debtors_status,
   },
   {
     id: "suppliers-id-edit",
@@ -1513,18 +1538,6 @@ export const SCREEN_REGISTRY = [
     match: match_hospitality_orders,
   },
   {
-    id: "hospitality-orders-bar",
-    title: "Bar orders",
-    route: "/hospitality/orders/bar",
-    match: match_hospitality_orders_bar,
-  },
-  {
-    id: "hospitality-orders-hotel",
-    title: "Hotel orders",
-    route: "/hospitality/orders/hotel",
-    match: match_hospitality_orders_hotel,
-  },
-  {
     id: "hospitality-outlets",
     title: "Outlets",
     route: "/hospitality/outlets",
@@ -1553,6 +1566,12 @@ export const SCREEN_REGISTRY = [
     title: "Settings",
     route: "/hospitality/settings",
     match: match_hospitality_settings,
+  },
+  {
+    id: "hr-absents",
+    title: "Absents",
+    route: "/hr/absents",
+    match: match_hr_absents,
   },
   {
     id: "hr-allowances",
@@ -1591,12 +1610,6 @@ export const SCREEN_REGISTRY = [
     match: match_hr_duplicate_punches,
   },
   {
-    id: "hr-absents",
-    title: "Absents",
-    route: "/hr/absents",
-    match: match_hr_absents,
-  },
-  {
     id: "hr-employees",
     title: "Employees",
     route: "/hr/employees",
@@ -1615,16 +1628,16 @@ export const SCREEN_REGISTRY = [
     match: match_hr_kpis,
   },
   {
-    id: "hr-leave",
-    title: "Leave",
-    route: "/hr/leave",
-    match: match_hr_leave,
-  },
-  {
     id: "hr-lateness",
     title: "Lateness",
     route: "/hr/lateness",
     match: match_hr_lateness,
+  },
+  {
+    id: "hr-leave",
+    title: "Leave",
+    route: "/hr/leave",
+    match: match_hr_leave,
   },
   {
     id: "hr-missed-punches",
@@ -1639,16 +1652,16 @@ export const SCREEN_REGISTRY = [
     match: match_hr_overtime,
   },
   {
-    id: "hr-pending-overtime",
-    title: "Pending Overtimes",
-    route: "/hr/pending-overtime",
-    match: match_hr_pending_overtime,
-  },
-  {
     id: "hr-payroll",
     title: "Payroll runs",
     route: "/hr/payroll",
     match: match_hr_payroll,
+  },
+  {
+    id: "hr-pending-overtime",
+    title: "Pending Overtime",
+    route: "/hr/pending-overtime",
+    match: match_hr_pending_overtime,
   },
   {
     id: "hr-positions",
@@ -1886,7 +1899,7 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "sales-trip-charts",
-    title: "Trip Chart",
+    title: "Trip Charts",
     route: "/sales/trip-charts",
     match: match_sales_trip_charts,
   },

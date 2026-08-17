@@ -3,11 +3,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import SalesOrdersListScreen from "@/components/sales/sales-orders-list-screen";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
 import { P } from "@/lib/permission-codes";
 
-/** Unpaid / partial orders for debtor customers (not route, not mobile). */
+/** Legacy path — redirect to Unpaid Debtors. */
 export function CustomersShopDebtorsScreen() {
   const router = useRouter();
   const { capabilities, hasPermission, hasNavPermission } = useAuth();
@@ -18,12 +17,8 @@ export function CustomersShopDebtorsScreen() {
     (typeof check !== "function" || check(P.customers.shop_debtors.view));
 
   useEffect(() => {
-    if (!allowed) {
-      router.replace("/sales/orders");
-    }
+    router.replace(allowed ? "/sales/shop-debtors/unpaid" : "/sales/orders");
   }, [allowed, router]);
 
-  if (!allowed) return null;
-
-  return <SalesOrdersListScreen shopDebtorsOnly />;
+  return null;
 }

@@ -86,6 +86,9 @@ export const NAV_HREF_ICONS = {
   // Customers
   "/customers": "hr",
   "/customers/shop-debtors": "wallet",
+  "/sales/shop-debtors/unpaid": "wallet",
+  "/sales/shop-debtors/partial": "wallet",
+  "/sales/shop-debtors/paid": "wallet",
   "/reports/customer-statement": "users",
 
   // Inventory

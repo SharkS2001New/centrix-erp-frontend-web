@@ -29,6 +29,7 @@ import {
 } from "@/lib/hospitality-pos-api";
 import {
   addProductToHotelCheckInMemory,
+  mergeHotelCheckFromServer,
   clearLocalHotelCheckLines,
   completeOfflineHotelCashCheck,
   discardPendingHotelOfflineCheck,
@@ -76,6 +77,8 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { primeHotelPosImageCacheFromIndexedDb } from "@/lib/hotel-pos-image-cache";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
+import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
+import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 import { disposePrintWindow } from "@/lib/open-print-window";
 import {
   isSaleOrderBrowserPrintWindowRequired,
@@ -262,6 +265,7 @@ export function HotelBarPosScreen() {
     outletId: menuOutlet?.id ?? assignedOutletId ?? null,
   });
   const hotelSettings = resolveHotelPosSettings(capabilities);
+  const touchSearchKeypad = isPosTouchSearchKeypadEnabled(capabilities);
   const paymentWorkflow = resolveHospitalityPaymentWorkflow(capabilities);
   const [gridColumns, setGridColumns] = useState(hotelSettings.gridColumns);
   const [collectPayment, setCollectPayment] = useState(hotelSettings.collectPayment);
@@ -888,6 +892,18 @@ export function HotelBarPosScreen() {
     if (lineAddFlushingRef.current) return;
     lineAddFlushingRef.current = true;
     let failed = false;
+
+    function applyServerCheck(serverCheck) {
+      const merged = mergeHotelCheckFromServer(
+        serverCheck,
+        checkRef.current,
+        lineAddQueueRef.current,
+      );
+      checkRef.current = merged;
+      commitCheck(merged);
+      return merged;
+    }
+
     try {
       while (lineAddQueueRef.current.length) {
         let active = checkRef.current;
@@ -900,18 +916,13 @@ export function HotelBarPosScreen() {
         if (needsNew && !isLocalHotelCheckId(active?.id) && !active?.offline) {
           const product = lineAddQueueRef.current.shift();
           if (!product?.product_code) continue;
-          const optimisticLines = active?.lines;
           const opened = await startFreshCheck({
             apply: false,
             productCode: product.product_code,
             qty: 1,
           });
           if (!opened?.id) throw new Error("Could not open order.");
-          active = opened;
-          checkRef.current = optimisticLines?.length
-            ? { ...opened, lines: optimisticLines }
-            : opened;
-          commitCheck(checkRef.current);
+          active = applyServerCheck(opened);
           continue;
         }
         const product = lineAddQueueRef.current.shift();
@@ -925,22 +936,7 @@ export function HotelBarPosScreen() {
           const res = await addHotelCheckLine(active.id, product.product_code, 1);
           const next = res?.check ?? null;
           if (next) {
-            active = next;
-            const optimistic = checkRef.current;
-            if (lineAddQueueRef.current.length === 0) {
-              checkRef.current = next;
-              commitCheck(next);
-            } else {
-              checkRef.current = {
-                ...next,
-                lines: optimistic?.lines ?? next.lines,
-                subtotal: optimistic?.subtotal ?? next.subtotal,
-                vat_total: optimistic?.vat_total ?? next.vat_total,
-                total: optimistic?.total ?? next.total,
-                amount_paid: optimistic?.amount_paid ?? next.amount_paid,
-                balance_due: optimistic?.balance_due ?? next.balance_due,
-              };
-            }
+            active = applyServerCheck(next);
           }
         } catch (err) {
           lineAddQueueRef.current.unshift(product);
@@ -1741,8 +1737,6 @@ export function HotelBarPosScreen() {
 
   const lines = check?.lines ?? [];
   const hasLines = lines.length > 0;
-  const voidTarget = resolveHotelPosVoidTarget(check, lastReceiptCheck);
-  const canVoidCheck = Boolean(voidTarget);
   const posTitle = menuChannel === "bar" ? "Bar POS" : "Restaurant POS";
   const outletAssigned = Boolean(assignedOutletId);
   const canEditMenuPrices =
@@ -1772,7 +1766,9 @@ export function HotelBarPosScreen() {
     }
   }
   const gridStyle = useMemo(
-    () => ({ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }),
+    () => ({
+      "--hotel-pos-cols": String(gridColumns),
+    }),
     [gridColumns],
   );
   const themeVars = useMemo(() => hotelPosThemeCssVars(themeTemplate), [themeTemplate]);
@@ -1865,7 +1861,7 @@ export function HotelBarPosScreen() {
         <div className="hotel-pos-menu-pane flex min-h-0 min-w-0 flex-1 flex-col border-b border-[var(--theme-border)]/80 lg:border-b-0 lg:border-r">
           <div className="shrink-0 space-y-3 px-3 pb-2 pt-3 sm:px-4 lg:px-5">
             <div
-              className="hotel-pos-chip-scroll flex flex-wrap items-center justify-center gap-2 overflow-x-auto pb-0.5"
+              className="hotel-pos-chip-scroll flex items-center gap-2 overflow-x-auto pb-1"
               role="toolbar"
               aria-label="Menu filter and orders"
             >
@@ -1938,15 +1934,15 @@ export function HotelBarPosScreen() {
             <label className="sr-only" htmlFor="hotel-pos-search-item">
               Search item
             </label>
-            <input
+            <TouchSearchField
               id="hotel-pos-search-item"
-              ref={searchRef}
-              type="search"
+              inputRef={searchRef}
+              enabled={touchSearchKeypad}
+              title={menuGroup === "rooms" ? "Search room" : "Search item"}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
               placeholder={menuGroup === "rooms" ? "Search room…" : "Search item…"}
               className="theme-input hotel-pos-field w-full rounded-xl px-4 py-2.5 text-sm"
-              autoComplete="off"
             />
             {showTableField && !floorTables.length ? (
               <p className="theme-subtext text-[11px]">
@@ -1963,7 +1959,7 @@ export function HotelBarPosScreen() {
             ) : null}
           </div>
 
-          <div ref={catalogScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
+          <div ref={catalogScrollRef} className="hotel-pos-touch-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
             {catalogLoading && !products.length ? (
               <p className="theme-subtext py-20 text-center text-sm">
                 {menuGroup === "rooms" ? "Loading rooms…" : "Loading menu…"}
@@ -1980,7 +1976,7 @@ export function HotelBarPosScreen() {
               </p>
             ) : (
               <>
-                <div className="grid gap-3" style={gridStyle}>
+                <div className="hotel-pos-catalog-grid grid gap-2 sm:gap-3" style={gridStyle}>
                   {products.map((product) => (
                     <HotelPosCatalogTile
                       key={product.product_code || product.id}
@@ -2021,13 +2017,13 @@ export function HotelBarPosScreen() {
         </div>
 
         <div className="hotel-pos-check-pane flex min-h-0 w-full flex-col lg:w-[min(100%,26rem)] xl:w-[30rem] shrink-0">
-          <div className="shrink-0 space-y-3 border-b border-[var(--theme-border)] px-4 py-4">
+          <div className="shrink-0 space-y-2 border-b border-[var(--theme-border)] px-3 py-2 sm:px-4 sm:py-2.5">
             <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--theme-accent-text)]">
+              <div className="min-w-0 leading-none">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--theme-accent-text)]">
                   Order no
                 </p>
-                <p className="theme-heading mt-0.5 font-mono text-2xl font-bold tracking-tight">
+                <p className="theme-heading mt-0.5 font-mono text-lg font-bold tracking-tight leading-none sm:text-xl">
                   {check?.check_number ?? "New"}
                 </p>
               </div>
@@ -2133,9 +2129,9 @@ export function HotelBarPosScreen() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-2">
+          <div className="hotel-pos-touch-scroll min-h-0 flex-1 overflow-y-auto px-2">
             {!hasLines ? (
-              <div className="hotel-pos-empty-ticket mx-2 mt-3 rounded-2xl px-4 py-14 text-center">
+              <div className="hotel-pos-empty-ticket mx-2 mt-2 rounded-2xl px-4 py-8 text-center sm:mt-3 sm:py-14">
                 <p className="theme-heading text-sm font-semibold">Ticket is empty</p>
                 <p className="theme-subtext mt-1 text-xs">{emptyTicketHint}</p>
               </div>
@@ -2143,8 +2139,13 @@ export function HotelBarPosScreen() {
               <ul className="space-y-2 px-2 py-3">
                 {lines.map((line) => {
                   const selected = selectedLineId === line.id;
+                  const lineKey =
+                    line.client_key ||
+                    (line.product_code
+                      ? `${line.is_room_stay || line.modifiers?.type === "room_stay" ? "room" : "p"}:${line.product_code}`
+                      : String(line.id));
                   return (
-                    <li key={line.id}>
+                    <li key={lineKey}>
                       <button
                         type="button"
                         onClick={() => setSelectedLineId(line.id)}
@@ -2186,7 +2187,7 @@ export function HotelBarPosScreen() {
                             >
                               <button
                                 type="button"
-                                className="theme-secondary-btn flex h-8 w-8 items-center justify-center rounded-full text-base font-bold"
+                                className="theme-secondary-btn flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold"
                                 disabled={busy}
                                 onClick={() => void bumpQty(line, -1)}
                                 aria-label="Decrease quantity"
@@ -2198,7 +2199,7 @@ export function HotelBarPosScreen() {
                               </span>
                               <button
                                 type="button"
-                                className="theme-secondary-btn flex h-8 w-8 items-center justify-center rounded-full text-base font-bold"
+                                className="theme-secondary-btn flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold"
                                 disabled={busy}
                                 onClick={() => void bumpQty(line, 1)}
                                 aria-label="Increase quantity"
@@ -2216,13 +2217,13 @@ export function HotelBarPosScreen() {
             )}
           </div>
 
-          <div className="hotel-pos-totals shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
-            <div className="mb-3 flex items-end justify-between">
+          <div className="hotel-pos-totals shrink-0 border-t border-[var(--theme-border)] px-3 py-2.5 sm:px-4 sm:py-3">
+            <div className="mb-2 flex items-end justify-between gap-2">
               <div>
-                <p className="theme-subtext text-[11px] uppercase tracking-wide">
+                <p className="theme-subtext text-[10px] uppercase tracking-wide">
                   {Number(check?.amount_paid) > 0 ? "Balance" : "Total"}
                 </p>
-                <p className="text-2xl font-bold tabular-nums text-[var(--theme-accent-text)]">
+                <p className="text-xl font-bold tabular-nums leading-tight text-[var(--theme-accent-text)] sm:text-2xl">
                   {formatHotelMoney(
                     Number(check?.balance_due ?? Math.max(0, Number(check?.total ?? 0) - Number(check?.amount_paid ?? 0))),
                   )}
@@ -2243,7 +2244,7 @@ export function HotelBarPosScreen() {
               </div>
             </div>
 
-            <div className="mb-2.5 grid grid-cols-2 gap-2">
+            <div className="mb-2 grid grid-cols-2 gap-2">
               <PosActionButton
                 label="Remove"
                 title="Remove selected line"
@@ -2262,12 +2263,12 @@ export function HotelBarPosScreen() {
             </div>
 
             {collectPayment ? (
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                 <button
                   type="button"
                   disabled={busy || !hasLines || Number(check?.amount_paid) > 0}
                   onClick={() => void handleHold()}
-                  className="hotel-pos-secondary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+                  className="hotel-pos-secondary-cta rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide disabled:opacity-40 sm:py-3.5 sm:text-sm"
                   title={
                     Number(check?.amount_paid) > 0
                       ? "Collect the remaining balance instead of holding"
@@ -2280,18 +2281,18 @@ export function HotelBarPosScreen() {
                   type="button"
                   disabled={busy || !hasLines}
                   onClick={() => void handlePrimaryComplete()}
-                  className="hotel-pos-primary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+                  className="hotel-pos-primary-cta rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide disabled:opacity-40 sm:py-3.5 sm:text-sm"
                 >
                   {primaryCtaLabel}
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
                 <button
                   type="button"
                   disabled={busy || !hasLines || Number(check?.amount_paid) > 0}
                   onClick={() => void handleHold()}
-                  className="hotel-pos-secondary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+                  className="hotel-pos-secondary-cta rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide disabled:opacity-40 sm:py-3.5 sm:text-sm"
                 >
                   Hold
                 </button>
@@ -2299,7 +2300,7 @@ export function HotelBarPosScreen() {
                   type="button"
                   disabled={busy || !hasLines || !unpaidEnabled}
                   onClick={() => void handleSaveOrder()}
-                  className="hotel-pos-primary-cta rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide disabled:opacity-40"
+                  className="hotel-pos-primary-cta rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide disabled:opacity-40 sm:py-3.5 sm:text-sm"
                 >
                   Save
                 </button>
@@ -2310,14 +2311,6 @@ export function HotelBarPosScreen() {
                 Save unpaid mode — collect payment later from Held.
               </p>
             )}
-            <button
-              type="button"
-              disabled={busy || !canVoidCheck}
-              onClick={() => void handleVoid()}
-              className="hotel-pos-danger-btn mt-3 w-full rounded-xl py-3.5 text-sm font-semibold uppercase tracking-wide disabled:opacity-40"
-            >
-              Void order
-            </button>
           </div>
         </div>
       </div>

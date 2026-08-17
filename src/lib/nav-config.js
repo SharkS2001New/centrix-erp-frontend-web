@@ -213,9 +213,31 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.sales.orders.view,
         requireWhatsappOrders: true,
       },
+    ],
+  },
+  {
+    id: "shop_debtors",
+    label: "Shop Debtors",
+    icon: "💳",
+    collapsible: true,
+    items: [
       {
-        href: "/customers/shop-debtors",
-        label: "Shop debtors",
+        href: "/sales/shop-debtors/unpaid",
+        label: "Unpaid Debtors",
+        module: "customers_suppliers",
+        permission: P.customers.shop_debtors.view,
+        requireShopDebtors: true,
+      },
+      {
+        href: "/sales/shop-debtors/partial",
+        label: "Partially Paid Debtors",
+        module: "customers_suppliers",
+        permission: P.customers.shop_debtors.view,
+        requireShopDebtors: true,
+      },
+      {
+        href: "/sales/shop-debtors/paid",
+        label: "Paid Debtors",
         module: "customers_suppliers",
         permission: P.customers.shop_debtors.view,
         requireShopDebtors: true,

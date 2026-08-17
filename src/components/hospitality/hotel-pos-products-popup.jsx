@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import {
   fetchHotelPosCatalog,
   updateHotelPosCatalogPrice,
 } from "@/lib/hospitality-pos-api";
 import { formatHotelMoney } from "@/lib/hotel-pos-settings";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
+import { TouchSearchField } from "@/components/pos/touch-search-keypad";
 
 function formatPriceInput(value) {
   if (value == null || value === "") return "";
@@ -108,6 +111,8 @@ export function HotelPosProductsPopup({
   cachedProducts = [],
   onPriceUpdated,
 }) {
+  const { capabilities } = useAuth();
+  const touchSearchKeypad = isPosTouchSearchKeypadEnabled(capabilities);
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [items, setItems] = useState([]);
@@ -252,17 +257,17 @@ export function HotelPosProductsPopup({
         </div>
 
         <div className="border-b border-[var(--theme-border)] px-4 py-3">
-          <input
-            type="search"
+          <TouchSearchField
+            enabled={touchSearchKeypad}
+            title="Search menu"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
             placeholder="Search this menu…"
             className="theme-input hotel-pos-field w-full rounded-xl px-4 py-2.5 text-sm"
-            autoComplete="off"
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="hotel-pos-touch-scroll min-h-0 flex-1 overflow-y-auto">
           {loading && !items.length ? (
             <p className="theme-subtext py-16 text-center text-sm">Loading products…</p>
           ) : !items.length ? (

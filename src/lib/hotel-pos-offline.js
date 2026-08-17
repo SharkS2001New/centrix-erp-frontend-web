@@ -315,6 +315,16 @@ export async function createLocalHotelCheck({
 }
 
 /** Sync cart math — used for instant UI before IndexedDB / server catch up. */
+function isHotelRoomStayLine(line) {
+  return Boolean(line?.is_room_stay || line?.modifiers?.type === "room_stay");
+}
+
+function hotelLineClientKey(line) {
+  const code = String(line?.product_code ?? "").trim();
+  if (code) return isHotelRoomStayLine(line) ? `room:${code}` : `p:${code}`;
+  return line?.client_key || (line?.id != null ? `id:${line.id}` : "");
+}
+
 export function addProductToHotelCheckInMemory(check, product, qty = 1) {
   if (!product?.product_code) {
     throw new Error("Product code is required.");
@@ -335,11 +345,13 @@ export function addProductToHotelCheckInMemory(check, product, qty = 1) {
     line.line_total = lineTotal;
     line.vat_amount = lineVatAmount(lineTotal, vatPct);
     line.description = product.product_name ?? line.description;
+    line.client_key = line.client_key || hotelLineClientKey(line);
     lines[existingIdx] = line;
   } else {
     const lineTotal = roundMoney(unitPrice * addQty);
     lines.push({
       id: `local-line-${Date.now()}-${lines.length + 1}`,
+      client_key: `p:${product.product_code}`,
       product_id: product.id ?? null,
       product_code: product.product_code,
       description: product.product_name ?? product.product_code,
@@ -355,6 +367,78 @@ export function addProductToHotelCheckInMemory(check, product, qty = 1) {
     ...check,
     lines,
     offline: Boolean(check?.offline || isLocalHotelCheckId(check?.id)),
+  });
+}
+
+/**
+ * Apply a server check without dropping lines the cashier already sees.
+ * Pending taps keep optimistic qty; matching rows pick up server ids so qty
+ * buttons still work once the request lands.
+ */
+export function mergeHotelCheckFromServer(serverCheck, optimisticCheck, pendingProducts = []) {
+  if (!serverCheck) return optimisticCheck ?? null;
+  const serverLines = Array.isArray(serverCheck.lines) ? serverCheck.lines : [];
+  const optimisticLines = Array.isArray(optimisticCheck?.lines) ? optimisticCheck.lines : [];
+  if (optimisticLines.length === 0) {
+    return { ...serverCheck, lines: serverLines };
+  }
+
+  const pendingCodes = new Set();
+  for (const product of pendingProducts) {
+    const code = String(product?.product_code ?? "").trim();
+    if (code) pendingCodes.add(code);
+  }
+
+  const remaining = [...serverLines];
+
+  function takeMatching(opt) {
+    const code = String(opt.product_code ?? "").trim();
+    const optRoom = isHotelRoomStayLine(opt);
+    const idx = remaining.findIndex((row) => {
+      if (isHotelRoomStayLine(row) !== optRoom) return false;
+      if (code) return String(row.product_code ?? "") === code;
+      return String(row.id) === String(opt.id);
+    });
+    if (idx < 0) return null;
+    const [line] = remaining.splice(idx, 1);
+    return line;
+  }
+
+  const mergedLines = optimisticLines.map((opt) => {
+    const serverLine = takeMatching(opt);
+    const clientKey = opt.client_key || hotelLineClientKey(opt);
+    if (!serverLine) return { ...opt, client_key: clientKey };
+
+    const code = String(opt.product_code ?? "").trim();
+    const pending = code ? pendingCodes.has(code) : false;
+    const optQty = Number(opt.qty) || 0;
+    const serverQty = Number(serverLine.qty) || 0;
+    if (pending || optQty > serverQty) {
+      return {
+        ...opt,
+        id: serverLine.id ?? opt.id,
+        product_id: serverLine.product_id ?? opt.product_id,
+        client_key: clientKey,
+      };
+    }
+    return {
+      ...serverLine,
+      client_key: clientKey,
+      image_url: opt.image_url ?? serverLine.image_url,
+    };
+  });
+
+  for (const leftover of remaining) {
+    mergedLines.push({
+      ...leftover,
+      client_key: leftover.client_key || hotelLineClientKey(leftover),
+    });
+  }
+
+  return recalculateLocalHotelCheck({
+    ...serverCheck,
+    guest_name: serverCheck.guest_name || optimisticCheck?.guest_name,
+    lines: mergedLines,
   });
 }
 

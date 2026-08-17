@@ -45,6 +45,12 @@ export const SCREEN_COMPONENTS = {
   "fulfillment-orders-expired": lazy(() =>
     import("@/components/tab-screens/fulfillment-orders-expired").then((m) => ({ default: m.FulfillmentOrdersExpiredScreen })),
   ),
+  "hospitality-orders-bar": lazy(() =>
+    import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityBarOrdersScreen })),
+  ),
+  "hospitality-orders-hotel": lazy(() =>
+    import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityHotelOrdersScreen })),
+  ),
   "hr-attendance-history": lazy(() =>
     import("@/components/tab-screens/hr-attendance-history").then((m) => ({ default: m.HrAttendanceHistoryScreen })),
   ),
@@ -155,6 +161,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "sales-orders-id": lazy(() =>
     import("@/components/tab-screens/sales-orders-id").then((m) => ({ default: m.SalesOrdersIdScreen })),
+  ),
+  "sales-shop-debtors-status": lazy(() =>
+    import("@/components/tab-screens/sales-shop-debtors-status").then((m) => ({ default: m.SalesShopDebtorsStatusScreen })),
   ),
   "suppliers-id-edit": lazy(() =>
     import("@/components/tab-screens/suppliers-id-edit").then((m) => ({ default: m.SuppliersIdEditScreen })),
@@ -303,12 +312,6 @@ export const SCREEN_COMPONENTS = {
   "hospitality-orders": lazy(() =>
     import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityOrdersScreen })),
   ),
-  "hospitality-orders-bar": lazy(() =>
-    import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityBarOrdersScreen })),
-  ),
-  "hospitality-orders-hotel": lazy(() =>
-    import("@/components/tab-screens/hospitality-orders").then((m) => ({ default: m.HospitalityHotelOrdersScreen })),
-  ),
   "hospitality-outlets": lazy(() =>
     import("@/components/tab-screens/hospitality-outlets").then((m) => ({ default: m.HospitalityOutletsScreen })),
   ),
@@ -323,6 +326,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "hospitality-settings": lazy(() =>
     import("@/components/tab-screens/hospitality-settings").then((m) => ({ default: m.HospitalitySettingsScreen })),
+  ),
+  "hr-absents": lazy(() =>
+    import("@/components/tab-screens/hr-absents").then((m) => ({ default: m.HrAbsentsScreen })),
   ),
   "hr-allowances": lazy(() =>
     import("@/components/tab-screens/hr-allowances").then((m) => ({ default: m.HrAllowancesScreen })),
@@ -342,9 +348,6 @@ export const SCREEN_COMPONENTS = {
   "hr-duplicate-punches": lazy(() =>
     import("@/components/tab-screens/hr-duplicate-punches").then((m) => ({ default: m.HrDuplicatePunchesScreen })),
   ),
-  "hr-absents": lazy(() =>
-    import("@/components/tab-screens/hr-absents").then((m) => ({ default: m.HrAbsentsScreen })),
-  ),
   "hr-employees": lazy(() =>
     import("@/components/tab-screens/hr-employees").then((m) => ({ default: m.HrEmployeesScreen })),
   ),
@@ -354,11 +357,11 @@ export const SCREEN_COMPONENTS = {
   "hr-kpis": lazy(() =>
     import("@/components/tab-screens/hr-kpis").then((m) => ({ default: m.HrKpisScreen })),
   ),
-  "hr-leave": lazy(() =>
-    import("@/components/tab-screens/hr-leave").then((m) => ({ default: m.HrLeaveScreen })),
-  ),
   "hr-lateness": lazy(() =>
     import("@/components/tab-screens/hr-lateness").then((m) => ({ default: m.HrLatenessScreen })),
+  ),
+  "hr-leave": lazy(() =>
+    import("@/components/tab-screens/hr-leave").then((m) => ({ default: m.HrLeaveScreen })),
   ),
   "hr-missed-punches": lazy(() =>
     import("@/components/tab-screens/hr-missed-punches").then((m) => ({ default: m.HrMissedPunchesScreen })),
@@ -366,11 +369,11 @@ export const SCREEN_COMPONENTS = {
   "hr-overtime": lazy(() =>
     import("@/components/tab-screens/hr-overtime").then((m) => ({ default: m.HrOvertimeScreen })),
   ),
-  "hr-pending-overtime": lazy(() =>
-    import("@/components/tab-screens/hr-pending-overtime").then((m) => ({ default: m.HrPendingOvertimeScreen })),
-  ),
   "hr-payroll": lazy(() =>
     import("@/components/tab-screens/hr-payroll").then((m) => ({ default: m.HrPayrollScreen })),
+  ),
+  "hr-pending-overtime": lazy(() =>
+    import("@/components/tab-screens/hr-pending-overtime").then((m) => ({ default: m.HrPendingOvertimeScreen })),
   ),
   "hr-positions": lazy(() =>
     import("@/components/tab-screens/hr-positions").then((m) => ({ default: m.HrPositionsScreen })),

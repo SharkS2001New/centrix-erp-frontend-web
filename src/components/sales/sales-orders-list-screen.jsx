@@ -305,8 +305,20 @@ export default function SalesOrdersListScreen({
   routeOrdersOnly = false,
   routeOrdersDateRangeDays = 30,
   shopDebtorsOnly = false,
+  /** @type {"unpaid" | "partial" | "paid" | null} */
+  shopDebtorsPaymentStatus = null,
 }) {
-  const paymentQueueSlug = shopDebtorsOnly ? "unpaid" : queueSlug;
+  const shopDebtorsBucket =
+    shopDebtorsOnly && ["unpaid", "partial", "paid"].includes(String(shopDebtorsPaymentStatus ?? ""))
+      ? shopDebtorsPaymentStatus
+      : shopDebtorsOnly
+        ? "unpaid"
+        : null;
+  const paymentQueueSlug = shopDebtorsBucket
+    ? shopDebtorsBucket === "partial"
+      ? "pending_payment"
+      : shopDebtorsBucket
+    : queueSlug;
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
@@ -332,12 +344,15 @@ export default function SalesOrdersListScreen({
     [queueSlug, orgWorkflow, includeMobileOrders, includeWhatsappOrders, capabilities],
   );
   const ordersTabTitle = useMemo(() => {
+    if (shopDebtorsBucket === "unpaid") return "Unpaid Debtors";
+    if (shopDebtorsBucket === "partial") return "Partially Paid Debtors";
+    if (shopDebtorsBucket === "paid") return "Paid Debtors";
     if (shopDebtorsOnly) return "Shop debtors";
     if (routeOrdersOnly) {
       return formatNavLabel(queueConfig?.title ?? "Route orders");
     }
     return formatNavLabel(queueConfig?.title ?? "All Orders");
-  }, [shopDebtorsOnly, routeOrdersOnly, queueConfig?.title]);
+  }, [shopDebtorsBucket, shopDebtorsOnly, routeOrdersOnly, queueConfig?.title]);
   useTabTitle(ordersTabTitle);
   const statusOptions = useMemo(() => {
     const options = workflowStatusFilterOptions(orgWorkflow);
@@ -401,8 +416,12 @@ export default function SalesOrdersListScreen({
     [capabilities?.module_settings, queueConfig?.slug],
   );
   const ordersColumnStorageKey = useMemo(
-    () => buildOrdersColumnStorageKey(user, shopDebtorsOnly ? "shop-debtors" : queueSlug),
-    [user, queueSlug, shopDebtorsOnly],
+    () =>
+      buildOrdersColumnStorageKey(
+        user,
+        shopDebtorsBucket ? `shop-debtors-${shopDebtorsBucket}` : queueSlug,
+      ),
+    [user, queueSlug, shopDebtorsBucket],
   );
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
@@ -505,7 +524,7 @@ export default function SalesOrdersListScreen({
 
   useEffect(() => {
     const range = shopDebtorsOnly
-      ? defaultDateRange(365)
+      ? defaultDateRange(3)
       : routeOrdersOnly && routeOrdersDateRangeDays
         ? defaultDateRange(routeOrdersDateRangeDays)
         : queueConfig?.dateRangeDays
@@ -523,6 +542,7 @@ export default function SalesOrdersListScreen({
     routeOrdersOnly,
     routeOrdersDateRangeDays,
     shopDebtorsOnly,
+    shopDebtorsBucket,
   ]);
 
   useEffect(() => {
@@ -614,7 +634,7 @@ export default function SalesOrdersListScreen({
   const sourceColumnAvailable = !routeOrdersOnly && sourceOptions.length > 2;
   const discountColumnAvailable = shouldShowSalesDiscountColumn(capabilities?.module_settings);
   const paymentBreakdownColumnsAvailable =
-    shopDebtorsOnly ||
+    Boolean(shopDebtorsBucket && shopDebtorsBucket !== "paid") ||
     ["unpaid", "partial"].includes(
       String(queueConfig?.fixedPaymentStatusFilter ?? "").toLowerCase(),
     ) ||
@@ -708,6 +728,8 @@ export default function SalesOrdersListScreen({
       if (statusParam) filters.status = statusParam;
       if (queueConfig?.fixedPaymentStatusFilter) {
         filters.payment_status = queueConfig.fixedPaymentStatusFilter;
+      } else if (shopDebtorsBucket) {
+        filters.payment_status = shopDebtorsBucket;
       }
       if (cashierFilter && cashierFilter !== "all") {
         filters.cashier_id = cashierFilter;
@@ -728,7 +750,8 @@ export default function SalesOrdersListScreen({
       } else if (
         (!queueConfig?.slug || queueConfig.slug === "all") &&
         !statusParam &&
-        !normalizeSalesListSearchQuery(debouncedSearch)
+        !normalizeSalesListSearchQuery(debouncedSearch) &&
+        !shopDebtorsOnly
       ) {
         // All Orders browse: keep Cancelled/Expired off this list (and out of pager
         // totals). They live on their own queues; Status filter or search still finds them.
@@ -736,11 +759,14 @@ export default function SalesOrdersListScreen({
         // filtering to Paid looked like the cancel "was counting but not in the UI".
         extra.exclude_statuses = "cancelled,expired";
       }
-      if (queueConfig?.requireOutstandingBalance || shopDebtorsOnly) {
+      if (queueConfig?.requireOutstandingBalance) {
         extra.outstanding_balance = 1;
       }
       if (shopDebtorsOnly) {
         extra.shop_debtors = 1;
+        if (!extra.exclude_statuses) {
+          extra.exclude_statuses = "cancelled,expired";
+        }
       }
       if (routeOrdersOnly) {
         extra.route_orders = 1;
@@ -806,6 +832,7 @@ export default function SalesOrdersListScreen({
       queueConfig,
       routeOrdersOnly,
       shopDebtorsOnly,
+      shopDebtorsBucket,
       routeFilter,
       cashierFilter,
       ordersListSort,
@@ -1786,15 +1813,27 @@ export default function SalesOrdersListScreen({
     <CatalogPageShell
       navigationReady={!loading}
       title={
-        shopDebtorsOnly
-          ? "Shop debtors"
-          : routeOrdersOnly
-            ? (queueConfig?.title ?? "Route orders")
-            : queueConfig?.title ?? "All Orders"
+        shopDebtorsBucket === "unpaid"
+          ? "Unpaid Debtors"
+          : shopDebtorsBucket === "partial"
+            ? "Partially Paid Debtors"
+            : shopDebtorsBucket === "paid"
+              ? "Paid Debtors"
+              : shopDebtorsOnly
+                ? "Shop debtors"
+                : routeOrdersOnly
+                  ? (queueConfig?.title ?? "Route orders")
+                  : queueConfig?.title ?? "All Orders"
       }
         subtitle={
-          shopDebtorsOnly
-            ? "Unpaid and partially paid orders for debtor customers — route and mobile orders are excluded"
+          shopDebtorsBucket === "unpaid"
+            ? "Shop credit orders with nothing collected yet — last 3 days by default. Route and mobile orders are excluded."
+            : shopDebtorsBucket === "partial"
+              ? "Shop credit orders with a remaining balance — last 3 days by default. Route and mobile orders are excluded."
+              : shopDebtorsBucket === "paid"
+                ? "Fully paid shop credit orders — last 3 days by default. Route and mobile orders are excluded."
+                : shopDebtorsOnly
+                  ? "Debtor customer orders for the shop — route and mobile orders are excluded"
             : routeOrdersOnly
             ? (queueConfig?.subtitle
               ?? `Route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only — change status in Sales → Orders.`)
@@ -2174,8 +2213,14 @@ export default function SalesOrdersListScreen({
                           colSpan={columnCount}
                           className="px-5 py-10 text-center text-sm text-slate-500"
                         >
-                          {shopDebtorsOnly
+                          {shopDebtorsBucket === "unpaid"
                             ? "No unpaid debtor orders match your filters."
+                            : shopDebtorsBucket === "partial"
+                              ? "No partially paid debtor orders match your filters."
+                              : shopDebtorsBucket === "paid"
+                                ? "No paid debtor orders match your filters."
+                                : shopDebtorsOnly
+                                  ? "No debtor orders match your filters."
                             : "No orders match your filters."}
                         </td>
                       </tr>

@@ -401,6 +401,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mpesa_code: false,
     enable_cheque_number: false,
     enable_pos_cash_rounding: false,
+    pos_touch_search_keypad: false,
     receipt_show_all_payment_methods: true,
     enable_pos_order_edit: false,
     enable_held_order_amount_paid: false,
@@ -495,6 +496,7 @@ export function salesPlatformFromApi(apiPayload) {
     )
       ? Boolean(apiPayload.enable_pos_cash_rounding)
       : apiPayload.external_pos_layout === "classic",
+    pos_touch_search_keypad: Boolean(apiPayload.pos_touch_search_keypad),
     receipt_show_all_payment_methods: apiPayload.receipt_show_all_payment_methods !== false,
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     enable_held_order_amount_paid: Boolean(apiPayload.enable_held_order_amount_paid ?? false),
@@ -1590,6 +1592,20 @@ function OrganizationHotelServicesPanel({
   options={[{ value: 20, label: '20' }, { value: 30, label: '30' }, { value: 40, label: '40' }, { value: 50, label: '50' }]}
 />
           </OrgRegisterField>
+          <label className="flex items-start gap-3 rounded-xl border border-[var(--theme-border)] px-4 py-3">
+            <input
+              type="checkbox"
+              className="mt-1 rounded border-[var(--theme-border)]"
+              checked={Boolean(salesPlatform?.pos_touch_search_keypad)}
+              onChange={(e) => patchSales({ pos_touch_search_keypad: e.target.checked })}
+            />
+            <span className="min-w-0">
+              <span className="theme-heading block text-sm font-medium">On-screen search keypad</span>
+              <span className="theme-subtext block text-xs">
+                For touch desks without a keyboard. Tapping a POS search field opens a keypad instead of the device keyboard. Applies to Hotel POS and External POS product search.
+              </span>
+            </span>
+          </label>
         </div>
       </PlatformFormSection>
 
