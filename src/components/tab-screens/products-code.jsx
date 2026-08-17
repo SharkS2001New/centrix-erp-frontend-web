@@ -44,6 +44,7 @@ import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 import { formatOrderNumber } from "@/lib/sales";
 import { resolveProductAudit } from "@/lib/product-audit";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
+import { ProductPhotoThumb } from "@/components/products/product-name-cell";
 
 const MAIN_TABS = [
   { id: "info", label: "Product information" },
@@ -783,35 +784,40 @@ export function ProductsCodeScreen() {
       <div className="mb-6 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="bg-gradient-to-r from-[var(--theme-primary-subtle)] via-[var(--theme-surface)] to-[var(--theme-surface)] px-5 py-5 md:px-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge active={enriched.is_active} />
-                <StockBadge tone={stock.tone} label={stock.label} />
-                {!hotelCatalogue && enriched.sell_on_retail_label === "Sells W/R" ? (
-                  <span className="inline-flex rounded-full bg-[var(--theme-primary-subtle)] px-2.5 py-0.5 text-xs font-medium text-[var(--theme-accent-text)] ring-1 ring-[var(--theme-border)]">
-                    Retail
-                  </span>
-                ) : null}
-                {hotelCatalogue && (enriched.sell_on_bar === 1 || enriched.sell_on_bar === true) ? (
-                  <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20">
-                    Bar
-                  </span>
-                ) : null}
-                {hotelCatalogue && (enriched.sell_on_hotel === 1 || enriched.sell_on_hotel === true) ? (
-                  <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20">
-                    Hotel
-                  </span>
-                ) : null}
-              </div>
-              <h1 className="theme-heading mt-3 text-2xl font-semibold tracking-tight">
-                {enriched.product_name}
-              </h1>
-              <div className="theme-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                <span className="theme-heading font-mono">{enriched.product_code}</span>
-                <span className="text-[var(--theme-border-strong)]">·</span>
-                <span>{enriched.category_name}</span>
-                <span className="text-[var(--theme-border-strong)]">/</span>
-                <span>{enriched.subcategory_name}</span>
+            <div className="flex min-w-0 flex-1 items-start gap-4">
+              {hotelCatalogue ? (
+                <ProductPhotoThumb product={enriched} size="lg" className="mt-1" />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge active={enriched.is_active} />
+                  <StockBadge tone={stock.tone} label={stock.label} />
+                  {!hotelCatalogue && enriched.sell_on_retail_label === "Sells W/R" ? (
+                    <span className="inline-flex rounded-full bg-[var(--theme-primary-subtle)] px-2.5 py-0.5 text-xs font-medium text-[var(--theme-accent-text)] ring-1 ring-[var(--theme-border)]">
+                      Retail
+                    </span>
+                  ) : null}
+                  {hotelCatalogue && (enriched.sell_on_bar === 1 || enriched.sell_on_bar === true) ? (
+                    <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20">
+                      Bar
+                    </span>
+                  ) : null}
+                  {hotelCatalogue && (enriched.sell_on_hotel === 1 || enriched.sell_on_hotel === true) ? (
+                    <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20">
+                      Hotel
+                    </span>
+                  ) : null}
+                </div>
+                <h1 className="theme-heading mt-3 text-2xl font-semibold tracking-tight">
+                  {enriched.product_name}
+                </h1>
+                <div className="theme-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <span className="theme-heading font-mono">{enriched.product_code}</span>
+                  <span className="text-[var(--theme-border-strong)]">·</span>
+                  <span>{enriched.category_name}</span>
+                  <span className="text-[var(--theme-border-strong)]">/</span>
+                  <span>{enriched.subcategory_name}</span>
+                </div>
               </div>
             </div>
             <div className="flex shrink-0 gap-2">

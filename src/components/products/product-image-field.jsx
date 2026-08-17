@@ -1,8 +1,10 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Field } from "@/components/catalog/catalog-shared";
 import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
+import { downloadProductImageToPc } from "@/lib/download-product-image";
+import { notifyError } from "@/lib/notify";
 
 export function isHttpImageUrl(value) {
   try {
@@ -24,14 +26,37 @@ export function ProductImageField({
   imageUrl = "",
   previewUrl = null,
   fileUrl = null,
+  productCode = null,
+  productName = null,
   onSourceChange,
   onFileSelect,
   onUrlChange,
   onRemove,
 }) {
   const inputRef = useRef(null);
+  const [downloading, setDownloading] = useState(false);
   const urlPreview = source === "url" && isHttpImageUrl(imageUrl) ? imageUrl.trim() : null;
   const showPreview = Boolean(urlPreview || previewUrl || fileUrl);
+  const canDownload = Boolean(urlPreview || previewUrl || fileUrl);
+
+  async function handleDownload() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const localPreview =
+        previewUrl?.startsWith("blob:") || previewUrl?.startsWith("data:") ? previewUrl : null;
+      await downloadProductImageToPc({
+        productCode: urlPreview || localPreview ? null : productCode,
+        productName: productName || productCode || "product-image",
+        httpUrl: urlPreview,
+        blobUrl: localPreview,
+      });
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Could not download photo");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <div className="md:col-span-2 xl:col-span-3">
@@ -87,20 +112,32 @@ export function ProductImageField({
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none ring-[#185FA5] focus:ring-2"
                 />
                 <p className="text-xs text-slate-500">
-                  Paste a direct image link. We download and store it when you save — POS and printouts use the saved copy.
+                  Paste a direct image link. We download and store it when you save — POS and printouts use the saved copy. Use Download to save a copy on this computer.
                 </p>
               </>
             )}
 
-            {showPreview && onRemove ? (
-              <button
-                type="button"
-                onClick={onRemove}
-                className="self-start text-xs text-red-600 hover:text-red-800"
-              >
-                Remove image
-              </button>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-3">
+              {canDownload ? (
+                <button
+                  type="button"
+                  onClick={() => void handleDownload()}
+                  disabled={downloading}
+                  className="self-start text-xs font-medium text-[#185FA5] hover:text-[#0C447C] disabled:opacity-50"
+                >
+                  {downloading ? "Downloading…" : "Download to this computer"}
+                </button>
+              ) : null}
+              {showPreview && onRemove ? (
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  className="self-start text-xs text-red-600 hover:text-red-800"
+                >
+                  Remove image
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       </Field>

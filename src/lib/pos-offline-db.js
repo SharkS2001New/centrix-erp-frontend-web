@@ -847,10 +847,26 @@ export async function idbMarkOutboxSynced(uuid, serverSale, extras = {}) {
       existing.sync_kind === "previous_order_edit" && serverSale?.id
         ? Number(serverSale.id)
         : existing.superseded_sale_id,
-    sale_payload:
-      serverSale && typeof serverSale === "object"
-        ? { ...(existing.sale_payload ?? {}), ...serverSale, offline_pending_sync: false }
-        : existing.sale_payload,
+    sale_payload: (() => {
+      if (!serverSale || typeof serverSale !== "object") {
+        return existing.sale_payload;
+      }
+      const merged = {
+        ...(existing.sale_payload ?? {}),
+        ...serverSale,
+        offline_pending_sync: false,
+      };
+      const serverStatus = String(serverSale.status ?? "").toLowerCase();
+      const localStatus = String(
+        existing.sale_payload?.status ?? existing.checkout_body?.status ?? "",
+      ).toLowerCase();
+      // Empty previous-order cancel must not keep the pre-cancel paid/completed
+      // snapshot — External POS ← browse would still show a live ticket.
+      if (serverStatus === "cancelled" || localStatus === "cancelled") {
+        merged.status = "cancelled";
+      }
+      return merged;
+    })(),
   });
 }
 

@@ -1372,6 +1372,17 @@ export function isMissingTemporaryCartError(err) {
   return false;
 }
 
+/** Sticky till cart was wiped between outbox PUT /lines and checkout. */
+export function isEmptyCartCheckoutError(err) {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  if (/cart is empty/.test(msg)) return true;
+  if (err instanceof ApiError) {
+    const blob = JSON.stringify(err.body ?? {}).toLowerCase();
+    return /cart is empty/.test(blob);
+  }
+  return false;
+}
+
 /**
  * Detach the live edit session from a server TemporaryCart id so checkout can
  * delete that cart without the UI keeping a dead id.
@@ -3445,7 +3456,7 @@ export function healOfflineCheckoutPayNow(body, row) {
   return body;
 }
 
-async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
+export async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   const posDate =
     normalizePosOrderDate(extras.pos_order_date) ??
     normalizePosOrderDate(row.checkout_body?.pos_order_date) ??
@@ -3564,6 +3575,14 @@ async function checkoutBodyForOutboxRow(row, orderNum, extras = {}) {
   // Non-credit offline uploads must cover the bill. Pending-sync edits can raise
   // order_total while leaving a stale pay_now — heal before checkout.
   healOfflineCheckoutPayNow(body, row);
+
+  // Replay frozen lines on checkout so a till DELETE / next-order wipe of the
+  // sticky TemporaryCart cannot persist "Cart is empty." after PUT succeeded.
+  const offlineLines = mapOutboxLinesForPut(row);
+  if (offlineLines.length > 0) {
+    body.lines = offlineLines;
+    body.order_discount = Number(row.order_discount ?? body.order_discount ?? 0) || 0;
+  }
 
   return body;
 }
@@ -3720,6 +3739,7 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
       : row.cart_seed?.float_session_id
         ? { float_session_id: row.cart_seed.float_session_id }
         : {}),
+    offline_sync: true,
   };
 
   const cart = await apiRequest("/sales/carts", {
@@ -3731,21 +3751,31 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
   const cartId = cart?.id;
   if (!cartId) throw new Error("Could not create sync cart.");
 
+  const occupancy = readLiveTemporaryCartOccupancy();
+  const dedicatedSyncCart =
+    occupancy == null || Number(occupancy.cartId) !== Number(cartId);
   // Sticky TemporaryCart is shared with the live till. Never PUT-replace a cashier's
-  // open online sale (IDB is often empty for live TemporaryCart workspaces).
-  await assertPosTillAvailableForSync({
-    stickyCart: cart,
-    allowWipeOrphans: false,
-  });
+  // open online sale unless this POST created a dedicated outbox cart.
+  if (!dedicatedSyncCart) {
+    await assertPosTillAvailableForSync({
+      stickyCart: cart,
+      allowWipeOrphans: false,
+    });
+  }
+
+  const putLines = mapOutboxLinesForPut(row);
+  if (putLines.length === 0) {
+    throw new Error("Offline sale has no line items to sync.");
+  }
 
   // Sticky TemporaryCart is reused per cashier+channel — REPLACE lines so leftover
   // draft/online lines are not appended onto the offline snapshot (extra items / qty blow-up).
   const orderDiscount = Number(row.order_discount ?? 0);
-  try {
+  async function putAndCheckout() {
     await apiRequest(`/sales/carts/${cartId}/lines`, {
       method: "PUT",
       body: {
-        lines: mapOutboxLinesForPut(row),
+        lines: putLines,
         order_discount: orderDiscount > 0 ? orderDiscount : 0,
       },
       loading: false,
@@ -3761,6 +3791,16 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
       loading: false,
       reportIssues: false,
     });
+  }
+
+  try {
+    try {
+      return await putAndCheckout();
+    } catch (err) {
+      // Local-first DELETE / next-order wipe can empty the cart after PUT.
+      if (!isEmptyCartCheckoutError(err)) throw err;
+      return await putAndCheckout();
+    }
   } catch (err) {
     // Leave TemporaryCart blank so the next live till sale cannot inherit these lines.
     // Do not wipe when the till was busy — that error is thrown before PUT.
@@ -3775,6 +3815,19 @@ export function parseOfflineSaleUuid(saleId) {
   const raw = String(saleId ?? "");
   if (raw.startsWith("offline:")) return raw.slice("offline:".length);
   return raw || null;
+}
+
+/** Cancelled / parked sales stay off External POS ← browse (server already excludes them). */
+export function isHiddenFromPosOrderBrowse(saleOrRow) {
+  const status = String(
+    saleOrRow?.status ??
+      saleOrRow?.sale_payload?.status ??
+      saleOrRow?.checkout_body?.status ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  return ["cancelled", "expired", "held", "draft"].includes(status);
 }
 
 /** Pending offline sales that can be reopened for edit (newest first). */
@@ -3797,6 +3850,7 @@ export async function listOfflinePendingSalesForEdit() {
         offline_pending_sync: true,
       };
     })
+    .filter((row) => !isHiddenFromPosOrderBrowse(row))
     .sort(
       (a, b) =>
         Number(b.pos_order_num ?? 0) - Number(a.pos_order_num ?? 0) ||
@@ -3844,6 +3898,7 @@ export async function listLocalSyncedSalesForBrowse() {
       };
     })
     .filter(Boolean)
+    .filter((row) => !isHiddenFromPosOrderBrowse(row))
     .sort(
       (a, b) =>
         Number(b.pos_order_num ?? 0) - Number(a.pos_order_num ?? 0) ||

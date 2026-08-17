@@ -39,7 +39,7 @@ import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
 import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
-import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
+import { isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import {
@@ -73,6 +73,7 @@ import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { productExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
+import { ProductNameCell } from "@/components/products/product-name-cell";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-products-sort";
@@ -1270,6 +1271,7 @@ export function ProductsScreen({ mode = "catalogue" } = {}) {
                       onDelete={openDeleteDialog}
                       onPriceSaved={deletedMode ? undefined : reloadAll}
                       deletedMode={deletedMode}
+                      hotelCatalogue={hotelCatalogue}
                     />
                   ))
                 )}
@@ -1346,6 +1348,7 @@ function CategoryGroup({
   onDelete,
   onPriceSaved,
   deletedMode = false,
+  hotelCatalogue = false,
 }) {
   const categoryKey = `category:${categoryName}`;
   const categoryCollapsed = isCollapsed(categoryKey);
@@ -1386,6 +1389,7 @@ function CategoryGroup({
               onDelete={onDelete}
               onPriceSaved={onPriceSaved}
               deletedMode={deletedMode}
+              hotelCatalogue={hotelCatalogue}
             />
           )),
         )}
@@ -1405,6 +1409,7 @@ function ProductRow({
   onDelete,
   onPriceSaved,
   deletedMode = false,
+  hotelCatalogue = false,
 }) {
   return (
     <tr className={`${TABLE_BODY_ROW_CLASS} bg-[var(--theme-surface)]`}>
@@ -1463,7 +1468,12 @@ function ProductRow({
               )}
             </div>
           ) : (
-            renderProductCell(product, col.id, deletedMode ? undefined : onPriceSaved)
+            renderProductCell(
+              product,
+              col.id,
+              deletedMode ? undefined : onPriceSaved,
+              hotelCatalogue,
+            )
           )}
         </td>
       ))}
@@ -1471,29 +1481,15 @@ function ProductRow({
   );
 }
 
-function renderProductCell(product, columnId, onPriceSaved) {
+function renderProductCell(product, columnId, onPriceSaved, hotelCatalogue = false) {
   switch (columnId) {
     case "product":
       return (
-        <div className="min-w-0">
-          {product.deleted_at ? (
-            <p className="text-sm font-medium text-[var(--theme-text)]">{product.product_name}</p>
-          ) : (
-            <Link
-              href={`/products/${encodeURIComponent(product.product_code)}`}
-              className="theme-link text-sm font-medium"
-            >
-              {product.product_name}
-            </Link>
-          )}
-          <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
-          <p className="theme-subtext mt-0.5 text-xs">
-            {product.category_name} · {product.subcategory_name}
-          </p>
-          {product.catalog_scope === "branch" || product.branch_id ? (
-            <p className="theme-subtext mt-0.5 text-xs">{productScopeLabel(product)}</p>
-          ) : null}
-        </div>
+        <ProductNameCell
+          product={product}
+          showPhoto={hotelCatalogue}
+          deleted={Boolean(product.deleted_at)}
+        />
       );
     case "unit_price":
       return (
