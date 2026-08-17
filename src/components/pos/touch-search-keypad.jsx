@@ -7,6 +7,20 @@ const ROW_2 = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"];
 const ROW_3 = ["A", "S", "D", "F", "G", "H", "J", "K", "L"];
 const ROW_4 = ["Z", "X", "C", "V", "B", "N", "M", "-", "."];
 
+function Key({ label, onClick, className = "", wide = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`theme-secondary-btn min-h-[2.75rem] rounded-xl text-base font-bold active:scale-[0.97] sm:min-h-[3rem] sm:text-lg ${
+        wide ? "col-span-2" : ""
+      } ${className}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 /**
  * Full-screen alphabetic keypad for touch POS search (no physical keyboard).
  */
@@ -46,20 +60,6 @@ export function TouchSearchKeypad({
 
   function clearAll() {
     emit("");
-  }
-
-  function Key({ label, onClick, className = "", wide = false }) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={`theme-secondary-btn min-h-[2.75rem] rounded-xl text-base font-bold active:scale-[0.97] sm:min-h-[3rem] sm:text-lg ${
-          wide ? "col-span-2" : ""
-        } ${className}`}
-      >
-        {label}
-      </button>
-    );
   }
 
   return (
