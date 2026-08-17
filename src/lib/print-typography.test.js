@@ -145,7 +145,36 @@ describe("org print typography settings", () => {
     expect(html).not.toContain('style="font-size:14px;font-weight:700');
   });
 
-  it("applies thermal receipt fonts to hotel check HTML even when hotel-specific fonts are set", () => {
+  it("floors hotel check body size to Large Arial so restaurant thermals match readable retail receipts", () => {
+    const html = buildHospitalityCheckReceiptHtml(
+      {
+        check_number: "HTL-1",
+        status: "paid",
+        lines: [{ description: "Tea", qty: 1, unit_price: 100, line_total: 100 }],
+        total: 100,
+      },
+      {
+        generalSettings: {
+          print_font_hospitality_check_family: "arial",
+          print_font_hospitality_check_scale: "standard",
+        },
+        seller: { name: "Test Org" },
+      },
+    );
+    const expected = createOrgPrintPx(
+      {
+        print_font_hospitality_check_family: "arial",
+        print_font_hospitality_check_scale: "large",
+      },
+      "thermal_check",
+    );
+
+    expect(html).toContain("Arial");
+    expect(html).toContain(`font-size: ${expected.body(10)}`);
+    expect(html).toContain(`font-size: ${expected.body(11)}`);
+  });
+
+  it("applies hotel check font settings independently of thermal receipts", () => {
     const general = generalWithFonts({
       print_font_hospitality_check_family: "georgia",
       print_font_hospitality_check_scale: "compact",
@@ -160,9 +189,32 @@ describe("org print typography settings", () => {
       { generalSettings: general, seller: { name: "Test Org" } },
     );
 
+    expect(html).toContain("Georgia");
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal_check").body(10)}`);
+    expect(html).not.toContain("Courier");
+  });
+
+  it("falls back to thermal receipt fonts when hotel check fonts are not set", () => {
+    const general = {
+      print_font_receipt_family: "courier",
+      print_font_receipt_scale: "large",
+    };
+    const html = buildHospitalityCheckReceiptHtml(
+      {
+        check_number: "HTL-1",
+        status: "paid",
+        lines: [{ description: "Tea", qty: 1, unit_price: 100, line_total: 100 }],
+        total: 100,
+      },
+      { generalSettings: general, seller: { name: "Test Org" } },
+    );
+
     expect(html).toContain("Courier");
-    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "thermal").body(10)}`);
-    expect(html).not.toContain("Georgia");
+    expect(resolveOrgPrintFontSettings(general, "thermal_check")).toMatchObject({
+      family: "courier",
+      scale: "large",
+      settingKey: "hospitality_check",
+    });
   });
 
   it("uses dotted separators instead of solid lines before totals and under column headers", () => {

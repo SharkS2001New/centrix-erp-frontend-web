@@ -68,7 +68,7 @@ const PREVIEW_OPTION_LABELS = {
 
 const PREVIEW_TYPOGRAPHY_VARIANT = {
   receipt: "thermal",
-  hospitality_check: "thermal",
+  hospitality_check: "thermal_check",
   invoice: "sale_invoice",
   proforma: "sale_invoice",
   credit_note: "sale_invoice",

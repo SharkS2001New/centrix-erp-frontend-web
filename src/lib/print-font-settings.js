@@ -20,9 +20,9 @@ export const PRINT_FONT_VARIANTS = {
   },
   hospitality_check: {
     label: "Hotel check receipt",
-    typographyVariant: "thermal",
+    typographyVariant: "thermal_check",
     defaultFamily: "arial",
-    defaultScale: "standard",
+    defaultScale: "large",
     defaultSizePx: 11,
     defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
     defaultHeaderScale: "large",
@@ -237,11 +237,10 @@ function resolvedVariantFont(general, variantKey, visited = new Set()) {
 
 /** Resolve font family / scale / size for a typography variant (thermal, sale_invoice, …). */
 export function resolveOrgPrintFontSettings(generalSettings = null, typographyVariant = "a4") {
-  const normalizedVariant = typographyVariant === "thermal_check" ? "thermal" : typographyVariant;
   const settingKey =
     Object.entries(PRINT_FONT_VARIANTS).find(
-      ([, config]) => config.typographyVariant === normalizedVariant,
-    )?.[0] ?? "invoice";
+      ([, config]) => config.typographyVariant === typographyVariant,
+    )?.[0] ?? (typographyVariant === "thermal" ? "receipt" : "invoice");
 
   const config = PRINT_FONT_VARIANTS[settingKey] ?? PRINT_FONT_VARIANTS.invoice;
   const specific = resolvedVariantFont(generalSettings ?? {}, settingKey);
@@ -263,6 +262,26 @@ export function resolveOrgPrintFontSettings(generalSettings = null, typographyVa
   );
 
   return { family, scale, size_px, weight, settingKey, typographyVariant };
+}
+
+/**
+ * Hotel/restaurant 80mm checks: same Arial typeface as retail thermal receipts.
+ * Body size floors at Large — Standard was too small on guest checks.
+ */
+export function generalSettingsForHospitalityCheckPrint(generalSettings = null) {
+  const general = generalSettings ?? {};
+  const keys = printFontFormKeys("hospitality_check");
+  const resolved = resolveOrgPrintFontSettings(general, "thermal_check");
+  const family = resolved.family === "times" ? "arial" : (resolved.family || "arial");
+  const scale = resolved.scale === "standard" ? "large" : (resolved.scale || "large");
+
+  return {
+    ...general,
+    [keys.family]: family,
+    [keys.scale]: scale,
+    [keys.sizePx]: resolved.size_px,
+    [keys.weight]: resolved.weight,
+  };
 }
 
 export function resolveOrgPrintSectionSettings(

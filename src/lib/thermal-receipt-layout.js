@@ -10,12 +10,13 @@ export const THERMAL_QZ_PAGE_WIDTH_IN = 3.15;
 
 /**
  * Shared 80mm thermal CSS for retail/wholesale receipts and hotel checks.
- * Callers pass the same `thermal` printPx / font so type sizes stay in lockstep.
+ * Pass matching printPx / font / typographyVariant so type sizes follow that document's font settings.
  */
 export function buildThermalReceiptCss({
   printPx,
   font,
   generalSettings = null,
+  typographyVariant = "thermal",
   thermalLogoDims = { maxHeight: 24, maxWidth: 120 },
   extraCss = "",
   templateCss = "",
@@ -28,7 +29,7 @@ export function buildThermalReceiptCss({
     @page { size: ${THERMAL_PAPER_WIDTH_MM}mm auto; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: ${THERMAL_PAPER_WIDTH_MM}mm; max-width: ${THERMAL_PAPER_WIDTH_MM}mm; height: auto; min-height: 0; margin: 0 auto; padding: 0; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-    body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
+    body { font-family: ${font}; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, typographyVariant)} }
     .receipt { width: ${THERMAL_CONTENT_WIDTH_MM}mm; max-width: ${THERMAL_CONTENT_WIDTH_MM}mm; margin: 0 auto; padding: 0; box-sizing: border-box; page-break-inside: avoid; break-inside: avoid; }
     .org-brand,
     .org-header { margin: 0; padding: 0; max-width: 100%; }

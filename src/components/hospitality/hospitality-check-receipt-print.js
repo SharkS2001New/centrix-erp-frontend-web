@@ -14,6 +14,7 @@ import {
   createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
 } from "@/lib/print-typography";
+import { generalSettingsForHospitalityCheckPrint } from "@/lib/print-font-settings";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 import {
   buildSaleDocumentOrgHeaderHtml,
@@ -88,8 +89,9 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
     .filter(Boolean)
     .join(" / ");
 
-  const printPx = createOrgPrintPx(generalSettings, "thermal");
-  const font = orgPrintFontFamilyFromSettings(generalSettings, "thermal");
+  const printGeneral = generalSettingsForHospitalityCheckPrint(generalSettings);
+  const printPx = createOrgPrintPx(printGeneral, "thermal_check");
+  const font = orgPrintFontFamilyFromSettings(printGeneral, "thermal_check");
 
   const orgName =
     String(seller?.name ?? organization?.org_name ?? "").trim() || DEFAULT_PRINT_ORG_NAME;
@@ -214,7 +216,8 @@ export function buildHospitalityCheckReceiptHtml(check, options = {}) {
     ${buildThermalReceiptCss({
       printPx,
       font,
-      generalSettings,
+      generalSettings: printGeneral,
+      typographyVariant: "thermal_check",
       thermalLogoDims,
       templateCss: orgDocumentTemplateCss(printSettings?.hospitality_check_document_template, { layout: "thermal" }),
     })}

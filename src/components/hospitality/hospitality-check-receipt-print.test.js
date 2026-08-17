@@ -156,7 +156,7 @@ describe("buildHospitalityCheckReceiptHtml", () => {
     expect(html).toContain('<span class="meta-label">Guest:</span> JANE GUEST');
   });
 
-  it("uses the same thermal receipt fonts, sizes, and layout as retail/wholesale", () => {
+  it("uses hotel check font settings on the same 80mm thermal layout as retail", () => {
     const general = mergeGeneralSettings({
       general: {
         print_font_receipt_family: "courier",
@@ -169,10 +169,10 @@ describe("buildHospitalityCheckReceiptHtml", () => {
       generalSettings: general,
       seller: { name: "Test Org" },
     });
-    const printPx = createOrgPrintPx(general, "thermal");
+    const printPx = createOrgPrintPx(general, "thermal_check");
 
-    expect(html).toContain("Courier");
-    expect(html).not.toContain("Georgia");
+    expect(html).toContain("Georgia");
+    expect(html).not.toContain("Courier");
     expect(html).toContain(`font-size: ${printPx.body(10)}`);
     expect(html).toContain(`font-size: ${printPx.body(11)}`);
     expect(html).toContain(`width: ${THERMAL_CONTENT_WIDTH_MM}mm`);
