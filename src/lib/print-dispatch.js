@@ -92,12 +92,13 @@ export async function printHtmlDocument(html, options = {}) {
   });
 }
 
-async function tryAgentPrint({ preparedHtml, copies, jobType, documentId = null, config }) {
+async function tryAgentPrint({ preparedHtml, copies, jobType, documentId = null, config, wait = false }) {
   const result = await printViaAgent({
     html: preparedHtml,
     copies,
     jobType,
     documentId,
+    wait,
     config: { ...config, enabled: true },
   });
   return {
@@ -159,6 +160,8 @@ export async function dispatchPrintJob({
   provider = getLocalPrintProvider(),
   /** When false with org fallback disabled, batch thermal may stay agent-only. */
   allowBrowserFallback = true,
+  /** Hotel POS receipts wait so shared-printer failures are not swallowed by the background queue. */
+  wait = false,
 }) {
   if (!html?.trim()) {
     return { mode: "browser", ok: false, error: "Nothing to print." };
@@ -185,7 +188,7 @@ export async function dispatchPrintJob({
         // Warm path: skip /v1/health when the agent answered recently (POS after first ping).
         if (isPrintAgentRecentlyHealthy({ ...config, enabled: true })) {
           try {
-            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config });
+            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config, wait });
           } catch (err) {
             invalidatePrintAgentHealth({ ...config, enabled: true });
             agentError = err instanceof Error ? err.message : "Print agent failed.";
@@ -206,14 +209,14 @@ export async function dispatchPrintJob({
         }
         if (health?.ok) {
           try {
-            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config });
+            return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config, wait });
           } catch (err) {
             invalidatePrintAgentHealth({ ...config, enabled: true });
             agentError = err instanceof Error ? err.message : "Print agent failed.";
             // One retry after a failed warm/hot print (agent briefly busy).
             try {
               await new Promise((resolve) => setTimeout(resolve, 250));
-              return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config });
+              return await tryAgentPrint({ preparedHtml, copies, jobType, documentId, config, wait });
             } catch (retryErr) {
               agentError =
                 retryErr instanceof Error ? retryErr.message : agentError;

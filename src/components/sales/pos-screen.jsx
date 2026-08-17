@@ -235,6 +235,7 @@ import {
   listOfflinePendingSalesForEdit,
   listLocalSyncedSalesForBrowse,
   findLocalSyncedSaleForOfflineEdit,
+  isHiddenFromPosOrderBrowse,
   cacheServerSaleForOfflineEdit,
   claimNextLocalPosTicketForSale,
   prefetchServerSalesForOfflineEdit,
@@ -3033,6 +3034,7 @@ export function PosScreen({ standalone = false }) {
           ? (sessionPosOrdersRef.current ?? [])
               .filter((row) => {
                 if (row?.id == null || isOfflinePendingSaleId(row.id)) return false;
+                if (isHiddenFromPosOrderBrowse(row)) return false;
                 const ticket = resolvePosSessionTicketNumber(row);
                 if (ticket != null && offlineBrowseKeys.has(String(ticket))) return false;
                 if (ticket != null && localSyncedBrowseKeys.has(String(ticket))) return false;

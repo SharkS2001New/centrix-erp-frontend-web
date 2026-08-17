@@ -1955,15 +1955,18 @@ export function PosPaymentPanel({
       >
         {completedOrder?.orderNum ? (
           <p>
-            Cash Sales <strong>#{completedOrder.orderNum}</strong>
-            {completedOrder.statusLabel ? ` — ${completedOrder.statusLabel}` : ""}.
+            Cash Sale No: <strong>{completedOrder.orderNum}</strong>
           </p>
-        ) : null}
+        ) : (
+          <p>Cash Sale No:</p>
+        )}
         {receiptPrintStatus === "pending" ? (
           <p className="theme-text-muted mt-2 text-sm">Printing receipt…</p>
         ) : null}
         {receiptPrintStatus === "printed" ? (
-          <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">Receipt sent to printer.</p>
+          <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
+            Receipt sent to printer
+          </p>
         ) : null}
         {receiptPrintStatus === "failed" ? (
           <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
@@ -1973,8 +1976,8 @@ export function PosPaymentPanel({
         ) : null}
         <p className="mt-2 text-sm font-medium">
           {receiptPrintStatus === "pending"
-            ? "Wait for print, then press OK to open the next order."
-            : "Press Enter or OK to continue to the next order."}
+            ? "Wait for print, then press OK to continue."
+            : "Press Ok to Continue"}
         </p>
       </PosNestedDialog>
     ) : null;

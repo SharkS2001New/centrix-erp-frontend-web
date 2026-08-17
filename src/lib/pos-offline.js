@@ -3936,6 +3936,7 @@ export async function findLocalSyncedSaleForOfflineEdit({
       : null);
 
   if (!row) return null;
+  if (isHiddenFromPosOrderBrowse(row)) return null;
 
   const sale = row.sale_payload && typeof row.sale_payload === "object" ? row.sale_payload : {};
   const serverId = Number(row.server_sale_id ?? sale.id ?? 0);

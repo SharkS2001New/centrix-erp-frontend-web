@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  isHiddenFromPosOrderBrowse,
   isPreviousOrderEditEmptyCancel,
   outboxNeedsSupersedeOfServerSale,
   outboxRowMatchesServerSale,
   outboxRowSharesClientSaleUuid,
 } from "@/lib/pos-offline";
+
+describe("isHiddenFromPosOrderBrowse", () => {
+  it("hides cancelled POS tickets from External POS browse", () => {
+    expect(isHiddenFromPosOrderBrowse({ status: "cancelled" })).toBe(true);
+    expect(isHiddenFromPosOrderBrowse({ sale_payload: { status: "cancelled" } })).toBe(
+      true,
+    );
+    expect(isHiddenFromPosOrderBrowse({ status: "paid" })).toBe(false);
+    expect(isHiddenFromPosOrderBrowse({ status: "completed" })).toBe(false);
+  });
+});
 
 describe("isPreviousOrderEditEmptyCancel", () => {
   it("detects empty previous-order edit rows that must cancel online", () => {
