@@ -108,7 +108,6 @@ Set-ExecutionPolicy -Scope Process Bypass
 | Port / health fails | `Get-Process Centrix.PrintAgent` — must be running; open http://127.0.0.1:9247/v1/health |
 | `Could not render receipt HTML to PDF` | Install wkhtmltopdf manually (link above), re-run install. Health must show `"wkhtmltopdf_available": true` |
 | Test sent but nothing prints | Run `.\scripts\configure-sumatra.ps1` as Administrator. Health must show `"sumatra_available": true`. USB printers: service Log On -> this Windows user |
-| Shared printer prints a Windows test page, Hotel POS does not | The Print Agent **Windows service** (Local System) often cannot see user-session shares. Health `printers` must list the share. If it does not, run `.\scripts\configure-user-session-printing.ps1` as Administrator, then Local printing → Test connection → pick that printer → Save → Test print |
 | Configure Sumatra only | `.\scripts\configure-sumatra.ps1` (bundles SumatraPDF + sets SUMATRA_PATH). If already installed manually: `.\scripts\configure-sumatra.ps1 -SkipDownload` |
 | Sumatra download 404 | Fixed in latest scripts (URL is `/dl/rel/3.6.1/...` not `/dl/rel/SumatraPDF-3.6.1-64.zip`). Or install Sumatra manually and run with `-SkipDownload` |
 | wkhtmltopdf download slow / hangs | Install wkhtmltopdf manually (link above). Re-run `BUILD-AND-INSTALL.bat` - it copies from `Program Files\wkhtmltopdf` and skips download |

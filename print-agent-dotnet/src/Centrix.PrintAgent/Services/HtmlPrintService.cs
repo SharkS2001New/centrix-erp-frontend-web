@@ -83,24 +83,12 @@ public sealed class HtmlPrintService
 
     private string? ResolvePrinter(string? requested)
     {
-        if (string.IsNullOrWhiteSpace(requested))
+        if (!string.IsNullOrWhiteSpace(requested) && _printers.PrinterExists(requested))
         {
-            return _printers.DefaultPrinter();
+            return requested;
         }
 
-        var matched = _printers.ResolveInstalledName(requested);
-        if (!string.IsNullOrWhiteSpace(matched))
-        {
-            return matched;
-        }
-
-        var available = _printers.ListPrinters();
-        var listed = available.Count == 0
-            ? "the Print Agent cannot see any printers in this Windows session"
-            : "available printers: " + string.Join(", ", available.Take(12));
-        throw new InvalidOperationException(
-            $"Printer \"{requested.Trim()}\" is not visible to Centrix Print Agent. {listed}. " +
-            SharedPrinterHint(requested));
+        return _printers.DefaultPrinter();
     }
 
     private static async Task<int> RenderPdfAsync(
@@ -232,7 +220,7 @@ public sealed class HtmlPrintService
 
     public static string? SumatraExecutablePath() => FindSumatraExecutable();
 
-    private async Task PrintPdfAsync(
+    private static async Task PrintPdfAsync(
         string pdfPath,
         string? printerName,
         int pageHeightMm,
@@ -242,72 +230,21 @@ public sealed class HtmlPrintService
             ?? throw new InvalidOperationException(
                 "SumatraPDF is required to print from the Windows service. Run scripts\\configure-sumatra.ps1 -SkipDownload as Administrator (copies Sumatra into the Print Agent folder).");
 
-        var settingsAttempts = new[]
+        var printSettings = WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm);
+        var args = string.IsNullOrWhiteSpace(printerName)
+            ? new[] { "-print-to-default", "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath }
+            : new[] { "-print-to", printerName, "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath };
+
+        var (exitCode, stderr) = await RunProcessAsync(sumatra, args, cancellationToken);
+        if (exitCode != 0)
         {
-            WkhtmlPdfRenderer.BuildSumatraPrintSettings(pageHeightMm),
-            // Shared / A4 drivers often reject the 80mm thermal paper size; retry without it.
-            "noscale",
-            "fit",
-        };
-
-        var namesToTry = PrinterNamesToTry(printerName);
-        Exception? last = null;
-
-        foreach (var name in namesToTry)
-        {
-            foreach (var printSettings in settingsAttempts)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var args = string.IsNullOrWhiteSpace(name)
-                    ? new[] { "-print-to-default", "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath }
-                    : new[] { "-print-to", name, "-print-settings", printSettings, "-silent", "-exit-when-done", pdfPath };
-
-                var (exitCode, stderr) = await RunProcessAsync(sumatra, args, cancellationToken);
-                if (exitCode == 0)
-                {
-                    return;
-                }
-
-                var target = string.IsNullOrWhiteSpace(name) ? "the Windows default printer" : $"\"{name}\"";
-                var detail = string.IsNullOrWhiteSpace(stderr) ? $"SumatraPDF exit code {exitCode}." : stderr.Trim();
-                last = new InvalidOperationException($"Could not print to {target}. {detail}");
-            }
+            var target = string.IsNullOrWhiteSpace(printerName) ? "the Windows default printer" : $"\"{printerName}\"";
+            var detail = string.IsNullOrWhiteSpace(stderr) ? $"SumatraPDF exit code {exitCode}." : stderr.Trim();
+            throw new InvalidOperationException(
+                $"Could not print to {target}. {detail} " +
+                "Check the printer name in Centrix Local printing, set the Windows default printer, " +
+                "or in services.msc set Centrix Print Agent to log on as this Windows user (USB receipt printers often need that).");
         }
-
-        var message = last?.Message ?? "Could not print.";
-        throw new InvalidOperationException(message + " " + SharedPrinterHint(printerName));
-    }
-
-    private IReadOnlyList<string?> PrinterNamesToTry(string? printerName)
-    {
-        if (string.IsNullOrWhiteSpace(printerName))
-        {
-            return new string?[] { null };
-        }
-
-        var names = new List<string?> { printerName };
-        var matched = _printers.ResolveInstalledName(printerName);
-        if (!string.IsNullOrWhiteSpace(matched) &&
-            !string.Equals(matched, printerName, StringComparison.OrdinalIgnoreCase))
-        {
-            names.Insert(0, matched);
-        }
-
-        return names;
-    }
-
-    private static string SharedPrinterHint(string? printerName)
-    {
-        var serviceNote = Environment.UserInteractive
-            ? ""
-            : "Centrix Print Agent is running as a Windows service (Local System). ";
-        var sharedNote = PrinterDiscovery.LooksLikeSharedPrinter(printerName)
-            ? "This looks like a shared/network printer. "
-            : "USB and shared printers often need the same Windows user who can print a test page. ";
-        return serviceNote + sharedNote +
-            "In Centrix Local printing, Test connection and pick the printer from that list (not only Devices and Printers). " +
-            "If it is missing, run scripts\\configure-user-session-printing.ps1 as Administrator, " +
-            "or in services.msc set Centrix Print Agent Log On to that Windows user, then restart the service.";
     }
 
     private static string? FindEdgeExecutable()
