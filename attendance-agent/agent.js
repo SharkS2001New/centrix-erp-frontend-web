@@ -169,13 +169,13 @@ function isAttendancePollWindow(date = new Date()) {
   return minutes >= 7 * 60 + 20 || minutes <= 2 * 60;
 }
 
-function clampPollSeconds(value, fallback = 3600) {
+function clampPollSeconds(value, fallback = 300) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 60) return fallback;
   return Math.min(3600, Math.floor(n));
 }
 
-let attendanceIntervalSec = 3600;
+let attendanceIntervalSec = 300;
 let attendanceTimer = null;
 let runSyncFn = async () => {};
 
@@ -435,7 +435,7 @@ async function main() {
     return;
   }
 
-  attendanceIntervalSec = clampPollSeconds(config.pollIntervalSeconds, 3600);
+  attendanceIntervalSec = clampPollSeconds(config.pollIntervalSeconds, 300);
   const commandPollSec = 2;
   console.log(
     `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${attendanceIntervalSec}s (admin can change this in Centrix)`,

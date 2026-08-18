@@ -91,6 +91,7 @@ export function AttendanceClockDevicesSettings() {
         [device.id]: {
           testing: false,
           online: Boolean(result.online),
+          agent: result.agent || null,
           error: result.error || null,
           message: result.message || null,
           checkedAt: Date.now(),
@@ -608,16 +609,21 @@ export function AttendanceClockDevicesSettings() {
   );
 }
 
-function isAgentOnline(device) {
+function agentOnlineTtlMs(device, probe = null) {
+  const seconds = Number(probe?.agent?.online_ttl_seconds ?? device?.agent_online_ttl_seconds ?? 120);
+  return (Number.isFinite(seconds) && seconds > 0 ? seconds : 120) * 1000;
+}
+
+function isAgentOnline(device, probe = null) {
   if (!device?.agent_last_seen_at) return false;
   const seen = new Date(device.agent_last_seen_at).getTime();
-  return Date.now() - seen < 90_000;
+  return Date.now() - seen < agentOnlineTtlMs(device, probe);
 }
 
 function AgentStatusLine({ device, probe }) {
   const testing = Boolean(probe?.testing);
   const probed = probe && !probe.testing && probe.checkedAt;
-  const online = probed ? Boolean(probe.online) : isAgentOnline(device);
+  const online = probed ? Boolean(probe.online) : isAgentOnline(device, probe);
   const detail = probed
     ? probe.online
       ? probe.message || "Centrix can reach the office agent."

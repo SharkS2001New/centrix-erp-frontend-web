@@ -663,6 +663,7 @@ function AgentStatusBanner({ device, overview }) {
   const agent = overview?.agent;
   const lastSeenAt = device?.agent_last_seen_at;
   const [seenRecently, setSeenRecently] = useState(false);
+  const ttlMs = Math.max(1, Number(agent?.online_ttl_seconds ?? 120)) * 1000;
 
   useEffect(() => {
     if (!lastSeenAt) {
@@ -670,12 +671,12 @@ function AgentStatusBanner({ device, overview }) {
       return undefined;
     }
     const check = () => {
-      setSeenRecently(Date.now() - new Date(lastSeenAt).getTime() < 90_000);
+      setSeenRecently(Date.now() - new Date(lastSeenAt).getTime() < ttlMs);
     };
     check();
     const id = setInterval(check, 15_000);
     return () => clearInterval(id);
-  }, [lastSeenAt]);
+  }, [lastSeenAt, ttlMs]);
 
   const online = Boolean(agent?.online) || seenRecently;
   const version = agent?.version || device?.agent_version;

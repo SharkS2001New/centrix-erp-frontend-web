@@ -5373,6 +5373,72 @@ export function PosScreen({ standalone = false }) {
     };
   }
 
+  function reconcileCatalogPricedMutationCart(
+    nextCart,
+    product,
+    {
+      targetLineRef = null,
+      onWholesaleRetailFlag = 0,
+      override = null,
+    } = {},
+  ) {
+    if (!nextCart?.lines?.length || !product?.product_code || override != null) {
+      return nextCart;
+    }
+
+    const retailPackage = getRetailPackage(product.product_code);
+    if (!retailPackage) return nextCart;
+
+    const lines = [...(nextCart.lines ?? [])];
+    let lineIdx =
+      targetLineRef != null && String(targetLineRef).trim() !== ""
+        ? findCartLineIndexByRef(lines, targetLineRef)
+        : -1;
+    if (lineIdx < 0) {
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const line = lines[i];
+        if (String(line?.product_code) !== String(product.product_code)) continue;
+        if (Number(line?.on_wholesale_retail ?? 0) !== Number(onWholesaleRetailFlag ?? 0)) continue;
+        lineIdx = i;
+        break;
+      }
+    }
+    if (lineIdx < 0) return nextCart;
+
+    const liveLine = lines[lineIdx];
+    const isRetailLine =
+      Number(liveLine?.on_wholesale_retail) === 1 && productSellsRetail(product);
+    const entryQty = posEntryQtyFromCartLine(liveLine, product, retailPackage);
+    const packQty = cartLinePackQtyForDiscount(liveLine, product, retailPackage);
+    const perUnitDiscount = lineDiscountPerUnit(liveLine?.discount_given, packQty);
+    const expected = applyComputedPrice(
+      product,
+      entryQty,
+      perUnitDiscount,
+      null,
+      isRetailLine,
+      !isRetailLine,
+    );
+
+    const currentAmount = Number(liveLine?.amount ?? 0);
+    const currentDisplay = Number(liveLine?.display_unit_price ?? liveLine?.unit_price ?? 0);
+    if (
+      Math.abs(currentAmount - expected.lineAmount) < 0.009
+      && Math.abs(currentDisplay - expected.displayUnitPrice) < 0.009
+    ) {
+      return nextCart;
+    }
+
+    lines[lineIdx] = {
+      ...liveLine,
+      unit_price: expected.unitPricePerBase,
+      display_unit_price: expected.displayUnitPrice,
+      amount: expected.lineAmount,
+      product_vat: lineProductVat(product, expected.lineAmount),
+    };
+    return { ...nextCart, lines };
+  }
+
   const stockDisplayMode = useMemo(
     () => posStockDisplayMode(posSalesConfig, sellWholesale),
     [posSalesConfig, sellWholesale],
@@ -6040,9 +6106,14 @@ export function PosScreen({ standalone = false }) {
           },
           ...POS_CART_REQUEST,
         });
-        const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
+        let nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
           targetLineRef,
           extraPosTickets: preservePosTickets,
+        });
+        nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
+          targetLineRef,
+          onWholesaleRetailFlag,
+          override,
         });
         if (shouldApplyServerCartMutation(activeCart.id)) {
           cartRef.current = nextCart;
@@ -6061,8 +6132,12 @@ export function PosScreen({ standalone = false }) {
           body: lineBody,
           ...POS_CART_REQUEST,
         });
-        const nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
+        let nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
           extraPosTickets: preservePosTickets,
+        });
+        nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
+          onWholesaleRetailFlag,
+          override,
         });
         if (shouldApplyServerCartMutation(activeCart.id)) {
           cartRef.current = nextCart;
@@ -6090,9 +6165,14 @@ export function PosScreen({ standalone = false }) {
                 },
                 ...POS_CART_REQUEST,
               });
-              const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
+              let nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
                 targetLineRef,
                 extraPosTickets: preservePosTickets,
+              });
+              nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
+                targetLineRef,
+                onWholesaleRetailFlag,
+                override,
               });
               if (shouldApplyServerCartMutation(fresh.id)) {
                 cartRef.current = nextCart;
@@ -6104,8 +6184,12 @@ export function PosScreen({ standalone = false }) {
                 body: lineBody,
                 ...POS_CART_REQUEST,
               });
-              const nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
+              let nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
                 extraPosTickets: preservePosTickets,
+              });
+              nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
+                onWholesaleRetailFlag,
+                override,
               });
               if (shouldApplyServerCartMutation(fresh.id)) {
                 cartRef.current = nextCart;
