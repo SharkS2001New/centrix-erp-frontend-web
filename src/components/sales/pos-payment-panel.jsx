@@ -218,6 +218,8 @@ export function PosPaymentPanel({
   onContinueNextOrder,
   receiptPrintStatus = null,
   onReprintReceipt,
+  /** External POS: after print succeeds, skip OK and start the next order. */
+  autoContinueAfterPrint = false,
   embedded = false,
   /** Offline / outage: STK and network prompts off; cashier still enters all tender methods manually. */
   cashOnlyOffline = false,
@@ -267,6 +269,7 @@ export function PosPaymentPanel({
   const confirmYesRef = useRef(null);
   const walkInNameRef = useRef(null);
   const completeOkRef = useRef(null);
+  const autoContinueStartedRef = useRef(false);
   const cashAmountRef = useRef(null);
   const mpesaAmountRef = useRef(null);
   const mpesaPhoneRef = useRef(null);
@@ -279,6 +282,8 @@ export function PosPaymentPanel({
   const enterActionRef = useRef(() => {});
   /** Same-tick cash prefill on Page Down before React state catches up. */
   const paymentAmountOverrideRef = useRef(null);
+  /** Same-tick tender snapshot so Page Down splits match the paid override. */
+  const tenderAmountsOverrideRef = useRef(null);
   const prevOpenRef = useRef(false);
   const stkPollRef = useRef(null);
   const lastStkAmountRef = useRef(null);
@@ -474,6 +479,23 @@ export function PosPaymentPanel({
     return paymentAmountOverrideRef.current ?? amountPaid;
   }
 
+  function resolveTenderAmountsSnapshot() {
+    const override = tenderAmountsOverrideRef.current ?? {};
+    return {
+      cashAmount: override.cashAmount ?? cashAmount,
+      mpesaAmount: override.mpesaAmount ?? mpesaAmount,
+      chequeAmount: override.chequeAmount ?? chequeAmount,
+      equityAmount: override.equityAmount ?? equityAmount,
+      kcbAmount: override.kcbAmount ?? kcbAmount,
+      otherBankAmount: override.otherBankAmount ?? otherBankAmount,
+      bankAmount: override.bankAmount ?? bankAmount,
+      bankType: override.bankType ?? bankType,
+      mpesaCode: override.mpesaCode ?? mpesaCode,
+      chequeNo: override.chequeNo ?? chequeNo,
+      bankRef: override.bankRef ?? bankRef,
+    };
+  }
+
   function computeAmountPaidFromParts({
     cashAmount: cashRaw,
     mpesaAmount: mpesaRaw,
@@ -629,15 +651,29 @@ export function PosPaymentPanel({
   }
 
   function buildCheckoutBody() {
+    const paid = resolveEffectiveAmountPaid();
+    const {
+      cashAmount: cashAmountSnapshot,
+      mpesaAmount: mpesaAmountSnapshot,
+      chequeAmount: chequeAmountSnapshot,
+      equityAmount: equityAmountSnapshot,
+      kcbAmount: kcbAmountSnapshot,
+      otherBankAmount: otherBankAmountSnapshot,
+      bankAmount: bankAmountSnapshot,
+      bankType: bankTypeSnapshot,
+      mpesaCode: mpesaCodeSnapshot,
+      chequeNo: chequeNoSnapshot,
+      bankRef: bankRefSnapshot,
+    } = resolveTenderAmountsSnapshot();
     // I + credit customer + unpaid → fully unpaid A/R.
     // I then C/M/E/K with full tender → never credit (cashier changed mind).
     const creditSale = isCheckoutCreditSale({
       hasCreditCustomer,
-      amountPaid,
+      amountPaid: paid,
       checkoutTotal,
       adjustmentMode,
     });
-    const payNow = adjustmentMode ? 0 : creditSale ? 0 : Math.min(amountPaid, checkoutTotal);
+    const payNow = adjustmentMode ? 0 : creditSale ? 0 : Math.min(paid, checkoutTotal);
     const paymentMethodCode = creditSale ? "CREDIT" : primaryMethodCode();
     const status = resolveCheckoutStatus({
       channel,
@@ -652,7 +688,7 @@ export function PosPaymentPanel({
     const cartMpesa = creditSale
       ? 0
       : mpesaFieldsLocked
-        ? Math.max(0, parseDecimalInput(mpesaAmount) || Number(prefillMpesaAmount) || 0)
+        ? Math.max(0, parseDecimalInput(mpesaAmountSnapshot) || Number(prefillMpesaAmount) || 0)
         : 0;
     const tenderAmounts = creditSale
       ? {
@@ -663,33 +699,33 @@ export function PosPaymentPanel({
           kcbAmount: "0",
           otherBankAmount: "0",
           bankAmount: "0",
-          bankType,
+          bankType: bankTypeSnapshot,
           mpesaCode: "",
           chequeNo: "",
           bankRef: "",
         }
       : {
-          cashAmount,
-          mpesaAmount: mpesaFieldsLocked ? String(cartMpesa) : mpesaAmount,
-          chequeAmount,
-          equityAmount,
-          kcbAmount,
-          otherBankAmount,
-          bankAmount,
-          bankType,
-          mpesaCode,
-          chequeNo,
-          bankRef,
+          cashAmount: cashAmountSnapshot,
+          mpesaAmount: mpesaFieldsLocked ? String(cartMpesa) : mpesaAmountSnapshot,
+          chequeAmount: chequeAmountSnapshot,
+          equityAmount: equityAmountSnapshot,
+          kcbAmount: kcbAmountSnapshot,
+          otherBankAmount: otherBankAmountSnapshot,
+          bankAmount: bankAmountSnapshot,
+          bankType: bankTypeSnapshot,
+          mpesaCode: mpesaCodeSnapshot,
+          chequeNo: chequeNoSnapshot,
+          bankRef: bankRefSnapshot,
         };
     const paymentSplits = creditSale
       ? []
       : alignPaymentSplitsToPayNow(
           buildCheckoutPaymentSplits(cfg, tenderAmounts),
-          adjustmentMode ? amountPaid : payNow + cartMpesa,
+          adjustmentMode ? paid : payNow + cartMpesa,
         );
     const receiptTenders = buildReceiptTenderSnapshot(tenderAmounts, {
-      changeDue: adjustmentMode || creditSale ? 0 : Math.max(0, amountPaid - checkoutTotal),
-      amountPaid: creditSale ? 0 : amountPaid,
+      changeDue: adjustmentMode || creditSale ? 0 : Math.max(0, paid - checkoutTotal),
+      amountPaid: creditSale ? 0 : paid,
     });
 
     const body = {
@@ -704,7 +740,7 @@ export function PosPaymentPanel({
       ...(paymentSplits.length > 0 ? { payment_splits: paymentSplits } : {}),
       // Frontend-only: full amount tendered by the customer (may exceed order total for cash).
       // Stripped before the API call; used to print the correct change on the receipt.
-      __cash_tendered: creditSale ? 0 : amountPaid,
+      __cash_tendered: creditSale ? 0 : paid,
       __receipt_tenders: receiptTenders,
       ...(receiptTenders.change > 0 ? { order_change: receiptTenders.change } : {}),
     };
@@ -841,11 +877,13 @@ export function PosPaymentPanel({
     return { nextCashStr, paid };
   }
 
-  function handleRequestComplete() {
+  function handleRequestComplete({ tenderOverride = null } = {}) {
     setLocalError(null);
+    tenderAmountsOverrideRef.current = tenderOverride;
     const paid = resolveEffectiveAmountPaid();
     const err = validatePayment();
     if (err) {
+      tenderAmountsOverrideRef.current = null;
       setLocalError(err);
       return;
     }
@@ -879,15 +917,17 @@ export function PosPaymentPanel({
       setCashAmount(nextCashStr);
     }
     paymentAmountOverrideRef.current = paid;
+    const tenderOverride = nextCashStr !== cashAmount ? { cashAmount: nextCashStr } : null;
 
     try {
       if (!resolveCanCompleteWithPaid(paid)) {
+        tenderAmountsOverrideRef.current = null;
         setLocalError(
           validatePayment() || "Please check the amount — payment is less than the bill total.",
         );
         return;
       }
-      handleRequestComplete();
+      handleRequestComplete({ tenderOverride });
     } finally {
       paymentAmountOverrideRef.current = null;
     }
@@ -1406,7 +1446,9 @@ export function PosPaymentPanel({
     setStep("saving");
     setLocalError(null);
     try {
-      const sale = await onComplete?.(buildCheckoutBody());
+      const body = buildCheckoutBody();
+      tenderAmountsOverrideRef.current = null;
+      const sale = await onComplete?.(body);
       if (!sale) {
         setStep("payment");
         return;
@@ -1423,6 +1465,7 @@ export function PosPaymentPanel({
       });
       setStep("complete");
     } catch (err) {
+      tenderAmountsOverrideRef.current = null;
       setLocalError(err instanceof Error ? err.message : "Checkout failed");
       setStep("payment");
     }
@@ -1463,6 +1506,18 @@ export function PosPaymentPanel({
     // Parent prepares next workspace (progress bar) then closes payment.
     await onContinueNextOrder?.();
   }
+
+  useEffect(() => {
+    if (!open) {
+      autoContinueStartedRef.current = false;
+      return;
+    }
+    if (!autoContinueAfterPrint || step !== "complete") return;
+    if (receiptPrintStatus !== "printed") return;
+    if (autoContinueStartedRef.current) return;
+    autoContinueStartedRef.current = true;
+    void handleOrderCompleteOk();
+  }, [open, step, receiptPrintStatus, autoContinueAfterPrint, onContinueNextOrder]);
 
   const creditValidationError = creditSaleActive
     ? validateCustomerCreditSale({
@@ -1527,15 +1582,17 @@ export function PosPaymentPanel({
 
   useEffect(() => {
     if (!open || step !== "complete") return;
+    if (autoContinueAfterPrint && receiptPrintStatus !== "failed") return;
     const t = window.setTimeout(() => completeOkRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
-  }, [open, step]);
+  }, [open, step, autoContinueAfterPrint, receiptPrintStatus]);
 
   useEffect(() => {
     enterActionRef.current = (e) => {
       if (e.key !== "Enter" || saving || step === "saving") return;
       if (step === "complete") {
         if (receiptPrintStatus === "pending") return;
+        if (autoContinueAfterPrint && receiptPrintStatus !== "failed") return;
         e.preventDefault();
         void handleOrderCompleteOk();
         return;
@@ -1633,7 +1690,10 @@ export function PosPaymentPanel({
             <button
               type="button"
               disabled={isCheckoutProcessing(saving, step)}
-              onClick={() => setStep("payment")}
+              onClick={() => {
+                tenderAmountsOverrideRef.current = null;
+                setStep("payment");
+              }}
               className={POS_DIALOG_SECONDARY_BTN}
             >
               No, go back
@@ -1925,12 +1985,24 @@ export function PosPaymentPanel({
       </PosNestedDialog>
     ) : null;
 
+  const hideCompleteOk =
+    autoContinueAfterPrint && receiptPrintStatus !== "failed";
+  const completeContinueHint =
+    receiptPrintStatus === "pending"
+      ? autoContinueAfterPrint
+        ? "Printing receipt… next order will open automatically."
+        : "Wait for print, then press OK to continue."
+      : receiptPrintStatus === "printed" && autoContinueAfterPrint
+        ? "Opening next order…"
+        : "Press Ok to Continue";
+
   const completeOverlay =
     step === "complete" ? (
       <PosNestedDialog
         title="ORDER COMPLETE"
         titleId="order-complete-title"
         footer={
+          hideCompleteOk ? null : (
           <div className={`${receiptPrintStatus === "failed" ? POS_DIALOG_FOOTER : POS_DIALOG_FOOTER_SINGLE} gap-2`}>
             {receiptPrintStatus === "failed" && onReprintReceipt ? (
               <button
@@ -1951,6 +2023,7 @@ export function PosPaymentPanel({
               OK
             </button>
           </div>
+          )
         }
       >
         {completedOrder?.orderNum ? (
@@ -1974,11 +2047,7 @@ export function PosPaymentPanel({
             <strong>Administration → {LOCAL_PRINTING_ADMIN_LABEL}</strong>.
           </p>
         ) : null}
-        <p className="mt-2 text-sm font-medium">
-          {receiptPrintStatus === "pending"
-            ? "Wait for print, then press OK to continue."
-            : "Press Ok to Continue"}
-        </p>
+        <p className="mt-2 text-sm font-medium">{completeContinueHint}</p>
       </PosNestedDialog>
     ) : null;
 

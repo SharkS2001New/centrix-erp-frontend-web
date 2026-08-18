@@ -233,6 +233,19 @@ describe("sales-settings order action stages", () => {
   });
 });
 
+describe("sales-settings POS auto-continue after print", () => {
+  it("defaults off", () => {
+    expect(getPosSalesConfig({ sales: {} }).enablePosAutoContinueAfterPrint).toBe(false);
+  });
+
+  it("honours the organization flag", () => {
+    expect(
+      getPosSalesConfig({ sales: { enable_pos_auto_continue_after_print: true } })
+        .enablePosAutoContinueAfterPrint,
+    ).toBe(true);
+  });
+});
+
 describe("sales-settings POS cash rounding", () => {
   it("defaults off for modern layout when the flag is unset", () => {
     expect(resolveEnablePosCashRounding({ sales: { external_pos_layout: "modern" } })).toBe(

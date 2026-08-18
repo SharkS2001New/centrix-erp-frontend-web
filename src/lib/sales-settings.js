@@ -57,6 +57,8 @@ const SALES_DEFAULTS = {
   /** External POS (/pos) — complete sale with checkout. Independent of backoffice Create order. */
   show_pos_checkout_on_create: true,
   enable_checkout_customer_name: false,
+  /** External POS: after F10 checkout, skip “Press Ok” once the receipt has printed. */
+  enable_pos_auto_continue_after_print: false,
   retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
   pricing_formulas: {
@@ -588,6 +590,8 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   allow_credit_pay_now: true,
   show_checkout_on_create_order: true,
   enable_checkout_customer_name: false,
+  /** External POS: after F10 checkout, skip “Press Ok” once the receipt has printed. */
+  enable_pos_auto_continue_after_print: false,
   add_route_markup_prices: false,
   pricing_formulas: {
     retail_line: "{wholesale_total} + {tier_markup} * {markup_apps}",
@@ -685,6 +689,7 @@ export function salesOrganizationFormFromApi(res) {
     allow_credit_pay_now: Boolean(sales.allow_credit_pay_now),
     show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
+    enable_pos_auto_continue_after_print: Boolean(sales.enable_pos_auto_continue_after_print),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
     pricing_formulas: normalizePricingFormulas(
       sales.pricing_formulas ?? sales.pricing_formula_defaults,
@@ -752,6 +757,7 @@ export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
   if (!hasPosSales) {
     next.enable_credit_payment = false;
     next.enable_checkout_customer_name = false;
+    next.enable_pos_auto_continue_after_print = false;
     next.allow_pos_edit_line_discount = false;
     next.allow_pos_edit_unit_price = false;
     next.enable_barcode_scanner = false;
@@ -1593,6 +1599,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       ? resolveShowPosCheckoutOnCreate(moduleSettings)
       : resolveShowBackofficeCheckoutOnCreate(moduleSettings),
     enableCheckoutCustomerName: Boolean(sales.enable_checkout_customer_name),
+    enablePosAutoContinueAfterPrint: Boolean(sales.enable_pos_auto_continue_after_print),
     retailShopWholesaleStoreStock,
     enableRetailPricing,
     allowDiscounts: Boolean(sales.allow_discounts),

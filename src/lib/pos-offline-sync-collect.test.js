@@ -151,4 +151,32 @@ describe("syncPosOfflineOutbox manual reclaim", () => {
     expect(rows[0].sync_status).toBe("pending");
     expect(messages[0]).toMatch(/Syncing 1 order/);
   });
+
+  it("retries payment-split mismatch errors even when includeErrors is false", async () => {
+    rows.push({
+      client_sale_uuid: "split-fail",
+      sync_status: "error",
+      sync_kind: "sale",
+      sync_error: "Payment splits must add up to the amount paid now.",
+      order_num: 4,
+      created_at_ms: Date.now(),
+      checkout_body: {
+        pos_order_num: 15,
+        pay_now: 9000,
+        payment_splits: [{ method_code: "CASH", amount: 100 }],
+      },
+    });
+
+    const messages = [];
+    const { syncPosOfflineOutbox } = await import("@/lib/pos-offline");
+    await syncPosOfflineOutbox({
+      includeErrors: false,
+      manual: false,
+      onProgress: (progress) => {
+        if (progress.message) messages.push(progress.message);
+      },
+    });
+
+    expect(messages[0]).toMatch(/Syncing 1 order/);
+  });
 });

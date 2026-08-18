@@ -521,6 +521,14 @@ function TillsCheckoutSettingsTab({
             checked={salesForm.enable_checkout_customer_name}
             onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
           />
+          <Toggle
+            label="Open next order after receipt prints"
+            description="After F10 Complete, skip “Press Ok to Continue”. When the receipt has printed, External POS starts the next order automatically. If printing fails, the cashier still confirms with Ok. Off by default."
+            checked={salesForm.enable_pos_auto_continue_after_print}
+            onChange={(v) =>
+              setSalesForm((f) => ({ ...f, enable_pos_auto_continue_after_print: v }))
+            }
+          />
         </div>
       ) : null}
 

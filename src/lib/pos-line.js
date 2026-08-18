@@ -736,9 +736,10 @@ export function applyCatalogPricesToCart(
 
   // Editing / appending to an existing order: never reprice from today's catalog.
   if (
-    lockExistingPrices
-    || cart?.held_order_num
-    || cart?.superseded_sale_id
+    lockExistingPrices ||
+    cart?.held_order_num ||
+    cart?.superseded_sale_id ||
+    cart?.restored_from_local_held_id
   ) {
     return { cart, updatedCount: 0, changes: [] };
   }

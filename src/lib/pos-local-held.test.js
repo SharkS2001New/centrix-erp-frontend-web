@@ -38,6 +38,7 @@ import {
   forgetLocalHeldOrder,
   isLocalHeldId,
   localCartFromHeldPark,
+  overlayFrozenHeldCartLines,
   parkCartLocally,
   restoreLocalHeldOrder,
 } from "@/lib/pos-local-held";
@@ -74,6 +75,75 @@ describe("pos-local-held", () => {
     expect(park.order_total).toBe(3600);
     expect(park.items[0].amount).toBe(3600);
     expect(park.items[0].unit_price).toBe(2000);
+  });
+
+  it("parks and restores retail package markup without repricing", async () => {
+    const park = await parkCartLocally(
+      {
+        lines: [
+          {
+            product_code: "WIMBI",
+            product_name: "Wimbi",
+            quantity: 2,
+            unit_price: 110,
+            display_unit_price: 110,
+            amount: 220,
+            on_wholesale_retail: 1,
+            uom: "kg",
+          },
+        ],
+      },
+      { walkIn: true },
+    );
+
+    expect(park.order_total).toBe(220);
+    expect(park.items[0].unit_price).toBe(110);
+    expect(park.items[0].display_unit_price).toBe(110);
+    expect(park.items[0].amount).toBe(220);
+    expect(park.items[0].on_wholesale_retail).toBe(true);
+
+    const { cart } = await restoreLocalHeldOrder(park.id);
+    expect(cart.lines[0].unit_price).toBe(110);
+    expect(cart.lines[0].display_unit_price).toBe(110);
+    expect(cart.lines[0].amount).toBe(220);
+    expect(cart.lines[0].on_wholesale_retail).toBe(true);
+    expect(cart.lines[0].quantity).toBe(2);
+  });
+
+  it("overlayFrozenHeldCartLines keeps parked markup over a repriced server cart", () => {
+    const frozen = {
+      lines: [
+        {
+          product_code: "WIMBI",
+          quantity: 2,
+          unit_price: 110,
+          display_unit_price: 110,
+          amount: 220,
+          on_wholesale_retail: 1,
+        },
+      ],
+    };
+    const server = {
+      id: 99,
+      lines: [
+        {
+          id: 7,
+          product_code: "WIMBI",
+          quantity: 2,
+          unit_price: 100,
+          display_unit_price: 100,
+          amount: 200,
+          on_wholesale_retail: 1,
+        },
+      ],
+    };
+
+    const overlaid = overlayFrozenHeldCartLines(server, frozen);
+    expect(overlaid.id).toBe(99);
+    expect(overlaid.lines[0].id).toBe(7);
+    expect(overlaid.lines[0].unit_price).toBe(110);
+    expect(overlaid.lines[0].display_unit_price).toBe(110);
+    expect(overlaid.lines[0].amount).toBe(220);
   });
 
   it("parks a cart locally without consuming order_num", async () => {

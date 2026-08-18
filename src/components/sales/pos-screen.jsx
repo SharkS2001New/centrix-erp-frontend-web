@@ -344,6 +344,7 @@ import {
   forgetLocalHeldOrder,
   getLocalHeldOrder,
   isLocalHeldId,
+  overlayFrozenHeldCartLines,
   parkCartLocally,
   restoreLocalHeldOrder,
 } from "@/lib/pos-local-held";
@@ -4357,6 +4358,7 @@ export function PosScreen({ standalone = false }) {
         }
         if (localCart.restored_from_local_held_id) {
           withLocalMeta.restored_from_local_held_id = localCart.restored_from_local_held_id;
+          Object.assign(withLocalMeta, overlayFrozenHeldCartLines(withLocalMeta, localCart));
         }
         if (localCart.restored_from_hold_label) {
           withLocalMeta.restored_from_hold_label = localCart.restored_from_hold_label;
@@ -9175,7 +9177,8 @@ export function PosScreen({ standalone = false }) {
       activeCart.held_order_num ||
       activeCart.superseded_sale_id ||
       activeCart.offline ||
-      activeCart.offline_client_sale_uuid
+      activeCart.offline_client_sale_uuid ||
+      activeCart.restored_from_local_held_id
     ) {
       return 0;
     }
@@ -11742,23 +11745,6 @@ export function PosScreen({ standalone = false }) {
     }
 
     if (discardPreviousOrderEdit && editingPrevious) {
-      if (editedOrderHasLocalDraftChanges(activeCart)) {
-        const orderLabel = formatPosBrowseLabel(activeCart);
-        const ok = await confirm({
-          title: "Cancel previous-order edit",
-          message:
-            orderLabel !== "—"
-              ? `Discard changes to Cash Sales #${orderLabel}? Items and quantities stay as on the original receipt, and a new order workspace opens.`
-              : "Discard changes to this previous order? Items and quantities stay as on the original receipt, and a new order workspace opens.",
-          confirmLabel: "Discard edits",
-          cancelLabel: "Keep editing",
-          destructive: true,
-        });
-        if (!ok) {
-          skipEditAutosaveRef.current = false;
-          return;
-        }
-      }
       // Drop local draft + any queued previous_order_edit so Esc never uploads the revise.
       const orderNum = Number(activeCart.held_order_num);
       const editUuid =
@@ -11784,28 +11770,6 @@ export function PosScreen({ standalone = false }) {
             editSummary?.total ?? editSummary?.amountDue,
           )
         : false;
-      const leaveMsgs = editingPrevious
-        ? previousOrderEditModeMessages(formatPosBrowseLabel(activeCart), {
-            kraFiscalize,
-            offline: activeOfflineEdit,
-          })
-        : null;
-      const ok = await confirm({
-        title: "New order",
-        message: editingPrevious
-          ? leaveMsgs?.leaveConfirm ??
-            "Clear this order from the workspace and start a new order? Queued saves keep syncing in the background."
-          : hasPendingOutbox
-            ? "Clear this workspace and start a new order? The pending sync stays in the queue — use Sync when ready."
-            : "Clear this workspace and start a new order?",
-        confirmLabel: "Start New Order",
-        cancelLabel: "Cancel",
-        destructive: true,
-      });
-      if (!ok) {
-        skipEditAutosaveRef.current = false;
-        return;
-      }
 
       // Same finish step as Alt+P — only when this previous order was actually changed.
       if (
@@ -12594,12 +12558,13 @@ export function PosScreen({ standalone = false }) {
               !isFreshWorkspacePlaceholder(live)));
         if (!stillOnRestore) return;
         const pendingOptimistic = (live.lines ?? []).filter((line) => line?._optimistic);
+        const frozenServerCart = overlayFrozenHeldCartLines(serverCart, localCart) ?? serverCart;
         const enriched = {
-          ...serverCart,
-          customer_num: localCart.customer_num ?? serverCart.customer_num ?? null,
+          ...frozenServerCart,
+          customer_num: localCart.customer_num ?? frozenServerCart.customer_num ?? null,
           customer_name_override:
             localCart.customer_name_override ??
-            serverCart.customer_name_override ??
+            frozenServerCart.customer_name_override ??
             "Walk-in",
           mpesa_payment_amount: localCart.mpesa_payment_amount ?? 0,
           mpesa_transaction_code: localCart.mpesa_transaction_code ?? null,
@@ -16402,6 +16367,9 @@ export function PosScreen({ standalone = false }) {
         onComplete={handleCheckout}
         onContinueNextOrder={handleContinueNextOrder}
         receiptPrintStatus={receiptPrintStatus}
+        autoContinueAfterPrint={
+          Boolean(standalone && posSalesConfig.enablePosAutoContinueAfterPrint)
+        }
         onReprintReceipt={() => void handlePrintReceipt()}
         embedded={!standalone}
         cashOnlyOffline={posNetworkPaymentsBlocked}

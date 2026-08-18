@@ -1002,6 +1002,25 @@ export function isPreviousOrderEditTillBusyError(err) {
   );
 }
 
+/** Backend checkout 422 when payment_splits do not equal pay_now. */
+export function isPaymentSplitsMismatchError(err) {
+  const msg = String(err?.message ?? (typeof err === "string" ? err : "") ?? "").toLowerCase();
+  if (/payment splits must add up/.test(msg)) return true;
+  if (err instanceof ApiError) {
+    const blob = JSON.stringify(err.body ?? {}).toLowerCase();
+    if (/payment splits must add up/.test(blob)) return true;
+  }
+  return false;
+}
+
+/** Failed outbox rows whose only problem is a healable payment-split mismatch. */
+export function outboxRowHasHealablePaymentSplitsError(row) {
+  return (
+    String(row?.sync_status ?? "") === "error" &&
+    isPaymentSplitsMismatchError(row?.sync_error)
+  );
+}
+
 const IN_FLIGHT_PREVIOUS_ORDER_EDIT_STATUSES = new Set(["pending", "syncing", "error"]);
 const offlineCheckoutInFlight = new Map();
 
@@ -3712,6 +3731,15 @@ async function checkoutPreviousOrderEditOutboxRow(row, orderNum) {
         reportIssues: false,
       });
     } catch (checkoutErr) {
+      if (isPaymentSplitsMismatchError(checkoutErr)) {
+        healOfflineCheckoutPayNow(row.checkout_body ?? {}, row);
+        return await apiRequest(`/sales/carts/${cartId}/checkout`, {
+          method: "POST",
+          body: await checkoutBodyForOutboxRow(row, orderNum),
+          loading: false,
+          reportIssues: false,
+        });
+      }
       // Cart vanished between PUT and checkout (concurrent sync) — restore and retry once.
       if (!isMissingTemporaryCartError(checkoutErr)) throw checkoutErr;
       const retryCartId = await resolvePreviousOrderEditCartId({
@@ -3865,7 +3893,25 @@ async function checkoutOutboxRow(row, orderNum, extras = {}) {
       if (!isEmptyCartCheckoutError(err)) throw err;
       return await putAndCheckout();
     }
-  } catch (err) {
+  } catch (firstErr) {
+    let err = firstErr;
+    if (isPaymentSplitsMismatchError(err)) {
+      healOfflineCheckoutPayNow(row.checkout_body ?? {}, row);
+      try {
+        await idbPutOutboxSale({
+          ...row,
+          checkout_body: row.checkout_body,
+          updated_at_ms: Date.now(),
+        });
+      } catch {
+        /* retry still uses the healed in-memory checkout body */
+      }
+      try {
+        return await putAndCheckout();
+      } catch (retryErr) {
+        err = retryErr;
+      }
+    }
     // Leave TemporaryCart blank so the next live till sale cannot inherit these lines.
     // Do not wipe when the till was busy — that error is thrown before PUT.
     if (!isPreviousOrderEditTillBusyError(err)) {
@@ -5275,7 +5321,10 @@ async function collectOutboxRowsForSync({
     if (existing.sync_status === "pending") {
       return { rows: [existing], skippedActiveEdit: false };
     }
-    if (includeErrors && existing.sync_status === "error") {
+    if (
+      existing.sync_status === "error" &&
+      (includeErrors || outboxRowHasHealablePaymentSplitsError(existing))
+    ) {
       return { rows: [existing], skippedActiveEdit: false };
     }
     return { rows: [], skippedActiveEdit: false };
@@ -5289,15 +5338,20 @@ async function collectOutboxRowsForSync({
 
   const unsynced = await idbListUnsyncedOutbox();
   for (const row of unsynced) {
-    if (row.sync_status !== "editing") continue;
     const uuid = String(row.client_sale_uuid ?? "").trim();
     if (!uuid || byUuid.has(uuid)) continue;
-    const promoted = await promoteEditingIfStale(row);
-    if (!promoted) {
-      skippedActiveEdit = true;
+    if (row.sync_status === "editing") {
+      const promoted = await promoteEditingIfStale(row);
+      if (!promoted) {
+        skippedActiveEdit = true;
+        continue;
+      }
+      byUuid.set(uuid, promoted);
       continue;
     }
-    byUuid.set(uuid, promoted);
+    if (outboxRowHasHealablePaymentSplitsError(row)) {
+      byUuid.set(uuid, row);
+    }
   }
 
   const rows = [...byUuid.values()].sort(
@@ -5656,6 +5710,47 @@ export async function syncPosOfflineOutbox({
           message: cashSalesProgressLabel
             ? `Deferred ${cashSalesProgressLabel} — till is busy…`
             : "Deferred sync — till is busy…",
+        });
+        continue;
+      }
+
+      // Split/pay_now mismatch is healable — keep the sale pending so sync is not blocked.
+      if (isPaymentSplitsMismatchError(err)) {
+        healOfflineCheckoutPayNow(row.checkout_body ?? {}, row);
+        await withPosOfflineExclusiveLock(async () => {
+          await idbPutOutboxSale({
+            ...row,
+            checkout_body: row.checkout_body,
+            sync_status: "pending",
+            sync_error: null,
+            sync_started_at_ms: null,
+            revision_at_sync: null,
+            updated_at_ms: Date.now(),
+          });
+        });
+        results.push({
+          ok: false,
+          deferred: true,
+          order_num: printedOrderNum,
+          pos_order_num: listedPosTicket,
+          printed_pos_order_num: listedPosTicket,
+          client_sale_uuid: row.client_sale_uuid,
+          sync_kind: row.sync_kind ?? "sale",
+          error: outboxSyncErrorMessage(err),
+        });
+        onProgress?.({
+          phase: "item_done",
+          current,
+          total,
+          done,
+          failed,
+          ok: false,
+          deferred: true,
+          order_num: printedOrderNum,
+          pos_order_num: listedPosTicket,
+          message: cashSalesProgressLabel
+            ? `Retrying ${cashSalesProgressLabel} after payment split heal…`
+            : "Retrying after payment split heal…",
         });
         continue;
       }

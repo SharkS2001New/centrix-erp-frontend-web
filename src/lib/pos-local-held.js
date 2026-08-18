@@ -152,6 +152,7 @@ export async function parkCartLocally(cart, options = {}) {
     channel: "pos",
     lines,
     branch_id: cart?.branch_id ?? options.branchId ?? null,
+    route_id: cart?.route_id ?? null,
     till_id: cart?.till_id ?? options.tillId ?? null,
     float_session_id: cart?.float_session_id ?? options.floatSessionId ?? null,
     customer_num: customerNum,
@@ -205,6 +206,7 @@ export async function parkCartLocally(cart, options = {}) {
     })),
     cart_snapshot: {
       branch_id: draftCart.branch_id,
+      route_id: draftCart.route_id,
       till_id: draftCart.till_id,
       float_session_id: draftCart.float_session_id,
       order_discount: draftCart.order_discount,
@@ -234,6 +236,58 @@ export async function getLocalHeldOrder(id) {
 export async function deleteLocalHeldOrder(id) {
   if (!isLocalHeldId(id)) return false;
   return idbDeleteHeldPark(id);
+}
+
+/**
+ * After TemporaryCart materialize, keep the parked workspace prices.
+ * Server replace-lines must not reprice retail/wholesale package markups.
+ */
+export function overlayFrozenHeldCartLines(serverCart, frozenCart) {
+  const frozenLines = frozenCart?.lines ?? [];
+  const serverLines = serverCart?.lines ?? [];
+  if (!serverCart || !frozenLines.length || !serverLines.length) {
+    return serverCart;
+  }
+
+  const remaining = frozenLines.map((line) => ({ line, used: false }));
+  const lines = serverLines.map((serverLine, serverIndex) => {
+    const byIndex = remaining[serverIndex];
+    let match = null;
+    if (
+      byIndex &&
+      !byIndex.used &&
+      String(byIndex.line.product_code) === String(serverLine.product_code)
+    ) {
+      match = byIndex;
+    } else {
+      match = remaining.find(
+        (row) =>
+          !row.used &&
+          String(row.line.product_code) === String(serverLine.product_code) &&
+          Number(row.line.on_wholesale_retail ?? 0) ===
+            Number(serverLine.on_wholesale_retail ?? 0),
+      );
+    }
+    if (!match) return serverLine;
+    match.used = true;
+    const frozen = match.line;
+    return {
+      ...serverLine,
+      quantity: frozen.quantity ?? serverLine.quantity,
+      unit_price: frozen.unit_price ?? serverLine.unit_price,
+      display_unit_price:
+        frozen.display_unit_price != null
+          ? frozen.display_unit_price
+          : serverLine.display_unit_price,
+      amount: frozen.amount != null ? frozen.amount : serverLine.amount,
+      product_vat: frozen.product_vat != null ? frozen.product_vat : serverLine.product_vat,
+      discount_given: frozen.discount_given ?? serverLine.discount_given,
+      on_wholesale_retail: frozen.on_wholesale_retail ?? serverLine.on_wholesale_retail,
+      uom: frozen.uom ?? serverLine.uom,
+    };
+  });
+
+  return { ...serverCart, lines };
 }
 
 /**
@@ -273,6 +327,7 @@ export function localCartFromHeldPark(park, seed = {}) {
     channel: "pos",
     lines,
     branch_id: snap.branch_id ?? seed.branch_id ?? null,
+    route_id: snap.route_id ?? seed.route_id ?? null,
     till_id: snap.till_id ?? seed.till_id ?? null,
     float_session_id: snap.float_session_id ?? seed.float_session_id ?? null,
     customer_num: park.customer_num ?? null,
