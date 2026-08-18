@@ -5439,6 +5439,59 @@ export function PosScreen({ standalone = false }) {
     return { ...nextCart, lines };
   }
 
+  function preserveUntouchedMutationLinePricing(
+    prevCart,
+    nextCart,
+    {
+      targetLineRef = null,
+      targetProductCode = null,
+      targetOnWholesaleRetailFlag = 0,
+    } = {},
+  ) {
+    if (!prevCart?.lines?.length || !nextCart?.lines?.length) return nextCart;
+
+    const prevLines = prevCart.lines ?? [];
+    const targetCode = String(targetProductCode ?? "");
+    const lines = (nextCart.lines ?? []).map((line) => {
+      const prev =
+        prevLines.find((row) => {
+          const nextRef = cartLineRef(line);
+          const prevRef = cartLineRef(row);
+          if (nextRef != null && prevRef != null && String(nextRef) === String(prevRef)) return true;
+          return false;
+        }) ??
+        prevLines.find(
+          (row) =>
+            String(row?.product_code) === String(line?.product_code) &&
+            Number(row?.on_wholesale_retail ?? 0) === Number(line?.on_wholesale_retail ?? 0),
+        );
+      if (!prev) return line;
+
+      const sameTarget =
+        (targetLineRef != null &&
+          String(targetLineRef).trim() !== "" &&
+          String(cartLineRef(line) ?? "") === String(targetLineRef)) ||
+        (targetCode &&
+          String(line?.product_code) === targetCode &&
+          Number(line?.on_wholesale_retail ?? 0) === Number(targetOnWholesaleRetailFlag ?? 0) &&
+          Math.abs(Number(prev?.quantity ?? 0) - Number(line?.quantity ?? 0)) > 0.0001);
+      if (sameTarget) return line;
+
+      if (Math.abs(Number(prev?.quantity ?? 0) - Number(line?.quantity ?? 0)) > 0.0001) {
+        return line;
+      }
+
+      return {
+        ...line,
+        unit_price: prev.unit_price,
+        display_unit_price: prev.display_unit_price,
+        amount: prev.amount,
+        product_vat: prev.product_vat,
+      };
+    });
+    return { ...nextCart, lines };
+  }
+
   const stockDisplayMode = useMemo(
     () => posStockDisplayMode(posSalesConfig, sellWholesale),
     [posSalesConfig, sellWholesale],
@@ -6106,9 +6159,15 @@ export function PosScreen({ standalone = false }) {
           },
           ...POS_CART_REQUEST,
         });
-        let nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
+        const prevCartState = cartRef.current ?? activeCart;
+        let nextCart = applyCartMutationResponse(prevCartState, updated, {
           targetLineRef,
           extraPosTickets: preservePosTickets,
+        });
+        nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
+          targetLineRef,
+          targetProductCode: product.product_code,
+          targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
         });
         nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
           targetLineRef,
@@ -6132,8 +6191,13 @@ export function PosScreen({ standalone = false }) {
           body: lineBody,
           ...POS_CART_REQUEST,
         });
-        let nextCart = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
+        const prevCartState = cartRef.current ?? activeCart;
+        let nextCart = applyCartMutationResponse(prevCartState, updated, {
           extraPosTickets: preservePosTickets,
+        });
+        nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
+          targetProductCode: product.product_code,
+          targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
         });
         nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
           onWholesaleRetailFlag,
@@ -6165,9 +6229,15 @@ export function PosScreen({ standalone = false }) {
                 },
                 ...POS_CART_REQUEST,
               });
-              let nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
+              const prevCartState = cartRef.current ?? fresh;
+              let nextCart = applyCartMutationResponse(prevCartState, updated, {
                 targetLineRef,
                 extraPosTickets: preservePosTickets,
+              });
+              nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
+                targetLineRef,
+                targetProductCode: product.product_code,
+                targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
               });
               nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
                 targetLineRef,
@@ -6184,8 +6254,13 @@ export function PosScreen({ standalone = false }) {
                 body: lineBody,
                 ...POS_CART_REQUEST,
               });
-              let nextCart = applyCartMutationResponse(cartRef.current ?? fresh, updated, {
+              const prevCartState = cartRef.current ?? fresh;
+              let nextCart = applyCartMutationResponse(prevCartState, updated, {
                 extraPosTickets: preservePosTickets,
+              });
+              nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
+                targetProductCode: product.product_code,
+                targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
               });
               nextCart = reconcileCatalogPricedMutationCart(nextCart, product, {
                 onWholesaleRetailFlag,
