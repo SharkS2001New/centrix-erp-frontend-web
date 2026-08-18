@@ -702,16 +702,20 @@ export async function idbListSyncedOutboxForBrowse({
  * After a previous-order edit syncs, the outbox row is marked synced (not pending).
  * Resolve the live server sale id so Cash Sales # reopen does not miss the revised receipt.
  */
-export async function idbFindSyncedServerSaleIdByPosTicket(ticketNum) {
+export async function idbFindSyncedServerSaleIdByPosTicket(ticketNum, floatSessionId = null) {
   const ticket = Number(ticketNum);
   if (!Number.isFinite(ticket) || ticket <= 0) return null;
+  const activeFloatId =
+    floatSessionId != null && Number(floatSessionId) > 0 ? Number(floatSessionId) : null;
   const rows = await idbListSyncedOutboxForBrowse({ maxAgeMs: 7 * 24 * 60 * 60 * 1000, limit: 100 });
   const matches = rows.filter((r) => {
     const pos =
       r.sale_payload?.pos_order_num ??
       r.checkout_body?.pos_order_num ??
       null;
-    return pos != null && Number(pos) === ticket;
+    if (pos == null || Number(pos) !== ticket) return false;
+    if (activeFloatId == null) return true;
+    return Number(r.sale_payload?.float_session_id ?? r.checkout_body?.float_session_id ?? r.cart_seed?.float_session_id ?? 0) === activeFloatId;
   });
   return matches[0]?.server_sale_id ? Number(matches[0].server_sale_id) : null;
 }

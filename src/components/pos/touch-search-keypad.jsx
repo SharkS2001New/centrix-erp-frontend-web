@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 const ROW_1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 const ROW_2 = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"];
@@ -62,9 +63,9 @@ export function TouchSearchKeypad({
     emit("");
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -75,11 +76,16 @@ export function TouchSearchKeypad({
             {title}
           </p>
           <p
-            className={`mt-2 min-h-[2.5rem] rounded-xl border border-[var(--theme-border)] bg-[var(--theme-page-bg)] px-3 py-2 text-center text-xl font-semibold tracking-wide text-[var(--theme-text)] ${
+            className={`mt-2 flex min-h-[2.5rem] items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-page-bg)] px-3 py-2 text-center text-xl font-semibold tracking-wide text-[var(--theme-text)] ${
               display ? "" : "theme-subtext font-medium"
             }`}
           >
-            {display || placeholder}
+            <span className="max-w-[90%] truncate">{display || placeholder}</span>
+            <span
+              className="ml-0.5 inline-block h-[1.15em] w-[2px] shrink-0 bg-[var(--theme-text)]"
+              style={{ animation: "hotel-pos-caret 1s steps(1) infinite" }}
+              aria-hidden
+            />
           </p>
         </div>
 
@@ -131,7 +137,8 @@ export function TouchSearchKeypad({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -146,6 +153,8 @@ export function TouchSearchField({
   title = "Search",
   inputRef,
   autoComplete = "off",
+  autoFocus = false,
+  autoOpen = false,
   onKeyDown,
   disabled = false,
   ...inputProps
@@ -157,6 +166,10 @@ export function TouchSearchField({
     ...restInputProps
   } = inputProps;
 
+  useEffect(() => {
+    if (enabled && autoOpen && !disabled) setOpen(true);
+  }, [enabled, autoOpen, disabled]);
+
   return (
     <>
       <input
@@ -166,6 +179,7 @@ export function TouchSearchField({
         value={value}
         disabled={disabled}
         readOnly={Boolean(enabled)}
+        autoFocus={autoFocus}
         inputMode={enabled ? "none" : "search"}
         onChange={enabled ? undefined : (e) => onChange?.(e.target.value)}
         onKeyDown={enabled ? undefined : onKeyDown}

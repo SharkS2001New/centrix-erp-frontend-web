@@ -203,7 +203,7 @@ export function ProductsNewScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
-    if (imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
+    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
       setFormError("Enter a public http or https image URL.");
       return;
     }
@@ -221,9 +221,9 @@ export function ProductsNewScreen() {
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
-      if (imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
+      if (hotelCatalogue && imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
         await importProductImageFromUrl(code, imageUrlDraft);
-      } else if (imageFile) {
+      } else if (hotelCatalogue && imageFile) {
         await uploadProductImage(code, imageFile);
       }
       await saveRetailPackageSetting(form, code, { hotelCatalogue });

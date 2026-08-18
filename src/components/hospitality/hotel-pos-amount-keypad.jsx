@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatHotelMoney } from "@/lib/hotel-pos-settings";
 
 /**
- * Full-screen amount keypad for tap POS payment entry.
+ * Full-screen amount keypad for tap POS payment / price entry.
  */
 export function HotelPosAmountKeypad({
   open,
   title = "Enter amount",
   initialValue = "0",
+  confirmLabel = "Set amount",
   onCancel,
   onConfirm,
 }) {
@@ -19,7 +21,7 @@ export function HotelPosAmountKeypad({
     if (open) setDigits(String(initialValue ?? "0"));
   }, [open, initialValue]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   function push(ch) {
     setDigits((prev) => {
@@ -50,15 +52,20 @@ export function HotelPosAmountKeypad({
 
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "00"];
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-3 sm:items-center">
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 p-3 sm:items-center">
       <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] shadow-2xl">
         <div className="border-b border-[var(--theme-border)] px-4 py-3">
           <p className="text-center text-xs font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
             {title}
           </p>
-          <p className="mt-2 text-center text-3xl font-bold tabular-nums text-[var(--theme-text)]">
+          <p className="mt-2 flex items-center justify-center gap-1 text-center text-3xl font-bold tabular-nums text-[var(--theme-text)]">
             {formatHotelMoney(Number(digits) || 0)}
+            <span
+              className="inline-block h-[1em] w-[3px] bg-[var(--theme-text)]"
+              style={{ animation: "hotel-pos-caret 1s steps(1) infinite" }}
+              aria-hidden
+            />
           </p>
         </div>
         <div className="grid grid-cols-3 gap-2 p-3">
@@ -102,10 +109,11 @@ export function HotelPosAmountKeypad({
             onClick={() => onConfirm?.(Number(digits) || 0)}
             className="theme-primary-btn w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wide"
           >
-            Set amount
+            {confirmLabel}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

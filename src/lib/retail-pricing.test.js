@@ -34,6 +34,27 @@ describe("retail markup accumulation", () => {
     expect(resolvedMiddleFactor(sugarUom)).toBe(25);
   });
 
+  it("rounds partial half-bag retail markup up to one chunk", () => {
+    const splitAtHalfBag = [
+      {
+        min_qty: 1,
+        max_qty: 12,
+        measure_level: "small",
+        price_mode: "retail",
+        markup_price: 13,
+      },
+      {
+        min_qty: 12.5,
+        max_qty: 49,
+        measure_level: "full",
+        price_mode: "wholesale",
+        markup_price: 30,
+      },
+    ];
+    expect(retailMarkupApplications(12.5, splitAtHalfBag[1], sugarUom)).toBe(1);
+    expect(linePrice(6350, splitAtHalfBag, 12.5, true, sugarUom)).toBe(1617.5);
+  });
+
   it("prices one 25kg retail add as half bag + one markup", () => {
     // 6250/2 + 30 = 3155 — never 3185 (double markup from a 12.5 middle factor)
     expect(linePrice(6250, sugarTiers, 25, true, sugarUom)).toBe(3155);

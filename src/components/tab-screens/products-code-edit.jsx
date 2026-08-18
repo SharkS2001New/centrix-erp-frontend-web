@@ -124,7 +124,7 @@ export function ProductsCodeEditScreen() {
       setImageUrlDraft("");
       setImageSource("upload");
       setImageRemoved(false);
-      const hasImage = Boolean(product.image_path || product.image_url);
+      const hasImage = hotelCatalogue && Boolean(product.image_path || product.image_url);
       setHadStoredImage(hasImage);
       if (hasImage) {
         setImagePreview(productPhotoFileUrl(productCode));
@@ -264,7 +264,7 @@ export function ProductsCodeEditScreen() {
       setFormError("Select a branch for branch-scoped products.");
       return;
     }
-    if (imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
+    if (hotelCatalogue && imageSource === "url" && String(imageUrlDraft ?? "").trim() && !isHttpImageUrl(imageUrlDraft)) {
       setFormError("Enter a public http or https image URL.");
       return;
     }
@@ -278,11 +278,11 @@ export function ProductsCodeEditScreen() {
         method: "PUT",
         body,
       });
-      if (imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
+      if (hotelCatalogue && imageSource === "url" && isHttpImageUrl(imageUrlDraft)) {
         await importProductImageFromUrl(productCode, imageUrlDraft);
-      } else if (imageFile) {
+      } else if (hotelCatalogue && imageFile) {
         await uploadProductImage(productCode, imageFile);
-      } else if (imageRemoved && hadStoredImage) {
+      } else if (hotelCatalogue && imageRemoved && hadStoredImage) {
         await deleteProductImage(productCode);
       }
       await saveRetailPackageSetting(form, productCode, { hotelCatalogue });

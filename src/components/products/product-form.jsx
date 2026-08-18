@@ -621,19 +621,21 @@ export const ProductFormFields = memo(function ProductFormFields({
         />
       </Field>
 
-      <ProductImageField
-        label={hotelCatalogue ? "Menu photo" : "Product image"}
-        source={imageSource}
-        imageUrl={imageUrl}
-        previewUrl={imagePreview}
-        fileUrl={imageFileUrl}
-        productCode={form.product_code || null}
-        productName={form.product_name || null}
-        onSourceChange={onImageSourceChange}
-        onFileSelect={onImageSelect}
-        onUrlChange={onImageUrlChange}
-        onRemove={onImageRemove}
-      />
+      {hotelCatalogue ? (
+        <ProductImageField
+          label="Menu photo"
+          source={imageSource}
+          imageUrl={imageUrl}
+          previewUrl={imagePreview}
+          fileUrl={imageFileUrl}
+          productCode={form.product_code || null}
+          productName={form.product_name || null}
+          onSourceChange={onImageSourceChange}
+          onFileSelect={onImageSelect}
+          onUrlChange={onImageUrlChange}
+          onRemove={onImageRemove}
+        />
+      ) : null}
 
       <Field label="Sub-category" required>
         <div className="flex w-full items-stretch gap-2">

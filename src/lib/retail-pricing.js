@@ -206,7 +206,10 @@ export function retailMarkupApplications(quantityInSmall, tier, uom) {
   if (qty <= 0) return 0;
 
   const chunk = retailMarkupChunkSize(tier, uom);
-  return qty / chunk;
+  if (chunk <= 1) return qty;
+  // Backend/backoffice price pack-tier retail markups in whole half-pack chunks:
+  // 12.5kg on a 25kg chunk still earns 1× markup, 37.5kg earns 2×, etc.
+  return Math.ceil(qty / chunk - 1e-9);
 }
 
 /** Chunk size (in small units) that earns one tier markup in retail selling. */

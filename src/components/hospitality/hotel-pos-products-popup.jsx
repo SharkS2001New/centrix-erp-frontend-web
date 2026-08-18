@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -8,6 +8,7 @@ import {
   updateHotelPosCatalogPrice,
 } from "@/lib/hospitality-pos-api";
 import { formatHotelMoney } from "@/lib/hotel-pos-settings";
+import { HotelPosAmountKeypad } from "@/components/hospitality/hotel-pos-amount-keypad";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { isPosTouchSearchKeypadEnabled } from "@/lib/pos-touch-search-keypad";
 import { TouchSearchField } from "@/components/pos/touch-search-keypad";
@@ -27,8 +28,8 @@ function HotelPosPriceCell({ product, canEdit, offline, onSaved }) {
     if (!editing) setValue(formatPriceInput(product.unit_price));
   }, [product.unit_price, editing]);
 
-  async function save() {
-    const next = Number(value);
+  async function save(nextValue = value) {
+    const next = Number(nextValue);
     if (!Number.isFinite(next) || next < 0) {
       notifyError("Enter a valid price");
       return;
@@ -68,36 +69,31 @@ function HotelPosPriceCell({ product, canEdit, offline, onSaved }) {
   }
 
   return (
-    <div className="flex items-center justify-end gap-1">
-      <input
-        type="number"
-        min="0"
-        step="any"
-        value={value}
-        autoFocus
-        disabled={saving}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void save();
-          }
-          if (e.key === "Escape") {
-            e.preventDefault();
-            setEditing(false);
-          }
-        }}
-        className="theme-input hotel-pos-field w-24 rounded-lg px-2 py-1.5 text-right text-sm tabular-nums"
-      />
+    <>
       <button
         type="button"
         disabled={saving}
         onClick={() => void save()}
-        className="rounded-lg bg-[#185FA5] px-2 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        className="rounded-lg bg-[#185FA5] px-2 py-1 text-right text-xs font-semibold text-white disabled:opacity-50"
       >
-        {saving ? "…" : "Save"}
+        {saving ? "Saving…" : formatHotelMoney(value || 0)}
       </button>
-    </div>
+      <HotelPosAmountKeypad
+        open={editing}
+        title={`Update ${product.product_name} price`}
+        initialValue={value || "0"}
+        confirmLabel={saving ? "Saving…" : "Save price"}
+        onCancel={() => {
+          if (!saving) setEditing(false);
+        }}
+        onConfirm={(next) => {
+          if (saving) return;
+          const nextValue = formatPriceInput(next);
+          setValue(nextValue);
+          void save(nextValue);
+        }}
+      />
+    </>
   );
 }
 
@@ -113,6 +109,7 @@ export function HotelPosProductsPopup({
 }) {
   const { capabilities } = useAuth();
   const touchSearchKeypad = isPosTouchSearchKeypadEnabled(capabilities);
+  const searchInputRef = useRef(null);
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [items, setItems] = useState([]);
@@ -133,6 +130,15 @@ export function HotelPosProductsPopup({
       setItems([]);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || touchSearchKeypad) return undefined;
+    const timer = window.setTimeout(() => {
+      searchInputRef.current?.focus?.();
+      searchInputRef.current?.select?.();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, touchSearchKeypad]);
 
   const loadPage = useCallback(
     async (q, { offset = 0, append = false } = {}) => {
@@ -258,12 +264,15 @@ export function HotelPosProductsPopup({
 
         <div className="border-b border-[var(--theme-border)] px-4 py-3">
           <TouchSearchField
+            inputRef={searchInputRef}
             enabled={touchSearchKeypad}
             title="Search menu"
             value={search}
             onChange={setSearch}
             placeholder="Search this menu…"
             className="theme-input hotel-pos-field w-full rounded-xl px-4 py-2.5 text-sm"
+            autoFocus={!touchSearchKeypad}
+            autoOpen={touchSearchKeypad}
           />
         </div>
 

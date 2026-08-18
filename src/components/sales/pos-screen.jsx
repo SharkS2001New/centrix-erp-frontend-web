@@ -3144,11 +3144,20 @@ export function PosScreen({ standalone = false }) {
 
       const TOMBSTONE_MIN = 9_000_000;
       const needle = trimmed.toLowerCase();
+      const cashierId = user?.id != null ? Number(user.id) : null;
+      const activeFloatId =
+        floatSessionId != null && Number(floatSessionId) > 0
+          ? Number(floatSessionId)
+          : null;
 
       let offlineMatches = [];
       try {
         const offlineOrders = await listOfflinePendingSalesForEdit();
         offlineMatches = offlineOrders
+          .filter((row) => {
+            if (activeFloatId == null) return true;
+            return Number(row.float_session_id ?? 0) === activeFloatId;
+          })
           .filter((row) => {
             const label = saleCustomerLabel(row).toLowerCase();
             const override = String(row.customer_name_override ?? "").toLowerCase();
@@ -3173,6 +3182,8 @@ export function PosScreen({ standalone = false }) {
               with_items: 0,
               filter_customer: trimmed,
               sort: "-created_at",
+              ...(cashierId != null ? { cashier_id: cashierId } : {}),
+              ...(activeFloatId != null ? { float_session_id: activeFloatId } : {}),
             },
           }),
         });
@@ -3183,7 +3194,15 @@ export function PosScreen({ standalone = false }) {
           .filter((row) => !row?.fulfillment_meta?.superseded_by_edit)
           .filter((row) => {
             const status = String(row.status ?? "").toLowerCase();
-            return !["held", "draft", "cancelled", "expired"].includes(status);
+            if (["held", "draft", "cancelled", "expired"].includes(status)) return false;
+            if (cashierId != null) {
+              const rowCashier = row.cashier_id ?? row.created_by;
+              if (rowCashier != null && Number(rowCashier) !== cashierId) return false;
+            }
+            if (activeFloatId != null && Number(row.float_session_id ?? 0) !== activeFloatId) {
+              return false;
+            }
+            return true;
           })
           .map(mapPosOrderNameResult);
       } catch {
@@ -3197,7 +3216,7 @@ export function PosScreen({ standalone = false }) {
       ];
       return merged.slice(0, 25);
     },
-    [],
+    [user?.id, floatSessionId],
   );
 
   const orderNameSearchQuery = useMemo(() => {
@@ -12810,7 +12829,10 @@ export function PosScreen({ standalone = false }) {
                 row?.checkout_body?.pos_order_num ??
                 null;
               if (ticket != null) {
-                serverSaleId = await idbFindSyncedServerSaleIdByPosTicket(ticket);
+                serverSaleId = await idbFindSyncedServerSaleIdByPosTicket(
+                  ticket,
+                  floatSessionId,
+                );
               }
             }
             // Last resort: browse ticket from the offline: id session entry.
@@ -12818,7 +12840,10 @@ export function PosScreen({ standalone = false }) {
               const sessionRow = sessionPosOrders.find((r) => String(r.id) === String(saleId));
               const sessionTicket = sessionRow?.pos_order_num;
               if (sessionTicket != null) {
-                serverSaleId = await idbFindSyncedServerSaleIdByPosTicket(sessionTicket);
+                serverSaleId = await idbFindSyncedServerSaleIdByPosTicket(
+                  sessionTicket,
+                  floatSessionId,
+                );
               }
             }
           } catch {
@@ -13488,6 +13513,11 @@ export function PosScreen({ standalone = false }) {
         ? orgOrderMatch[1]
         : null;
     const orgOrderNum = orgOrderMatch ? orgOrderMatch[1] : null;
+    const cashierId = user?.id != null ? Number(user.id) : null;
+    const activeFloatId =
+      floatSessionId != null && Number(floatSessionId) > 0
+        ? Number(floatSessionId)
+        : null;
 
     const failLookupKeepNextTicket = (message) => {
       restoreEditOrderNoAfterFailedLoad({
@@ -13502,7 +13532,10 @@ export function PosScreen({ standalone = false }) {
 
     try {
       try {
-        const offlineOrders = await listOfflinePendingSalesForEdit();
+        const offlineOrders = (await listOfflinePendingSalesForEdit()).filter((row) => {
+          if (activeFloatId == null) return true;
+          return Number(row.float_session_id ?? 0) === activeFloatId;
+        });
         const offlineMatch =
           offlineOrders.find(
             (row) =>
@@ -13529,7 +13562,11 @@ export function PosScreen({ standalone = false }) {
           const localSynced = await findLocalSyncedSaleForOfflineEdit({
             ticketNum,
           });
-          if (localSynced?.id && localSynced.items?.length) {
+          if (
+            localSynced?.id &&
+            localSynced.items?.length &&
+            (activeFloatId == null || Number(localSynced.float_session_id ?? 0) === activeFloatId)
+          ) {
             await restoreOrderForEdit(localSynced.id, { saleSnapshot: localSynced });
             return;
           }
@@ -13537,7 +13574,10 @@ export function PosScreen({ standalone = false }) {
           /* fall through */
         }
         try {
-          const syncedSaleId = await idbFindSyncedServerSaleIdByPosTicket(ticketNum);
+          const syncedSaleId = await idbFindSyncedServerSaleIdByPosTicket(
+            ticketNum,
+            activeFloatId,
+          );
           if (syncedSaleId) {
             if (offlineMode) {
               failLookupKeepNextTicket(
@@ -13606,6 +13646,8 @@ export function PosScreen({ standalone = false }) {
               order_source: "pos",
               with_items: 0,
               sort: "-created_at",
+              ...(cashierId != null ? { cashier_id: cashierId } : {}),
+              ...(activeFloatId != null ? { float_session_id: activeFloatId } : {}),
               ...extra,
             },
           }),
