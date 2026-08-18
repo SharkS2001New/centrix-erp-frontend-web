@@ -6,6 +6,7 @@ import {
   cartLineMatchesRef,
   cartLineRef,
   mergePreservedOptimisticLines,
+  preserveUntouchedCartLines,
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
 
@@ -307,5 +308,116 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(reverted.update_no).toBe(4);
     expect(reverted.lines[0].product_code).toBe("ITEM1");
     expect(reverted.lines[0]._optimistic).toBeUndefined();
+  });
+});
+
+describe("preserveUntouchedCartLines", () => {
+  const mixedCart = {
+    id: 1,
+    update_no: 3,
+    lines: [
+      {
+        id: 11,
+        update_code: "CLU-SUGAR",
+        product_code: "SUGAR",
+        quantity: 500,
+        unit_price: 120,
+        display_unit_price: 6000,
+        amount: 60000,
+        on_wholesale_retail: 0,
+        uom: "BAG",
+      },
+      {
+        id: 12,
+        update_code: "CLU-KAMANDE",
+        product_code: "KAMANDE",
+        quantity: 5,
+        unit_price: 200,
+        display_unit_price: 200,
+        amount: 1000,
+        on_wholesale_retail: 0,
+        uom: "KG",
+      },
+      {
+        id: 13,
+        update_code: "CLU-ITEM3",
+        product_code: "ITEM3",
+        quantity: 2,
+        unit_price: 80,
+        display_unit_price: 80,
+        amount: 160,
+        on_wholesale_retail: 1,
+        uom: "KG",
+      },
+      {
+        id: 14,
+        update_code: "CLU-ITEM4",
+        product_code: "ITEM4",
+        quantity: 3,
+        unit_price: 50,
+        display_unit_price: 50,
+        amount: 150,
+        on_wholesale_retail: 1,
+        uom: "KG",
+      },
+    ],
+  };
+
+  it("keeps sibling retail/wholesale prices when one line is F12-repriced", () => {
+    const serverCart = {
+      ...mixedCart,
+      update_no: 4,
+      lines: mixedCart.lines.map((line) =>
+        line.update_code === "CLU-ITEM3"
+          ? {
+              ...line,
+              on_wholesale_retail: 0,
+              unit_price: 4000,
+              display_unit_price: 4000,
+              amount: 8000,
+              uom: "BAG",
+            }
+          : {
+              ...line,
+              unit_price: 1,
+              display_unit_price: 1,
+              amount: 1,
+              on_wholesale_retail: 0,
+            },
+      ),
+    };
+    const next = preserveUntouchedCartLines(mixedCart, serverCart, {
+      targetLineRef: "CLU-ITEM3",
+    });
+    expect(next.lines[2].on_wholesale_retail).toBe(0);
+    expect(next.lines[2].amount).toBe(8000);
+    expect(next.lines[0].amount).toBe(60000);
+    expect(next.lines[0].on_wholesale_retail).toBe(0);
+    expect(next.lines[1].amount).toBe(1000);
+    expect(next.lines[3].on_wholesale_retail).toBe(1);
+    expect(next.lines[3].amount).toBe(150);
+  });
+
+  it("restores sibling flags from a full TemporaryCart PATCH response", () => {
+    const serverCart = {
+      id: 1,
+      update_no: 4,
+      next_order_num: 88,
+      lines: mixedCart.lines.map((line) => ({
+        ...line,
+        unit_price: 9,
+        amount: 9,
+        on_wholesale_retail: 0,
+      })),
+    };
+    const next = applyCartMutationResponse(mixedCart, serverCart, {
+      targetLineRef: "CLU-ITEM3",
+    });
+    expect(next.lines[2].amount).toBe(9);
+    expect(next.lines[2].on_wholesale_retail).toBe(0);
+    expect(next.lines[0].amount).toBe(60000);
+    expect(next.lines[1].on_wholesale_retail).toBe(0);
+    expect(next.lines[3].on_wholesale_retail).toBe(1);
+    expect(next.lines[3].amount).toBe(150);
   });
 });

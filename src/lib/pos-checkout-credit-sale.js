@@ -12,6 +12,7 @@ export const POS_FULL_PAYMENT_REQUIRED_MESSAGE =
 export function validatePosDirectCheckoutPayment({
   isCreditSale = false,
   payNow = 0,
+  amountTendered = 0,
   amountDue = 0,
   customerNum = null,
 } = {}) {
@@ -21,7 +22,11 @@ export function validatePosDirectCheckoutPayment({
     return null;
   }
   const due = Math.max(0, Number(amountDue) || 0);
-  const paid = Math.max(0, Number(payNow) || 0);
+  const paid = Math.max(
+    0,
+    Number(payNow) || 0,
+    Number(amountTendered) || 0,
+  );
   if (due > 0.01 && paid + 0.01 < due) {
     return POS_FULL_PAYMENT_REQUIRED_MESSAGE;
   }

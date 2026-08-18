@@ -476,7 +476,17 @@ export function PosPaymentPanel({
   ]);
 
   function resolveEffectiveAmountPaid() {
-    return paymentAmountOverrideRef.current ?? amountPaid;
+    if (paymentAmountOverrideRef.current != null) {
+      return paymentAmountOverrideRef.current;
+    }
+    if (tenderAmountsOverrideRef.current) {
+      return computeAmountPaidFromParts({
+        ...resolveTenderAmountsSnapshot(),
+        cfg,
+        mpesaFieldsLocked,
+      });
+    }
+    return amountPaid;
   }
 
   function resolveTenderAmountsSnapshot() {
@@ -747,6 +757,10 @@ export function PosPaymentPanel({
       // Stripped before the API call; used to print the correct change on the receipt.
       __cash_tendered: creditSale ? 0 : paid,
       __receipt_tenders: receiptTenders,
+      // Server-first KRA checkout compares pay_now to a possibly repriced total.
+      // Send the till bill + what the customer actually handed over (incl. change).
+      till_amount_due: confirmedTotal,
+      amount_tendered: creditSale ? 0 : paid,
       ...(receiptTenders.change > 0 ? { order_change: receiptTenders.change } : {}),
     };
 
@@ -894,6 +908,7 @@ export function PosPaymentPanel({
     const err = validatePayment();
     if (err) {
       tenderAmountsOverrideRef.current = null;
+      paymentAmountOverrideRef.current = null;
       setLocalError(err);
       return;
     }
@@ -929,18 +944,15 @@ export function PosPaymentPanel({
     paymentAmountOverrideRef.current = paid;
     const tenderOverride = nextCashStr !== cashAmount ? { cashAmount: nextCashStr } : null;
 
-    try {
-      if (!resolveCanCompleteWithPaid(paid)) {
-        tenderAmountsOverrideRef.current = null;
-        setLocalError(
-          validatePayment() || "Please check the amount — payment is less than the bill total.",
-        );
-        return;
-      }
-      handleRequestComplete({ tenderOverride });
-    } finally {
+    if (!resolveCanCompleteWithPaid(paid)) {
       paymentAmountOverrideRef.current = null;
+      tenderAmountsOverrideRef.current = null;
+      setLocalError(
+        validatePayment() || "Please check the amount — payment is less than the bill total.",
+      );
+      return;
     }
+    handleRequestComplete({ tenderOverride });
   }
 
   function handlePageDownShortcut() {
@@ -1458,9 +1470,10 @@ export function PosPaymentPanel({
     try {
       const body = buildCheckoutBody();
       tenderAmountsOverrideRef.current = null;
+      paymentAmountOverrideRef.current = null;
       const sale = await onComplete?.(body);
       if (!sale) {
-        setStep("payment");
+        setStep("confirm");
         return;
       }
       // Previous-order edit: parent already reprinted and focused a new order.
@@ -1476,8 +1489,9 @@ export function PosPaymentPanel({
       setStep("complete");
     } catch (err) {
       tenderAmountsOverrideRef.current = null;
+      paymentAmountOverrideRef.current = null;
       setLocalError(err instanceof Error ? err.message : "Checkout failed");
-      setStep("payment");
+      setStep("confirm");
     }
   }
 
@@ -1702,6 +1716,7 @@ export function PosPaymentPanel({
               disabled={isCheckoutProcessing(saving, step)}
               onClick={() => {
                 tenderAmountsOverrideRef.current = null;
+                paymentAmountOverrideRef.current = null;
                 setStep("payment");
               }}
               className={POS_DIALOG_SECONDARY_BTN}
@@ -1740,8 +1755,8 @@ export function PosPaymentPanel({
           </p>
         ) : null}
         <p className="theme-text-muted mt-3 text-xs">Press Enter to continue.</p>
-        {localError ? (
-          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{localError}</p>
+        {error || localError ? (
+          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
         ) : null}
       </PosNestedDialog>
     ) : null;

@@ -1149,9 +1149,7 @@ export function HotelBarPosScreen() {
         notifySuccess(
           `Room ${roomNumber} · ${nights} night${nights === 1 ? "" : "s"} added — collect payment to print`,
         );
-        if (menuGroup === "rooms") {
-          void loadCatalog(debouncedSearch, { offset: 0, append: false });
-        }
+        void loadCatalog(debouncedSearch, { offset: 0, append: false });
         return;
       }
       if (!active?.id) throw new Error("Could not open order.");
@@ -1171,10 +1169,7 @@ export function HotelBarPosScreen() {
       notifySuccess(
         `Room ${roomNumber} · ${nights} night${nights === 1 ? "" : "s"} added — collect payment to print`,
       );
-      // Refresh available rooms so occupied-pending aren't re-shown after settle; after add still vacant until pay.
-      if (menuGroup === "rooms") {
-        void loadCatalog(debouncedSearch, { offset: 0, append: false });
-      }
+      void loadCatalog(debouncedSearch, { offset: 0, append: false });
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -1196,11 +1191,13 @@ export function HotelBarPosScreen() {
         const next = await removeLocalHotelCheckLine(ticket, selectedLineId);
         commitCheck(next);
         setSelectedLineId(null);
+        void loadCatalog(debouncedSearch, { offset: 0, append: false });
         return;
       }
       const res = await removeHotelCheckLine(ticket.id, selectedLineId);
       commitCheck(res?.check ?? null);
       setSelectedLineId(null);
+      void loadCatalog(debouncedSearch, { offset: 0, append: false });
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -1232,11 +1229,13 @@ export function HotelBarPosScreen() {
         const next = await clearLocalHotelCheckLines(check);
         commitCheck(next);
         setSelectedLineId(null);
+        void loadCatalog(debouncedSearch, { offset: 0, append: false });
         return;
       }
       const res = await clearHotelCheck(check.id);
       commitCheck(res?.check ?? null);
       setSelectedLineId(null);
+      void loadCatalog(debouncedSearch, { offset: 0, append: false });
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {
@@ -1274,6 +1273,7 @@ export function HotelBarPosScreen() {
       commitCheck(null);
       setSelectedLineId(null);
       notifySuccess("Local order discarded.");
+      void loadCatalog(debouncedSearch, { offset: 0, append: false });
       return;
     }
 
@@ -1330,6 +1330,7 @@ export function HotelBarPosScreen() {
         setSelectedLineId(null);
         resetRoomChargeSelection();
       }
+      void loadCatalog(debouncedSearch, { offset: 0, append: false });
     } catch (e) {
       notifyError(dedupeError(e));
     } finally {

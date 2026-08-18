@@ -159,6 +159,7 @@ import {
   looksLikeProductCodeQuery,
   mergePreservedOptimisticLines,
   normalizeCartResponse,
+  preserveUntouchedCartLines,
   raisePosNextTicketNumber,
   revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
@@ -5445,54 +5446,9 @@ export function PosScreen({ standalone = false }) {
   function preserveUntouchedMutationLinePricing(
     prevCart,
     nextCart,
-    {
-      targetLineRef = null,
-      targetProductCode = null,
-      targetOnWholesaleRetailFlag = 0,
-    } = {},
+    { targetLineRef = null } = {},
   ) {
-    if (!prevCart?.lines?.length || !nextCart?.lines?.length) return nextCart;
-
-    const prevLines = prevCart.lines ?? [];
-    const targetCode = String(targetProductCode ?? "");
-    const lines = (nextCart.lines ?? []).map((line) => {
-      const prev =
-        prevLines.find((row) => {
-          const nextRef = cartLineRef(line);
-          const prevRef = cartLineRef(row);
-          if (nextRef != null && prevRef != null && String(nextRef) === String(prevRef)) return true;
-          return false;
-        }) ??
-        prevLines.find(
-          (row) =>
-            String(row?.product_code) === String(line?.product_code) &&
-            Number(row?.on_wholesale_retail ?? 0) === Number(line?.on_wholesale_retail ?? 0),
-        );
-      if (!prev) return line;
-
-      const sameTarget =
-        (targetLineRef != null &&
-          String(targetLineRef).trim() !== "" &&
-          String(cartLineRef(line) ?? "") === String(targetLineRef)) ||
-        (targetCode &&
-          String(line?.product_code) === targetCode &&
-          Number(line?.on_wholesale_retail ?? 0) === Number(targetOnWholesaleRetailFlag ?? 0) &&
-          Math.abs(Number(prev?.quantity ?? 0) - Number(line?.quantity ?? 0)) > 0.0001);
-      if (sameTarget) return line;
-
-      if (Math.abs(Number(prev?.quantity ?? 0) - Number(line?.quantity ?? 0)) > 0.0001) {
-        return line;
-      }
-
-      return {
-        ...line,
-        unit_price: prev.unit_price,
-        display_unit_price: prev.display_unit_price,
-        amount: prev.amount,
-        product_vat: prev.product_vat,
-      };
-    });
-    return { ...nextCart, lines };
+    return preserveUntouchedCartLines(prevCart, nextCart, { targetLineRef });
   }
 
   const stockDisplayMode = useMemo(
@@ -5682,7 +5638,7 @@ export function PosScreen({ standalone = false }) {
           product.product_code,
           computed,
           posSalesConfig,
-          sellWholesale,
+          sellWholesaleRef.current,
           null,
           product,
           { combineIdenticalLines: true },
@@ -5725,13 +5681,13 @@ export function PosScreen({ standalone = false }) {
     const stockAsRetail =
       lineRetailStockFlagOverride != null
         ? lineRetailStockFlagOverride
-        : posLineRetailStockFlag(posSalesConfig, sellWholesale, computed.isRetail, product);
+        : posLineRetailStockFlag(posSalesConfig, sellWholesaleRef.current, computed.isRetail, product);
     const onWholesaleRetailFlag =
       lineRetailStockFlagOverride != null
         ? Boolean(lineRetailStockFlagOverride) && productSellsRetail(product)
         : posLineWholesaleRetailFlag(
             product,
-            sellWholesale,
+            sellWholesaleRef.current,
             computed.isRetail,
             posSalesConfig,
           );
@@ -5756,7 +5712,7 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage(
         posStockInsufficientMessage(stockCheck, {
           product,
-          sellWholesale,
+          sellWholesale: sellWholesaleRef.current,
           retailPackage,
           posSalesConfig,
         }),
@@ -5811,7 +5767,7 @@ export function PosScreen({ standalone = false }) {
               product.product_code,
               computed,
               posSalesConfig,
-              sellWholesale,
+              sellWholesaleRef.current,
               null,
               product,
               { combineIdenticalLines: true },
@@ -9172,6 +9128,10 @@ export function PosScreen({ standalone = false }) {
     if (!activeCart?.lines?.length || !productMeta || !Object.keys(productMeta).length) {
       return 0;
     }
+    // A cashier F12 + Enter on one edited line must not live-reprice the whole cart.
+    if (editingLineId || editingLineRef) {
+      return 0;
+    }
     // Keep sold prices when revising / appending to an existing order, or while a
     // local-first / offline cart is still open after reconnect.
     if (
@@ -10037,8 +9997,13 @@ export function PosScreen({ standalone = false }) {
       const paymentErr = validatePosDirectCheckoutPayment({
         isCreditSale: Boolean(body?.is_credit_sale),
         payNow: Number(body?.pay_now ?? 0),
+        amountTendered: Number(body?.amount_tendered ?? body?.__cash_tendered ?? 0),
         amountDue: Number(
-          body?.__checkout_total ?? summary?.amountDue ?? summary?.total ?? 0,
+          body?.till_amount_due ??
+            body?.__checkout_total ??
+            summary?.amountDue ??
+            summary?.total ??
+            0,
         ),
         customerNum: body?.customer_num,
       });

@@ -776,8 +776,11 @@ export default function SalesOrdersListScreen({
       }
       if (appliedFromDate) extra.from_date = appliedFromDate;
       if (appliedToDate) extra.to_date = appliedToDate;
-      // Match "Placed by" column — filter on when the order was created/booked.
-      if (appliedFromDate || appliedToDate) extra.date_field = "placed";
+      // Shop debtors: use the sale calendar date (effective / POS ticket day), not
+      // UTC created_at, so today's till credit still falls inside the default 3 days.
+      if ((appliedFromDate || appliedToDate) && !shopDebtorsOnly) {
+        extra.date_field = "placed";
+      }
       if (routeFilter && routeFilter !== "all") {
         extra.route_id = routeFilter;
       }

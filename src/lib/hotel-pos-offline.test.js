@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addProductToHotelCheckInMemory, mergeHotelCheckFromServer, HOTEL_VOID_ORDER_NAME, isHotelLocalFirstCheckout, resolveHotelPosVoidTarget } from "@/lib/hotel-pos-offline";
+import { addProductToHotelCheckInMemory, mergeHotelCheckFromServer, HOTEL_VOID_ORDER_NAME, isHotelLocalFirstCheckout, resolveHotelPosVoidTarget, hotelOfflineSyncProductLines, healHotelOfflineSyncBody } from "@/lib/hotel-pos-offline";
 
 describe("isHotelLocalFirstCheckout", () => {
   const check = { total: 100, amount_paid: 0, balance_due: 100 };
@@ -193,5 +193,37 @@ describe("resolveHotelPosVoidTarget", () => {
 
   it("does not void when the last receipt is already void and the ticket is empty", () => {
     expect(resolveHotelPosVoidTarget(openDraft, { ...sold, status: "void" })).toBeNull();
+  });
+});
+
+describe("hotel offline sync product lines", () => {
+  it("drops room stays and blank product codes so sync is not blocked", () => {
+    expect(
+      hotelOfflineSyncProductLines([
+        { product_code: "COLA", qty: 2 },
+        { product_code: null, qty: 1, modifiers: { type: "room_stay" } },
+        { product_code: "", qty: 1 },
+        { product_code: "ROOM-12", qty: 1, is_room_stay: true },
+        { product_code: "COLA", qty: 1 },
+      ]),
+    ).toEqual([{ product_code: "COLA", qty: 3 }]);
+  });
+
+  it("heals a queued sync body from the stored check snapshot", () => {
+    const healed = healHotelOfflineSyncBody(
+      {
+        lines: [
+          { product_code: null, qty: 1 },
+          { product_code: "FRIES", qty: 1 },
+        ],
+      },
+      {
+        lines: [
+          { product_code: "FRIES", qty: 2 },
+          { product_code: null, description: "Room 12", modifiers: { type: "room_stay" } },
+        ],
+      },
+    );
+    expect(healed.lines).toEqual([{ product_code: "FRIES", qty: 2 }]);
   });
 });

@@ -289,7 +289,6 @@ export async function printHospitalityCheckReceipt(check, options = {}) {
     printWindow: options.printWindow ?? null,
     windowFeatures: `width=420,height=720`,
     allowBrowserFallback: options.allowBrowserFallback !== false,
-    wait: true,
   });
 
   const kitchenPrinter = resolveHotelKitchenPrinterName();
@@ -303,7 +302,6 @@ export async function printHospitalityCheckReceipt(check, options = {}) {
       copies: 1,
       jobType: "receipt",
       documentId,
-      wait: true,
       config: { ...getPrintAgentConfig(), enabled: true, printerName: kitchenPrinter },
     });
     return { ...result, kitchen: { ok: true, printer: kitchenPrinter } };

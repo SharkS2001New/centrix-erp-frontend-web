@@ -26,7 +26,7 @@ function ClassicLineQtyCell({
   onSetQty,
   onDraftQtyChange = null,
   swapQtyCommit = false,
-  /** True when F12 retail/wholesale differs from this line — Enter/blur must reprice. */
+  /** True when F12 session differs from this line — Enter (not blur) reprices it. */
   forceSameQtyCommit = false,
   inputRef = null,
 }) {
@@ -54,7 +54,7 @@ function ClassicLineQtyCell({
     setDraft(committed);
   }, [line?.id, committed]);
 
-  function commit({ force = false, value } = {}) {
+  function commit({ applySessionMode = false, value } = {}) {
     // Prefer the live DOM value — Enter can fire before React re-renders the
     // last keystroke into `draft`, which left qty unchanged until a second try.
     const raw =
@@ -67,7 +67,10 @@ function ClassicLineQtyCell({
       return;
     }
     if (trimmed !== draft) setDraft(trimmed);
-    if (!force && !swapQtyCommit && !forceSameQtyCommit && trimmed === committed) return;
+    // F12 retail/wholesale applies only on Enter for this focused line.
+    // Blur must not reprice every row whose mode differs from the session.
+    if (!applySessionMode && !swapQtyCommit && trimmed === committed) return;
+    void forceSameQtyCommit;
     onSetQty?.(line, trimmed);
   }
 
@@ -94,9 +97,9 @@ function ClassicLineQtyCell({
             skipBlurCommitRef.current = false;
             return;
           }
-          // Always notify parent on leave — unchanged qty+mode no-ops without dirty;
-          // F12 mode flip still reprices even when the typed number is the same.
-          commit({ force: true, value: e.currentTarget.value });
+          // Qty edits still save on leave. F12 mode flip is Enter-only on this cell
+          // so a remount/blur after F12 cannot reprice the whole cart.
+          commit({ applySessionMode: false, value: e.currentTarget.value });
         }}
         onKeyDown={(e) => {
           if (isPosFunctionKeyEvent(e) || isPosClassicAltShortcut(e)) return;
@@ -107,8 +110,8 @@ function ClassicLineQtyCell({
             // (double swap/qty PATCH raced update_no and left the old SKU on the server).
             skipBlurCommitRef.current = true;
             // Always notify parent on Enter so F12 wholesale↔retail with the same
-            // number still reprices; parent no-ops (without dirty) when nothing changed.
-            commit({ force: true, value: e.currentTarget.value });
+            // number still reprices this line; parent no-ops when nothing changed.
+            commit({ applySessionMode: true, value: e.currentTarget.value });
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {

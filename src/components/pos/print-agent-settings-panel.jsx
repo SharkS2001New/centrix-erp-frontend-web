@@ -428,16 +428,6 @@ export function PrintAgentSettingsPanel({ compact = false }) {
               Print Agent to load printers.
             </p>
           ) : null}
-          {health?.ok && health.runningAsService ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Print Agent is running as a <strong>Windows service</strong>. A shared printer can print a
-              Windows test page but still fail from Hotel POS. Click <strong>Test connection</strong> and
-              choose the printer from <em>that</em> list, then Save. If the share is missing from the list,
-              on the till PC run{" "}
-              <code className="text-[11px]">scripts\configure-user-session-printing.ps1</code> as
-              Administrator (uses your Windows login, which can see the share), then Test print again.
-            </p>
-          ) : null}
           {health?.ok && health.sumatraAvailable === false ? (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               Print Agent is online but <strong>SumatraPDF is missing</strong>. Silent printing needs{" "}

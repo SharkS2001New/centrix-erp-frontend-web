@@ -75,7 +75,6 @@ describe("printHospitalityCheckReceipt", () => {
         jobType: "receipt",
         documentId: 12,
         copies: 1,
-        wait: true,
       }),
     );
     expect(printViaAgent).not.toHaveBeenCalled();
@@ -96,7 +95,6 @@ describe("printHospitalityCheckReceipt", () => {
         copies: 1,
         jobType: "receipt",
         documentId: 12,
-        wait: true,
         config: expect.objectContaining({ enabled: true, printerName: "Kitchen EPSON" }),
       }),
     );

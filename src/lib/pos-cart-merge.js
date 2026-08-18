@@ -139,6 +139,75 @@ export function raisePosNextTicketNumber(...candidates) {
   return nums.length ? Math.max(...nums) : null;
 }
 
+function lineIdentityKeys(line) {
+  return [cartLineRef(line), line?.id, line?.update_code, line?.client_line_id]
+    .filter((key) => key != null && String(key).trim() !== "")
+    .map((key) => String(key));
+}
+
+function restorePrevCartLineFields(line, prev) {
+  return {
+    ...line,
+    product_code: prev.product_code,
+    product_name: prev.product_name,
+    quantity: prev.quantity,
+    unit_price: prev.unit_price,
+    display_unit_price: prev.display_unit_price,
+    amount: prev.amount,
+    product_vat: prev.product_vat,
+    discount_given: prev.discount_given,
+    on_wholesale_retail: prev.on_wholesale_retail,
+    uom: prev.uom,
+  };
+}
+
+/**
+ * After a single-line add/PATCH, keep every other cart row as the cashier left it.
+ * TemporaryCart returns the full cart; F12 retail/wholesale on one line must not
+ * rewrite sibling prices, qty, or on_wholesale_retail flags.
+ */
+export function preserveUntouchedCartLines(
+  prevCart,
+  nextCart,
+  { targetLineRef = null } = {},
+) {
+  if (!prevCart?.lines?.length || !nextCart?.lines?.length) return nextCart;
+
+  const prevByKey = new Map();
+  for (const row of prevCart.lines) {
+    for (const key of lineIdentityKeys(row)) {
+      prevByKey.set(key, row);
+    }
+  }
+
+  const target =
+    targetLineRef != null && String(targetLineRef).trim() !== ""
+      ? String(targetLineRef)
+      : null;
+
+  function isTargetLine(line) {
+    if (!target) return false;
+    return lineIdentityKeys(line).includes(target);
+  }
+
+  const lines = (nextCart.lines ?? []).map((line) => {
+    if (isTargetLine(line)) return line;
+    const prev = lineIdentityKeys(line)
+      .map((key) => prevByKey.get(key))
+      .find(Boolean);
+    if (!prev) return line;
+    // POST/merge without a target ref: keep server row when qty actually changed.
+    if (
+      !target &&
+      Math.abs(Number(prev.quantity ?? 0) - Number(line.quantity ?? 0)) > 0.0001
+    ) {
+      return line;
+    }
+    return restorePrevCartLineFields(line, prev);
+  });
+  return { ...nextCart, lines };
+}
+
 /** Merge a single-line API payload into the current cart (legacy fallback). */
 export function applyCartMutationResponse(
   prevCart,
@@ -152,7 +221,7 @@ export function applyCartMutationResponse(
       prevCart?.next_pos_order_num,
       ...extraPosTickets,
     );
-    return {
+    const merged = {
       ...prevCart,
       ...normalized,
       lines: mergePreservedOptimisticLines(normalized.lines, prevCart?.lines),
@@ -161,6 +230,7 @@ export function applyCartMutationResponse(
       next_pos_order_num:
         nextPos ?? normalized.next_pos_order_num ?? prevCart?.next_pos_order_num ?? null,
     };
+    return preserveUntouchedCartLines(prevCart, merged, { targetLineRef });
   }
   if (!prevCart?.id || !res?.product_code) return prevCart;
 

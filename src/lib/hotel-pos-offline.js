@@ -325,6 +325,38 @@ function hotelLineClientKey(line) {
   return line?.client_key || (line?.id != null ? `id:${line.id}` : "");
 }
 
+/** Room stays are not catalog products — offline sync must not send them as product_code lines. */
+export function isHotelOfflineSyncProductLine(line) {
+  if (!line || isHotelRoomStayLine(line)) return false;
+  const code = String(line.product_code ?? "").trim();
+  if (!code) return false;
+  if (/^ROOM-\d+$/i.test(code)) return false;
+  return true;
+}
+
+export function hotelOfflineSyncProductLines(lines) {
+  const wanted = [];
+  for (const line of lines ?? []) {
+    if (!isHotelOfflineSyncProductLine(line)) continue;
+    const productCode = String(line.product_code).trim();
+    const qty = Math.max(0.0001, Number(line.qty) || 1);
+    const existing = wanted.find((row) => row.product_code === productCode);
+    if (existing) existing.qty += qty;
+    else wanted.push({ product_code: productCode, qty });
+  }
+  return wanted;
+}
+
+export function healHotelOfflineSyncBody(syncBody, checkPayload = null) {
+  const body = { ...(syncBody ?? {}) };
+  const sourceLines =
+    Array.isArray(checkPayload?.lines) && checkPayload.lines.length > 0
+      ? checkPayload.lines
+      : body.lines;
+  body.lines = hotelOfflineSyncProductLines(sourceLines);
+  return body;
+}
+
 export function addProductToHotelCheckInMemory(check, product, qty = 1) {
   if (!product?.product_code) {
     throw new Error("Product code is required.");
@@ -614,10 +646,7 @@ export async function completeOfflineHotelCashCheck({
     guest_name: snapshot.guest_name,
     offline_order: true,
     client_completed_at: soldAtIso,
-    lines: snapshot.lines.map((line) => ({
-      product_code: line.product_code,
-      qty: line.qty,
-    })),
+    lines: hotelOfflineSyncProductLines(snapshot.lines),
     payments: payRows,
   };
   if (sourceCheckId) {
@@ -739,9 +768,17 @@ export async function syncHotelPosOfflineOutbox({ onProgress, includeErrors = tr
     });
 
     try {
+      let syncBody = healHotelOfflineSyncBody(row.sync_body, row.check_payload);
+      if (
+        JSON.stringify(syncBody.lines ?? []) !== JSON.stringify(row.sync_body?.lines ?? [])
+      ) {
+        const healed = { ...row, sync_body: syncBody, updated_at_ms: Date.now() };
+        await idbPutOutboxCheck(healed);
+        syncBody = healed.sync_body;
+      }
       const res = await apiRequest("/hospitality/pos/checks/offline-sync", {
         method: "POST",
-        body: row.sync_body,
+        body: syncBody,
         loading: false,
         reportIssues: false,
       });
