@@ -140,7 +140,7 @@ export function AdminKraResponsesScreen() {
 
   return (
     <CatalogPageShell
-      title="KRA device log"
+      title="KRA device logs"
       subtitle={
         showingTodayOnly
           ? "Today's fiscal receipt submissions from checkout and credit notes"
@@ -148,7 +148,7 @@ export function AdminKraResponsesScreen() {
       }
       action={
         <CatalogListExport
-          title="KRA device log"
+          title="KRA device logs"
           filename="kra-responses"
           apiPath={adminPath("/kra-responses")}
           columns={KRA_RESPONSE_EXPORT_COLUMNS}
@@ -170,7 +170,7 @@ export function AdminKraResponsesScreen() {
       }
     >
       {!isPlatformManaged ? (
-        <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "KRA device log" }]} />
+        <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "KRA device logs" }]} />
       ) : null}
 
       <div className="mb-4 space-y-2">

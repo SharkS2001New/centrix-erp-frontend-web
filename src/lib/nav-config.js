@@ -765,7 +765,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/hr/attendance-clock",
         label: "Attendance clock-in",
         module: "hr_payroll",
-        permissionAny: [P.hr.manage, P.hr.attendance.create],
+        permissionAny: [P.admin.attendance_clock.view, P.hr.manage, P.hr.attendance.create],
       },
       {
         href: "/hr/pending-overtime",
@@ -1292,7 +1292,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/admin/kra-responses",
-        label: "KRA device log",
+        label: "KRA device logs",
         module: "admin",
         permission: P.admin.kra_responses.view,
         requireKraDevice: true,

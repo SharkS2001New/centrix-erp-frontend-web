@@ -100,7 +100,42 @@ function returnItemSummary(row) {
   return lines.map((l) => `${returnLineLabel(l)} × ${l.return_qty}`).join(", ");
 }
 
-function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" }) {
+function listFilterQuery({ fromDate = "", toDate = "", cashierId = "", routeId = "" } = {}) {
+  const qs = new URLSearchParams();
+  if (fromDate) qs.set("from_date", fromDate);
+  if (toDate) qs.set("to_date", toDate);
+  if (cashierId) qs.set("cashier_id", String(cashierId));
+  if (routeId) qs.set("route_id", String(routeId));
+  return qs.toString() ? `?${qs.toString()}` : "";
+}
+
+function listFilterBody({ cashierId = "", routeId = "" } = {}) {
+  const body = {};
+  if (cashierId) body.cashier_id = Number(cashierId) || cashierId;
+  if (routeId) body.route_id = Number(routeId) || routeId;
+  return body;
+}
+
+function filterScopeHint({ fromDate = "", toDate = "", cashierId = "", routeId = "" } = {}) {
+  const dateHint =
+    fromDate && toDate
+      ? fromDate === toDate
+        ? fromDate
+        : `${fromDate} → ${toDate}`
+      : fromDate || toDate || "all dates";
+  const who = cashierId ? "the selected user" : routeId ? "the selected route" : null;
+  return who ? `${dateHint} · ${who}` : dateHint;
+}
+
+function ReturnsModal({
+  open,
+  onClose,
+  onApproved,
+  fromDate = "",
+  toDate = "",
+  cashierId = "",
+  routeId = "",
+}) {
   const [tab, setTab] = useState("performed");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -111,14 +146,11 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = new URLSearchParams();
-      if (fromDate) qs.set("from_date", fromDate);
-      if (toDate) qs.set("to_date", toDate);
-      const query = qs.toString() ? `?${qs.toString()}` : "";
+      const query = listFilterQuery({ fromDate, toDate, cashierId, routeId });
 
       const [performedRes, pendingRes] = await Promise.all([
         apiRequest(`/sales/mobile-orders/performed-returns${query}`, { loading: false }),
-        apiRequest("/sales/mobile-orders/pending-returns", { loading: false }),
+        apiRequest(`/sales/mobile-orders/pending-returns${query}`, { loading: false }),
       ]);
       const performedRows = Array.isArray(performedRes?.data) ? performedRes.data : [];
       const pendingRows = Array.isArray(pendingRes?.data) ? pendingRes.data : [];
@@ -133,7 +165,7 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate]);
+  }, [cashierId, fromDate, routeId, toDate]);
 
   useEffect(() => {
     if (!open) return;
@@ -160,7 +192,7 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
     try {
       const res = await apiRequest("/sales/mobile-orders/approve-returns", {
         method: "POST",
-        body: { return_ids: ids },
+        body: { return_ids: ids, ...listFilterBody({ cashierId, routeId }) },
         loading: false,
       });
       const count = Number(res?.approved_count ?? 0);
@@ -185,12 +217,7 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
     }
   };
 
-  const dateHint =
-    fromDate && toDate
-      ? fromDate === toDate
-        ? fromDate
-        : `${fromDate} → ${toDate}`
-      : fromDate || toDate || "all dates";
+  const scopeHint = filterScopeHint({ fromDate, toDate, cashierId, routeId });
 
   return (
     <ModalShell
@@ -250,11 +277,11 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
 
       {tab === "performed" ? (
         <>
-          <p className="mb-3 text-slate-500">Approved mobile returns for {dateHint}.</p>
+          <p className="mb-3 text-slate-500">Approved mobile returns for {scopeHint}.</p>
           {loading ? (
             <p className="text-slate-500">Loading returns…</p>
           ) : performed.length === 0 ? (
-            <p className="text-slate-500">No returns performed in this date range.</p>
+            <p className="text-slate-500">No returns performed for this filter.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="min-w-full text-left text-sm">
@@ -302,7 +329,7 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
       ) : loading ? (
         <p className="text-slate-500">Loading pending returns…</p>
       ) : pending.length === 0 ? (
-        <p className="text-slate-500">No pending mobile returns to approve.</p>
+        <p className="text-slate-500">No pending mobile returns to approve for this filter.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="min-w-full text-left text-sm">
@@ -360,7 +387,15 @@ function expenseRepLabel(row) {
   return row?.user?.full_name || row?.user?.username || "Rep";
 }
 
-function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }) {
+function ExpensesModal({
+  open,
+  onClose,
+  onApproved,
+  fromDate = "",
+  toDate = "",
+  cashierId = "",
+  routeId = "",
+}) {
   const [tab, setTab] = useState("performed");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -371,14 +406,11 @@ function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = new URLSearchParams();
-      if (fromDate) qs.set("from_date", fromDate);
-      if (toDate) qs.set("to_date", toDate);
-      const query = qs.toString() ? `?${qs.toString()}` : "";
+      const query = listFilterQuery({ fromDate, toDate, cashierId, routeId });
 
       const [performedRes, pendingRes] = await Promise.all([
         apiRequest(`/sales/mobile-orders/performed-expenses${query}`, { loading: false }),
-        apiRequest("/sales/mobile-orders/pending-expenses", { loading: false }),
+        apiRequest(`/sales/mobile-orders/pending-expenses${query}`, { loading: false }),
       ]);
       const performedRows = Array.isArray(performedRes?.data) ? performedRes.data : [];
       const pendingRows = Array.isArray(pendingRes?.data) ? pendingRes.data : [];
@@ -393,7 +425,7 @@ function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate]);
+  }, [cashierId, fromDate, routeId, toDate]);
 
   useEffect(() => {
     if (!open) return;
@@ -420,7 +452,7 @@ function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }
     try {
       const res = await apiRequest("/sales/mobile-orders/approve-expenses", {
         method: "POST",
-        body: { expense_ids: ids },
+        body: { expense_ids: ids, ...listFilterBody({ cashierId, routeId }) },
         loading: false,
       });
       const count = Number(res?.approved_count ?? 0);
@@ -445,12 +477,7 @@ function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }
     }
   };
 
-  const dateHint =
-    fromDate && toDate
-      ? fromDate === toDate
-        ? fromDate
-        : `${fromDate} → ${toDate}`
-      : fromDate || toDate || "all dates";
+  const scopeHint = filterScopeHint({ fromDate, toDate, cashierId, routeId });
 
   return (
     <ModalShell
@@ -511,12 +538,12 @@ function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }
       {tab === "performed" ? (
         <>
           <p className="mb-3 text-slate-500">
-            Approved route expenses for {dateHint}. Amounts are deducted from that rep’s sales on the expense date.
+            Approved route expenses for {scopeHint}. Amounts are deducted from that rep’s sales on the expense date.
           </p>
           {loading ? (
             <p className="text-slate-500">Loading expenses…</p>
           ) : performed.length === 0 ? (
-            <p className="text-slate-500">No approved expenses in this date range.</p>
+            <p className="text-slate-500">No approved expenses for this filter.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="min-w-full text-left text-sm">
@@ -551,7 +578,7 @@ function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }
       ) : loading ? (
         <p className="text-slate-500">Loading pending expenses…</p>
       ) : pending.length === 0 ? (
-        <p className="text-slate-500">No pending route expenses to approve.</p>
+        <p className="text-slate-500">No pending route expenses to approve for this filter.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="min-w-full text-left text-sm">
@@ -758,6 +785,8 @@ export function MobileOrdersQuickActions({
   pageOrders = [],
   fromDate = "",
   toDate = "",
+  cashierId = "",
+  routeId = "",
   onDone,
 }) {
   const [returnsOpen, setReturnsOpen] = useState(false);
@@ -807,7 +836,7 @@ export function MobileOrdersQuickActions({
     try {
       const res = await apiRequest("/sales/mobile-orders/mark-paid", {
         method: "POST",
-        body: { sale_ids: saleIds },
+        body: { sale_ids: saleIds, ...listFilterBody({ cashierId, routeId }) },
         loading: false,
       });
       const count = Number(res?.updated_count ?? 0);
@@ -869,6 +898,8 @@ export function MobileOrdersQuickActions({
         onApproved={onDone}
         fromDate={fromDate}
         toDate={toDate}
+        cashierId={cashierId}
+        routeId={routeId}
       />
 
       <ExpensesModal
@@ -877,6 +908,8 @@ export function MobileOrdersQuickActions({
         onApproved={onDone}
         fromDate={fromDate}
         toDate={toDate}
+        cashierId={cashierId}
+        routeId={routeId}
       />
 
       <PaymentsChoiceModal

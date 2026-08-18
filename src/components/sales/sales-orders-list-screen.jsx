@@ -2049,6 +2049,8 @@ export default function SalesOrdersListScreen({
                 }}
                 fromDate={appliedFromDate}
                 toDate={appliedToDate}
+                cashierId={cashierFilter !== "all" ? cashierFilter : ""}
+                routeId={routeFilter !== "all" ? routeFilter : ""}
                 onDone={() => void loadOrders()}
               />
             </div>

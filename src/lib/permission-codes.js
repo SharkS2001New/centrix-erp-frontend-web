@@ -316,6 +316,12 @@ export const P = {
     users: { view: "admin.users.view" },
     roles: { view: "admin.roles.view", edit: "admin.roles.edit" },
     audit: { view: "admin.audit.view" },
+    attendance_clock: {
+      view: "admin.attendance_clock.view",
+      create: "admin.attendance_clock.create",
+      edit: "admin.attendance_clock.edit",
+      delete: "admin.attendance_clock.delete",
+    },
     vat_rates: {
       view: "admin.vat_rates.view",
       create: "admin.vat_rates.create",
