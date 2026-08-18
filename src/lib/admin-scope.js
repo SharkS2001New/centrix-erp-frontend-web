@@ -14,6 +14,7 @@ export const ORG_ADMIN_SETTINGS_PATH_PREFIXES = [
   "/admin/users",
   "/admin/roles",
   "/admin/audit",
+  "/admin/attendance-clock",
   "/admin/payment-methods",
   "/admin/kra-responses",
   "/vats",

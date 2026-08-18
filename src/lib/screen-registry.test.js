@@ -39,6 +39,7 @@ describe("screen registry (full ERP)", () => {
   });
 
   it("resolves admin attendance clock device detail", () => {
+    expect(resolveScreen("/admin/attendance-clock")?.id).toBe("admin-attendance-clock");
     expect(resolveScreen("/admin/attendance-clock/42")?.id).toBe("admin-attendance-clock-id");
   });
 

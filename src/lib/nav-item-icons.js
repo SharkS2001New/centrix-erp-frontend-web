@@ -202,6 +202,7 @@ export const NAV_HREF_ICONS = {
   "/admin/company": "building",
   "/admin/license": "shield",
   "/admin/branches": "map",
+  "/admin/attendance-clock": "clock",
   "/admin/users": "users",
   "/admin/roles": "shield",
   "/admin/audit": "book",

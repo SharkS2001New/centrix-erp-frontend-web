@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { isNumericRouteId, routeParamValue } from "@/lib/route-params";
 import { useSettingsApi } from "@/contexts/settings-api-context";
@@ -15,6 +15,9 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import {
+  attendanceClockListHref,
+} from "@/lib/attendance-clock-paths";
 
 const TABS = [
   "Overview",
@@ -51,6 +54,9 @@ function featureEnabled(capabilities, key) {
 
 export function HikvisionDeviceScreen() {
   const params = useParams();
+  const pathname = usePathname();
+  const listHref = attendanceClockListHref(pathname);
+  const inAdmin = String(pathname ?? "").startsWith("/admin/attendance-clock");
   const deviceId = routeParamValue(params?.id);
   const { organizationApiPath } = useSettingsApi();
   const base = organizationApiPath(`/attendance-clock-devices/${deviceId}/hikvision`);
@@ -405,8 +411,10 @@ export function HikvisionDeviceScreen() {
         banner={
           <AdminBreadcrumb
             items={[
-              { label: "HR", href: "/hr" },
-              { label: "Attendance clock-in", href: "/hr/attendance-clock" },
+              inAdmin
+                ? { label: "Administration", href: "/admin" }
+                : { label: "HR", href: "/hr" },
+              { label: "Attendance clock-in", href: listHref },
               { label: "Device" },
             ]}
           />
@@ -415,7 +423,7 @@ export function HikvisionDeviceScreen() {
         <p className="text-sm text-slate-500">
           Select a clock device from Attendance clock-in. This tab is missing a valid device id.
         </p>
-        <Link href="/hr/attendance-clock" className={`${SECONDARY_BTN_CLASS} mt-3 inline-flex`}>
+        <Link href={listHref} className={`${SECONDARY_BTN_CLASS} mt-3 inline-flex`}>
           Back to clock devices
         </Link>
       </CatalogPageShell>
@@ -436,11 +444,13 @@ export function HikvisionDeviceScreen() {
       subtitle="Full ISAPI device management — persons, cards, biometrics, and attendance events"
       banner={
         <AdminBreadcrumb
-          items={[
-            { label: "HR", href: "/hr" },
-            { label: "Attendance clock-in", href: "/hr/attendance-clock" },
-            { label: device?.device_no ?? "Device" },
-          ]}
+            items={[
+              inAdmin
+                ? { label: "Administration", href: "/admin" }
+                : { label: "HR", href: "/hr" },
+              { label: "Attendance clock-in", href: listHref },
+              { label: device?.device_no ?? "Device" },
+            ]}
         />
       }
       action={
@@ -448,7 +458,7 @@ export function HikvisionDeviceScreen() {
           <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void testConnection()}>
             {busy ? "Testing…" : "Test connection"}
           </PrimaryButton>
-          <Link href="/hr/attendance-clock" className={SECONDARY_BTN_CLASS}>
+          <Link href={listHref} className={SECONDARY_BTN_CLASS}>
             Back
           </Link>
         </div>

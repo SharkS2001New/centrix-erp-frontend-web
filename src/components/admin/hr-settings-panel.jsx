@@ -423,10 +423,10 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
               <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
                 Prefer{" "}
                 <AppNavLink
-                  href="/hr/attendance-clock"
+                  href="/admin/attendance-clock"
                   className="font-medium text-[#185FA5] hover:underline"
                 >
-                  HR → Attendance clock-in
+                  Administration → Attendance
                 </AppNavLink>{" "}
                 for method, terminals, and Centrix Attendance Agent download.
               </p>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { apiRequest, ApiError, apiV1BaseUrl } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, FormModal, inputClassName, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
@@ -9,6 +10,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   downloadAttendanceAgentPackage,
 } from "@/lib/attendance-agent-download";
+import { attendanceClockDeviceHref } from "@/lib/attendance-clock-paths";
 
 const EMPTY_FORM = {
   device_no: "",
@@ -23,6 +25,7 @@ const EMPTY_FORM = {
 
 export function AttendanceClockDevicesSettings() {
   const { organizationApiPath } = useSettingsApi();
+  const pathname = usePathname();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -353,7 +356,7 @@ export function AttendanceClockDevicesSettings() {
                     : "Recheck"}
                 </button>
                 <Link
-                  href={`/hr/attendance-clock/${device.id}`}
+                  href={attendanceClockDeviceHref(pathname, device.id)}
                   className={`${SECONDARY_BTN_CLASS} text-center`}
                 >
                   Manage Hikvision
