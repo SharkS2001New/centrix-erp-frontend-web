@@ -18,10 +18,17 @@ describe("validatePosDirectCheckoutPayment — External POS till", () => {
     expect(
       validatePosDirectCheckoutPayment({
         isCreditSale: false,
-        payNow: 500,
-        amountDue: 500,
+        payNow: 100,
+        amountDue: 100,
       }),
     ).toBeNull();
+    expect(
+      validatePosDirectCheckoutPayment({
+        isCreditSale: false,
+        payNow: 100,
+        amountDue: 105,
+      }),
+    ).toBe(POS_FULL_PAYMENT_REQUIRED_MESSAGE);
     expect(
       validatePosDirectCheckoutPayment({
         isCreditSale: false,

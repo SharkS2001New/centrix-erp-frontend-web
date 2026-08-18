@@ -2310,26 +2310,32 @@ export async function completeOfflineCashSale({
     (sum, part) => sum + Number(part.amount ?? 0),
     0,
   );
-  const nonCreditTendered =
-    paymentSplits.length > 0 ? splitTendered : requestedPay;
+  // Splits can be short after align-to-pay_now; cashAmount from the till is the source of truth.
+  const nonCreditTendered = Math.max(
+    requestedPay,
+    paymentSplits.length > 0 ? splitTendered : 0,
+  );
 
+  const due = Number(summary.amountDue);
   // I then C/M/E/K with full tender: never book as credit A/R (cashier changed mind).
   if (
     !isPreviousOrderEdit &&
     isCreditSale &&
-    Number(summary.amountDue) > 0.01 &&
-    nonCreditTendered + 0.01 >= Number(summary.amountDue)
+    due > 0.01 &&
+    nonCreditTendered + 0.01 >= due
   ) {
     isCreditSale = false;
   }
 
   // Cash / M-Pesa / Equity / KCB / bank / cheque must cover the bill.
   // Credit (I + registered customer) always saves as fully unpaid — no partial A/R.
+  // Allow a Light Stores rounding step (max 5) so a till-confirmed full tender is not rejected.
   if (
     !isCreditSale &&
     !isPreviousOrderEdit &&
-    Number(summary.amountDue) > 0.01 &&
-    nonCreditTendered + 0.01 < Number(summary.amountDue)
+    due > 0.01 &&
+    nonCreditTendered + 0.01 < due &&
+    !(requestedPay > 0.01 && due - requestedPay <= 5.01)
   ) {
     throw new Error(POS_FULL_PAYMENT_REQUIRED_MESSAGE);
   }

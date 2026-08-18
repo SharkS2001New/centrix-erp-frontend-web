@@ -10037,7 +10037,9 @@ export function PosScreen({ standalone = false }) {
       const paymentErr = validatePosDirectCheckoutPayment({
         isCreditSale: Boolean(body?.is_credit_sale),
         payNow: Number(body?.pay_now ?? 0),
-        amountDue: Number(summary?.amountDue ?? summary?.total ?? 0),
+        amountDue: Number(
+          body?.__checkout_total ?? summary?.amountDue ?? summary?.total ?? 0,
+        ),
         customerNum: body?.customer_num,
       });
       if (paymentErr) {
@@ -10468,6 +10470,7 @@ export function PosScreen({ standalone = false }) {
         __cash_tendered: cashTendered,
         __receipt_tenders: receiptTenders,
         __previous_order_edit_adjustment: _editAdjFlag,
+        __checkout_total: _checkoutTotalFromPanel,
         ...checkoutInput
       } = body ?? {};
       // Do not send submit_kra:false — stale POS capabilities were skipping server-side

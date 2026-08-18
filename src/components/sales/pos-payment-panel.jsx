@@ -528,7 +528,9 @@ export function PosPaymentPanel({
 
   const checkoutTotal = adjustmentMode
     ? Math.abs(signedEditDelta)
-    : sessionBillTotal || Number(billTotal) || 0;
+    : Number(billTotal) > 0
+      ? Number(billTotal)
+      : sessionBillTotal || 0;
 
   const balanceDue = Math.max(0, checkoutTotal - amountPaid);
   const changeDue = Math.max(0, amountPaid - checkoutTotal);
@@ -667,19 +669,21 @@ export function PosPaymentPanel({
     } = resolveTenderAmountsSnapshot();
     // I + credit customer + unpaid → fully unpaid A/R.
     // I then C/M/E/K with full tender → never credit (cashier changed mind).
+    const confirmedTotal =
+      Number(confirmSummary?.billTotal) > 0 ? Number(confirmSummary.billTotal) : checkoutTotal;
     const creditSale = isCheckoutCreditSale({
       hasCreditCustomer,
       amountPaid: paid,
-      checkoutTotal,
+      checkoutTotal: confirmedTotal,
       adjustmentMode,
     });
-    const payNow = adjustmentMode ? 0 : creditSale ? 0 : Math.min(paid, checkoutTotal);
+    const payNow = adjustmentMode ? 0 : creditSale ? 0 : Math.min(paid, confirmedTotal);
     const paymentMethodCode = creditSale ? "CREDIT" : primaryMethodCode();
     const status = resolveCheckoutStatus({
       channel,
       isCredit: creditSale,
       payNow,
-      total: checkoutTotal,
+      total: confirmedTotal,
       workflow,
       paymentMethodCode,
       allowPartialPayment: cfg.allowPartialPayment,
@@ -724,12 +728,13 @@ export function PosPaymentPanel({
           adjustmentMode ? paid : payNow + cartMpesa,
         );
     const receiptTenders = buildReceiptTenderSnapshot(tenderAmounts, {
-      changeDue: adjustmentMode || creditSale ? 0 : Math.max(0, paid - checkoutTotal),
+      changeDue: adjustmentMode || creditSale ? 0 : Math.max(0, paid - confirmedTotal),
       amountPaid: creditSale ? 0 : paid,
     });
 
     const body = {
       pay_now: payNow,
+      __checkout_total: confirmedTotal,
       payment_method_code: paymentMethodCode,
       payment_reference: creditSale ? null : paymentReferenceForPrimary(),
       payment_date: resolvedPaymentDate(),
@@ -879,7 +884,12 @@ export function PosPaymentPanel({
 
   function handleRequestComplete({ tenderOverride = null } = {}) {
     setLocalError(null);
-    tenderAmountsOverrideRef.current = tenderOverride;
+    // onClick passes a click event — only treat explicit cash/mpesa overrides as tenders.
+    const override =
+      tenderOverride && typeof tenderOverride === "object" && !tenderOverride.nativeEvent
+        ? tenderOverride
+        : null;
+    tenderAmountsOverrideRef.current = override;
     const paid = resolveEffectiveAmountPaid();
     const err = validatePayment();
     if (err) {
@@ -1730,8 +1740,8 @@ export function PosPaymentPanel({
           </p>
         ) : null}
         <p className="theme-text-muted mt-3 text-xs">Press Enter to continue.</p>
-        {(error || localError) ? (
-          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
+        {localError ? (
+          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{localError}</p>
         ) : null}
       </PosNestedDialog>
     ) : null;
@@ -2222,7 +2232,7 @@ export function PosPaymentPanel({
               !canComplete ||
               step !== "payment"
             }
-            onClick={handleRequestComplete}
+            onClick={() => requestPaymentStepComplete()}
             className={POS_DIALOG_PRIMARY_BTN}
           >
             <span className="text-lg">✓</span>
