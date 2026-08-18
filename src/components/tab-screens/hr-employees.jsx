@@ -258,7 +258,7 @@ export function HrEmployeesScreen() {
           String(row.host || "").trim() !== "",
       );
       if (!clocks.length) {
-        notifyError("No active Hikvision clock devices found. Register one under Admin → Attendance clock-in.");
+        notifyError("No active Hikvision clock devices found. Register one under HR → Attendance clock-in.");
         return;
       }
       let created = 0;

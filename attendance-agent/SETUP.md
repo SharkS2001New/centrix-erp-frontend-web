@@ -20,7 +20,7 @@ On the Hikvision terminal (or via its web UI from a LAN PC):
 
 ## 2. Register device in Centrix
 
-1. Open Centrix → **Administration → Attendance clock-in** (or Organization settings → HR → Clock-in devices).
+1. Open Centrix → **HR → Attendance clock-in** (or Organization settings → HR → Clock-in devices).
 2. Click **Cloud + LAN setup guide** if you need the overview.
 3. Add device:
    - **Device number:** e.g. `TERMINAL-01` (must match agent `deviceNo`)
@@ -53,7 +53,7 @@ Centrix matches punches by that code (with or without `EMP#` prefix). Wrong ID =
 
 ### Recommended (preconfigured from Centrix)
 
-1. In Centrix → **Administration → Attendance clock-in**, click **Download agent zip** for the terminal.
+1. In Centrix → **HR → Attendance clock-in**, click **Download agent zip** for the terminal.
 2. Unzip on a PC on the **same LAN** as the Hikvision (with internet to Centrix). Prefer `C:\Centrix\attendance-agent`.
 3. Install **Node.js 20+** if needed: https://nodejs.org/
 4. Double-click **`install-windows.bat`** and accept the Administrator prompt. The installer uses **config.json** from this zip (set in Centrix before download) and installs the Windows service.

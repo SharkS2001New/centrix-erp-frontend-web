@@ -405,8 +405,8 @@ export function HikvisionDeviceScreen() {
         banner={
           <AdminBreadcrumb
             items={[
-              { label: "Administration", href: "/admin" },
-              { label: "Attendance clock-in", href: "/admin/attendance-clock" },
+              { label: "HR", href: "/hr" },
+              { label: "Attendance clock-in", href: "/hr/attendance-clock" },
               { label: "Device" },
             ]}
           />
@@ -415,7 +415,7 @@ export function HikvisionDeviceScreen() {
         <p className="text-sm text-slate-500">
           Select a clock device from Attendance clock-in. This tab is missing a valid device id.
         </p>
-        <Link href="/admin/attendance-clock" className={`${SECONDARY_BTN_CLASS} mt-3 inline-flex`}>
+        <Link href="/hr/attendance-clock" className={`${SECONDARY_BTN_CLASS} mt-3 inline-flex`}>
           Back to clock devices
         </Link>
       </CatalogPageShell>
@@ -437,8 +437,8 @@ export function HikvisionDeviceScreen() {
       banner={
         <AdminBreadcrumb
           items={[
-            { label: "Administration", href: "/admin" },
-            { label: "Attendance clock-in", href: "/admin/attendance-clock" },
+            { label: "HR", href: "/hr" },
+            { label: "Attendance clock-in", href: "/hr/attendance-clock" },
             { label: device?.device_no ?? "Device" },
           ]}
         />
@@ -448,7 +448,7 @@ export function HikvisionDeviceScreen() {
           <PrimaryButton type="button" showIcon={false} disabled={busy} onClick={() => void testConnection()}>
             {busy ? "Testing…" : "Test connection"}
           </PrimaryButton>
-          <Link href="/admin/attendance-clock" className={SECONDARY_BTN_CLASS}>
+          <Link href="/hr/attendance-clock" className={SECONDARY_BTN_CLASS}>
             Back
           </Link>
         </div>

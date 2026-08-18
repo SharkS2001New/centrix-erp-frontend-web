@@ -762,6 +762,12 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hr.shifts.view,
       },
       {
+        href: "/hr/attendance-clock",
+        label: "Attendance clock-in",
+        module: "hr_payroll",
+        permissionAny: [P.hr.manage, P.hr.attendance.create],
+      },
+      {
         href: "/hr/pending-overtime",
         label: "Pending overtimes",
         module: "hr_payroll",
@@ -1224,13 +1230,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Local printing",
         module: "admin",
         permission: P.admin.till_printing.view,
-        orgAdminOnly: true,
-      },
-      {
-        href: "/admin/attendance-clock",
-        label: "Attendance clock-in",
-        module: "hr_payroll",
-        permissionAny: [P.admin.settings.view, P.hr.manage, "admin.manage"],
         orgAdminOnly: true,
       },
       {

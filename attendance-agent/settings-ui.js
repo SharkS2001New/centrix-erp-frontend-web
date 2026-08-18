@@ -105,7 +105,7 @@ function htmlPage() {
       </dl>
       <button type="button" id="testBtn">Test connection</button>
       <div id="status"></div>
-      <p class="hint">To change IP, password, or token, update the device in Centrix Administration → Attendance clock-in and download the agent again.</p>
+      <p class="hint">To change IP, password, or token, update the device in Centrix HR → Attendance clock-in and download the agent again.</p>
     </div>
   </div>
   <script>
@@ -239,7 +239,7 @@ async function quickTest(config) {
   }
   if (!config.deviceId) {
     ok = false;
-    lines.push("Centrix device ID is missing — re-download the agent zip from Administration → Attendance clock-in.");
+    lines.push("Centrix device ID is missing — re-download the agent zip from HR → Attendance clock-in.");
   }
 
   return { ok, detail: lines.join("\n") };

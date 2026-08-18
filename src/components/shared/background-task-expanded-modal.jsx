@@ -24,6 +24,11 @@ export function BackgroundTaskExpandedModal({ task, onMinimize, onCancel }) {
         />
         <p className="mt-4 text-sm font-semibold text-slate-900">{task.label}</p>
         <p className="mt-1 text-sm text-slate-600">{task.message ?? "Working…"}</p>
+        {task.countLabel ? (
+          <p className="mt-2 text-lg font-semibold tabular-nums tracking-tight text-slate-900">
+            {task.countLabel}
+          </p>
+        ) : null}
         <p className="mt-2 text-xs text-slate-500">
           You can keep working or open another page. Use Run in background to move progress to the header bar.
         </p>

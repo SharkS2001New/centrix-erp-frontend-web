@@ -54,7 +54,7 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
-import { shouldShowSalesDiscountColumn, canApproveDiscountRequests, isMobileOrdersReturnsCardEnabled, isMobileOrdersPaymentsCardEnabled } from "@/lib/sales-settings";
+import { shouldShowSalesDiscountColumn, canApproveDiscountRequests, isMobileOrdersReturnsCardEnabled, isMobileOrdersPaymentsCardEnabled, isMobileOrdersExpensesCardEnabled } from "@/lib/sales-settings";
 import { MobileOrdersQuickActions } from "@/components/sales/mobile-orders-quick-actions";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
@@ -334,6 +334,8 @@ export default function SalesOrdersListScreen({
     queueSlug === "mobile" && isMobileOrdersReturnsCardEnabled(capabilities);
   const showMobilePaymentsCard =
     queueSlug === "mobile" && isMobileOrdersPaymentsCardEnabled(capabilities);
+  const showMobileExpensesCard =
+    queueSlug === "mobile" && isMobileOrdersExpensesCardEnabled(capabilities);
   const queueConfig = useMemo(
     () =>
       resolveSalesOrderQueue(queueSlug, orgWorkflow, {
@@ -2030,11 +2032,12 @@ export default function SalesOrdersListScreen({
               className="w-full min-w-0"
             />
           </div>
-          {showMobileReturnsCard || showMobilePaymentsCard ? (
+          {showMobileReturnsCard || showMobilePaymentsCard || showMobileExpensesCard ? (
             <div className="col-span-12 flex justify-end lg:col-span-6">
               <MobileOrdersQuickActions
                 enabledReturns={showMobileReturnsCard}
                 enabledPayments={showMobilePaymentsCard}
+                enabledExpenses={showMobileExpensesCard}
                 unpaidHintCount={(summary?.unpaid ?? 0) + (summary?.partial ?? 0)}
                 loadUnpaidOrders={async () => {
                   const allRows = await fetchAllFilteredOrders();

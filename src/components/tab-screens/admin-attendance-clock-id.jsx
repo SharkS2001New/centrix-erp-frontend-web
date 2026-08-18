@@ -1,12 +1,21 @@
 "use client";
 
-import { HikvisionDeviceScreen } from "@/components/hr/hikvision-device-screen";
-import { SettingsApiProvider } from "@/contexts/settings-api-context";
+import { useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { routeParamValue } from "@/lib/route-params";
 
 export function AdminAttendanceClockIdScreen() {
-  return (
-    <SettingsApiProvider>
-      <HikvisionDeviceScreen />
-    </SettingsApiProvider>
-  );
+  const router = useRouter();
+  const params = useParams();
+  const deviceId = routeParamValue(params?.id);
+
+  useEffect(() => {
+    if (!deviceId) {
+      router.replace("/hr/attendance-clock");
+      return;
+    }
+    router.replace(`/hr/attendance-clock/${deviceId}`);
+  }, [deviceId, router]);
+
+  return null;
 }

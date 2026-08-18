@@ -295,7 +295,7 @@ export function HrMissedPunchesScreen() {
       <AttendanceGapsBanner counts={gapCounts} />
       <p className="mb-4 text-sm text-slate-600">
         Map terminal person IDs on{" "}
-        <Link href="/admin/attendance-clock" className="font-medium text-[#185FA5] hover:underline">
+        <Link href="/hr/attendance-clock" className="font-medium text-[#185FA5] hover:underline">
           Attendance clock-in
         </Link>
         . Extra same-hour scans are on{" "}

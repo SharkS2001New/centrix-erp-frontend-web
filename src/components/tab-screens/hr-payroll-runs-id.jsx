@@ -142,10 +142,12 @@ export function HrPayrollRunsIdScreen() {
           () =>
             apiRequest(`/payroll/runs/${runId}/process-auto`, {
               method: "POST",
-              body: { ...options, sync: true },
+              body: { ...options },
             }),
           {
             message: "Generating payroll…",
+            intervalMs: 400,
+            maxIntervalMs: 1200,
           },
         );
         await loadData();

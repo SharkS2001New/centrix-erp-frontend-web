@@ -220,6 +220,13 @@ function match_hospitality_orders_id(pathname) {
   return true;
 }
 
+function match_hr_attendance_clock_id(pathname) {
+  const m = pathname.match("^/hr/attendance-clock/([^/]+)$");
+  if (!m) return false;
+
+  return true;
+}
+
 function match_hr_employees_id(pathname) {
   const m = pathname.match("^/hr/employees/([^/]+)$");
   if (!m) return false;
@@ -533,6 +540,10 @@ function match_hr_allowances(pathname) {
 
 function match_hr_attendance(pathname) {
   return pathname === "/hr/attendance";
+}
+
+function match_hr_attendance_clock(pathname) {
+  return pathname === "/hr/attendance-clock";
 }
 
 function match_hr_cash_advances(pathname) {
@@ -1172,6 +1183,12 @@ export const SCREEN_REGISTRY = [
     match: match_hospitality_orders_id,
   },
   {
+    id: "hr-attendance-clock-id",
+    title: "Hikvision device",
+    route: "/hr/attendance-clock/[id]",
+    match: match_hr_attendance_clock_id,
+  },
+  {
     id: "hr-employees-id",
     title: "Employees",
     route: "/hr/employees/[id]",
@@ -1584,6 +1601,12 @@ export const SCREEN_REGISTRY = [
     title: "Today's attendance",
     route: "/hr/attendance",
     match: match_hr_attendance,
+  },
+  {
+    id: "hr-attendance-clock",
+    title: "Attendance clock-in",
+    route: "/hr/attendance-clock",
+    match: match_hr_attendance_clock,
   },
   {
     id: "hr-cash-advances",

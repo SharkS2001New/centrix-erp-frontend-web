@@ -2278,6 +2278,8 @@ export function PosScreen({ standalone = false }) {
   /** Ignore Esc/backdrop close for a beat after open (same F10 keystroke race). */
   const paymentOpenedAtRef = useRef(0);
   const PAYMENT_DIALOG_CLOSE_GRACE_MS = 1200;
+  /** Remount checkout on each F10 so a leftover "complete" step cannot auto-close. */
+  const [paymentDialogSession, setPaymentDialogSession] = useState(0);
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
   const [heldOrdersOpen, setHeldOrdersOpen] = useState(false);
   const [heldOrdersCount, setHeldOrdersCount] = useState(0);
@@ -4859,6 +4861,7 @@ export function PosScreen({ standalone = false }) {
     parkScanForOverlay();
     setReceiptPrintStatus(null);
     setPaymentError(null);
+    setPaymentDialogSession((n) => n + 1);
     setPaymentOpen(true);
   }
 
@@ -4875,6 +4878,7 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
     paymentOpenRef.current = false;
+    receiptPrintStatusRef.current = null;
     setPaymentOpen(false);
     return true;
   }
@@ -9837,6 +9841,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleContinueNextOrder() {
+    receiptPrintStatusRef.current = null;
     setReceiptPrintStatus(null);
     if (standalone) {
       clearPosUiDraft();
@@ -14058,21 +14063,18 @@ export function PosScreen({ standalone = false }) {
 
   async function openCompletePayment() {
     // Payment already open on ORDER COMPLETE — F10/Enter means start the next order.
-    if (paymentOpenRef.current && receiptPrintStatusRef.current) {
+    if (paymentOpenRef.current && receiptPrintStatusRef.current === "printed") {
       void handleContinueNextOrder();
       return;
     }
     // Use the ref — React state lags one frame and would misfire on a fast second press.
-    if (paymentOpenRef.current) return;
-    if (openCompletePaymentTaskRef.current) {
-      await openCompletePaymentTaskRef.current.catch(() => {});
-      if (paymentOpenRef.current) return;
-    }
+    if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) return;
     if (busy) {
       flashPosShortcutMessage("Checkout is still in progress — please wait.");
       return;
     }
 
+    openCompletePaymentInFlightRef.current = true;
     const run = (async () => {
       // Wait only when a line save is in flight — never soft-fail F10 afterward.
       const savesPending =
@@ -14208,7 +14210,6 @@ export function PosScreen({ standalone = false }) {
       openPaymentDialog();
     })();
 
-    openCompletePaymentInFlightRef.current = true;
     openCompletePaymentTaskRef.current = run;
     try {
       await run;
@@ -14470,16 +14471,22 @@ export function PosScreen({ standalone = false }) {
         if (phase === "keyup") {
           // Bare F10/F12 sometimes only surface on keyup in PWAs after the shell ate keydown.
           if (Date.now() - (handledOnKeyDownAt[key] || 0) < 900) return;
+        } else if (e.repeat) {
+          // Holding F10 must not open then immediately "next order" / close (flicker).
+          return;
         } else {
           handledOnKeyDownAt[key] = Date.now();
         }
 
         // Prefer live ref — React state lags and let a second F10 reopen/flicker the dialog.
         if ((state.paymentOpen || paymentOpenRef.current) && key === "F10") {
+          // Key release must never continue/close — that is the External POS flicker:
+          // keydown opens checkout, keyup treats it as ORDER COMPLETE.
+          if (phase === "keyup") return;
           const openedAgo = Date.now() - paymentOpenedAtRef.current;
-          // Same F10 keydown just opened checkout — do not treat keyup as "next order".
+          // Same F10 keydown just opened checkout — do not treat a repeat as "next order".
           if (openedAgo < 1200) return;
-          if (receiptPrintStatusRef.current) {
+          if (receiptPrintStatusRef.current === "printed") {
             void actions.handleContinueNextOrder?.();
             return;
           }
@@ -14490,6 +14497,9 @@ export function PosScreen({ standalone = false }) {
         // Function keys always run — never block behind modal/dialog guards.
         // F10: open on keydown only when possible; keyup is a PWA fallback above.
         if (key === "F10" && phase === "keyup" && paymentOpenRef.current) {
+          return;
+        }
+        if (key === "F10" && (openCompletePaymentInFlightRef.current || paymentOpenRef.current)) {
           return;
         }
         runPosFunctionAction(key, state, actions);
@@ -16293,6 +16303,7 @@ export function PosScreen({ standalone = false }) {
       />
 
       <PosPaymentPanel
+        key={paymentDialogSession}
         open={paymentOpen}
         onClose={(opts) => {
           if (!closePaymentDialog({ force: Boolean(opts?.force) })) return;

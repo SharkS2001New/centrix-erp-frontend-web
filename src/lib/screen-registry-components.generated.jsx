@@ -129,6 +129,9 @@ export const SCREEN_COMPONENTS = {
   "hospitality-orders-id": lazy(() =>
     import("@/components/tab-screens/hospitality-orders-id").then((m) => ({ default: m.HospitalityOrderDetailScreen })),
   ),
+  "hr-attendance-clock-id": lazy(() =>
+    import("@/components/tab-screens/hr-attendance-clock-id").then((m) => ({ default: m.HrAttendanceClockIdScreen })),
+  ),
   "hr-employees-id": lazy(() =>
     import("@/components/tab-screens/hr-employees-id").then((m) => ({ default: m.HrEmployeesIdScreen })),
   ),
@@ -335,6 +338,9 @@ export const SCREEN_COMPONENTS = {
   ),
   "hr-attendance": lazy(() =>
     import("@/components/tab-screens/hr-attendance").then((m) => ({ default: m.HrAttendanceScreen })),
+  ),
+  "hr-attendance-clock": lazy(() =>
+    import("@/components/tab-screens/hr-attendance-clock").then((m) => ({ default: m.HrAttendanceClockScreen })),
   ),
   "hr-cash-advances": lazy(() =>
     import("@/components/tab-screens/hr-cash-advances").then((m) => ({ default: m.HrCashAdvancesScreen })),

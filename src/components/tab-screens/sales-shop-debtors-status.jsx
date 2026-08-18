@@ -20,7 +20,7 @@ export function resolveShopDebtorsPaymentStatus(raw) {
   return null;
 }
 
-/** Shop-only debtor orders by payment bucket (route + mobile excluded). */
+/** Shop debtor orders by payment bucket (mobile field sales and route customers excluded). */
 export function SalesShopDebtorsStatusScreen({ paymentStatus: paymentStatusProp = null } = {}) {
   const params = useParams();
   const router = useRouter();

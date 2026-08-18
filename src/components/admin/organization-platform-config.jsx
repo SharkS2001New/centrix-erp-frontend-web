@@ -373,6 +373,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mobile_orders: mobileProfiles.has(deploymentProfile),
     enable_mobile_orders_returns_card: false,
     enable_mobile_orders_payments_card: false,
+    enable_mobile_orders_expenses_card: false,
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
     mobile_enable_driver_attendance: false,
@@ -447,6 +448,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mobile_orders: apiPayload.enable_mobile_orders !== false,
     enable_mobile_orders_returns_card: Boolean(apiPayload.enable_mobile_orders_returns_card),
     enable_mobile_orders_payments_card: Boolean(apiPayload.enable_mobile_orders_payments_card),
+    enable_mobile_orders_expenses_card: Boolean(apiPayload.enable_mobile_orders_expenses_card),
     mobile_enable_field_attendance: Boolean(apiPayload.mobile_enable_field_attendance),
     mobile_enable_driver_app: apiPayload.mobile_enable_driver_app !== false,
     mobile_enable_driver_attendance: Boolean(apiPayload.mobile_enable_driver_attendance),
@@ -770,6 +772,12 @@ export function OrganizationPlatformSalesSettings({
                 description="Off by default. Shows a Payments card beside search on Sales → Mobile orders. Mark all unpaid orders on the page as paid, or select specific orders."
                 checked={Boolean(salesPlatform?.enable_mobile_orders_payments_card)}
                 onChange={(v) => patch({ enable_mobile_orders_payments_card: v })}
+              />
+              <Toggle
+                label="Expenses card on Mobile orders"
+                description="Off by default. Lets sales reps record route expenses on the mobile app. Managers approve them from a card on Sales → Mobile orders; approved amounts deduct from that rep’s sales for the expense date."
+                checked={Boolean(salesPlatform?.enable_mobile_orders_expenses_card)}
+                onChange={(v) => patch({ enable_mobile_orders_expenses_card: v })}
               />
               <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Mobile stock deduction

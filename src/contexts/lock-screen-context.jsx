@@ -15,6 +15,8 @@ import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
 import { isScreenLocked, setScreenLocked, getStoredUser } from "@/lib/auth-storage";
 import { getAuthClientId } from "@/lib/workspace-session";
 import { mergeSecuritySettings } from "@/lib/security-settings";
+import { pinUnlockEnabled } from "@/lib/hotel-pin-device";
+import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
 
 const LockScreenContext = createContext(null);
@@ -36,12 +38,13 @@ export function LockScreenProvider({ children }) {
   const [operators, setOperators] = useState([]);
   const [operatorsLoading, setOperatorsLoading] = useState(false);
   const [selectedOperator, setSelectedOperator] = useState(null);
-  const [enablePinUnlock, setEnablePinUnlock] = useState(true);
+  const [enablePinUnlock, setEnablePinUnlock] = useState(false);
   const lockTimeoutRef = useRef(null);
   const logoutTimeoutRef = useRef(null);
   const lockedRef = useRef(false);
 
-  const lockMinutes = screenLockMinutes() || DEFAULT_SCREEN_LOCK_MINUTES;
+  const hotelLockEnabled = isHospitalityIndustry(capabilities);
+  const lockMinutes = hotelLockEnabled ? screenLockMinutes() || DEFAULT_SCREEN_LOCK_MINUTES : null;
   const idleMinutes = sessionIdleMinutes() || DEFAULT_SESSION_IDLE_MINUTES;
 
   useEffect(() => {
@@ -51,6 +54,11 @@ export function LockScreenProvider({ children }) {
   useEffect(() => {
     if (loading) return;
     if (user && isScreenLocked()) {
+      if (!isHospitalityIndustry(capabilities)) {
+        setScreenLocked(false);
+        setLocked(false);
+        return;
+      }
       setLocked(true);
       return;
     }
@@ -59,7 +67,7 @@ export function LockScreenProvider({ children }) {
       setError(null);
       setPasskeyAvailable(false);
     }
-  }, [loading, user]);
+  }, [loading, user, capabilities]);
 
   useEffect(() => {
     if (!locked || !user || !webAuthnSupported()) {
@@ -108,7 +116,7 @@ export function LockScreenProvider({ children }) {
       void logout();
     }, idleMinutes * 60 * 1000);
 
-    if (!lockedRef.current) {
+    if (lockMinutes != null && !lockedRef.current) {
       lockTimeoutRef.current = window.setTimeout(() => {
         lockScreen();
       }, lockMinutes * 60 * 1000);
@@ -198,24 +206,29 @@ export function LockScreenProvider({ children }) {
   }, []);
 
   const loadOperators = useCallback(async () => {
+    if (!pinUnlockEnabled(capabilities)) {
+      setOperators([]);
+      setEnablePinUnlock(false);
+      return;
+    }
     setOperatorsLoading(true);
     try {
       const res = await apiRequest("/auth/pin-operators", { loading: false, reportIssues: false });
       setOperators(Array.isArray(res?.data) ? res.data : []);
       if (res?.enable_pin_unlock != null) {
-        setEnablePinUnlock(Boolean(res.enable_pin_unlock));
+        setEnablePinUnlock(pinUnlockEnabled(capabilities) && Boolean(res.enable_pin_unlock));
       }
     } catch {
       setOperators([]);
     } finally {
       setOperatorsLoading(false);
     }
-  }, []);
+  }, [capabilities]);
 
   useEffect(() => {
     if (!locked || !user) return undefined;
     const security = mergeSecuritySettings(capabilities?.module_settings);
-    setEnablePinUnlock(security.enable_pin_unlock !== false);
+    setEnablePinUnlock(pinUnlockEnabled(capabilities) && security.enable_pin_unlock !== false);
     void loadOperators();
     return undefined;
   }, [locked, user, capabilities, loadOperators]);
@@ -273,7 +286,9 @@ export function LockScreenProvider({ children }) {
   );
 
   const lockUser = user ?? (locked ? getStoredUser() : null);
-  const pinUnlockAvailable = Boolean(lockUser?.has_login_pin || selectedOperator?.has_login_pin);
+  const pinUnlockAvailable = Boolean(
+    enablePinUnlock && (lockUser?.has_login_pin || selectedOperator?.has_login_pin),
+  );
   const changeUserAvailable = enablePinUnlock && operators.length > 0;
 
   return (

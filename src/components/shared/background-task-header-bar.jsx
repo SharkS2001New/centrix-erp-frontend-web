@@ -34,7 +34,9 @@ export function BackgroundTaskHeaderBar() {
       <HeaderSpinner />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium text-slate-800">{task.label}</p>
-        <p className="truncate text-[11px] text-slate-500">{task.message ?? "Working…"}</p>
+        <p className="truncate text-[11px] text-slate-500">
+          {task.countLabel ? `${task.countLabel} · ${task.message ?? "Working…"}` : (task.message ?? "Working…")}
+        </p>
         <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-200">
           {hasProgress ? (
             <div

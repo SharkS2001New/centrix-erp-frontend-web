@@ -72,6 +72,7 @@ const SALES_DEFAULTS = {
   enable_mobile_orders: true,
   enable_mobile_orders_returns_card: false,
   enable_mobile_orders_payments_card: false,
+  enable_mobile_orders_expenses_card: false,
   mobile_enable_checkout_location_verification: false,
   mobile_allow_offline_orders: false,
   mobile_checkout_location_radius_metres: 5,
@@ -446,6 +447,12 @@ export function isMobileOrdersReturnsCardEnabled(capabilities) {
 export function isMobileOrdersPaymentsCardEnabled(capabilities) {
   if (!isOrgMobileSalesEnabled(capabilities)) return false;
   return Boolean(mergeSalesSettings(capabilities?.module_settings).enable_mobile_orders_payments_card);
+}
+
+/** Platform-gated Expenses shortcut on the Mobile orders queue. */
+export function isMobileOrdersExpensesCardEnabled(capabilities) {
+  if (!isOrgMobileSalesEnabled(capabilities)) return false;
+  return Boolean(mergeSalesSettings(capabilities?.module_settings).enable_mobile_orders_expenses_card);
 }
 
 /** Mobile checkout GPS verification settings for the field sales app. */

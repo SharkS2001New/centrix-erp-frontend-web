@@ -9,7 +9,7 @@ import { runSettingsUi } from "./settings-ui.js";
 async function main() {
   const config = ensureConfigFile();
   if (!isConfigReady(config)) {
-    console.error("config.json is incomplete. Re-download CentrixAttendanceAgent from Administration → Attendance clock-in.");
+    console.error("config.json is incomplete. Re-download CentrixAttendanceAgent from HR → Attendance clock-in.");
     process.exit(1);
   }
   console.log("Opening Test connection…");

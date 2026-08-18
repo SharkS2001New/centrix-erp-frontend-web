@@ -85,4 +85,26 @@ describe("hotel PIN device binding", () => {
       }),
     ).toBe(false);
   });
+
+  it("does not enable PIN unlock for retail organizations", async () => {
+    const { pinUnlockEnabled } = await import("@/lib/hotel-pin-device");
+    expect(
+      pinUnlockEnabled({
+        industry: "commerce",
+        deployment_profile: "wholesale_retail",
+        module_settings: { security: { enable_pin_unlock: true } },
+      }),
+    ).toBe(false);
+  });
+
+  it("enables PIN unlock for hospitality when the org setting is on", async () => {
+    const { pinUnlockEnabled } = await import("@/lib/hotel-pin-device");
+    expect(
+      pinUnlockEnabled({
+        industry: "hospitality",
+        deployment_profile: "hotel_bar",
+        module_settings: { security: { enable_pin_unlock: true } },
+      }),
+    ).toBe(true);
+  });
 });

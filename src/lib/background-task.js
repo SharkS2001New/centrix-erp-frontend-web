@@ -38,8 +38,8 @@ export async function downloadBackgroundTaskFile(taskId, filename = "export") {
  * }} [opts]
  */
 export async function waitForBackgroundTask(taskId, opts = {}) {
-  let intervalMs = opts.intervalMs ?? 1500;
-  const maxIntervalMs = opts.maxIntervalMs ?? 8000;
+  let intervalMs = opts.intervalMs ?? 400;
+  const maxIntervalMs = opts.maxIntervalMs ?? 1500;
   const timeoutMs = opts.timeoutMs ?? 1_800_000;
   const { onProgress, signal } = opts;
   const started = Date.now();

@@ -89,9 +89,15 @@ function unpaidOrdersOnPage(orders) {
   });
 }
 
+function returnLineLabel(line) {
+  const name = String(line?.product_name || line?.product?.product_name || "").trim();
+  if (name) return name;
+  return String(line?.product_code || "?").trim() || "?";
+}
+
 function returnItemSummary(row) {
   const lines = Array.isArray(row?.lines) ? row.lines : [];
-  return lines.map((l) => `${l.product_code || "?"} × ${l.return_qty}`).join(", ");
+  return lines.map((l) => `${returnLineLabel(l)} × ${l.return_qty}`).join(", ");
 }
 
 function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" }) {
@@ -350,6 +356,244 @@ function ReturnsModal({ open, onClose, onApproved, fromDate = "", toDate = "" })
   );
 }
 
+function expenseRepLabel(row) {
+  return row?.user?.full_name || row?.user?.username || "Rep";
+}
+
+function ExpensesModal({ open, onClose, onApproved, fromDate = "", toDate = "" }) {
+  const [tab, setTab] = useState("performed");
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [performed, setPerformed] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (fromDate) qs.set("from_date", fromDate);
+      if (toDate) qs.set("to_date", toDate);
+      const query = qs.toString() ? `?${qs.toString()}` : "";
+
+      const [performedRes, pendingRes] = await Promise.all([
+        apiRequest(`/sales/mobile-orders/performed-expenses${query}`, { loading: false }),
+        apiRequest("/sales/mobile-orders/pending-expenses", { loading: false }),
+      ]);
+      const performedRows = Array.isArray(performedRes?.data) ? performedRes.data : [];
+      const pendingRows = Array.isArray(pendingRes?.data) ? pendingRes.data : [];
+      setPerformed(performedRows);
+      setPending(pendingRows);
+      setSelected(new Set(pendingRows.map((r) => r.id)));
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load expenses.");
+      setPerformed([]);
+      setPending([]);
+      setSelected(new Set());
+    } finally {
+      setLoading(false);
+    }
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    if (!open) return;
+    setTab("performed");
+    void load();
+  }, [load, open]);
+
+  const toggle = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const approve = async () => {
+    const ids = [...selected];
+    if (!ids.length) {
+      notifyError("Select at least one expense to approve.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await apiRequest("/sales/mobile-orders/approve-expenses", {
+        method: "POST",
+        body: { expense_ids: ids },
+        loading: false,
+      });
+      const count = Number(res?.approved_count ?? 0);
+      const errs = Array.isArray(res?.errors) ? res.errors : [];
+      if (count > 0) {
+        notifySuccess(
+          count === 1
+            ? "1 expense approved — deducted from that day’s sales."
+            : `${count} expenses approved — deducted from those days’ sales.`,
+        );
+      }
+      if (errs.length) {
+        notifyError(errs.map((e) => e.message).filter(Boolean).join(" · ") || "Some expenses failed.");
+      }
+      onApproved?.();
+      await load();
+      setTab("performed");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to approve expenses.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dateHint =
+    fromDate && toDate
+      ? fromDate === toDate
+        ? fromDate
+        : `${fromDate} → ${toDate}`
+      : fromDate || toDate || "all dates";
+
+  return (
+    <ModalShell
+      open={open}
+      title="Expenses"
+      onClose={onClose}
+      busy={busy}
+      widthClass="max-w-2xl"
+      footer={
+        tab === "pending" ? (
+          <>
+            <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
+              Close
+            </button>
+            <button
+              type="button"
+              disabled={busy || loading || selected.size === 0}
+              onClick={() => void approve()}
+              className={PRIMARY_BTN}
+            >
+              {busy ? "Approving…" : "Approve expenses"}
+            </button>
+          </>
+        ) : (
+          <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
+            Close
+          </button>
+        )
+      }
+    >
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setTab("performed")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+            tab === "performed"
+              ? "bg-[var(--theme-primary)] text-white"
+              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+          }`}
+        >
+          View expenses
+          {!loading ? ` (${performed.length})` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("pending")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+            tab === "pending"
+              ? "bg-[var(--theme-primary)] text-white"
+              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+          }`}
+        >
+          Pending approve
+          {!loading ? ` (${pending.length})` : ""}
+        </button>
+      </div>
+
+      {tab === "performed" ? (
+        <>
+          <p className="mb-3 text-slate-500">
+            Approved route expenses for {dateHint}. Amounts are deducted from that rep’s sales on the expense date.
+          </p>
+          {loading ? (
+            <p className="text-slate-500">Loading expenses…</p>
+          ) : performed.length === 0 ? (
+            <p className="text-slate-500">No approved expenses in this date range.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Rep</th>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Description</th>
+                    <th className="px-3 py-2">Approved</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {performed.map((row) => (
+                    <tr key={row.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-medium text-slate-900">{expenseRepLabel(row)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-700">{row.expense_date || "—"}</td>
+                      <td className="max-w-[14rem] truncate px-3 py-2 text-slate-600" title={row.description}>
+                        {row.description || "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatWhen(row.approved_at)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                        {formatSaleKes(row.expense_amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : loading ? (
+        <p className="text-slate-500">Loading pending expenses…</p>
+      ) : pending.length === 0 ? (
+        <p className="text-slate-500">No pending route expenses to approve.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="w-10 px-3 py-2" />
+                <th className="px-3 py-2">Rep</th>
+                <th className="px-3 py-2">Date</th>
+                <th className="px-3 py-2">Description</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending.map((row) => (
+                <tr key={row.id} className="border-t border-slate-100">
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggle(row.id)}
+                      disabled={busy}
+                      aria-label={`Select expense ${row.id}`}
+                    />
+                  </td>
+                  <td className="px-3 py-2 font-medium text-slate-900">{expenseRepLabel(row)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-700">{row.expense_date || "—"}</td>
+                  <td className="max-w-[14rem] truncate px-3 py-2 text-slate-600" title={row.description}>
+                    {row.description || "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                    {formatSaleKes(row.expense_amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
 function PaymentsChoiceModal({ open, onClose, unpaidCount, loading, onMarkAll, onSelectOrders }) {
   return (
     <ModalShell
@@ -501,13 +745,14 @@ function SelectPaidModal({ open, orders, onClose, onConfirm }) {
 }
 
 /**
- * Platform-gated Returns + Payments cards for the Mobile orders queue.
+ * Platform-gated Returns + Payments + Expenses cards for the Mobile orders queue.
  * Off by default; enable per org under Platform → Sales.
  * Payments operate on all unpaid orders matching the list filters (all pages).
  */
 export function MobileOrdersQuickActions({
   enabledReturns = false,
   enabledPayments = false,
+  enabledExpenses = false,
   unpaidHintCount = null,
   loadUnpaidOrders,
   pageOrders = [],
@@ -516,6 +761,7 @@ export function MobileOrdersQuickActions({
   onDone,
 }) {
   const [returnsOpen, setReturnsOpen] = useState(false);
+  const [expensesOpen, setExpensesOpen] = useState(false);
   const [paymentsChoiceOpen, setPaymentsChoiceOpen] = useState(false);
   const [selectPaidOpen, setSelectPaidOpen] = useState(false);
   const [markBusy, setMarkBusy] = useState(false);
@@ -528,7 +774,7 @@ export function MobileOrdersQuickActions({
       ? Number(unpaidHintCount)
       : fallbackUnpaid.length;
 
-  if (!enabledReturns && !enabledPayments) return null;
+  if (!enabledReturns && !enabledPayments && !enabledExpenses) return null;
 
   const resolveUnpaid = async () => {
     if (typeof loadUnpaidOrders !== "function") {
@@ -592,6 +838,12 @@ export function MobileOrdersQuickActions({
             <span className="text-xs text-slate-500">View returns performed</span>
           </button>
         ) : null}
+        {enabledExpenses ? (
+          <button type="button" className={CARD_CLASS} onClick={() => setExpensesOpen(true)}>
+            <span className="text-sm font-semibold text-slate-900">Expenses</span>
+            <span className="text-xs text-slate-500">View & approve route expenses</span>
+          </button>
+        ) : null}
         {enabledPayments ? (
           <button
             type="button"
@@ -614,6 +866,14 @@ export function MobileOrdersQuickActions({
       <ReturnsModal
         open={returnsOpen}
         onClose={() => setReturnsOpen(false)}
+        onApproved={onDone}
+        fromDate={fromDate}
+        toDate={toDate}
+      />
+
+      <ExpensesModal
+        open={expensesOpen}
+        onClose={() => setExpensesOpen(false)}
         onApproved={onDone}
         fromDate={fromDate}
         toDate={toDate}

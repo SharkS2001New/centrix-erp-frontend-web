@@ -8,7 +8,7 @@ import {
   isQueuedTaskResponse,
   waitForBackgroundTask,
 } from "@/lib/background-task";
-import { resolveBackgroundTaskMessage } from "@/lib/background-task-messages";
+import { resolveBackgroundTaskMessage, backgroundTaskCountLabel } from "@/lib/background-task-messages";
 import { ApiError } from "@/lib/api";
 import { resolveImportTaskError } from "@/lib/background-task-errors";
 import { BackgroundTaskExpandedModal } from "@/components/shared/background-task-expanded-modal";
@@ -99,6 +99,9 @@ export function BackgroundTaskProvider({ children }) {
               label,
               progress: Number(nextTask.progress ?? 0),
               message: resolveBackgroundTaskMessage(nextTask, label),
+              countLabel: backgroundTaskCountLabel(nextTask),
+              processed: nextTask.processed ?? nextTask.payload?.processed ?? null,
+              total: nextTask.total ?? nextTask.payload?.total ?? null,
               status: String(nextTask.status ?? "running"),
             });
           },

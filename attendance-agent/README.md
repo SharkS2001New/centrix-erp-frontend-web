@@ -16,7 +16,7 @@ Hikvision (LAN)  ←ISAPI—  Attendance Agent  —HTTPS→  Centrix Cloud
                     agent executes them locally every ~5s
 ```
 
-**Recommended:** download a **preconfigured zip** from Centrix → **Administration → Attendance clock-in** → **Download agent zip**.
+**Recommended:** download a **preconfigured zip** from Centrix → **HR → Attendance clock-in** → **Download agent zip**.
 
 **Full on-site checklist:** see [SETUP.md](./SETUP.md).
 
@@ -24,7 +24,7 @@ Hikvision (LAN)  ←ISAPI—  Attendance Agent  —HTTPS→  Centrix Cloud
 
 - Node.js 20+
 - PC on the same network as the Hikvision device
-- Device registered in Centrix Administration → Attendance clock-in
+- Device registered in Centrix HR → Attendance clock-in
 
 ## Quick install (from Admin download)
 

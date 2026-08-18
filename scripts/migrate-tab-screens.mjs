@@ -25,6 +25,16 @@ const PREFERRED_SCREENS = {
     exportName: "AdminAttendanceClockIdScreen",
     title: "Hikvision device",
   },
+  "hr-attendance-clock": {
+    importPath: "@/components/tab-screens/hr-attendance-clock",
+    exportName: "HrAttendanceClockScreen",
+    title: "Attendance clock-in",
+  },
+  "hr-attendance-clock-id": {
+    importPath: "@/components/tab-screens/hr-attendance-clock-id",
+    exportName: "HrAttendanceClockIdScreen",
+    title: "Hikvision device",
+  },
   dashboard: {
     importPath: "@/components/dashboard/overview-dashboard",
     exportName: "OverviewDashboard",

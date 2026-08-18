@@ -353,7 +353,7 @@ export function AttendanceClockDevicesSettings() {
                     : "Recheck"}
                 </button>
                 <Link
-                  href={`/admin/attendance-clock/${device.id}`}
+                  href={`/hr/attendance-clock/${device.id}`}
                   className={`${SECONDARY_BTN_CLASS} text-center`}
                 >
                   Manage Hikvision
@@ -675,7 +675,7 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
         </li>
         <li>
           Register the device here with a unique <strong>device number</strong>, LAN IP, and password
-          (Administration → Attendance clock-in).
+          (HR → Attendance clock-in).
         </li>
         <li>
           Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is preconfigured

@@ -9,10 +9,12 @@ describe("paramsFromTabHref", () => {
 
   it("does not invent params for list routes", () => {
     expect(paramsFromTabHref("/fulfillment/trips")).toEqual({});
+    expect(paramsFromTabHref("/hr/attendance-clock")).toEqual({});
     expect(paramsFromTabHref("/admin/attendance-clock")).toEqual({});
   });
 
   it("extracts attendance clock device id from detail hrefs", () => {
+    expect(paramsFromTabHref("/hr/attendance-clock/42")).toEqual({ id: "42" });
     expect(paramsFromTabHref("/admin/attendance-clock/42")).toEqual({ id: "42" });
   });
 });

@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 
-export const AGENT_VERSION = "2.6.0";
+export const AGENT_VERSION = "2.6.3";
 export const ACS_EVENT_PAGE_SIZE = 30;
 /** ~6,000 events per time window; catch-up splits the window if the device has more. */
 export const ACS_EVENT_MAX_PAGES = 200;

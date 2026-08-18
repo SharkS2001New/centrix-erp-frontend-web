@@ -10,6 +10,8 @@ import {
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
+import { useAuth } from "@/contexts/auth-context";
+import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -25,21 +27,32 @@ function Toggle({ checked, onChange, label, description }) {
 
 export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
+  const { capabilities } = useAuth();
   const afterSave = useSettingsAfterSave(onAfterSave);
   const getSettings = useSettingsGet();
   const [form, setForm] = useState(securityFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("sessions");
+  const hotelPinEnabled = isHospitalityIndustry(capabilities);
 
   const visibleTabs = useMemo(
-    () => [
-      { id: "sessions", label: "Sign-in & screen lock" },
-      { id: "passwords", label: "Password rules" },
-    ],
-    [],
+    () =>
+      hotelPinEnabled
+        ? [
+            { id: "sessions", label: "Sign-in & screen lock" },
+            { id: "passwords", label: "Password rules" },
+          ]
+        : [{ id: "passwords", label: "Password rules" }],
+    [hotelPinEnabled],
   );
 
   useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+
+  useEffect(() => {
+    if (!hotelPinEnabled && activeTab === "sessions") {
+      setActiveTab("passwords");
+    }
+  }, [hotelPinEnabled, activeTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,8 +103,9 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Security settings</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Session timeouts apply to all users in this organization. Password policy applies when users
-          set or change passwords.
+          {hotelPinEnabled
+            ? "Session timeouts apply to all users in this organization. Password policy applies when users set or change passwords."
+            : "Password policy applies when users set or change passwords."}
         </p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
@@ -104,7 +118,7 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
               ariaLabel="Security settings"
             />
 
-            {activeTab === "sessions" ? (
+            {hotelPinEnabled && activeTab === "sessions" ? (
           <div className="space-y-4">
             <Field label="Screen lock after inactivity (minutes)">
               <input

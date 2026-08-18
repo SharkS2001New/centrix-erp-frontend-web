@@ -14,7 +14,7 @@ function sourceRoot() {
 function installReadme() {
   return `# Centrix Attendance Agent
 
-Preconfigured package from Centrix → Administration → Attendance clock-in.
+Preconfigured package from Centrix → HR → Attendance clock-in.
 
 ## Quick start (Windows office PC on same LAN as Hikvision)
 

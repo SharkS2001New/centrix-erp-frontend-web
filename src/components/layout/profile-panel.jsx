@@ -16,6 +16,7 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { ProfileTwoFactorSection } from "@/components/layout/profile-two-factor-section";
 import { ProfilePasskeysSection } from "@/components/layout/profile-passkeys-section";
+import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 
 function accessLabel(user, capabilities) {
   if (user?.is_super_admin || capabilities?.is_super_admin) {
@@ -430,7 +431,7 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
         </form>
       </section>
 
-      {!requiredPasswordChange ? (
+      {!requiredPasswordChange && isHospitalityIndustry(capabilities) ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Screen PIN

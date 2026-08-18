@@ -46,6 +46,7 @@ export function paramsFromTabHref(href) {
     [/^\/suppliers\/returns\/([^/]+)/, "id"],
     [/^\/suppliers\/([^/]+)/, "id"],
     [/^\/admin\/attendance-clock\/([^/]+)/, "id"],
+    [/^\/hr\/attendance-clock\/([^/]+)/, "id"],
     [/^\/hr\/employees\/([^/]+)/, "id"],
     [/^\/hr\/payroll\/runs\/([^/]+)/, "id"],
     [/^\/accounting\/customer-invoices\/([^/]+)/, "id"],

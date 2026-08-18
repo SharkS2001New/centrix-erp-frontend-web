@@ -51,7 +51,18 @@ export function emptyConfig() {
       password: "",
       useHttps: false,
     },
-    pollIntervalSeconds: 300,
+    pollIntervalSeconds: 600,
+    heartbeatIntervalSeconds: 600,
+    punchPollSeconds: 60,
+    punchLeadMinutes: 10,
+    punchLagMinutes: 20,
+    punchWindows: [
+      { name: "morning_clock_in", from: "08:00", to: "10:00" },
+      { name: "lunch_clock_out", from: "12:30", to: "14:00" },
+      { name: "lunch_clock_in", from: "13:00", to: "16:00" },
+      { name: "evening_clock_out", from: "16:00", to: "22:00" },
+    ],
+    timezone: "Africa/Nairobi",
     lookbackMinutes: 10080,
   };
 }
@@ -72,7 +83,18 @@ export function normalizeConfig(raw) {
       useHttps: Boolean(hik.useHttps),
     },
     pollIntervalSeconds:
-      Number(raw?.pollIntervalSeconds) > 0 ? Number(raw.pollIntervalSeconds) : 300,
+      Number(raw?.pollIntervalSeconds) > 0 ? Number(raw.pollIntervalSeconds) : 600,
+    heartbeatIntervalSeconds:
+      Number(raw?.heartbeatIntervalSeconds) > 0
+        ? Number(raw.heartbeatIntervalSeconds)
+        : Number(raw?.pollIntervalSeconds) > 0
+          ? Number(raw.pollIntervalSeconds)
+          : 600,
+    punchPollSeconds: Number(raw?.punchPollSeconds) > 0 ? Number(raw.punchPollSeconds) : 60,
+    punchLeadMinutes: Number.isFinite(Number(raw?.punchLeadMinutes)) ? Number(raw.punchLeadMinutes) : 10,
+    punchLagMinutes: Number.isFinite(Number(raw?.punchLagMinutes)) ? Number(raw.punchLagMinutes) : 20,
+    punchWindows: Array.isArray(raw?.punchWindows) ? raw.punchWindows : base.punchWindows,
+    timezone: String(raw?.timezone ?? base.timezone ?? "Africa/Nairobi"),
     lookbackMinutes: Number(raw?.lookbackMinutes) > 0 ? Number(raw.lookbackMinutes) : 10080,
   };
 }

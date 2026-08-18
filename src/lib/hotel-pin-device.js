@@ -1,4 +1,5 @@
 import { isHotelCatalogueContext } from "@/lib/catalog-mode";
+import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 import { mergeSecuritySettings } from "@/lib/security-settings";
 
 export const HOTEL_PIN_DEVICE_STORAGE_KEY = "centrix.hotel_pin_device_v1";
@@ -17,6 +18,9 @@ function hasStorage() {
 }
 
 export function pinUnlockEnabled(capabilities) {
+  if (!isHospitalityIndustry(capabilities) && !isHotelCatalogueContext(capabilities)) {
+    return false;
+  }
   return mergeSecuritySettings(capabilities?.module_settings).enable_pin_unlock !== false;
 }
 

@@ -47,7 +47,6 @@ export const NAV_HREF_ICONS = {
   "/sales/payments-breakdown": "wallet",
   "/hospitality/payments-breakdown": "wallet",
   "/admin/till-printing": "receipt",
-  "/admin/attendance-clock": "clock",
 
   // Pricing & tax
   "/vats": "percent",
@@ -136,6 +135,7 @@ export const NAV_HREF_ICONS = {
   "/hr/positions": "list",
   "/hr/attendance": "clock",
   "/hr/attendance/history": "clipboard",
+  "/hr/attendance-clock": "clock",
   "/hr/missed-punches": "alert",
   "/hr/duplicate-punches": "layers",
   "/hr/absents": "alert",

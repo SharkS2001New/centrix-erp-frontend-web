@@ -13,3 +13,16 @@ export function resolveBackgroundTaskMessage(task, fallback = "Please wait…") 
   if (progress < 100) return "Almost done…";
   return fallback;
 }
+
+/** Live "12 of 85" label from server-reported counts. */
+export function backgroundTaskCountLabel(task) {
+  const processed = Number(task?.processed ?? task?.payload?.processed ?? 0);
+  const total = Number(task?.total ?? task?.payload?.total ?? 0);
+  if (total > 0) {
+    return `${processed.toLocaleString()} of ${total.toLocaleString()}`;
+  }
+  if (processed > 0) {
+    return `${processed.toLocaleString()} processed`;
+  }
+  return null;
+}

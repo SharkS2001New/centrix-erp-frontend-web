@@ -257,13 +257,13 @@ export function AttendanceClockSettingsPanel() {
                         onChange={(e) => setForm((f) => ({ ...f, clock_in_late_after: e.target.value }))}
                       />
                     </Field>
-                    <Field label="Agent poll interval (minutes)">
+                    <Field label="Agent health check (minutes)">
                       <input
                         type="number"
                         min={1}
                         max={60}
                         className={inputClassName()}
-                        value={form.hikvision_agent_poll_minutes || "5"}
+                        value={form.hikvision_agent_poll_minutes || "10"}
                         onChange={(e) =>
                           setForm((f) => ({ ...f, hikvision_agent_poll_minutes: e.target.value }))
                         }
@@ -271,10 +271,10 @@ export function AttendanceClockSettingsPanel() {
                     </Field>
                   </div>
                   <p className="mt-3 text-xs text-slate-500">
-                    Centrix auto-pulls new punches every hour at :20 (Africa/Nairobi), from 7:20 AM through
-                    2:00 AM. Overnight 2:00–7:20 is skipped. Keep CentrixAttendanceAgent running on the LAN
-                    PC — it uploads punches to HR and answers Centrix pull commands. Use 5 minutes (or less)
-                    for the agent poll so hourly sync can reach the terminal reliably.
+                    Punches upload during the clock-in / clock-out times above (morning in, lunch out,
+                    lunch in, evening out), about once a minute while those windows are open. The health
+                    check (default 10 minutes) only keeps the office agent online — it does not pull
+                    fingerprints. Keep the Windows service running.
                   </p>
                 </div>
 

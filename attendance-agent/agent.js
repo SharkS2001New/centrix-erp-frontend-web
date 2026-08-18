@@ -156,45 +156,108 @@ async function submitCommandResult(config, commandId, result) {
   }
 }
 
-function isAttendancePollWindow(date = new Date()) {
+function clampPollSeconds(value, fallback = 600) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 60) return fallback;
+  return Math.min(3600, Math.floor(n));
+}
+
+const DEFAULT_PUNCH_WINDOWS = [
+  { name: "morning_clock_in", from: "08:00", to: "10:00" },
+  { name: "lunch_clock_out", from: "12:30", to: "14:00" },
+  { name: "lunch_clock_in", from: "13:00", to: "16:00" },
+  { name: "evening_clock_out", from: "16:00", to: "22:00" },
+];
+
+let heartbeatIntervalSec = 600;
+let punchPollSec = 60;
+let punchLeadMin = 10;
+let punchLagMin = 20;
+let punchWindows = DEFAULT_PUNCH_WINDOWS;
+let scheduleTimezone = "Africa/Nairobi";
+let heartbeatTimer = null;
+let punchTimer = null;
+let commandPollTimer = null;
+let commandPollInFlight = false;
+let attendanceSyncInFlight = false;
+let activeConfig = null;
+
+function clockToMinutes(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ""));
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+function nairobiMinutes(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Nairobi",
+    timeZone: scheduleTimezone || "Africa/Nairobi",
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
   }).formatToParts(date);
   const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
   const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
-  const minutes = hour * 60 + minute;
-  return minutes >= 7 * 60 + 20 || minutes <= 2 * 60;
+  return hour * 60 + minute;
 }
 
-function clampPollSeconds(value, fallback = 300) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 60) return fallback;
-  return Math.min(3600, Math.floor(n));
+function minutesInExpandedWindow(minutes, from, to, lead = punchLeadMin, lag = punchLagMin) {
+  const startRaw = clockToMinutes(from);
+  const endRaw = clockToMinutes(to);
+  if (startRaw == null || endRaw == null) return false;
+  const day = 24 * 60;
+  let start = (startRaw - lead) % day;
+  if (start < 0) start += day;
+  const end = (endRaw + lag) % day;
+  if (end < start) return minutes >= start || minutes <= end;
+  return minutes >= start && minutes <= end;
 }
 
-let attendanceIntervalSec = 300;
-let attendanceTimer = null;
-let runSyncFn = async () => {};
-
-function applyRemotePollInterval(seconds) {
-  const next = clampPollSeconds(seconds, attendanceIntervalSec);
-  if (next === attendanceIntervalSec) return;
-  attendanceIntervalSec = next;
-  console.log(
-    `[attendance-agent] Auto-sync every ${attendanceIntervalSec}s (Centrix admin setting)`,
+function isInPunchUploadWindow(date = new Date()) {
+  const minutes = nairobiMinutes(date);
+  return (punchWindows || []).some((window) =>
+    minutesInExpandedWindow(minutes, window.from, window.to),
   );
-  scheduleAttendance();
 }
 
-function scheduleAttendance() {
-  if (attendanceTimer) clearTimeout(attendanceTimer);
-  attendanceTimer = setTimeout(async () => {
-    await runSyncFn();
-    scheduleAttendance();
-  }, attendanceIntervalSec * 1000);
+function applyAgentSchedule(payload) {
+  if (!payload || typeof payload !== "object") return;
+  const heartbeat = Number(payload.heartbeat_interval_seconds ?? payload.poll_interval_seconds);
+  if (Number.isFinite(heartbeat) && heartbeat >= 60 && heartbeat !== heartbeatIntervalSec) {
+    heartbeatIntervalSec = Math.min(3600, Math.floor(heartbeat));
+    if (heartbeatTimer) scheduleHeartbeat();
+    console.log(`[attendance-agent] Health check every ${heartbeatIntervalSec}s`);
+  }
+  const punch = Number(payload.punch_poll_seconds);
+  if (Number.isFinite(punch) && punch >= 15 && punch !== punchPollSec) {
+    punchPollSec = Math.min(600, Math.floor(punch));
+    if (punchTimer) schedulePunchPolling();
+  }
+  if (Number.isFinite(Number(payload.punch_lead_minutes))) {
+    punchLeadMin = Math.max(0, Math.min(60, Number(payload.punch_lead_minutes)));
+  }
+  if (Number.isFinite(Number(payload.punch_lag_minutes))) {
+    punchLagMin = Math.max(0, Math.min(120, Number(payload.punch_lag_minutes)));
+  }
+  if (Array.isArray(payload.punch_windows) && payload.punch_windows.length) {
+    punchWindows = payload.punch_windows.filter((w) => w?.from && w?.to);
+  }
+  if (payload.timezone) scheduleTimezone = String(payload.timezone);
+}
+
+function scheduleHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(() => {
+    void postHeartbeat(activeConfig).catch((err) => {
+      console.warn(`[attendance-agent] heartbeat failed: ${err.message}`);
+    });
+  }, heartbeatIntervalSec * 1000);
+}
+
+function schedulePunchPolling() {
+  if (punchTimer) clearInterval(punchTimer);
+  punchTimer = setInterval(() => {
+    void maybePunchSync(activeConfig);
+  }, punchPollSec * 1000);
 }
 
 async function pollCentrixCommands(config) {
@@ -209,10 +272,7 @@ async function pollCentrixCommands(config) {
     throw new Error(`Command poll HTTP ${res.status}: ${text.slice(0, 200)}`);
   }
   const payload = await res.json();
-  const remotePoll = Number(payload?.poll_interval_seconds);
-  if (Number.isFinite(remotePoll) && remotePoll >= 60) {
-    applyRemotePollInterval(remotePoll);
-  }
+  applyAgentSchedule(payload);
   const commands = payload?.commands ?? [];
   let handled = 0;
 
@@ -233,8 +293,85 @@ async function pollCentrixCommands(config) {
   return handled;
 }
 
+async function pollCommandsSafe(config = activeConfig) {
+  if (!config?.deviceId || commandPollInFlight) return 0;
+  commandPollInFlight = true;
+  try {
+    const count = await pollCentrixCommands(config);
+    if (count > 0) console.log(`[attendance-agent] Proxied ${count} ISAPI command(s)`);
+    return count;
+  } catch (err) {
+    console.warn(`[attendance-agent] command poll failed: ${err.message}`);
+    return 0;
+  } finally {
+    commandPollInFlight = false;
+  }
+}
+
+function startCommandPolling(config) {
+  activeConfig = config;
+  if (commandPollTimer) return;
+  const commandPollSec = 2;
+  console.log(`[attendance-agent] ISAPI command poll every ${commandPollSec}s`);
+  void pollCommandsSafe(config);
+  commandPollTimer = setInterval(() => {
+    void pollCommandsSafe(config);
+  }, commandPollSec * 1000);
+}
+
+async function postHeartbeat(config) {
+  if (!config?.deviceId) return;
+  const url = `${centrixDeviceBase(config)}/agent/heartbeat`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: centrixAuthHeaders(config),
+    body: JSON.stringify({ agent_version: AGENT_VERSION }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Heartbeat HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const payload = await res.json().catch(() => ({}));
+  applyAgentSchedule(payload);
+}
+
+async function maybePunchSync(config = activeConfig) {
+  if (!config) return;
+  if (!isInPunchUploadWindow()) return;
+  if (attendanceSyncInFlight) return;
+  attendanceSyncInFlight = true;
+  try {
+    await syncOnce(config);
+  } catch (err) {
+    console.error(`[attendance-agent] sync failed: ${err.message}`);
+  } finally {
+    attendanceSyncInFlight = false;
+  }
+}
+
+async function runPunchSync(config = activeConfig) {
+  if (!config) return;
+  if (attendanceSyncInFlight) {
+    console.log("[attendance-agent] Punch sync already running; skipping this tick");
+    return;
+  }
+  attendanceSyncInFlight = true;
+  try {
+    try {
+      await postHeartbeat(config);
+    } catch (err) {
+      console.warn(`[attendance-agent] heartbeat failed: ${err.message}`);
+    }
+    await syncOnce(config);
+  } catch (err) {
+    console.error(`[attendance-agent] sync failed: ${err.message}`);
+  } finally {
+    attendanceSyncInFlight = false;
+  }
+}
+
 const CATCHUP_LOOKBACK_MINUTES = 7 * 24 * 60;
-const CATCHUP_OVERLAP_MS = 5 * 60 * 1000;
+const CATCHUP_OVERLAP_MS = 15 * 60 * 1000;
 const MAX_CATCHUP_WINDOWS = 30;
 
 function sleep(ms) {
@@ -335,6 +472,7 @@ async function syncOnce(config) {
       `[attendance-agent] Pulled ${events.length} event(s)${truncated ? " (window full — splitting)" : ""}`,
     );
     pulled += events.length;
+    await pollCommandsSafe(config);
 
     if (events.length) {
       const result = await ingestEventBatch(config, state, events);
@@ -412,7 +550,7 @@ async function main() {
 
   if (!isConfigReady(config)) {
     console.error(
-      `[attendance-agent] Config incomplete (${missingConfigFields(config).join(", ")}). Re-download CentrixAttendanceAgent from Administration → Attendance clock-in.`,
+      `[attendance-agent] Config incomplete (${missingConfigFields(config).join(", ")}). Re-download CentrixAttendanceAgent from HR → Attendance clock-in.`,
     );
     process.exit(1);
   }
@@ -426,52 +564,48 @@ async function main() {
   }
 
   if (once) {
-    const commands = await pollCentrixCommands(config).catch((err) => {
-      console.warn(`[attendance-agent] command poll: ${err.message}`);
-      return 0;
-    });
-    if (commands > 0) console.log(`[attendance-agent] Proxied ${commands} ISAPI command(s)`);
-    await syncOnce(config);
+    await pollCommandsSafe(config);
+    await runPunchSync(config);
     return;
   }
 
-  attendanceIntervalSec = clampPollSeconds(config.pollIntervalSeconds, 300);
-  const commandPollSec = 2;
+  applyAgentSchedule({
+    heartbeat_interval_seconds: config.heartbeatIntervalSeconds || config.pollIntervalSeconds,
+    punch_poll_seconds: config.punchPollSeconds,
+    punch_lead_minutes: config.punchLeadMinutes,
+    punch_lag_minutes: config.punchLagMinutes,
+    punch_windows: config.punchWindows,
+    timezone: config.timezone,
+  });
+  heartbeatIntervalSec = clampPollSeconds(
+    config.heartbeatIntervalSeconds || config.pollIntervalSeconds,
+    heartbeatIntervalSec,
+  );
   console.log(
-    `[attendance-agent] v${AGENT_VERSION} — ISAPI proxy every ${commandPollSec}s, attendance every ${attendanceIntervalSec}s (admin can change this in Centrix)`,
+    `[attendance-agent] v${AGENT_VERSION} — health check every ${heartbeatIntervalSec}s; punch upload during Admin clock-in/out windows`,
   );
   console.log(`[attendance-agent] Test connection in a browser: ${SETTINGS_UI_URL}`);
 
-  const pollCommands = async () => {
+  activeConfig = config;
+  startCommandPolling(config);
+  scheduleHeartbeat();
+  schedulePunchPolling();
+  void (async () => {
+    if (attendanceSyncInFlight) return;
+    attendanceSyncInFlight = true;
     try {
-      const count = await pollCentrixCommands(config);
-      if (count > 0) console.log(`[attendance-agent] Proxied ${count} ISAPI command(s)`);
+      try {
+        await postHeartbeat(config);
+      } catch (err) {
+        console.warn(`[attendance-agent] heartbeat failed: ${err.message}`);
+      }
+      await runCatchupWithRetry(config);
     } catch (err) {
-      console.warn(`[attendance-agent] command poll failed: ${err.message}`);
+      console.error(`[attendance-agent] startup catch-up failed: ${err.message}`);
+    } finally {
+      attendanceSyncInFlight = false;
     }
-  };
-
-  const runSync = async () => {
-    if (!isAttendancePollWindow()) {
-      console.log("[attendance-agent] Skipping poll outside 07:20–02:00 Africa/Nairobi");
-      return;
-    }
-    try {
-      await syncOnce(config);
-    } catch (err) {
-      console.error(`[attendance-agent] sync failed: ${err.message}`);
-    }
-  };
-
-  runSyncFn = runSync;
-  await pollCommands();
-  try {
-    await runCatchupWithRetry(config);
-  } catch (err) {
-    console.error(`[attendance-agent] startup catch-up failed: ${err.message}`);
-  }
-  scheduleAttendance();
-  setInterval(pollCommands, commandPollSec * 1000);
+  })();
 }
 
 main().catch((err) => {

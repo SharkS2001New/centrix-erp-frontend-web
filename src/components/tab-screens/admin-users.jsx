@@ -63,6 +63,7 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { suggestNextTillDefaults, tillDisplayName } from "@/lib/pos-till";
+import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
 
 const EMPTY_FORM = {
   full_name: "",
@@ -159,6 +160,7 @@ export function AdminUsersScreen() {
     effectiveCapabilities?.modules?.["hospitality.bar_pos"] ||
       effectiveCapabilities?.deployment_profile === "hotel_bar",
   );
+  const hotelPinEnabled = isHospitalityIndustry(effectiveCapabilities);
   const allowedLoginChannelSet = useMemo(
     () => new Set(defaultLoginChannelsForCapabilities(effectiveCapabilities)),
     [effectiveCapabilities],
@@ -399,11 +401,10 @@ export function AdminUsersScreen() {
     setDeniedIds(new Set());
     setFormError(null);
     setDrawerOpen(true);
-    void ensurePermissionMatrix();
   }
 
   useEffect(() => {
-    if (!drawerOpen || !form.role_id) return;
+    if (!drawerOpen || !editing || !form.role_id) return;
     let cancelled = false;
     (async () => {
       try {
@@ -708,10 +709,12 @@ export function AdminUsersScreen() {
         body.password = form.password;
         body.must_change_password = form.must_change_password;
       }
-      if (form.clear_login_pin) {
-        body.clear_login_pin = true;
-      } else if (form.login_pin.trim()) {
-        body.login_pin = form.login_pin.trim();
+      if (hotelPinEnabled) {
+        if (form.clear_login_pin) {
+          body.clear_login_pin = true;
+        } else if (form.login_pin.trim()) {
+          body.login_pin = form.login_pin.trim();
+        }
       }
       if (editing) {
         const updated = await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
@@ -997,7 +1000,7 @@ export function AdminUsersScreen() {
           saving={saving}
           error={formError}
           submitLabel={editing ? "Save changes" : "Create user"}
-          wide
+          wide={Boolean(editing)}
         >
           <Field label="Full name">
             <input
@@ -1186,37 +1189,41 @@ export function AdminUsersScreen() {
               Require password change on first sign-in
             </label>
           ) : null}
-          <Field label={editing && editing.has_login_pin ? "Reset screen PIN" : "Screen PIN"}>
-            <input
-              className={inputClassName()}
-              inputMode="numeric"
-              autoComplete="off"
-              value={form.login_pin}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  login_pin: e.target.value.replace(/\D/g, "").slice(0, 6),
-                  clear_login_pin: false,
-                }))
-              }
-              placeholder={editing?.has_login_pin ? "Leave blank to keep current PIN" : "4–6 digits (hotel / till unlock)"}
-              maxLength={6}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Used on the lock screen. Staff tap their name, then this PIN. Password login still works.
-            </p>
-          </Field>
-          {editing?.has_login_pin ? (
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={form.clear_login_pin}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, clear_login_pin: e.target.checked, login_pin: "" }))
-                }
-              />
-              Remove screen PIN
-            </label>
+          {hotelPinEnabled ? (
+            <>
+              <Field label={editing && editing.has_login_pin ? "Reset screen PIN" : "Screen PIN"}>
+                <input
+                  className={inputClassName()}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={form.login_pin}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      login_pin: e.target.value.replace(/\D/g, "").slice(0, 6),
+                      clear_login_pin: false,
+                    }))
+                  }
+                  placeholder={editing?.has_login_pin ? "Leave blank to keep current PIN" : "4–6 digits (hotel / till unlock)"}
+                  maxLength={6}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Used on the lock screen. Staff tap their name, then this PIN. Password login still works.
+                </p>
+              </Field>
+              {editing?.has_login_pin ? (
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.clear_login_pin}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, clear_login_pin: e.target.checked, login_pin: "" }))
+                    }
+                  />
+                  Remove screen PIN
+                </label>
+              ) : null}
+            </>
           ) : null}
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
@@ -1234,13 +1241,13 @@ export function AdminUsersScreen() {
                 : "Organization administrator accounts must stay enabled."
               : "Disable login to block sign-in. Delete removes users without activity permanently; users with sales history are archived."}
           </p>
-          {form.role_id && !(editing?.is_admin) ? (
+          {editing && form.role_id && !editing.is_admin ? (
             <div className="mt-2 border-t border-[var(--theme-border)] pt-4">
               <p className="mb-2 text-sm font-medium text-slate-800">Permission overrides (optional)</p>
               <p className="mb-3 text-xs text-slate-500">
                 {hospitalityPosEnabled
                   ? "Role permissions decide which hotel modules this user can open. Grant extra rights or deny role permissions for this user only."
-                  : `Grant extra rights or deny role permissions for this user${editing ? "." : " when they are created."}`}
+                  : "Grant extra rights or deny role permissions for this user."}
               </p>
               {matrixLoading && !matrixLoaded ? (
                 <p className="text-sm text-slate-500">Loading permission matrix…</p>
