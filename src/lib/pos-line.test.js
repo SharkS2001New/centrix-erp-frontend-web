@@ -317,6 +317,30 @@ describe("applyCatalogPricesToCart per-line mode", () => {
     expect(priced.lines[0].display_unit_price).toBe(6300);
   });
 
+  it("does not reprice lines restored from a local held park", () => {
+    const cart = {
+      restored_from_local_held_id: "local-held:wimbi",
+      lines: [
+        {
+          product_code: "SUGAR",
+          quantity: 1,
+          on_wholesale_retail: 1,
+          unit_price: 110,
+          display_unit_price: 110,
+          amount: 110,
+        },
+      ],
+    };
+    const { cart: priced, updatedCount } = applyCatalogPricesToCart(cart, {
+      productByCode: { SUGAR: sugarProduct },
+      retailByCode: { SUGAR: sugarRetailPackage },
+      sellWholesale: false,
+    });
+    expect(updatedCount).toBe(0);
+    expect(priced.lines[0].unit_price).toBe(110);
+    expect(priced.lines[0].amount).toBe(110);
+  });
+
   it("keeps route markup when live-repricing an open cart", () => {
     const cart = {
       lines: [

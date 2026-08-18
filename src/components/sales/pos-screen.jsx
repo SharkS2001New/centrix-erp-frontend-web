@@ -3471,7 +3471,8 @@ export function PosScreen({ standalone = false }) {
         activeCart.offline ||
         activeCart.offline_client_sale_uuid ||
         activeCart.held_order_num ||
-        activeCart.superseded_sale_id
+        activeCart.superseded_sale_id ||
+        activeCart.restored_from_local_held_id
       ) {
         return;
       }
