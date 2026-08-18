@@ -7,12 +7,42 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatReceiptNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { saleBalanceDue } from "@/lib/order-workflow";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 
 const CARD_CLASS =
   "flex min-w-[9.5rem] flex-col gap-0.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 const PRIMARY_BTN =
   "inline-flex items-center justify-center rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50";
+
+const REJECT_BTN =
+  "inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50";
+
+function PendingDecisionFooter({
+  busy,
+  loading,
+  selectedCount,
+  onClose,
+  onReject,
+  onApprove,
+  approveLabel,
+  rejectLabel,
+}) {
+  const disabled = Boolean(busy) || loading || selectedCount === 0;
+  return (
+    <>
+      <button type="button" className={SECONDARY_BTN_CLASS} disabled={Boolean(busy)} onClick={onClose}>
+        Close
+      </button>
+      <button type="button" disabled={disabled} onClick={onReject} className={REJECT_BTN}>
+        {busy === "reject" ? "Rejecting…" : rejectLabel}
+      </button>
+      <button type="button" disabled={disabled} onClick={onApprove} className={PRIMARY_BTN}>
+        {busy === "approve" ? "Approving…" : approveLabel}
+      </button>
+    </>
+  );
+}
 
 function formatWhen(value) {
   if (!value) return "—";
@@ -138,7 +168,8 @@ function ReturnsModal({
 }) {
   const [tab, setTab] = useState("performed");
   const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
   const [performed, setPerformed] = useState([]);
   const [pending, setPending] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
@@ -168,7 +199,10 @@ function ReturnsModal({
   }, [cashierId, fromDate, routeId, toDate]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setRejectOpen(false);
+      return;
+    }
     setTab("performed");
     void load();
   }, [load, open]);
@@ -188,7 +222,7 @@ function ReturnsModal({
       notifyError("Select at least one return to approve.");
       return;
     }
-    setBusy(true);
+    setBusy("approve");
     try {
       const res = await apiRequest("/sales/mobile-orders/approve-returns", {
         method: "POST",
@@ -213,36 +247,65 @@ function ReturnsModal({
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to approve returns.");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  };
+
+  const reject = async (reason) => {
+    const ids = [...selected];
+    if (!ids.length) {
+      notifyError("Select at least one return to reject.");
+      return;
+    }
+    setBusy("reject");
+    try {
+      const res = await apiRequest("/sales/mobile-orders/reject-returns", {
+        method: "POST",
+        body: { return_ids: ids, reason, ...listFilterBody({ cashierId, routeId }) },
+        loading: false,
+      });
+      const count = Number(res?.rejected_count ?? 0);
+      const errs = Array.isArray(res?.errors) ? res.errors : [];
+      if (count > 0) {
+        notifySuccess(count === 1 ? "1 return rejected." : `${count} returns rejected.`);
+      }
+      if (errs.length) {
+        notifyError(errs.map((e) => e.message).filter(Boolean).join(" · ") || "Some returns failed.");
+      }
+      setRejectOpen(false);
+      onApproved?.();
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to reject returns.");
+    } finally {
+      setBusy(null);
     }
   };
 
   const scopeHint = filterScopeHint({ fromDate, toDate, cashierId, routeId });
 
   return (
+    <>
     <ModalShell
       open={open}
       title="Returns"
       onClose={onClose}
-      busy={busy}
+      busy={Boolean(busy)}
       widthClass="max-w-2xl"
       footer={
         tab === "pending" ? (
-          <>
-            <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
-              Close
-            </button>
-            <button
-              type="button"
-              disabled={busy || loading || selected.size === 0}
-              onClick={() => void approve()}
-              className={PRIMARY_BTN}
-            >
-              {busy ? "Approving…" : "Approve Returns"}
-            </button>
-          </>
+          <PendingDecisionFooter
+            busy={busy}
+            loading={loading}
+            selectedCount={selected.size}
+            onClose={onClose}
+            onReject={() => setRejectOpen(true)}
+            onApprove={() => void approve()}
+            approveLabel="Approve returns"
+            rejectLabel="Reject returns"
+          />
         ) : (
-          <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
+          <button type="button" className={SECONDARY_BTN_CLASS} disabled={Boolean(busy)} onClick={onClose}>
             Close
           </button>
         )
@@ -270,7 +333,7 @@ function ReturnsModal({
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
-          Pending approve
+          Pending
           {!loading ? ` (${pending.length})` : ""}
         </button>
       </div>
@@ -329,7 +392,7 @@ function ReturnsModal({
       ) : loading ? (
         <p className="text-slate-500">Loading pending returns…</p>
       ) : pending.length === 0 ? (
-        <p className="text-slate-500">No pending mobile returns to approve for this filter.</p>
+        <p className="text-slate-500">No pending mobile returns for this filter.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="min-w-full text-left text-sm">
@@ -380,6 +443,21 @@ function ReturnsModal({
         </div>
       )}
     </ModalShell>
+    <ActionRequestRejectionDialog
+      open={rejectOpen}
+      busy={busy === "reject"}
+      title="Reject returns"
+      description={
+        selected.size === 1
+          ? "Enter a reason for rejecting this return."
+          : `Enter a reason for rejecting ${selected.size} selected returns.`
+      }
+      onSubmit={(reason) => void reject(reason)}
+      onCancel={() => {
+        if (busy !== "reject") setRejectOpen(false);
+      }}
+    />
+    </>
   );
 }
 
@@ -398,7 +476,8 @@ function ExpensesModal({
 }) {
   const [tab, setTab] = useState("performed");
   const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
   const [performed, setPerformed] = useState([]);
   const [pending, setPending] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
@@ -428,7 +507,10 @@ function ExpensesModal({
   }, [cashierId, fromDate, routeId, toDate]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setRejectOpen(false);
+      return;
+    }
     setTab("performed");
     void load();
   }, [load, open]);
@@ -448,7 +530,7 @@ function ExpensesModal({
       notifyError("Select at least one expense to approve.");
       return;
     }
-    setBusy(true);
+    setBusy("approve");
     try {
       const res = await apiRequest("/sales/mobile-orders/approve-expenses", {
         method: "POST",
@@ -473,36 +555,65 @@ function ExpensesModal({
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to approve expenses.");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  };
+
+  const reject = async (reason) => {
+    const ids = [...selected];
+    if (!ids.length) {
+      notifyError("Select at least one expense to reject.");
+      return;
+    }
+    setBusy("reject");
+    try {
+      const res = await apiRequest("/sales/mobile-orders/reject-expenses", {
+        method: "POST",
+        body: { expense_ids: ids, reason, ...listFilterBody({ cashierId, routeId }) },
+        loading: false,
+      });
+      const count = Number(res?.rejected_count ?? 0);
+      const errs = Array.isArray(res?.errors) ? res.errors : [];
+      if (count > 0) {
+        notifySuccess(count === 1 ? "1 expense rejected." : `${count} expenses rejected.`);
+      }
+      if (errs.length) {
+        notifyError(errs.map((e) => e.message).filter(Boolean).join(" · ") || "Some expenses failed.");
+      }
+      setRejectOpen(false);
+      onApproved?.();
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to reject expenses.");
+    } finally {
+      setBusy(null);
     }
   };
 
   const scopeHint = filterScopeHint({ fromDate, toDate, cashierId, routeId });
 
   return (
+    <>
     <ModalShell
       open={open}
       title="Expenses"
       onClose={onClose}
-      busy={busy}
+      busy={Boolean(busy)}
       widthClass="max-w-2xl"
       footer={
         tab === "pending" ? (
-          <>
-            <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
-              Close
-            </button>
-            <button
-              type="button"
-              disabled={busy || loading || selected.size === 0}
-              onClick={() => void approve()}
-              className={PRIMARY_BTN}
-            >
-              {busy ? "Approving…" : "Approve expenses"}
-            </button>
-          </>
+          <PendingDecisionFooter
+            busy={busy}
+            loading={loading}
+            selectedCount={selected.size}
+            onClose={onClose}
+            onReject={() => setRejectOpen(true)}
+            onApprove={() => void approve()}
+            approveLabel="Approve expenses"
+            rejectLabel="Reject expenses"
+          />
         ) : (
-          <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy} onClick={onClose}>
+          <button type="button" className={SECONDARY_BTN_CLASS} disabled={Boolean(busy)} onClick={onClose}>
             Close
           </button>
         )
@@ -530,7 +641,7 @@ function ExpensesModal({
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
-          Pending approve
+          Pending
           {!loading ? ` (${pending.length})` : ""}
         </button>
       </div>
@@ -578,7 +689,7 @@ function ExpensesModal({
       ) : loading ? (
         <p className="text-slate-500">Loading pending expenses…</p>
       ) : pending.length === 0 ? (
-        <p className="text-slate-500">No pending route expenses to approve for this filter.</p>
+        <p className="text-slate-500">No pending route expenses for this filter.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="min-w-full text-left text-sm">
@@ -618,6 +729,21 @@ function ExpensesModal({
         </div>
       )}
     </ModalShell>
+    <ActionRequestRejectionDialog
+      open={rejectOpen}
+      busy={busy === "reject"}
+      title="Reject expenses"
+      description={
+        selected.size === 1
+          ? "Enter a reason for rejecting this expense."
+          : `Enter a reason for rejecting ${selected.size} selected expenses.`
+      }
+      onSubmit={(reason) => void reject(reason)}
+      onCancel={() => {
+        if (busy !== "reject") setRejectOpen(false);
+      }}
+    />
+    </>
   );
 }
 
