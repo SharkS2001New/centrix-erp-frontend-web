@@ -17,7 +17,32 @@ describe("healOfflineCheckoutPayNow", () => {
       },
     });
     expect(body.pay_now).toBe(750);
-    expect(body.payment_splits).toBeUndefined();
+    expect(body.payment_splits).toEqual([{ method_code: "CASH", amount: 750 }]);
+  });
+
+  it("collapses stale under-total mixed splits to the replay payment method", () => {
+    const body = {
+      pay_now: 500,
+      payment_method_code: "CASH",
+      payment_reference: "SYNC-REF",
+      payment_splits: [
+        { method_code: "CASH", amount: 300 },
+        { method_code: "MPESA", amount: 200, reference_number: "OLD-MPESA" },
+      ],
+      is_credit_sale: false,
+    };
+    healOfflineCheckoutPayNow(body, {
+      sync_kind: "sale",
+      sale_payload: {
+        order_total: 750,
+        amount_paid: 500,
+        payment_status: "paid",
+      },
+    });
+    expect(body.pay_now).toBe(750);
+    expect(body.payment_splits).toEqual([
+      { method_code: "CASH", amount: 750, reference_number: "SYNC-REF" },
+    ]);
   });
 
   it("leaves credit sales alone", () => {

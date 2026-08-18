@@ -64,6 +64,7 @@ import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { vatFromInclusiveGross, vatRateFromProduct } from "@/lib/sales-vat";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
 import { rebuildPreviousOrderEditTenders, paymentRowsFromPreviousOrderEditTenders } from "@/lib/pos-edit-payment-adjustment";
+import { alignPaymentSplitsToPayNow } from "@/lib/checkout-payment-splits";
 
 export const POS_OFFLINE_RESERVE_COUNT = 20;
 export const POS_OFFLINE_RESERVE_LOW = 5;
@@ -3451,8 +3452,71 @@ export function healOfflineCheckoutPayNow(body, row) {
     payNow + 0.01 >= billTotal * 0.5;
   if (billTotal > 0.01 && shouldBeFullyPaid && payNow + 0.01 < billTotal) {
     body.pay_now = billTotal;
-    delete body.payment_splits;
   }
+  healOfflineCheckoutPaymentSplits(body);
+  return body;
+}
+
+function healOfflineCheckoutPaymentSplits(body) {
+  if (!body || body.is_credit_sale) {
+    return body;
+  }
+  const target = Math.max(0, Number(body.pay_now ?? 0) || 0);
+  const rawSplits = Array.isArray(body.payment_splits) ? body.payment_splits : [];
+  if (rawSplits.length === 0) {
+    delete body.payment_splits;
+    return body;
+  }
+
+  const normalized = rawSplits
+    .filter((part) => part && Number(part.amount) > 0)
+    .map((part) => ({
+      method_code: String(part.method_code ?? part.code ?? "").trim().toUpperCase(),
+      amount: Math.round(Number(part.amount ?? 0) * 100) / 100,
+      ...(String(part.reference_number ?? "").trim()
+        ? { reference_number: String(part.reference_number).trim() }
+        : {}),
+    }))
+    .filter((part) => part.method_code);
+
+  if (normalized.length === 0) {
+    delete body.payment_splits;
+    return body;
+  }
+
+  const aligned = alignPaymentSplitsToPayNow(normalized, target);
+  const alignedTotal = Math.round(
+    aligned.reduce((sum, part) => sum + (Number(part.amount) || 0), 0) * 100,
+  ) / 100;
+
+  if (Math.abs(alignedTotal - target) <= 0.02) {
+    body.payment_splits = aligned;
+    return body;
+  }
+
+  const fallbackMethod = String(
+    body.payment_method_code ?? aligned[0]?.method_code ?? normalized[0]?.method_code ?? "",
+  )
+    .trim()
+    .toUpperCase();
+  if (!fallbackMethod || target <= 0.01) {
+    delete body.payment_splits;
+    return body;
+  }
+
+  const fallbackReference = String(
+    body.payment_reference ??
+      aligned[0]?.reference_number ??
+      normalized[0]?.reference_number ??
+      "",
+  ).trim();
+  body.payment_splits = [
+    {
+      method_code: fallbackMethod,
+      amount: Math.round(target * 100) / 100,
+      ...(fallbackReference ? { reference_number: fallbackReference } : {}),
+    },
+  ];
   return body;
 }
 
