@@ -8,21 +8,25 @@ import { CatalogPageShell, PrimaryButton, SearchableSelect } from "@/components/
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   PLATFORM_BILLING_MODULE_GROUPS,
+  PLATFORM_INVOICE_CUSTOMER_KINDS,
   PLATFORM_INVOICE_DESIGN_TEMPLATES,
   PLATFORM_INVOICE_STATUSES,
   PLATFORM_INVOICE_SPACING,
   buildPlatformBillingSummaries,
   calculateInvoiceTotals,
   emptyPlatformInvoiceForm,
+  inferPlatformInvoiceCustomerKind,
   invoiceFormToPayload,
   invoiceRecordToForm,
   lineItemFromModuleSummary,
   lineItemsFromBillingKeys,
   normalizeInvoiceOptions,
   normalizeSeller,
+  organizationBillingLabel,
   recalcLineItemAmount,
   resolveEnabledBillingModuleKeys,
 } from "@/lib/platform-invoices";
+import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
 import { buildPlatformInvoiceHtml, printPlatformInvoice } from "@/lib/platform-invoice-print";
 import { PlatformInvoiceViewer } from "@/components/platform/platform-invoice-viewer";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
@@ -121,6 +125,14 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
   const previewRecord = useMemo(() => ({ ...form, ...totals }), [form, totals]);
   const previewHtml = useMemo(() => buildPlatformInvoiceHtml(previewRecord), [previewRecord]);
+  const customerKind = inferPlatformInvoiceCustomerKind(form);
+  const tenantOrganizations = useMemo(
+    () =>
+      (organizations ?? []).filter(
+        (org) => String(org.company_code ?? "").toUpperCase() !== PLATFORM_COMPANY_CODE,
+      ),
+    [organizations],
+  );
 
   const loadOrganizations = useCallback(async () => {
     try {
@@ -259,13 +271,52 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   }
 
   async function handleOrganizationChange(organizationId) {
-    updateForm({ organization_id: organizationId, selected_modules: [], line_items: [] });
+    setForm((prev) => ({
+      ...prev,
+      organization_id: organizationId,
+      selected_modules: [],
+      line_items: [],
+      invoice_options: normalizeInvoiceOptions({
+        ...prev.invoice_options,
+        customer_kind: organizationId ? "centrix_tenant" : prev.invoice_options?.customer_kind,
+      }),
+    }));
     // Refresh Bill to + auto-tick this tenant's enabled modules onto the invoice.
     await loadBillingContext(organizationId || "", {
       syncBillTo: true,
       syncSeller: false,
       autoSelectModules: Boolean(organizationId),
     });
+  }
+
+  function handleCustomerKindChange(kind) {
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        invoice_options: normalizeInvoiceOptions({ ...prev.invoice_options, customer_kind: kind }),
+      };
+      if (kind === "external") {
+        next.organization_id = "";
+        next.selected_modules = [];
+        const hasActiveLines = (prev.line_items ?? []).some((row) => row.included !== false);
+        if (!hasActiveLines) {
+          next.line_items = [
+            {
+              module_key: null,
+              description: "Website hosting",
+              quantity: 1,
+              unit_price: 0,
+              amount: 0,
+              included: true,
+            },
+          ];
+        }
+      }
+      return next;
+    });
+    if (kind === "external") {
+      void loadBillingContext("", { syncBillTo: false, syncSeller: false, autoSelectModules: false });
+    }
   }
 
   useEffect(() => {
@@ -326,6 +377,22 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
   async function handleSave(options = {}) {
     const { skipOnSaved = false } = options;
+    const kind = inferPlatformInvoiceCustomerKind(form);
+    if (kind === "centrix_tenant" && !form.organization_id) {
+      notifyError("Select a tenant organization, or choose External customer for hosting and other work.");
+      return null;
+    }
+    if (!String(form.bill_to_name ?? "").trim()) {
+      notifyError("Enter the bill-to customer name.");
+      return null;
+    }
+    const billedLines = (form.line_items ?? []).filter(
+      (row) => row.included !== false && String(row.description ?? "").trim(),
+    );
+    if (!billedLines.length) {
+      notifyError("Add at least one line item with a description.");
+      return null;
+    }
     setSaving(true);
     try {
       const payload = invoiceFormToPayload(form);
@@ -534,16 +601,49 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
         <div className="space-y-3">
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Invoice details</h2>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {PLATFORM_INVOICE_CUSTOMER_KINDS.map((kind) => {
+                const selected = customerKind === kind.id;
+                return (
+                  <button
+                    key={kind.id}
+                    type="button"
+                    onClick={() => handleCustomerKindChange(kind.id)}
+                    className={`rounded-lg border px-3 py-2.5 text-left transition ${
+                      selected
+                        ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold text-slate-900">{kind.label}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{kind.description}</span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {customerKind === "centrix_tenant" ? (
               <Field label="Tenant organization">
                 <SearchableSelect
-  className={inputClass}
-  value={form.organization_id}
-  nativeEvent
-  onChange={((e) => void handleOrganizationChange(e.target.value))}
-  options={organizations.map((org) => ({ value: org.id, label: '{org.org_name} ({org.company_code})' }))}
-/>
+                  className={inputClass}
+                  value={form.organization_id}
+                  nativeEvent
+                  placeholder="Select tenant…"
+                  onChange={(e) => void handleOrganizationChange(e.target.value)}
+                  options={tenantOrganizations.map((org) => ({
+                    value: String(org.id),
+                    label: organizationBillingLabel(org),
+                  }))}
+                />
               </Field>
+              ) : (
+              <Field label="Customer type" className="sm:col-span-2">
+                <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Enter Bill to details below. Add custom line items (hosting, websites, retainers) — Centrix
+                  modules are not required.
+                </p>
+              </Field>
+              )}
               <Field label="Design template">
                 <SearchableSelect
   className={inputClass}
@@ -660,8 +760,13 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Bill to</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {customerKind === "centrix_tenant"
+                ? "Filled from the selected tenant. You can still edit these fields."
+                : "Who this invoice is billed to — not a Centrix tenant."}
+            </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Field label="Organization name" className="sm:col-span-2">
+              <Field label="Organization / customer name" className="sm:col-span-2">
                 <input className={inputClass} value={form.bill_to_name} onChange={(e) => updateForm({ bill_to_name: e.target.value })} />
               </Field>
               <Field label="Email">
@@ -670,7 +775,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               <Field label="Phone">
                 <input className={inputClass} value={form.bill_to_phone} onChange={(e) => updateForm({ bill_to_phone: e.target.value })} />
               </Field>
-              <Field label="Company code">
+              <Field label={customerKind === "external" ? "Reference / company code" : "Company code"}>
                 <input className={inputClass} value={form.bill_to_company_code} onChange={(e) => updateForm({ bill_to_company_code: e.target.value })} />
               </Field>
               <Field label="Tax PIN">
@@ -882,7 +987,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
             ) : null}
           </section>
 
-          {moduleSummaries.length > 0 ? (
+          {customerKind === "centrix_tenant" && moduleSummaries.length > 0 ? (
             <section className="theme-panel rounded-xl border p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">Workspace modules</h2>
               <p className="mt-0.5 text-xs text-slate-500">
@@ -948,6 +1053,11 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 + Add line
               </button>
             </div>
+            {customerKind === "external" ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Use custom lines for website hosting, domains, retainers, or any non-Centrix work.
+              </p>
+            ) : null}
             <div className="mt-4 space-y-3">
               {(form.line_items ?? []).map((row, index) => (
                 <div
@@ -1164,7 +1274,7 @@ export function PlatformInvoiceEditorPage({ invoiceId = null }) {
   return (
     <CatalogPageShell
       title={invoiceId ? "Edit platform invoice" : "New platform invoice"}
-      subtitle="Bill tenant organizations with professional templates, module summaries, and live preview."
+      subtitle="Bill Centrix tenants or external customers (website hosting and other work) with live preview."
     >
       <Suspense fallback={<p className="text-sm text-slate-500">Loading invoice…</p>}>
         <PlatformInvoiceEditor

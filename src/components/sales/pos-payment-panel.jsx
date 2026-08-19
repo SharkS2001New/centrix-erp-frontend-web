@@ -515,7 +515,6 @@ export function PosPaymentPanel({
     otherBankAmount: otherRaw,
     chequeAmount: chequeRaw,
     cfg: paymentCfg = cfg,
-    mpesaFieldsLocked: mpesaLocked = mpesaFieldsLocked,
   }) {
     let bankTotal = 0;
     if (paymentCfg.useBankSelect) {
@@ -526,8 +525,8 @@ export function PosPaymentPanel({
         parseDecimalInput(kcbRaw) +
         parseDecimalInput(otherRaw);
     }
-    const mpesaTender =
-      paymentCfg.enableMpesaAmount && !mpesaLocked ? parseDecimalInput(mpesaRaw) : 0;
+    // Locked STK M-Pesa still counts as paid — full M-Pesa is the same as typed Equity / KCB / cash.
+    const mpesaTender = paymentCfg.enableMpesaAmount ? parseDecimalInput(mpesaRaw) : 0;
     return (
       parseDecimalInput(cashRaw) +
       mpesaTender +
@@ -605,8 +604,7 @@ export function PosPaymentPanel({
       { code: "CASH", amount: parseDecimalInput(cashAmount) },
       {
         code: "MPESA",
-        amount:
-          cfg.enableMpesaAmount && !mpesaFieldsLocked ? parseDecimalInput(mpesaAmount) : 0,
+        amount: cfg.enableMpesaAmount ? parseDecimalInput(mpesaAmount) : 0,
       },
       { code: "CHEQUE", amount: cfg.showCheque ? parseDecimalInput(chequeAmount) : 0 },
     ];

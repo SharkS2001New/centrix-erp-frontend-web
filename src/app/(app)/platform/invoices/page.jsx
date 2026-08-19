@@ -59,7 +59,7 @@ export default function PlatformInvoicesPage() {
   return (
     <CatalogPageShell
       title="Platform invoices"
-      subtitle="Create and manage invoices to bill tenant organizations for modules, hosting, and platform services."
+        subtitle="Create and manage invoices for Centrix tenants and external customers (hosting, websites, and other work)."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -92,7 +92,7 @@ export default function PlatformInvoicesPage() {
               <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-5 py-3 font-medium">Invoice</th>
-                  <th className="px-5 py-3 font-medium">Tenant</th>
+                  <th className="px-5 py-3 font-medium">Customer</th>
                   <th className="px-5 py-3 font-medium">Issue date</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium text-right">Total</th>

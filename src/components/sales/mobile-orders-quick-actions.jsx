@@ -57,6 +57,28 @@ function formatWhen(value) {
   });
 }
 
+function isMissingApiRouteError(error) {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status === 404) return true;
+  return /route .* could not be found/i.test(String(error.message || ""));
+}
+
+/** Load performed + pending lists without leaving a second 404 as unhandledrejection. */
+async function loadPerformedAndPending(performedPath, pendingPath, missingMessage) {
+  const results = await Promise.allSettled([
+    apiRequest(performedPath, { loading: false }),
+    apiRequest(pendingPath, { loading: false }),
+  ]);
+  const errors = results.filter((r) => r.status === "rejected").map((r) => r.reason);
+  if (errors.length) {
+    if (errors.some(isMissingApiRouteError)) {
+      throw new ApiError(missingMessage, 404, errors[0]?.body);
+    }
+    throw errors[0];
+  }
+  return [results[0].value, results[1].value];
+}
+
 function ModalShell({ open, title, onClose, children, footer, busy = false, widthClass = "max-w-lg" }) {
   const [mounted, setMounted] = useState(false);
 
@@ -179,10 +201,11 @@ function ReturnsModal({
     try {
       const query = listFilterQuery({ fromDate, toDate, cashierId, routeId });
 
-      const [performedRes, pendingRes] = await Promise.all([
-        apiRequest(`/sales/mobile-orders/performed-returns${query}`, { loading: false }),
-        apiRequest(`/sales/mobile-orders/pending-returns${query}`, { loading: false }),
-      ]);
+      const [performedRes, pendingRes] = await loadPerformedAndPending(
+        `/sales/mobile-orders/performed-returns${query}`,
+        `/sales/mobile-orders/pending-returns${query}`,
+        "Return approval is not available on this server yet. Deploy the latest API, then try again.",
+      );
       const performedRows = Array.isArray(performedRes?.data) ? performedRes.data : [];
       const pendingRows = Array.isArray(pendingRes?.data) ? pendingRes.data : [];
       setPerformed(performedRows);
@@ -487,10 +510,11 @@ function ExpensesModal({
     try {
       const query = listFilterQuery({ fromDate, toDate, cashierId, routeId });
 
-      const [performedRes, pendingRes] = await Promise.all([
-        apiRequest(`/sales/mobile-orders/performed-expenses${query}`, { loading: false }),
-        apiRequest(`/sales/mobile-orders/pending-expenses${query}`, { loading: false }),
-      ]);
+      const [performedRes, pendingRes] = await loadPerformedAndPending(
+        `/sales/mobile-orders/performed-expenses${query}`,
+        `/sales/mobile-orders/pending-expenses${query}`,
+        "Expense approval is not available on this server yet. Deploy the latest API, then try again.",
+      );
       const performedRows = Array.isArray(performedRes?.data) ? performedRes.data : [];
       const pendingRows = Array.isArray(pendingRes?.data) ? pendingRes.data : [];
       setPerformed(performedRows);

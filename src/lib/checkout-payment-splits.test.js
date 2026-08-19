@@ -30,6 +30,16 @@ describe("alignPaymentSplitsToPayNow", () => {
     expect(aligned.reduce((sum, row) => sum + row.amount, 0)).toBe(9000);
   });
 
+  it("takes overpayment from a bank or mpesa-only tender", () => {
+    for (const method of ["MPESA", "EQUITY", "KCB"]) {
+      const aligned = alignPaymentSplitsToPayNow(
+        [{ method_code: method, amount: 620 }],
+        520,
+      );
+      expect(aligned).toEqual([{ method_code: method, amount: 520 }]);
+    }
+  });
+
   it("takes overpayment change from cash first (not proportional scale)", () => {
     const aligned = alignPaymentSplitsToPayNow(
       [

@@ -158,7 +158,7 @@ export function ProvisionTemplateControls({
               onSelectedCloneOrgIdChange?.(e.target.value);
               if (e.target.value) onCloneOrganization?.(e.target.value);
             })}
-  options={organizations.map((org) => ({ value: org.id, label: '{org.org_name} ({org.company_code})' }))}
+  options={organizations.map((org) => ({ value: org.id, label: `${org.org_name} (${org.company_code})` }))}
 />
         </label>
 

@@ -322,6 +322,8 @@ export const DEFAULT_INVOICE_OPTIONS = {
   print_spacing: "comfortable",
   // Module package prices are customer-facing all-in amounts (VAT included).
   prices_include_vat: true,
+  /** centrix_tenant = linked ERP org; external = hosting / websites / other. */
+  customer_kind: "centrix_tenant",
 };
 
 /** Default Bill from — Alpac Software Solutions (platform operator). */
@@ -619,6 +621,31 @@ export function normalizeInvoiceOptions(options) {
   return { ...DEFAULT_INVOICE_OPTIONS, ...(options ?? {}) };
 }
 
+export const PLATFORM_INVOICE_CUSTOMER_KINDS = [
+  {
+    id: "centrix_tenant",
+    label: "Centrix tenant",
+    description: "Bill an existing ERP organization. Modules can be selected automatically.",
+  },
+  {
+    id: "external",
+    label: "External customer",
+    description: "Website hosting, retainers, or any customer who is not a Centrix tenant.",
+  },
+];
+
+export function inferPlatformInvoiceCustomerKind(form) {
+  const saved = form?.invoice_options?.customer_kind;
+  if (saved === "external" || saved === "centrix_tenant") return saved;
+  return form?.organization_id ? "centrix_tenant" : "external";
+}
+
+export function organizationBillingLabel(org) {
+  const name = String(org?.org_name || org?.name || "Organization").trim();
+  const code = String(org?.company_code || "").trim();
+  return code ? `${name} (${code})` : name;
+}
+
 export function normalizeSeller(seller) {
   return { ...DEFAULT_PLATFORM_SELLER, ...(seller ?? {}) };
 }
@@ -723,7 +750,9 @@ export function invoiceFormToPayload(form) {
     ...totals,
   };
   if (!payload.invoice_number) delete payload.invoice_number;
-  if (!payload.organization_id) payload.organization_id = null;
+  if (payload.invoice_options?.customer_kind === "external" || !payload.organization_id) {
+    payload.organization_id = null;
+  }
   return payload;
 }
 
@@ -744,7 +773,12 @@ export function invoiceRecordToForm(record) {
     bill_to_tax_pin: record.bill_to_tax_pin ?? "",
     bill_to_company_code: record.bill_to_company_code ?? "",
     seller: normalizeSeller(record.seller ?? record.bill_from),
-    invoice_options: normalizeInvoiceOptions(record.invoice_options),
+    invoice_options: normalizeInvoiceOptions({
+      ...(record.invoice_options ?? {}),
+      customer_kind:
+        record.invoice_options?.customer_kind ??
+        (record.organization_id ? "centrix_tenant" : "external"),
+    }),
     line_items: Array.isArray(record.line_items) ? record.line_items.map((row) => ({ ...row })) : [],
     selected_modules: record.selected_modules ?? [],
     tax_rate: Number(record.tax_rate ?? 0),
