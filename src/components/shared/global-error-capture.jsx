@@ -17,7 +17,14 @@ async function reportUnhandledError(message, context = {}) {
     method: "CLIENT",
     status: 0,
     message: issueMessage,
-    context,
+    apiBody: {
+      technical_detail: String(message ?? "Unexpected error"),
+      exception_class: "ClientError",
+    },
+    context: {
+      ...context,
+      technical_detail: String(message ?? "Unexpected error"),
+    },
   });
 
   if (report?.id) {

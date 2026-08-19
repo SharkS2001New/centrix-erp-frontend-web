@@ -395,7 +395,10 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     }
     setSaving(true);
     try {
-      const payload = invoiceFormToPayload(form);
+      const payload = invoiceFormToPayload({
+        ...form,
+        line_items: billedLines,
+      });
       const res = isEdit
         ? await apiRequest(`/admin/platform-invoices/${invoiceId}`, { method: "PATCH", body: payload })
         : await apiRequest("/admin/platform-invoices", { method: "POST", body: payload });

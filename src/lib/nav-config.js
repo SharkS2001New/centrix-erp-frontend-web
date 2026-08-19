@@ -1243,7 +1243,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/admin/attendance-clock",
         label: "Attendance",
         module: "admin",
-        permissionAny: [P.admin.attendance_clock.view, P.hr.manage],
+        permission: P.admin.attendance_clock.view,
         orgAdminOnly: true,
       },
     ],

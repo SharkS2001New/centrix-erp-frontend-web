@@ -463,7 +463,7 @@ export function PlatformAiTrainingScreen() {
   value={previewOrgId}
   nativeEvent
   onChange={((e) => setPreviewOrgId(e.target.value))}
-  options={tenantOrgs.map((org) => ({ value: org.id, label: '{org.org_name} ({org.company_code})' }))}
+  options={tenantOrgs.map((org) => ({ value: org.id, label: `${org.org_name} (${org.company_code})` }))}
 />
               </label>
             )}

@@ -149,13 +149,15 @@ export function PlatformEmailDeliveryPanel() {
   }
 
   async function handleRemoveMailbox() {
-    if ((form.accounts?.length || 0) <= 1) {
-      notifyError("Keep at least one mailbox.");
+    if (!(form.accounts?.length)) {
       return;
     }
+    const last = (form.accounts?.length || 0) === 1;
     const ok = await confirm({
       title: "Remove mailbox",
-      message: `Remove “${mailboxAccountLabel(form)}” from platform mail? Existing messages stay in the mailbox history.`,
+      message: last
+        ? `Remove “${mailboxAccountLabel(form)}”? This is the last mailbox — sending and inbox sync stay off until you add one.`
+        : `Remove “${mailboxAccountLabel(form)}” from platform mail? Existing messages stay in the mailbox history.`,
       confirmLabel: "Remove",
     });
     if (!ok) return;
@@ -335,7 +337,7 @@ export function PlatformEmailDeliveryPanel() {
           >
             Add mailbox
           </button>
-          {(form.accounts?.length || 0) > 1 ? (
+          {(form.accounts?.length || 0) > 0 ? (
             <button
               type="button"
               className={SECONDARY_BTN_CLASS}
@@ -366,8 +368,9 @@ export function PlatformEmailDeliveryPanel() {
             </span>
           </div>
           <p className="w-full text-xs text-slate-500">
-            SMTP sends mail. IMAP is optional for inbox sync — leave it off if your domain host does not
-            allow IMAP.
+            {(form.accounts?.length || 0) === 0
+              ? "No mailbox is configured. Add a mailbox to send mail, or leave this empty if you are not using email."
+              : "SMTP sends mail. IMAP is optional for inbox sync — leave it off if your domain host does not allow IMAP."}
           </p>
         </div>
       )}

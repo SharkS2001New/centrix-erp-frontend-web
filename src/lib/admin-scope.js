@@ -26,22 +26,6 @@ export function isPlatformOrganization(organization) {
   return Boolean(organization?.module_settings?.platform);
 }
 
-const TRADING_MODULE_KEYS = [
-  "sales",
-  "sales.pos",
-  "sales.backend",
-  "sales.mobile",
-  "hospitality",
-  "hospitality.bar_pos",
-  "hospitality.backend",
-  "inventory",
-  "customers_suppliers",
-  "accounting",
-  "payments",
-  "hr_payroll",
-  "distribution",
-];
-
 const OPERATIONAL_MODULE_KEYS = [
   "admin",
   "sales",
@@ -64,11 +48,43 @@ export function hasOperationalModule(capabilities) {
 
 /** Whether the tenant Administration workspace/module is enabled for this organization. */
 export function isAdministrationModuleEnabled(capabilities) {
-  if (Boolean(capabilities?.modules?.admin)) {
+  return Boolean(capabilities?.modules?.admin);
+}
+
+const ADMIN_NON_ENTRY_FEATURES = new Set([
+  "view",
+  "manage",
+  "vat_rates",
+  "till_printing",
+  "discount_approvals",
+  "notifications",
+]);
+
+/** True when this permission should open the Administration application (not VAT/notifications bundles). */
+export function permissionUnlocksAdministration(code) {
+  if (!String(code || "").startsWith("admin.")) return false;
+  const feature = String(code).split(".")[1] ?? "";
+  if (!feature || ADMIN_NON_ENTRY_FEATURES.has(feature)) return false;
+  return true;
+}
+
+export function userHasAdministrationAccess({ user, capabilities, hasPermission }) {
+  if (isOrgAdministrator(user, capabilities)) {
     return true;
   }
-  const modules = capabilities?.modules ?? {};
-  return TRADING_MODULE_KEYS.some((key) => Boolean(modules[key]));
+  const map = capabilities?.permissions ?? {};
+  if (Object.entries(map).some(([code, granted]) => granted && permissionUnlocksAdministration(code))) {
+    return true;
+  }
+  if (typeof hasPermission !== "function") return false;
+  return (
+    hasPermission(P.admin.overview.view) ||
+    hasPermission(P.admin.users.view) ||
+    hasPermission(P.admin.roles.view) ||
+    hasPermission(P.admin.company.view) ||
+    hasPermission(P.admin.kra_responses.view) ||
+    hasPermission(P.admin.attendance_clock.view)
+  );
 }
 
 /** Organization preferences (printouts, sales, security) without the full Administration workspace. */

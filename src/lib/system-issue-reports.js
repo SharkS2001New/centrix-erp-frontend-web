@@ -160,15 +160,17 @@ export async function logApiErrorIssue({
   if (!shouldAutoLogApiError(path, status)) return null;
 
   // Server-side reporter owns HTTP 500 logs with full stack traces.
-  if (status >= 500) {
-    return issueReportId ? { id: issueReportId } : null;
+  if (status >= 500 && issueReportId) {
+    return { id: issueReportId };
   }
 
   if (isClientNetworkIssueMessage(message, context)) {
     return null;
   }
 
-  const technicalDetail = extractTechnicalDetailFromApiBody(apiBody);
+  const technicalDetail =
+    extractTechnicalDetailFromApiBody(apiBody)
+    || (typeof context?.technical_detail === "string" ? context.technical_detail : null);
   const logMessage = technicalDetail
     ? String(technicalDetail).split("\n")[0].slice(0, 500)
     : String(message ?? "Request failed").slice(0, 500);

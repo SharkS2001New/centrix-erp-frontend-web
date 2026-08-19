@@ -434,7 +434,7 @@ function ContractEditor({ contractId = null, initialKind = "quote" }) {
                       customer_tax_pin: f.customer_tax_pin || org?.org_pin || "",
                     }));
                   })}
-  options={organizations.map((org) => ({ value: org.id, label: '{org.org_name} ({org.company_code})' }))}
+  options={organizations.map((org) => ({ value: org.id, label: `${org.org_name} (${org.company_code})` }))}
 />
               </Field>
               <Field label="Plan">

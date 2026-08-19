@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import {
-  canAccessOrgAdminSettings,
   canAccessTenantOrganizationSettings,
   isAdministrationModuleEnabled,
   shouldHideOrgAdminFromPlatformSuperAdmin,
+  userHasAdministrationAccess,
 } from "@/lib/admin-scope";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
 import { hasAuthSession, readCachedAuthSnapshot } from "@/lib/auth-storage";
@@ -52,15 +52,10 @@ export function AdminGuard({ children, strict = false, settingsOnly = false }) {
     ? false
     : strict
       ? isAdmin
-      : isAdmin ||
-        accessCtx.hasPermission("admin.overview.view") ||
-        accessCtx.hasPermission("admin.manage") ||
-        canAccessOrgAdminSettings({
-          organization: effectiveOrganization,
-          isSuperAdmin,
-          hasPermission: accessCtx.hasPermission,
+      : userHasAdministrationAccess({
           user: effectiveUser,
           capabilities: effectiveCapabilities,
+          hasPermission: accessCtx.hasPermission,
         });
 
   const canEnter = settingsOnly ? canAccessSettings : canAccess;

@@ -54,4 +54,28 @@ describe("system-issue-reports slow gating", () => {
     expect(postSystemIssueReportRaw).toHaveBeenCalledTimes(1);
     expect(postSystemIssueReportRaw.mock.calls[0][0].kind).toBe("slow");
   });
+
+  it("logs client popup errors even when the user-facing message is generic", async () => {
+    const { postSystemIssueReportRaw } = await import("./system-issue-api");
+    const { logApiErrorIssue } = await import("./system-issue-reports");
+
+    await logApiErrorIssue({
+      path: "/sales/mobile-orders",
+      method: "CLIENT",
+      status: 0,
+      message: "An error occurred in this page. Please report this to your system administrator.",
+      apiBody: {
+        technical_detail: "Cannot read properties of undefined (reading 'id')",
+        exception_class: "ClientError",
+      },
+      context: {
+        technical_detail: "Cannot read properties of undefined (reading 'id')",
+      },
+    });
+
+    expect(postSystemIssueReportRaw).toHaveBeenCalledTimes(1);
+    expect(postSystemIssueReportRaw.mock.calls[0][0].context.technical_detail).toContain(
+      "Cannot read properties",
+    );
+  });
 });

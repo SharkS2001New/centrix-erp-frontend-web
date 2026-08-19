@@ -110,12 +110,15 @@ export function suggestImapFromSmtp(form) {
 export function platformMailFormFromApi(res = {}) {
   const settings = res.settings ?? res.data ?? res ?? {};
   const accounts = Array.isArray(settings.accounts) ? settings.accounts : [];
+  const hasMailbox = accounts.length > 0;
   return {
-    enabled: settings.enabled !== false && Boolean(settings.enabled ?? settings.smtp_host),
-    label: settings.label || settings.from_address || "Primary",
-    from_name: settings.from_name || PLATFORM_MAIL_DEFAULTS.from_name,
-    from_address: settings.from_address || PLATFORM_MAIL_DEFAULTS.from_address,
-    reply_to: settings.reply_to || settings.from_address || PLATFORM_MAIL_DEFAULTS.reply_to,
+    enabled: hasMailbox && settings.enabled !== false && Boolean(settings.enabled ?? settings.smtp_host),
+    label: hasMailbox ? (settings.label || settings.from_address || "Primary") : "",
+    from_name: hasMailbox ? (settings.from_name || PLATFORM_MAIL_DEFAULTS.from_name) : "",
+    from_address: hasMailbox ? (settings.from_address || PLATFORM_MAIL_DEFAULTS.from_address) : "",
+    reply_to: hasMailbox
+      ? (settings.reply_to || settings.from_address || PLATFORM_MAIL_DEFAULTS.reply_to)
+      : "",
     noreply_address: settings.noreply_address || "",
     smtp_host: settings.smtp_host || "",
     smtp_port: settings.smtp_port != null ? String(settings.smtp_port) : "587",
@@ -123,7 +126,7 @@ export function platformMailFormFromApi(res = {}) {
     smtp_password: "",
     smtp_password_set: Boolean(settings.smtp_password_set),
     smtp_encryption: settings.smtp_encryption || "tls",
-    imap_enabled: Boolean(settings.imap_enabled),
+    imap_enabled: hasMailbox ? Boolean(settings.imap_enabled) : false,
     imap_host: settings.imap_host || "",
     imap_port: settings.imap_port != null ? String(settings.imap_port) : "993",
     imap_username: settings.imap_username || settings.smtp_username || "",

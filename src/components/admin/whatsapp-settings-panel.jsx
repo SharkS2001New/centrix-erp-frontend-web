@@ -224,7 +224,7 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
   value={form.bot_user_id}
   nativeEvent
   onChange={((e) => setForm((f) => ({ ...f, bot_user_id: e.target.value })))}
-  options={users.map((user) => ({ value: String(user.id), label: '{user.full_name} ({user.username})' }))}
+  options={users.map((user) => ({ value: String(user.id), label: `${user.full_name} (${user.username})` }))}
 />
                       <p className="mt-1 text-xs text-slate-500">
                         A normal Centrix user in your organization — not a separate Meta bot. WhatsApp orders are

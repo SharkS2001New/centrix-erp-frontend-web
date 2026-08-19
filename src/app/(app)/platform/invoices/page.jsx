@@ -104,7 +104,12 @@ export default function PlatformInvoicesPage() {
                   <tr key={invoice.id} className="hover:bg-slate-50/80">
                     <td className="px-5 py-3 font-medium text-slate-900">{invoice.invoice_number}</td>
                     <td className="px-5 py-3 text-slate-600">
-                      {invoice.organization?.org_name ?? invoice.bill_to_name ?? "—"}
+                      <span>{invoice.organization?.org_name ?? invoice.bill_to_name ?? "—"}</span>
+                      {!invoice.organization_id && invoice.bill_to_name ? (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                          External
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-slate-600">{invoice.issue_date?.slice?.(0, 10) ?? invoice.issue_date}</td>
                     <td className="px-5 py-3">
