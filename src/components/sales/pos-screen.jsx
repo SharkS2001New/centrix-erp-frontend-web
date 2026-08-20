@@ -2174,6 +2174,10 @@ export function PosScreen({ standalone = false }) {
   const searchAbortRef = useRef(null);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const selectedProductRef = useRef(null);
+  useEffect(() => {
+    selectedProductRef.current = selectedProduct;
+  }, [selectedProduct]);
   const [lineForm, setLineForm] = useState(EMPTY_LINE);
   const [unitPriceTouched, setUnitPriceTouched] = useState(false);
 
@@ -4617,8 +4621,9 @@ export function PosScreen({ standalone = false }) {
     const generation = cartCommitGenerationRef.current;
     cartCommitPendingRef.current += 1;
     const wrapped = async () => {
+      // Drop only when the workspace was invalidated (F8 / post-sale / hold).
+      // Do NOT skip pending-fresh — first qty Enter must call ensureCart inside the task.
       if (generation !== cartCommitGenerationRef.current) return;
-      if (isFreshWorkspacePlaceholder(cartRef.current)) return;
       return task();
     };
     const run = cartCommitChainRef.current
@@ -4880,6 +4885,12 @@ export function PosScreen({ standalone = false }) {
     paymentOpenRef.current = false;
     receiptPrintStatusRef.current = null;
     setPaymentOpen(false);
+    // Cancel / Esc must leave the open sale editable (qty, F12, swap).
+    openCompletePaymentInFlightRef.current = false;
+    if (lineBusyRef.current) {
+      lineBusyRef.current = false;
+      setLineBusy(false);
+    }
     return true;
   }
 
@@ -4934,6 +4945,7 @@ export function PosScreen({ standalone = false }) {
     setLineForm(EMPTY_LINE);
     setSelectedProductCode(null);
     setSelectedProduct(null);
+    selectedProductRef.current = null;
     setSearchQuery("");
     setSearchResults([]);
     setUnitPriceTouched(false);
@@ -6380,8 +6392,9 @@ export function PosScreen({ standalone = false }) {
     // Never treat a mid-swap Scan Enter as a new-line add.
     if (
       classicLayout &&
-      selectedProduct &&
-      String(selectedProductCode ?? "").trim() === trimmed &&
+      (selectedProductRef.current || selectedProduct) &&
+      String((selectedProductRef.current ?? selectedProduct)?.product_code ?? selectedProductCode ?? "").trim() ===
+        trimmed &&
       !swapActive
     ) {
       handleQuantityEnter();
@@ -6595,6 +6608,7 @@ export function PosScreen({ standalone = false }) {
     focusSearchAfterAdd.current = false;
     setSelectedProductCode(parkCode);
     setSelectedProduct(product);
+    selectedProductRef.current = product;
     setUnitPriceTouched(false);
 
     // Mount the entry row immediately (description / provisional qty) so focus can land.
@@ -6649,12 +6663,25 @@ export function PosScreen({ standalone = false }) {
 
   function beginReplaceCartLine(lineId) {
     const line = findCartLineForEdit(cartRef.current?.lines ?? cart?.lines, lineId);
-    if (!line) return;
+    if (!line) {
+      setStatusMessage("Could not find that line to swap — try again.");
+      return;
+    }
     // Classic / local drafts enqueue without freezing the grid — allow swap while a
-    // parallel line save finishes. Hard checkout busy still blocks.
+    // parallel line save finishes. Hard checkout busy still blocks (except soft loads).
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (lineBusy && !classicLayout && !localDraftEdit) return;
-    if (busy && !previousOrderLoadingSoft) return;
+    if (lineBusy && !classicLayout && !localDraftEdit) {
+      setStatusMessage("Please wait — saving the previous line, then swap again.");
+      return;
+    }
+    if (busy && !previousOrderLoadingSoft && !classicLayout && !localDraftEdit) {
+      setStatusMessage("Please wait — checkout is busy. Cancel payment first if it is open.");
+      return;
+    }
+    if (paymentOpenRef.current) {
+      setStatusMessage("Cancel payment first, then swap the item.");
+      return;
+    }
     swapCommitInFlightRef.current = false;
     swapDraftRef.current = null;
     setSwapDraft(null);
@@ -6672,6 +6699,7 @@ export function PosScreen({ standalone = false }) {
     setEditingLineId(null);
     setEditingLineRef(null);
     setSelectedProduct(null);
+    selectedProductRef.current = null;
     setSelectedProductCode(null);
     setSearchQuery("");
     setLineForm({
@@ -6680,7 +6708,9 @@ export function PosScreen({ standalone = false }) {
       package: "",
       quantity: posEntryQtyFromCartLine(
         line,
-        productByCode[line.product_code] ?? null,
+        productByCodeRef.current[line.product_code] ??
+          productByCode[line.product_code] ??
+          null,
         getRetailPackage(line.product_code),
       ),
       discount: "0",
@@ -7590,10 +7620,11 @@ export function PosScreen({ standalone = false }) {
       setStatusMessage("Choose the replacement product, then press Enter on the line qty.");
       return;
     }
-    if (!lineForm.product_code || !selectedProduct) {
+    if (!lineForm.product_code || !(selectedProductRef.current ?? selectedProduct)) {
       setStatusMessage("Select a product first.");
       return;
     }
+    const productForAdd = selectedProductRef.current ?? selectedProduct;
     if (!assertRouteReadyForAdd()) return;
 
     // Prefer qty captured from the input on Enter (last keystroke may not be in state yet).
@@ -7609,15 +7640,15 @@ export function PosScreen({ standalone = false }) {
       setLineForm((p) => ({ ...p, quantity: String(entryQtyRaw) }));
     }
 
-    await ensureRetailPackageForProduct(selectedProduct);
+    await ensureRetailPackageForProduct(productForAdd);
 
     const discount = parseDecimalInput(lineForm.discount);
-    const retailPackage = getRetailPackage(selectedProduct.product_code);
+    const retailPackage = getRetailPackage(productForAdd.product_code);
     // Retail totals come from package settings: aggregate wholesale + markup.
     // Do not treat the Price field as unit×qty override (that drops/doubles the add-on).
     const retailPricing = usesPosRetailPricing(
       sellWholesale,
-      selectedProduct,
+      productForAdd,
       retailPackage,
     );
     const override =
@@ -7641,7 +7672,7 @@ export function PosScreen({ standalone = false }) {
       : null;
 
     if (replaceLine) {
-      if (String(replaceLine.product_code) === String(selectedProduct.product_code)) {
+      if (String(replaceLine.product_code) === String(productForAdd.product_code)) {
         setStatusMessage("Choose a different product to replace this line.");
         return;
       }
@@ -7649,7 +7680,7 @@ export function PosScreen({ standalone = false }) {
       try {
         const ok = await replaceCartLineWithProduct(
           replaceLine,
-          selectedProduct,
+          productForAdd,
           entryQtyRaw,
           discount,
           override,
@@ -7660,9 +7691,8 @@ export function PosScreen({ standalone = false }) {
           setReplacingLineId(null);
           // replaceCartLineWithProduct already notes previous-order swap success.
           if (!isPreviousOrderEditSession(cartRef.current)) {
-            setStatusMessage(
-              `Replaced ${posProductDisplayName(replaceLine)} with ${posProductDisplayName(selectedProduct)}.`,
-            );
+            notifySuccess("Item changed successfully");
+            setStatusMessage("Item changed successfully");
           }
         }
       } catch (e) {
@@ -7674,7 +7704,7 @@ export function PosScreen({ standalone = false }) {
     }
 
     const computed = applyComputedPrice(
-      selectedProduct,
+      productForAdd,
       entryQtyRaw,
       discount,
       override,
@@ -7698,11 +7728,11 @@ export function PosScreen({ standalone = false }) {
             posSalesConfig,
             sellWholesale,
             null,
-            selectedProduct,
+            productForAdd,
             { combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false },
           );
       const ok = await commitCartLine({
-        product: selectedProduct,
+        product: productForAdd,
         computed,
         incrementBaseQty: computed.baseQty,
         mergeTarget,
@@ -7757,15 +7787,33 @@ export function PosScreen({ standalone = false }) {
   }
 
   function handleQuantityEnter() {
-    if (!selectedProduct) return;
+    const parkedProduct = selectedProductRef.current ?? selectedProduct;
+    if (!parkedProduct) {
+      setStatusMessage("Select a product first, then press Enter on qty.");
+      return;
+    }
+    // Keep React state aligned if a draft/search race cleared selectedProduct.
+    if (!selectedProduct || selectedProduct.product_code !== parkedProduct.product_code) {
+      setSelectedProduct(parkedProduct);
+      setSelectedProductCode(parkedProduct.product_code);
+    }
     // Classic / previous-order drafts enqueue without freezing on TemporaryCart lineBusy —
     // Enter on qty must still add the item (same rule as swap / line qty edits).
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
     // Soft previous-order load must not block Classic qty Enter → add.
-    if (busy && !(classicLayout && previousOrderLoadingSoft)) return;
-    if (lineBusy && !classicLayout && !localDraftEdit) return;
-    if (addLineBlocked) {
+    if (busy && !(classicLayout && previousOrderLoadingSoft)) {
+      setStatusMessage("Please wait — finishing the previous cart update, then press Enter again.");
+      return;
+    }
+    if (lineBusy && !classicLayout && !localDraftEdit) {
+      setStatusMessage("Please wait — saving the previous line, then press Enter again.");
+      return;
+    }
+    const stockBlocked =
+      lineStockCheck.ok === false && !allowNegativeStock;
+    if (stockBlocked) {
       if (classicLayout && lineStockMessage) setStatusMessage(lineStockMessage);
+      else setStatusMessage("Not enough stock for this quantity.");
       return;
     }
     // Classic entry row only edits qty — Enter adds the line.
@@ -7774,7 +7822,7 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     // Qty Enter → discount (when editable) → unit price (when allowed) → add to cart.
-    if (showLineDiscountField && canEditManualLineDiscount()) {
+    if (showLineDiscountField && canEditManualLineDiscount(parkedProduct)) {
       focusLineField(discountInputRef);
       return;
     }
@@ -8027,8 +8075,9 @@ export function PosScreen({ standalone = false }) {
     // Unchanged qty + same retail/wholesale mode must not mark a previous-order
     // edit dirty — that wrongly opened Payment Breakdown on Alt+P. After F12,
     // session mode can differ while the typed number is the same — that must
-    // still reprice. Always park focus on new-line Scan (never stay on qty).
+    // still reprice.
     let qtyActuallyChanged = true;
+    let modeActuallyChanged = false;
     {
       const activeCart = cartRef.current ?? cart;
       const liveLine =
@@ -8058,10 +8107,12 @@ export function PosScreen({ standalone = false }) {
       const qtyUnchanged =
         Number.isFinite(currentEntry) && Math.abs(currentEntry - entryQty) < 0.0001;
       qtyActuallyChanged = !qtyUnchanged;
-      const modeUnchanged = lineIsRetail === sessionIsRetail;
-      setSelectedLineId(null);
-      focusScanAfterItemAdded();
-      if (qtyUnchanged && modeUnchanged) return;
+      modeActuallyChanged = lineIsRetail !== sessionIsRetail;
+      if (qtyUnchanged && !modeActuallyChanged) {
+        setSelectedLineId(null);
+        focusScanAfterItemAdded();
+        return;
+      }
     }
 
     const run = async () => {
@@ -8088,10 +8139,27 @@ export function PosScreen({ standalone = false }) {
         }
       }
       if (!product) {
+        // Classic qty edits must not fail when the GET is slow — use warmed IndexedDB first.
+        try {
+          const local = await getPosOfflineProduct(liveLine.product_code);
+          if (local && isSellableCatalogProduct(local)) {
+            product = enrichProductForLpo(local, uomById, vatById);
+            productByCodeRef.current[product.product_code] = product;
+            setProductByCode((prev) =>
+              prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
+            );
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      if (!product) {
         product = await resolveProductByCode(liveLine.product_code);
       }
       if (!product) {
-        setStatusMessage("Product not found for this cart line.");
+        setStatusMessage(
+          `Product ${liveLine.product_code} is not loaded — wait a moment and press Enter on qty again.`,
+        );
         return;
       }
 
@@ -8212,7 +8280,7 @@ export function PosScreen({ standalone = false }) {
         setCart(nextCart);
 
         if (isPreviousOrderEditSession(nextCart)) {
-          if (qtyActuallyChanged) {
+          if (qtyActuallyChanged || modeActuallyChanged) {
             await notePreviousOrderEditSuccess("qty");
           } else {
             await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
@@ -8239,7 +8307,7 @@ export function PosScreen({ standalone = false }) {
               /* keep in-memory qty */
             }
           }
-          if (qtyActuallyChanged) {
+          if (qtyActuallyChanged || modeActuallyChanged) {
             notifySuccess("Quantity updated successfully");
             setStatusMessage("Quantity updated successfully");
           }
@@ -8294,7 +8362,7 @@ export function PosScreen({ standalone = false }) {
               setCart(fixed);
             }
           }
-          if (ok && qtyActuallyChanged) {
+          if (ok && (qtyActuallyChanged || modeActuallyChanged)) {
             notifySuccess("Quantity updated successfully");
             setStatusMessage("Quantity updated successfully");
           }
@@ -8324,12 +8392,14 @@ export function PosScreen({ standalone = false }) {
         lineRetailStockFlagOverride: sessionIsRetail,
       });
       if (ok) {
-        // After qty Enter/blur, park on new-line Scan code (not the same row).
         setSelectedLineId(null);
         focusScanAfterItemAdded();
-        // Real qty change only — F12-only same-number reprice stays clean (no C/M popup).
-        if (qtyActuallyChanged) {
+        if (qtyActuallyChanged || modeActuallyChanged) {
           notePreviousOrderEditSuccess("qty");
+          if (!isPreviousOrderEditSession(cartRef.current)) {
+            notifySuccess("Quantity updated successfully");
+            setStatusMessage("Quantity updated successfully");
+          }
         }
       }
     };
@@ -14048,8 +14118,44 @@ export function PosScreen({ standalone = false }) {
       );
       return false;
     }
-    setSellWholesaleMode((prev) => !prev);
+    const nextWholesale = !sellWholesaleRef.current;
+    setSellWholesaleMode(nextWholesale);
     setUnitPriceTouched(false);
+
+    const nextLabel = isPosRetailSession(nextWholesale)
+      ? "RETAIL (kg / pieces)"
+      : "WHOLESALE (bags / packages)";
+    const active = typeof document !== "undefined" ? document.activeElement : null;
+    const onCartLineQty =
+      active instanceof HTMLElement &&
+      active.classList.contains("classic-pos-line-qty-input");
+    const onEntryQty =
+      active instanceof HTMLElement &&
+      (active.classList.contains("classic-pos-cart-qty-input") ||
+        active === qtyInputRef.current);
+
+    if (onCartLineQty) {
+      setStatusMessage(
+        `Mode: ${nextLabel} — press Enter on this qty to update the line.`,
+      );
+      // Keep focus on the qty the cashier is editing.
+      window.requestAnimationFrame(() => {
+        active.focus?.({ preventScroll: true });
+        active.select?.();
+      });
+    } else if (onEntryQty) {
+      setStatusMessage(
+        `Mode: ${nextLabel} — press Enter to add the line in this mode.`,
+      );
+      window.requestAnimationFrame(() => {
+        active.focus?.({ preventScroll: true });
+        active.select?.();
+      });
+    } else {
+      setStatusMessage(
+        `Mode: ${nextLabel} — click a line qty, then Enter to apply, or add a new item.`,
+      );
+    }
     return true;
   }
 
@@ -14421,6 +14527,12 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       if (key === "F12") {
+        if (state.paymentOpen || paymentOpenRef.current) {
+          actions.flashPosShortcutMessage?.(
+            "Cancel payment first, then press F12 to switch kg/bags.",
+          );
+          return;
+        }
         actions.toggleRetailWholesaleMode();
       }
     }
@@ -15731,9 +15843,23 @@ export function PosScreen({ standalone = false }) {
                 }}
                 lineQtyUnit={(line) => {
                   const productMeta = productByCode[line.product_code];
+                  // While F12 mode differs from this line, preview the session unit
+                  // so cashiers see kg vs bags before they press Enter.
+                  const sessionDiffers =
+                    posSalesConfig.enableRetailPricing &&
+                    cartLineRetailStockFlag(line) !==
+                      isPosRetailSession(sellWholesaleRef.current);
+                  const previewLine = sessionDiffers
+                    ? {
+                        ...line,
+                        on_wholesale_retail: isPosRetailSession(sellWholesaleRef.current)
+                          ? 1
+                          : 0,
+                      }
+                    : line;
                   return (
                     posCartLineEntryUnitLabel(
-                      line,
+                      previewLine,
                       productMeta ?? null,
                       getRetailPackage(line.product_code),
                     ) || "pcs"
@@ -15799,8 +15925,18 @@ export function PosScreen({ standalone = false }) {
                     inputRef={searchInputRef}
                     query={searchQuery}
                     onQueryChange={(value) => {
-                      if (selectedProduct) {
+                      const next = String(value ?? "");
+                      const parked = selectedProductRef.current;
+                      // Typing a different query clears the parked entry row. Do not
+                      // clear when the scan field still holds the parked product code
+                      // (focus/selection churn used to wipe selectedProduct before qty Enter).
+                      if (
+                        parked &&
+                        next.trim() !== "" &&
+                        next.trim().toLowerCase() !== String(parked.product_code ?? "").trim().toLowerCase()
+                      ) {
                         setSelectedProduct(null);
+                        selectedProductRef.current = null;
                         setSelectedProductCode(null);
                         setLineForm((p) => ({
                           ...p,
@@ -15810,7 +15946,7 @@ export function PosScreen({ standalone = false }) {
                           unit_price: "",
                         }));
                       }
-                      setSearchQuery(value);
+                      setSearchQuery(next);
                     }}
                     results={searchResults}
                     searching={searching}
@@ -16311,10 +16447,13 @@ export function PosScreen({ standalone = false }) {
           setKraUploadPrompt(null);
           setKraUploadError(null);
           kraCheckoutRetryRef.current = null;
-          // Esc / Cancel — return keyboard to Scan (not after a finished sale print).
-          if (receiptPrintStatusRef.current !== "printed") {
-            window.requestAnimationFrame(() => focusScanCode());
-          }
+          setPaymentError(null);
+          setBusy(false);
+          setStatusMessage(
+            "Payment cancelled — edit qty (F12 for kg/bags), swap items, then press F10 again.",
+          );
+          // Esc / Cancel — return keyboard to Scan so the cashier can click a line qty next.
+          window.requestAnimationFrame(() => focusScanCode());
         }}
         billTotal={paymentPanelBillTotal}
         previousOrderEditAdjustment={previousOrderEditAdjustment}

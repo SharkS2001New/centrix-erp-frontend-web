@@ -68,9 +68,8 @@ function ClassicLineQtyCell({
     }
     if (trimmed !== draft) setDraft(trimmed);
     // F12 retail/wholesale applies only on Enter for this focused line.
-    // Blur must not reprice every row whose mode differs from the session.
+    // Blur must not reprice when the number is unchanged (even after F12).
     if (!applySessionMode && !swapQtyCommit && trimmed === committed) return;
-    void forceSameQtyCommit;
     onSetQty?.(line, trimmed);
   }
 
@@ -248,8 +247,8 @@ export function ClassicPosCartTable({
               title="F12 switches mode for new lines, and for a cart line only when you click its qty and press Enter"
             >
               {sellAtRetail
-                ? "Mode: RETAIL — qty Enter applies to that line · F12 wholesale"
-                : "Mode: WHOLESALE — qty Enter applies to that line · F12 retail"}
+                ? "Mode: RETAIL (kg/pcs) — F12 wholesale (bags) · qty Enter updates the focused line"
+                : "Mode: WHOLESALE (bags) — F12 retail (kg/pcs) · qty Enter updates the focused line"}
             </button>
           ) : null}
           <span className="classic-pos-cart-caption-text">{orderCaption}</span>

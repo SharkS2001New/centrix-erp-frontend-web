@@ -416,8 +416,8 @@ export function HrAttendanceScreen({ mode = "today" }) {
       let lunchIn = null;
       let clockOut = last?.clock_out_at ?? null;
       if (lunch) {
-        if (second) {
-          lunchOut = first?.clock_out_at ?? null;
+        if (second && first?.clock_out_at) {
+          lunchOut = first.clock_out_at;
           lunchIn = second?.clock_in_at ?? null;
           clockOut = last?.clock_out_at ?? null;
         } else if (first?.clock_out_at) {

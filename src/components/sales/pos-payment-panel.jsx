@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
-import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import { renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { SearchableSelect } from "@/components/catalog/searchable-select";
 import { formatPosBrowseLabel, formatSaleKes } from "@/lib/sales";
@@ -119,7 +118,7 @@ function isCheckoutProcessing(saving, step) {
   return saving || step === "saving";
 }
 
-function PosDialogShell({ title, children, footer, overlay, onClose, saving, embedded = false }) {
+function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
   const ignoreCloseUntilRef = useRef(0);
 
   useEffect(() => {
@@ -147,14 +146,28 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving, emb
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onClose, saving]);
 
+  // Always block the screen. Outside clicks must not dismiss F10 checkout —
+  // only Esc, Cancel payment, or a finished sale may close it.
+  function swallowOutsidePointer(e) {
+    if (e.target !== e.currentTarget) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
   return renderPosModalPortal(
-    <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
-      {/*
-        No click-outside-to-close: on External POS, focusing amount fields / soft keyboards
-        often drops a mousedown on the dimmed backdrop and dismissed checkout mid-tender.
-        Cashiers dismiss with Esc (step back) or Cancel payment.
-      */}
-      <div role="dialog" aria-modal="true" className={`${posModalPanelClass(embedded)} ${POS_DIALOG_SHELL}`}>
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
+      role="presentation"
+      onMouseDown={swallowOutsidePointer}
+      onClick={swallowOutsidePointer}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className={`relative ${POS_DIALOG_SHELL}`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={POS_DIALOG_HEADER}>
           <h2 className="text-center text-sm font-bold tracking-wide">{title}</h2>
         </div>
@@ -175,6 +188,19 @@ function PosNestedDialog({ title, titleId, children, footer, role = "dialog", ar
       aria-live={ariaLive}
       aria-busy={role === "status" ? "true" : undefined}
       className="absolute inset-0 z-20 flex items-center justify-center bg-black/45 p-4"
+      onMouseDown={(e) => {
+        // Nested confirm / STK overlays stay open until their own buttons or Esc.
+        if (e.target === e.currentTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
     >
       <div className={POS_DIALOG_CARD}>
         <div className={POS_DIALOG_HEADER}>
@@ -2246,7 +2272,6 @@ export function PosPaymentPanel({
       saving={isCheckoutProcessing(saving, step)}
       onClose={handleShellClose}
       overlay={dialogOverlay}
-      embedded={embedded}
       footer={
         <div className={`relative z-10 ${POS_DIALOG_FOOTER}`}>
           <button
