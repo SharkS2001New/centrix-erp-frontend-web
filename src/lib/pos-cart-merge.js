@@ -230,6 +230,17 @@ export function applyCartMutationResponse(
       next_pos_order_num:
         nextPos ?? normalized.next_pos_order_num ?? prevCart?.next_pos_order_num ?? null,
     };
+    // Never let a TemporaryCart response wipe previous-order edit identity mid-session
+    // (e.g. after DELETE /lines cleared markers on the server).
+    if (prevCart?.held_order_num != null && (normalized.held_order_num == null || normalized.held_order_num === "")) {
+      merged.held_order_num = prevCart.held_order_num;
+    }
+    if (
+      prevCart?.superseded_sale_id != null &&
+      (normalized.superseded_sale_id == null || normalized.superseded_sale_id === "")
+    ) {
+      merged.superseded_sale_id = prevCart.superseded_sale_id;
+    }
     return preserveUntouchedCartLines(prevCart, merged, { targetLineRef });
   }
   if (!prevCart?.id || !res?.product_code) return prevCart;

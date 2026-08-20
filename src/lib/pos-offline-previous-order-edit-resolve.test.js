@@ -4,6 +4,7 @@ import {
   isRestorablePosSaleForEdit,
   previousOrderEditOrgOrderNum,
   resolveHeadOfPreviousOrderEditChain,
+  temporaryCartHasPreviousOrderEditMarkers,
 } from "@/lib/pos-offline";
 
 describe("previous-order edit live sale resolution", () => {
@@ -44,5 +45,64 @@ describe("previous-order edit live sale resolution", () => {
   it("detects the backend cannot-be-edited sync error", () => {
     expect(isOrderNotEditableSyncError(new Error("This order cannot be edited."))).toBe(true);
     expect(isOrderNotEditableSyncError(new Error("Network error"))).toBe(false);
+  });
+
+  it("rejects TemporaryCart reuse after finish cleared edit markers", () => {
+    const row = {
+      sync_kind: "previous_order_edit",
+      superseded_sale_id: 55,
+      order_num: 120,
+      checkout_body: { order_num: 120 },
+    };
+    expect(
+      temporaryCartHasPreviousOrderEditMarkers(
+        { id: 9, held_order_num: null, superseded_sale_id: null },
+        row,
+      ),
+    ).toBe(false);
+    expect(
+      temporaryCartHasPreviousOrderEditMarkers(
+        { id: 9, held_order_num: 120, superseded_sale_id: 55 },
+        row,
+      ),
+    ).toBe(true);
+    expect(
+      temporaryCartHasPreviousOrderEditMarkers(
+        { id: 9, held_order_num: 120, superseded_sale_id: 99 },
+        row,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("wipeTemporaryCartLines preserveEditMarkers", () => {
+  it("keeps edit identity on local (non-server) carts", async () => {
+    const { wipeTemporaryCartLines } = await import("@/lib/pos-offline");
+    const wiped = await wipeTemporaryCartLines(
+      {
+        id: "active",
+        held_order_num: 88,
+        superseded_sale_id: 12,
+        lines: [{ id: 1, product_code: "A", quantity: 1 }],
+        order_discount: 5,
+      },
+      { preserveEditMarkers: true },
+    );
+    expect(wiped.lines).toEqual([]);
+    expect(wiped.order_discount).toBe(0);
+    expect(wiped.held_order_num).toBe(88);
+    expect(wiped.superseded_sale_id).toBe(12);
+  });
+
+  it("clears edit identity by default on local carts", async () => {
+    const { wipeTemporaryCartLines } = await import("@/lib/pos-offline");
+    const wiped = await wipeTemporaryCartLines({
+      id: "active",
+      held_order_num: 88,
+      superseded_sale_id: 12,
+      lines: [{ id: 1, product_code: "A", quantity: 1 }],
+    });
+    expect(wiped.held_order_num).toBeNull();
+    expect(wiped.superseded_sale_id).toBeNull();
   });
 });

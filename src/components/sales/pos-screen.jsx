@@ -4308,6 +4308,64 @@ export function PosScreen({ standalone = false }) {
       }
 
       const task = (async () => {
+        // Previous-order edits must restore onto the original sale — never POST a blank
+        // TemporaryCart (that drops superseded_sale_id and mints a new order on checkout).
+        if (
+          localCart.held_order_num &&
+          localCart.superseded_sale_id &&
+          !localCart.offline_client_sale_uuid
+        ) {
+          const saleId = Number(localCart.superseded_sale_id);
+          const restored = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
+            method: "POST",
+            body: { replace: true },
+            ...POS_CART_REQUEST,
+          });
+          const linePayload = (localCart.lines ?? [])
+            .filter((line) => line?.product_code && Number(line.quantity) > 0)
+            .map((line) => {
+              const qty = Number(line.quantity);
+              const unitPrice = Number(line.unit_price ?? 0);
+              return {
+                product_code: line.product_code,
+                quantity: qty,
+                unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
+                display_unit_price:
+                  line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+                uom: line.uom ?? undefined,
+                on_wholesale_retail: Number(line.on_wholesale_retail ?? 0) ? 1 : 0,
+                discount_given: Number(line.discount_given ?? 0) || 0,
+                product_vat: line.product_vat != null ? Number(line.product_vat) : undefined,
+                amount: line.amount != null ? Number(line.amount) : undefined,
+              };
+            });
+          let serverCart = restored;
+          if (linePayload.length || Number(localCart.order_discount ?? 0)) {
+            serverCart = await apiRequest(`/sales/carts/${restored.id}/lines`, {
+              method: "PUT",
+              body: {
+                lines: linePayload,
+                order_discount: Number(localCart.order_discount ?? 0) || 0,
+              },
+              ...POS_CART_REQUEST,
+            });
+          }
+          const withMarkers = {
+            ...(normalizeCartResponse(serverCart) ?? serverCart),
+            held_order_num: localCart.held_order_num,
+            superseded_sale_id: saleId,
+          };
+          if (Array.isArray(localCart.payment_adjustments)) {
+            withMarkers.payment_adjustments = localCart.payment_adjustments;
+          }
+          void clearLocalPosCart().catch(() => {});
+          if (applyToWorkspace) {
+            cartRef.current = withMarkers;
+            setCart(withMarkers);
+          }
+          return withMarkers;
+        }
+
         const body = {
           channel: localCart.channel ?? channel ?? "pos",
           order_source: "pos",
@@ -4365,13 +4423,6 @@ export function PosScreen({ standalone = false }) {
           }).catch(() => {
             /* customer optional */
           });
-        }
-
-        if (localCart.held_order_num && !localCart.offline_client_sale_uuid) {
-          serverCart = {
-            ...serverCart,
-            held_order_num: localCart.held_order_num,
-          };
         }
 
         void clearLocalPosCart().catch(() => {});
@@ -8000,6 +8051,45 @@ export function PosScreen({ standalone = false }) {
       const nextCart = { ...cart, lines: remainingLines };
       cartRef.current = nextCart;
       setCart(nextCart);
+      if (isPreviousOrderEditSession(nextCart)) {
+        await persistPreviousOrderLocalDraft(nextCart);
+      }
+      return;
+    }
+    // Previous-order edit: never DELETE /lines (clears markers → new order on checkout).
+    // Replace-lines keeps held_order_num / superseded_sale_id.
+    if (isPreviousOrderEditSession(cart)) {
+      const linePayload = (remainingLines ?? [])
+        .filter((row) => row?.product_code && Number(row.quantity) > 0)
+        .map((row) => ({
+          product_code: row.product_code,
+          quantity: row.quantity,
+          unit_price: row.unit_price,
+          display_unit_price:
+            row.display_unit_price != null ? Number(row.display_unit_price) : undefined,
+          amount: row.amount != null ? Number(row.amount) : undefined,
+          uom: row.uom,
+          on_wholesale_retail: row.on_wholesale_retail,
+          discount_given: Number(row.discount_given ?? 0),
+          product_vat: row.product_vat != null ? Number(row.product_vat) : undefined,
+        }));
+      const updated = await apiRequest(`/sales/carts/${cart.id}/lines`, {
+        method: "PUT",
+        body: {
+          lines: linePayload,
+          order_discount: Number(cart.order_discount ?? 0) || 0,
+        },
+        ...POS_CART_REQUEST,
+      });
+      const merged = applyCartMutationResponse(cart, updated);
+      const withMarkers = {
+        ...merged,
+        held_order_num: cart.held_order_num ?? merged.held_order_num,
+        superseded_sale_id: cart.superseded_sale_id ?? merged.superseded_sale_id,
+      };
+      cartRef.current = withMarkers;
+      setCart(withMarkers);
+      await persistPreviousOrderLocalDraft(withMarkers);
       return;
     }
     await apiRequest(`/sales/carts/${cart.id}/lines`, { method: "DELETE" });
@@ -10184,7 +10274,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleCheckout(body, options = {}) {
-    const activeCart = cartRef.current ?? cart;
+    let activeCart = cartRef.current ?? cart;
     const summary = cartSummaryRef.current ?? cartSummary;
     if (!activeCart?.id) {
       setPaymentError("Cart is not ready — scan an item and try again.");
@@ -10205,6 +10295,20 @@ export function PosScreen({ standalone = false }) {
       return null;
     }
 
+    // Heal markers from the opened receipt if a line wipe dropped them mid-edit.
+    if (
+      activeCart.held_order_num &&
+      !activeCart.superseded_sale_id &&
+      editSourceSale?.id
+    ) {
+      activeCart = {
+        ...activeCart,
+        superseded_sale_id: Number(editSourceSale.id),
+      };
+      cartRef.current = activeCart;
+      setCart(activeCart);
+    }
+
     const isQueuedOfflineEdit = Boolean(activeCart.offline_client_sale_uuid);
     const isPreviousOrderCashEdit = Boolean(
       activeCart.held_order_num && activeCart.superseded_sale_id,
@@ -10220,6 +10324,18 @@ export function PosScreen({ standalone = false }) {
     ) {
       setPaymentError(
         "Reconnect to load this previous order for editing, then you can finish offline.",
+      );
+      return null;
+    }
+
+    if (
+      activeCart.held_order_num &&
+      !activeCart.superseded_sale_id &&
+      !activeCart.offline_client_sale_uuid &&
+      (editSourceSale || activeCart.previous_order_edit)
+    ) {
+      setPaymentError(
+        "Previous-order edit is missing its sale identity. Cancel and reopen the receipt to edit.",
       );
       return null;
     }
@@ -10911,9 +11027,22 @@ export function PosScreen({ standalone = false }) {
   async function queuePreviousOrderEditOutboxNow({ force = false } = {}) {
     if (!standalone) return null;
     if (!force && skipEditAutosaveRef.current) return null;
-    const cartNow = cartRef.current;
+    let cartNow = cartRef.current;
     if (!cartNow?.held_order_num) return null;
     if (isFreshWorkspacePlaceholder(cartNow)) return null;
+
+    // Heal superseded_sale_id from the opened receipt before queuing — otherwise
+    // sync can mint a new order_num instead of superseding.
+    if (!cartNow.superseded_sale_id && editSourceSale?.id) {
+      cartNow = {
+        ...cartNow,
+        superseded_sale_id: Number(editSourceSale.id),
+        held_order_num:
+          cartNow.held_order_num ?? editSourceSale.order_num ?? null,
+      };
+      cartRef.current = cartNow;
+      setCart(cartNow);
+    }
 
     const queuedOfflineUuid =
       cartNow.offline_client_sale_uuid != null &&
@@ -11407,7 +11536,9 @@ export function PosScreen({ standalone = false }) {
     void clearPreviousOrderEditDraft().catch(() => {});
     void clearLocalPosCart().catch(() => {});
 
-    // Await line clear before bootstrap so TemporaryCart cannot reload the edited receipt.
+    // Await line clear BEFORE outbox flush. DELETE /lines wipes held_order_num /
+    // superseded_sale_id; if sync reused that cart id mid-clear it would mint a
+    // new order_num. Outbox rows now force restore-to-cart (server_cart_id null).
     const clearPromise =
       deleteCartId != null
         ? apiRequest(`/sales/carts/${deleteCartId}/lines`, {
@@ -11417,12 +11548,11 @@ export function PosScreen({ standalone = false }) {
           }).catch(() => null)
         : Promise.resolve(null);
 
-    void flushOutboxNow();
-
     // Soft bootstrap — do not block the till; first scan creates/loads a TemporaryCart.
     void (async () => {
       try {
         await clearPromise;
+        void flushOutboxNow();
         if (generation !== freshWorkspaceGenerationRef.current) return;
         const next = await loadCashierCart({
           skipEditDraftRestore: true,

@@ -779,8 +779,8 @@ export function KraReceiptsReportScreen({ definition }) {
               {creditRow.invoice_number || "—"}). The Centrix sale stays unchanged — this is not a
               return.
             </p>
-            <label className="mt-4 block text-sm font-medium text-slate-700">
-              Refund reason
+            <div className="relative z-10 mt-4">
+              <p className="block text-sm font-medium text-slate-700">Refund reason</p>
               <SearchableSelect
                 className="theme-input mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                 value={creditReasonCode}
@@ -788,7 +788,7 @@ export function KraReceiptsReportScreen({ definition }) {
                 onChange={setCreditReasonCode}
                 options={KRA_REFUND_REASON_OPTIONS}
               />
-            </label>
+            </div>
             {crediting ? (
               <div className="mt-4 space-y-2" aria-live="polite">
                 <div className="flex items-center justify-between text-xs font-medium text-slate-600">

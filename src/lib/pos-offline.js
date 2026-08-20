@@ -1348,15 +1348,33 @@ export async function assertPosTillAvailableForSync({
  * Outbox sync reuses firstOrCreate(user+channel): a failed checkout leaves the
  * failed sale's lines on that cart, and the next POST /sales/carts returns them —
  * so new scans looked like they overwrote / merged into the failed order.
+ *
+ * @param {object} cart
+ * @param {{ preserveEditMarkers?: boolean }} [options]
+ *   When true (rebuild / clear-lines mid previous-order edit), keep held_order_num
+ *   / superseded_sale_id and ask the API not to abandon the edit.
  */
-export async function wipeTemporaryCartLines(cart) {
+export async function wipeTemporaryCartLines(cart, options = {}) {
   if (!cart) return cart;
+  const preserveEditMarkers = Boolean(options.preserveEditMarkers);
+  const hadHeld = cart.held_order_num ?? null;
+  const hadSuperseded = cart.superseded_sale_id ?? null;
   if (!isServerPosCartId(cart.id)) {
-    return { ...cart, lines: [], order_discount: 0 };
+    return {
+      ...cart,
+      lines: [],
+      order_discount: 0,
+      held_order_num: preserveEditMarkers ? hadHeld : null,
+      superseded_sale_id: preserveEditMarkers ? hadSuperseded : null,
+    };
   }
   const cartId = Number(cart.id);
   try {
-    await apiRequest(`/sales/carts/${cartId}/lines`, {
+    const qs =
+      preserveEditMarkers && hadSuperseded
+        ? `?preserve_edit=1`
+        : "";
+    await apiRequest(`/sales/carts/${cartId}/lines${qs}`, {
       method: "DELETE",
       loading: false,
       reportIssues: false,
@@ -1369,8 +1387,8 @@ export async function wipeTemporaryCartLines(cart) {
     id: cartId,
     lines: [],
     order_discount: 0,
-    held_order_num: null,
-    superseded_sale_id: null,
+    held_order_num: preserveEditMarkers ? hadHeld : null,
+    superseded_sale_id: preserveEditMarkers ? hadSuperseded : null,
   };
 }
 
@@ -2215,7 +2233,9 @@ export async function completeOfflineCashSale({
       ? Number(cart.superseded_sale_id)
       : null;
   const serverCartId = isServerPosCartId(cart.id) ? Number(cart.id) : null;
-  const isPreviousOrderEdit = Boolean(reuseOrderNum && (supersededSaleId || serverCartId));
+  // Require superseded_sale_id for previous-order edit — server cart id alone used to
+  // tag incomplete sessions and then mint a new order_num on sync.
+  const isPreviousOrderEdit = Boolean(reuseOrderNum && supersededSaleId);
 
   let orderNum = reuseOrderNum;
   let clientSaleUuid = editingUuid;
@@ -2223,7 +2243,7 @@ export async function completeOfflineCashSale({
   let posOrderNum = null;
   let posOrderDate = null;
 
-  if (editingUuid && reuseOrderNum) {
+  if (editingUuid && reuseOrderNum && !supersededSaleId) {
     // Revising a queued offline sale — keep printed Cash Sales # and outbox identity.
     orderNum = reuseOrderNum;
     clientSaleUuid = editingUuid;
@@ -2232,10 +2252,13 @@ export async function completeOfflineCashSale({
     syncKind = "previous_order_edit";
     orderNum = reuseOrderNum;
     clientSaleUuid = editingUuid || `prev-edit-${orderNum}`;
-  } else if (editingUuid || reuseOrderNum) {
-    throw new Error("Offline edit is missing its original order number. Cancel and reopen the sale.");
+  } else if (cart.previous_order_edit && reuseOrderNum && !supersededSaleId) {
+    // Draft marked as previous-order edit but lost superseded_sale_id — never mint a new #.
+    throw new Error(
+      "Previous-order edit is missing its sale identity. Cancel and reopen the receipt to edit.",
+    );
   } else {
-    // No org S# pool. Cash Sales # is allocated below; server assigns order_num on sync.
+    // New sale (held_order_num alone is not previous-order edit — parked holds / reclaim).
     orderNum = null;
     posOrderNum = null;
     posOrderDate = todayPosOrderDate();
@@ -2688,10 +2711,12 @@ export async function completeOfflineCashSale({
     content_revision: contentRevision,
     sync_kind: syncKind,
     server_cart_id: (() => {
-      // Previous-order sync checkouts delete the TemporaryCart. Never reuse a stale
-      // outbox cart id — restore-to-cart when the live UI no longer has a server id.
+      // Previous-order sync must restore-to-cart so TemporaryCart keeps
+      // held_order_num / superseded_sale_id. Reusing the till cart id after
+      // finish/F8 DELETE /lines clears those markers and checkout then mints a
+      // brand-new order_num instead of superseding the edited sale.
       if (syncKind === "previous_order_edit") {
-        return serverCartId;
+        return null;
       }
       return serverCartId ?? existingOutbox?.server_cart_id ?? null;
     })(),
@@ -3345,6 +3370,25 @@ async function healPreviousOrderEditOutboxRow(row) {
   return healed;
 }
 
+/**
+ * TemporaryCart still has previous-order edit markers for this outbox row.
+ * After finish/F8, DELETE /lines clears markers — reusing that cart id would
+ * checkout as a brand-new order.
+ */
+export function temporaryCartHasPreviousOrderEditMarkers(cart, row) {
+  if (!cart || !row) return false;
+  const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
+  const cartSuperseded = Number(cart.superseded_sale_id ?? 0);
+  if (editSaleId <= 0 || cartSuperseded !== editSaleId) return false;
+
+  const editOrderNum = previousOrderEditOrgOrderNum(row);
+  const cartHeld = Number(cart.held_order_num ?? 0);
+  if (editOrderNum != null && Number(editOrderNum) > 0) {
+    return cartHeld === Number(editOrderNum);
+  }
+  return cartHeld > 0;
+}
+
 async function resolvePreviousOrderEditCartId(row) {
   row = await healPreviousOrderEditOutboxRow(row);
   let cartId = row.server_cart_id ? Number(row.server_cart_id) : null;
@@ -3420,15 +3464,20 @@ async function resolvePreviousOrderEditCartId(row) {
         loading: false,
         reportIssues: false,
       });
-      const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
-      const editOrderNum = previousOrderEditOrgOrderNum(row);
-      await assertPosTillAvailableForSync({
-        stickyCart: existing,
-        editSaleId,
-        editOrderNum,
-        allowWipeOrphans: true,
-      });
-      return cartId;
+      if (!temporaryCartHasPreviousOrderEditMarkers(existing, row)) {
+        // Finish/F8 already cleared held_order_num / superseded_sale_id on this cart.
+        cartId = null;
+      } else {
+        const editSaleId = Number(row.superseded_sale_id ?? row.server_sale_id ?? 0);
+        const editOrderNum = previousOrderEditOrgOrderNum(row);
+        await assertPosTillAvailableForSync({
+          stickyCart: existing,
+          editSaleId,
+          editOrderNum,
+          allowWipeOrphans: true,
+        });
+        return cartId;
+      }
     } catch (err) {
       if (isPreviousOrderEditTillBusyError(err)) {
         throw err;

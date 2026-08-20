@@ -128,6 +128,25 @@ describe("applyCartMutationResponse", () => {
     const next = applyCartMutationResponse(prev, res, { extraPosTickets: ["42"] });
     expect(next.next_pos_order_num).toBe(42);
   });
+
+  it("keeps held_order_num and superseded_sale_id when the server response nulls them", () => {
+    const prev = {
+      id: 10,
+      held_order_num: 120,
+      superseded_sale_id: 55,
+      lines: [{ id: 1, product_code: "A", quantity: 2 }],
+    };
+    const res = {
+      id: 10,
+      held_order_num: null,
+      superseded_sale_id: null,
+      lines: [{ id: 1, product_code: "A", quantity: 1 }],
+    };
+    const next = applyCartMutationResponse(prev, res);
+    expect(next.held_order_num).toBe(120);
+    expect(next.superseded_sale_id).toBe(55);
+    expect(next.lines[0].quantity).toBe(1);
+  });
 });
 
 describe("applyOptimisticCartMutation (swap / edit)", () => {
