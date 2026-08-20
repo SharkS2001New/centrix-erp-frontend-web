@@ -13,7 +13,6 @@ import {
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
-import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
   receiptPaymentDetailsFromApi,
   receiptPaymentDetailsToPayload,
@@ -102,9 +101,6 @@ export function RouteFormFields({
   showBranchSelect = false,
   branchesLoading = false,
 }) {
-  const { capabilities } = useAuth();
-  const posRouteOrdersEnabled = isExternalPosEnabled(capabilities);
-
   function applyPatch(updates) {
     if (onPatch) {
       onPatch(updates);
@@ -229,14 +225,11 @@ export function RouteFormFields({
           />
           <span>
             <span className="block text-sm font-medium text-slate-900">
-              Custom payment instructions for this route
+              Override payment instructions for this route
             </span>
             <span className="mt-0.5 block text-xs text-slate-500">
-              Printed on receipts (and invoices) for customers and orders on this route, instead of
-              the organization
-              {posRouteOrdersEnabled
-                ? " POS / mobile payment instructions."
-                : " payment instructions."}
+              When set, thermal receipts and A4 invoices for this route print these payment details
+              instead of the organization defaults. Other routes are unchanged.
             </span>
           </span>
         </label>

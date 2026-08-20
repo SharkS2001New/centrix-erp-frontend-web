@@ -1,8 +1,8 @@
 import { stringifyPrintField } from "@/lib/sale-document-print-shared";
 
 /**
- * Route payment instructions apply when the sale or customer is tied to a route
- * that has custom receipt_payment_details (not limited to mobile/POS channels).
+ * Prefer the sale's route; fall back to the customer's assigned route so
+ * reprints still pick up a route-specific payment override when set.
  */
 export function resolveRouteIdForPaymentDetails({ sale = null, customer = null, route = null } = {}) {
   const fromSale = sale?.route_id;
@@ -199,6 +199,9 @@ export function resolveReceiptPaymentDetails({
     return receiptPaymentDetailsToPayload(sales.proforma_payment_details);
   }
 
+  // Optional per-route override: only when this route has custom payment details
+  // saved. Affects thermal receipts and A4 invoices for that route; other routes
+  // keep organization (or org route) payment instructions.
   const routeId = resolveRouteIdForPaymentDetails({ sale, customer, route });
   const routeMatches =
     routeId != null && (route?.id == null || Number(route.id) === Number(routeId));
