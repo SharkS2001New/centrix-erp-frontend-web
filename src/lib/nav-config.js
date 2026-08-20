@@ -1050,13 +1050,6 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hospitality.settings.view,
         orgAdminOnly: true,
       },
-      {
-        href: "/admin/till-printing",
-        label: "Local printing",
-        module: "admin",
-        permission: P.admin.till_printing.view,
-        orgAdminOnly: true,
-      },
     ],
   },
   {

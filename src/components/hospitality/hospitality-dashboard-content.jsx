@@ -174,12 +174,6 @@ const LINK_GROUPS = [
         service: "night_audit",
         permission: P.hospitality.night_audit.view,
       },
-      {
-        href: "/admin/till-printing",
-        title: "Local printing",
-        desc: "Kitchen tickets and guest receipts",
-        permission: P.admin.till_printing.view,
-      },
     ],
   },
 ];

@@ -270,7 +270,7 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     if (item.href?.startsWith("/hospitality")) {
       return true;
     }
-    if (item.href === "/admin/till-printing" || item.href === "/admin/hotel-settings") {
+    if (item.href === "/admin/hotel-settings") {
       return true;
     }
     return pathBelongsToWorkspace(item.href, "hospitality_backoffice");
@@ -349,8 +349,7 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 
   if (
     workspaceId === "hospitality_backoffice" &&
-    (pathname === "/admin/till-printing" ||
-      pathname === "/admin/hotel-settings" ||
+    (pathname === "/admin/hotel-settings" ||
       pathname.startsWith("/admin/hotel-settings/"))
   ) {
     return true;
