@@ -5,27 +5,30 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SOURCE_ZIP_NAME = "CentrixAttendanceAgent.zip";
-const ZIP_ROOT = "centrix-attendance-agent";
+const ZIP_ROOT = "attendance-agent-dotnet";
 
 function sourceRoot() {
-  return path.join(process.cwd(), "attendance-agent");
+  return path.join(process.cwd(), "attendance-agent-dotnet");
 }
 
 function installReadme() {
-  return `# Centrix Attendance Agent
+  return `# Centrix Attendance Agent (.NET)
 
 Preconfigured package from Centrix → HR → Attendance clock-in.
 
 ## Quick start (Windows office PC on same LAN as Hikvision)
 
-1. Unzip this folder anywhere (e.g. C:\\Centrix\\attendance-agent).
-2. Install Node.js 20+ if needed: https://nodejs.org/
-3. Double-click **install-windows.bat** and accept the Administrator prompt.
-   The zip is already configured from Centrix (no local settings form).
-4. Windows installs the **CentrixAttendanceAgent** service (starts automatically with Windows). No GitHub download is required.
-5. Test connection later: **open-settings.bat**. Change IP or password in Centrix, then download the agent again. Remove: **uninstall-windows.bat** (Administrator).
+1. Unzip this folder (e.g. C:\\Centrix\\attendance-agent-dotnet).
+2. Install .NET 8 SDK once if needed:
+   https://dotnet.microsoft.com/download/dotnet/8.0
+3. Right-click **BUILD-AND-INSTALL.bat** → Run as administrator.
+   - Builds a self-contained Windows exe (no Node.js).
+   - Installs the **CentrixAttendanceAgent** Windows service.
+4. Open http://127.0.0.1:9251 → Test connection.
+5. Change IP or password in Centrix, then download the agent again.
+6. Remove: **uninstall-windows.bat** (Administrator).
 
-Punches and Manage Hikvision actions go through this agent.
+This replaces the older Node.js attendance agent.
 Keep this folder private — config.json includes a Centrix API token.
 `;
 }
@@ -72,7 +75,7 @@ export async function GET() {
         message:
           error instanceof Error
             ? error.message
-            : "Could not package attendance-agent on this server.",
+            : "Could not package attendance-agent-dotnet on this server.",
         available: false,
       },
       { status: 404 },
@@ -147,7 +150,22 @@ export async function POST(request) {
         useHttps: Boolean(hik.useHttps),
       },
       pollIntervalSeconds:
-        Number(config.pollIntervalSeconds) > 0 ? Number(config.pollIntervalSeconds) : 300,
+        Number(config.pollIntervalSeconds) > 0 ? Number(config.pollIntervalSeconds) : 600,
+      heartbeatIntervalSeconds:
+        Number(config.heartbeatIntervalSeconds) > 0
+          ? Number(config.heartbeatIntervalSeconds)
+          : Number(config.pollIntervalSeconds) > 0
+            ? Number(config.pollIntervalSeconds)
+            : 600,
+      punchPollSeconds: Number(config.punchPollSeconds) > 0 ? Number(config.punchPollSeconds) : 30,
+      punchLeadMinutes: Number.isFinite(Number(config.punchLeadMinutes))
+        ? Number(config.punchLeadMinutes)
+        : 10,
+      punchLagMinutes: Number.isFinite(Number(config.punchLagMinutes))
+        ? Number(config.punchLagMinutes)
+        : 20,
+      punchWindows: Array.isArray(config.punchWindows) ? config.punchWindows : undefined,
+      timezone: String(config.timezone ?? "Africa/Nairobi"),
       lookbackMinutes: Number(config.lookbackMinutes) > 0 ? Number(config.lookbackMinutes) : 10080,
     };
 
@@ -177,7 +195,7 @@ export async function POST(request) {
         message:
           error instanceof Error
             ? error.message
-            : "Could not package attendance-agent on this server.",
+            : "Could not package attendance-agent-dotnet on this server.",
       },
       { status: 500 },
     );

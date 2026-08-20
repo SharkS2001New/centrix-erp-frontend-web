@@ -14,7 +14,10 @@ import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-
 import { useAuth } from "@/contexts/auth-context";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
-import { receiptPaymentDetailsFromApi } from "@/lib/receipt-payment-details";
+import {
+  receiptPaymentDetailsFromApi,
+  receiptPaymentDetailsToPayload,
+} from "@/lib/receipt-payment-details";
 import { calendarDateInTimezone } from "@/lib/datetime";
 import { isAdminUser } from "@/components/customers/customer-form";
 
@@ -57,19 +60,10 @@ export function buildRouteBody(form) {
   }
 
   if (form.use_route_payment_details && form.receipt_payment_details) {
-    const lines = (form.receipt_payment_details.lines ?? []).filter(
-      (line) => line.label?.trim() || line.value?.trim(),
+    // Preserve multi-method blocks (paybill / till / bank) for receipt print.
+    body.receipt_payment_details = receiptPaymentDetailsToPayload(
+      form.receipt_payment_details,
     );
-    const note = String(form.receipt_payment_details.note ?? "").trim();
-    if (lines.length || note) {
-      body.receipt_payment_details = {
-        title: form.receipt_payment_details.title?.trim() || "Payment details",
-        lines,
-        note,
-      };
-    } else {
-      body.receipt_payment_details = null;
-    }
   } else {
     body.receipt_payment_details = null;
   }
@@ -214,6 +208,15 @@ export function RouteFormFields({
               if (checked && !form.receipt_payment_details) {
                 updates.receipt_payment_details = {
                   title: "Payment details",
+                  blocks: [
+                    {
+                      title: "",
+                      lines: [
+                        { label: "M-Pesa Paybill", value: "" },
+                        { label: "Account no.", value: "" },
+                      ],
+                    },
+                  ],
                   lines: [
                     { label: "M-Pesa Paybill", value: "" },
                     { label: "Account no.", value: "" },
@@ -229,10 +232,11 @@ export function RouteFormFields({
               Custom payment instructions for this route
             </span>
             <span className="mt-0.5 block text-xs text-slate-500">
-              Overrides organization mobile/route receipt paybill details for orders on this route
+              Printed on receipts (and invoices) for customers and orders on this route, instead of
+              the organization
               {posRouteOrdersEnabled
-                ? " (mobile field sales and POS route orders)."
-                : " (mobile field sales and backoffice route orders)."}
+                ? " POS / mobile payment instructions."
+                : " payment instructions."}
             </span>
           </span>
         </label>

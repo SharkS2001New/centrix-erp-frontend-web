@@ -14,6 +14,7 @@ import {
   suggestImapFromSmtp,
   isZohoMailHost,
 } from "@/lib/platform-mail-settings";
+import { publishPlatformMailUnread } from "@/lib/platform-mailbox-unread";
 import { PLATFORM_INVOICE_DESIGN_TEMPLATES } from "@/lib/platform-invoices";
 import { PLATFORM_EMAIL_PLACEHOLDERS } from "@/lib/platform-ai-compose";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
@@ -167,8 +168,12 @@ export function PlatformEmailDeliveryPanel() {
         method: "PUT",
         body: { remove_account_id: form.account_id },
       });
-      setForm(platformMailFormFromApi(res));
-      notifySuccess("Mailbox removed.");
+      const next = platformMailFormFromApi(res);
+      setForm(next);
+      if (!(next.accounts?.length)) {
+        publishPlatformMailUnread(0);
+      }
+      notifySuccess(last ? "Mailbox removed. Email is disconnected." : "Mailbox removed.");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not remove mailbox.");
     } finally {

@@ -256,7 +256,9 @@ export function AttendanceClockDevicesSettings() {
       };
 
       const { filename } = await downloadAttendanceAgentPackage(config);
-      notifySuccess(`Downloaded ${filename}. Unzip on a LAN PC and run install-windows.bat as Administrator.`);
+      notifySuccess(
+        `Downloaded ${filename}. Unzip on a LAN PC and run BUILD-AND-INSTALL.bat as Administrator.`,
+      );
       setDownloadDevice(null);
       await load();
     } catch (err) {
@@ -601,10 +603,13 @@ export function AttendanceClockDevicesSettings() {
         </div>
         <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-500">
           <li>Unzip on a Windows PC on the same LAN as the terminal.</li>
-          <li>Install Node.js 20+ if needed, then run <code>install-windows.bat</code> as Administrator.</li>
           <li>
-            Windows installs the service using the Centrix download (no local settings form). Agent
-            status is shown automatically in Centrix when you open Attendance clock-in.
+            Install the .NET 8 SDK once if needed, then run <code>BUILD-AND-INSTALL.bat</code> as
+            Administrator (self-contained Windows service — no Node.js).
+          </li>
+          <li>
+            Open <code>http://127.0.0.1:9251</code> to test locally. Agent status also appears in
+            Centrix when you open Attendance clock-in.
           </li>
         </ol>
       </FormModal>
@@ -683,9 +688,9 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
         <li>
           Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is preconfigured
           with Centrix URL, token, and device settings. On a LAN PC: unzip →{" "}
-          <code>install-windows.bat</code> as Administrator (Node 20+). The installer uses that config
-          and installs the Windows service. Agent status is checked automatically in Centrix when you
-          open Attendance clock-in.
+          <code>BUILD-AND-INSTALL.bat</code> as Administrator (.NET 8 SDK once; no Node.js). That
+          installs the Windows service. Local status: <code>http://127.0.0.1:9251</code>. Agent status
+          is also checked automatically in Centrix when you open Attendance clock-in.
         </li>
         <li>
           The agent talks to the Hikvision on the LAN and to Centrix online — attendance punches and

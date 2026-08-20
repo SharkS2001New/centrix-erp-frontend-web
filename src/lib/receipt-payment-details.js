@@ -1,10 +1,19 @@
 import { stringifyPrintField } from "@/lib/sale-document-print-shared";
 
-/** Mobile field sales or POS route-order mode (kept local to avoid sales ↔ sales-settings cycle). */
-function isRouteOrderSale(sale) {
-  if (!sale?.route_id) return false;
-  const channel = String(sale.channel ?? sale.order_source ?? "").toLowerCase();
-  return channel === "mobile" || channel === "pos";
+/**
+ * Route payment instructions apply when the sale or customer is tied to a route
+ * that has custom receipt_payment_details (not limited to mobile/POS channels).
+ */
+export function resolveRouteIdForPaymentDetails({ sale = null, customer = null, route = null } = {}) {
+  const fromSale = sale?.route_id;
+  if (fromSale != null && fromSale !== "") return Number(fromSale);
+
+  const fromCustomer = customer?.route_id;
+  if (fromCustomer != null && fromCustomer !== "") return Number(fromCustomer);
+
+  if (route?.id != null && route?.receipt_payment_details) return Number(route.id);
+
+  return null;
 }
 
 export { sampleReceiptPreviewSale } from "@/lib/print-preview-samples";
@@ -167,6 +176,7 @@ export function hasReceiptPaymentDetailsContent(details) {
  * @param {object|null} options.moduleSettings
  * @param {object|null} options.route
  * @param {object|null} options.sale
+ * @param {object|null} options.customer
  * @param {object|null} options.overrideDetails - admin preview / unsaved form
  * @param {"receipt"|"invoice"|"proforma"} [options.documentType]
  */
@@ -174,6 +184,7 @@ export function resolveReceiptPaymentDetails({
   moduleSettings = null,
   route = null,
   sale = null,
+  customer = null,
   overrideDetails = null,
   documentType = "receipt",
 } = {}) {
@@ -187,6 +198,17 @@ export function resolveReceiptPaymentDetails({
   if (documentType === "proforma") {
     return receiptPaymentDetailsToPayload(sales.proforma_payment_details);
   }
+
+  const routeId = resolveRouteIdForPaymentDetails({ sale, customer, route });
+  const routeMatches =
+    routeId != null && (route?.id == null || Number(route.id) === Number(routeId));
+  const useRoutePaymentDetails = Boolean(routeMatches && route);
+
+  if (useRoutePaymentDetails && route?.receipt_payment_details) {
+    const routeDetails = receiptPaymentDetailsToPayload(route.receipt_payment_details);
+    if (routeDetails) return routeDetails;
+  }
+
   if (documentType === "invoice") {
     const rawSales = moduleSettings?.sales ?? {};
     // Prefer dedicated invoice block when saved; otherwise keep legacy POS details.
@@ -196,14 +218,7 @@ export function resolveReceiptPaymentDetails({
     return receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
   }
 
-  const routeContext = sale ? isRouteOrderSale(sale) || sale.channel === "mobile" : false;
-
-  if (routeContext && route?.receipt_payment_details) {
-    const routeDetails = receiptPaymentDetailsToPayload(route.receipt_payment_details);
-    if (routeDetails) return routeDetails;
-  }
-
-  if (routeContext && sales.use_same_payment_details_for_routes === false) {
+  if (useRoutePaymentDetails && sales.use_same_payment_details_for_routes === false) {
     return receiptPaymentDetailsToPayload(sales.route_receipt_payment_details);
   }
 

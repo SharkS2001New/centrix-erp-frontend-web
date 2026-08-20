@@ -14581,8 +14581,8 @@ export function PosScreen({ standalone = false }) {
       }
 
       if (e.key === "Escape") {
-        const wasPaymentOpen = Boolean(state.paymentOpen);
-        const modalOpen = isModalOpen(state);
+        const wasPaymentOpen = Boolean(state.paymentOpen || paymentOpenRef.current);
+        const modalOpen = isModalOpen(state) || wasPaymentOpen;
 
         // Do not claim Esc while a non-payment dialog is open — our capture
         // listeners (window/document) otherwise stopImmediatePropagation and the
@@ -14615,10 +14615,10 @@ export function PosScreen({ standalone = false }) {
           focusScanAfterEsc(actions);
           return;
         }
-        // Payment has no reliable Esc handler under capture — close it ourselves.
+        // Payment owns Esc: confirm → payment amounts → close (PosDialogShell capture).
+        // Do not hard-close here — that dismissed checkout while cashiers typed tenders
+        // or pressed Page Down into the confirm step.
         if (wasPaymentOpen) {
-          actions.closePayment?.();
-          focusScanAfterEsc(actions);
           return;
         }
         // Pending add (product selected, focus on qty): Esc cancels the entry row only.
@@ -16311,6 +16311,10 @@ export function PosScreen({ standalone = false }) {
           setKraUploadPrompt(null);
           setKraUploadError(null);
           kraCheckoutRetryRef.current = null;
+          // Esc / Cancel — return keyboard to Scan (not after a finished sale print).
+          if (receiptPrintStatusRef.current !== "printed") {
+            window.requestAnimationFrame(() => focusScanCode());
+          }
         }}
         billTotal={paymentPanelBillTotal}
         previousOrderEditAdjustment={previousOrderEditAdjustment}

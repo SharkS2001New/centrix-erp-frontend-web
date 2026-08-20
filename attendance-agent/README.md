@@ -1,4 +1,8 @@
-# Centrix Attendance Agent
+# Centrix Attendance Agent (legacy Node.js)
+
+> **Replaced by the .NET agent.** Use [`../attendance-agent-dotnet/`](../attendance-agent-dotnet/)
+> (download from Centrix → HR → Attendance → **BUILD-AND-INSTALL.bat**). Uninstall this Node
+> service before installing the .NET one if both would share `CentrixAttendanceAgent`.
 
 Local bridge for **cloud Centrix** + **LAN Hikvision** fingerprint terminals.
 

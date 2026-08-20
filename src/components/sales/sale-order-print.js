@@ -24,6 +24,7 @@ import {
 } from "@/lib/sales-settings";
 import {
   resolveReceiptPaymentDetails,
+  resolveRouteIdForPaymentDetails,
   shouldShowReceiptPaymentDetails,
 } from "@/lib/receipt-payment-details";
 import { resolveProformaValidDays } from "@/lib/proforma-print-settings";
@@ -226,10 +227,18 @@ export async function warmSalePrintBatch(sales, options = {}) {
 
     if (!skipNetworkLookups) {
       tasks.push(getOrCreateCachedPromise(batchCache.branchById, sale?.branch_id, () => fetchBranch(sale?.branch_id)));
-      tasks.push(
-        getOrCreateCachedPromise(batchCache.customerByNum, sale?.customer_num, () => fetchCustomer(sale?.customer_num)),
+      const customerPromise = getOrCreateCachedPromise(
+        batchCache.customerByNum,
+        sale?.customer_num,
+        () => fetchCustomer(sale?.customer_num),
       );
-      tasks.push(getOrCreateCachedPromise(batchCache.routeById, sale?.route_id, () => fetchRoute(sale?.route_id)));
+      tasks.push(customerPromise);
+      tasks.push(
+        customerPromise.then((customer) => {
+          const routeId = resolveRouteIdForPaymentDetails({ sale, customer });
+          return getOrCreateCachedPromise(batchCache.routeById, routeId, () => fetchRoute(routeId));
+        }),
+      );
       tasks.push(fetchUserPrintNameCached(sale?.created_by, batchCache));
       tasks.push(fetchUserPrintNameCached(sale?.cashier_id, batchCache));
     }
@@ -407,7 +416,7 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       ? { ...(options.organization ?? {}), ...fetchedOrganization }
       : options.organization ?? null;
 
-    const [branch, customer, route] = await Promise.all([
+    const [branch, customer] = await Promise.all([
       options.branch
         ? Promise.resolve(options.branch)
         : skipNetworkLookups
@@ -422,12 +431,24 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
             saleForPrint.customer_num,
             () => fetchCustomer(saleForPrint.customer_num),
           ),
-      options.route
-        ? Promise.resolve(options.route)
-        : skipNetworkLookups
-          ? Promise.resolve(null)
-          : getOrCreateCachedPromise(batchCache.routeById, saleForPrint.route_id, () => fetchRoute(saleForPrint.route_id)),
     ]);
+
+    const routeId = resolveRouteIdForPaymentDetails({
+      sale: saleForPrint,
+      customer,
+      route: options.route,
+    });
+    const routeNeedsFetch =
+      Boolean(routeId) &&
+      !skipNetworkLookups &&
+      (!options.route ||
+        Number(options.route.id) !== Number(routeId) ||
+        !Object.prototype.hasOwnProperty.call(options.route, "receipt_payment_details"));
+    const route = routeNeedsFetch
+      ? await getOrCreateCachedPromise(batchCache.routeById, routeId, () => fetchRoute(routeId))
+      : options.route && (!routeId || Number(options.route.id) === Number(routeId))
+        ? options.route
+        : null;
 
     const seller =
       options.seller ??
@@ -520,6 +541,7 @@ export async function prepareSaleOrderPrintJob(sale, options = {}) {
       moduleSettings,
       route,
       sale: saleForPrint,
+      customer,
       overrideDetails: options.paymentInstructions ?? null,
       documentType: isProforma ? "proforma" : documentType === "invoice" ? "invoice" : "receipt",
     });

@@ -133,24 +133,27 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving, emb
 
   useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === "Escape") requestClose();
+      if (e.key !== "Escape") return;
+      // Capture + stop so the POS window listener cannot hard-close checkout
+      // (confirm → payment → close must stay in handleShellClose).
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") {
+        e.stopImmediatePropagation();
+      }
+      requestClose();
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onClose, saving]);
 
   return renderPosModalPortal(
     <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
-      {!embedded ? (
-        <div
-          className="absolute inset-0"
-          aria-hidden="true"
-          onMouseDown={(e) => {
-            if (e.target !== e.currentTarget) return;
-            requestClose();
-          }}
-        />
-      ) : null}
+      {/*
+        No click-outside-to-close: on External POS, focusing amount fields / soft keyboards
+        often drops a mousedown on the dimmed backdrop and dismissed checkout mid-tender.
+        Cashiers dismiss with Esc (step back) or Cancel payment.
+      */}
       <div role="dialog" aria-modal="true" className={`${posModalPanelClass(embedded)} ${POS_DIALOG_SHELL}`}>
         <div className={POS_DIALOG_HEADER}>
           <h2 className="text-center text-sm font-bold tracking-wide">{title}</h2>
@@ -977,8 +980,14 @@ export function PosPaymentPanel({
 
   /** Replace leading 0 when cashier starts typing (0 → 5, not 05). Keeps 0.5 decimals. */
   function normalizePaymentAmountInput(nextValue, previousValue = "0") {
-    let next = String(nextValue ?? "");
+    let next = String(nextValue ?? "").replace(/[^\d.]/g, "");
     if (next === "") return "";
+
+    const firstDot = next.indexOf(".");
+    if (firstDot !== -1) {
+      next =
+        next.slice(0, firstDot + 1) + next.slice(firstDot + 1).replace(/\./g, "");
+    }
 
     const prev = String(previousValue ?? "0");
     if (
@@ -1052,7 +1061,8 @@ export function PosPaymentPanel({
     }
     if (el.tagName === "INPUT") {
       const type = el.type?.toLowerCase() ?? "text";
-      if (type === "number") return true;
+      // Amount tenders (number or decimal text) — C/M/E/K still jump between methods.
+      if (type === "number" || el.getAttribute("inputmode") === "decimal") return true;
       return false;
     }
     if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return false;
@@ -1647,6 +1657,9 @@ export function PosPaymentPanel({
       if (e.key === "PageDown" && !saving && step !== "saving" && step !== "complete") {
         e.preventDefault();
         e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === "function") {
+          e.stopImmediatePropagation();
+        }
         handlePageDownShortcut();
         return;
       }
@@ -2127,9 +2140,9 @@ export function PosPaymentPanel({
           </PosField>
           <PosField label="Amount">
             <input
-              type="number"
-              min="1"
-              step="1"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
               className={inputCls}
               value={stkPromptAmount}
               disabled={stkBusy || saving}
@@ -2353,11 +2366,11 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
           <PosField label="Cash amount (C)">
-            <input
+              <input
               ref={cashAmountRef}
-              type="number"
-              min="0"
-              step="any"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
               className={inputCls}
               value={cashAmount}
               onFocus={(e) => handlePaymentAmountFocus(e, "CASH")}
@@ -2374,9 +2387,9 @@ export function PosPaymentPanel({
             <PosField label="M-Pesa amount (M)">
               <input
                 ref={mpesaAmountRef}
-                type="number"
-                min="0"
-                step="any"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 className={`${inputCls} ${mpesaFieldsLocked ? "theme-input-readonly cursor-not-allowed" : ""}`}
                 value={mpesaAmount}
                 readOnly={mpesaFieldsLocked}
@@ -2437,9 +2450,9 @@ export function PosPaymentPanel({
                   <PosField label="Bank amount (B)">
                     <input
                       ref={bankAmountRef}
-                      type="number"
-                      min="0"
-                      step="any"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       className={inputCls}
                       value={bankAmount}
                       onFocus={(e) => handlePaymentAmountFocus(e, bankType || "BANK")}
@@ -2469,9 +2482,9 @@ export function PosPaymentPanel({
             <PosField label="Equity Bank amount (E)">
               <input
                 ref={equityAmountRef}
-                type="number"
-                min="0"
-                step="any"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 className={inputCls}
                 value={equityAmount}
                 onFocus={(e) => handlePaymentAmountFocus(e, "EQUITY")}
@@ -2488,9 +2501,9 @@ export function PosPaymentPanel({
             <PosField label="KCB amount (K)">
               <input
                 ref={kcbAmountRef}
-                type="number"
-                min="0"
-                step="any"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 className={inputCls}
                 value={kcbAmount}
                 onFocus={(e) => handlePaymentAmountFocus(e, "KCB")}
@@ -2506,9 +2519,9 @@ export function PosPaymentPanel({
           {!cfg.useBankSelect && cfg.showOtherBank ? (
             <PosField label={`${cfg.otherBankLabel ?? "Other bank"} amount`}>
               <input
-                type="number"
-                min="0"
-                step="any"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 className={inputCls}
                 value={otherBankAmount}
                 onFocus={(e) => handlePaymentAmountFocus(e, "OTHER")}
@@ -2528,9 +2541,9 @@ export function PosPaymentPanel({
             <>
               <PosField label="Cheque amount">
                 <input
-                  type="number"
-                  min="0"
-                  step="any"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
                   className={inputCls}
                   value={chequeAmount}
                   onFocus={(e) => handlePaymentAmountFocus(e, "CHEQUE")}

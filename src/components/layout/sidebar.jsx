@@ -364,7 +364,8 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
           loading: false,
         });
         if (cancelled) return;
-        const next = Number(res.unread_count || 0);
+        const accounts = Array.isArray(res.accounts) ? res.accounts : [];
+        const next = accounts.length === 0 ? 0 : Number(res.unread_count || 0);
         setMailboxUnread(next);
         publishPlatformMailUnread(next);
       } catch {

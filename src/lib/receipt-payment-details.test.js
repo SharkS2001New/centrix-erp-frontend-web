@@ -103,6 +103,78 @@ describe("proforma payment details isolation", () => {
   });
 });
 
+describe("route payment details on receipts", () => {
+  const sales = {
+    show_receipt_payment_details: true,
+    use_same_payment_details_for_routes: true,
+    pos_receipt_payment_details: {
+      title: "Org POS pay",
+      lines: [{ label: "Till", value: "111" }],
+      note: "",
+    },
+    route_receipt_payment_details: {
+      title: "Org route pay",
+      lines: [{ label: "Paybill", value: "222" }],
+      note: "",
+    },
+    invoice_payment_details: {
+      title: "Invoice pay",
+      lines: [{ label: "Account", value: "555" }],
+      note: "",
+    },
+  };
+
+  const routeDetails = {
+    title: "Route E pay",
+    lines: [
+      { label: "M-Pesa Paybill", value: "888888" },
+      { label: "Account no.", value: "ROUTEE" },
+    ],
+    note: "",
+  };
+
+  it("uses route.receipt_payment_details for a sale with route_id (any channel)", () => {
+    const resolved = resolveReceiptPaymentDetails({
+      moduleSettings: { sales },
+      route: { id: 121, receipt_payment_details: routeDetails },
+      sale: { route_id: 121, channel: "backoffice" },
+      documentType: "receipt",
+    });
+    expect(resolved?.lines?.[0]?.value).toBe("888888");
+  });
+
+  it("uses route details when the customer is on the route even if the sale has no route_id", () => {
+    const resolved = resolveReceiptPaymentDetails({
+      moduleSettings: { sales },
+      route: { id: 121, receipt_payment_details: routeDetails },
+      sale: { channel: "pos", route_id: null },
+      customer: { route_id: 121 },
+      documentType: "receipt",
+    });
+    expect(resolved?.lines?.[0]?.value).toBe("888888");
+  });
+
+  it("uses route details on invoices for route customers", () => {
+    const resolved = resolveReceiptPaymentDetails({
+      moduleSettings: { sales },
+      route: { id: 121, receipt_payment_details: routeDetails },
+      sale: { route_id: 121, channel: "mobile" },
+      documentType: "invoice",
+    });
+    expect(resolved?.lines?.[0]?.value).toBe("888888");
+  });
+
+  it("falls back to org POS details when the route has no custom payment instructions", () => {
+    const resolved = resolveReceiptPaymentDetails({
+      moduleSettings: { sales },
+      route: { id: 121, receipt_payment_details: null },
+      sale: { route_id: 121, channel: "mobile" },
+      documentType: "receipt",
+    });
+    expect(resolved?.lines?.[0]?.value).toBe("111");
+  });
+});
+
 describe("payment details editor / multi-block", () => {
   it("keeps blank draft lines when keepEmptyLines is true (Add line)", () => {
     const withDraft = normalizeReceiptPaymentDetails(

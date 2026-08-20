@@ -1,0 +1,26 @@
+{
+  "centrixApiUrl": "https://centrixerp.example.com/api/v1",
+  "centrixToken": "PASTE_SANCTUM_TOKEN_HERE",
+  "deviceId": null,
+  "deviceNo": "TERMINAL-01",
+  "hikvision": {
+    "host": "192.168.1.50",
+    "port": 80,
+    "username": "admin",
+    "password": "DEVICE_PASSWORD",
+    "useHttps": false
+  },
+  "pollIntervalSeconds": 600,
+  "heartbeatIntervalSeconds": 600,
+  "punchPollSeconds": 30,
+  "punchLeadMinutes": 10,
+  "punchLagMinutes": 20,
+  "punchWindows": [
+    { "name": "morning_clock_in", "from": "08:00", "to": "10:00" },
+    { "name": "lunch_clock_out", "from": "12:30", "to": "14:00" },
+    { "name": "lunch_clock_in", "from": "13:00", "to": "16:00" },
+    { "name": "evening_clock_out", "from": "16:00", "to": "22:00" }
+  ],
+  "timezone": "Africa/Nairobi",
+  "lookbackMinutes": 10080
+}
