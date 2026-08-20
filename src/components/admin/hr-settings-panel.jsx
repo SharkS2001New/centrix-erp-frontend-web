@@ -219,7 +219,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                           />
                           <p className="mt-1 text-xs text-slate-500">
                             Choose one method for your organization. Full device setup and agent download
-                            live under HR → Attendance clock-in (also on the Clock-in devices
+                            live under Administration → Attendance clock-in (also on the Clock-in devices
                             tab here).
                           </p>
                         </Field>
@@ -426,7 +426,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   href="/admin/attendance-clock"
                   className="font-medium text-[#185FA5] hover:underline"
                 >
-                  Administration → Attendance
+                  Administration → Attendance clock-in
                 </AppNavLink>{" "}
                 for method, terminals, and Centrix Attendance Agent download.
               </p>

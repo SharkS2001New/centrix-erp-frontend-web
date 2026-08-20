@@ -1,14 +1,15 @@
-/** Clock-in setup lives in Administration and is mirrored under HR. */
-export function attendanceClockBasePath(pathname = "") {
-  return String(pathname).startsWith("/admin/attendance-clock")
-    ? "/admin/attendance-clock"
-    : "/hr/attendance-clock";
+/** Clock-in device setup lives only in Administration (same pattern as Local printing). */
+export const ATTENDANCE_CLOCK_ADMIN_PATH = "/admin/attendance-clock";
+export const ATTENDANCE_CLOCK_ADMIN_LABEL = "Attendance clock-in";
+
+export function attendanceClockBasePath() {
+  return ATTENDANCE_CLOCK_ADMIN_PATH;
 }
 
-export function attendanceClockListHref(pathname = "") {
-  return attendanceClockBasePath(pathname);
+export function attendanceClockListHref() {
+  return ATTENDANCE_CLOCK_ADMIN_PATH;
 }
 
-export function attendanceClockDeviceHref(pathname = "", deviceId) {
-  return `${attendanceClockBasePath(pathname)}/${deviceId}`;
+export function attendanceClockDeviceHref(_pathname = "", deviceId) {
+  return `${ATTENDANCE_CLOCK_ADMIN_PATH}/${deviceId}`;
 }

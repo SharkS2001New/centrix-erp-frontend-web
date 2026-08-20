@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
+import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { isNumericRouteId, routeParamValue } from "@/lib/route-params";
 import { useSettingsApi } from "@/contexts/settings-api-context";
@@ -54,9 +54,7 @@ function featureEnabled(capabilities, key) {
 
 export function HikvisionDeviceScreen() {
   const params = useParams();
-  const pathname = usePathname();
-  const listHref = attendanceClockListHref(pathname);
-  const inAdmin = String(pathname ?? "").startsWith("/admin/attendance-clock");
+  const listHref = attendanceClockListHref();
   const deviceId = routeParamValue(params?.id);
   const { organizationApiPath } = useSettingsApi();
   const base = organizationApiPath(`/attendance-clock-devices/${deviceId}/hikvision`);
@@ -411,9 +409,7 @@ export function HikvisionDeviceScreen() {
         banner={
           <AdminBreadcrumb
             items={[
-              inAdmin
-                ? { label: "Administration", href: "/admin" }
-                : { label: "HR", href: "/hr" },
+              { label: "Administration", href: "/admin" },
               { label: "Attendance clock-in", href: listHref },
               { label: "Device" },
             ]}
@@ -445,9 +441,7 @@ export function HikvisionDeviceScreen() {
       banner={
         <AdminBreadcrumb
             items={[
-              inAdmin
-                ? { label: "Administration", href: "/admin" }
-                : { label: "HR", href: "/hr" },
+              { label: "Administration", href: "/admin" },
               { label: "Attendance clock-in", href: listHref },
               { label: device?.device_no ?? "Device" },
             ]}

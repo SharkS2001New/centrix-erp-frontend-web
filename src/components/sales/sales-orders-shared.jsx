@@ -182,6 +182,9 @@ export function normalizeOrdersListSummary(raw) {
     paid: Number(raw.paid ?? 0),
     cancelled: Number(raw.cancelled ?? 0),
     expired: Number(raw.expired ?? 0),
+    expense_total: Number(raw.expense_total ?? 0),
+    gross_revenue:
+      raw.gross_revenue != null ? Number(raw.gross_revenue) : Number(raw.revenue ?? 0),
   };
 }
 
@@ -209,16 +212,22 @@ export function formatOrderGroupDate(sale) {
 export function OrderSummaryStats({ summary, hint = "Today" }) {
   const cancelled = Number(summary.cancelled ?? 0);
   const expired = Number(summary.expired ?? 0);
+  const expenseTotal = Number(summary.expense_total ?? 0);
   const ordersHintParts = [hint];
   // Terminal counts only when the current result set still includes them
   // (e.g. Status = Cancelled). All browse excludes them from the query.
   if (cancelled > 0) ordersHintParts.push(`${cancelled} cancelled`);
   if (expired > 0) ordersHintParts.push(`${expired} expired`);
 
+  const revenueHint =
+    expenseTotal > 0.009
+      ? `${hint} · less ${formatSaleKes(expenseTotal)} expenses`
+      : hint;
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard label="Orders" value={String(summary.total)} hint={ordersHintParts.join(" · ")} />
-      <StatCard label="Revenue" value={formatSaleKes(summary.revenue)} hint={hint} />
+      <StatCard label="Revenue" value={formatSaleKes(summary.revenue)} hint={revenueHint} />
       <StatCard
         label="Unpaid / partial"
         value={String(summary.unpaid + summary.partial)}

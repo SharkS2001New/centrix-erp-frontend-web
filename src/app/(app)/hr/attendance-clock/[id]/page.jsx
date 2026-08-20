@@ -1,11 +1,8 @@
-"use client";
+import { redirect } from "next/navigation";
+import { attendanceClockDeviceHref } from "@/lib/attendance-clock-paths";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { HrAttendanceClockIdScreen } from "@/components/tab-screens/hr-attendance-clock-id";
-
-/** Tab workspace hosts this screen from the registry when enabled. */
-export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <HrAttendanceClockIdScreen />;
+/** Device setup moved to Administration only (same as Local printing). */
+export default async function Page({ params }) {
+  const { id } = await params;
+  redirect(attendanceClockDeviceHref("", id));
 }

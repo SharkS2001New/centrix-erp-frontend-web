@@ -24,7 +24,6 @@ import { useAuth } from "@/contexts/auth-context";
 const HR_LINKS = [
   { href: "/hr/employees", title: "Employees", desc: "Staff records and contracts", permission: P.hr.employees.view },
   { href: "/hr/attendance", title: "Today's attendance", desc: "Who is in today", permission: P.hr.attendance.view },
-  { href: "/hr/attendance-clock", title: "Attendance clock-in", desc: "Fingerprint terminals and Centrix Attendance Agent", permissionAny: [P.admin.attendance_clock.view, P.hr.manage] },
   { href: "/hr/attendance/history", title: "Previous attendance", desc: "Yesterday’s records; filter by date or employee", permission: P.hr.attendance_history.view },
   { href: "/hr/missed-punches", title: "Missed punches", desc: "Unapplied terminal scans and forgotten clock-outs", permission: P.hr.missed_punches.view },
   { href: "/hr/duplicate-punches", title: "Duplicate punches", desc: "Extra scans in the same hour; first punch still counts", permission: P.hr.duplicate_punches.view },

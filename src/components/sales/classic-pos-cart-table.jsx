@@ -33,7 +33,10 @@ function ClassicLineQtyCell({
   const committed = String(entryQty ?? "");
   const [draft, setDraft] = useState(committed);
   const skipBlurCommitRef = useRef(false);
+  const pendingCommitRef = useRef(null);
   const inputElRef = useRef(null);
+  void lineBusy;
+  void forceSameQtyCommit;
 
   // Keep parent swapLineQtyRef in sync without mutating props during a ref callback
   // (react-hooks/immutability).
@@ -51,8 +54,35 @@ function ClassicLineQtyCell({
     ) {
       return;
     }
+    const pending = pendingCommitRef.current;
+    if (pending != null) {
+      const pendingNum = Number(parseFloat(String(pending).trim()));
+      const committedNum = Number(parseFloat(String(committed).trim()));
+      const matched =
+        String(pending).trim() === String(committed).trim() ||
+        (Number.isFinite(pendingNum) &&
+          Number.isFinite(committedNum) &&
+          Math.abs(pendingNum - committedNum) < 0.0001);
+      if (matched) {
+        pendingCommitRef.current = null;
+        setDraft(committed);
+      }
+      // Hold the typed value until parent cart paint catches up.
+      return;
+    }
     setDraft(committed);
   }, [line?.id, committed]);
+
+  // If the parent rejects the edit (stock, missing product), don't freeze the cell forever.
+  useEffect(() => {
+    if (pendingCommitRef.current == null) return undefined;
+    const timer = window.setTimeout(() => {
+      if (pendingCommitRef.current == null) return;
+      pendingCommitRef.current = null;
+      setDraft(String(entryQty ?? ""));
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [committed, entryQty, line?.id]);
 
   function commit({ applySessionMode = false, value } = {}) {
     // Prefer the live DOM value — Enter can fire before React re-renders the
@@ -64,12 +94,14 @@ function ClassicLineQtyCell({
     const trimmed = String(raw ?? "").trim();
     if (!trimmed) {
       setDraft(committed);
+      pendingCommitRef.current = null;
       return;
     }
     if (trimmed !== draft) setDraft(trimmed);
     // F12 retail/wholesale applies only on Enter for this focused line.
     // Blur must not reprice when the number is unchanged (even after F12).
     if (!applySessionMode && !swapQtyCommit && trimmed === committed) return;
+    pendingCommitRef.current = trimmed;
     onSetQty?.(line, trimmed);
   }
 
@@ -85,7 +117,7 @@ function ClassicLineQtyCell({
         inputMode="decimal"
         className="classic-pos-line-qty-input"
         value={draft}
-        disabled={busy || (lineBusy && !swapQtyCommit)}
+        disabled={busy}
         aria-label={qtyUnit ? `Line quantity (${qtyUnit})` : "Line quantity"}
         onChange={(e) => {
           setDraft(e.target.value);
@@ -111,10 +143,12 @@ function ClassicLineQtyCell({
             // Always notify parent on Enter so F12 wholesale↔retail with the same
             // number still reprices this line; parent no-ops when nothing changed.
             commit({ applySessionMode: true, value: e.currentTarget.value });
+            // Blur after paint protection is armed — parent moves focus to Scan.
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {
             e.preventDefault();
+            pendingCommitRef.current = null;
             setDraft(committed);
             skipBlurCommitRef.current = true;
             e.currentTarget.blur();

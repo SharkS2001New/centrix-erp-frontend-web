@@ -812,6 +812,29 @@ function posProductDisplayName(record) {
   return record.product_name ?? record.description ?? record.product_code ?? "item";
 }
 
+/** Compact qty+unit for toasts, e.g. "5kg" or "2 Bags(50)". */
+function formatPosEntryQtyLabel(qty, unit) {
+  const q = String(qty ?? "").trim();
+  if (!q) return "";
+  const u = String(unit ?? "").trim();
+  if (!u) return q;
+  return /\s/.test(u) ? `${q} ${u}` : `${q}${u}`;
+}
+
+function formatQuantityUpdatedSuccess(fromLabel, toLabel) {
+  if (fromLabel && toLabel) {
+    return `Quantity updated from ${fromLabel} to ${toLabel}`;
+  }
+  return "Quantity updated successfully";
+}
+
+function formatItemChangedSuccess(fromName, toName) {
+  if (fromName && toName) {
+    return `Item changed successfully, ${fromName} with ${toName}`;
+  }
+  return "Item changed successfully";
+}
+
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
 const POS_CHECKOUT_TIMEOUT_MS = 90_000;
 /** Wait after the last previous-order edit before uploading (batch qty/line changes). */
@@ -4623,7 +4646,11 @@ export function PosScreen({ standalone = false }) {
     const wrapped = async () => {
       // Drop only when the workspace was invalidated (F8 / post-sale / hold).
       // Do NOT skip pending-fresh — first qty Enter must call ensureCart inside the task.
-      if (generation !== cartCommitGenerationRef.current) return;
+      if (generation !== cartCommitGenerationRef.current) {
+        // finishSwap may have armed this before enqueue — never leave it stuck.
+        swapCommitInFlightRef.current = false;
+        return;
+      }
       return task();
     };
     const run = cartCommitChainRef.current
@@ -4652,9 +4679,10 @@ export function PosScreen({ standalone = false }) {
 
   /**
    * @param {"qty" | "swap" | "add"} kind
+   * @param {string} [message] Optional detail, e.g. "Quantity updated from 5kg to 2kg"
    * @returns {Promise<void>}
    */
-  function notePreviousOrderEditSuccess(kind) {
+  function notePreviousOrderEditSuccess(kind, message) {
     if (!isPreviousOrderEditSession(cartRef.current)) return Promise.resolve();
     markPreviousOrderDraftDirtyNow();
     const dirty = cartRef.current;
@@ -4662,16 +4690,33 @@ export function PosScreen({ standalone = false }) {
       ? persistPreviousOrderLocalDraft(dirty, { immediate: true })
       : Promise.resolve();
     if (kind === "qty") {
-      notifySuccess("Quantity updated successfully");
-      setStatusMessage("Quantity updated successfully");
+      const msg = message || "Quantity updated successfully";
+      notifySuccess(msg);
+      setStatusMessage(msg);
     } else if (kind === "swap") {
-      notifySuccess("Item changed successfully");
-      setStatusMessage("Item changed successfully");
+      const msg = message || "Item changed successfully";
+      notifySuccess(msg);
+      setStatusMessage(msg);
     } else if (kind === "add") {
-      notifySuccess("Item added successfully");
-      setStatusMessage("Item added successfully");
+      const msg = message || "Item added successfully";
+      notifySuccess(msg);
+      setStatusMessage(msg);
     }
     return persistPromise;
+  }
+
+  function announceQuantityUpdated(fromLabel, toLabel) {
+    const msg = formatQuantityUpdatedSuccess(fromLabel, toLabel);
+    notifySuccess(msg);
+    setStatusMessage(msg);
+    return msg;
+  }
+
+  function announceItemChanged(fromName, toName) {
+    const msg = formatItemChangedSuccess(fromName, toName);
+    notifySuccess(msg);
+    setStatusMessage(msg);
+    return msg;
   }
 
   async function persistPreviousOrderLocalDraft(nextCart, { immediate = false } = {}) {
@@ -4954,6 +4999,16 @@ export function PosScreen({ standalone = false }) {
     setSelectedLineId(null);
     closeProductSearchDropdown();
     focusScanAfterItemAdded();
+  }
+
+  /** Drop swap draft / replacing chrome so the next Enter is a normal qty edit. */
+  function clearSwapChrome() {
+    swapDraftRef.current = null;
+    setSwapDraft(null);
+    replaceTargetSnapshotRef.current = null;
+    setReplacingLineId(null);
+    replacingLineIdRef.current = null;
+    swapCommitInFlightRef.current = false;
   }
 
   useEffect(() => {
@@ -6368,7 +6423,44 @@ export function PosScreen({ standalone = false }) {
           unlockUiEarly: true,
         });
         if (ok) {
-          notePreviousOrderEditSuccess(mergeTarget ? "qty" : "add");
+          if (mergeTarget) {
+            const retailPkg = getRetailPackage(product.product_code);
+            const fromQtyLabel = formatPosEntryQtyLabel(
+              posEntryQtyFromCartLine(mergeTarget, product, retailPkg),
+              posCartLineEntryUnitLabel(mergeTarget, product, retailPkg),
+            );
+            const mergedBase =
+              Number(mergeTarget.quantity ?? 0) + Number(computed.baseQty ?? 0);
+            const mergedEntry = posEntryQtyFromCartLine(
+              {
+                ...mergeTarget,
+                quantity: mergedBase,
+                on_wholesale_retail: computed.isRetail ? 1 : 0,
+              },
+              product,
+              retailPkg,
+            );
+            const toQtyLabel = formatPosEntryQtyLabel(
+              mergedEntry,
+              posCartLineEntryUnitLabel(
+                {
+                  ...mergeTarget,
+                  quantity: mergedBase,
+                  on_wholesale_retail: computed.isRetail ? 1 : 0,
+                },
+                product,
+                retailPkg,
+              ) || computed.uomLabel,
+            );
+            const qtyMsg = formatQuantityUpdatedSuccess(fromQtyLabel, toQtyLabel);
+            if (isPreviousOrderEditSession(cartRef.current)) {
+              notePreviousOrderEditSuccess("qty", qtyMsg);
+            } else {
+              announceQuantityUpdated(fromQtyLabel, toQtyLabel);
+            }
+          } else {
+            notePreviousOrderEditSuccess("add");
+          }
         }
       } catch (e) {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
@@ -6437,7 +6529,10 @@ export function PosScreen({ standalone = false }) {
   async function completeSwapFromDraft(entryQtyRaw) {
     const draft = swapDraftRef.current;
     if (!draft?.line || !draft?.product) return false;
-    if (swapCommitInFlightRef.current) return false;
+    if (swapCommitInFlightRef.current) {
+      setStatusMessage("Swap already saving — wait a moment.");
+      return false;
+    }
     const entryQty = parseDecimalInput(entryQtyRaw ?? draft.quantity);
     if (!(entryQty > 0)) {
       setStatusMessage("Enter a quantity greater than zero to complete the swap.");
@@ -6445,6 +6540,7 @@ export function PosScreen({ standalone = false }) {
     }
 
     swapCommitInFlightRef.current = true;
+    setStatusMessage("Changing item…");
 
     const finishSwap = async () => {
       try {
@@ -6456,11 +6552,7 @@ export function PosScreen({ standalone = false }) {
           null,
         );
         if (ok) {
-          swapDraftRef.current = null;
-          setSwapDraft(null);
-          replaceTargetSnapshotRef.current = null;
-          setReplacingLineId(null);
-          replacingLineIdRef.current = null;
+          clearSwapChrome();
           setSelectedProduct(null);
           setSelectedProductCode(null);
           setSearchQuery("");
@@ -6729,12 +6821,7 @@ export function PosScreen({ standalone = false }) {
     if (!replacingLineId && !swapDraftRef.current && !replaceTargetSnapshotRef.current) {
       return;
     }
-    replaceTargetSnapshotRef.current = null;
-    setReplacingLineId(null);
-    replacingLineIdRef.current = null;
-    swapDraftRef.current = null;
-    setSwapDraft(null);
-    swapCommitInFlightRef.current = false;
+    clearSwapChrome();
     setSelectedProduct(null);
     setSelectedProductCode(null);
     setSearchQuery("");
@@ -6768,6 +6855,10 @@ export function PosScreen({ standalone = false }) {
         preferProductCode: line.product_code,
       }) ??
       line;
+
+    const fromItemName = posProductDisplayName(liveLine);
+    const toItemName = posProductDisplayName(product);
+    const itemChangedMsg = formatItemChangedSuccess(fromItemName, toItemName);
 
     // Price the replacement with the current F12 session — do not inherit the old
     // line's retail flag (that forced "piece" UOM on bag products).
@@ -6870,12 +6961,8 @@ export function PosScreen({ standalone = false }) {
       if (isPreviousOrderEditSession(nextCart)) {
         // Clear swap chrome here — callers may also clear, but previous-order
         // must not leave replacingLineId stuck after a successful SKU change.
-        swapDraftRef.current = null;
-        setSwapDraft(null);
-        replaceTargetSnapshotRef.current = null;
-        setReplacingLineId(null);
-        replacingLineIdRef.current = null;
-        await notePreviousOrderEditSuccess("swap");
+        clearSwapChrome();
+        await notePreviousOrderEditSuccess("swap", itemChangedMsg);
         clearClassicEntryFields();
         return true;
       }
@@ -6898,17 +6985,19 @@ export function PosScreen({ standalone = false }) {
             /* keep in-memory swap */
           }
         }
-        notifySuccess("Item changed successfully");
-        setStatusMessage("Item changed successfully");
-        replaceTargetSnapshotRef.current = null;
+        clearSwapChrome();
+        announceItemChanged(fromItemName, toItemName);
         clearClassicEntryFields();
         return true;
       }
 
-      // Classic live TemporaryCart: UI already swapped — sync with PATCH, keep local
-      // SKU even if the network round-trip fails (cashier must not see the old item).
+      // Classic live TemporaryCart: UI already swapped — announce immediately, then
+      // sync with PATCH in the background (keep local SKU even if network fails).
       // unlockUiEarly skips ensureCart rematerialize (that reloaded the old SKU and
       // caused a second POST row alongside the swapped line).
+      clearSwapChrome();
+      announceItemChanged(fromItemName, toItemName);
+      clearClassicEntryFields();
       const lineRef = cartLineRef(nextLine);
       try {
         const ok = await commitCartLine({
@@ -6968,7 +7057,7 @@ export function PosScreen({ standalone = false }) {
             setCart(repaired);
           }
           setStatusMessage(
-            "Item changed on screen — server sync lagged. Press Enter on qty again if needed.",
+            `${itemChangedMsg} — server sync lagged. Press Enter on qty again if needed.`,
           );
         } else if (ok) {
           // Remove accidental duplicate of the new SKU if sync appended one.
@@ -7001,18 +7090,14 @@ export function PosScreen({ standalone = false }) {
               setCart(repaired);
             }
           }
-          notifySuccess("Item changed successfully");
-          setStatusMessage("Item changed successfully");
         }
       } catch (e) {
         setStatusMessage(
           e instanceof ApiError
             ? e.message
-            : "Item changed on screen — could not sync. Try again if checkout fails.",
+            : `${itemChangedMsg} — could not sync. Try again if checkout fails.`,
         );
       }
-      clearClassicEntryFields();
-      replaceTargetSnapshotRef.current = null;
       return true;
     }
 
@@ -7048,11 +7133,11 @@ export function PosScreen({ standalone = false }) {
       return false;
     }
     if (isPreviousOrderEditSession(cartRef.current ?? activeCart)) {
-      notePreviousOrderEditSuccess("swap");
+      notePreviousOrderEditSuccess("swap", itemChangedMsg);
     } else {
-      notifySuccess("Item changed successfully");
-      setStatusMessage("Item changed successfully");
+      announceItemChanged(fromItemName, toItemName);
     }
+    clearSwapChrome();
     return true;
   }
 
@@ -7689,11 +7774,7 @@ export function PosScreen({ standalone = false }) {
           replaceTargetSnapshotRef.current = null;
           replacingLineIdRef.current = null;
           setReplacingLineId(null);
-          // replaceCartLineWithProduct already notes previous-order swap success.
-          if (!isPreviousOrderEditSession(cartRef.current)) {
-            notifySuccess("Item changed successfully");
-            setStatusMessage("Item changed successfully");
-          }
+          // replaceCartLineWithProduct already announces swap success.
         }
       } catch (e) {
         setStatusMessage(e instanceof ApiError ? e.message : "Failed to replace line");
@@ -7744,10 +7825,64 @@ export function PosScreen({ standalone = false }) {
         unlockUiEarly: true,
       });
       if (!ok) return;
-      if (editingLineId) {
-        notePreviousOrderEditSuccess("qty");
+      const retailPkg = getRetailPackage(productForAdd.product_code);
+      const toQtyLabel = formatPosEntryQtyLabel(
+        String(entryQtyRaw),
+        posCartLineEntryUnitLabel(
+          {
+            quantity: computed.baseQty,
+            on_wholesale_retail: computed.isRetail ? 1 : 0,
+          },
+          productForAdd,
+          retailPkg,
+        ) || computed.uomLabel,
+      );
+      if (editingLineId && editingLine) {
+        const fromQtyLabel = formatPosEntryQtyLabel(
+          posEntryQtyFromCartLine(editingLine, productForAdd, retailPkg),
+          posCartLineEntryUnitLabel(editingLine, productForAdd, retailPkg),
+        );
+        const qtyMsg = formatQuantityUpdatedSuccess(fromQtyLabel, toQtyLabel);
+        if (isPreviousOrderEditSession(cartRef.current)) {
+          notePreviousOrderEditSuccess("qty", qtyMsg);
+        } else {
+          announceQuantityUpdated(fromQtyLabel, toQtyLabel);
+        }
       } else if (mergeTarget) {
-        notePreviousOrderEditSuccess("qty");
+        const fromQtyLabel = formatPosEntryQtyLabel(
+          posEntryQtyFromCartLine(mergeTarget, productForAdd, retailPkg),
+          posCartLineEntryUnitLabel(mergeTarget, productForAdd, retailPkg),
+        );
+        // Merged line shows the new total entry qty after increment.
+        const mergedBase =
+          Number(mergeTarget.quantity ?? 0) + Number(computed.baseQty ?? 0);
+        const mergedEntry = posEntryQtyFromCartLine(
+          {
+            ...mergeTarget,
+            quantity: mergedBase,
+            on_wholesale_retail: computed.isRetail ? 1 : 0,
+          },
+          productForAdd,
+          retailPkg,
+        );
+        const mergedToLabel = formatPosEntryQtyLabel(
+          mergedEntry,
+          posCartLineEntryUnitLabel(
+            {
+              ...mergeTarget,
+              quantity: mergedBase,
+              on_wholesale_retail: computed.isRetail ? 1 : 0,
+            },
+            productForAdd,
+            retailPkg,
+          ) || computed.uomLabel,
+        );
+        const qtyMsg = formatQuantityUpdatedSuccess(fromQtyLabel, mergedToLabel);
+        if (isPreviousOrderEditSession(cartRef.current)) {
+          notePreviousOrderEditSuccess("qty", qtyMsg);
+        } else {
+          announceQuantityUpdated(fromQtyLabel, mergedToLabel);
+        }
       } else {
         notePreviousOrderEditSuccess("add");
       }
@@ -7976,6 +8111,21 @@ export function PosScreen({ standalone = false }) {
       }
 
       const entryQty = cartLineEntryQtyForBaseQty(line, product, retailPackage, nextBaseQty);
+      const fromEntry = posEntryQtyFromCartLine(line, product, retailPackage);
+      const fromUnit = posCartLineEntryUnitLabel(line, product, retailPackage);
+      const toUnit = posCartLineEntryUnitLabel(
+        {
+          ...line,
+          quantity: nextBaseQty,
+          on_wholesale_retail: isRetailLine ? 1 : 0,
+        },
+        product,
+        retailPackage,
+      );
+      const qtySuccessMsg = formatQuantityUpdatedSuccess(
+        formatPosEntryQtyLabel(fromEntry, fromUnit),
+        formatPosEntryQtyLabel(String(entryQty), toUnit),
+      );
       const packQty = cartLinePackQtyForDiscount(
         { ...line, quantity: nextBaseQty },
         product,
@@ -8007,7 +8157,14 @@ export function PosScreen({ standalone = false }) {
       });
       if (ok) {
         setSelectedLineId(line.id);
-        notePreviousOrderEditSuccess("qty");
+        if (isPreviousOrderEditSession(cartRef.current)) {
+          notePreviousOrderEditSuccess("qty", qtySuccessMsg);
+        } else {
+          announceQuantityUpdated(
+            formatPosEntryQtyLabel(fromEntry, fromUnit),
+            formatPosEntryQtyLabel(String(entryQty), toUnit),
+          );
+        }
       }
     };
 
@@ -8038,7 +8195,10 @@ export function PosScreen({ standalone = false }) {
    * price/mode follow the current F12 retail/wholesale session. Other lines are unchanged.
    */
   async function setCartLineEntryQuantity(line, entryQtyRaw) {
-    if (!line || !(cartRef.current ?? cart)?.id) return;
+    if (!line || !(cartRef.current ?? cart)?.id) {
+      setStatusMessage("No open cart — scan or search a product first.");
+      return;
+    }
     const swapDraft = swapDraftRef.current;
     // Only the line being swapped — never match by product_code alone (that stole
     // normal qty Enter into completeSwapFromDraft and left the qty unchanged).
@@ -8052,20 +8212,23 @@ export function PosScreen({ standalone = false }) {
         sameLineId(swapDraft.lineId, line.update_code) ||
         sameLineId(swapDraft.line?.client_line_id, line.id) ||
         sameLineId(swapDraft.line?.client_line_id, line.update_code));
-    if (swapTargetsThisLine || (swapDraft?.product && replacingLineIdRef.current)) {
+    if (swapDraft?.product || replacingLineIdRef.current || replaceTargetSnapshotRef.current) {
+      if (!swapTargetsThisLine) {
+        setStatusMessage("Finish or press Esc to cancel the item swap first.");
+        return;
+      }
       if (swapDraft?.product) {
         void completeSwapFromDraft(entryQtyRaw);
         return;
       }
-      // Incomplete swap draft — clear and apply a normal qty edit.
-      swapDraftRef.current = null;
-      setSwapDraft(null);
-      replaceTargetSnapshotRef.current = null;
-      setReplacingLineId(null);
-      replacingLineIdRef.current = null;
+      // Incomplete swap draft on this line — clear and apply a normal qty edit.
+      clearSwapChrome();
     }
     const localDraftEdit = usesPosLocalDraftLineEdits(cartRef.current);
-    if (!classicLayout && !localDraftEdit && (busy || lineBusy)) return;
+    if (!classicLayout && !localDraftEdit && (busy || lineBusy)) {
+      setStatusMessage("Please wait — saving the previous line, then press Enter again.");
+      return;
+    }
     const entryQty = parseDecimalInput(entryQtyRaw);
     if (!(entryQty > 0)) {
       setStatusMessage("Enter a quantity greater than zero, or use − to remove the line.");
@@ -8078,6 +8241,7 @@ export function PosScreen({ standalone = false }) {
     // still reprice.
     let qtyActuallyChanged = true;
     let modeActuallyChanged = false;
+    let fromQtyLabel = "";
     {
       const activeCart = cartRef.current ?? cart;
       const liveLine =
@@ -8088,15 +8252,19 @@ export function PosScreen({ standalone = false }) {
         productByCodeRef.current[liveLine.product_code] ??
         productByCode[liveLine.product_code] ??
         null;
-      const currentEntry = Number(
-        parseDecimalInput(
-          posEntryQtyFromCartLine(
-            liveLine,
-            productMeta,
-            getRetailPackage(liveLine.product_code),
-          ),
-        ),
+      const retailPackageMeta = getRetailPackage(liveLine.product_code);
+      const currentEntryStr = posEntryQtyFromCartLine(
+        liveLine,
+        productMeta,
+        retailPackageMeta,
       );
+      const currentEntry = Number(parseDecimalInput(currentEntryStr));
+      const fromUnit = posCartLineEntryUnitLabel(
+        liveLine,
+        productMeta,
+        retailPackageMeta,
+      );
+      fromQtyLabel = formatPosEntryQtyLabel(currentEntryStr, fromUnit);
       const lineIsRetail = cartLineRetailStockFlag(liveLine);
       // Always follow F12 — never the line's old retail flag. When retail pricing
       // is off, sellWholesale is forced on; using lineIsRetail here treated bag
@@ -8217,6 +8385,31 @@ export function PosScreen({ standalone = false }) {
         !sessionIsRetail,
       );
 
+      const toUnit =
+        posCartLineEntryUnitLabel(
+          {
+            ...liveLine,
+            quantity: computed.baseQty,
+            on_wholesale_retail: sessionIsRetail ? 1 : 0,
+          },
+          product,
+          retailPackage,
+        ) ||
+        computed.uomLabel ||
+        "";
+      const toQtyLabel = formatPosEntryQtyLabel(String(pricingEntryQty), toUnit);
+      // Refresh from-label if product was missing during the pre-check.
+      const resolvedFromQtyLabel =
+        fromQtyLabel ||
+        formatPosEntryQtyLabel(
+          posEntryQtyFromCartLine(liveLine, product, retailPackage),
+          posCartLineEntryUnitLabel(liveLine, product, retailPackage),
+        );
+      const qtySuccessMsg = formatQuantityUpdatedSuccess(
+        resolvedFromQtyLabel,
+        toQtyLabel,
+      );
+
       if (!allowNegativeStock) {
         const stockCheck = posStockAvailability({
           product,
@@ -8281,7 +8474,7 @@ export function PosScreen({ standalone = false }) {
 
         if (isPreviousOrderEditSession(nextCart)) {
           if (qtyActuallyChanged || modeActuallyChanged) {
-            await notePreviousOrderEditSuccess("qty");
+            await notePreviousOrderEditSuccess("qty", qtySuccessMsg);
           } else {
             await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
           }
@@ -8308,18 +8501,22 @@ export function PosScreen({ standalone = false }) {
             }
           }
           if (qtyActuallyChanged || modeActuallyChanged) {
-            notifySuccess("Quantity updated successfully");
-            setStatusMessage("Quantity updated successfully");
+            announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
           }
           setSelectedLineId(null);
           focusScanAfterItemAdded();
           return;
         }
 
-        // Live TemporaryCart: UI already shows the new qty — sync in the background.
+        // Live TemporaryCart: UI already shows the new qty — announce then sync.
         // Never revert the painted qty if PATCH fails (stale update_no used to snap 1→2).
+        if (qtyActuallyChanged || modeActuallyChanged) {
+          announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
+        }
+        setSelectedLineId(null);
+        focusScanAfterItemAdded();
         try {
-          const ok = await commitCartLine({
+          await commitCartLine({
             product,
             computed,
             incrementBaseQty: computed.baseQty,
@@ -8362,20 +8559,14 @@ export function PosScreen({ standalone = false }) {
               setCart(fixed);
             }
           }
-          if (ok && (qtyActuallyChanged || modeActuallyChanged)) {
-            notifySuccess("Quantity updated successfully");
-            setStatusMessage("Quantity updated successfully");
-          }
         } catch (e) {
           // Qty already painted — keep it; tell the cashier sync can retry.
           setStatusMessage(
             e instanceof ApiError
               ? e.message
-              : "Quantity updated on screen — save may still be syncing.",
+              : `${qtySuccessMsg} — save may still be syncing.`,
           );
         }
-        setSelectedLineId(null);
-        focusScanAfterItemAdded();
         return;
       }
 
@@ -8395,10 +8586,10 @@ export function PosScreen({ standalone = false }) {
         setSelectedLineId(null);
         focusScanAfterItemAdded();
         if (qtyActuallyChanged || modeActuallyChanged) {
-          notePreviousOrderEditSuccess("qty");
-          if (!isPreviousOrderEditSession(cartRef.current)) {
-            notifySuccess("Quantity updated successfully");
-            setStatusMessage("Quantity updated successfully");
+          if (isPreviousOrderEditSession(cartRef.current)) {
+            notePreviousOrderEditSuccess("qty", qtySuccessMsg);
+          } else {
+            announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
           }
         }
       }

@@ -683,7 +683,7 @@ function AttendanceClockDeviceHelpModal({ open, onClose }) {
         </li>
         <li>
           Register the device here with a unique <strong>device number</strong>, LAN IP, and password
-          (HR → Attendance clock-in).
+          (Administration → Attendance clock-in).
         </li>
         <li>
           Click <strong>Download CentrixAttendanceAgent</strong> on the device — the zip is preconfigured

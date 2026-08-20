@@ -7,6 +7,9 @@ import {
 import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
+  DOCUMENT_PRINT_EDGE_BODY_BOTTOM,
+  DOCUMENT_PRINT_EDGE_BODY_SIDES,
+  DOCUMENT_PRINT_EDGE_BODY_TOP,
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import {
@@ -15,6 +18,8 @@ import {
   orgPrintPx,
 } from "@/lib/print-typography";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
+
+const PRINT_VARIANT = "payroll_receipt";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -88,80 +93,97 @@ function employeeMeta(employee) {
 
 function docStyles(generalSettings = null) {
   const px = (base, print = false) =>
-    orgPrintPx(base, generalSettings, { variant: "loading_sheet", print });
-  const font = orgPrintFontFamilyFromSettings(generalSettings, "loading_sheet");
+    orgPrintPx(base, generalSettings, { variant: PRINT_VARIANT, print });
+  const font = orgPrintFontFamilyFromSettings(generalSettings, PRINT_VARIANT);
 
   return `
-    @page { size: A4; margin: 12mm 14mm; }
+    @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
+    html, body { height: auto; }
     body {
       font-family: ${font};
       color: #000;
       margin: 0;
-      font-size: ${px(11)};
-      line-height: 1.35;
-      ${orgPrintInkStyles(generalSettings, "loading_sheet")}
+      padding: ${DOCUMENT_PRINT_EDGE_BODY_TOP} ${DOCUMENT_PRINT_EDGE_BODY_SIDES} ${DOCUMENT_PRINT_EDGE_BODY_BOTTOM};
+      font-size: ${px(10)};
+      line-height: 1.25;
+      ${orgPrintInkStyles(generalSettings, PRINT_VARIANT)}
     }
-    .org-header { text-align: center; margin-bottom: 4px; }
-    .org-logo { display: block; margin: 0 auto 6px; max-height: 40px; max-width: 180px; object-fit: contain; }
+    .sheet { page-break-inside: avoid; break-inside: avoid; }
+    .org-header {
+      text-align: center;
+      margin-bottom: 4px !important;
+      padding-bottom: 4px !important;
+      border-bottom: 1px solid #000;
+    }
+    .org-logo {
+      display: block;
+      margin: 0 auto 4px !important;
+      max-height: 32px !important;
+      max-width: 160px !important;
+      object-fit: contain;
+    }
     .org-name {
-      font-size: ${px(15)};
+      font-size: ${px(13)};
       font-weight: 700;
       letter-spacing: 0.03em;
       text-transform: uppercase;
-      line-height: 1.2;
+      line-height: 1.15;
     }
-    .header { text-align: center; margin: 6px 0 10px; }
-    .header .doc-title { margin: 0; font-size: ${px(13)}; font-weight: 700; text-transform: uppercase; }
-    .header .doc-sub { margin: 3px 0 0; font-size: ${px(10)}; color: #444; }
+    .header { text-align: center; margin: 4px 0 6px; }
+    .header .doc-title { margin: 0; font-size: ${px(12)}; font-weight: 700; text-transform: uppercase; }
+    .header .doc-sub { margin: 2px 0 0; font-size: ${px(9)}; color: #444; }
     .status-banner {
       text-align: center;
-      margin: 8px 0 10px;
-      padding: 6px 10px;
+      margin: 4px 0 6px;
+      padding: 4px 8px;
       border: 1px solid #000;
-      font-size: ${px(10)};
+      font-size: ${px(9)};
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
     .status-banner.pending { border-style: dashed; }
     .status-banner.rejected { color: #7f1d1d; }
-    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; margin: 8px 0; font-size: ${px(11)}; }
-    .meta strong { display: inline-block; min-width: 108px; font-weight: 700; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin: 4px 0; font-size: ${px(10)}; }
+    .meta strong { display: inline-block; min-width: 96px; font-weight: 700; }
     .notes {
       border: 1px solid #000;
-      min-height: 48px;
-      padding: 6px 10px;
-      margin-top: 4px;
-      font-size: ${px(11)};
+      min-height: 28px;
+      max-height: 64px;
+      overflow: hidden;
+      padding: 4px 8px;
+      margin-top: 2px;
+      font-size: ${px(10)};
       white-space: pre-wrap;
     }
-    .notes-label { font-weight: 700; margin-top: 8px; font-size: ${px(10)}; text-transform: uppercase; }
+    .notes-label { font-weight: 700; margin-top: 6px; font-size: ${px(9)}; text-transform: uppercase; }
     .signatures {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px 24px;
-      margin-top: 14px;
+      gap: 8px 16px;
+      margin-top: 8px;
     }
     .sig-block h3 {
-      margin: 0 0 2px;
-      font-size: ${px(10)};
+      margin: 0 0 1px;
+      font-size: ${px(9)};
       font-weight: 700;
       text-transform: uppercase;
     }
-    .sig-block .hint { font-size: ${px(9)}; color: #555; margin: 0 0 8px; }
+    .sig-block .hint { font-size: ${px(8)}; color: #555; margin: 0 0 4px; }
     .sig-block .line {
       border-top: 1px solid #000;
-      padding-top: 3px;
-      margin-top: 18px;
-      font-size: ${px(10)};
-      min-height: 1.2em;
+      padding-top: 2px;
+      margin-top: 12px;
+      font-size: ${px(9)};
+      min-height: 1.1em;
     }
-    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
+    ${documentPrintEdgeFooterStyles(generalSettings, { variant: PRINT_VARIANT })}
     @media print {
-      body { font-size: ${px(11, true)}; }
-      .org-name { font-size: ${px(15, true)}; }
-      .header .doc-title { font-size: ${px(13, true)}; }
+      body { font-size: ${px(10, true)}; }
+      .org-name { font-size: ${px(13, true)}; }
+      .header .doc-title { font-size: ${px(12, true)}; }
+      .sheet { page-break-inside: avoid; break-inside: avoid; }
     }
   `;
 }
@@ -190,7 +212,8 @@ export async function printLeaveApplication({
   <title>Leave application ${escapeHtml(leave?.id ?? "")}</title>
   <style>${docStyles(generalSettings)}</style>
 </head>
-<body>
+<body class="has-doc-print-edge-footer">
+  <div class="sheet">
   ${buildReportOrgHeaderHtml(branding)}
   <div class="header">
     <h1 class="doc-title">${isOffDay ? "Off day application" : "Leave application"}</h1>
@@ -223,7 +246,7 @@ export async function printLeaveApplication({
       <div class="line">Name & designation</div>
     </div>
   </div>
-  <div class="signatures" style="margin-top: 12px;">
+  <div class="signatures">
     <div class="sig-block">
       <h3>Approved by (admin / manager)</h3>
       <p class="hint">Authorize leave before employee proceeds</p>
@@ -235,6 +258,7 @@ export async function printLeaveApplication({
       <p class="hint">File copy after approval</p>
       <div class="line">Received by / date</div>
     </div>
+  </div>
   </div>
   ${buildDocumentPrintEdgeFooterHtml({ printedBy })}
 </body>

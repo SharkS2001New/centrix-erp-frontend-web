@@ -1,11 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
+import { ATTENDANCE_CLOCK_ADMIN_PATH } from "@/lib/attendance-clock-paths";
 
-import { useTabWorkspace } from "@/contexts/tab-workspace-context";
-import { HrAttendanceClockScreen } from "@/components/tab-screens/hr-attendance-clock";
-
-/** Tab workspace hosts this screen from the registry when enabled. */
+/** Device setup moved to Administration only (same as Local printing). */
 export default function Page() {
-  const { enabled } = useTabWorkspace();
-  if (enabled) return null;
-  return <HrAttendanceClockScreen />;
+  redirect(ATTENDANCE_CLOCK_ADMIN_PATH);
 }
