@@ -166,6 +166,52 @@ export function suggestKraFailureFix(rawError, options = {}) {
   return "Fix the issue described above (product setup or device), then use Retry on KRA invoices or Unfiscalized sales.";
 }
 
+/**
+ * Cashier-facing reason that names the exact sale line(s) when KRA rejects a missing PLU.
+ * @param {unknown} rawError
+ * @param {{ lines?: Array<{ name?: string, barcode?: string | null }>, culpritIndexes?: number[], suspectsAll?: boolean }} [context]
+ * @returns {string}
+ */
+export function formatKraFailureReasonWithItems(rawError, context = {}) {
+  const raw = String(rawError ?? "").trim();
+  const lines = Array.isArray(context.lines) ? context.lines : [];
+  const indexes = Array.isArray(context.culpritIndexes) ? context.culpritIndexes : [];
+  const suspectsAll = Boolean(context.suspectsAll);
+
+  const base =
+    humanizeKraDeviceErrorMessage(raw) ||
+    raw ||
+    "No failure reason was recorded for this KRA submission.";
+
+  if (!isKraProductNotRegisteredError(raw || base) || lines.length === 0) {
+    return base;
+  }
+
+  const focusIndexes = indexes.length > 0 ? indexes : lines.map((_, i) => i);
+  const labels = focusIndexes
+    .map((i) => lines[i])
+    .filter(Boolean)
+    .map((line) => {
+      const name = String(line.name ?? "Item").trim() || "Item";
+      const code = String(line.barcode ?? "").trim();
+      return code ? `${name} (${code})` : name;
+    });
+
+  if (labels.length === 0) return base;
+
+  if (labels.length === 1 && !suspectsAll) {
+    return `Product not found on the KRA device: ${labels[0]}. Upload it to the device, then retry.`;
+  }
+
+  if (labels.length === 1) {
+    return `This product was not found on the KRA device (or is not registered): ${labels[0]}. Upload it to the device, then retry.`;
+  }
+
+  return suspectsAll
+    ? `One or more of these products were not found on the KRA device. Check and upload each one, then retry:\n• ${labels.join("\n• ")}`
+    : `These products were not found on the KRA device:\n• ${labels.join("\n• ")}`;
+}
+
 /** First N words of a reason for compact table cells. */
 export function snippetKraErrorReason(raw, wordCount = 4) {
   const text = String(raw ?? "").trim().replace(/\s+/g, " ");

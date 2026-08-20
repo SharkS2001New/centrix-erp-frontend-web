@@ -11,7 +11,7 @@ import {
 import { formatKraReportOrderNo } from "@/lib/sales";
 import { formatReportKes } from "@/lib/reports/format";
 import {
-  humanizeKraDeviceErrorMessage,
+  formatKraFailureReasonWithItems,
   suggestKraFailureFix,
 } from "@/lib/kra-device-errors";
 
@@ -29,10 +29,16 @@ function payloadNeedsFetch(row) {
   return (requestMissing && responseMissing) || errorMissing;
 }
 
-function resolveDisplayReason(row) {
+function resolveDisplayReason(row, match = null) {
   const raw = String(row?.error_message ?? row?.last_kra_error ?? "").trim();
-  if (!raw) return "No failure reason was recorded for this KRA submission.";
-  return humanizeKraDeviceErrorMessage(raw) || raw;
+  if (!raw && !(match?.lines?.length > 0)) {
+    return "No failure reason was recorded for this KRA submission.";
+  }
+  return formatKraFailureReasonWithItems(raw, {
+    lines: match?.lines,
+    culpritIndexes: match?.culpritIndexes,
+    suspectsAll: match?.suspectsAll,
+  });
 }
 
 function resolveResponseId(row) {
@@ -121,8 +127,7 @@ export function KraFailureReasonDialog({
   }, [open, onClose]);
 
   const activeRow = detailRow ?? normalizeKraResponseRow(row);
-  const reason = useMemo(() => resolveDisplayReason(activeRow), [activeRow]);
-  const { lines, culpritIndexes } = useMemo(
+  const { lines, culpritIndexes, suspectsAll } = useMemo(
     () =>
       matchKraFailureLineIndexes(
         activeRow?.error_message ?? activeRow?.last_kra_error,
@@ -130,6 +135,10 @@ export function KraFailureReasonDialog({
         activeRow?.response_payload,
       ),
     [activeRow],
+  );
+  const reason = useMemo(
+    () => resolveDisplayReason(activeRow, { lines, culpritIndexes, suspectsAll }),
+    [activeRow, lines, culpritIndexes, suspectsAll],
   );
   const culpritSet = useMemo(() => new Set(culpritIndexes), [culpritIndexes]);
   const suggestion = useMemo(() => {
@@ -170,7 +179,7 @@ export function KraFailureReasonDialog({
           </button>
         </div>
 
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-900">
+        <div className="mt-4 whitespace-pre-line rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-900">
           {detailLoading && !String(activeRow?.error_message ?? activeRow?.last_kra_error ?? "").trim()
             ? "Loading reason…"
             : reason}
@@ -209,7 +218,9 @@ export function KraFailureReasonDialog({
                           ) : null}
                           {isCulprit ? (
                             <p className="mt-1 text-xs font-medium text-red-700">
-                              Likely cause of this failure
+                              {suspectsAll
+                                ? "On this failed sale — upload to KRA if missing on the device"
+                                : "Likely cause of this failure"}
                             </p>
                           ) : null}
                         </div>

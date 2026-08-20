@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatKraFailureReasonWithItems,
   humanizeKraDeviceErrorMessage,
   isKraProductNotRegisteredError,
   snippetKraErrorReason,
@@ -41,6 +42,37 @@ describe("suggestKraFailureFix", () => {
         "Line amounts do not match the invoice totals, or VAT fields were filled for the wrong tax bracket.",
       ),
     ).toMatch(/VAT \/ tax type/i);
+  });
+});
+
+describe("formatKraFailureReasonWithItems", () => {
+  it("names every sale line when the device does not say which PLU is missing", () => {
+    const message = formatKraFailureReasonWithItems(
+      "One or more products were not found on the KRA device. Upload products to the device first, then retry.",
+      {
+        lines: [
+          { name: "Sugar 1kg", barcode: "SUGAR1" },
+          { name: "Milk 500ml", barcode: "MILK1" },
+        ],
+        culpritIndexes: [0, 1],
+        suspectsAll: true,
+      },
+    );
+    expect(message).toMatch(/Sugar 1kg \(SUGAR1\)/);
+    expect(message).toMatch(/Milk 500ml \(MILK1\)/);
+  });
+
+  it("names a single matched PLU", () => {
+    const message = formatKraFailureReasonWithItems("NO FIND PLU DATA for item MILK1", {
+      lines: [
+        { name: "Sugar 1kg", barcode: "SUGAR1" },
+        { name: "Milk 500ml", barcode: "MILK1" },
+      ],
+      culpritIndexes: [1],
+      suspectsAll: false,
+    });
+    expect(message).toMatch(/Milk 500ml \(MILK1\)/);
+    expect(message).not.toMatch(/Sugar/);
   });
 });
 

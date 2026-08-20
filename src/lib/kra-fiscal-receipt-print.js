@@ -1,4 +1,5 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
+import { isKraProductNotRegisteredError } from "@/lib/kra-device-errors";
 import {
   buildKraFiscalBlockHtml,
   escapeKraHtml,
@@ -124,17 +125,19 @@ function extractKraFailureItemTokens(haystack) {
 
 /**
  * Indexes of PLU lines implicated by a failed KRA response (empty when unknown).
- * @returns {{ lines: ReturnType<typeof parseKraPluLines>, culpritIndexes: number[] }}
+ * For “product not on device” errors with no named item, every line is treated as a
+ * suspect so cashiers can see exactly which products were on the failed sale.
+ * @returns {{ lines: ReturnType<typeof parseKraPluLines>, culpritIndexes: number[], suspectsAll: boolean }}
  */
 export function matchKraFailureLineIndexes(errorMessage, requestPayload, responsePayload) {
   const lines = parseKraPluLines(requestPayload);
   if (!lines.length) {
-    return { lines, culpritIndexes: [] };
+    return { lines, culpritIndexes: [], suspectsAll: false };
   }
 
   const haystack = kraFailureMatchHaystack(errorMessage, requestPayload, responsePayload);
   if (!haystack) {
-    return { lines, culpritIndexes: [] };
+    return { lines, culpritIndexes: [], suspectsAll: false };
   }
 
   const haystackLower = haystack.toLowerCase();
@@ -161,7 +164,21 @@ export function matchKraFailureLineIndexes(errorMessage, requestPayload, respons
     }
   });
 
-  return { lines, culpritIndexes };
+  if (culpritIndexes.length > 0) {
+    return { lines, culpritIndexes, suspectsAll: false };
+  }
+
+  // Device often returns only E337 / “NO FIND PLU DATA” with no item token.
+  // Surface every line on the failed sale so the cashier can upload the right PLUs.
+  if (isKraProductNotRegisteredError(haystack)) {
+    return {
+      lines,
+      culpritIndexes: lines.map((_, index) => index),
+      suspectsAll: true,
+    };
+  }
+
+  return { lines, culpritIndexes: [], suspectsAll: false };
 }
 
 function extractBuyerPinFromKraPayload(requestPayload) {

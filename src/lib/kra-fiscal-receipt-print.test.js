@@ -37,12 +37,29 @@ describe("kra fiscal receipt print", () => {
         { item_Name: "Milk 500ml", Barcode: "ABC123", SaleQty: "2", SalePrice: "50", SaleAmount: "100" },
       ],
     };
-    const { culpritIndexes } = matchKraFailureLineIndexes(
+    const { culpritIndexes, suspectsAll } = matchKraFailureLineIndexes(
       "NO FIND PLU DATA for item ABC123",
       payload,
       null,
     );
     expect(culpritIndexes).toEqual([1]);
+    expect(suspectsAll).toBe(false);
+  });
+
+  it("marks every sale line when E337 has no named item", () => {
+    const payload = {
+      plu_data: [
+        { item_Name: "Sugar 1kg", Barcode: "SUGAR1", SaleQty: "1", SalePrice: "100", SaleAmount: "100" },
+        { item_Name: "Milk 500ml", Barcode: "MILK1", SaleQty: "2", SalePrice: "50", SaleAmount: "100" },
+      ],
+    };
+    const { culpritIndexes, suspectsAll } = matchKraFailureLineIndexes(
+      "One or more products were not found on the KRA device. Upload products to the device first, then retry.",
+      payload,
+      null,
+    );
+    expect(culpritIndexes).toEqual([0, 1]);
+    expect(suspectsAll).toBe(true);
   });
 
   it("builds printable html with fiscal metadata and line items", () => {
