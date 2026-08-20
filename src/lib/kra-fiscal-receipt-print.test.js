@@ -30,11 +30,25 @@ describe("kra fiscal receipt print", () => {
     expect(lines[0].amount).toBe(3680);
   });
 
-  it("matches the PLU line named in a device failure message", () => {
+  it("matches the PLU line named in a device failure message by product_code", () => {
     const payload = {
       plu_data: [
-        { item_Name: "Sugar 1kg", Barcode: "SUGAR1", SaleQty: "1", SalePrice: "100", SaleAmount: "100" },
-        { item_Name: "Milk 500ml", Barcode: "ABC123", SaleQty: "2", SalePrice: "50", SaleAmount: "100" },
+        {
+          item_Name: "Sugar 1kg",
+          Barcode: "",
+          product_code: "SUGAR1",
+          SaleQty: "1",
+          SalePrice: "100",
+          SaleAmount: "100",
+        },
+        {
+          item_Name: "Milk 500ml",
+          Barcode: "",
+          product_code: "ABC123",
+          SaleQty: "2",
+          SalePrice: "50",
+          SaleAmount: "100",
+        },
       ],
     };
     const { culpritIndexes, suspectsAll } = matchKraFailureLineIndexes(
@@ -46,11 +60,40 @@ describe("kra fiscal receipt print", () => {
     expect(suspectsAll).toBe(false);
   });
 
-  it("marks every sale line when E337 has no named item", () => {
+  it("matches device SKU with barcode prefix against product_code", () => {
     const payload = {
       plu_data: [
-        { item_Name: "Sugar 1kg", Barcode: "SUGAR1", SaleQty: "1", SalePrice: "100", SaleAmount: "100" },
-        { item_Name: "Milk 500ml", Barcode: "MILK1", SaleQty: "2", SalePrice: "50", SaleAmount: "100" },
+        { item_Name: "Rice", Barcode: "", product_code: "RICE25", SaleQty: "1", SalePrice: "10", SaleAmount: "10" },
+        { item_Name: "Milk", Barcode: "", product_code: "MILK1", SaleQty: "1", SalePrice: "10", SaleAmount: "10" },
+      ],
+    };
+    const { culpritIndexes } = matchKraFailureLineIndexes(
+      "NO FIND PLU DATA for item 000000MILK1",
+      payload,
+      null,
+    );
+    expect(culpritIndexes).toEqual([1]);
+  });
+
+  it("does not mark every line when E337 has no named SKU", () => {
+    const payload = {
+      plu_data: [
+        {
+          item_Name: "Sugar 1kg",
+          Barcode: "",
+          product_code: "SUGAR1",
+          SaleQty: "1",
+          SalePrice: "100",
+          SaleAmount: "100",
+        },
+        {
+          item_Name: "Milk 500ml",
+          Barcode: "",
+          product_code: "MILK1",
+          SaleQty: "2",
+          SalePrice: "50",
+          SaleAmount: "100",
+        },
       ],
     };
     const { culpritIndexes, suspectsAll } = matchKraFailureLineIndexes(
@@ -58,8 +101,41 @@ describe("kra fiscal receipt print", () => {
       payload,
       null,
     );
-    expect(culpritIndexes).toEqual([0, 1]);
-    expect(suspectsAll).toBe(true);
+    expect(culpritIndexes).toEqual([]);
+    expect(suspectsAll).toBe(false);
+  });
+
+  it("does not treat product names listed in a bloated error as every culprit", () => {
+    const payload = {
+      plu_data: [
+        { item_Name: "BANJAB RICE 25KG", product_code: "RICE25", SaleQty: "1", SalePrice: "1", SaleAmount: "1" },
+        { item_Name: "STAR BIRIYANI", product_code: "STAR1", SaleQty: "1", SalePrice: "1", SaleAmount: "1" },
+        { item_Name: "COSMO HB 1KG", product_code: "COSMO1", SaleQty: "1", SalePrice: "1", SaleAmount: "1" },
+      ],
+    };
+    const { culpritIndexes } = matchKraFailureLineIndexes(
+      "One or more of these products were not found on the KRA device: BANJAB RICE 25KG; STAR BIRIYANI; COSMO HB 1KG. Upload the missing product(s) to the device, then retry.",
+      payload,
+      null,
+    );
+    expect(culpritIndexes).toEqual([]);
+  });
+
+  it("parses product_code when Barcode is empty", () => {
+    const lines = parseKraPluLines({
+      plu_data: [
+        {
+          item_Name: "BANJAB RICE 25KG",
+          Barcode: "",
+          product_code: "RICE25",
+          SaleQty: "25",
+          SalePrice: "147.20",
+          SaleAmount: "3680.00",
+        },
+      ],
+    });
+    expect(lines[0].barcode).toBe("RICE25");
+    expect(lines[0].productCode).toBe("RICE25");
   });
 
   it("builds printable html with fiscal metadata and line items", () => {

@@ -187,29 +187,27 @@ export function formatKraFailureReasonWithItems(rawError, context = {}) {
     return base;
   }
 
-  const focusIndexes = indexes.length > 0 ? indexes : lines.map((_, i) => i);
-  const labels = focusIndexes
+  // Only rename the reason when we identified specific SKU-matched culprits.
+  if (indexes.length === 0 || suspectsAll) {
+    return base;
+  }
+
+  const labels = indexes
     .map((i) => lines[i])
     .filter(Boolean)
     .map((line) => {
       const name = String(line.name ?? "Item").trim() || "Item";
-      const code = String(line.barcode ?? "").trim();
+      const code = String(line.productCode ?? line.barcode ?? "").trim();
       return code ? `${name} (${code})` : name;
     });
 
   if (labels.length === 0) return base;
 
-  if (labels.length === 1 && !suspectsAll) {
+  if (labels.length === 1) {
     return `Product not found on the KRA device: ${labels[0]}. Upload it to the device, then retry.`;
   }
 
-  if (labels.length === 1) {
-    return `This product was not found on the KRA device (or is not registered): ${labels[0]}. Upload it to the device, then retry.`;
-  }
-
-  return suspectsAll
-    ? `One or more of these products were not found on the KRA device. Check and upload each one, then retry:\n• ${labels.join("\n• ")}`
-    : `These products were not found on the KRA device:\n• ${labels.join("\n• ")}`;
+  return `These products were not found on the KRA device:\n• ${labels.join("\n• ")}`;
 }
 
 /** First N words of a reason for compact table cells. */

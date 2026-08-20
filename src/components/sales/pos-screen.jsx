@@ -2269,6 +2269,9 @@ export function PosScreen({ standalone = false }) {
       enableMpesa: enableMpesaOnPos,
     });
   const [selectedLineId, setSelectedLineId] = useState(null);
+  /** Classic qty cell focus — F12 unit preview applies only to this line. */
+  const focusedCartQtyLineIdRef = useRef(null);
+  const [focusedCartQtyLineId, setFocusedCartQtyLineId] = useState(null);
   const {
     selectedIds: selectedLineIds,
     selectedCount: selectedLineCount,
@@ -8479,6 +8482,8 @@ export function PosScreen({ standalone = false }) {
             await persistPreviousOrderLocalDraft(nextCart, { immediate: true });
           }
           setSelectedLineId(null);
+          focusedCartQtyLineIdRef.current = null;
+          setFocusedCartQtyLineId(null);
           focusScanAfterItemAdded();
           return;
         }
@@ -8504,6 +8509,8 @@ export function PosScreen({ standalone = false }) {
             announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
           }
           setSelectedLineId(null);
+          focusedCartQtyLineIdRef.current = null;
+          setFocusedCartQtyLineId(null);
           focusScanAfterItemAdded();
           return;
         }
@@ -8514,6 +8521,8 @@ export function PosScreen({ standalone = false }) {
           announceQuantityUpdated(resolvedFromQtyLabel, toQtyLabel);
         }
         setSelectedLineId(null);
+        focusedCartQtyLineIdRef.current = null;
+        setFocusedCartQtyLineId(null);
         focusScanAfterItemAdded();
         try {
           await commitCartLine({
@@ -8584,6 +8593,8 @@ export function PosScreen({ standalone = false }) {
       });
       if (ok) {
         setSelectedLineId(null);
+        focusedCartQtyLineIdRef.current = null;
+        setFocusedCartQtyLineId(null);
         focusScanAfterItemAdded();
         if (qtyActuallyChanged || modeActuallyChanged) {
           if (isPreviousOrderEditSession(cartRef.current)) {
@@ -16034,18 +16045,22 @@ export function PosScreen({ standalone = false }) {
                 }}
                 lineQtyUnit={(line) => {
                   const productMeta = productByCode[line.product_code];
-                  // While F12 mode differs from this line, preview the session unit
-                  // so cashiers see kg vs bags before they press Enter.
+                  // F12 only previews the session unit on the focused qty line —
+                  // never flash kg/bags across the whole cart.
+                  const lineKey = cartLineRef(line) ?? line.id;
+                  const isFocusedQtyLine =
+                    focusedCartQtyLineId != null &&
+                    (sameLineId(focusedCartQtyLineId, lineKey) ||
+                      cartLineMatchesRef(line, focusedCartQtyLineId));
+                  const sessionIsRetail = isPosRetailSession(sellWholesale);
                   const sessionDiffers =
+                    isFocusedQtyLine &&
                     posSalesConfig.enableRetailPricing &&
-                    cartLineRetailStockFlag(line) !==
-                      isPosRetailSession(sellWholesaleRef.current);
+                    cartLineRetailStockFlag(line) !== sessionIsRetail;
                   const previewLine = sessionDiffers
                     ? {
                         ...line,
-                        on_wholesale_retail: isPosRetailSession(sellWholesaleRef.current)
-                          ? 1
-                          : 0,
+                        on_wholesale_retail: sessionIsRetail ? 1 : 0,
                       }
                     : line;
                   return (
@@ -16057,13 +16072,46 @@ export function PosScreen({ standalone = false }) {
                   );
                 }}
                 onSetQty={(line, value) => void setCartLineEntryQuantity(line, value)}
-                lineForceSameQtyCommit={(line) =>
-                  Boolean(
-                    posSalesConfig.enableRetailPricing &&
+                onQtyFocus={(line) => {
+                  const id = cartLineRef(line) ?? line.id;
+                  focusedCartQtyLineIdRef.current = id;
+                  setFocusedCartQtyLineId(id);
+                  setSelectedLineId(id);
+                }}
+                onQtyBlur={(line) => {
+                  window.setTimeout(() => {
+                    const active =
+                      typeof document !== "undefined" ? document.activeElement : null;
+                    if (
+                      active instanceof HTMLElement &&
+                      active.classList.contains("classic-pos-line-qty-input")
+                    ) {
+                      return;
+                    }
+                    const id = cartLineRef(line) ?? line.id;
+                    if (
+                      focusedCartQtyLineIdRef.current != null &&
+                      (sameLineId(focusedCartQtyLineIdRef.current, id) ||
+                        cartLineMatchesRef(line, focusedCartQtyLineIdRef.current))
+                    ) {
+                      focusedCartQtyLineIdRef.current = null;
+                      setFocusedCartQtyLineId(null);
+                    }
+                  }, 0);
+                }}
+                lineForceSameQtyCommit={(line) => {
+                  const lineKey = cartLineRef(line) ?? line.id;
+                  const isFocusedQtyLine =
+                    focusedCartQtyLineId != null &&
+                    (sameLineId(focusedCartQtyLineId, lineKey) ||
+                      cartLineMatchesRef(line, focusedCartQtyLineId));
+                  return Boolean(
+                    isFocusedQtyLine &&
+                      posSalesConfig.enableRetailPricing &&
                       cartLineRetailStockFlag(line) !==
-                        isPosRetailSession(sellWholesaleRef.current),
-                  )
-                }
+                        isPosRetailSession(sellWholesale),
+                  );
+                }}
                 onSwapDraftQtyChange={(line, value) => handleSwapDraftQtyChange(line, value)}
                 linePackage={(line) => {
                   const productMeta = productByCode[line.product_code];

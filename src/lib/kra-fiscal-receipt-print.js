@@ -60,13 +60,15 @@ export function parseKraPluLines(requestPayload) {
         : Number.isFinite(qty) && Number.isFinite(unitPrice)
           ? qty * unitPrice
           : 0;
+    // Sale workflow sends Barcode: "" — fall through to product_code (device SKU key).
     const barcode = String(
-      line?.Barcode ?? line?.barcode ?? line?.product_code ?? line?.itemCd ?? "",
+      line?.Barcode || line?.barcode || line?.product_code || line?.itemCd || "",
     ).trim();
 
     return {
       name: String(line?.item_Name ?? line?.ItemName ?? line?.product_name ?? "Item").trim() || "Item",
       barcode: barcode || null,
+      productCode: String(line?.product_code ?? "").trim() || barcode || null,
       qty: Number.isFinite(qty) ? qty : 0,
       unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
       amount: Number.isFinite(amount) ? amount : 0,
@@ -103,30 +105,65 @@ function kraFailureMatchHaystack(errorMessage, requestPayload, responsePayload) 
     .join("\n");
 }
 
-/** Tokens from device copy that often identify a specific PLU / barcode. */
+/** Tokens from device copy that identify a specific PLU / product_code / barcode. */
 function extractKraFailureItemTokens(haystack) {
   const text = String(haystack ?? "");
   const tokens = new Set();
   const patterns = [
+    /NO\s+FIND\s+PLU\s+DATA\s+for\s+item\s+(.+?)(?:\s+error|\s*$|[.;,]|\s+Upload)/gis,
     /NO\s+FIND\s+PLU\s+DATA\s+for\s+item\s+([A-Za-z0-9#._/-]+)/gi,
-    /(?:for\s+item|item|barcode|plu)\s*[:#]?\s*([A-Za-z0-9#._/-]{2,})/gi,
-    /product(?:\s+code)?\s*[:#]?\s*([A-Za-z0-9#._/-]{2,})/gi,
+    /Product not found on the KRA device:\s*([^.(]+?)(?:\s*\(([^)]+)\))?\./gi,
   ];
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
-      const token = String(match[1] ?? "").trim();
-      if (token && !/^(code|error|data|name|qty|price)$/i.test(token)) {
-        tokens.add(token.toLowerCase());
+      for (let i = 1; i < match.length; i += 1) {
+        const token = String(match[i] ?? "").trim().replace(/[.;,]+$/g, "");
+        if (token && !/^(code|error|data|name|qty|price|one|more|these|products|were|not|found)$/i.test(token)) {
+          tokens.add(token.toLowerCase());
+        }
       }
     }
   }
   return [...tokens];
 }
 
+const KRA_DEVICE_BARCODE_PREFIX = "000000";
+
+/**
+ * True when a device token matches this sale line's product_code / device SKU.
+ * Name match is exact only (not substring) so listing every product in an error
+ * cannot mark every line as the culprit.
+ */
+function lineMatchesKraDeviceToken(line, token) {
+  const t = String(token ?? "").trim().toLowerCase();
+  if (!t) return false;
+
+  const code = String(line.productCode ?? line.barcode ?? "")
+    .trim()
+    .toLowerCase();
+  const name = String(line.name ?? "")
+    .trim()
+    .toLowerCase();
+  const prefixed = code ? `${KRA_DEVICE_BARCODE_PREFIX}${code}` : "";
+
+  if (code) {
+    if (code === t || prefixed === t) return true;
+    // Device may return prefixed SKU or raw product_code.
+    if (t.endsWith(code) && (t === prefixed || t.length - code.length <= KRA_DEVICE_BARCODE_PREFIX.length)) {
+      return true;
+    }
+  }
+
+  if (name && name === t) return true;
+  if (name && name === t.replace(/_/g, " ")) return true;
+
+  return false;
+}
+
 /**
  * Indexes of PLU lines implicated by a failed KRA response (empty when unknown).
- * For “product not on device” errors with no named item, every line is treated as a
- * suspect so cashiers can see exactly which products were on the failed sale.
+ * Only highlight lines whose product_code / device SKU matches the device token.
+ * Never mark every line as the cause when the device did not name a SKU.
  * @returns {{ lines: ReturnType<typeof parseKraPluLines>, culpritIndexes: number[], suspectsAll: boolean }}
  */
 export function matchKraFailureLineIndexes(errorMessage, requestPayload, responsePayload) {
@@ -140,44 +177,27 @@ export function matchKraFailureLineIndexes(errorMessage, requestPayload, respons
     return { lines, culpritIndexes: [], suspectsAll: false };
   }
 
-  const haystackLower = haystack.toLowerCase();
   const explicitTokens = extractKraFailureItemTokens(haystack);
   const culpritIndexes = [];
 
-  lines.forEach((line, index) => {
-    const barcode = String(line.barcode ?? "").trim().toLowerCase();
-    const name = String(line.name ?? "").trim().toLowerCase();
-    const matchedExplicit =
-      explicitTokens.length > 0 &&
-      explicitTokens.some(
-        (token) =>
-          (barcode && (barcode === token || barcode.includes(token) || token.includes(barcode))) ||
-          (name && (name === token || name.includes(token))),
-      );
-    const matchedLoose =
-      explicitTokens.length === 0 &&
-      ((barcode && barcode.length >= 2 && haystackLower.includes(barcode)) ||
-        (name && name.length >= 4 && haystackLower.includes(name)));
-
-    if (matchedExplicit || matchedLoose) {
-      culpritIndexes.push(index);
-    }
-  });
+  if (explicitTokens.length > 0) {
+    lines.forEach((line, index) => {
+      if (explicitTokens.some((token) => lineMatchesKraDeviceToken(line, token))) {
+        culpritIndexes.push(index);
+      }
+    });
+  }
 
   if (culpritIndexes.length > 0) {
     return { lines, culpritIndexes, suspectsAll: false };
   }
 
-  // Device often returns only E337 / “NO FIND PLU DATA” with no item token.
-  // Surface every line on the failed sale so the cashier can upload the right PLUs.
-  if (isKraProductNotRegisteredError(haystack)) {
-    return {
-      lines,
-      culpritIndexes: lines.map((_, index) => index),
-      suspectsAll: true,
-    };
+  // Single-line sale + missing-PLU error: that line is the only possible culprit.
+  if (lines.length === 1 && isKraProductNotRegisteredError(haystack)) {
+    return { lines, culpritIndexes: [0], suspectsAll: false };
   }
 
+  // Multi-line sale, device did not name a SKU — do not highlight every item.
   return { lines, culpritIndexes: [], suspectsAll: false };
 }
 

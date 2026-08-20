@@ -147,6 +147,9 @@ export function KraFailureReasonDialog({
     return suggestKraFailureFix(raw, { culpritNames });
   }, [activeRow, culpritIndexes, lines, reason]);
 
+  // When no SKU-matched culprit, keep order items collapsed (don't pretend every line failed).
+  const showCulpritList = culpritIndexes.length > 0;
+
   if (!open || !row || typeof document === "undefined") return null;
 
   const orderLabel = formatKraReportOrderNo(activeRow) || activeRow?.order_no || "—";
@@ -195,7 +198,7 @@ export function KraFailureReasonDialog({
         <div className="mt-5">
           {detailLoading && lines.length === 0 ? (
             <p className="theme-subtext text-sm">Loading items…</p>
-          ) : lines.length === 0 ? null : culpritIndexes.length > 0 ? (
+          ) : lines.length === 0 ? null : showCulpritList ? (
             <>
               <h3 className="theme-heading text-sm font-semibold">Order items</h3>
               <ul className="mt-2 space-y-2">
@@ -218,9 +221,7 @@ export function KraFailureReasonDialog({
                           ) : null}
                           {isCulprit ? (
                             <p className="mt-1 text-xs font-medium text-red-700">
-                              {suspectsAll
-                                ? "On this failed sale — upload to KRA if missing on the device"
-                                : "Likely cause of this failure"}
+                              Likely cause — product code not found on the KRA device
                             </p>
                           ) : null}
                         </div>

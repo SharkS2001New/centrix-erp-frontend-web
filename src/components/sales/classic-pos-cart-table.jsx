@@ -29,6 +29,8 @@ function ClassicLineQtyCell({
   /** True when F12 session differs from this line — Enter (not blur) reprices it. */
   forceSameQtyCommit = false,
   inputRef = null,
+  onFocusLine = null,
+  onBlurLine = null,
 }) {
   const committed = String(entryQty ?? "");
   const [draft, setDraft] = useState(committed);
@@ -119,11 +121,13 @@ function ClassicLineQtyCell({
         value={draft}
         disabled={busy}
         aria-label={qtyUnit ? `Line quantity (${qtyUnit})` : "Line quantity"}
+        onFocus={() => onFocusLine?.(line)}
         onChange={(e) => {
           setDraft(e.target.value);
           onDraftQtyChange?.(line, e.target.value);
         }}
         onBlur={(e) => {
+          onBlurLine?.(line);
           if (skipBlurCommitRef.current) {
             skipBlurCommitRef.current = false;
             return;
@@ -237,6 +241,8 @@ export function ClassicPosCartTable({
   lineEntryQty,
   lineQtyUnit,
   onSetQty,
+  onQtyFocus = null,
+  onQtyBlur = null,
   /** When true for a line, qty Enter/blur commits even if the number is unchanged (F12 mode). */
   lineForceSameQtyCommit = null,
   onSwapDraftQtyChange = null,
@@ -615,6 +621,8 @@ export function ClassicPosCartTable({
                     busy={busy}
                     lineBusy={lineBusy}
                     onSetQty={onSetQty}
+                    onFocusLine={onQtyFocus}
+                    onBlurLine={onQtyBlur}
                     onDraftQtyChange={swapPreviewActive ? onSwapDraftQtyChange : null}
                     swapQtyCommit={swapPreviewActive}
                     forceSameQtyCommit={
