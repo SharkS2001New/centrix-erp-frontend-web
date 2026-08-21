@@ -20,6 +20,21 @@ describe("kra receipt QR", () => {
     vi.useRealTimers();
   });
 
+  it("extracts signature link from nested response_payload aliases", () => {
+    const kra = extractKraReceiptData({
+      kra_response: {
+        status: "success",
+        invoice_number: "CU-1b",
+        response_payload: {
+          data: {
+            QRCode: "https://etims.example/verify/nested",
+          },
+        },
+      },
+    });
+    expect(kra?.signatureLink).toBe("https://etims.example/verify/nested");
+  });
+
   it("extracts signature link from response_payload aliases", () => {
     const kra = extractKraReceiptData({
       kra_response: {
@@ -148,7 +163,7 @@ describe("kra receipt QR", () => {
     expect(result.kraQrDataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
-  it("prints without QR when fiscalized but the eTIMS link is missing", async () => {
+  it("prints CU details without QR when fiscalized but the eTIMS link is missing", async () => {
     const result = await ensureKraQrForPrint(
       {
         id: 5,
@@ -169,7 +184,8 @@ describe("kra receipt QR", () => {
     );
 
     expect(result.kraQrDataUrl).toBeNull();
-    expect(result.kraData).toBeNull();
+    expect(result.kraData?.invoiceNumber).toBe("CU-5");
+    expect(result.kraData?.signatureLink).toBeFalsy();
   });
 
   it("prints without QR immediately when KRA soft-failed", async () => {

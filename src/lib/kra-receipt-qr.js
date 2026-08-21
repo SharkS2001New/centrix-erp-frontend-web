@@ -52,6 +52,12 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     kra.response_payload && typeof kra.response_payload === "object"
       ? kra.response_payload
       : null;
+  const nestedPayload =
+    payload?.data && typeof payload.data === "object"
+      ? payload.data
+      : payload?.result && typeof payload.result === "object"
+        ? payload.result
+        : null;
   const requestPayload =
     kra.request_payload && typeof kra.request_payload === "object"
       ? kra.request_payload
@@ -63,10 +69,29 @@ export function extractKraReceiptData(sale, kraReceipt = null) {
     kra.signatureLink,
     payload?.signature_link,
     payload?.signatureLink,
+    payload?.SignatureLink,
     payload?.["Signature Link"],
     payload?.qr_link,
     payload?.qr_url,
+    payload?.QRCode,
+    payload?.qrCode,
+    payload?.qr_code,
     payload?.verification_url,
+    payload?.verificationUrl,
+    payload?.InvoiceUrl,
+    payload?.invoice_url,
+    nestedPayload?.signature_link,
+    nestedPayload?.signatureLink,
+    nestedPayload?.["Signature Link"],
+    nestedPayload?.qr_link,
+    nestedPayload?.qr_url,
+    nestedPayload?.QRCode,
+    nestedPayload?.qrCode,
+    nestedPayload?.qr_code,
+    nestedPayload?.verification_url,
+    nestedPayload?.verificationUrl,
+    nestedPayload?.InvoiceUrl,
+    nestedPayload?.invoice_url,
   );
   const invoiceNumber = firstNonEmpty(
     kra.invoice_number,
@@ -370,17 +395,12 @@ export async function ensureKraQrForPrint(
       }
     }
 
-    // Link present but QR image failed — still print the receipt without the scan block.
-    if (kraData?.signatureLink && !kraQrDataUrl) {
-      return { kraData, kraQrDataUrl: null };
+    // Keep fiscal metadata even when the QR bitmap fails so CU invoice / PIN still print.
+    if (kraData?.signatureLink || kraData?.invoiceNumber || kraData?.receiptSignature) {
+      return { kraData, kraQrDataUrl };
     }
 
-    // No verification link — normal receipt (never block).
-    if (!kraQrDataUrl) {
-      return { kraData: null, kraQrDataUrl: null };
-    }
-
-    return { kraData, kraQrDataUrl };
+    return { kraData: null, kraQrDataUrl: null };
   } catch {
     return { kraData: null, kraQrDataUrl: null };
   }

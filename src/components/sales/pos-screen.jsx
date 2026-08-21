@@ -1387,25 +1387,11 @@ export function PosScreen({ standalone = false }) {
       const { ok, results, pending } = await flushOutboxAfterSale();
       await refreshOfflineCounts();
       // Keep Previous Orders on the server sale id — outbox is marked synced, not deleted.
-      const reprints = [];
       for (const row of results ?? []) {
         if (row?.ok && row?.sale && typeof row.sale === "object") {
           rememberCompletedPosOrder(row.sale);
           markSaleForReprint(row.sale);
-          if (row.needs_reprint) reprints.push(row);
         }
-      }
-      if (reprints.length && standalone) {
-        const note = reprints
-          .map((row) => {
-            const from = row.printed_pos_order_num ?? row.pos_order_num ?? "?";
-            const to = row.sale?.pos_order_num ?? row.pos_order_num ?? "?";
-            return `#${from}→#${to}`;
-          })
-          .join(", ");
-        notifyError(
-          `Synced with a new Cash Sales # (${note}). Reprint if the receipt number on paper must match the server.`,
-        );
       }
       if ((results ?? []).some((row) => row?.ok && row?.sale?.id)) {
         void loadCompletedPosOrders();

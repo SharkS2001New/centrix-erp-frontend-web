@@ -221,15 +221,31 @@ export function ReportBuilderScreen() {
       const multi = (prev.sources?.length ?? 0) > 1;
       const blend = multi && prev.blend_by;
       const normalizedGroupBy = prev.group_by.map((g) => normalizeGroupByEntry(g, prev.source));
+      const grouping = normalizedGroupBy.length > 0;
+
+      let group_by = prev.group_by;
+      // While grouping, keep selected dimensions in GROUP BY (never force SUM on labels).
+      if (grouping && field.groupable && !field.aggregates?.length) {
+        const alreadyGrouped = group_by.some((g) => groupByMatches(g, sourceKey, fieldKey, prev.source));
+        if (!alreadyGrouped) {
+          group_by = multi
+            ? [...group_by, { source: sourceKey, field: fieldKey }]
+            : [...group_by, fieldKey];
+        }
+      }
+
       const aggregate =
         blend && field.aggregates?.length
           ? field.aggregates[0]
-          : normalizedGroupBy.length && !field.groupable
-            ? field.aggregates?.[0] ?? "sum"
-            : undefined;
+          : grouping && !field.groupable
+            ? field.aggregates?.[0] ?? "max"
+            : grouping && field.aggregates?.length
+              ? field.aggregates[0]
+              : undefined;
 
       return {
         ...prev,
+        group_by,
         columns: [
           ...prev.columns,
           {
@@ -269,6 +285,17 @@ export function ReportBuilderScreen() {
       }
 
       if (group_by.length) {
+        // Pull every selected groupable dimension into GROUP BY so aggregates stay valid.
+        for (const col of columns) {
+          const fieldMeta = findSourceSchema(schema, col.source)?.fields?.find((f) => f.key === col.field);
+          if (!fieldMeta?.groupable) continue;
+          if (fieldMeta.aggregates?.length) continue;
+          if (group_by.some((g) => groupByMatches(g, col.source, col.field, prev.source))) continue;
+          group_by = multi
+            ? [...group_by, { source: col.source, field: col.field }]
+            : [...group_by, col.field];
+        }
+
         columns = columns.map((col) => {
           const colSource = col.source;
           const fieldMeta = findSourceSchema(schema, colSource)?.fields?.find((f) => f.key === col.field);
@@ -278,7 +305,9 @@ export function ReportBuilderScreen() {
             const { aggregate, ...rest } = col;
             return rest;
           }
-          if (!fieldMeta?.aggregates?.length) return col;
+          if (!fieldMeta?.aggregates?.length) {
+            return { ...col, aggregate: col.aggregate ?? "max" };
+          }
           return { ...col, aggregate: col.aggregate ?? fieldMeta.aggregates[0] };
         });
       }
