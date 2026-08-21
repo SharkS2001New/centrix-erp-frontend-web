@@ -388,7 +388,7 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
       return workspaceId === "backoffice";
     }
     const slug = slugMatch[1];
-    if (slug === "custom") return workspaceId === "backoffice";
+    if (slug === "custom") return Object.hasOwn(WORKSPACE_REPORT_MODULES, workspaceId);
     return reportSlugBelongsToWorkspace(slug, workspaceId);
   }
 

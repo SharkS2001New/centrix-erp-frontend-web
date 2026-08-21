@@ -35,11 +35,14 @@ export function finalizePosLineAmount(value, { cashRound = false } = {}) {
   return Math.round(n * 100) / 100;
 }
 
-/** Cashier-facing unit price — same Light Stores rules as line amount when enabled. */
-export function finalizePosDisplayUnitPrice(value, { cashRound = false } = {}) {
+/**
+ * Cashier-facing unit price — always keep money decimals (e.g. 92.22).
+ * Cash rounding applies to line/order amounts only, never to unit price.
+ * `cashRound` is accepted for call-site compatibility and ignored.
+ */
+export function finalizePosDisplayUnitPrice(value, { cashRound: _cashRound = false } = {}) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return 0;
-  if (cashRound) return roundLightStoresAmount(n);
   return Math.round(n * 100) / 100;
 }
 

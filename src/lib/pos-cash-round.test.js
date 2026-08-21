@@ -57,8 +57,10 @@ describe("finalizePosLineAmount", () => {
 });
 
 describe("finalizePosDisplayUnitPrice", () => {
-  it("rounds unit price to next 5/10 when cash rounding is on", () => {
-    expect(finalizePosDisplayUnitPrice(89, { cashRound: true })).toBe(90);
+  it("keeps unit-price decimals even when cash rounding is on", () => {
+    expect(finalizePosDisplayUnitPrice(92.22, { cashRound: true })).toBe(92.22);
+    expect(finalizePosDisplayUnitPrice(92.226, { cashRound: true })).toBe(92.23);
+    expect(finalizePosDisplayUnitPrice(89, { cashRound: true })).toBe(89);
     expect(finalizePosDisplayUnitPrice(89, { cashRound: false })).toBe(89);
   });
 });

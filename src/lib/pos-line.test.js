@@ -216,7 +216,7 @@ describe("computePosLine retail amount vs unit", () => {
     expect(line.displayUnitPrice).toBe(126.2);
   });
 
-  it("rounds unit price and amount together when cash rounding is on", () => {
+  it("cash-rounds line amount only; unit price keeps decimals", () => {
     const product = {
       product_code: "ITEM89",
       unit_price: 89,
@@ -230,8 +230,35 @@ describe("computePosLine retail amount vs unit", () => {
       retailPackage: null,
       cashRound: true,
     });
-    expect(line.displayUnitPrice).toBe(90);
+    expect(line.displayUnitPrice).toBe(89);
     expect(line.lineAmount).toBe(90);
+  });
+
+  it("keeps fractional unit prices when cash rounding is on", () => {
+    const product = {
+      product_code: "POLISHED",
+      unit_price: 8300,
+      sell_on_retail: true,
+      uom: { conversion_factor: 90, measure_name: "KG", package_name: "BAG", uom_type: "WEIGHT" },
+    };
+    const line = computePosLine({
+      product,
+      entryQty: "45",
+      sellWholesale: false,
+      retailPackage: {
+        product_code: "POLISHED",
+        package_qty: 1,
+        selling_price: 8300,
+        markup_apps: [
+          { min_qty: 1, max_qty: 44, markup: 2.777, markup_type: "per_unit" },
+          { min_qty: 45, max_qty: 90, markup: 0, markup_type: "per_unit" },
+        ],
+      },
+      cashRound: true,
+    });
+    // 45kg × ~92.22 = 4150; amount may cash-round, unit stays decimal
+    expect(line.displayUnitPrice).toBeCloseTo(92.22, 2);
+    expect(Number.isInteger(line.displayUnitPrice)).toBe(false);
   });
 });
 
@@ -474,7 +501,7 @@ describe("cartLineDisplayUnitPrice wholesale", () => {
     ).toBe(6250);
   });
 
-  it("rounds stored display unit price when cash rounding is on", () => {
+  it("does not cash-round stored display unit price", () => {
     expect(
       cartLineDisplayUnitPrice(
         {
@@ -488,6 +515,6 @@ describe("cartLineDisplayUnitPrice wholesale", () => {
         true,
         { cashRound: true },
       ),
-    ).toBe(90);
+    ).toBe(89);
   });
 });

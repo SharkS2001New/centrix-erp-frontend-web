@@ -525,9 +525,11 @@ export default function SalesOrdersListScreen({
   }, [tableSortActive, tableSort, tableSortDir]);
 
   useEffect(() => {
-    const range = shopDebtorsOnly
-      ? defaultDateRange(3)
-      : routeOrdersOnly && routeOrdersDateRangeDays
+    // Shop Debtors must use the same default window as Sales → Orders (typically 14
+    // days). A hard-coded 3-day window hid convert-to-unpaid / older credit sales that
+    // still appear under Unpaid Orders.
+    const range =
+      routeOrdersOnly && routeOrdersDateRangeDays
         ? defaultDateRange(routeOrdersDateRangeDays)
         : queueConfig?.dateRangeDays
           ? defaultDateRange(queueConfig.dateRangeDays)
@@ -1832,11 +1834,11 @@ export default function SalesOrdersListScreen({
       }
         subtitle={
           shopDebtorsBucket === "unpaid"
-            ? "Shop credit orders with nothing collected yet — last 3 days by default. Route and mobile orders are excluded."
+            ? "Shop credit orders with nothing collected yet. Same date window as Sales → Orders. Route and mobile orders are excluded."
             : shopDebtorsBucket === "partial"
-              ? "Shop credit orders with a remaining balance — last 3 days by default. Route and mobile orders are excluded."
+              ? "Shop credit orders with a remaining balance. Same date window as Sales → Orders. Route and mobile orders are excluded."
               : shopDebtorsBucket === "paid"
-                ? "Fully paid shop credit orders — last 3 days by default. Route and mobile orders are excluded."
+                ? "Fully paid shop credit orders. Same date window as Sales → Orders. Route and mobile orders are excluded."
                 : shopDebtorsOnly
                   ? "Debtor customer orders for the shop — route and mobile orders are excluded"
             : routeOrdersOnly

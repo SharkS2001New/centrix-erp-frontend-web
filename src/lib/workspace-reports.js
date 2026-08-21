@@ -101,11 +101,11 @@ export const WORKSPACE_REPORT_OVERVIEW_LABEL = "Report overview";
 
 /** Report builder data source scope per workspace (matches API config). */
 export const WORKSPACE_BUILDER_LABEL = {
-  backoffice: "Sales, inventory & purchasing data",
-  accounting: "Accounting data",
+  backoffice: "Sales, inventory, purchasing & POS data",
+  accounting: "Accounting and payments data",
   hr: "Workforce and payroll data",
-  distribution: "Sales orders and distribution data",
-  hospitality_backoffice: "Hospitality checks, folios, and room data",
+  distribution: "Sales orders and logistics data",
+  hospitality_backoffice: "Hospitality checks, folios, rooms & inventory",
   admin: "All modules",
 };
 

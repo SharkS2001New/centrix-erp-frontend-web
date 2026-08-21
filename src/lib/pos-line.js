@@ -510,8 +510,9 @@ export function computePosLine({
   });
   displayUnitPrice = finalizePosDisplayUnitPrice(displayUnitPrice, { cashRound });
   const roundedLineAmount = finalizePosLineAmount(lineAmount, { cashRound });
-  // Per-base average for API trust path (amount ÷ qty); includes markup share.
-  const unitPricePerBase = baseQty > 0 ? roundedLineAmount / baseQty : 0;
+  // Per-base average for API trust path — use pre-cash-round amount so unit price
+  // keeps decimals (e.g. 92.22) while only the line amount is Light-Stores rounded.
+  const unitPricePerBase = baseQty > 0 ? lineAmount / baseQty : 0;
 
   return {
     ...resolved,
@@ -608,13 +609,21 @@ export function cartLineDisplayUnitPrice(
       ? baseToDisplayQty(baseQty, factor)
       : baseQty;
 
+  const storedDisplay = Number(line?.display_unit_price);
+  const hasStoredDisplay = Number.isFinite(storedDisplay) && storedDisplay > 0;
+
+  // Cash rounding nudges line amount only. Prefer stored unit price so amount÷qty
+  // does not rewrite 92.22 / 89 into a cash-rounded figure.
+  if (cashRound && hasStoredDisplay) {
+    return finalizePosDisplayUnitPrice(storedDisplay, { cashRound });
+  }
+
   // Prefer amount ÷ sold qty so retail/route markups on the line show in Price.
   if (soldQty > 0 && (amount > 0 || discount > 0)) {
     return finalizePosDisplayUnitPrice((amount + discount) / soldQty, { cashRound });
   }
 
-  const storedDisplay = Number(line?.display_unit_price);
-  if (Number.isFinite(storedDisplay) && storedDisplay > 0) {
+  if (hasStoredDisplay) {
     return finalizePosDisplayUnitPrice(storedDisplay, { cashRound });
   }
 
