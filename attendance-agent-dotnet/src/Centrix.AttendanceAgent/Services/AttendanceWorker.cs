@@ -16,7 +16,7 @@ public sealed class AttendanceWorker : BackgroundService
     private readonly CentrixClient _centrix;
     private readonly AcsEventService _acs;
 
-    private int _heartbeatSeconds = 600;
+    private int _heartbeatSeconds = AgentConstants.LiveHeartbeatSeconds;
     private string _timezone = "Africa/Nairobi";
     /// <summary>Last Nairobi hour key we successfully finished an hourly upload for (yyyy-MM-ddTHH).</summary>
     private string? _lastSuccessfulHourKey;
@@ -124,7 +124,16 @@ public sealed class AttendanceWorker : BackgroundService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _log.LogWarning(ex, "Heartbeat failed");
+                if (LooksLikeAuthFailure(ex))
+                {
+                    _log.LogError(
+                        ex,
+                        "Heartbeat rejected by Centrix (auth). Keep the Windows service running — re-download the agent only if this persists after checking internet/API URL.");
+                }
+                else
+                {
+                    _log.LogWarning(ex, "Heartbeat failed");
+                }
             }
 
             try
@@ -697,7 +706,8 @@ public sealed class AttendanceWorker : BackgroundService
 
     private void ApplyScheduleFromConfig(AgentConfig config)
     {
-        _heartbeatSeconds = Clamp(config.HeartbeatIntervalSeconds, 60, 3600, 600);
+        // Keepalive must stay frequent so Centrix shows the agent live overnight.
+        _heartbeatSeconds = ClampLiveHeartbeat(config.HeartbeatIntervalSeconds);
         _timezone = string.IsNullOrWhiteSpace(config.Timezone) ? "Africa/Nairobi" : config.Timezone;
     }
 
@@ -716,7 +726,7 @@ public sealed class AttendanceWorker : BackgroundService
         {
             if (heartbeat >= 60)
             {
-                var next = Math.Min(3600, heartbeat);
+                var next = ClampLiveHeartbeat(heartbeat);
                 if (next != _heartbeatSeconds)
                 {
                     _heartbeatSeconds = next;
@@ -729,6 +739,23 @@ public sealed class AttendanceWorker : BackgroundService
         {
             _timezone = tz.GetString() ?? _timezone;
         }
+    }
+
+    /// <summary>
+    /// Org settings may advertise 10-minute polls for punch schedule; keepalive stays ≤2 minutes.
+    /// </summary>
+    private static int ClampLiveHeartbeat(int seconds) =>
+        Math.Clamp(
+            seconds < 60 ? AgentConstants.LiveHeartbeatSeconds : seconds,
+            AgentConstants.LiveHeartbeatSeconds,
+            AgentConstants.MaxHeartbeatSeconds);
+
+    private static bool LooksLikeAuthFailure(Exception ex)
+    {
+        var msg = ex.Message ?? "";
+        return msg.Contains("401", StringComparison.Ordinal)
+            || msg.Contains("403", StringComparison.Ordinal)
+            || msg.Contains("Unauthenticated", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? Later(string? a, string? b)

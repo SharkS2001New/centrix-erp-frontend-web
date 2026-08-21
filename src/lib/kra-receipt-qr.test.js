@@ -69,6 +69,8 @@ describe("kra receipt QR", () => {
     );
     expect(html).toContain("CU Invoice: CU-4");
     expect(html).not.toContain("Customer KRA PIN");
+    expect(html).toContain("overflow:visible");
+    expect(html).not.toMatch(/kra-etims-block[^>]*overflow:hidden/);
   });
 
   it("requires a QR data URL when KRA fiscalization is active", async () => {

@@ -47,8 +47,27 @@ internal static class WkhtmlPdfRenderer
 
         var html = await File.ReadAllTextAsync(htmlPath, cancellationToken);
         var pageHeightMm = EstimateThermalPageHeightMm(html);
-        var viewportHeightPx = Math.Max(120, (int)Math.Ceiling(pageHeightMm / 25.4 * 96.0));
 
+        await RenderAtHeightAsync(executable, htmlPath, pdfPath, pageHeightMm, cancellationToken);
+
+        // Undersized height splits footer/KRA onto page 2 → thermal prints a clipped QR slip.
+        if (CountPdfPages(pdfPath) > 1)
+        {
+            pageHeightMm = Math.Min(520, (int)Math.Ceiling(pageHeightMm * 1.45) + 24);
+            await RenderAtHeightAsync(executable, htmlPath, pdfPath, pageHeightMm, cancellationToken);
+        }
+
+        return pageHeightMm;
+    }
+
+    private static async Task RenderAtHeightAsync(
+        string executable,
+        string htmlPath,
+        string pdfPath,
+        int pageHeightMm,
+        CancellationToken cancellationToken)
+    {
+        var viewportHeightPx = Math.Max(120, (int)Math.Ceiling(pageHeightMm / 25.4 * 96.0));
         var args = new[]
         {
             "--quiet",
@@ -83,8 +102,24 @@ internal static class WkhtmlPdfRenderer
                 : stderr.Trim();
             throw new InvalidOperationException(detail);
         }
+    }
 
-        return pageHeightMm;
+    /// <summary>
+    /// Best-effort PDF page count (wkhtmltopdf multi-page = clipped thermal slip risk).
+    /// </summary>
+    internal static int CountPdfPages(string pdfPath)
+    {
+        try
+        {
+            var bytes = File.ReadAllBytes(pdfPath);
+            var text = System.Text.Encoding.Latin1.GetString(bytes);
+            // Count page objects; ignore /Pages catalogs.
+            return Regex.Matches(text, @"/Type\s*/Page(?!\s*s)", RegexOptions.CultureInvariant).Count;
+        }
+        catch
+        {
+            return 1;
+        }
     }
 
     public static string BuildSumatraPrintSettings(int pageHeightMm) =>
@@ -111,27 +146,36 @@ internal static class WkhtmlPdfRenderer
         var brCount = Count(html, "<br\\b");
         var imgCount = Count(html, "<img\\b");
         var preCount = Count(html, "<pre\\b");
+        var footerLineCount = Count(html, "footer-text")
+            + Count(html, "footer-powered-by")
+            + Count(html, "footer-line-divider");
         var hasKraQr = html.Contains("kra-etims-block", StringComparison.OrdinalIgnoreCase)
-            || html.Contains("KRA eTIMS", StringComparison.OrdinalIgnoreCase);
+            || html.Contains("KRA eTIMS", StringComparison.OrdinalIgnoreCase)
+            || html.Contains("Scan to verify", StringComparison.OrdinalIgnoreCase);
 
         // Match classic WinForms density: compact header + rows, room for footer + QR on ONE page.
-        // Header/meta ~22mm, rows ~6mm, misc blocks ~2mm, images/QR ~24mm each.
-        var mm = 22
+        // Header/meta ~24mm, rows ~6mm, misc blocks ~2mm, images/QR ~26mm each.
+        var mm = 24
             + trCount * 6
             + Math.Max(0, divCount - 10) * 2
             + pCount * 3
             + brCount * 3
-            + imgCount * 24
-            + preCount * 18;
+            + imgCount * 26
+            + preCount * 18
+            + footerLineCount * 4;
 
-        // Footer + KRA QR must never spill onto page 2 (that becomes a "double receipt").
+        // Footer + KRA QR must never spill onto page 2 (that becomes a "clipped" QR slip).
+        // 100px QR ≈ 26mm; caption + CU invoice + dashed rule + tear-off ≈ 20mm more.
+        // imgCount already includes the QR <img>, so reserve the caption/tear-off band here.
         if (hasKraQr)
         {
-            mm += 12;
+            mm += 28;
         }
 
-        mm = (int)Math.Ceiling(mm * 1.03) + 4;
-        return Math.Clamp(mm, 70, 260);
+        // Safety margin: wkhtmltopdf line-box height often exceeds our tag heuristic.
+        mm = (int)Math.Ceiling(mm * 1.14) + 12;
+        // Cap high enough for long tickets + eTIMS QR on one continuous slip.
+        return Math.Clamp(mm, 80, 480);
     }
 
     private static string? FindOnPath(string fileName)

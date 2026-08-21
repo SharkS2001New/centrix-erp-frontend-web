@@ -127,7 +127,7 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
 
   function requestClose() {
     if (Date.now() < ignoreCloseUntilRef.current) return;
-    if (!saving) onClose?.();
+    if (!saving) onClose?.({ force: true, reason: "user-cancel" });
   }
 
   useEffect(() => {
@@ -152,12 +152,16 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
     if (e.target !== e.currentTarget) return;
     e.preventDefault();
     e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") {
+      e.stopImmediatePropagation();
+    }
   }
 
   return renderPosModalPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
       role="presentation"
+      onPointerDown={swallowOutsidePointer}
       onMouseDown={swallowOutsidePointer}
       onClick={swallowOutsidePointer}
     >
@@ -165,6 +169,7 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
         role="dialog"
         aria-modal="true"
         className={`relative ${POS_DIALOG_SHELL}`}
+        onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1727,7 +1732,8 @@ export function PosPaymentPanel({
       setStep("payment");
       return;
     }
-    onClose?.();
+    // Intentional Esc from the payment amounts step — only Esc / Cancel may dismiss.
+    onClose?.({ force: true, reason: "user-cancel" });
   }
 
   if (!open || !mounted) return null;
@@ -2292,7 +2298,7 @@ export function PosPaymentPanel({
           <button
             type="button"
             disabled={isCheckoutProcessing(saving, step) || step !== "payment"}
-            onClick={() => onClose?.({ force: true })}
+            onClick={() => onClose?.({ force: true, reason: "user-cancel" })}
             className={POS_DIALOG_SECONDARY_BTN}
           >
             <span className="text-lg">✕</span>

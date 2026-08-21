@@ -3,7 +3,7 @@ namespace Centrix.AttendanceAgent;
 public static class AgentConstants
 {
     public const string AgentName = "CentrixAttendanceAgent";
-    public const string Version = "3.2.0";
+    public const string Version = "3.3.0";
     public const string ServiceName = "CentrixAttendanceAgent";
     public const int StatusPort = 9251;
     public const int AcsEventPageSize = 30;
@@ -12,6 +12,9 @@ public static class AgentConstants
     public const int CatchupOverlapMs = 15 * 60 * 1000;
     public const int MaxCatchupWindows = 30;
     public const int CommandPollSeconds = 2;
+    /// <summary>Keep Centrix "online" even overnight — never wait 10+ minutes between heartbeats.</summary>
+    public const int LiveHeartbeatSeconds = 60;
+    public const int MaxHeartbeatSeconds = 120;
     /// <summary>Centrix ingest accepts max 500 events; keep batches smaller for reliable posts.</summary>
     public const int IngestChunkSize = 100;
     public const int IngestMaxAttempts = 4;

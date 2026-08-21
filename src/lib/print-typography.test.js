@@ -301,6 +301,8 @@ describe("org print typography settings", () => {
     expect(designedAt).toBeGreaterThan(-1);
     expect(qrAt).toBeGreaterThan(designedAt);
     expect(bodyHtml).toContain("Scan to verify this invoice on KRA eTIMS platform");
+    expect(bodyHtml).toContain('class="receipt-tearoff"');
+    expect(bodyHtml.indexOf('class="receipt-tearoff"')).toBeGreaterThan(qrAt);
   });
 
   it("preserves footer line casing on thermal receipts", () => {

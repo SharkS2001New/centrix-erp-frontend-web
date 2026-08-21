@@ -478,6 +478,7 @@ export function buildSaleReceiptHtml(
     <div class="divider"></div>
     ${footerHtml}
     ${kraQrHtml}
+    ${kraQrHtml ? `<div class="receipt-tearoff" aria-hidden="true"></div>` : ""}
   </div>
 </body>
 </html>`;

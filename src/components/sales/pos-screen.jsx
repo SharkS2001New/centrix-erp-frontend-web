@@ -2305,9 +2305,8 @@ export function PosScreen({ standalone = false }) {
   const [posUserThemeOpen, setPosUserThemeOpen] = useState(false);
   /** Sync lock — React state lags one frame, so F10 keyup must not re-enter open. */
   const paymentOpenRef = useRef(false);
-  /** Ignore Esc/backdrop close for a beat after open (same F10 keystroke race). */
+  /** Ignore Esc for a beat after open (same F10 keystroke race). */
   const paymentOpenedAtRef = useRef(0);
-  const PAYMENT_DIALOG_CLOSE_GRACE_MS = 1200;
   /** Remount checkout on each F10 so a leftover "complete" step cannot auto-close. */
   const [paymentDialogSession, setPaymentDialogSession] = useState(0);
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
@@ -4970,27 +4969,38 @@ export function PosScreen({ standalone = false }) {
   }
 
   /**
-   * Close payment. Without `force`, ignores closes in the grace window after open so
-   * F10 does not open → immediately close → reopen (flicker on External POS).
+   * Close F10 checkout. Hard-locked while open:
+   * - `user-cancel` — Esc or Cancel Payment only
+   * - `sale-finished` — ORDER COMPLETE → OK / auto-continue / previous-order finish
+   * Any other caller (prepare-next race, F8, restore, stale print) is ignored so
+   * cashiers never lose the payment screen while typing amounts or pressing Page Down.
    */
-  function closePaymentDialog({ force = false } = {}) {
-    if (
-      !force &&
-      paymentOpenRef.current &&
-      Date.now() - paymentOpenedAtRef.current < PAYMENT_DIALOG_CLOSE_GRACE_MS
-    ) {
+  function closePaymentDialog({ reason = null } = {}) {
+    if (!paymentOpenRef.current) {
+      setPaymentOpen(false);
+      return true;
+    }
+    if (reason !== "user-cancel" && reason !== "sale-finished") {
       return false;
     }
     paymentOpenRef.current = false;
     receiptPrintStatusRef.current = null;
     setPaymentOpen(false);
-    // Cancel / Esc must leave the open sale editable (qty, F12, swap).
+    setReceiptPrintStatus(null);
     openCompletePaymentInFlightRef.current = false;
     if (lineBusyRef.current) {
       lineBusyRef.current = false;
       setLineBusy(false);
     }
     return true;
+  }
+
+  function assertPaymentDialogClosed(actionLabel = "continue") {
+    if (!paymentOpenRef.current) return true;
+    const message = `Cancel payment first (Esc or Cancel Payment), then ${actionLabel}.`;
+    setStatusMessage(message);
+    if (standalone) notifyError(message);
+    return false;
   }
 
   function focusClassicProductSearch({ forceSelectAll = false } = {}) {
@@ -9097,7 +9107,7 @@ export function PosScreen({ standalone = false }) {
       saveOrderOpen: false,
     };
     setSaveOrderError(null);
-    closePaymentDialog({ force: true });
+    // Hold is blocked while F10 payment is open — do not force-close checkout here.
     setPaymentError(null);
     setHeldOrdersOpen(false);
     setLeaveGuardOpen(false);
@@ -9896,10 +9906,9 @@ export function PosScreen({ standalone = false }) {
       report(8);
       closeProductSearchDropdown();
       searchInputRef.current?.blur?.();
-      if (!keepPaymentOpen) {
-        closePaymentDialog({ force: true });
-        // Don't clear receiptPrintStatus here — print may still be in flight.
-      }
+      // Do NOT close F10 here. A slow prepare-next after the prior sale used to
+      // dismiss a newly opened payment dialog while the cashier typed amounts.
+      // handleContinueNextOrder already closed checkout with reason sale-finished.
       setPaymentError(null);
       setEditSourceSale(null);
       orderNoUserEditedRef.current = false;
@@ -10207,14 +10216,14 @@ export function PosScreen({ standalone = false }) {
     setReceiptPrintStatus(null);
     if (standalone) {
       clearPosUiDraft();
-      closePaymentDialog({ force: true });
+      closePaymentDialog({ reason: "sale-finished" });
       setPaymentError(null);
       try {
         await runPrepareNextOrderOverlay(async (report) => {
           await prepareNextPosOrderAfterSale({
             force: true,
             focusScan: false,
-            keepPaymentOpen: false,
+            keepPaymentOpen: true,
             pendingSale: completedSaleRef.current,
             onProgress: report,
           });
@@ -10225,7 +10234,7 @@ export function PosScreen({ standalone = false }) {
       }
       return;
     }
-    closePaymentDialog({ force: true });
+    closePaymentDialog({ reason: "sale-finished" });
     setPaymentError(null);
     clearLineEntry();
     setBusy(true);
@@ -11437,7 +11446,7 @@ export function PosScreen({ standalone = false }) {
       });
     }
 
-    closePaymentDialog({ force: true });
+    closePaymentDialog({ reason: "sale-finished" });
     setPaymentError(null);
     if (standalone && wasPreviousOrderEdit) {
       await clearWorkspaceAfterPreviousOrderPrint({
@@ -11973,6 +11982,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   function openSaveOrderDialog(mode) {
+    if (!assertPaymentDialogClosed(mode === "hold" ? "hold this order" : "save this order")) {
+      return;
+    }
     if (mode === "hold" && (modernOrderEditLocked || isCartEditSession)) {
       flashPosShortcutMessage("Cannot hold while editing a previous order.");
       return;
@@ -12028,10 +12040,7 @@ export function PosScreen({ standalone = false }) {
    */
   async function startFreshWorkspace(options = {}) {
     const discardPreviousOrderEdit = Boolean(options.discardPreviousOrderEdit);
-    if (paymentOpen) {
-      const message = "Close the payment dialog first (complete or cancel), then start a new order.";
-      setStatusMessage(message);
-      if (standalone) notifyError(message);
+    if (!assertPaymentDialogClosed("start a new order")) {
       return;
     }
     // Overlapping prepare-next from checkout — wait for it, then this F8 is a no-op on blank cart.
@@ -12344,7 +12353,7 @@ export function PosScreen({ standalone = false }) {
 
       closeProductSearchDropdown();
       searchInputRef.current?.blur?.();
-      closePaymentDialog({ force: true });
+      // F8 already refused while payment is open — no force-close here.
       setPaymentError(null);
       // Keep completedSale / last receipt — clearing workspace must not disable Reprint.
       setEditSourceSale(null);
@@ -12469,7 +12478,7 @@ export function PosScreen({ standalone = false }) {
     });
     const generation = ++freshWorkspaceGenerationRef.current;
 
-    closePaymentDialog({ force: true });
+    // Payment already blocked at startFreshWorkspace entry.
     setPaymentError(null);
     setEditSourceSale(null);
     setCartLineSaveFailed(false);
@@ -12883,7 +12892,6 @@ export function PosScreen({ standalone = false }) {
     setEditingLineId(null);
     setEditingLineRef(null);
     setReplacingLineId(null);
-    closePaymentDialog({ force: true });
     setPaymentError(null);
     setOrderEditError(null);
     setSaveOrderOpen(false);
@@ -13097,6 +13105,9 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function restoreOrderForEdit(saleId, { replace = false, saleSnapshot = null, keepEditing = false } = {}) {
+    if (!assertPaymentDialogClosed("open another receipt")) {
+      return;
+    }
     if (saleId == null || saleId === "") {
       const message = "No order selected to edit.";
       setOrderEditError(message);
@@ -13240,7 +13251,6 @@ export function PosScreen({ standalone = false }) {
         setEditingLineId(null);
         setEditingLineRef(null);
         setReplacingLineId(null);
-        closePaymentDialog({ force: true });
         setEditSourceSale(saleSnapshot?.id ? saleSnapshot : sale);
         orderNoUserEditedRef.current = false;
         const browseNum = resolvePosBrowseNumber({
@@ -13470,7 +13480,6 @@ export function PosScreen({ standalone = false }) {
       setEditingLineId(null);
       setEditingLineRef(null);
       setReplacingLineId(null);
-      closePaymentDialog({ force: true });
       orderNoUserEditedRef.current = false;
       const browseNum = resolvePosBrowseNumber(optimistic);
       if (browseNum != null) setEditOrderNo(String(browseNum));
@@ -13521,7 +13530,6 @@ export function PosScreen({ standalone = false }) {
       setEditingLineId(null);
       setEditingLineRef(null);
       setReplacingLineId(null);
-      closePaymentDialog({ force: true });
       orderNoUserEditedRef.current = false;
       const browseNum = resolvePosBrowseNumber(clean);
       const orderNum = clean?.held_order_num ?? sourceSale?.order_num ?? null;
@@ -13631,7 +13639,6 @@ export function PosScreen({ standalone = false }) {
         swapDraftRef.current = null;
         setSwapDraft(null);
       }
-      closePaymentDialog({ force: true });
       setEditSourceSale(sourceSale);
       orderNoUserEditedRef.current = false;
       const browseNum = resolvePosBrowseNumber(clean);
@@ -14500,12 +14507,8 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function openCompletePayment() {
-    // Payment already open on ORDER COMPLETE — F10/Enter means start the next order.
-    if (paymentOpenRef.current && receiptPrintStatusRef.current === "printed") {
-      void handleContinueNextOrder();
-      return;
-    }
-    // Use the ref — React state lags one frame and would misfire on a fast second press.
+    // F10 is inert while checkout is already open — never auto-dismiss or
+    // "continue next order" from a second F10 (that closed payment mid-tender).
     if (paymentOpenRef.current || openCompletePaymentInFlightRef.current) return;
     if (busy) {
       flashPosShortcutMessage("Checkout is still in progress — please wait.");
@@ -14708,7 +14711,7 @@ export function PosScreen({ standalone = false }) {
     focusScanCode,
     closeProductSearchDropdown,
     closePayment: () => {
-      if (closePaymentDialog()) {
+      if (closePaymentDialog({ reason: "user-cancel" })) {
         setReceiptPrintStatus(null);
         setPaymentError(null);
       }
@@ -14789,6 +14792,7 @@ export function PosScreen({ standalone = false }) {
 
     /** Human label for whichever dialog is blocking Alt shortcuts (null if clear). */
     function altShortcutBlockerLabel(state) {
+      if (state.paymentOpen || paymentOpenRef.current) return "payment";
       if (state.saveOrderOpen) return "hold/save order";
       if (state.heldOrdersOpen) return "held orders";
       if (state.leaveGuardOpen) return "leave confirmation";
@@ -14924,17 +14928,9 @@ export function PosScreen({ standalone = false }) {
 
         // Prefer live ref — React state lags and let a second F10 reopen/flicker the dialog.
         if ((state.paymentOpen || paymentOpenRef.current) && key === "F10") {
-          // Key release must never continue/close — that is the External POS flicker:
-          // keydown opens checkout, keyup treats it as ORDER COMPLETE.
+          // Key release must never continue/close. While checkout is open, F10 is
+          // locked — only Esc / Cancel Payment dismiss; Page Down completes payment.
           if (phase === "keyup") return;
-          const openedAgo = Date.now() - paymentOpenedAtRef.current;
-          // Same F10 keydown just opened checkout — do not treat a repeat as "next order".
-          if (openedAgo < 1200) return;
-          if (receiptPrintStatusRef.current === "printed") {
-            void actions.handleContinueNextOrder?.();
-            return;
-          }
-          // F10 opens payment from the cart — once open, use Page Down inside the dialog.
           return;
         }
 
@@ -14994,7 +14990,9 @@ export function PosScreen({ standalone = false }) {
             return;
           }
           actions.flashPosShortcutMessage?.(
-            `Close the ${blocker} dialog first (Esc), then try Alt+${altLetter.toUpperCase()} again.`,
+            blocker === "payment"
+              ? "Cancel payment first (Esc or Cancel Payment), then try again."
+              : `Close the ${blocker} dialog first (Esc), then try Alt+${altLetter.toUpperCase()} again.`,
           );
           return;
         }
@@ -16811,7 +16809,8 @@ export function PosScreen({ standalone = false }) {
         key={paymentDialogSession}
         open={paymentOpen}
         onClose={(opts) => {
-          if (!closePaymentDialog({ force: Boolean(opts?.force) })) return;
+          // Only Esc / Cancel Payment may dismiss mid-checkout.
+          if (!closePaymentDialog({ reason: "user-cancel" })) return;
           setReceiptPrintStatus(null);
           setKraUploadPrompt(null);
           setKraUploadError(null);
@@ -16907,10 +16906,11 @@ export function PosScreen({ standalone = false }) {
         themeStyle={classicThemeBridgeVars}
         showHeldAmountPaid={Boolean(posSalesConfig.enableHeldOrderAmountPaid)}
         onRestored={async (restoredCart, sourceSale, meta = {}) => {
+          if (!assertPaymentDialogClosed("restore a held order")) {
+            return;
+          }
           setHeldOrdersOpen(false);
           setSaveOrderOpen(false);
-          closePaymentDialog({ force: true });
-
           // restore-to-cart already used replace:true on the same TemporaryCart — do not
           // DELETE /lines afterward (that wiped the just-restored cart and added latency).
           const prior = cartRef.current ?? cart;
