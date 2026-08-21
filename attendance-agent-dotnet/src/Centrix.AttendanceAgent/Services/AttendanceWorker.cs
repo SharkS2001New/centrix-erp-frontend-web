@@ -65,7 +65,7 @@ public sealed class AttendanceWorker : BackgroundService
         if (stoppingToken.IsCancellationRequested) return;
 
         _log.LogInformation(
-            "{Agent} v{Version} — punch upload {Start}:00–{End}:00 {Tz} (after each hour + keep retrying); heartbeat every {Heartbeat}s; command poll every {Command}s",
+            "{Agent} v{Version} — punch upload {Start}:00–{End}:00 next day {Tz} (after each hour + keep retrying); heartbeat every {Heartbeat}s; command poll every {Command}s",
             AgentConstants.AgentName,
             AgentConstants.Version,
             AgentConstants.PunchUploadStartHour,
@@ -150,9 +150,9 @@ public sealed class AttendanceWorker : BackgroundService
     private async Task RunPunchLoopAsync(CancellationToken ct)
     {
         // Schedule (Africa/Nairobi by default):
-        // - 06:00–14:00 (2pm): after each hour, upload punches; keep retrying every 5 minutes
-        //   so new scans still go online during the morning.
-        // - Outside that window: wait until the next 06:00 (punches stay on the terminal).
+        // - 06:00–02:00 next day: after each hour, upload punches; keep retrying every 5 minutes
+        //   so new scans still go online through evening and early morning.
+        // - 03:00–05:59: wait until the next 06:00 (punches stay on the terminal).
         while (!ct.IsCancellationRequested)
         {
             try
@@ -162,7 +162,7 @@ public sealed class AttendanceWorker : BackgroundService
                 {
                     var wait = DelayUntilNextWindowOpen(local);
                     _log.LogInformation(
-                        "Outside punch upload window ({Start}:00–{End}:00 {Tz}). Sleeping ~{Minutes} min.",
+                        "Outside punch upload window ({Start}:00–{End}:00 next day {Tz}). Sleeping ~{Minutes} min.",
                         AgentConstants.PunchUploadStartHour,
                         AgentConstants.PunchUploadEndHour,
                         _timezone,
@@ -176,9 +176,10 @@ public sealed class AttendanceWorker : BackgroundService
                 if (isNewHour)
                 {
                     _log.LogInformation(
-                        "Punch upload for hour {HourKey} ({Tz}) — keep retrying new punches until 14:00",
+                        "Punch upload for hour {HourKey} ({Tz}) — keep retrying new punches until {End}:00",
                         hourKey,
-                        _timezone);
+                        _timezone,
+                        AgentConstants.PunchUploadEndHour);
                 }
 
                 await RunPunchSyncAsync(includeHeartbeat: false, ct);
@@ -209,7 +210,15 @@ public sealed class AttendanceWorker : BackgroundService
     private static bool IsInsideDailyUploadWindow(DateTime localWallClock)
     {
         var hour = localWallClock.Hour;
-        return hour >= AgentConstants.PunchUploadStartHour && hour <= AgentConstants.PunchUploadEndHour;
+        var start = AgentConstants.PunchUploadStartHour;
+        var end = AgentConstants.PunchUploadEndHour;
+        // Overnight wrap: e.g. 06:00–02:00 next day → hour >= 6 || hour <= 2
+        if (end < start)
+        {
+            return hour >= start || hour <= end;
+        }
+
+        return hour >= start && hour <= end;
     }
 
     private static string HourKey(DateTime localWallClock) =>
@@ -217,18 +226,32 @@ public sealed class AttendanceWorker : BackgroundService
 
     private static TimeSpan DelayUntilNextWindowOpen(DateTime localWallClock)
     {
+        var start = AgentConstants.PunchUploadStartHour;
+        var end = AgentConstants.PunchUploadEndHour;
+        // Quiet hours are after end and before start (e.g. 03:00–05:59).
         var startToday = new DateTime(
             localWallClock.Year,
             localWallClock.Month,
             localWallClock.Day,
-            AgentConstants.PunchUploadStartHour,
+            start,
             0,
             0,
             DateTimeKind.Unspecified);
 
-        var nextOpen = localWallClock.Hour < AgentConstants.PunchUploadStartHour
-            ? startToday
-            : startToday.AddDays(1);
+        DateTime nextOpen;
+        if (end < start)
+        {
+            // Overnight window: outside only between (end+1) and (start-1).
+            nextOpen = localWallClock.Hour > end && localWallClock.Hour < start
+                ? startToday
+                : startToday.AddDays(1);
+        }
+        else
+        {
+            nextOpen = localWallClock.Hour < start
+                ? startToday
+                : startToday.AddDays(1);
+        }
 
         var wait = nextOpen - localWallClock;
         if (wait < TimeSpan.FromMinutes(1)) wait = TimeSpan.FromMinutes(1);
@@ -267,7 +290,7 @@ public sealed class AttendanceWorker : BackgroundService
                 if (!IsInsideDailyUploadWindow(local))
                 {
                     _log.LogInformation(
-                        "Startup catch-up deferred until {Start}:00–{End}:00 {Tz}",
+                        "Startup catch-up deferred until {Start}:00–{End}:00 next day {Tz}",
                         AgentConstants.PunchUploadStartHour,
                         AgentConstants.PunchUploadEndHour,
                         _timezone);

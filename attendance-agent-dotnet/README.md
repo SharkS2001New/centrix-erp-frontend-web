@@ -8,7 +8,7 @@ Same job as the old Node agent, built like the **Centrix Print Agent**:
 - Real Windows service (`CentrixAttendanceAgent`)
 - Local status page at `http://127.0.0.1:9251`
 - **Command polling runs independently** of punch catch-up so Centrix “Test connection” is not blocked for minutes
-- Version **3.3.0** — punch upload 06:00–14:00 (Nairobi), hourly + keep retrying; **heartbeat every 60s** so Centrix stays live overnight
+- Version **3.3.1** — punch upload **06:00–02:00 next day** (Nairobi), hourly + keep retrying; **heartbeat every 60s** so Centrix stays live overnight
 
 ## Requirements
 
@@ -38,7 +38,7 @@ Run **`uninstall-windows.bat`** as Administrator.
 |------|----------|---------|
 | Command poll | 2s | Proxies ISAPI / Centrix PING (Test connection) + updates last check-in |
 | Heartbeat | **60–120s** | Keepalive so Centrix shows the agent live overnight |
-| Punch sync | **06:00–14:00 Africa/Nairobi**, retry every **5 min** | After each hour in that window, upload new punches (keeps retrying) |
+| Punch sync | **06:00–02:00 next day Africa/Nairobi**, retry every **5 min** | After each hour in that window, upload new punches (keeps retrying) |
 
 ## Legacy Node agent
 

@@ -3,7 +3,7 @@ namespace Centrix.AttendanceAgent;
 public static class AgentConstants
 {
     public const string AgentName = "CentrixAttendanceAgent";
-    public const string Version = "3.3.0";
+    public const string Version = "3.3.1";
     public const string ServiceName = "CentrixAttendanceAgent";
     public const int StatusPort = 9251;
     public const int AcsEventPageSize = 30;
@@ -19,9 +19,10 @@ public static class AgentConstants
     public const int IngestChunkSize = 100;
     public const int IngestMaxAttempts = 4;
 
-    /// <summary>Nairobi wall-clock: first upload hour (06:00) through last (14:00 / 2pm).</summary>
+    /// <summary>Nairobi wall-clock: upload from 06:00 through 02:00 the next day (overnight wrap).</summary>
     public const int PunchUploadStartHour = 6;
-    public const int PunchUploadEndHour = 14;
+    /// <summary>Inclusive end hour (02:00). Window is start..23 then 0..end.</summary>
+    public const int PunchUploadEndHour = 2;
     /// <summary>While inside the daily window, keep retrying new punches this often.</summary>
     public const int PunchRetrySeconds = 300;
 }
