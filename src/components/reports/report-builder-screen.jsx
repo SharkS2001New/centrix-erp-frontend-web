@@ -12,13 +12,11 @@ import { CatalogPageShell, Field, PrimaryButton, inputClassName, SearchableSelec
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
-
-function reportBuilderVisibleFields(sourceSchema) {
-  const fields = sourceSchema?.fields ?? [];
-  const hasProductName = fields.some((field) => field.key === "product_name");
-  if (!hasProductName) return fields;
-  return fields.filter((field) => field.key !== "product_code");
-}
+import {
+  REPORT_BUILDER_MASTER_FIELDS,
+  reportBuilderColumnCatalog,
+  reportBuilderVisibleFields,
+} from "@/lib/reports/report-builder-columns";
 
 function emptySpec() {
   return {
@@ -61,6 +59,17 @@ function groupByMatches(entry, sourceKey, fieldKey, defaultSource) {
   return normalized.source === sourceKey && normalized.field === fieldKey;
 }
 
+/** Drop columns that duplicate a master-source field once that master is selected. */
+function pruneMasterDuplicateColumns(columns, selectedSources) {
+  const selected = new Set(selectedSources);
+  return columns.filter((col) => {
+    const master = REPORT_BUILDER_MASTER_FIELDS[col.field];
+    if (!master) return true;
+    if (!selected.has(master)) return true;
+    return col.source === master;
+  });
+}
+
 function formatPreviewError(error) {
   if (error instanceof ApiError) {
     const errors = error.body?.errors;
@@ -78,14 +87,11 @@ function formatPreviewError(error) {
   return error instanceof Error ? error.message : "Preview failed";
 }
 
-function emptyPreviewMessage(selectedSources, isBlendMode) {
-  if (isBlendMode) {
-    return "No rows matched for this side-by-side report. The selected sources may not overlap on the chosen dimension, or current filters excluded all data.";
-  }
+function emptyPreviewMessage(selectedSources) {
   if (selectedSources.length > 1) {
-    return "No rows were returned. These sources may not share matching records for the current filters, or the combination does not produce joined results. Try different sources, add a group-by field, adjust the date range, or use side-by-side metrics when available.";
+    return "No rows matched. Try a wider date range, fewer filters, or pick a different combination of sources.";
   }
-  return "No rows matched your selection. Try widening the date range or adjusting branch filters.";
+  return "No rows matched. Try widening the date range or adjusting branch filters.";
 }
 
 function PreviewFeedback({ feedback }) {
@@ -95,10 +101,10 @@ function PreviewFeedback({ feedback }) {
   return (
     <div
       className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
-        isError ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-900"
+        isError ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-700"
       }`}
     >
-      <p className="font-medium">{isError ? "Cannot build this report" : "No data returned"}</p>
+      <p className="font-medium">{isError ? "Could not build this report" : "No rows for this preview"}</p>
       <p className="mt-1">{feedback.message}</p>
     </div>
   );
@@ -117,6 +123,8 @@ export function ReportBuilderScreen() {
   const [previewRows, setPreviewRows] = useState([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewFeedback, setPreviewFeedback] = useState(null);
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [columnQuery, setColumnQuery] = useState("");
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -137,25 +145,53 @@ export function ReportBuilderScreen() {
   }, [workspaceId]);
 
   const sourceLimit = schema?.max_sources ?? maxSources;
-
   const selectedSources = useMemo(() => spec.sources ?? [], [spec.sources]);
-
   const isMultiSource = selectedSources.length > 1;
   const isBlendMode = isMultiSource && Boolean(spec.blend_by);
 
   const sourcesByModule = useMemo(() => {
+    const q = sourceQuery.trim().toLowerCase();
     const grouped = new Map();
     for (const source of schema?.sources ?? []) {
+      if (
+        q &&
+        !`${source.label} ${source.description ?? ""} ${source.module ?? ""}`.toLowerCase().includes(q)
+      ) {
+        continue;
+      }
       const sourceModule = source.module ?? "General";
       if (!grouped.has(sourceModule)) grouped.set(sourceModule, []);
       grouped.get(sourceModule).push(source);
     }
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [schema]);
+  }, [schema, sourceQuery]);
 
   const availableBlendDimensions = useMemo(
     () => blendDimensionsForSources(schema, selectedSources),
     [schema, selectedSources],
+  );
+
+  const columnCatalog = useMemo(() => {
+    const rows = reportBuilderColumnCatalog(schema, selectedSources);
+    const q = columnQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => row.searchText.includes(q));
+  }, [schema, selectedSources, columnQuery]);
+
+  const dimensionColumns = useMemo(
+    () => columnCatalog.filter((row) => row.field.groupable && !row.field.aggregates?.length),
+    [columnCatalog],
+  );
+  const metricColumns = useMemo(
+    () => columnCatalog.filter((row) => row.field.aggregates?.length),
+    [columnCatalog],
+  );
+  const otherColumns = useMemo(
+    () =>
+      columnCatalog.filter(
+        (row) => !(row.field.groupable && !row.field.aggregates?.length) && !row.field.aggregates?.length,
+      ),
+    [columnCatalog],
   );
 
   useEffect(() => {
@@ -183,10 +219,14 @@ export function ReportBuilderScreen() {
         nextSources = [...current, sourceKey];
       }
 
-      const nextColumns = prev.columns.filter((col) => nextSources.includes(col.source));
+      let nextColumns = prev.columns.filter((col) => nextSources.includes(col.source));
+      nextColumns = pruneMasterDuplicateColumns(nextColumns, nextSources);
       const nextGroupBy = prev.group_by.filter((entry) => {
         const normalized = normalizeGroupByEntry(entry, prev.source);
-        return nextSources.includes(normalized.source);
+        if (!nextSources.includes(normalized.source)) return false;
+        const master = REPORT_BUILDER_MASTER_FIELDS[normalized.field];
+        if (master && nextSources.includes(master) && normalized.source !== master) return false;
+        return true;
       });
 
       return {
@@ -224,7 +264,6 @@ export function ReportBuilderScreen() {
       const grouping = normalizedGroupBy.length > 0;
 
       let group_by = prev.group_by;
-      // While grouping, keep selected dimensions in GROUP BY (never force SUM on labels).
       if (grouping && field.groupable && !field.aggregates?.length) {
         const alreadyGrouped = group_by.some((g) => groupByMatches(g, sourceKey, fieldKey, prev.source));
         if (!alreadyGrouped) {
@@ -243,18 +282,21 @@ export function ReportBuilderScreen() {
               ? field.aggregates[0]
               : undefined;
 
+      let columns = [
+        ...prev.columns,
+        {
+          source: sourceKey,
+          field: fieldKey,
+          label: field.label,
+          ...(aggregate ? { aggregate } : {}),
+        },
+      ];
+      columns = pruneMasterDuplicateColumns(columns, prev.sources ?? []);
+
       return {
         ...prev,
         group_by,
-        columns: [
-          ...prev.columns,
-          {
-            source: sourceKey,
-            field: fieldKey,
-            label: field.label,
-            ...(aggregate ? { aggregate } : {}),
-          },
-        ],
+        columns,
       };
     });
     setPreviewFeedback(null);
@@ -285,7 +327,6 @@ export function ReportBuilderScreen() {
       }
 
       if (group_by.length) {
-        // Pull every selected groupable dimension into GROUP BY so aggregates stay valid.
         for (const col of columns) {
           const fieldMeta = findSourceSchema(schema, col.source)?.fields?.find((f) => f.key === col.field);
           if (!fieldMeta?.groupable) continue;
@@ -312,7 +353,7 @@ export function ReportBuilderScreen() {
         });
       }
 
-      return { ...prev, group_by, columns };
+      return { ...prev, group_by, columns: pruneMasterDuplicateColumns(columns, prev.sources ?? []) };
     });
     setPreviewFeedback(null);
   }
@@ -346,7 +387,7 @@ export function ReportBuilderScreen() {
       if (rows.length === 0) {
         setPreviewFeedback({
           kind: "empty",
-          message: emptyPreviewMessage(selectedSources, isBlendMode),
+          message: emptyPreviewMessage(selectedSources),
         });
       }
     } catch (e) {
@@ -415,10 +456,48 @@ export function ReportBuilderScreen() {
   const blendLabel = availableBlendDimensions.find((d) => d.key === spec.blend_by)?.label;
   const normalizedGroupBy = spec.group_by.map((g) => normalizeGroupByEntry(g, spec.source));
 
+  function renderColumnList(rows, emptyLabel) {
+    if (!rows.length) {
+      return <p className="text-xs text-slate-400">{emptyLabel}</p>;
+    }
+    return (
+      <ul className="space-y-1.5">
+        {rows.map(({ sourceKey, sourceLabel, field }) => {
+          const selected = spec.columns.some((c) => c.source === sourceKey && c.field === field.key);
+          const disabled = isBlendMode && !field.aggregates?.length;
+          return (
+            <li key={columnRef(sourceKey, field.key)} className="flex items-start gap-2">
+              <input
+                id={`col-${sourceKey}-${field.key}`}
+                type="checkbox"
+                checked={selected}
+                disabled={disabled}
+                onChange={() => toggleColumn(sourceKey, field.key)}
+                className="mt-1"
+              />
+              <label
+                htmlFor={`col-${sourceKey}-${field.key}`}
+                className={`min-w-0 flex-1 ${disabled ? "cursor-not-allowed text-slate-400" : "cursor-pointer"}`}
+              >
+                <span className="font-medium text-slate-800">{field.label}</span>
+                {isMultiSource ? (
+                  <span className="ml-1 text-xs text-slate-400">· {sourceLabel}</span>
+                ) : null}
+                {disabled ? (
+                  <span className="ml-1 text-xs text-slate-400">— numbers only in side-by-side mode</span>
+                ) : null}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
   return (
     <CatalogPageShell
       title="Report builder"
-      subtitle={`Compose custom reports from ${workspaceLabel.toLowerCase()} fields. Select multiple sources to combine columns.`}
+      subtitle={`Pick a data source, choose the columns you need, then preview. Built from ${workspaceLabel.toLowerCase()}.`}
     >
       <AdminBreadcrumb items={[{ label: "Reports", href: "/reports" }, { label: "Report builder" }]} />
 
@@ -429,57 +508,76 @@ export function ReportBuilderScreen() {
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-1">
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">1. Data sources</h2>
+            <h2 className="text-sm font-semibold text-slate-900">1. Start with a data source</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Choose one or more sources (up to {sourceLimit}). Related sources are joined automatically when you
-              preview.
+              Choose what the report is about (sales, stock, suppliers…). Add related sources only if you need
+              columns from them.
             </p>
-            <ul className="mt-3 max-h-56 space-y-3 overflow-y-auto text-sm">
-              {sourcesByModule.map(([module, sources]) => (
-                <li key={module}>
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{module}</p>
-                  <ul className="space-y-1.5">
-                    {sources.map((s) => {
-                      const checked = selectedSources.includes(s.key);
-                      const atLimit = !checked && selectedSources.length >= sourceLimit;
-                      return (
-                        <li key={s.key} className="flex items-start gap-2">
-                          <input
-                            id={`src-${s.key}`}
-                            type="checkbox"
-                            checked={checked}
-                            disabled={atLimit}
-                            onChange={() => toggleSource(s.key)}
-                            className="mt-1"
-                          />
-                          <label htmlFor={`src-${s.key}`} className="min-w-0 flex-1 cursor-pointer">
-                            <span className="font-medium text-slate-800">{s.label}</span>
-                            {s.description ? (
-                              <span className="mt-0.5 block text-xs text-slate-400">{s.description}</span>
-                            ) : null}
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </li>
-              ))}
+            <input
+              className={`${inputClassName()} mt-3`}
+              placeholder="Search sources…"
+              value={sourceQuery}
+              onChange={(e) => setSourceQuery(e.target.value)}
+            />
+            {selectedSources.length > 0 ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Selected:{" "}
+                {selectedSources
+                  .map((key) => findSourceSchema(schema, key)?.label ?? key)
+                  .join(", ")}
+                {selectedSources.length >= sourceLimit ? ` (max ${sourceLimit})` : ""}
+              </p>
+            ) : null}
+            <ul className="mt-3 max-h-52 space-y-3 overflow-y-auto text-sm">
+              {sourcesByModule.length === 0 ? (
+                <li className="text-slate-500">No sources match your search.</li>
+              ) : (
+                sourcesByModule.map(([module, sources]) => (
+                  <li key={module}>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{module}</p>
+                    <ul className="space-y-1.5">
+                      {sources.map((s) => {
+                        const checked = selectedSources.includes(s.key);
+                        const atLimit = !checked && selectedSources.length >= sourceLimit;
+                        return (
+                          <li key={s.key} className="flex items-start gap-2">
+                            <input
+                              id={`src-${s.key}`}
+                              type="checkbox"
+                              checked={checked}
+                              disabled={atLimit}
+                              onChange={() => toggleSource(s.key)}
+                              className="mt-1"
+                            />
+                            <label htmlFor={`src-${s.key}`} className="min-w-0 flex-1 cursor-pointer">
+                              <span className="font-medium text-slate-800">{s.label}</span>
+                              {s.description ? (
+                                <span className="mt-0.5 block text-xs text-slate-400">{s.description}</span>
+                              ) : null}
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                ))
+              )}
             </ul>
           </section>
 
           {isMultiSource && availableBlendDimensions.length ? (
             <section className="theme-panel rounded-xl border p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">2. Side-by-side metrics (optional)</h2>
+              <h2 className="text-sm font-semibold text-slate-900">Optional: compare side-by-side</h2>
               <p className="mt-1 text-xs text-slate-500">
-                By default, sources are joined into one table. Use this only when you want aggregated metrics aligned
-                by a shared dimension (e.g. month or branch).
+                Leave this off to combine sources into one table. Turn it on to align totals by day, month, or
+                branch.
               </p>
-              <Field label="Combine mode">
+              <Field label="Align by">
                 <SearchableSelect
-  className={inputClassName()}
-  value={spec.blend_by ?? ""}
-  nativeEvent
-  onChange={((e) => {
+                  className={inputClassName()}
+                  value={spec.blend_by ?? ""}
+                  nativeEvent
+                  onChange={(e) => {
                     const blendBy = e.target.value || null;
                     setSpec((prev) => ({
                       ...prev,
@@ -488,81 +586,69 @@ export function ReportBuilderScreen() {
                     }));
                     setPreviewRows([]);
                     setPreviewFeedback(null);
-                  })}
-  options={availableBlendDimensions.map((dim) => ({ value: dim.key, label: 'Side-by-side by {dim.label.toLowerCase()}' }))}
-/>
+                  }}
+                  options={[
+                    { value: "", label: "Joined table (default)" },
+                    ...availableBlendDimensions.map((dim) => ({
+                      value: dim.key,
+                      label: `Side-by-side by ${String(dim.label).toLowerCase()}`,
+                    })),
+                  ]}
+                />
               </Field>
               {isBlendMode ? (
                 <p className="mt-2 text-xs text-slate-500">
-                  Metrics from each source are aggregated per {blendLabel?.toLowerCase() ?? "shared row"} and shown
-                  side by side.
+                  Metrics are totaled per {blendLabel?.toLowerCase() ?? "shared row"} and shown side by side.
                 </p>
               ) : null}
             </section>
           ) : null}
 
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">
-              {isMultiSource && availableBlendDimensions.length ? "3. Columns" : isMultiSource ? "2. Columns" : "2. Columns"}
-            </h2>
-            <div className="mt-3 max-h-72 space-y-4 overflow-y-auto text-sm">
+            <h2 className="text-sm font-semibold text-slate-900">2. Pick columns</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Only fields from your selected sources. Shared labels (like product name) come from the main master
+              source when it is selected.
+            </p>
+            <input
+              className={`${inputClassName()} mt-3`}
+              placeholder="Search columns…"
+              value={columnQuery}
+              onChange={(e) => setColumnQuery(e.target.value)}
+              disabled={selectedSources.length === 0}
+            />
+            <div className="mt-3 max-h-80 space-y-4 overflow-y-auto text-sm">
               {selectedSources.length === 0 ? (
                 <p className="text-slate-500">Select a data source above to see its columns.</p>
               ) : (
-                selectedSources.map((sourceKey) => {
-                  const sourceSchema = findSourceSchema(schema, sourceKey);
-                  if (!sourceSchema) return null;
-                  return (
-                    <div key={sourceKey}>
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                        {sourceSchema.label}
-                      </p>
-                      <ul className="space-y-2">
-                        {reportBuilderVisibleFields(sourceSchema).map((field) => {
-                          const selected = spec.columns.some(
-                            (c) => c.source === sourceKey && c.field === field.key,
-                          );
-                          const disabled = isBlendMode && !field.aggregates?.length;
-                          return (
-                            <li key={columnRef(sourceKey, field.key)} className="flex items-start gap-2">
-                              <input
-                                id={`col-${sourceKey}-${field.key}`}
-                                type="checkbox"
-                                checked={selected}
-                                disabled={disabled}
-                                onChange={() => toggleColumn(sourceKey, field.key)}
-                                className="mt-1"
-                              />
-                              <label
-                                htmlFor={`col-${sourceKey}-${field.key}`}
-                                className={`min-w-0 flex-1 ${disabled ? "cursor-not-allowed text-slate-400" : "cursor-pointer"}`}
-                              >
-                                <span className="font-medium text-slate-800">{field.label}</span>
-                                <span className="ml-1 text-xs text-slate-400">({field.type})</span>
-                                {disabled ? (
-                                  <span className="ml-1 text-xs text-slate-400">— metrics only in side-by-side mode</span>
-                                ) : null}
-                              </label>
-                            </li>
-                          );
-                        })}
-                      </ul>
+                <>
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Labels</p>
+                    {renderColumnList(dimensionColumns, "No label columns match.")}
+                  </div>
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Numbers</p>
+                    {renderColumnList(metricColumns, "No number columns match.")}
+                  </div>
+                  {otherColumns.length ? (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Other</p>
+                      {renderColumnList(otherColumns, "")}
                     </div>
-                  );
-                })
+                  ) : null}
+                </>
               )}
             </div>
           </section>
 
           {!isBlendMode && selectedSources.length > 0 ? (
             <section className="theme-panel rounded-xl border p-4 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">
-                {isMultiSource && availableBlendDimensions.length ? "4. Group by (optional)" : isMultiSource ? "3. Group by (optional)" : "3. Group by (optional)"}
-              </h2>
-              <ul className="mt-3 space-y-2 text-sm">
+              <h2 className="text-sm font-semibold text-slate-900">3. Group by (optional)</h2>
+              <p className="mt-1 text-xs text-slate-500">Summarize rows — e.g. totals per branch or product.</p>
+              <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto text-sm">
                 {selectedSources.flatMap((sourceKey) => {
                   const sourceSchema = findSourceSchema(schema, sourceKey);
-                  return reportBuilderVisibleFields(sourceSchema)
+                  return reportBuilderVisibleFields(sourceSchema, selectedSources)
                     .filter((f) => f.groupable)
                     .map((field) => (
                       <li key={columnRef(sourceKey, field.key)} className="flex items-center gap-2">
@@ -573,7 +659,8 @@ export function ReportBuilderScreen() {
                           onChange={() => toggleGroupBy(sourceKey, field.key)}
                         />
                         <label htmlFor={`grp-${sourceKey}-${field.key}`} className="cursor-pointer text-slate-700">
-                          {sourceSchema?.label}: {field.label}
+                          {isMultiSource ? `${sourceSchema?.label}: ` : ""}
+                          {field.label}
                         </label>
                       </li>
                     ));
@@ -583,7 +670,7 @@ export function ReportBuilderScreen() {
           ) : null}
 
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Save template</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Save</h2>
             <div className="mt-3 space-y-3">
               <Field label="Report name">
                 <input className={inputClassName()} value={name} onChange={(e) => setName(e.target.value)} />
@@ -619,16 +706,15 @@ export function ReportBuilderScreen() {
             </div>
           </section>
 
-          {templates.length ? (
+          {templates.length > 0 ? (
             <section className="theme-panel rounded-xl border p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">Saved reports</h2>
-              <ul className="mt-3 space-y-2 text-sm">
-                {templates.map((t) => (
+              <ul className="mt-2 space-y-1 text-sm">
+                {templates.slice(0, 8).map((t) => (
                   <li key={t.id}>
-                    <Link href={`/reports/custom/${t.id}`} className="text-indigo-600 hover:underline">
+                    <Link className="text-indigo-700 hover:underline" href={`/reports/custom/${t.id}`}>
                       {t.name}
                     </Link>
-                    {t.is_shared ? <span className="ml-2 text-xs text-slate-400">shared</span> : null}
                   </li>
                 ))}
               </ul>
@@ -638,18 +724,16 @@ export function ReportBuilderScreen() {
 
         <div className="xl:col-span-2">
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">Preview</h2>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-xs text-slate-500">
                   {selectedSources.length} source(s) · {spec.columns.length} column(s)
+                  {normalizedGroupBy.length ? ` · grouped by ${normalizedGroupBy.length}` : ""}
                   {isBlendMode && blendLabel ? ` · side-by-side by ${blendLabel.toLowerCase()}` : ""}
-                  {!isBlendMode && normalizedGroupBy.length
-                    ? ` · grouped by ${normalizedGroupBy.length} field(s)`
-                    : ""}
                 </p>
               </div>
-              {previewExportColumns.length ? (
+              {previewRows.length > 0 ? (
                 <ReportExportToolbar
                   filename={name.trim() || "report-preview"}
                   title={name.trim() || "Report preview"}
@@ -660,39 +744,43 @@ export function ReportBuilderScreen() {
                 />
               ) : null}
             </div>
+
+            <PreviewFeedback feedback={previewFeedback} />
+
             {previewLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Loading preview…</p>
-            ) : previewRows.length ? (
+              <p className="mt-6 text-sm text-slate-500">Building preview…</p>
+            ) : previewRows.length > 0 ? (
               <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-sm">
+                <table className="min-w-full text-left text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-                      {previewKeys.map((k) => (
-                        <th key={k} className="px-3 py-2">
-                          {k}
+                    <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                      {previewKeys.map((key) => (
+                        <th key={key} className="px-3 py-2 font-semibold">
+                          {reportColumnLabel(key)}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {previewRows.slice(0, 15).map((row, i) => (
-                      <tr key={i} className="border-b border-slate-100">
-                        {previewKeys.map((k) => (
-                          <td key={k} className="px-3 py-2 text-slate-700">
-                            {row[k] == null ? "—" : String(row[k])}
+                    {previewRows.slice(0, 50).map((row, idx) => (
+                      <tr key={idx} className="border-b border-slate-100">
+                        {previewKeys.map((key) => (
+                          <td key={key} className="px-3 py-2 text-slate-800">
+                            {row[key] == null || row[key] === "" ? "—" : String(row[key])}
                           </td>
                         ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {previewRows.length > 50 ? (
+                  <p className="mt-2 text-xs text-slate-400">Showing first 50 of {previewRows.length} rows.</p>
+                ) : null}
               </div>
-            ) : previewFeedback ? (
-              <PreviewFeedback feedback={previewFeedback} />
             ) : (
-              <p className="mt-4 text-sm text-slate-500">
+              <p className="mt-6 text-sm text-slate-500">
                 {selectedSources.length === 0
-                  ? "Select a data source, then choose columns and click Preview."
+                  ? "Select a data source, choose columns, then click Preview."
                   : "Select columns and click Preview."}
               </p>
             )}

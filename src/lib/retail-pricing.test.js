@@ -99,6 +99,31 @@ describe("retail markup accumulation", () => {
     expect(linePrice(6250, sugarTiers, 10, true, sugarUom)).toBe(1300);
   });
 
+  it("does not keep first-tier per-kg rate on larger sugar qty", () => {
+    const liveSugar = [
+      {
+        min_qty: 1,
+        max_qty: 12,
+        measure_level: "small",
+        price_mode: "retail",
+        markup_price: 6,
+      },
+      {
+        min_qty: 12.5,
+        max_qty: 49,
+        measure_level: "small",
+        price_mode: "wholesale",
+        markup_price: 30,
+      },
+    ];
+    expect(linePrice(6200, liveSugar, 1, true, sugarUom)).toBe(130);
+    expect(linePrice(6200, liveSugar, 13, true, sugarUom)).toBe(1642);
+    expect(linePrice(6200, liveSugar, 17, true, sugarUom)).toBe(2138);
+    expect(linePrice(6200, liveSugar, 45, true, sugarUom)).toBe(5640);
+    // Same unit rate as 1kg would mean tier-1 markup leaked into tier 2.
+    expect(linePrice(6200, liveSugar, 45, true, sugarUom) / 45).not.toBe(130);
+  });
+
   it("keeps wholesale session flat markup once per line", () => {
     expect(linePrice(6250, sugarTiers, 50, false, sugarUom)).toBe(6280);
   });

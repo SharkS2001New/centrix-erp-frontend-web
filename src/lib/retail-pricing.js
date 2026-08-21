@@ -95,6 +95,20 @@ export function tierForQuantity(tiers, quantity, { extendPastMax = false } = {})
 
   // Qty above every capped tier — keep the highest band so retail markups still apply.
   const sorted = [...tiers].sort((a, b) => a.min_qty - b.min_qty);
+
+  // Gap between bands (e.g. 12.2 when tiers are 1–12 and 12.5–49) → next band.
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const prevMax = sorted[i].max_qty;
+    const next = sorted[i + 1];
+    if (
+      prevMax != null &&
+      qty > prevMax + 0.0001 &&
+      qty + 0.0001 < next.min_qty
+    ) {
+      return next;
+    }
+  }
+
   for (let i = sorted.length - 1; i >= 0; i -= 1) {
     if (qty + 0.0001 >= sorted[i].min_qty) return sorted[i];
   }
