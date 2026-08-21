@@ -2450,11 +2450,15 @@ export function PosScreen({ standalone = false }) {
   async function ensureRetailPackageForProduct(product) {
     const code = product?.product_code;
     if (!code) return null;
-    if (product.retail_package && !retailByCodeRef.current[code]) {
+    // Always refresh from retail-package-settings so tier edits (e.g. 45kg+ zero
+    // markup) are not shadowed by a stale product-list embed or prior POS cache.
+    delete retailByCodeRef.current[code];
+    await ensureRetailPackages([code], { force: true });
+    const fromApi = retailByCodeRef.current[code];
+    if (fromApi) return fromApi;
+    if (product.retail_package) {
       retailByCodeRef.current[code] = product.retail_package;
-    }
-    if (retailByCodeRef.current[code] === undefined) {
-      await ensureRetailPackages([code]);
+      return product.retail_package;
     }
     return getRetailPackage(code);
   }
@@ -3934,15 +3938,25 @@ export function PosScreen({ standalone = false }) {
 
   const retailPackageInflightRef = useRef(new Map());
 
-  const ensureRetailPackages = useCallback(async (productCodes) => {
+  const ensureRetailPackages = useCallback(async (productCodes, { force = false } = {}) => {
     const wanted = [
       ...new Set(
         (productCodes ?? [])
           .map((c) => String(c ?? "").trim())
-          .filter((code) => code && retailByCodeRef.current[code] === undefined),
+          .filter((code) => {
+            if (!code) return false;
+            if (force) return true;
+            return retailByCodeRef.current[code] === undefined;
+          }),
       ),
     ];
     if (!wanted.length) return;
+
+    if (force) {
+      for (const code of wanted) {
+        delete retailByCodeRef.current[code];
+      }
+    }
 
     const waitExisting = [];
     const toFetch = [];

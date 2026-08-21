@@ -74,6 +74,14 @@ export function tiersWithPriceMode(tiers, priceMode) {
   return (tiers ?? []).filter((tier) => normalizeTierPriceMode(tier) === mode);
 }
 
+/** Retail bands that add markup per small unit (kg/pcs) — must not extend past max_qty. */
+export function isPerUnitRetailTier(tier) {
+  return (
+    normalizeTierPriceMode(tier) === "retail" &&
+    (tier?.measure_level || "small") === "small"
+  );
+}
+
 export function tierForMeasureLevel(tiers, level, priceMode = null) {
   const matches = (tiers ?? []).filter((tier) => (tier.measure_level || "small") === level);
   if (priceMode) {
@@ -93,7 +101,6 @@ export function tierForQuantity(tiers, quantity, { extendPastMax = false } = {})
 
   if (!extendPastMax || !tiers?.length) return null;
 
-  // Qty above every capped tier — keep the highest band so retail markups still apply.
   const sorted = [...tiers].sort((a, b) => a.min_qty - b.min_qty);
 
   // Gap between bands (e.g. 12.2 when tiers are 1–12 and 12.5–49) → next band.
@@ -110,7 +117,19 @@ export function tierForQuantity(tiers, quantity, { extendPastMax = false } = {})
   }
 
   for (let i = sorted.length - 1; i >= 0; i -= 1) {
-    if (qty + 0.0001 >= sorted[i].min_qty) return sorted[i];
+    if (qty + 0.0001 < sorted[i].min_qty) continue;
+    const tier = sorted[i];
+    // Past a capped per-kg retail band (e.g. 1–44 with +2.777/kg): do NOT keep
+    // applying that markup at 45kg+. Caller prices pure wholesale until a higher
+    // band matches (e.g. 45–90 with 0 markup).
+    if (
+      tier.max_qty != null &&
+      qty > tier.max_qty + 0.0001 &&
+      isPerUnitRetailTier(tier)
+    ) {
+      return null;
+    }
+    return tier;
   }
   return null;
 }

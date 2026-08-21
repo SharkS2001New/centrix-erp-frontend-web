@@ -124,6 +124,56 @@ describe("retail markup accumulation", () => {
     expect(linePrice(6200, liveSugar, 45, true, sugarUom) / 45).not.toBe(130);
   });
 
+  it("stops per-kg retail markup after the band max (polished 45kg)", () => {
+    const polishedUom = {
+      conversion_factor: 90,
+      measure_name: "kg",
+      package_name: "bag",
+      uom_type: "bag",
+    };
+    const polishedTiers = [
+      {
+        min_qty: 1,
+        max_qty: 44,
+        measure_level: "small",
+        price_mode: "retail",
+        markup_price: 2.777,
+      },
+      {
+        min_qty: 45,
+        max_qty: 90,
+        measure_level: "full",
+        price_mode: "retail",
+        markup_price: 0,
+      },
+    ];
+    expect(linePrice(8300, polishedTiers, 1, true, polishedUom)).toBe(95);
+    // Half bag: wholesale only (no 2.777/kg).
+    expect(linePrice(8300, polishedTiers, 45, true, polishedUom)).toBe(4150);
+    expect(linePrice(8300, polishedTiers, 47, true, polishedUom)).toBeCloseTo(4334.44, 1);
+    // Must not be 45 × 95 = 4275.
+    expect(linePrice(8300, polishedTiers, 45, true, polishedUom)).not.toBe(4275);
+  });
+
+  it("prices past a lone per-kg band as pure wholesale", () => {
+    const polishedUom = {
+      conversion_factor: 90,
+      measure_name: "kg",
+      package_name: "bag",
+      uom_type: "bag",
+    };
+    const onlySmallBand = [
+      {
+        min_qty: 1,
+        max_qty: 44,
+        measure_level: "small",
+        price_mode: "retail",
+        markup_price: 2.777,
+      },
+    ];
+    expect(linePrice(8300, onlySmallBand, 45, true, polishedUom)).toBe(4150);
+  });
+
   it("keeps wholesale session flat markup once per line", () => {
     expect(linePrice(6250, sugarTiers, 50, false, sugarUom)).toBe(6280);
   });
