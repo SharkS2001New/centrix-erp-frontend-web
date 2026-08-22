@@ -298,7 +298,7 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     fallbackName: sellerName,
   });
 
-  const kraQrHtml = buildKraDocumentQrHtml(kraData, kraQrDataUrl, { size: 130, layout: "a4" });
+  const kraQrHtml = buildKraDocumentQrHtml(kraData, kraQrDataUrl, { size: 100, layout: "a4" });
 
   const paymentInstructionsHtml =
     showPaymentInstructions && paymentInstructions
@@ -358,8 +358,9 @@ function buildClassicTaxInvoiceHtml(sale, options) {
     .sig-row:last-child { margin-bottom: 0; }
     .sig-label { white-space: nowrap; min-width: 5.5rem; font-weight: 700; }
     .sig-line { flex: 1; border-bottom: 1px dotted #000; min-height: 1.1em; }
-    .footer-notes { margin: 0 0 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 600); }
+    .footer-notes { margin: 0 0 4px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 600); }
     .footer-notes p { margin: 4px 0; }
+    .footer-notes .kra-etims-block { margin-bottom: 4px; }
     .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(11)}; font-weight: 600; break-inside: avoid; page-break-inside: avoid; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
     .pay-instructions .pay-block { margin: 0 0 8px; }
@@ -432,13 +433,13 @@ function buildClassicTaxInvoiceHtml(sale, options) {
 
       ${paymentInstructionsHtml}
 
-      ${bodyFooterHtml}
-
       ${
         kraQrHtml
           ? `<div class="footer-notes">${kraQrHtml}</div>`
           : ""
       }
+
+      ${bodyFooterHtml}
     </div>
     </div>
   </div>

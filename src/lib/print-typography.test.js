@@ -92,6 +92,30 @@ describe("org print typography settings", () => {
     expect(html).not.toContain("Terms and Conditions");
   });
 
+  it("keeps KRA eTIMS QR above A4 body footer signatures so it fits page 1", () => {
+    const html = buildSaleInvoiceHtml(sampleSale, {
+      seller: { name: "Test Org" },
+      branding: { showHeader: true, display: "name", organizationName: "Test Org" },
+      kraData: {
+        signatureLink: "https://etims.example/verify/abc",
+        invoiceNumber: "1787423668",
+      },
+      kraQrDataUrl: "data:image/png;base64,aaa",
+      salesSettings: {
+        print_footer_a4_invoice: "You were served by: {username}\nGOODS ONCE SOLD ARE NOT REFUNDABLE\nReceived By ________________\nSignature ________________",
+      },
+    });
+
+    const qrAt = html.indexOf('class="kra-etims-block"');
+    const sigAt = html.indexOf('class="receive-signatures"');
+    expect(qrAt).toBeGreaterThan(-1);
+    expect(html).toContain('width="100"');
+    expect(html).toContain("Scan to verify this invoice on KRA eTIMS platform");
+    if (sigAt > -1) {
+      expect(qrAt).toBeLessThan(sigAt);
+    }
+  });
+
   it("embeds editable terms on proforma A4 HTML only", () => {
     const general = generalWithFonts();
     const html = buildSaleInvoiceHtml(sampleSale, {

@@ -243,13 +243,14 @@ export function buildKraDocumentQrHtml(
 
   const isThermal = layout === "thermal";
   const fontSize = isThermal ? "9px" : "10px";
-  const padding = isThermal ? "4px 0" : "12px 0";
-  const margin = isThermal ? "4px 0 0" : "14px 0";
+  // A4 keeps QR compact so it fits above the fixed print edge footer on page 1.
+  const padding = isThermal ? "4px 0" : "6px 0";
+  const margin = isThermal ? "4px 0 0" : "8px 0";
   const border = isThermal ? "1px dashed #000" : "1px dashed #999";
   const captionClass = isThermal ? "kra-etims-caption" : "";
   const captionStyle = isThermal
     ? ""
-    : `margin-top:8px;font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.35;`;
+    : `margin-top:4px;font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.3;`;
   const buyerDetailHtml = buildKraBuyerDetailHtml(kra, {
     buyerPin,
     layout,
