@@ -60,6 +60,7 @@ import {
 import { fetchStockLevelsMap, mergeProductsWithLiveStock } from "@/lib/stock-cache";
 import { withPosOfflineExclusiveLock } from "@/lib/pos-offline-lock";
 import { roundLightStoresAmount } from "@/lib/pos-cash-round";
+import { collapseCombineableCartLines as collapseCombineableLocalLines } from "@/lib/pos-cart-merge";
 import { snapshotUomForPrint } from "@/lib/sale-line-items";
 import { vatFromInclusiveGross, vatRateFromProduct } from "@/lib/sales-vat";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
@@ -1725,45 +1726,7 @@ function lineKey(line) {
   return `${line.product_code}|${Number(line.on_wholesale_retail) ? 1 : 0}`;
 }
 
-/**
- * Collapse duplicate SKU (+ retail/wholesale) rows into one line.
- * Used when adopting a TemporaryCart that grew duplicate optimistic rows mid-outage.
- * Honours External POS "Combine identical products on POS cart".
- */
-export function collapseCombineableLocalLines(lines, { combineIdenticalLines = true } = {}) {
-  if (combineIdenticalLines === false) return Array.isArray(lines) ? [...lines] : [];
-  if (!Array.isArray(lines) || lines.length < 2) return lines ?? [];
-  const byKey = new Map();
-  for (const line of lines) {
-    if (!line?.product_code) continue;
-    const key = lineKey(line);
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, { ...line });
-      continue;
-    }
-    const nextQty = Number(existing.quantity ?? 0) + Number(line.quantity ?? 0);
-    const existingAmount =
-      existing.amount != null && Number.isFinite(Number(existing.amount))
-        ? Number(existing.amount)
-        : Number(existing.quantity ?? 0) * Number(existing.unit_price ?? 0);
-    const addAmount =
-      line.amount != null && Number.isFinite(Number(line.amount))
-        ? Number(line.amount)
-        : Number(line.quantity ?? 0) * Number(line.unit_price ?? 0);
-    byKey.set(key, {
-      ...existing,
-      ...line,
-      client_line_id: existing.client_line_id ?? line.client_line_id,
-      quantity: nextQty,
-      unit_price: Number(line.unit_price ?? existing.unit_price ?? 0),
-      amount: Math.round((existingAmount + addAmount) * 100) / 100,
-      discount_given:
-        Number(existing.discount_given ?? 0) + Number(line.discount_given ?? 0),
-    });
-  }
-  return [...byKey.values()];
-}
+export { collapseCombineableCartLines as collapseCombineableLocalLines } from "@/lib/pos-cart-merge";
 
 /**
  * Upsert a line into the local offline cart.

@@ -106,11 +106,82 @@ export function normalizeCartResponse(res) {
   return null;
 }
 
+/** Merge key matches classic POS merge (SKU + retail/wholesale), not UOM label. */
+export function cartLineMergeKey(line) {
+  return `${line?.product_code ?? ""}|${Number(line?.on_wholesale_retail) ? 1 : 0}`;
+}
+
+export function findCartLineIndexByMergeKey(lines, line) {
+  if (!line?.product_code) return -1;
+  const key = cartLineMergeKey(line);
+  return (Array.isArray(lines) ? lines : []).findIndex((row) => cartLineMergeKey(row) === key);
+}
+
+/**
+ * Collapse duplicate SKU (+ retail/wholesale) rows into one line.
+ * System races must never leave two visible rows for the same product mode.
+ */
+export function collapseCombineableCartLines(lines, { combineIdenticalLines = true } = {}) {
+  if (combineIdenticalLines === false) return Array.isArray(lines) ? [...lines] : [];
+  if (!Array.isArray(lines) || lines.length < 2) return lines ?? [];
+  const byKey = new Map();
+  for (const line of lines) {
+    if (!line?.product_code) continue;
+    const key = cartLineMergeKey(line);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...line });
+      continue;
+    }
+    const nextQty = Number(existing.quantity ?? 0) + Number(line.quantity ?? 0);
+    const existingAmount =
+      existing.amount != null && Number.isFinite(Number(existing.amount))
+        ? Number(existing.amount)
+        : Number(existing.quantity ?? 0) * Number(existing.unit_price ?? 0);
+    const addAmount =
+      line.amount != null && Number.isFinite(Number(line.amount))
+        ? Number(line.amount)
+        : Number(line.quantity ?? 0) * Number(line.unit_price ?? 0);
+    byKey.set(key, {
+      ...existing,
+      ...line,
+      id: existing.id ?? line.id,
+      update_code: existing.update_code ?? line.update_code,
+      client_line_id: existing.client_line_id ?? line.client_line_id,
+      quantity: nextQty,
+      unit_price: Number(line.unit_price ?? existing.unit_price ?? 0),
+      amount: Math.round((existingAmount + addAmount) * 100) / 100,
+      discount_given:
+        Number(existing.discount_given ?? 0) + Number(line.discount_given ?? 0),
+      _optimistic: Boolean(existing._optimistic || line._optimistic),
+    });
+  }
+  return [...byKey.values()];
+}
+
+function replaceCartLineInPlace(lines, idx, optimisticLine) {
+  const existing = lines[idx];
+  const preservedCode =
+    existing.update_code != null && String(existing.update_code).trim() !== ""
+      ? existing.update_code
+      : existing.id;
+  lines[idx] = {
+    ...optimisticLine,
+    id: existing.id,
+    update_code: preservedCode,
+    client_line_id: existing.client_line_id ?? optimisticLine.client_line_id,
+  };
+}
+
 /**
  * Keep in-flight optimistic lines that the server cart does not yet include
  * (parallel classic adds must not wipe a newer pending row).
  */
-export function mergePreservedOptimisticLines(serverLines, prevLines) {
+export function mergePreservedOptimisticLines(
+  serverLines,
+  prevLines,
+  { combineIdenticalLines = true } = {},
+) {
   const lines = Array.isArray(serverLines) ? [...serverLines] : [];
   for (const line of prevLines ?? []) {
     if (!line?._optimistic) continue;
@@ -127,7 +198,7 @@ export function mergePreservedOptimisticLines(serverLines, prevLines) {
       lines.some((row) => String(cartLineRef(row)) === String(cartLineRef(line)));
     if (!already) lines.push(line);
   }
-  return lines;
+  return collapseCombineableCartLines(lines, { combineIdenticalLines });
 }
 
 /** Never let a TemporaryCart response rewind the displayed Cash Sales #. */
@@ -212,7 +283,7 @@ export function preserveUntouchedCartLines(
 export function applyCartMutationResponse(
   prevCart,
   res,
-  { targetLineRef = null, extraPosTickets = [] } = {},
+  { targetLineRef = null, extraPosTickets = [], combineIdenticalLines = true } = {},
 ) {
   const normalized = normalizeCartResponse(res);
   if (normalized) {
@@ -224,7 +295,9 @@ export function applyCartMutationResponse(
     const merged = {
       ...prevCart,
       ...normalized,
-      lines: mergePreservedOptimisticLines(normalized.lines, prevCart?.lines),
+      lines: mergePreservedOptimisticLines(normalized.lines, prevCart?.lines, {
+        combineIdenticalLines,
+      }),
       // Line mutations used to omit next_order_num → caption became "New Order - —".
       next_order_num: normalized.next_order_num ?? prevCart?.next_order_num ?? null,
       next_pos_order_num:
@@ -241,7 +314,11 @@ export function applyCartMutationResponse(
     ) {
       merged.superseded_sale_id = prevCart.superseded_sale_id;
     }
-    return preserveUntouchedCartLines(prevCart, merged, { targetLineRef });
+    const preserved = preserveUntouchedCartLines(prevCart, merged, { targetLineRef });
+    return {
+      ...preserved,
+      lines: collapseCombineableCartLines(preserved.lines, { combineIdenticalLines }),
+    };
   }
   if (!prevCart?.id || !res?.product_code) return prevCart;
 
@@ -255,26 +332,22 @@ export function applyCartMutationResponse(
   if (idx >= 0) {
     const { _optimistic: _dropOptimistic, ...rest } = lines[idx];
     lines[idx] = { ...rest, ...res };
-  } else {
-    // Replace matching pending optimistic for this SKU instead of duplicating.
-    const pendingIdx = lines.findIndex(
-      (line) =>
-        line?._optimistic &&
-        String(line.product_code) === String(res.product_code) &&
-        Number(line.on_wholesale_retail ?? 0) === Number(res.on_wholesale_retail ?? 0),
-    );
-    if (pendingIdx >= 0) {
-      const { _optimistic: _dropOptimistic, ...rest } = lines[pendingIdx];
-      lines[pendingIdx] = { ...rest, ...res };
+  } else if (combineIdenticalLines !== false) {
+    const mergeIdx = findCartLineIndexByMergeKey(lines, res);
+    if (mergeIdx >= 0) {
+      const { _optimistic: _dropOptimistic, ...rest } = lines[mergeIdx];
+      lines[mergeIdx] = { ...rest, ...res };
     } else {
       lines.push(res);
     }
+  } else {
+    lines.push(res);
   }
 
   return {
     ...prevCart,
     update_no: res.update_no ?? Number(prevCart.update_no ?? 0) + 1,
-    lines,
+    lines: collapseCombineableCartLines(lines, { combineIdenticalLines }),
   };
 }
 
@@ -300,7 +373,12 @@ export function buildOptimisticCartLine(product, lineBody, finalComputed) {
 export function applyOptimisticCartMutation(
   prevCart,
   optimisticLine,
-  { mergeTarget = null, editingRef = null, editingId = null } = {},
+  {
+    mergeTarget = null,
+    editingRef = null,
+    editingId = null,
+    combineIdenticalLines = true,
+  } = {},
 ) {
   if (!prevCart?.id) return prevCart;
   const lines = [...(prevCart.lines ?? [])];
@@ -316,32 +394,24 @@ export function applyOptimisticCartMutation(
       idx = lines.findIndex((line) => String(line?.id) === String(editingId));
     }
     if (idx >= 0) {
-      const existing = lines[idx];
-      const preservedCode =
-        existing.update_code != null && String(existing.update_code).trim() !== ""
-          ? existing.update_code
-          : existing.id;
-      lines[idx] = {
-        ...optimisticLine,
-        id: existing.id,
-        update_code: preservedCode,
-      };
+      replaceCartLineInPlace(lines, idx, optimisticLine);
     }
     // Editing must never invent a second row when the target line is missing.
   } else if (mergeTarget) {
     const idx = findCartLineIndexByRef(lines, cartLineRef(mergeTarget));
     if (idx >= 0) {
-      const existing = lines[idx];
-      const preservedCode =
-        existing.update_code != null && String(existing.update_code).trim() !== ""
-          ? existing.update_code
-          : existing.id;
-      lines[idx] = {
-        ...optimisticLine,
-        id: existing.id,
-        update_code: preservedCode,
-      };
-    } else lines.push(optimisticLine);
+      replaceCartLineInPlace(lines, idx, optimisticLine);
+    } else if (combineIdenticalLines !== false) {
+      const mergeIdx = findCartLineIndexByMergeKey(lines, optimisticLine);
+      if (mergeIdx >= 0) replaceCartLineInPlace(lines, mergeIdx, optimisticLine);
+      else lines.push(optimisticLine);
+    } else {
+      lines.push(optimisticLine);
+    }
+  } else if (combineIdenticalLines !== false) {
+    const mergeIdx = findCartLineIndexByMergeKey(lines, optimisticLine);
+    if (mergeIdx >= 0) replaceCartLineInPlace(lines, mergeIdx, optimisticLine);
+    else lines.push(optimisticLine);
   } else {
     lines.push(optimisticLine);
   }
@@ -351,7 +421,7 @@ export function applyOptimisticCartMutation(
   // which broke line edits and item swaps (UI showed the new SKU; server kept the old).
   return {
     ...prevCart,
-    lines,
+    lines: collapseCombineableCartLines(lines, { combineIdenticalLines }),
   };
 }
 

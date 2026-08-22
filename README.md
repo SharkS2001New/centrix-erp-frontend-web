@@ -89,13 +89,40 @@ Ensure the bucket allows public reads for that prefix (or the whole public domai
 
 ### Real-time notifications (optional)
 
-With [Laravel Reverb](https://laravel.com/docs/reverb) enabled on the API, the notification bell updates instantly when another user triggers an approval.
+With [Laravel Reverb](https://laravel.com/docs/reverb) enabled on the API, the notification bell updates instantly when another user triggers an approval. **External POS** (`/pos`) also shows a green **price-update toast** when catalogue `unit_price` or markups change.
 
-**API** (`.env`): set `BROADCAST_CONNECTION=reverb` and matching `REVERB_*` keys, then run `php artisan reverb:start`.
+**API** (`centrix-erp-backend-api/.env`):
 
-**Web** (`.env.local`): set the `NEXT_PUBLIC_REVERB_*` variables from `.env.local.example`.
+```env
+BROADCAST_CONNECTION=reverb
+REVERB_APP_ID=centrix-erp
+REVERB_APP_KEY=your-shared-key
+REVERB_APP_SECRET=your-shared-secret
+REVERB_HOST=localhost          # public WebSocket host browsers use (prod: e.g. centrixapi.example.com)
+REVERB_PORT=8080                 # prod behind TLS: 443
+REVERB_SCHEME=http               # prod: https
+REVERB_SERVER_HOST=0.0.0.0
+REVERB_SERVER_PORT=8080
+```
 
-If Reverb is not configured, the app keeps using polling (no breakage).
+Run Reverb (local dev): `php artisan reverb:start`
+
+In Kubernetes, Reverb runs as the **centrix-erp-reverb** pod; set `REVERB_BROADCAST_HOST=centrix-erp-reverb` on the API pod so Laravel can publish events internally.
+
+**Web** (`.env.local` or Docker build args):
+
+```env
+NEXT_PUBLIC_REVERB_APP_KEY=your-shared-key    # must match REVERB_APP_KEY
+NEXT_PUBLIC_REVERB_HOST=localhost             # same host cashiers' browsers reach
+NEXT_PUBLIC_REVERB_PORT=8080
+NEXT_PUBLIC_REVERB_SCHEME=http
+```
+
+Rebuild/redeploy the frontend after changing `NEXT_PUBLIC_*` (they are baked in at build time).
+
+**Verify:** Platform → Infrastructure health → **Run tests** (Reverb row should be OK) → **Send Reverb test**. Then open External POS on another tab, change a product **unit price** in Catalogue — toast should appear within a second (Reverb) or within ~45s (poll fallback).
+
+If Reverb is not configured, External POS still polls for price notifications every 45–90 seconds (no breakage).
 
 Set the same organization on the API with `APP_COMPANY_CODE=DEMO` in `.env` so login can omit company code server-side.
 

@@ -47,8 +47,12 @@ export const P = {
   },
   customers: {
     customers: { view: "customers.customers.view" },
-    shop_debtors: { view: "customers.shop_debtors.view" },
     statements: { view: "customers.statements.view" },
+  },
+  shop_debtors: {
+    unpaid: { view: "shop_debtors.unpaid.view" },
+    partial: { view: "shop_debtors.partial.view" },
+    paid: { view: "shop_debtors.paid.view" },
   },
   payments: {
     sale_payments: { view: "payments.sale_payments.view", create: "payments.sale_payments.create", edit: "payments.sale_payments.edit" },

@@ -6015,7 +6015,7 @@ export function PosScreen({ standalone = false }) {
 
     // Build the priced line body first, then paint the cart row immediately
     // (before TemporaryCart / POST) so markup is already on the row — no blank gap.
-    const lineBody = {
+    let lineBody = {
       product_code: product.product_code,
       quantity: finalComputed.baseQty,
       unit_price: finalComputed.unitPricePerBase,
@@ -6058,6 +6058,7 @@ export function PosScreen({ standalone = false }) {
         mergeTarget: resolvedMergeTarget,
         editingRef: targetLineRef,
         editingId,
+        combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
       });
       cartRef.current = optimisticCart;
       setCart(optimisticCart);
@@ -6080,8 +6081,17 @@ export function PosScreen({ standalone = false }) {
         ? liveCart
         : await ensureCart();
     // ensureCart may replace pending-fresh — re-paint so the row never blanks.
+    // Never stack a second optimistic row for the same add (pending-fresh id swap
+    // used to push BanjaB twice before the first POST landed).
+    const optimisticAddAlreadyPainted = (cartRef.current?.lines ?? []).some(
+      (line) =>
+        line?._optimistic &&
+        String(line.product_code) === String(product.product_code) &&
+        Number(line.on_wholesale_retail ?? 0) === Number(onWholesaleRetailFlag ? 1 : 0),
+    );
     if (
       activeCart?.id &&
+      !optimisticAddAlreadyPainted &&
       (!painted ||
         String(cartRef.current?.id) !== String(activeCart.id) ||
         !(cartRef.current?.lines ?? []).some((line) => line?._optimistic))
@@ -6090,6 +6100,51 @@ export function PosScreen({ standalone = false }) {
     }
     if (painted && unlockUiEarly && clearEntry) {
       clearClassicEntryFields();
+    }
+
+    // Server cart may exist now — merge into a persisted row, not a second POST.
+    if (!intendedEdit && posSalesConfig.combineIdenticalLines !== false) {
+      const postEnsureLines = (cartRef.current ?? activeCart)?.lines ?? [];
+      const serverMergeTarget = findMergeableCartLine(
+        postEnsureLines.filter((line) => !line?._optimistic),
+        product.product_code,
+        computed,
+        posSalesConfig,
+        sellWholesaleRef.current,
+        null,
+        product,
+        { combineIdenticalLines: true },
+      );
+      if (serverMergeTarget && !editingId) {
+        resolvedMergeTarget = serverMergeTarget;
+        targetLineRef = cartLineRef(serverMergeTarget);
+        const newBaseQty = Number(serverMergeTarget.quantity) + incrementBaseQty;
+        const mergedEntryQty = posEntryQtyFromBaseQty(
+          newBaseQty,
+          product,
+          retailPackage,
+          cartLineRetailStockFlag(serverMergeTarget),
+        );
+        const lockedUnit =
+          cartLineLockedUnitOverride(
+            serverMergeTarget,
+            product.uom,
+            cartLineRetailStockFlag(serverMergeTarget),
+            { cashRound: enablePosCashRounding },
+          ) ?? override;
+        finalComputed = applyComputedPrice(product, mergedEntryQty, discount, lockedUnit);
+        lineBody = {
+          ...lineBody,
+          quantity: finalComputed.baseQty,
+          unit_price: finalComputed.unitPricePerBase,
+          display_unit_price: finalComputed.displayUnitPrice,
+          uom: finalComputed.uomLabel || product.package_name,
+          discount_given:
+            allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
+          product_vat: lineProductVat(product, finalComputed.lineAmount),
+          amount: finalComputed.lineAmount,
+        };
+      }
     }
 
     if (needsLineDiscountApproval) {
@@ -6178,6 +6233,7 @@ export function PosScreen({ standalone = false }) {
       applyOptimisticCartMutation(activeCart, optimisticLine, {
         mergeTarget: resolvedMergeTarget,
         editingRef: targetLineRef,
+        combineIdenticalLines: posSalesConfig.combineIdenticalLines !== false,
       });
 
     // Previous-order edit: keep line add/update local until Complete saves + prints.
@@ -9589,7 +9645,7 @@ export function PosScreen({ standalone = false }) {
     let lastToastAt = 0;
     let refreshInFlight = null;
     let pricingNoticePollTimer = null;
-    let lastSeenPricingNoticeId = 0;
+    let lastPricingRevision = 0;
     let pricingPollFallbackActive = false;
 
     function flashPricingToast(message) {
@@ -9665,40 +9721,37 @@ export function PosScreen({ standalone = false }) {
       flashPricingToast(message);
     }
 
-    async function seedPricingNoticeWatermark() {
+    async function seedPricingRevisionWatermark() {
       try {
-        const res = await apiRequest("/notifications?limit=10", {
+        const res = await apiRequest("/pos/catalog-pricing-revision", {
           loading: false,
           reportIssues: false,
-          searchParams: { workspace: "pos" },
+          searchParams: { since: 0 },
         });
-        const rows = Array.isArray(res?.data) ? res.data : [];
-        const latest = rows.find((item) => item?.type === "catalog_pricing");
-        if (latest?.id) lastSeenPricingNoticeId = Number(latest.id);
+        lastPricingRevision = Number(res?.revision ?? 0);
       } catch {
         /* non-blocking */
       }
     }
 
-    async function pollPricingNotifications() {
+    async function pollPricingRevision() {
       if (cancelled || offlineModeRef.current) return;
       try {
-        const res = await apiRequest("/notifications?limit=10", {
+        const res = await apiRequest("/pos/catalog-pricing-revision", {
           loading: false,
           reportIssues: false,
-          searchParams: { workspace: "pos" },
+          searchParams: { since: lastPricingRevision },
         });
-        const rows = Array.isArray(res?.data) ? res.data : [];
-        const latest = rows.find((item) => item?.type === "catalog_pricing");
-        if (!latest?.id) return;
-        const noticeId = Number(latest.id);
-        if (!Number.isFinite(noticeId) || noticeId <= lastSeenPricingNoticeId) return;
-        lastSeenPricingNoticeId = noticeId;
+        const revision = Number(res?.revision ?? 0);
+        if (!Number.isFinite(revision) || revision <= lastPricingRevision) return;
+        lastPricingRevision = revision;
+        if (!res?.changed) return;
         await applyPricingUpdate(
           {
-            message: String(latest.message ?? "").trim() || "Product prices or markups were updated.",
-            product_code: latest.product_code ?? null,
-            reason: "product_price",
+            message:
+              String(res.message ?? "").trim() || "Product prices or markups were updated.",
+            product_code: res.product_code ?? null,
+            reason: res.reason ?? "pricing",
           },
           { announce: true },
         );
@@ -9714,18 +9767,18 @@ export function PosScreen({ standalone = false }) {
       }
       if (!pricingPollFallbackActive || cancelled) return;
       const intervalMs =
-        document.visibilityState === "visible" ? 45_000 : 90_000;
+        document.visibilityState === "visible" ? 12_000 : 24_000;
       pricingNoticePollTimer = window.setInterval(() => {
-        void pollPricingNotifications();
+        void pollPricingRevision();
       }, intervalMs);
     }
 
     function startPricingNoticePollFallback() {
       if (pricingPollFallbackActive) return;
       pricingPollFallbackActive = true;
-      void seedPricingNoticeWatermark().finally(() => {
+      void seedPricingRevisionWatermark().finally(() => {
         schedulePricingNoticePoll();
-        void pollPricingNotifications();
+        void pollPricingRevision();
       });
     }
 
@@ -9733,7 +9786,7 @@ export function PosScreen({ standalone = false }) {
       if (!pricingPollFallbackActive) return;
       schedulePricingNoticePoll();
       if (document.visibilityState === "visible") {
-        void pollPricingNotifications();
+        void pollPricingRevision();
       }
     }
 
@@ -9747,42 +9800,35 @@ export function PosScreen({ standalone = false }) {
     const focusHandler = () => onWindowFocus();
     let catalogWarmPoll = null;
 
-    if (!isRealtimeConfigured()) {
-      startPricingNoticePollFallback();
-      window.addEventListener("focus", focusHandler);
-      document.addEventListener("visibilitychange", focusHandler);
-      document.addEventListener("visibilitychange", onPricingPollVisibility);
-      catalogWarmPoll = window.setInterval(() => {
-        if (offlineModeRef.current) return;
-        void refreshPosOfflineCatalogPricing({ forceFull: true }).catch(() => {});
-      }, 3 * 60 * 1000);
-    } else {
+    // Always poll org pricing revision — Reverb gives instant toasts when configured.
+    startPricingNoticePollFallback();
+    window.addEventListener("focus", focusHandler);
+    document.addEventListener("visibilitychange", focusHandler);
+    document.addEventListener("visibilitychange", onPricingPollVisibility);
+    catalogWarmPoll = window.setInterval(() => {
+      if (offlineModeRef.current) return;
+      void refreshPosOfflineCatalogPricing({ forceFull: true }).catch(() => {});
+    }, 3 * 60 * 1000);
+
+    if (isRealtimeConfigured()) {
       (async () => {
         try {
           echo = await createNotificationEcho();
-          if (cancelled || !echo) {
-            startPricingNoticePollFallback();
-            window.addEventListener("focus", focusHandler);
-            document.addEventListener("visibilitychange", focusHandler);
-            document.addEventListener("visibilitychange", onPricingPollVisibility);
-            return;
-          }
+          if (cancelled || !echo) return;
 
           channel = echo.private(channelName);
           channel.listen(".catalog.pricing.updated", (payload) => {
             void applyPricingUpdate(payload ?? {});
           });
           channel.error(() => {
-            startPricingNoticePollFallback();
+            if (process.env.NODE_ENV === "development") {
+              console.warn("[pos] organization pricing channel error — notification poll continues");
+            }
           });
         } catch (error) {
           if (process.env.NODE_ENV === "development") {
             console.warn("[pos] pricing realtime unavailable", error);
           }
-          startPricingNoticePollFallback();
-          window.addEventListener("focus", focusHandler);
-          document.addEventListener("visibilitychange", focusHandler);
-          document.addEventListener("visibilitychange", onPricingPollVisibility);
         }
       })();
     }

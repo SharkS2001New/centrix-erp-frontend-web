@@ -5,6 +5,7 @@ import {
   buildOptimisticCartLine,
   cartLineMatchesRef,
   cartLineRef,
+  collapseCombineableCartLines,
   mergePreservedOptimisticLines,
   preserveUntouchedCartLines,
   revertOptimisticCartMutation,
@@ -86,6 +87,32 @@ describe("mergePreservedOptimisticLines", () => {
       },
     ];
     expect(mergePreservedOptimisticLines(server, prev)).toEqual(server);
+  });
+
+  it("collapses duplicate server rows for the same SKU", () => {
+    const server = [
+      { id: 1, product_code: "BANJAB", quantity: 2, amount: 7000, on_wholesale_retail: 0 },
+      { id: 2, product_code: "BANJAB", quantity: 2, amount: 7000, on_wholesale_retail: 0 },
+    ];
+    const merged = mergePreservedOptimisticLines(server, []);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].quantity).toBe(4);
+    expect(merged[0].amount).toBe(14000);
+  });
+});
+
+describe("collapseCombineableCartLines", () => {
+  it("merges duplicate SKU rows and sums qty/amount", () => {
+    const lines = [
+      { product_code: "BANJAB", quantity: 2, amount: 7000, on_wholesale_retail: 0 },
+      { product_code: "BANJAB", quantity: 2, amount: 7000, on_wholesale_retail: 0 },
+      { product_code: "SUGAR", quantity: 1, amount: 140, on_wholesale_retail: 0 },
+    ];
+    const collapsed = collapseCombineableCartLines(lines);
+    expect(collapsed).toHaveLength(2);
+    const banjab = collapsed.find((line) => line.product_code === "BANJAB");
+    expect(banjab.quantity).toBe(4);
+    expect(banjab.amount).toBe(14000);
   });
 });
 
@@ -262,6 +289,40 @@ describe("applyOptimisticCartMutation (swap / edit)", () => {
     expect(next.lines).toHaveLength(1);
     expect(next.lines[0].id).toBe(42);
     expect(next.lines[0].quantity).toBe(6);
+  });
+
+  it("merges into an existing SKU row instead of pushing a second optimistic line", () => {
+    const prev = {
+      id: 10,
+      lines: [
+        {
+          id: "pending-1",
+          product_code: "BANJAB",
+          quantity: 2,
+          amount: 7000,
+          on_wholesale_retail: 0,
+          _optimistic: true,
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "BANJAB", product_name: "BanjaB" },
+      {
+        product_code: "BANJAB",
+        quantity: 2,
+        unit_price: 3500,
+        display_unit_price: 3500,
+        uom: "BAG",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 7000 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic);
+    expect(next.lines).toHaveLength(1);
+    expect(next.lines[0].product_code).toBe("BANJAB");
+    expect(next.lines[0].id).toBe("pending-1");
   });
 
   it("does not push a duplicate row when the edit target is missing", () => {

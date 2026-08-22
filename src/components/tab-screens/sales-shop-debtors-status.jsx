@@ -5,7 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import SalesOrdersListScreen from "@/components/sales/sales-orders-list-screen";
 import { shouldShowShopDebtors } from "@/lib/nav-feature-gates";
-import { P } from "@/lib/permission-codes";
+import {
+  canViewShopDebtorsBucket,
+  defaultShopDebtorsBucket,
+} from "@/lib/shop-debtors-permissions";
 
 const SHOP_DEBTOR_STATUSES = new Set(["unpaid", "partial", "paid"]);
 
@@ -27,9 +30,6 @@ export function SalesShopDebtorsStatusScreen({ paymentStatus: paymentStatusProp 
   const { capabilities, hasPermission, hasNavPermission } = useAuth();
   const check =
     typeof hasNavPermission === "function" ? hasNavPermission : hasPermission;
-  const allowed =
-    shouldShowShopDebtors(capabilities) &&
-    (typeof check !== "function" || check(P.customers.shop_debtors.view));
 
   const paymentStatus = useMemo(() => {
     if (paymentStatusProp && SHOP_DEBTOR_STATUSES.has(paymentStatusProp)) {
@@ -38,17 +38,33 @@ export function SalesShopDebtorsStatusScreen({ paymentStatus: paymentStatusProp 
     return resolveShopDebtorsPaymentStatus(params?.status);
   }, [params?.status, paymentStatusProp]);
 
+  const bucketAllowed =
+    shouldShowShopDebtors(capabilities) &&
+    paymentStatus &&
+    (typeof check !== "function" || canViewShopDebtorsBucket(paymentStatus, check));
+
+  const fallbackBucket =
+    typeof check === "function" ? defaultShopDebtorsBucket(check) : "unpaid";
+
   useEffect(() => {
-    if (!allowed) {
+    if (!shouldShowShopDebtors(capabilities)) {
       router.replace("/sales/orders");
       return;
     }
     if (!paymentStatus) {
-      router.replace("/sales/shop-debtors/unpaid");
+      router.replace(
+        fallbackBucket ? `/sales/shop-debtors/${fallbackBucket}` : "/sales/orders",
+      );
+      return;
     }
-  }, [allowed, paymentStatus, router]);
+    if (!bucketAllowed) {
+      router.replace(
+        fallbackBucket ? `/sales/shop-debtors/${fallbackBucket}` : "/sales/orders",
+      );
+    }
+  }, [bucketAllowed, capabilities, fallbackBucket, paymentStatus, router]);
 
-  if (!allowed || !paymentStatus) return null;
+  if (!bucketAllowed || !paymentStatus) return null;
 
   return (
     <SalesOrdersListScreen
