@@ -98,16 +98,6 @@ export const ADMIN_SETTINGS_CATALOG = [
     navHref: "/admin/license",
   },
   {
-    id: "page.payment-methods",
-    label: "Payment methods",
-    description: "Cash, M-Pesa, bank, cheque, and other tenders",
-    keywords: ["payment method", "tender", "cash", "cheque", "bank"],
-    group: "Finance",
-    path: "Admin → Finance → Payment methods",
-    href: "/admin/payment-methods",
-    navHref: "/admin/payment-methods",
-  },
-  {
     id: "page.kra-settings",
     label: "KRA settings",
     description: "Fiscal device connection and tax receipt signing",

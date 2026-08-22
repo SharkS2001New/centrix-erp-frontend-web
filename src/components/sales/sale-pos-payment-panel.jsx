@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { PosPaymentPanel } from "@/components/sales/pos-payment-panel";
 import { getCheckoutPaymentConfig } from "@/lib/sales-settings";
-import { applyPaymentMethodsCatalog } from "@/lib/checkout-payment-methods-catalog";
 import { getOrderWorkflow } from "@/lib/order-workflow";
 import { isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
 import { resolvePaymentMethodByCode } from "@/lib/sales";
@@ -47,19 +46,17 @@ export function SalePosPaymentPanel({
       paymentStatus === "partial" ||
       paymentStatus === "pending_payment";
     // Collect payment on unpaid / partially paid orders — installments when org allows.
-    const merged = {
+    return {
       ...withMpesa,
       checkoutContext: "order_payment",
       allowPartialPayment: Boolean(withMpesa.allowPartialPayment && hasOutstanding),
     };
-    return applyPaymentMethodsCatalog(merged, paymentMethods);
   }, [
     capabilities,
     sale?.is_credit_sale,
     sale?.amount_paid,
     sale?.payment_status,
     balanceDue,
-    paymentMethods,
   ]);
 
   useEffect(() => {

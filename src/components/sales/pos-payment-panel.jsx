@@ -286,8 +286,6 @@ export function PosPaymentPanel({
   const [otherBankAmount, setOtherBankAmount] = useState("0");
   const [chequeAmount, setChequeAmount] = useState("0");
   const [chequeNo, setChequeNo] = useState("");
-  /** Admin → Payment methods extras (codes outside CASH/MPESA/EQUITY/KCB/…). */
-  const [extraAmounts, setExtraAmounts] = useState({});
   const [walkInCustomerName, setWalkInCustomerName] = useState("");
   /** Customer-name step: walk-in name vs registered customer (KRA / receipt link). */
   const [customerNameMode, setCustomerNameMode] = useState("walkin");
@@ -393,7 +391,6 @@ export function PosPaymentPanel({
     setOtherBankAmount(bankPrefill > 0 && !equityPrefill && !kcbPrefill ? String(bankPrefill) : "0");
     setChequeAmount(chequePrefill > 0 ? String(chequePrefill) : "0");
     setChequeNo("");
-    setExtraAmounts({});
     setWalkInCustomerName(String(prefillWalkInCustomerName ?? "").trim());
     setCustomerNameMode("walkin");
     setReceiptCustomerNum("");
@@ -495,7 +492,6 @@ export function PosPaymentPanel({
       kcbAmount,
       otherBankAmount,
       chequeAmount,
-      extraAmounts,
       cfg,
       mpesaFieldsLocked,
     });
@@ -507,11 +503,9 @@ export function PosPaymentPanel({
     kcbAmount,
     otherBankAmount,
     chequeAmount,
-    extraAmounts,
     cfg.useBankSelect,
     cfg.showCheque,
     cfg.enableMpesaAmount,
-    cfg.extraTenders,
     mpesaFieldsLocked,
   ]);
 
@@ -543,7 +537,6 @@ export function PosPaymentPanel({
       mpesaCode: override.mpesaCode ?? mpesaCode,
       chequeNo: override.chequeNo ?? chequeNo,
       bankRef: override.bankRef ?? bankRef,
-      extraAmounts: override.extraAmounts ?? extraAmounts,
     };
   }
 
@@ -555,7 +548,6 @@ export function PosPaymentPanel({
     kcbAmount: kcbRaw,
     otherBankAmount: otherRaw,
     chequeAmount: chequeRaw,
-    extraAmounts: extraRaw = {},
     cfg: paymentCfg = cfg,
   }) {
     let bankTotal = 0;
@@ -569,20 +561,11 @@ export function PosPaymentPanel({
     }
     // Locked STK M-Pesa still counts as paid — full M-Pesa is the same as typed Equity / KCB / cash.
     const mpesaTender = paymentCfg.enableMpesaAmount ? parseDecimalInput(mpesaRaw) : 0;
-    let extraTotal = 0;
-    for (const tender of Array.isArray(paymentCfg.extraTenders) ? paymentCfg.extraTenders : []) {
-      const code = String(tender?.code ?? "")
-        .toUpperCase()
-        .trim();
-      if (!code) continue;
-      extraTotal += parseDecimalInput(extraRaw?.[code] ?? 0);
-    }
     return (
       parseDecimalInput(cashRaw) +
       mpesaTender +
       bankTotal +
-      (paymentCfg.showCheque ? parseDecimalInput(chequeRaw) : 0) +
-      extraTotal
+      (paymentCfg.showCheque ? parseDecimalInput(chequeRaw) : 0)
     );
   }
 
@@ -667,19 +650,7 @@ export function PosPaymentPanel({
     } else {
       if (cfg.showEquityBank) parts.push({ code: "EQUITY", amount: parseDecimalInput(equityAmount) });
       if (cfg.showKcbBank) parts.push({ code: "KCB", amount: parseDecimalInput(kcbAmount) });
-      if (cfg.showOtherBank) {
-        parts.push({
-          code: String(cfg.otherBankMethodCode || "OTHER").toUpperCase(),
-          amount: parseDecimalInput(otherBankAmount),
-        });
-      }
-    }
-    for (const tender of Array.isArray(cfg.extraTenders) ? cfg.extraTenders : []) {
-      const code = String(tender?.code ?? "")
-        .toUpperCase()
-        .trim();
-      if (!code) continue;
-      parts.push({ code, amount: parseDecimalInput(extraAmounts[code] ?? 0) });
+      if (cfg.showOtherBank) parts.push({ code: "OTHER", amount: parseDecimalInput(otherBankAmount) });
     }
     const preferred = String(preferredMethodRef.current ?? "").trim().toUpperCase();
     const preferredPart = parts.find(
@@ -717,16 +688,6 @@ export function PosPaymentPanel({
       const cheque = parseDecimalInput(chequeAmount);
       if (cheque > 0 && !chequeNo.trim()) {
         return "Enter the cheque number.";
-      }
-    }
-
-    for (const tender of Array.isArray(cfg.extraTenders) ? cfg.extraTenders : []) {
-      const code = String(tender?.code ?? "")
-        .toUpperCase()
-        .trim();
-      if (!code || !tender.requiresReference) continue;
-      if (parseDecimalInput(extraAmounts[code] ?? 0) > 0 && !bankRef.trim()) {
-        return `Enter a reference for ${tender.label || code}.`;
       }
     }
 
@@ -788,7 +749,6 @@ export function PosPaymentPanel({
           mpesaCode: "",
           chequeNo: "",
           bankRef: "",
-          extraAmounts: {},
         }
       : {
           cashAmount: cashAmountSnapshot,
@@ -802,7 +762,6 @@ export function PosPaymentPanel({
           mpesaCode: mpesaCodeSnapshot,
           chequeNo: chequeNoSnapshot,
           bankRef: bankRefSnapshot,
-          extraAmounts: resolveTenderAmountsSnapshot().extraAmounts,
         };
     const paymentSplits = creditSale
       ? []
@@ -1107,7 +1066,6 @@ export function PosPaymentPanel({
     setOtherBankAmount("0");
     setBankAmount("0");
     setChequeAmount("0");
-    setExtraAmounts({});
     setMpesaCode("");
     setChequeNo("");
     setBankRef("");
@@ -2610,52 +2568,18 @@ export function PosPaymentPanel({
                 autoComplete="off"
                 className={inputCls}
                 value={otherBankAmount}
-                onFocus={(e) =>
-                  handlePaymentAmountFocus(e, String(cfg.otherBankMethodCode || "OTHER").toUpperCase())
-                }
+                onFocus={(e) => handlePaymentAmountFocus(e, "OTHER")}
                 onChange={(e) =>
                   handlePaymentAmountChange(setOtherBankAmount, e.target.value, otherBankAmount)
                 }
                 onKeyDown={(e) =>
                   handlePaymentAmountKeyDown(e, otherBankAmount, setOtherBankAmount, {
-                    methodCode: String(cfg.otherBankMethodCode || "OTHER").toUpperCase(),
+                    methodCode: "OTHER",
                   })
                 }
               />
             </PosField>
           ) : null}
-
-          {(Array.isArray(cfg.extraTenders) ? cfg.extraTenders : []).map((tender) => {
-            const code = String(tender?.code ?? "")
-              .toUpperCase()
-              .trim();
-            if (!code) return null;
-            const value = extraAmounts[code] ?? "0";
-            return (
-              <PosField key={code} label={`${tender.label || code} amount`}>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  className={inputCls}
-                  value={value}
-                  onFocus={(e) => handlePaymentAmountFocus(e, code)}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setExtraAmounts((prev) => ({ ...prev, [code]: next }));
-                  }}
-                  onKeyDown={(e) =>
-                    handlePaymentAmountKeyDown(
-                      e,
-                      value,
-                      (next) => setExtraAmounts((prev) => ({ ...prev, [code]: next })),
-                      { methodCode: code },
-                    )
-                  }
-                />
-              </PosField>
-            );
-          })}
 
           {cfg.showCheque ? (
             <>

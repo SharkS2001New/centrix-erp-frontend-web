@@ -117,22 +117,8 @@ export function buildCheckoutPaymentSplits(cfg, amounts) {
       parts.push({ code: "KCB", amount: parseDecimalInput(amounts.kcbAmount ?? 0) });
     }
     if (cfg.showOtherBank) {
-      const otherCode = String(cfg.otherBankMethodCode || "OTHER").toUpperCase();
-      parts.push({ code: otherCode, amount: parseDecimalInput(amounts.otherBankAmount ?? 0) });
+      parts.push({ code: "OTHER", amount: parseDecimalInput(amounts.otherBankAmount ?? 0) });
     }
-  }
-
-  const extraAmounts =
-    amounts.extraAmounts && typeof amounts.extraAmounts === "object" ? amounts.extraAmounts : {};
-  for (const tender of Array.isArray(cfg.extraTenders) ? cfg.extraTenders : []) {
-    const code = String(tender?.code ?? "")
-      .toUpperCase()
-      .trim();
-    if (!code) continue;
-    parts.push({
-      code,
-      amount: parseDecimalInput(extraAmounts[code] ?? 0),
-    });
   }
 
   return parts

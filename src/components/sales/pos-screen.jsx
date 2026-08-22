@@ -97,7 +97,6 @@ import {
   showPosOrderDiscountInput,
   resolveOrderPrintDocumentType,
 } from "@/lib/sales-settings";
-import { applyPaymentMethodsCatalog } from "@/lib/checkout-payment-methods-catalog";
 import {
   buildAdvisedDiscountMap,
   draftLinesMatchAdvisedDiscounts,
@@ -1539,34 +1538,14 @@ export function PosScreen({ standalone = false }) {
     capabilities,
   );
   const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings, capabilities);
-  const [activePaymentMethods, setActivePaymentMethods] = useState([]);
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest("/payment-methods", {
-      loading: false,
-      reportIssues: false,
-      searchParams: { per_page: 100, "filter[is_active]": 1 },
-    })
-      .then((res) => {
-        if (!cancelled) setActivePaymentMethods(Array.isArray(res?.data) ? res.data : []);
-      })
-      .catch(() => {
-        if (!cancelled) setActivePaymentMethods([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId]);
   const checkoutPaymentConfig = useMemo(() => {
-    const base = mpesaStkPlatformEnabled
-      ? posSalesConfig.payment
-      : {
-          ...posSalesConfig.payment,
-          enableMpesaAmount: false,
-          enableMpesaCode: false,
-        };
-    return applyPaymentMethodsCatalog(base, activePaymentMethods);
-  }, [mpesaStkPlatformEnabled, posSalesConfig.payment, activePaymentMethods]);
+    if (mpesaStkPlatformEnabled) return posSalesConfig.payment;
+    return {
+      ...posSalesConfig.payment,
+      enableMpesaAmount: false,
+      enableMpesaCode: false,
+    };
+  }, [mpesaStkPlatformEnabled, posSalesConfig.payment]);
   const enableMpesaOnPos =
     mpesaStkPlatformEnabled && Boolean(checkoutPaymentConfig?.enableMpesaAmount);
   const allowEditUnitPrice = posSalesConfig.allowEditUnitPrice;

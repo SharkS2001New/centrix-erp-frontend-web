@@ -1286,13 +1286,6 @@ const NAV_SECTION_DEFINITIONS = [
     collapsible: true,
     items: [
       {
-        href: "/admin/payment-methods",
-        label: "Payment methods",
-        module: "admin",
-        permission: P.admin.payment_methods.view,
-        orgAdminOnly: true,
-      },
-      {
         href: "/admin/mpesa-settings",
         label: "M-Pesa settings",
         module: "payments",
