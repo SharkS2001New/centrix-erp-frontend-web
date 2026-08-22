@@ -88,11 +88,14 @@ const loadedDepsByPane = new Map();
 
 /**
  * Fetch/reload while the pane is active when the load identity / depsKey changes.
- * Returning to a keep-alive tab does NOT refetch for the same deps.
+ * Returning to a keep-alive tab does NOT refetch for the same deps — unless
+ * `refetchOnActivate` is set (order queues, debtors lists after mutations on other tabs).
  *
  * Usage:
  * - useTabAwareDataLoad(loadFn) — load while active when filters change; skip
  *   refetch on tab return even if loadFn identity churned while suspended
+ * - useTabAwareDataLoad(loadFn, { refetchOnActivate: true }) — always reload when
+ *   the pane becomes active again (list screens that must reflect other-tab edits)
  * - useTabAwareDataLoad(loadFn, { depsKey, hasData }) — skip when depsKey was already
  *   loaded for this pane and the screen still has (or restored) data
  *
@@ -108,6 +111,7 @@ export function useTabAwareDataLoad(loadFn, options) {
 
   const depsKey = options?.depsKey;
   const hasData = Boolean(options?.hasData);
+  const refetchOnActivate = Boolean(options?.refetchOnActivate);
   const paneKey = paneKeyFromHref(paneHref);
 
   useEffect(() => {
@@ -124,7 +128,7 @@ export function useTabAwareDataLoad(loadFn, options) {
     wasActiveRef.current = true;
 
     if (depsKey != null) {
-      if (loadedDepsByPane.get(paneKey) === depsKey && hasData) {
+      if (!refetchOnActivate && loadedDepsByPane.get(paneKey) === depsKey && hasData) {
         return undefined;
       }
       let cancelled = false;
@@ -145,13 +149,14 @@ export function useTabAwareDataLoad(loadFn, options) {
     }
 
     // Bare mode: filter/pagination changes while active must reload. Returning to
-    // a suspended tab must not reload just because loadFn got a new identity.
-    if (becameActive && loadedOnceRef.current) {
+    // a suspended tab must not reload just because loadFn got a new identity —
+    // unless this screen opted into refetchOnActivate (sales/debtors queues).
+    if (becameActive && loadedOnceRef.current && !refetchOnActivate) {
       lastLoadedFnRef.current = loadFn;
       return undefined;
     }
 
-    if (lastLoadedFnRef.current === loadFn) return undefined;
+    if (!becameActive && lastLoadedFnRef.current === loadFn) return undefined;
     lastLoadedFnRef.current = loadFn;
     void (async () => {
       try {
@@ -162,7 +167,7 @@ export function useTabAwareDataLoad(loadFn, options) {
       }
     })();
     return undefined;
-  }, [isActive, loadFn, paneKey, depsKey, hasData]);
+  }, [isActive, loadFn, paneKey, depsKey, hasData, refetchOnActivate]);
 }
 
 /** Force the next depsKey-based activation to reload. */

@@ -1512,7 +1512,11 @@ export function PosPaymentPanel({
       paymentAmountOverrideRef.current = null;
       const sale = await onComplete?.(body);
       if (!sale) {
-        setStep("confirm");
+        setStep(
+          cfg.enableCheckoutCustomerName && !hasCreditCustomer && !linkedReceiptCustomer
+            ? "customerName"
+            : "confirm",
+        );
         return;
       }
       // Previous-order edit: parent already reprinted and focused a new order.
@@ -1530,7 +1534,11 @@ export function PosPaymentPanel({
       tenderAmountsOverrideRef.current = null;
       paymentAmountOverrideRef.current = null;
       setLocalError(err instanceof Error ? err.message : "Checkout failed");
-      setStep("confirm");
+      setStep(
+        cfg.enableCheckoutCustomerName && !hasCreditCustomer && !linkedReceiptCustomer
+          ? "customerName"
+          : "confirm",
+      );
     }
   }
 

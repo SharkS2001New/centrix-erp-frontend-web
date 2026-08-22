@@ -553,10 +553,19 @@ export function HikvisionDeviceScreen() {
                 <button
                   type="button"
                   className={SECONDARY_BTN_CLASS}
+                  disabled={busy}
                   onClick={() => {
                     void (async () => {
-                      const rows = await loadUsers();
-                      await loadFingerprints("", rows);
+                      setBusy(true);
+                      try {
+                        const rows = await loadUsers();
+                        await loadFingerprints("", rows);
+                        notifySuccess("Device persons refreshed.");
+                      } catch (e) {
+                        notifyError(e instanceof ApiError ? e.message : "Could not refresh device persons");
+                      } finally {
+                        setBusy(false);
+                      }
                     })();
                   }}
                 >

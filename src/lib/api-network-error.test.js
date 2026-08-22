@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ApiError,
+  ATTENDANCE_AGENT_TIMEOUT_MESSAGE,
   NETWORK_CONNECTIVITY_MESSAGE,
   isNetworkFetchError,
   userFacingNetworkErrorMessage,
@@ -29,5 +30,15 @@ describe("userFacingNetworkErrorMessage", () => {
     expect(userFacingNetworkErrorMessage(new TypeError("Failed to fetch"))).toBe(
       NETWORK_CONNECTIVITY_MESSAGE,
     );
+  });
+
+  it("uses attendance agent copy for hikvision refresh paths", () => {
+    expect(
+      userFacingNetworkErrorMessage(
+        new TypeError("Failed to fetch"),
+        NETWORK_CONNECTIVITY_MESSAGE,
+        "/attendance-clock-devices/3/hikvision/overview",
+      ),
+    ).toBe(ATTENDANCE_AGENT_TIMEOUT_MESSAGE);
   });
 });

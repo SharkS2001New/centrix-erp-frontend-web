@@ -161,6 +161,7 @@ static string StatusHtml() => """
     <p class="lead">.NET Windows service — bridges Hikvision on your LAN to Centrix cloud.</p>
     <div class="card">
       <div id="banner" class="banner warn">Loading status…</div>
+      <button id="refreshBtn" type="button" style="margin-bottom:10px;background:#334155">Refresh status</button>
       <button id="testBtn" type="button">Test connection</button>
       <p class="muted">Uses the config.json from your Centrix download. Change IP or password in Centrix, then download the agent again.</p>
       <pre id="detail"></pre>
@@ -169,20 +170,30 @@ static string StatusHtml() => """
   <script>
     const banner = document.getElementById("banner");
     const detail = document.getElementById("detail");
+    const refreshBtn = document.getElementById("refreshBtn");
     const btn = document.getElementById("testBtn");
 
     async function refresh() {
-      const res = await fetch("/api/status");
-      const data = await res.json();
-      if (data.ready) {
-        banner.className = "banner ok";
-        banner.textContent = "Configured for device " + (data.device_no || "") + " → " + (data.hikvision_host || "");
-      } else {
-        banner.className = "banner warn";
-        banner.textContent = "Config incomplete: " + (data.missing || []).join(", ");
+      try {
+        const res = await fetch("/api/status");
+        if (!res.ok) throw new Error("CentrixAttendanceAgent returned HTTP " + res.status);
+        const data = await res.json();
+        if (data.ready) {
+          banner.className = "banner ok";
+          banner.textContent = "Configured for device " + (data.device_no || "") + " → " + (data.hikvision_host || "");
+        } else {
+          banner.className = "banner warn";
+          banner.textContent = "Config incomplete: " + (data.missing || []).join(", ");
+        }
+        detail.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        banner.className = "banner err";
+        banner.textContent = "CentrixAttendanceAgent is not running on this PC. Start the Windows service or run BUILD-AND-INSTALL.bat as Administrator.";
+        detail.textContent = String(e);
       }
-      detail.textContent = JSON.stringify(data, null, 2);
     }
+
+    refreshBtn.addEventListener("click", () => void refresh());
 
     btn.addEventListener("click", async () => {
       btn.disabled = true;

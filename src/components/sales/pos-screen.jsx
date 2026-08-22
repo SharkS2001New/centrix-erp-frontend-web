@@ -10283,12 +10283,14 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleCheckout(body, options = {}) {
+    setPaymentError(null);
     let activeCart = cartRef.current ?? cart;
     const summary = cartSummaryRef.current ?? cartSummary;
     if (!activeCart?.id) {
       setPaymentError("Cart is not ready — scan an item and try again.");
       return null;
     }
+    const cartHasLocalWorkspaceId = !isServerPosCartId(activeCart.id);
     if (standalone) {
       const deviceId = getPosDeviceIdentifier();
       if (deviceId) {
@@ -10434,12 +10436,15 @@ export function PosScreen({ standalone = false }) {
     // so cart.offline must take this path or F10 would hit TemporaryCart with id "active".
     const queueLocalUntilOutboxDrains =
       standalone && (pendingSync > 0 || failedSyncOrders.length > 0);
+    const useLocalCheckoutPath =
+      cartHasLocalWorkspaceId ||
+      offlineMode ||
+      Boolean(activeCart.offline) ||
+      Boolean(activeCart.offline_client_sale_uuid) ||
+      queueLocalUntilOutboxDrains;
     if (
       standalone &&
-      (offlineMode ||
-        Boolean(activeCart.offline) ||
-        Boolean(activeCart.offline_client_sale_uuid) ||
-        queueLocalUntilOutboxDrains) &&
+      useLocalCheckoutPath &&
       (!activeCart.held_order_num || isQueuedOfflineEdit || isPreviousOrderCashEdit)
     ) {
       const method = String(body?.payment_method_code ?? "").toUpperCase();
@@ -10562,6 +10567,7 @@ export function PosScreen({ standalone = false }) {
       !offlineMode &&
       !activeCart.offline &&
       !activeCart.offline_client_sale_uuid &&
+      !cartHasLocalWorkspaceId &&
       (!kraFiscalizeOnCheckout || isPreviousOrderCashEdit) &&
       isLocalFirstCashCheckout(body) &&
       (!activeCart.held_order_num || isPreviousOrderCashEdit)
@@ -10788,6 +10794,27 @@ export function PosScreen({ standalone = false }) {
 
       const liveCart = cartRef.current ?? activeCart;
 
+      // KRA checkout needs a real TemporaryCart id — local held restores and other
+      // IndexedDB workspaces use id "active", which 404s as "Cart not found."
+      let checkoutCart = liveCart;
+      if (
+        !isPreviousOrderCashEdit &&
+        kraFiscalizeOnCheckout &&
+        !isServerPosCartId(checkoutCart.id) &&
+        (checkoutCart.lines?.length ?? 0) > 0
+      ) {
+        const materialized = await materializeOfflineCartOnServer(checkoutCart);
+        if (!isServerPosCartId(materialized?.id)) {
+          setPaymentError(
+            "Could not sync this sale to the server for KRA checkout. Check your connection and try again.",
+          );
+          return null;
+        }
+        checkoutCart = materialized;
+        cartRef.current = materialized;
+        setCart(materialized);
+      }
+
       // Cash Sales #: local counter is source of truth — claim on-device, then send
       // the same # to the server (online KRA path included). Previous-order edits
       // keep the receipt ticket they were opened with.
@@ -10795,10 +10822,11 @@ export function PosScreen({ standalone = false }) {
       if (!isPreviousOrderCashEdit) {
         const claimed = await claimNextLocalPosTicketForSale({
           cart: {
-            ...liveCart,
+            ...checkoutCart,
             ...checkoutCartFields,
             next_pos_order_num:
               checkoutCartFields.next_pos_order_num ??
+              checkoutCart?.next_pos_order_num ??
               liveCart?.next_pos_order_num ??
               (String(editOrderNo ?? "").trim()
                 ? Number(String(editOrderNo).trim())
@@ -10821,14 +10849,14 @@ export function PosScreen({ standalone = false }) {
               capabilities,
               summary?.total,
             );
-      if (liveCart?.held_order_num) {
+      if (checkoutCart?.held_order_num) {
         if (body.customer_num) {
-          rememberPosOrderCustomer(liveCart.held_order_num, {
+          rememberPosOrderCustomer(checkoutCart.held_order_num, {
             name: body.customer_name_override,
             customerNum: body.customer_num,
           });
         } else if (body.customer_name_override) {
-          rememberPosOrderCustomerName(liveCart.held_order_num, body.customer_name_override);
+          rememberPosOrderCustomerName(checkoutCart.held_order_num, body.customer_name_override);
         }
       }
 
@@ -10847,7 +10875,7 @@ export function PosScreen({ standalone = false }) {
         ...checkoutInput,
         sales_workspace: salesWorkspace,
         ...(submitKra ? { submit_kra: true } : {}),
-        ...(liveCart?.held_order_num ? { order_num: liveCart.held_order_num } : {}),
+        ...(checkoutCart?.held_order_num ? { order_num: checkoutCart.held_order_num } : {}),
         ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
         ...(onlinePosFields.pos_order_num != null
           ? { pos_order_num: onlinePosFields.pos_order_num }
@@ -10861,7 +10889,7 @@ export function PosScreen({ standalone = false }) {
         kraFiscalizeOnPosCheckout &&
         body?.__previous_order_edit_adjustment
       ) {
-        const delta = computePreviousOrderEditPaymentDelta(editSourceSale, liveCart, {
+        const delta = computePreviousOrderEditPaymentDelta(editSourceSale, checkoutCart, {
           cashRound: enablePosCashRounding,
         });
         checkoutBody = {
@@ -10870,12 +10898,12 @@ export function PosScreen({ standalone = false }) {
           payment_adjustments: buildPaymentAdjustmentsFromCheckoutBody(checkoutBody, delta),
         };
       } else if (
-        Array.isArray(liveCart?.payment_adjustments) &&
-        liveCart.payment_adjustments.length
+        Array.isArray(checkoutCart?.payment_adjustments) &&
+        checkoutCart.payment_adjustments.length
       ) {
         checkoutBody = {
           ...checkoutBody,
-          payment_adjustments: liveCart.payment_adjustments,
+          payment_adjustments: checkoutCart.payment_adjustments,
         };
       }
       if (!checkoutBody) {
@@ -10883,7 +10911,7 @@ export function PosScreen({ standalone = false }) {
         return null;
       }
       const checkoutRequest = () =>
-        apiRequest(`/sales/carts/${liveCart.id}/checkout`, {
+        apiRequest(`/sales/carts/${checkoutCart.id}/checkout`, {
           method: "POST",
           body: checkoutBody,
         });
@@ -10897,7 +10925,7 @@ export function PosScreen({ standalone = false }) {
           : "Please wait.",
         settleMs: 0,
       });
-      sale = mergeSaleWithCheckoutPosTicket(sale, liveCart, onlinePosFields);
+      sale = mergeSaleWithCheckoutPosTicket(sale, checkoutCart, onlinePosFields);
       if (sale?.pos_order_num != null) {
         void purgeReservedPosTicketsUpTo(sale.pos_order_num, sale.pos_order_date).catch(() => {});
         // Keep local Cash Sales counter aligned with server after online sale.
@@ -10941,7 +10969,7 @@ export function PosScreen({ standalone = false }) {
         }
       }
       // Kick print before cart-clear state churn so HTML build starts immediately.
-      markServerCartConsumed(liveCart?.id);
+      markServerCartConsumed(checkoutCart?.id);
       if (isPreviousOrderCashEdit && standalone) {
         // Unreachable when the IndexedDB finish path above succeeds; keep as a
         // safety net so TemporaryCart checkout never prints without an outbox row.
@@ -10962,7 +10990,7 @@ export function PosScreen({ standalone = false }) {
       }
       afterSaleCheckoutComplete(sale, options);
       markSaleForReprint(sale);
-      detachWorkspaceAfterStandaloneCheckout(sale, liveCart);
+      detachWorkspaceAfterStandaloneCheckout(sale, checkoutCart);
       setSelectedLineId(null);
       clearPosUiDraft();
       clearLineEntry();
@@ -10980,6 +11008,25 @@ export function PosScreen({ standalone = false }) {
       }
       return sale;
     } catch (e) {
+      if (
+        !options._cartRetry &&
+        isMissingTemporaryCartError(e) &&
+        !isPreviousOrderCashEdit &&
+        (cartRef.current ?? activeCart)?.lines?.length > 0
+      ) {
+        try {
+          const materialized = await materializeOfflineCartOnServer(
+            cartRef.current ?? activeCart,
+          );
+          if (isServerPosCartId(materialized?.id)) {
+            cartRef.current = materialized;
+            setCart(materialized);
+            return handleCheckout(body, { ...options, _cartRetry: true });
+          }
+        } catch {
+          /* fall through to user-facing error */
+        }
+      }
       const message =
         e instanceof ApiError
           ? e.message

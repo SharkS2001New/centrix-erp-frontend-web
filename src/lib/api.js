@@ -12,6 +12,10 @@ import { handleCacheInvalidation } from "./cache-invalidation";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
 import { compressImageFileIfNeeded, compressPresetForUpload } from "./image-compress";
 import { humanizeKraDeviceErrorMessage } from "./kra-device-errors";
+import {
+  ATTENDANCE_AGENT_TIMEOUT_MESSAGE,
+  isAttendanceAgentApiPath,
+} from "./attendance-agent";
 
 const baseUrl = () => apiV1BaseUrl();
 
@@ -379,6 +383,13 @@ export function isAbortError(error) {
 export const NETWORK_CONNECTIVITY_MESSAGE =
   "Please check your internet connection and try again.";
 
+export {
+  ATTENDANCE_AGENT_NOT_RUNNING_MESSAGE,
+  ATTENDANCE_AGENT_TIMEOUT_MESSAGE,
+  isAttendanceAgentApiPath,
+  userFacingAttendanceAgentError,
+} from "./attendance-agent";
+
 /**
  * True for browser/network connectivity failures (offline, DNS, CORS-as-network, etc.).
  * @param {unknown} error
@@ -410,10 +421,18 @@ export function isNetworkFetchError(error) {
 }
 
 /** Replace raw fetch/network failures with a clear connectivity message. */
-export function userFacingNetworkErrorMessage(error, fallback = NETWORK_CONNECTIVITY_MESSAGE) {
-  if (isNetworkFetchError(error)) return NETWORK_CONNECTIVITY_MESSAGE;
+export function userFacingNetworkErrorMessage(error, fallback = NETWORK_CONNECTIVITY_MESSAGE, apiPath = null) {
+  if (isNetworkFetchError(error)) {
+    if (isAttendanceAgentApiPath(apiPath)) {
+      return ATTENDANCE_AGENT_TIMEOUT_MESSAGE;
+    }
+    return NETWORK_CONNECTIVITY_MESSAGE;
+  }
   if (error instanceof Error && error.message?.trim()) return error.message.trim();
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    if (isAttendanceAgentApiPath(apiPath)) {
+      return ATTENDANCE_AGENT_TIMEOUT_MESSAGE;
+    }
     return NETWORK_CONNECTIVITY_MESSAGE;
   }
   return fallback;
@@ -629,7 +648,10 @@ async function performApiRequest(path, url, options = {}) {
     }
     // Don't surface browser "Failed to fetch" — tell the user to check connectivity.
     if (!(error instanceof ApiError) && isNetworkFetchError(error)) {
-      throw new ApiError(NETWORK_CONNECTIVITY_MESSAGE, 0, { code: "network_unavailable" });
+      const message = isAttendanceAgentApiPath(apiPath)
+        ? ATTENDANCE_AGENT_TIMEOUT_MESSAGE
+        : NETWORK_CONNECTIVITY_MESSAGE;
+      throw new ApiError(message, 0, { code: "network_unavailable" });
     }
     if (trackIssues && !(error instanceof ApiError)) {
       const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;

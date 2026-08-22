@@ -780,9 +780,9 @@ export default function SalesOrdersListScreen({
       }
       if (appliedFromDate) extra.from_date = appliedFromDate;
       if (appliedToDate) extra.to_date = appliedToDate;
-      // Shop debtors: use the sale calendar date (effective / POS ticket day), not
-      // UTC created_at, so today's till credit still falls inside the default 3 days.
-      if ((appliedFromDate || appliedToDate) && !shopDebtorsOnly) {
+      // Same calendar window as Sales → Unpaid/Paid Orders (created_at / placed).
+      // effective_sale_date mismatches were hiding convert-to-unpaid shop debtors.
+      if (appliedFromDate || appliedToDate) {
         extra.date_field = "placed";
       }
       if (routeFilter && routeFilter !== "all") {
@@ -893,7 +893,7 @@ export default function SalesOrdersListScreen({
     return fetchAllPages("/sales", rest, { perPage: 200 });
   }, [buildOrdersListSearchParams]);
 
-  useTabAwareDataLoad(loadOrders);
+  useTabAwareDataLoad(loadOrders, { refetchOnActivate: true });
 
   useEffect(() => {
     setPage(1);
@@ -1467,7 +1467,11 @@ export default function SalesOrdersListScreen({
     setTransitionBusyId(sale.id);
     try {
       await apiRequest(path, { method: "POST" });
-      notifySuccess(direction === "unpaid" ? "Order converted to unpaid." : "Order converted to paid.");
+      notifySuccess(
+        direction === "unpaid"
+          ? "Order converted to unpaid. Open Unpaid Debtors (or click Refresh) to see it under Shop Debtors."
+          : "Order converted to paid.",
+      );
       await loadOrders();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Conversion failed");
