@@ -51,8 +51,9 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
       <p className="mt-1 text-sm theme-subtext">
-        OpenAI powers platform-admin tools (email drafting, training console). Gemini can be shared with
-        selected tenant organizations from Platform → Organization → Sales behaviour.
+        OpenAI powers platform-admin tools (email drafting, training console). Gemini is the free shared key
+        offered to selected tenant organizations from Platform → Organization → Sales behaviour (“Offer free
+        platform Gemini”). Tenants may still add their own API key to override.
       </p>
 
       {loading ? (

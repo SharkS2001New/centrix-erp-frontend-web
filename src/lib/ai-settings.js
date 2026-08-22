@@ -189,6 +189,8 @@ export function aiFormFromApi(res) {
       settings.use_platform_gemini ?? res?.use_platform_gemini,
     ),
     platform_gemini_configured: Boolean(res?.platform_gemini_configured ?? res?.gemini_available),
+    has_org_api_key: Boolean(res?.has_org_api_key ?? settings.api_key_set),
+    credential_source: res?.credential_source ?? null,
     available: Boolean(res?.available),
     platform_enabled: res?.platform_enabled !== false,
     insights: insightsFormFromApi(settings.insights),

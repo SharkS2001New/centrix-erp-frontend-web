@@ -858,7 +858,7 @@ export function OrganizationPlatformSalesSettings({
           />
           <Toggle
             label="Enable AI assistant"
-            description="When off, this organization cannot configure or use the floating AI assistant, regardless of user permissions."
+            description="When off, this organization cannot use the floating AI assistant, regardless of user permissions."
             checked={salesPlatform?.enable_ai !== false}
             onChange={(v) =>
               patch(
@@ -869,8 +869,8 @@ export function OrganizationPlatformSalesSettings({
             }
           />
           <Toggle
-            label="Use platform Gemini"
-            description="Selected orgs use the Gemini API key from Platform → Settings → AI credentials. No tenant key required."
+            label="Offer free platform Gemini"
+            description="Selected orgs use the Gemini API key from Platform → Settings → AI credentials. No tenant key required. The org can still add its own OpenAI/Gemini key to override."
             checked={Boolean(salesPlatform?.use_platform_gemini)}
             onChange={(v) =>
               patch(

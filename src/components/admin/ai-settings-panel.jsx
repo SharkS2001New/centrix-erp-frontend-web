@@ -86,9 +86,9 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="theme-heading text-lg font-medium">AI assistant</h2>
       <p className="theme-subtext mt-1 text-sm">
-        {form.use_platform_gemini
-          ? "This organization uses the platform Gemini key. Tenant API keys are not required."
-          : "Each organization can manage its own AI credentials, or the platform can assign Gemini for selected orgs. Grant the Use AI assistant permission on a role to show the floating assistant icon."}
+        The platform can offer free Gemini AI to this organization. You may also add your own OpenAI or Gemini
+        API key — your key is used whenever it is set. Grant the Use AI assistant permission on a role to show
+        the floating assistant.
       </p>
 
       {loading ? (
@@ -97,37 +97,64 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
         <div className="mt-6 space-y-4">
           {form.use_platform_gemini ? (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              <p className="font-medium">Platform Gemini enabled</p>
+              <p className="font-medium">
+                {form.credential_source === "org"
+                  ? "Using your organization API key"
+                  : "Using free platform Gemini"}
+              </p>
               <p className="mt-1 text-xs text-emerald-800">
-                {form.platform_gemini_configured || form.available
-                  ? "Users with AI permission can chat using the platform-managed Gemini key."
-                  : "Waiting for the platform administrator to set a Gemini API key under Platform → Settings → AI credentials."}
+                {form.credential_source === "org"
+                  ? "Your organization API key is active. Remove it from settings (or ask platform support to clear it) to fall back to free platform Gemini."
+                  : form.platform_gemini_configured || form.available
+                    ? "No organization key is required. Optionally add your own key below to use your own provider instead."
+                    : "Platform Gemini is selected for this org, but the platform Gemini API key is not configured yet."}
               </p>
             </div>
           ) : null}
 
           <Toggle
-            checked={form.enabled}
+            checked={form.enabled || form.use_platform_gemini}
             onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
             label="Enable AI assistant"
-            description="When on, users see a floating assistant on every screen — it can guide navigation, answer system questions, and create orders, employees, or reports (with permission). Off-topic questions are declined."
-            disabled={form.use_platform_gemini}
+            description="When on, users with permission can use the floating assistant. Platform Gemini keeps AI available even without an organization key."
+            disabled={form.use_platform_gemini && !form.has_org_api_key}
           />
 
-          {form.enabled && !form.use_platform_gemini ? (
+          {(form.enabled || form.use_platform_gemini) ? (
             <>
-              <Field label="API key">
+              <Field label="Provider">
+                <select
+                  className={inputClassName()}
+                  value={form.provider || "openai"}
+                  onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Google Gemini</option>
+                </select>
+              </Field>
+
+              <Field label="Organization API key (optional)">
                 <input
                   type="password"
                   className={inputClassName()}
                   value={form.api_key}
                   onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
-                  placeholder={form.api_key_set ? form.api_key_hint || "••••••••" : "sk-… / AIza…"}
+                  placeholder={
+                    form.api_key_set
+                      ? form.api_key_hint || "••••••••"
+                      : form.provider === "gemini"
+                        ? "AIza…"
+                        : "sk-…"
+                  }
                   autoComplete="off"
                 />
-                {form.api_key_set && !form.api_key ? (
-                  <p className="mt-1 text-xs text-slate-500">Leave blank to keep the current key ({form.api_key_hint}).</p>
-                ) : null}
+                <p className="mt-1 text-xs text-slate-500">
+                  {form.api_key_set && !form.api_key
+                    ? `Leave blank to keep the current key (${form.api_key_hint}).`
+                    : form.use_platform_gemini
+                      ? "Optional. When set, this key is used instead of free platform Gemini."
+                      : "Required unless the platform has enabled free Gemini for this organization."}
+                </p>
               </Field>
 
               <Field label="Model (optional)">
@@ -135,7 +162,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   className={inputClassName()}
                   value={form.model}
                   onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-                  placeholder="gpt-4o-mini"
+                  placeholder={form.provider === "gemini" ? "gemini-2.0-flash" : "gpt-4o-mini"}
                 />
               </Field>
 
@@ -144,7 +171,11 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   className={inputClassName()}
                   value={form.base_url}
                   onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
-                  placeholder="https://api.openai.com/v1"
+                  placeholder={
+                    form.provider === "gemini"
+                      ? "https://generativelanguage.googleapis.com/v1beta"
+                      : "https://api.openai.com/v1"
+                  }
                 />
               </Field>
 
@@ -154,10 +185,12 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                 }`}
               >
                 {form.available
-                  ? "AI assistant is configured and available for users in this organization."
-                  : !form.api_key_set && !form.api_key
-                    ? "Add an API key and save to activate AI for this organization."
-                    : "Save settings to apply changes."}
+                  ? form.credential_source === "platform_gemini"
+                    ? "AI is available via free platform Gemini."
+                    : "AI is available using this organization’s API key."
+                  : form.use_platform_gemini && !form.platform_gemini_configured
+                    ? "Waiting for the platform Gemini key under Platform → Settings → AI credentials."
+                    : "Add an organization API key, or ask the platform to enable free Gemini for this org."}
               </div>
             </>
           ) : null}
