@@ -2378,6 +2378,14 @@ export function PosScreen({ standalone = false }) {
       ...extra,
     };
   }
+
+  /** Honour platform "Combine identical products on POS cart" on every cart merge. */
+  function cartMergeOptions(extra = {}) {
+    return {
+      combineIdenticalLines: combineIdenticalLinesRef.current,
+      ...extra,
+    };
+  }
   function markServerCartConsumed(cartId) {
     if (!isServerPosCartId(cartId)) return;
     consumedServerCartIdsRef.current.add(Number(cartId));
@@ -4198,7 +4206,7 @@ export function PosScreen({ standalone = false }) {
         cartHasOptimisticLines(live)
           ? {
               ...full,
-              lines: mergePreservedOptimisticLines(full?.lines, live.lines),
+              lines: mergePreservedOptimisticLines(full?.lines, live.lines, cartMergeOptions()),
               next_pos_order_num: raisePosNextTicketNumber(
                 full?.next_pos_order_num,
                 live?.next_pos_order_num,
@@ -4497,7 +4505,7 @@ export function PosScreen({ standalone = false }) {
           },
           ...POS_CART_REQUEST,
         });
-        latestCart = applyCartMutationResponse(latestCart, updated, { targetLineRef: lineRef });
+        latestCart = applyCartMutationResponse(latestCart, updated, cartMergeOptions({ targetLineRef: lineRef }));
       }
 
       await refreshCart(cart.id);
@@ -4628,7 +4636,7 @@ export function PosScreen({ standalone = false }) {
           // Keep the instantly painted rows while TemporaryCart finishes creating.
           const merged = {
             ...bootstrapped,
-            lines: mergePreservedOptimisticLines(bootstrapped.lines, pendingOptimistic),
+            lines: mergePreservedOptimisticLines(bootstrapped.lines, pendingOptimistic, cartMergeOptions()),
           };
           cartRef.current = merged;
           setCart(merged);
@@ -5776,7 +5784,7 @@ export function PosScreen({ standalone = false }) {
           sellWholesaleRef.current,
           null,
           product,
-          { combineIdenticalLines: true },
+          { combineIdenticalLines: combineIdenticalLinesRef.current },
         ) ?? mergeTarget;
     }
     let targetLineRef = cartLineRef(
@@ -5905,7 +5913,7 @@ export function PosScreen({ standalone = false }) {
               sellWholesaleRef.current,
               null,
               product,
-              { combineIdenticalLines: true },
+              { combineIdenticalLines: combineIdenticalLinesRef.current },
             ) ?? resolvedMergeTarget
           : resolvedMergeTarget;
       if (offlineMerge && !editingId && offlineMerge !== resolvedMergeTarget) {
@@ -6113,7 +6121,7 @@ export function PosScreen({ standalone = false }) {
         sellWholesaleRef.current,
         null,
         product,
-        { combineIdenticalLines: true },
+        { combineIdenticalLines: combineIdenticalLinesRef.current },
       );
       if (serverMergeTarget && !editingId) {
         resolvedMergeTarget = serverMergeTarget;
@@ -6169,9 +6177,11 @@ export function PosScreen({ standalone = false }) {
             body: deferredLineBody,
             ...POS_CART_REQUEST,
           });
-          cartState = applyCartMutationResponse(cartRef.current ?? activeCart, added, {
-            extraPosTickets: preservePosTickets,
-          });
+          cartState = applyCartMutationResponse(
+            cartRef.current ?? activeCart,
+            added,
+            cartMergeOptions({ extraPosTickets: preservePosTickets }),
+          );
           if (shouldApplyServerCartMutation(activeCart.id)) {
             cartRef.current = cartState;
             setCart(cartState);
@@ -6189,10 +6199,11 @@ export function PosScreen({ standalone = false }) {
             },
             ...POS_CART_REQUEST,
           });
-          cartState = applyCartMutationResponse(cartRef.current ?? activeCart, updated, {
-            targetLineRef: lineRef,
-            extraPosTickets: preservePosTickets,
-          });
+          cartState = applyCartMutationResponse(
+            cartRef.current ?? activeCart,
+            updated,
+            cartMergeOptions({ targetLineRef: lineRef, extraPosTickets: preservePosTickets }),
+          );
           if (shouldApplyServerCartMutation(activeCart.id)) {
             cartRef.current = cartState;
             setCart(cartState);
@@ -6310,10 +6321,11 @@ export function PosScreen({ standalone = false }) {
           ...POS_CART_REQUEST,
         });
         const prevCartState = cartRef.current ?? activeCart;
-        let nextCart = applyCartMutationResponse(prevCartState, updated, {
-          targetLineRef,
-          extraPosTickets: preservePosTickets,
-        });
+        let nextCart = applyCartMutationResponse(
+          prevCartState,
+          updated,
+          cartMergeOptions({ targetLineRef, extraPosTickets: preservePosTickets }),
+        );
         nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
           targetLineRef,
           targetProductCode: product.product_code,
@@ -6342,9 +6354,11 @@ export function PosScreen({ standalone = false }) {
           ...POS_CART_REQUEST,
         });
         const prevCartState = cartRef.current ?? activeCart;
-        let nextCart = applyCartMutationResponse(prevCartState, updated, {
-          extraPosTickets: preservePosTickets,
-        });
+        let nextCart = applyCartMutationResponse(
+          prevCartState,
+          updated,
+          cartMergeOptions({ extraPosTickets: preservePosTickets }),
+        );
         nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
           targetProductCode: product.product_code,
           targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
@@ -6380,10 +6394,11 @@ export function PosScreen({ standalone = false }) {
                 ...POS_CART_REQUEST,
               });
               const prevCartState = cartRef.current ?? fresh;
-              let nextCart = applyCartMutationResponse(prevCartState, updated, {
-                targetLineRef,
-                extraPosTickets: preservePosTickets,
-              });
+              let nextCart = applyCartMutationResponse(
+                prevCartState,
+                updated,
+                cartMergeOptions({ targetLineRef, extraPosTickets: preservePosTickets }),
+              );
               nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
                 targetLineRef,
                 targetProductCode: product.product_code,
@@ -6405,9 +6420,11 @@ export function PosScreen({ standalone = false }) {
                 ...POS_CART_REQUEST,
               });
               const prevCartState = cartRef.current ?? fresh;
-              let nextCart = applyCartMutationResponse(prevCartState, updated, {
-                extraPosTickets: preservePosTickets,
-              });
+              let nextCart = applyCartMutationResponse(
+                prevCartState,
+                updated,
+                cartMergeOptions({ extraPosTickets: preservePosTickets }),
+              );
               nextCart = preserveUntouchedMutationLinePricing(prevCartState, nextCart, {
                 targetProductCode: product.product_code,
                 targetOnWholesaleRetailFlag: onWholesaleRetailFlag,
@@ -8147,7 +8164,7 @@ export function PosScreen({ standalone = false }) {
         },
         ...POS_CART_REQUEST,
       });
-      const merged = applyCartMutationResponse(cart, updated);
+      const merged = applyCartMutationResponse(cart, updated, cartMergeOptions());
       const withMarkers = {
         ...merged,
         held_order_num: cart.held_order_num ?? merged.held_order_num,
@@ -10067,7 +10084,7 @@ export function PosScreen({ standalone = false }) {
           ) {
             merged = {
               ...merged,
-              lines: mergePreservedOptimisticLines(merged.lines, live.lines),
+              lines: mergePreservedOptimisticLines(merged.lines, live.lines, cartMergeOptions()),
             };
           }
           cartRef.current = merged;
@@ -11788,6 +11805,7 @@ export function PosScreen({ standalone = false }) {
         ...applyCartMutationResponse(
           { ...activeCart, id: targetCartId },
           updated,
+          cartMergeOptions(),
         ),
         held_order_num: activeCart.held_order_num,
         superseded_sale_id: activeCart.superseded_sale_id,
@@ -13056,6 +13074,7 @@ export function PosScreen({ standalone = false }) {
           enriched.lines = mergePreservedOptimisticLines(
             enriched.lines,
             pendingOptimistic,
+            cartMergeOptions(),
           );
         }
         applyRestoredHeldCart(enriched, sourceSale);

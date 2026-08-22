@@ -174,9 +174,68 @@ describe("applyCartMutationResponse", () => {
     expect(next.superseded_sale_id).toBe(55);
     expect(next.lines[0].quantity).toBe(1);
   });
+
+  it("keeps separate lines for the same SKU when combine is off (Sugar 2kg vs 10kg)", () => {
+    const prev = {
+      id: 10,
+      lines: [
+        {
+          id: 1,
+          product_code: "SUGAR",
+          quantity: 2,
+          amount: 280,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const res = {
+      id: 10,
+      lines: [
+        { id: 1, product_code: "SUGAR", quantity: 2, amount: 280, on_wholesale_retail: 0 },
+        { id: 2, product_code: "SUGAR", quantity: 10, amount: 1300, on_wholesale_retail: 0 },
+      ],
+    };
+    const next = applyCartMutationResponse(prev, res, { combineIdenticalLines: false });
+    expect(next.lines).toHaveLength(2);
+    expect(next.lines.map((line) => line.quantity)).toEqual([2, 10]);
+  });
 });
 
 describe("applyOptimisticCartMutation (swap / edit)", () => {
+  it("adds a second row for the same SKU when combine is off", () => {
+    const prev = {
+      id: 10,
+      lines: [
+        {
+          id: 1,
+          product_code: "SUGAR",
+          quantity: 2,
+          amount: 280,
+          on_wholesale_retail: 0,
+        },
+      ],
+    };
+    const optimistic = buildOptimisticCartLine(
+      { product_code: "SUGAR", product_name: "Sugar" },
+      {
+        product_code: "SUGAR",
+        quantity: 10,
+        unit_price: 130,
+        display_unit_price: 130,
+        uom: "KG",
+        product_vat: 0,
+        discount_given: 0,
+        on_wholesale_retail: 0,
+      },
+      { lineAmount: 1300 },
+    );
+    const next = applyOptimisticCartMutation(prev, optimistic, {
+      combineIdenticalLines: false,
+    });
+    expect(next.lines).toHaveLength(2);
+    expect(next.lines.map((line) => line.quantity)).toEqual([2, 10]);
+  });
+
   it("replaces the edited row in place without bumping update_no", () => {
     const prev = {
       id: 10,
