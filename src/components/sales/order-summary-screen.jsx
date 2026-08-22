@@ -866,11 +866,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     try {
       const updated = await apiRequest(path, { method: "POST" });
       setSale((prev) => ({ ...prev, ...updated }));
-      notifySuccess(
-        direction === "unpaid"
-          ? "Order converted to unpaid. Check Unpaid Debtors under Shop Debtors."
-          : "Order converted to paid.",
-      );
+      notifySuccess(`Converted to ${direction} successfully.`);
       await loadSale();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not convert payment status.");

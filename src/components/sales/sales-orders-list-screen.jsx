@@ -771,6 +771,10 @@ export default function SalesOrdersListScreen({
         if (!extra.exclude_statuses) {
           extra.exclude_statuses = "cancelled,expired";
         }
+        // Match Sales → Unpaid / Partially paid queues (amount-based, not credit-sale flags).
+        if (shopDebtorsBucket && shopDebtorsBucket !== "paid") {
+          extra.outstanding_balance = 1;
+        }
       }
       if (routeOrdersOnly) {
         extra.route_orders = 1;
@@ -1467,11 +1471,7 @@ export default function SalesOrdersListScreen({
     setTransitionBusyId(sale.id);
     try {
       await apiRequest(path, { method: "POST" });
-      notifySuccess(
-        direction === "unpaid"
-          ? "Order converted to unpaid. Open Unpaid Debtors (or click Refresh) to see it under Shop Debtors."
-          : "Order converted to paid.",
-      );
+      notifySuccess(`Converted to ${direction} successfully.`);
       await loadOrders();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Conversion failed");
