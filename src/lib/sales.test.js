@@ -433,6 +433,29 @@ describe("resolveSalesOrderQueue", () => {
     expect(config?.fixedStatusFilter).toBeNull();
     expect(config?.fixedPaymentStatusFilter).toBe("paid");
     expect(config?.requireOutstandingBalance).toBe(false);
+    expect(config?.dateRangeDays).toBeUndefined();
+  });
+
+  it("does not hard-code date windows for cancelled, expired, completed, delivered, mobile, or payment queues", () => {
+    const pipeline = {
+      pipeline: [
+        { key: "booked", label: "Booked" },
+        { key: "completed", label: "Completed" },
+        { key: "delivered", label: "Delivered" },
+        { key: "unpaid", label: "Unpaid" },
+        { key: "pending_payment", label: "Partially paid" },
+        { key: "paid", label: "Paid" },
+      ],
+    };
+
+    expect(resolveSalesOrderQueue("cancelled", pipeline)?.dateRangeDays).toBeUndefined();
+    expect(resolveSalesOrderQueue("expired", pipeline)?.dateRangeDays).toBeUndefined();
+    expect(resolveSalesOrderQueue("completed", pipeline)?.dateRangeDays).toBeUndefined();
+    expect(resolveSalesOrderQueue("delivered", pipeline)?.dateRangeDays).toBeUndefined();
+    expect(resolveSalesOrderQueue("mobile", pipeline, { includeMobile: true })?.dateRangeDays).toBeUndefined();
+    expect(resolveSalesOrderQueue("unpaid", pipeline)?.dateRangeDays).toBeUndefined();
+    expect(resolveSalesOrderQueue("pending_payment", pipeline)?.dateRangeDays).toBeUndefined();
+    expect(resolveSalesOrderQueue("paid", pipeline)?.dateRangeDays).toBeUndefined();
   });
 });
 

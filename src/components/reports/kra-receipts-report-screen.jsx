@@ -21,7 +21,12 @@ import {
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
 } from "@/components/catalog/catalog-shared";
-import { usePageRowSelection, TABLE_ROW_CHECKBOX_CLASS, BatchActionBar } from "@/components/catalog/table-row-selection";
+import {
+  usePageRowSelection,
+  TABLE_ROW_CHECKBOX_CLASS,
+  BatchActionBar,
+  runSequentialActions,
+} from "@/components/catalog/table-row-selection";
 import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import {
@@ -118,6 +123,10 @@ function isPrintableKraRow(row) {
   return String(row?.status ?? "").toLowerCase() === "success";
 }
 
+function isRetryableKraRow(row) {
+  return !isPrintableKraRow(row) && row?.sale_id != null && kraReportRowId(row) != null;
+}
+
 export function KraReceiptsReportScreen({ definition }) {
   const isInvoicesView = definition.variant === "kra-invoices";
   const { user, isOrgWide, capabilities, organization, hasPermission } = useAuth();
@@ -156,6 +165,8 @@ export function KraReceiptsReportScreen({ definition }) {
   const [failureReasonRow, setFailureReasonRow] = useState(null);
   const [printing, setPrinting] = useState(false);
   const [retryingId, setRetryingId] = useState(null);
+  const [batchRetrying, setBatchRetrying] = useState(false);
+  const [batchRetryProgress, setBatchRetryProgress] = useState(null);
   const [creditRow, setCreditRow] = useState(null);
   const [creditReasonCode, setCreditReasonCode] = useState("06");
   const [crediting, setCrediting] = useState(false);
@@ -285,6 +296,11 @@ export function KraReceiptsReportScreen({ definition }) {
     [selectedRows],
   );
 
+  const selectedRetryableRows = useMemo(
+    () => selectedRows.filter(isRetryableKraRow),
+    [selectedRows],
+  );
+
   async function handlePrintRows(targetRows, label) {
     const printable = targetRows.filter(isPrintableKraRow);
     if (!printable.length) {
@@ -327,6 +343,76 @@ export function KraReceiptsReportScreen({ definition }) {
     } finally {
       setRetryingId(null);
     }
+  }
+
+  async function handleBatchRetry() {
+    const targets = selectedRetryableRows;
+    if (!targets.length) return;
+    if (!kraDeviceReady) {
+      notifyError("Enable the KRA device in Finance settings before retrying.");
+      return;
+    }
+
+    setBatchRetrying(true);
+    setBatchRetryProgress({
+      done: 0,
+      total: targets.length,
+      percent: 0,
+      succeeded: 0,
+      failed: 0,
+      current: null,
+    });
+
+    let succeeded = [];
+    let failed = [];
+    try {
+      ({ succeeded, failed } = await runSequentialActions({
+        items: targets,
+        onProgress: ({ index, total, item, succeeded: ok, failed: bad }) => {
+          const responseId = kraReportRowId(item);
+          const percent = total > 0 ? Math.round((index / total) * 100) : 0;
+          setRetryingId(responseId);
+          setBatchRetryProgress({
+            done: index,
+            total,
+            percent,
+            succeeded: ok,
+            failed: bad,
+            current: formatKraReportOrderNo(item) ?? String(responseId ?? ""),
+          });
+        },
+        action: async (row) => {
+          const responseId = kraReportRowId(row);
+          await apiRequest(`/kra-responses/${responseId}/retry`, { method: "POST" });
+        },
+      }));
+    } finally {
+      setRetryingId(null);
+      setBatchRetrying(false);
+      setBatchRetryProgress(null);
+      clearSelection();
+      await loadReport();
+    }
+
+    if (failed.length === 0) {
+      notifySuccess(
+        succeeded.length === 1
+          ? "Invoice retried successfully."
+          : `${succeeded.length} invoices retried successfully.`,
+      );
+      return;
+    }
+    if (succeeded.length === 0) {
+      notifyError(
+        failed.length === 1
+          ? (failed[0]?.message ?? "Retry failed.")
+          : `All ${failed.length} retries failed.`,
+      );
+      return;
+    }
+    notifySuccess(
+      `${succeeded.length} retried; ${failed.length} failed and were skipped.`,
+    );
   }
 
   function openCreditSaleDialog(row) {
@@ -695,7 +781,7 @@ export function KraReceiptsReportScreen({ definition }) {
                               {!printable && row.sale_id ? (
                                 <button
                                   type="button"
-                                  disabled={retryingId === rowId}
+                                  disabled={batchRetrying || retryingId === rowId}
                                   onClick={() => void handleRetryRow(row)}
                                   className="font-medium text-amber-800 hover:underline disabled:opacity-50"
                                 >
@@ -826,10 +912,50 @@ export function KraReceiptsReportScreen({ definition }) {
         </div>
       ) : null}
 
-      <BatchActionBar count={selectedIds.size} onClear={clearSelection}>
+      <BatchActionBar
+        count={selectedIds.size}
+        onClear={batchRetrying ? undefined : clearSelection}
+      >
+        {selectedRetryableRows.length > 0 ? (
+          <>
+            <button
+              type="button"
+              disabled={batchRetrying || printing}
+              onClick={() => void handleBatchRetry()}
+              className="rounded-full bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {batchRetrying
+                ? `Retrying ${batchRetryProgress?.done ?? 0}/${batchRetryProgress?.total ?? selectedRetryableRows.length} (${batchRetryProgress?.percent ?? 0}%)…`
+                : `Retry (${selectedRetryableRows.length})`}
+            </button>
+            {batchRetrying && batchRetryProgress ? (
+              <div className="flex min-w-[10rem] flex-col gap-1">
+                <div
+                  className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={batchRetryProgress.percent}
+                  aria-label="Retry progress"
+                >
+                  <div
+                    className="h-full rounded-full bg-amber-600 transition-[width] duration-200"
+                    style={{ width: `${batchRetryProgress.percent}%` }}
+                  />
+                </div>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {batchRetryProgress.percent}% · {batchRetryProgress.done}/{batchRetryProgress.total}
+                  {" · "}
+                  {batchRetryProgress.succeeded} ok · {batchRetryProgress.failed} failed
+                  {batchRetryProgress.current ? ` · ${batchRetryProgress.current}` : ""}
+                </span>
+              </div>
+            ) : null}
+          </>
+        ) : null}
         <button
           type="button"
-          disabled={printing || selectedPrintableRows.length === 0}
+          disabled={printing || batchRetrying || selectedPrintableRows.length === 0}
           onClick={() =>
             void handlePrintRows(
               selectedPrintableRows,

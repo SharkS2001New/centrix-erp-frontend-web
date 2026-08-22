@@ -1000,7 +1000,6 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
       showDeliveryDateColumn: true,
       lockStatusFilter: true,
       lockSourceFilter: false,
-      dateRangeDays: 6,
       excludeFromMetrics: true,
     };
   }
@@ -1015,7 +1014,6 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
       showDeliveryDateColumn: true,
       lockStatusFilter: true,
       lockSourceFilter: false,
-      dateRangeDays: 30,
       excludeFromMetrics: true,
     };
   }
@@ -1085,7 +1083,6 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
         : ["cancelled", "expired"],
       // Paid queue is fully settled; unpaid/partial need an outstanding balance.
       requireOutstandingBalance: !isPaidQueue,
-      ...(isPaidQueue ? { dateRangeDays: 6 } : {}),
     };
   }
 
@@ -1099,8 +1096,6 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
     showDeliveryDateColumn: false,
     lockStatusFilter: true,
     lockSourceFilter: false,
-    // Completed (and delivered) stay light by default — widen From/To to load older history.
-    ...(step.key === "completed" || step.key === "delivered" ? { dateRangeDays: 6 } : {}),
   };
 }
 

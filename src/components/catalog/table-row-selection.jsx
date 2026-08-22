@@ -113,6 +113,42 @@ export async function runSequentialDeletes({
   return { succeeded, failed };
 }
 
+/** Run an async action on each item one at a time (skip failures, continue). */
+export async function runSequentialActions({ items, action, onProgress }) {
+  const succeeded = [];
+  const failed = [];
+  const total = items.length;
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    onProgress?.({
+      index: index + 1,
+      total,
+      item,
+      succeeded: succeeded.length,
+      failed: failed.length,
+    });
+    try {
+      await action(item);
+      succeeded.push(item);
+    } catch (e) {
+      failed.push({
+        item,
+        message: e instanceof Error ? e.message : "Action failed",
+      });
+    }
+    onProgress?.({
+      index: index + 1,
+      total,
+      item,
+      succeeded: succeeded.length,
+      failed: failed.length,
+    });
+  }
+
+  return { succeeded, failed, total };
+}
+
 /**
  * Confirm once, delete each selected id, notify summary, clear selection, reload.
  */

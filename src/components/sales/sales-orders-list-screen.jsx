@@ -77,9 +77,9 @@ import {
   ORDER_LIST_COLUMN_OPTIONS,
   defaultOrderListPrintDocumentType,
   getOrdersListVisibleColumns,
-  getOrdersListDefaultDateRange,
   getOrdersListSort,
   isOrgMobileSalesEnabled,
+  normalizeOrdersListDefaultDays,
   normalizeOrdersListVisibleColumns,
   orderListDateRangeUsesArchive,
   ORDERS_HOT_WINDOW_DAYS,
@@ -303,7 +303,8 @@ function OrdersColumnsMenu({
 export default function SalesOrdersListScreen({
   queueSlug = null,
   routeOrdersOnly = false,
-  routeOrdersDateRangeDays = 30,
+  /** When set, overrides org orders_list_default_days for route-order lists only. */
+  routeOrdersDateRangeDays = null,
   shopDebtorsOnly = false,
   /** @type {"unpaid" | "partial" | "paid" | null} */
   shopDebtorsPaymentStatus = null,
@@ -319,6 +320,8 @@ export default function SalesOrdersListScreen({
       ? "pending_payment"
       : shopDebtorsBucket
     : queueSlug;
+  // Shop Debtors reuses the same list filters as Unpaid / Partial / Paid order queues.
+  const listQueueSlug = shopDebtorsOnly ? paymentQueueSlug : queueSlug;
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
@@ -338,12 +341,23 @@ export default function SalesOrdersListScreen({
     queueSlug === "mobile" && isMobileOrdersExpensesCardEnabled(capabilities);
   const queueConfig = useMemo(
     () =>
-      resolveSalesOrderQueue(queueSlug, orgWorkflow, {
+      resolveSalesOrderQueue(listQueueSlug, orgWorkflow, {
         includeMobile: includeMobileOrders,
         includeWhatsapp: includeWhatsappOrders,
         capabilities,
       }),
-    [queueSlug, orgWorkflow, includeMobileOrders, includeWhatsappOrders, capabilities],
+    [listQueueSlug, orgWorkflow, includeMobileOrders, includeWhatsappOrders, capabilities],
+  );
+  const ordersListDefaultDays = useMemo(
+    () =>
+      normalizeOrdersListDefaultDays(
+        capabilities?.module_settings?.sales?.orders_list_default_days,
+      ),
+    [capabilities?.module_settings],
+  );
+  const ordersListDefaultRange = useMemo(
+    () => defaultDateRange(ordersListDefaultDays),
+    [ordersListDefaultDays],
   );
   const ordersTabTitle = useMemo(() => {
     if (shopDebtorsBucket === "unpaid") return "Unpaid Debtors";
@@ -525,24 +539,24 @@ export default function SalesOrdersListScreen({
   }, [tableSortActive, tableSort, tableSortDir]);
 
   useEffect(() => {
-    // Shop Debtors must use the same default window as Sales → Orders (typically 14
-    // days). A hard-coded 3-day window hid convert-to-unpaid / older credit sales that
-    // still appear under Unpaid Orders.
+    // Every Sales → Orders queue (Unpaid, Paid, Mobile, Shop Debtors, …) uses the org
+    // platform setting sales.orders_list_default_days unless a queue explicitly sets
+    // dateRangeDays (none do today) or route orders pass routeOrdersDateRangeDays.
     const range =
-      routeOrdersOnly && routeOrdersDateRangeDays
-        ? defaultDateRange(routeOrdersDateRangeDays)
-        : queueConfig?.dateRangeDays
-          ? defaultDateRange(queueConfig.dateRangeDays)
-          : getOrdersListDefaultDateRange(capabilities?.module_settings);
+      queueConfig?.dateRangeDays != null
+        ? defaultDateRange(queueConfig.dateRangeDays)
+        : routeOrdersOnly && routeOrdersDateRangeDays != null
+          ? defaultDateRange(routeOrdersDateRangeDays)
+          : ordersListDefaultRange;
     setFromDate(range.from);
     setToDate(range.to);
     setAppliedFromDate(range.from);
     setAppliedToDate(range.to);
     setListFiltersInitialized(true);
   }, [
-    capabilities?.module_settings,
+    ordersListDefaultRange,
     queueConfig?.dateRangeDays,
-    queueSlug,
+    listQueueSlug,
     routeOrdersOnly,
     routeOrdersDateRangeDays,
     shopDebtorsOnly,
@@ -711,7 +725,7 @@ export default function SalesOrdersListScreen({
     Boolean(listScope?.from_archive) ||
     orderListDateRangeUsesArchive(
       appliedFromDate,
-      queueConfig?.dateRangeDays || ORDERS_HOT_WINDOW_DAYS,
+      queueConfig?.dateRangeDays || ordersListDefaultDays || ORDERS_HOT_WINDOW_DAYS,
     );
   const showArchiveLoading =
     (loading || listLoading) && loadingFromArchive;
@@ -768,13 +782,6 @@ export default function SalesOrdersListScreen({
       }
       if (shopDebtorsOnly) {
         extra.shop_debtors = 1;
-        if (!extra.exclude_statuses) {
-          extra.exclude_statuses = "cancelled,expired";
-        }
-        // Match Sales → Unpaid / Partially paid queues (amount-based, not credit-sale flags).
-        if (shopDebtorsBucket && shopDebtorsBucket !== "paid") {
-          extra.outstanding_balance = 1;
-        }
       }
       if (routeOrdersOnly) {
         extra.route_orders = 1;
@@ -1838,17 +1845,17 @@ export default function SalesOrdersListScreen({
       }
         subtitle={
           shopDebtorsBucket === "unpaid"
-            ? "Shop credit orders with nothing collected yet. Same date window as Sales → Orders. Route and mobile orders are excluded."
+            ? "Same unpaid orders as Sales → Unpaid, for regular and debtor customers only."
             : shopDebtorsBucket === "partial"
-              ? "Shop credit orders with a remaining balance. Same date window as Sales → Orders. Route and mobile orders are excluded."
+              ? "Same partially paid orders as Sales → Partially paid, for regular and debtor customers only."
               : shopDebtorsBucket === "paid"
-                ? "Fully paid shop credit orders. Same date window as Sales → Orders. Route and mobile orders are excluded."
+                ? "Same paid orders as Sales → Paid, for regular and debtor customers only."
                 : shopDebtorsOnly
-                  ? "Debtor customer orders for the shop — route and mobile orders are excluded"
-            : routeOrdersOnly
-            ? (queueConfig?.subtitle
-              ?? `Route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only — change status in Sales → Orders.`)
-            : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
+                  ? "Sales orders for regular and debtor customers only."
+                  : routeOrdersOnly
+                    ? (queueConfig?.subtitle
+                      ?? `Route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only — change status in Sales → Orders.`)
+                    : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
         }
       action={
         routeOrdersOnly ? (
@@ -2019,6 +2026,7 @@ export default function SalesOrdersListScreen({
                 Your date range includes orders older than{" "}
                 {listScope?.hot_window_days ||
                   queueConfig?.dateRangeDays ||
+                  ordersListDefaultDays ||
                   ORDERS_HOT_WINDOW_DAYS}{" "}
                 days.
               </span>
