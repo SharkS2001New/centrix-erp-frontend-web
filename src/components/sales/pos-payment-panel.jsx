@@ -948,6 +948,11 @@ export function PosPaymentPanel({
   }
 
   function resolvePageDownCashPrefill() {
+    // Invoice / credit (I): cashier left tenders at 0 on purpose. Autofilling cash
+    // to the bill total would flip is_credit_sale off and save the order as paid.
+    if (!adjustmentMode && hasCreditCustomer) {
+      return { nextCashStr: cashAmount, paid: resolveEffectiveAmountPaid() };
+    }
     const parsedCash = parseDecimalInput(cashAmount);
     if (adjustmentMode || parsedCash > 0.009) {
       return { nextCashStr: cashAmount, paid: resolveEffectiveAmountPaid() };

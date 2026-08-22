@@ -82,9 +82,13 @@ export function FinanceSettingsPanel({
   const [kraInitTesting, setKraInitTesting] = useState(false);
   const [kraRestartTesting, setKraRestartTesting] = useState(false);
   const [kraHealthResult, setKraHealthResult] = useState(null);
-  const [activeTab, setActiveTab] = useState(
-    mode === "mpesa" || mode === "paybills" ? "mpesa" : mode === "equity" ? "equity" : "kra",
-  );
+  const [activeTab, setActiveTab] = useState(() => {
+    if (mode === "paybills") return "paybills";
+    if (mode === "mpesa") return "mpesa";
+    if (mode === "equity") return "equity";
+    if (mode === "kra") return "kra";
+    return "kra";
+  });
   const [paybillBranches, setPaybillBranches] = useState([]);
   const [paybillRoutes, setPaybillRoutes] = useState([]);
   const [paybillTills, setPaybillTills] = useState([]);
@@ -149,16 +153,34 @@ export function FinanceSettingsPanel({
   const showMpesa = (mode === "all" || mode === "mpesa") && mpesaAllowed;
   const showEquity = mode === "all" || mode === "equity";
   const showPaybills = (mode === "all" || mode === "mpesa" || mode === "paybills") && mpesaAllowed;
-  const useSubTabs = mode === "all";
+  const showEquityAccounts = mode === "all" || mode === "equity";
+  const useSubTabs = mode === "all" || mode === "mpesa" || mode === "equity";
 
   const visibleTabs = useMemo(() => {
-    if (!useSubTabs) return [];
+    if (mode === "mpesa") {
+      if (!mpesaAllowed) return [];
+      return [
+        { id: "mpesa", label: "Daraja defaults" },
+        { id: "paybills", label: "Saved paybills" },
+      ];
+    }
+    if (mode === "equity") {
+      return [
+        { id: "equity", label: "Equity defaults" },
+        { id: "equity_accounts", label: "Saved Equity accounts" },
+      ];
+    }
+    if (mode !== "all") return [];
     const tabs = [];
     if (kraAllowed) tabs.push({ id: "kra", label: "Tax receipts (KRA)" });
-    if (mpesaAllowed) tabs.push({ id: "mpesa", label: "M-Pesa payments" });
-    tabs.push({ id: "equity", label: "Equity Bank" });
+    if (mpesaAllowed) {
+      tabs.push({ id: "mpesa", label: "M-Pesa defaults" });
+      tabs.push({ id: "paybills", label: "Saved paybills" });
+    }
+    tabs.push({ id: "equity", label: "Equity defaults" });
+    tabs.push({ id: "equity_accounts", label: "Saved Equity accounts" });
     return tabs;
-  }, [kraAllowed, mpesaAllowed, useSubTabs]);
+  }, [kraAllowed, mpesaAllowed, mode]);
 
   const hasFinanceContent =
     mode === "paybills"
@@ -253,9 +275,9 @@ export function FinanceSettingsPanel({
         mode === "kra"
           ? "KRA settings saved."
           : mode === "mpesa"
-            ? "M-Pesa settings saved. Open a paybill below to set per-paybill Daraja keys."
+            ? "M-Pesa settings saved. Open the Saved paybills tab to set per-paybill Daraja keys."
             : mode === "equity"
-              ? "Equity settings saved. Open an account below to set per-account callback details."
+              ? "Equity settings saved. Open the Saved Equity accounts tab for per-account callbacks."
               : "Finance settings saved.";
       notifySuccess(successLabel);
       setMessage?.(successLabel);
@@ -272,7 +294,17 @@ export function FinanceSettingsPanel({
   const renderKra = showKra && (!useSubTabs || activeTab === "kra");
   const renderMpesa = showMpesa && (!useSubTabs || activeTab === "mpesa");
   const renderEquity = showEquity && (!useSubTabs || activeTab === "equity");
-  const renderPaybillsInline = showPaybills && mode !== "paybills" && renderMpesa;
+  const renderPaybillsTab =
+    showPaybills && (mode === "paybills" || (useSubTabs && activeTab === "paybills"));
+  const renderEquityAccountsTab =
+    showEquityAccounts && (useSubTabs ? activeTab === "equity_accounts" : false);
+  const showOrgSaveButton =
+    needsFinanceForm &&
+    hasFinanceContent &&
+    (activeTab === "kra" ||
+      activeTab === "mpesa" ||
+      activeTab === "equity" ||
+      (!useSubTabs && mode !== "paybills"));
 
   return (
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
@@ -289,7 +321,13 @@ export function FinanceSettingsPanel({
               tabs={visibleTabs}
               activeTab={activeTab}
               onTabChange={setActiveTab}
-              ariaLabel="Finance settings"
+              ariaLabel={
+                mode === "mpesa"
+                  ? "M-Pesa sections"
+                  : mode === "equity"
+                    ? "Equity sections"
+                    : "Finance settings"
+              }
             />
           ) : null}
 
@@ -482,28 +520,45 @@ export function FinanceSettingsPanel({
               <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                 <Toggle
                   label="Enable paybill / till reconciliation"
-                  description="Match incoming C2B M-Pesa payments to sales orders using the account reference customers enter at paybill or till. Unmatched payments appear on Accounting → M-Pesa reconciliation."
+                  description="Match incoming C2B M-Pesa payments to sales. STK is linked to the order automatically; direct paybill payments (account name only) match by amount. Unmatched items appear on Accounting → M-Pesa reconciliation."
                   checked={Boolean(mpesa.enable_c2b_reconciliation)}
                   onChange={(v) => setMpesa("enable_c2b_reconciliation", v)}
                 />
                 {mpesa.enable_c2b_reconciliation ? (
                   <>
                     <Toggle
-                      label="Auto-apply when order reference matches"
-                      description="When a customer pays with their order number (e.g. S12) and the amount matches the balance, apply the payment automatically. Lower-confidence matches stay in the reconciliation queue."
+                      label="Auto-apply matching payments"
+                      description="STK push already links to the open order. For direct paybill payments (customers only enter the account name, e.g. moon), auto-apply to the latest unpaid order with the same amount."
                       checked={mpesa.auto_apply_order_reference !== false}
                       onChange={(v) => setMpesa("auto_apply_order_reference", v)}
                     />
+                    <Field label="Paybill account name (Safaricom)">
+                      <input
+                        className={inputClassName()}
+                        value={mpesa.payment_account_name ?? ""}
+                        onChange={(e) => setMpesa("payment_account_name", e.target.value)}
+                        placeholder="e.g. moon"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        What customers type in the M-Pesa <em>Account number</em> field — only this, nothing else
+                        (e.g. paybill <strong>4036507</strong>, account <strong>moon</strong>). Also put the same
+                        value as Account no. on Printouts.
+                      </p>
+                    </Field>
                     <Field label="Customer account reference hint">
                       <input
                         className={inputClassName()}
                         value={mpesa.payment_account_hint ?? ""}
                         onChange={(e) => setMpesa("payment_account_hint", e.target.value)}
-                        placeholder="Enter your order number (e.g. S12)"
+                        placeholder={
+                          mpesa.payment_account_name?.trim()
+                            ? `Enter ${mpesa.payment_account_name.trim()}`
+                            : "Enter moon"
+                        }
                       />
                       <p className="mt-1 text-xs text-slate-500">
-                        Tell customers what to enter in the paybill account number field. Use your order number format,
-                        e.g. S12 for order #12.
+                        Shown on reconciliation screens. Tell customers to enter only the account name (e.g.{" "}
+                        {mpesa.payment_account_name?.trim() || "moon"}) — not an order number.
                       </p>
                     </Field>
                   </>
@@ -513,8 +568,8 @@ export function FinanceSettingsPanel({
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
                   <strong>Organization default Daraja app.</strong> These credentials apply to every paybill
-                  that does not set its own keys. To use a different Safaricom app per paybill, select that
-                  paybill in <em>Saved paybills</em> below and fill its Daraja section.
+                  that does not set its own keys. Open the <em>Saved paybills</em> tab to attach a different
+                  Safaricom app to a specific shortcode.
                 </div>
                 <Field label="Environment">
                   <SearchableSelect
@@ -605,41 +660,25 @@ export function FinanceSettingsPanel({
                   ))}
                 </ul>
               ) : null}
-
-              {renderPaybillsInline ? (
-                <>
-                  <p className="mt-3 text-xs text-slate-500">
-                    Saved paybills appear in the list below. Select one to set its own Daraja consumer key and
-                    callback URLs, or leave those blank to use the organization defaults above.
-                  </p>
-                  <MpesaPaybillAccountsPanel
-                    branches={paybillBranches}
-                    routes={paybillRoutes}
-                    tills={paybillTills}
-                    setError={setError}
-                    refreshKey={accountsRefreshKey}
-                  />
-                </>
-              ) : mode === "mpesa" ? (
-                <p className="mt-3 text-xs text-slate-500">
-                  Manage route and shop paybills (including per-paybill Daraja keys) under{" "}
-                  <a href="/admin/mpesa-paybills" className="font-medium text-[var(--theme-primary)] underline">
-                    M-Pesa Paybills
-                  </a>
-                  .
-                </p>
-              ) : null}
             </div>
           ) : null}
 
-          {mode === "paybills" && showPaybills ? (
+          {renderPaybillsTab ? (
             <div>
               <p className="theme-subtext text-sm">
-                Saved paybills are listed below after you add them. Organization-wide Daraja defaults live under{" "}
-                <a href="/admin/mpesa-settings" className="font-medium text-[var(--theme-primary)] underline">
-                  M-Pesa settings
-                </a>
-                ; select a paybill here to override keys and callback URLs for that shortcode only.
+                Saved paybills appear in the list below. Select one to edit shortcodes, route/till mapping, and
+                optional Daraja keys. Blank credential fields inherit{" "}
+                {mode === "paybills" ? (
+                  <>
+                    organization defaults under{" "}
+                    <a href="/admin/mpesa-settings" className="font-medium text-[var(--theme-primary)] underline">
+                      M-Pesa settings
+                    </a>
+                  </>
+                ) : (
+                  <>the <em>Daraja defaults</em> tab</>
+                )}
+                .
               </p>
               <div className="mt-4">
                 <MpesaPaybillAccountsPanel
@@ -664,25 +703,40 @@ export function FinanceSettingsPanel({
               {equity.enable_paybill_reconciliation ? (
                 <>
                   <Toggle
-                    label="Auto-apply high-confidence order references"
-                    description="When BillRef is an order number (e.g. S12) and the amount fits, apply as Equity automatically."
+                    label="Auto-apply matching payments"
+                    description="When BillRef is only the fixed account name, auto-apply to the latest unpaid order with the same amount. Order-number refs still auto-apply when present."
                     checked={equity.auto_apply_order_reference !== false}
                     onChange={(v) => setEquity("auto_apply_order_reference", v)}
                   />
+                  <Field label="Paybill account name">
+                    <input
+                      className={inputClassName()}
+                      value={equity.payment_account_name ?? ""}
+                      onChange={(e) => setEquity("payment_account_name", e.target.value)}
+                      placeholder="e.g. moon"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Fixed account name customers enter (e.g. moon). No order number required.
+                    </p>
+                  </Field>
                   <Field label="Customer account / BillRef hint">
                     <input
                       className={inputClassName()}
                       value={equity.payment_account_hint ?? ""}
                       onChange={(e) => setEquity("payment_account_hint", e.target.value)}
-                      placeholder="Enter your order number (e.g. S12)"
+                      placeholder={
+                        equity.payment_account_name?.trim()
+                          ? `Enter ${equity.payment_account_name.trim()}`
+                          : "Enter moon"
+                      }
                     />
                   </Field>
                 </>
               ) : null}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="md:col-span-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
-                  <strong>Organization default Equity callback.</strong> Per-account callback URL / secret are
-                  set by selecting an account in <em>Saved Equity accounts</em> below.
+                  <strong>Organization default Equity callback.</strong> Open the{" "}
+                  <em>Saved Equity accounts</em> tab to set a callback URL / secret on a specific account.
                 </div>
                 <Field label="Default primary account / paybill">
                   <input
@@ -721,24 +775,36 @@ export function FinanceSettingsPanel({
                   />
                 </Field>
               </div>
-              <EquityBankAccountsPanel
-                branches={paybillBranches}
-                routes={paybillRoutes}
-                setError={setError}
-                refreshKey={accountsRefreshKey}
-              />
             </div>
           ) : null}
 
-          {needsFinanceForm && hasFinanceContent ? (
+          {renderEquityAccountsTab ? (
+            <div>
+              <p className="theme-subtext text-sm">
+                Saved Equity accounts appear in the list below. Select one to edit account numbers, route
+                mapping, and optional callback credentials. Blank callback fields inherit the{" "}
+                <em>Equity defaults</em> tab.
+              </p>
+              <div className="mt-4">
+                <EquityBankAccountsPanel
+                  branches={paybillBranches}
+                  routes={paybillRoutes}
+                  setError={setError}
+                  refreshKey={accountsRefreshKey}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {showOrgSaveButton ? (
             <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void saveFinanceSettings()}>
               {saving
                 ? "Saving…"
-                : mode === "kra"
+                : activeTab === "kra" || mode === "kra"
                   ? "Save KRA settings"
-                  : mode === "mpesa"
+                  : activeTab === "mpesa" || mode === "mpesa"
                     ? "Save M-Pesa settings"
-                    : mode === "equity"
+                    : activeTab === "equity" || mode === "equity"
                       ? "Save Equity settings"
                       : "Save finance settings"}
             </PrimaryButton>

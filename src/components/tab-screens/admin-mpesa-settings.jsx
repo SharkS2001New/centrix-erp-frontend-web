@@ -29,7 +29,7 @@ export function AdminMpesaSettingsScreen({
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
         title="M-Pesa settings"
-        subtitle="Organization Daraja defaults, STK/C2B toggles, and saved paybills. Select a paybill to set its own consumer keys and callback URLs."
+        subtitle="Organization Daraja defaults and saved paybills. Use the tabs to switch between defaults and the paybill list."
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

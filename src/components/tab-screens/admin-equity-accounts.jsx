@@ -29,7 +29,7 @@ export function AdminEquityAccountsScreen({
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
         title="Equity Bank accounts"
-        subtitle="Organization Equity defaults and saved accounts. Select an account to set its own callback URL and shared secret."
+        subtitle="Organization Equity defaults and saved accounts. Use the tabs to switch between defaults and the account list."
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

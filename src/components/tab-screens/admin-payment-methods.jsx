@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
@@ -25,6 +25,28 @@ import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY = { method_name: "", method_code: "", requires_reference: false, is_active: true };
 
+function ActiveToggle({ checked, disabled, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "bg-emerald-600" : "bg-slate-300"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${
+          checked ? "translate-x-4" : ""
+        }`}
+      />
+    </button>
+  );
+}
+
 export function AdminPaymentMethodsScreen() {
   const confirm = useConfirm();
   const { hasPermission } = useAuth();
@@ -35,6 +57,7 @@ export function AdminPaymentMethodsScreen() {
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -99,6 +122,34 @@ export function AdminPaymentMethodsScreen() {
     }
   }
 
+  async function toggleActive(row, nextActive) {
+    if (!canEdit || togglingId === row.id) return;
+    const previous = Boolean(row.is_active);
+    setTogglingId(row.id);
+    setRows((list) =>
+      list.map((r) => (r.id === row.id ? { ...r, is_active: nextActive } : r)),
+    );
+    try {
+      await apiRequest(adminPath(`/payment-methods/${row.id}`), {
+        method: "PATCH",
+        body: { is_active: nextActive },
+        loading: false,
+      });
+      notifySuccess(
+        nextActive
+          ? `"${row.method_name}" enabled for this organization`
+          : `"${row.method_name}" disabled for this organization`,
+      );
+    } catch (e) {
+      setRows((list) =>
+        list.map((r) => (r.id === row.id ? { ...r, is_active: previous } : r)),
+      );
+      notifyError(e instanceof ApiError ? e.message : "Could not update payment method");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function remove(row) {
     const ok = await confirm({
       title: "Delete payment method",
@@ -124,7 +175,7 @@ export function AdminPaymentMethodsScreen() {
   return (
     <CatalogPageShell
       title="Payment methods"
-      subtitle="Active methods appear on POS checkout, Hotel collect payment, expenses, and supplier payments. Deactivate a code to hide it from cashiers."
+      subtitle="Turn methods on or off for this organization. Active methods appear on POS checkout, mobile, Hotel collect payment, expenses, and supplier payments."
     >
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Payment methods" }]} />
 
@@ -151,7 +202,7 @@ export function AdminPaymentMethodsScreen() {
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Code</th>
               <th className="px-4 py-3">Reference required</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Enabled</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -175,7 +226,17 @@ export function AdminPaymentMethodsScreen() {
                   <td className="px-4 py-3 font-mono text-xs">{row.method_code}</td>
                   <td className="px-4 py-3">{row.requires_reference ? "Yes" : "No"}</td>
                   <td className="px-4 py-3">
-                    <ActiveBadge active={row.is_active} />
+                    <div className="flex items-center gap-3">
+                      {canEdit ? (
+                        <ActiveToggle
+                          checked={Boolean(row.is_active)}
+                          disabled={togglingId === row.id}
+                          label={`${row.is_active ? "Disable" : "Enable"} ${row.method_name}`}
+                          onChange={(next) => toggleActive(row, next)}
+                        />
+                      ) : null}
+                      <ActiveBadge active={row.is_active} />
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     {canEdit ? (
@@ -210,7 +271,7 @@ export function AdminPaymentMethodsScreen() {
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} />
-            Active
+            Enabled for this organization
           </label>
           {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
           <PrimaryButton type="submit" disabled={saving} showIcon={false}>

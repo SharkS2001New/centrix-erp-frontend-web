@@ -80,6 +80,25 @@ describe("isCheckoutCreditSale (I then C/M/E/K)", () => {
     ).toBe(true);
   });
 
+  it("stays credit when tenders stay at zero (PageDown must not invent cash)", () => {
+    // Regression: PageDown used to autofill cash to the bill, which made
+    // amountPaid === total and flipped credit → paid.
+    expect(
+      isCheckoutCreditSale({
+        hasCreditCustomer: true,
+        amountPaid: 0,
+        checkoutTotal: 1250,
+      }),
+    ).toBe(true);
+    expect(
+      isCheckoutCreditSale({
+        hasCreditCustomer: true,
+        amountPaid: 1250,
+        checkoutTotal: 1250,
+      }),
+    ).toBe(false);
+  });
+
   it("is credit when invoice customer selected and partially paid", () => {
     expect(
       isCheckoutCreditSale({
