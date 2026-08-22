@@ -16,7 +16,7 @@ import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
 import { AI_ASSISTANT_TITLE } from "@/lib/branding";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
-import { AiActionForm } from "@/components/ai/ai-action-form";
+import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -79,6 +79,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [conversationId, setConversationId] = useState(null);
+  const [lastFailedMessage, setLastFailedMessage] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [formSpec, setFormSpec] = useState(null);
   const [formValues, setFormValues] = useState({});
@@ -109,7 +111,19 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
   const applyChatResponse = useCallback(
     (res) => {
-      setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
+      if (res.conversation_id) {
+        setConversationId(res.conversation_id);
+      }
+
+      const content = res.message || res.reply || "";
+      if (res.success === false && content) {
+        setError(content);
+        return;
+      }
+
+      if (content) {
+        setMessages((prev) => [...prev, { role: "assistant", content }]);
+      }
 
       if (res.pending_action) {
         setPendingAction(res.pending_action);
@@ -138,11 +152,21 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     [clearActionState],
   );
 
+  const startNewConversation = useCallback(() => {
+    setMessages([]);
+    setConversationId(null);
+    setError(null);
+    setLastFailedMessage(null);
+    setActionResult(null);
+    clearActionState();
+  }, [clearActionState]);
+
   const send = useCallback(
     async (text, { confirm = false, formValuesOverride = null } = {}) => {
       const message = text.trim();
       if (!message || loading) return;
       setError(null);
+      setLastFailedMessage(null);
       setActionResult(null);
       setLoading(true);
       if (!confirm) {
@@ -158,6 +182,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
             workspace_id: workspaceId,
             pathname,
             message,
+            conversation_id: conversationId || undefined,
             history,
             pending_action: pendingAction ?? undefined,
             form_values: Object.keys(formValuesOverride ?? formValues).length
@@ -168,12 +193,23 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         });
         applyChatResponse(res);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "AI request failed");
+        const msg = e instanceof Error ? e.message : "AI request failed";
+        setError(msg);
+        setLastFailedMessage(confirm ? null : message);
       } finally {
         setLoading(false);
       }
     },
-    [loading, messages, pendingAction, formValues, applyChatResponse, workspaceId, pathname],
+    [
+      loading,
+      messages,
+      pendingAction,
+      formValues,
+      applyChatResponse,
+      workspaceId,
+      pathname,
+      conversationId,
+    ],
   );
 
   useEffect(() => {
@@ -257,6 +293,16 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                 <p className="text-xs text-slate-500">{statusHint}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {messages.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={startNewConversation}
+                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                    title="Start a new conversation"
+                  >
+                    New chat
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setExpanded((v) => !v)}
@@ -376,7 +422,21 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
               ) : null}
 
               {loading ? <p className="text-center text-xs text-slate-500">Thinking…</p> : null}
-              {error ? <p className="text-center text-xs text-red-600">{error}</p> : null}
+              {error ? (
+                <div className="space-y-1 text-center">
+                  <p className="text-xs text-red-600">{error}</p>
+                  {lastFailedMessage ? (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => send(lastFailedMessage)}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <div ref={bottomRef} />
             </div>
 

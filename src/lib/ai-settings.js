@@ -181,6 +181,14 @@ export function aiFormFromApi(res) {
     base_url: settings.base_url ?? "",
     api_key_set: Boolean(settings.api_key_set),
     api_key_hint: settings.api_key_hint ?? "",
+    gemini_api_key: "",
+    gemini_model: settings.gemini_model ?? res?.gemini_model ?? "",
+    gemini_api_key_set: Boolean(settings.gemini_api_key_set),
+    gemini_api_key_hint: settings.gemini_api_key_hint ?? "",
+    use_platform_gemini: Boolean(
+      settings.use_platform_gemini ?? res?.use_platform_gemini,
+    ),
+    platform_gemini_configured: Boolean(res?.platform_gemini_configured ?? res?.gemini_available),
     available: Boolean(res?.available),
     platform_enabled: res?.platform_enabled !== false,
     insights: insightsFormFromApi(settings.insights),
@@ -189,10 +197,11 @@ export function aiFormFromApi(res) {
 
 /**
  * @param {object} form
- * @param {{ includeInsights?: boolean }} [options]
+ * @param {{ includeInsights?: boolean, includePlatformGemini?: boolean }} [options]
  */
 export function aiPayloadFromForm(form, options = {}) {
   const includeInsights = options.includeInsights !== false;
+  const includePlatformGemini = Boolean(options.includePlatformGemini);
   const payload = {
     enabled: form.enabled,
     provider: form.provider,
@@ -201,6 +210,12 @@ export function aiPayloadFromForm(form, options = {}) {
   };
   if (form.api_key && !form.api_key.startsWith("••••")) {
     payload.api_key = form.api_key;
+  }
+  if (includePlatformGemini) {
+    if (form.gemini_api_key && !form.gemini_api_key.startsWith("••••")) {
+      payload.gemini_api_key = form.gemini_api_key;
+    }
+    payload.gemini_model = form.gemini_model || null;
   }
   if (includeInsights && form.insights) {
     payload.insights = insightsPayloadFromForm(form.insights);

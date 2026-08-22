@@ -36,7 +36,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     try {
       const res = await apiRequest(`${apiBase}/settings`, {
         method: "PATCH",
-        body: aiPayloadFromForm(aiForm, { includeInsights: false }),
+        body: aiPayloadFromForm(aiForm, { includeInsights: false, includePlatformGemini: true }),
       });
       setAiForm(aiFormFromApi(res));
       notifySuccess("Platform AI credentials saved.");
@@ -51,15 +51,14 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
       <p className="mt-1 text-sm theme-subtext">
-        These keys power platform-admin AI: contract/quote email drafting and the training test console.
-        Email assist does not need knowledge notes — it calls the model directly. Tenant organizations keep
-        their own AI settings under Administration.
+        OpenAI powers platform-admin tools (email drafting, training console). Gemini can be shared with
+        selected tenant organizations from Platform → Organization → Sales behaviour.
       </p>
 
       {loading ? (
         <p className="mt-4 text-sm theme-subtext">Loading…</p>
       ) : (
-        <div className="mt-5 space-y-4">
+        <div className="mt-5 space-y-6">
           <label className="flex items-start gap-3 rounded-lg border px-4 py-3 theme-panel">
             <input
               type="checkbox"
@@ -68,10 +67,9 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               onChange={(e) => setAiForm((f) => ({ ...f, enabled: e.target.checked }))}
             />
             <span>
-              <span className="block text-sm font-medium theme-heading">Enable platform AI</span>
+              <span className="block text-sm font-medium theme-heading">Enable platform OpenAI tools</span>
               <span className="mt-0.5 block text-xs theme-subtext">
-                Required before using email assist or the AI training test console. Does not turn on AI for
-                tenant organizations.
+                Required for email assist and the AI training test console. Separate from Gemini for tenants.
               </span>
             </span>
           </label>
@@ -95,7 +93,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 </Field>
               </div>
 
-              <Field label="Model (optional)">
+              <Field label="OpenAI model (optional)">
                 <input
                   className={inputClassName()}
                   value={aiForm.model}
@@ -104,7 +102,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 />
               </Field>
 
-              <Field label="API base URL (optional)">
+              <Field label="OpenAI base URL (optional)">
                 <input
                   className={inputClassName()}
                   value={aiForm.base_url}
@@ -114,6 +112,42 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               </Field>
             </div>
           ) : null}
+
+          <div className="border-t pt-5">
+            <h3 className="text-sm font-semibold theme-heading">Gemini for tenant organizations</h3>
+            <p className="mt-1 text-xs theme-subtext">
+              Set one Gemini key here, then enable &quot;Use platform Gemini&quot; on chosen organizations.
+              Those orgs do not need their own API key.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Field label="Gemini API key">
+                  <PasswordInput
+                    className={inputClassName()}
+                    value={aiForm.gemini_api_key}
+                    onChange={(e) => setAiForm((f) => ({ ...f, gemini_api_key: e.target.value }))}
+                    placeholder={
+                      aiForm.gemini_api_key_set ? aiForm.gemini_api_key_hint || "••••••••" : "AIza…"
+                    }
+                    autoComplete="off"
+                  />
+                  {aiForm.gemini_api_key_set && !aiForm.gemini_api_key ? (
+                    <p className="mt-1 text-xs theme-subtext">
+                      Leave blank to keep the current key ({aiForm.gemini_api_key_hint}).
+                    </p>
+                  ) : null}
+                </Field>
+              </div>
+              <Field label="Gemini model (optional)">
+                <input
+                  className={inputClassName()}
+                  value={aiForm.gemini_model}
+                  onChange={(e) => setAiForm((f) => ({ ...f, gemini_model: e.target.value }))}
+                  placeholder="gemini-3.7-flash"
+                />
+              </Field>
+            </div>
+          </div>
 
           <PrimaryButton type="button" showIcon={false} onClick={saveAiSettings} disabled={saving}>
             {saving ? "Saving…" : "Save platform credentials"}
@@ -130,7 +164,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   return (
     <CatalogPageShell
       title="AI credentials"
-      subtitle="OpenAI settings for platform tools (email compose, training test console). Separate from each tenant's own AI configuration."
+      subtitle="OpenAI for platform tools; Gemini key shared with selected tenant organizations."
     >
       <AdminBreadcrumb
         items={[

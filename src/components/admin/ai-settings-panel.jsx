@@ -86,31 +86,43 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="theme-heading text-lg font-medium">AI assistant</h2>
       <p className="theme-subtext mt-1 text-sm">
-        Each organization manages its own OpenAI credentials. Keys are stored per organization and never shared
-        across tenants. Grant the Use AI assistant permission on a role to show the floating assistant icon for
-        those users — they can open it whenever they want.
+        {form.use_platform_gemini
+          ? "This organization uses the platform Gemini key. Tenant API keys are not required."
+          : "Each organization can manage its own AI credentials, or the platform can assign Gemini for selected orgs. Grant the Use AI assistant permission on a role to show the floating assistant icon."}
       </p>
 
       {loading ? (
         <p className="mt-4 text-sm text-slate-500">Loading…</p>
       ) : (
         <div className="mt-6 space-y-4">
+          {form.use_platform_gemini ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <p className="font-medium">Platform Gemini enabled</p>
+              <p className="mt-1 text-xs text-emerald-800">
+                {form.platform_gemini_configured || form.available
+                  ? "Users with AI permission can chat using the platform-managed Gemini key."
+                  : "Waiting for the platform administrator to set a Gemini API key under Platform → Settings → AI credentials."}
+              </p>
+            </div>
+          ) : null}
+
           <Toggle
             checked={form.enabled}
             onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
             label="Enable AI assistant"
             description="When on, users see a floating assistant on every screen — it can guide navigation, answer system questions, and create orders, employees, or reports (with permission). Off-topic questions are declined."
+            disabled={form.use_platform_gemini}
           />
 
-          {form.enabled ? (
+          {form.enabled && !form.use_platform_gemini ? (
             <>
-              <Field label="OpenAI API key">
+              <Field label="API key">
                 <input
                   type="password"
                   className={inputClassName()}
                   value={form.api_key}
                   onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
-                  placeholder={form.api_key_set ? form.api_key_hint || "••••••••" : "sk-…"}
+                  placeholder={form.api_key_set ? form.api_key_hint || "••••••••" : "sk-… / AIza…"}
                   autoComplete="off"
                 />
                 {form.api_key_set && !form.api_key ? (
@@ -147,7 +159,10 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                     ? "Add an API key and save to activate AI for this organization."
                     : "Save settings to apply changes."}
               </div>
+            </>
+          ) : null}
 
+          {(form.enabled || form.use_platform_gemini) ? (
               <div className="border-t border-slate-200 pt-6">
                 <h3 className="text-base font-medium text-slate-900">AI Insights</h3>
                 <p className="mt-1 text-sm text-slate-500">
@@ -360,7 +375,6 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   ) : null}
                 </div>
               </div>
-            </>
           ) : null}
 
           <PrimaryButton type="button" onClick={saveAiSettings} disabled={saving}>
