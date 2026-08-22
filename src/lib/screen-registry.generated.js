@@ -374,6 +374,10 @@ function match_accounting_mpesa_reconciliation(pathname) {
   return pathname === "/accounting/mpesa-reconciliation";
 }
 
+function match_accounting_equity_reconciliation(pathname) {
+  return pathname === "/accounting/equity-reconciliation";
+}
+
 function match_accounting_profit_loss(pathname) {
   return pathname === "/accounting/profit-loss";
 }
@@ -410,8 +414,24 @@ function match_admin_kra_responses(pathname) {
   return pathname === "/admin/kra-responses";
 }
 
+function match_admin_kra_settings(pathname) {
+  return pathname === "/admin/kra-settings";
+}
+
 function match_admin_license(pathname) {
   return pathname === "/admin/license";
+}
+
+function match_admin_mpesa_paybills(pathname) {
+  return pathname === "/admin/mpesa-paybills";
+}
+
+function match_admin_equity_accounts(pathname) {
+  return pathname === "/admin/equity-accounts";
+}
+
+function match_admin_mpesa_settings(pathname) {
+  return pathname === "/admin/mpesa-settings";
 }
 
 function match_admin_payment_methods(pathname) {
@@ -1351,6 +1371,12 @@ export const SCREEN_REGISTRY = [
     match: match_accounting_mpesa_reconciliation,
   },
   {
+    id: "accounting-equity-reconciliation",
+    title: "Equity Reconciliation",
+    route: "/accounting/equity-reconciliation",
+    match: match_accounting_equity_reconciliation,
+  },
+  {
     id: "accounting-profit-loss",
     title: "Profit Loss",
     route: "/accounting/profit-loss",
@@ -1405,10 +1431,34 @@ export const SCREEN_REGISTRY = [
     match: match_admin_kra_responses,
   },
   {
+    id: "admin-kra-settings",
+    title: "KRA settings",
+    route: "/admin/kra-settings",
+    match: match_admin_kra_settings,
+  },
+  {
     id: "admin-license",
     title: "License",
     route: "/admin/license",
     match: match_admin_license,
+  },
+  {
+    id: "admin-mpesa-paybills",
+    title: "M-Pesa Paybills",
+    route: "/admin/mpesa-paybills",
+    match: match_admin_mpesa_paybills,
+  },
+  {
+    id: "admin-equity-accounts",
+    title: "Equity Bank accounts",
+    route: "/admin/equity-accounts",
+    match: match_admin_equity_accounts,
+  },
+  {
+    id: "admin-mpesa-settings",
+    title: "M-Pesa settings",
+    route: "/admin/mpesa-settings",
+    match: match_admin_mpesa_settings,
   },
   {
     id: "admin-payment-methods",
@@ -1430,13 +1480,13 @@ export const SCREEN_REGISTRY = [
   },
   {
     id: "admin-themes",
-    title: "Themes",
+    title: "Centrix ERP Themes",
     route: "/admin/themes",
     match: match_admin_themes,
   },
   {
     id: "admin-till-printing",
-    title: "Till Printing",
+    title: "Local printing",
     route: "/admin/till-printing",
     match: match_admin_till_printing,
   },

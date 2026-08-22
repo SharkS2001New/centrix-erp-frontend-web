@@ -49,7 +49,7 @@ export const TENANT_CORE_SETTINGS_TABS = new Set(["general", "printouts", "notif
 export const PLATFORM_MANAGED_ADMIN_TABS = new Set(["general", "printouts", "notifications", "security"]);
 
 /** Tabs only platform super-admins may configure (not exposed on tenant /admin/settings). */
-export const PLATFORM_ONLY_ORG_SETTINGS_TABS = new Set();
+export const PLATFORM_ONLY_ORG_SETTINGS_TABS = new Set(["ai", "whatsapp", "finance"]);
 
 function moduleEnabled(capabilities, moduleKey) {
   return Boolean(capabilities?.modules?.[moduleKey]);
@@ -121,6 +121,11 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
       return moduleEnabled(capabilities, "customers_suppliers");
 
     case "finance":
+      // Tenant Admins use Finance & tax sidebar pages (KRA / M-Pesa / Paybills).
+      // Platform org settings still expose the combined Finance tab.
+      if (tenantSelfService) {
+        return false;
+      }
       if (!moduleEnabled(capabilities, "payments")) {
         return false;
       }
@@ -133,6 +138,10 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
       if (!isPlatformAiEnabled(capabilities)) {
         return false;
       }
+      // Tenant Admin: AI is platform-managed only (see PLATFORM_ONLY_ORG_SETTINGS_TABS).
+      if (tenantSelfService) {
+        return false;
+      }
       if (platformManaged) {
         return true;
       }
@@ -143,6 +152,10 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
         return false;
       }
       if (!isPlatformWhatsappEnabled(capabilities)) {
+        return false;
+      }
+      // Tenant Admin: WhatsApp is platform-managed only.
+      if (tenantSelfService) {
         return false;
       }
       if (platformManaged) {

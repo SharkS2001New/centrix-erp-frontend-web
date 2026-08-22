@@ -8,6 +8,10 @@ export const PLATFORM_ADMIN_LINKS = [
   { href: "payment-methods", label: "Payment methods", description: "Cash, M-Pesa, bank, and other tender types." },
   { href: "company", label: "Company profile & logo", description: "Legal identity and branding shown on documents." },
   { href: "vats", label: "VAT rates", description: "Tax codes and percentages used on products." },
+  { href: "kra-settings", label: "KRA settings", description: "Fiscal device connection and tax receipt signing." },
+  { href: "mpesa-settings", label: "M-Pesa settings", description: "Daraja credentials, STK push, and C2B reconciliation." },
+  { href: "mpesa-paybills", label: "M-Pesa Paybills", description: "Paybill shortcodes for routes and shops." },
+  { href: "equity-accounts", label: "Equity Bank accounts", description: "Equity paybill / collection accounts for routes and shops." },
   { href: "kra-responses", label: "KRA device logs", description: "Fiscal submissions, invoice preview, retry, and device payloads." },
   { href: "audit", label: "Audit log", description: "Who changed what across this organization." },
   {

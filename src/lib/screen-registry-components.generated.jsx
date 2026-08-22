@@ -213,6 +213,9 @@ export const SCREEN_COMPONENTS = {
   "accounting-mpesa-reconciliation": lazy(() =>
     import("@/components/tab-screens/accounting-mpesa-reconciliation").then((m) => ({ default: m.AccountingMpesaReconciliationScreen })),
   ),
+  "accounting-equity-reconciliation": lazy(() =>
+    import("@/components/tab-screens/accounting-equity-reconciliation").then((m) => ({ default: m.AccountingEquityReconciliationScreen })),
+  ),
   "accounting-profit-loss": lazy(() =>
     import("@/components/tab-screens/accounting-profit-loss").then((m) => ({ default: m.AccountingProfitLossScreen })),
   ),
@@ -240,8 +243,20 @@ export const SCREEN_COMPONENTS = {
   "admin-kra-responses": lazy(() =>
     import("@/components/tab-screens/admin-kra-responses").then((m) => ({ default: m.AdminKraResponsesScreen })),
   ),
+  "admin-kra-settings": lazy(() =>
+    import("@/components/tab-screens/admin-kra-settings").then((m) => ({ default: m.AdminKraSettingsScreen })),
+  ),
   "admin-license": lazy(() =>
     import("@/components/tab-screens/admin-license").then((m) => ({ default: m.AdminLicenseScreen })),
+  ),
+  "admin-mpesa-paybills": lazy(() =>
+    import("@/components/tab-screens/admin-mpesa-paybills").then((m) => ({ default: m.AdminMpesaPaybillsScreen })),
+  ),
+  "admin-equity-accounts": lazy(() =>
+    import("@/components/tab-screens/admin-equity-accounts").then((m) => ({ default: m.AdminEquityAccountsScreen })),
+  ),
+  "admin-mpesa-settings": lazy(() =>
+    import("@/components/tab-screens/admin-mpesa-settings").then((m) => ({ default: m.AdminMpesaSettingsScreen })),
   ),
   "admin-payment-methods": lazy(() =>
     import("@/components/tab-screens/admin-payment-methods").then((m) => ({ default: m.AdminPaymentMethodsScreen })),

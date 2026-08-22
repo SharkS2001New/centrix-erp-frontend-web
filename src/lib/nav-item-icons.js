@@ -47,6 +47,11 @@ export const NAV_HREF_ICONS = {
   "/sales/payments-breakdown": "wallet",
   "/hospitality/payments-breakdown": "wallet",
   "/admin/till-printing": "receipt",
+  "/admin/kra-settings": "receipt",
+  "/admin/mpesa-settings": "wallet",
+  "/admin/mpesa-paybills": "wallet",
+  "/admin/equity-accounts": "wallet",
+  "/accounting/equity-reconciliation": "link",
 
   // Pricing & tax
   "/vats": "percent",

@@ -5,11 +5,15 @@ import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-reg
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, shouldShowMobilePickingLists, shouldShowMobileTripCharts, shouldShowMobileFleetNav, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled, shouldShowLoadingListNav } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
-import { isKraDeviceConfigured, isMpesaC2bReconciliationEnabled } from "@/lib/finance-settings";
+import {
+  isEquityPaybillReconciliationEnabled,
+  isKraDeviceConfigured,
+  isMpesaC2bReconciliationEnabled,
+} from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isReportNavEnabled } from "@/lib/nav-feature-gates";
-import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
+import { isPlatformWhatsappEnabled, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 import { isHospitalityServiceEnabled } from "@/lib/hospitality-services";
@@ -39,7 +43,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, requirePlatformKra?: boolean, requirePlatformMpesa?: boolean, requireShopDebtors?: boolean, hideWhenRouteOnlyCustomers?: boolean, group?: string, reportKey?: string, requireLoadingListNav?: boolean, requireMobilePickingListNav?: boolean, requireMobileTripChartNav?: boolean, requireMobileFleetNav?: boolean }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -617,6 +621,17 @@ const NAV_SECTION_DEFINITIONS = [
         label: "M-Pesa reconciliation",
         module: "accounting",
         requireMpesaC2bReconciliation: true,
+        permissionAny: [
+          P.accounting.bank_reconciliation.view,
+          P.payments.sale_payments.view,
+        ],
+        group: "General ledger",
+      },
+      {
+        href: "/accounting/equity-reconciliation",
+        label: "Equity reconciliation",
+        module: "accounting",
+        requireEquityPaybillReconciliation: true,
         permissionAny: [
           P.accounting.bank_reconciliation.view,
           P.payments.sale_payments.view,
@@ -1285,6 +1300,37 @@ const NAV_SECTION_DEFINITIONS = [
         orgAdminOnly: true,
       },
       {
+        href: "/admin/kra-settings",
+        label: "KRA settings",
+        module: "payments",
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        requirePlatformKra: true,
+        orgAdminOnly: true,
+      },
+      {
+        href: "/admin/mpesa-settings",
+        label: "M-Pesa settings",
+        module: "payments",
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        requirePlatformMpesa: true,
+        orgAdminOnly: true,
+      },
+      {
+        href: "/admin/mpesa-paybills",
+        label: "M-Pesa Paybills",
+        module: "payments",
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        requirePlatformMpesa: true,
+        orgAdminOnly: true,
+      },
+      {
+        href: "/admin/equity-accounts",
+        label: "Equity Bank accounts",
+        module: "payments",
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        orgAdminOnly: true,
+      },
+      {
         href: "/admin/kra-responses",
         label: "KRA device logs",
         module: "admin",
@@ -1370,7 +1416,15 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavP
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
+  if (item.requirePlatformKra && !isPlatformKraIntegrationEnabled(capabilities)) return false;
+  if (item.requirePlatformMpesa && !isPlatformMpesaStkEnabled(capabilities)) return false;
   if (item.requireMpesaC2bReconciliation && !isMpesaC2bReconciliationEnabled(capabilities?.module_settings)) return false;
+  if (
+    item.requireEquityPaybillReconciliation &&
+    !isEquityPaybillReconciliationEnabled(capabilities?.module_settings)
+  ) {
+    return false;
+  }
   if (item.requireWhatsappOrders && !isPlatformWhatsappEnabled(capabilities)) return false;
   if (item.requireShopDebtors && !shouldShowShopDebtors(capabilities)) return false;
   if (item.hideWhenRouteOnlyCustomers && isRouteOnlyCustomers(capabilities)) return false;

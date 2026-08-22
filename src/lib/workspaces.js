@@ -213,6 +213,19 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
   }
 
   if (
+    item.href === "/admin/kra-settings" ||
+    item.href?.startsWith("/admin/kra-settings/") ||
+    item.href === "/admin/mpesa-settings" ||
+    item.href?.startsWith("/admin/mpesa-settings/") ||
+    item.href === "/admin/mpesa-paybills" ||
+    item.href?.startsWith("/admin/mpesa-paybills/") ||
+    item.href === "/admin/equity-accounts" ||
+    item.href?.startsWith("/admin/equity-accounts/")
+  ) {
+    return workspaceId === "admin";
+  }
+
+  if (
     item.href &&
     SHARED_WORKSPACE_PATHS.some((p) => item.href === p || item.href.startsWith(`${p}/`))
   ) {

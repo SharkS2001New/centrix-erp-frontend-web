@@ -156,6 +156,25 @@ export function canAccessRoute(pathname, ctx, options = {}) {
   }
 
   if (
+    pathname === "/admin/kra-settings" ||
+    pathname.startsWith("/admin/kra-settings/") ||
+    pathname === "/admin/mpesa-settings" ||
+    pathname.startsWith("/admin/mpesa-settings/") ||
+    pathname === "/admin/mpesa-paybills" ||
+    pathname.startsWith("/admin/mpesa-paybills/") ||
+    pathname === "/admin/equity-accounts" ||
+    pathname.startsWith("/admin/equity-accounts/")
+  ) {
+    return canAccessTenantOrganizationSettings({
+      organization: ctx.organization,
+      isSuperAdmin: ctx.isSuperAdmin,
+      hasPermission: ctx.hasPermission,
+      user: ctx.user,
+      capabilities: ctx.capabilities,
+    });
+  }
+
+  if (
     (pathname.startsWith("/admin") || isOrgAdminSettingsPath(pathname)) &&
     !isAdministrationModuleEnabled(ctx.capabilities)
   ) {

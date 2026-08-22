@@ -63,8 +63,16 @@ export function FulfillmentRoutesScreen() {
   const handledParams = useRef("");
   const { capabilities } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
-  const { branches, showBranchSelect, defaultBranch, loading: branchesLoading, loadError: branchesLoadError, user } =
-    useRouteFormResources();
+  const {
+    branches,
+    paybillAccounts,
+    equityAccounts,
+    showBranchSelect,
+    defaultBranch,
+    loading: branchesLoading,
+    loadError: branchesLoadError,
+    user,
+  } = useRouteFormResources();
 
   const [routes, setRoutes] = useState([]);
   const [total, setTotal] = useState(0);
@@ -545,6 +553,8 @@ export function FulfillmentRoutesScreen() {
                   onChange={updateField}
                   onPatch={patchForm}
                   branches={branches}
+                  paybillAccounts={paybillAccounts}
+                  equityAccounts={equityAccounts}
                   showBranchSelect={showBranchSelect}
                   branchesLoading={branchesLoading}
                 />

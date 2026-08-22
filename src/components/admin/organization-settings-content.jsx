@@ -20,7 +20,15 @@ import { ManagerApprovalsSettingsPanel } from "@/components/admin/manager-approv
 import { PlatformAccountingSettingsPanel } from "@/components/admin/platform-accounting-settings-panel";
 import { RbacHelpDialog } from "@/components/admin/rbac-help";
 import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
-import { ORG_SETTINGS_PLATFORM_MESSAGE, TENANT_ORG_SETTINGS_SUBTITLE } from "@/lib/org-settings-access";
+import {
+  ORG_SETTINGS_PLATFORM_MESSAGE,
+  TENANT_ORG_SETTINGS_SUBTITLE,
+  TENANT_ORG_SETTINGS_TAB_REDIRECTS,
+} from "@/lib/org-settings-access";
+import {
+  isPlatformKraIntegrationEnabled,
+  isPlatformMpesaStkEnabled,
+} from "@/lib/platform-org-features";
 import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
 import {
   CatalogPageShell,
@@ -86,11 +94,29 @@ export function OrganizationSettingsContent({
   }, [tabFromUrl, router, platformManaged]);
 
   useEffect(() => {
+    if (!tenantSelfService || !tabFromUrl) return;
+    const redirect = TENANT_ORG_SETTINGS_TAB_REDIRECTS[tabFromUrl];
+    if (!redirect) return;
+    if (tabFromUrl === "finance") {
+      if (isPlatformKraIntegrationEnabled(capabilities)) {
+        router.replace("/admin/kra-settings");
+        return;
+      }
+      if (isPlatformMpesaStkEnabled(capabilities)) {
+        router.replace("/admin/mpesa-settings");
+        return;
+      }
+    }
+    router.replace(redirect);
+  }, [tabFromUrl, tenantSelfService, router, capabilities]);
+
+  useEffect(() => {
     if (!tabFromUrl || LEGACY_THEMES_TAB_IDS.has(tabFromUrl)) return;
+    if (tenantSelfService && TENANT_ORG_SETTINGS_TAB_REDIRECTS[tabFromUrl]) return;
     if (visibleTabs.some((item) => item.id === tabFromUrl)) {
       setTab(tabFromUrl);
     }
-  }, [tabFromUrl, visibleTabs]);
+  }, [tabFromUrl, visibleTabs, tenantSelfService]);
 
   useEffect(() => {
     if (visibleTabs.length === 0) return;
@@ -125,8 +151,8 @@ export function OrganizationSettingsContent({
         <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
           <p className="font-medium text-slate-900">Your organization preferences</p>
           <p className="mt-1 text-xs text-slate-600">
-            Configure sales, inventory, finance, HR, and other module preferences for your company.{" "}
-            {ORG_SETTINGS_PLATFORM_MESSAGE}
+            Configure sales, inventory, HR, and other module preferences for your company. KRA, M-Pesa, and
+            Paybills are under Finance & tax in the sidebar. {ORG_SETTINGS_PLATFORM_MESSAGE}
           </p>
         </div>
       ) : null}

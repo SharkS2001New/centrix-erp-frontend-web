@@ -35,6 +35,7 @@ const EMPTY = {
   description: "",
   ip_address: "",
   is_active: true,
+  mpesa_paybill_account_id: "",
 };
 
 export function TillFormDrawer({
@@ -45,6 +46,7 @@ export function TillFormDrawer({
   branches,
   existingTills = [],
   users = [],
+  paybillAccounts = [],
 }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -63,6 +65,10 @@ export function TillFormDrawer({
         description: editing.description ?? "",
         ip_address: editing.ip_address ?? "",
         is_active: editing.is_active !== false,
+        mpesa_paybill_account_id:
+          editing.mpesa_paybill_account_id != null
+            ? String(editing.mpesa_paybill_account_id)
+            : "",
       });
     } else {
       const branchId = branches[0] ? String(branches[0].id) : "";
@@ -111,6 +117,9 @@ export function TillFormDrawer({
         lock_mode: form.lock_mode || null,
         cashier_id: form.lock_mode === "user" && form.cashier_id ? Number(form.cashier_id) : null,
         ip_address: form.lock_mode === "computer" && form.ip_address.trim() ? form.ip_address.trim() : null,
+        mpesa_paybill_account_id: form.mpesa_paybill_account_id
+          ? Number(form.mpesa_paybill_account_id)
+          : null,
       };
       if (editing?.id) {
         await apiRequest(`/tills/${editing.id}`, { method: "PATCH", body });
@@ -172,6 +181,27 @@ export function TillFormDrawer({
           ]}
         />
       </Field>
+      <Field label="M-Pesa paybill / till">
+        <SearchableSelect
+          className={inputClassName()}
+          value={form.mpesa_paybill_account_id ?? ""}
+          onChange={(v) => setForm((f) => ({ ...f, mpesa_paybill_account_id: v }))}
+          placeholder="Use shop / org default"
+          options={[
+            { value: "", label: "Use shop / organization default" },
+            ...paybillAccounts.map((row) => ({
+              value: String(row.id),
+              label: `${row.name} (${row.primary_short_code})${
+                row.enable_stk_push === false ? " · STK off" : " · STK on"
+              }`,
+            })),
+          ]}
+        />
+      </Field>
+      <p className="-mt-2 mb-3 text-xs text-slate-500">
+        Payments and STK push for this POS till use the selected paybill. Create paybills under
+        Admin → Finance → M-Pesa.
+      </p>
       <Field label="Till lock (optional)">
         <SearchableSelect
           className={inputClassName()}

@@ -35,6 +35,41 @@ const PREFERRED_SCREENS = {
     exportName: "HrAttendanceClockIdScreen",
     title: "Hikvision device",
   },
+  "admin-themes": {
+    importPath: "@/components/tab-screens/admin-themes",
+    exportName: "AdminThemesScreen",
+    title: "Centrix ERP Themes",
+  },
+  "admin-kra-settings": {
+    importPath: "@/components/tab-screens/admin-kra-settings",
+    exportName: "AdminKraSettingsScreen",
+    title: "KRA settings",
+  },
+  "admin-mpesa-settings": {
+    importPath: "@/components/tab-screens/admin-mpesa-settings",
+    exportName: "AdminMpesaSettingsScreen",
+    title: "M-Pesa settings",
+  },
+  "admin-mpesa-paybills": {
+    importPath: "@/components/tab-screens/admin-mpesa-paybills",
+    exportName: "AdminMpesaPaybillsScreen",
+    title: "M-Pesa Paybills",
+  },
+  "admin-equity-accounts": {
+    importPath: "@/components/tab-screens/admin-equity-accounts",
+    exportName: "AdminEquityAccountsScreen",
+    title: "Equity Bank accounts",
+  },
+  "accounting-equity-reconciliation": {
+    importPath: "@/components/tab-screens/accounting-equity-reconciliation",
+    exportName: "AccountingEquityReconciliationScreen",
+    title: "Equity Reconciliation",
+  },
+  "admin-till-printing": {
+    importPath: "@/components/tab-screens/admin-till-printing",
+    exportName: "AdminTillPrintingScreen",
+    title: "Local printing",
+  },
   dashboard: {
     importPath: "@/components/dashboard/overview-dashboard",
     exportName: "OverviewDashboard",

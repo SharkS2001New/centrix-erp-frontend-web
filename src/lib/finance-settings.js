@@ -37,10 +37,22 @@ export const MPESA_DEFAULTS = {
   c2b_validation_url: "",
 };
 
+export const EQUITY_DEFAULTS = {
+  enable_paybill_reconciliation: false,
+  auto_apply_order_reference: true,
+  payment_account_hint: "Enter your order number (e.g. S12)",
+  primary_account_number: "",
+  paybill_number: "",
+  account_number: "",
+  callback_url: "",
+  callback_shared_secret: "",
+};
+
 export function mergeFinanceSettings(moduleSettings) {
   const finance = { ...FINANCE_DEFAULTS, ...(moduleSettings?.finance ?? {}) };
   const sales = moduleSettings?.sales ?? {};
   finance.mpesa = { ...MPESA_DEFAULTS, ...(finance.mpesa ?? {}) };
+  finance.equity = { ...EQUITY_DEFAULTS, ...(finance.equity ?? {}) };
   finance.quickbooks = { ...QUICKBOOKS_DEFAULTS, ...(finance.quickbooks ?? {}) };
   if (finance.default_submit_kra === undefined && sales.default_submit_kra !== undefined) {
     finance.default_submit_kra = sales.default_submit_kra !== false;
@@ -114,6 +126,11 @@ export function isMpesaC2bReconciliationEnabled(moduleSettings) {
   return parseBooleanSetting(finance.mpesa?.enable_c2b_reconciliation, true);
 }
 
+export function isEquityPaybillReconciliationEnabled(moduleSettings) {
+  const finance = mergeFinanceSettings(moduleSettings);
+  return parseBooleanSetting(finance.equity?.enable_paybill_reconciliation, false);
+}
+
 export function accountingMode(moduleSettings) {
   const finance = mergeFinanceSettings(moduleSettings);
   return finance.accounting_mode === "external" ? "external" : "native";
@@ -175,6 +192,7 @@ export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null, o
 export function financeFormFromApi(res) {
   const finance = mergeFinanceSettings({ finance: res?.finance ?? res });
   const mpesa = finance.mpesa ?? MPESA_DEFAULTS;
+  const equity = finance.equity ?? EQUITY_DEFAULTS;
   const quickbooks = finance.quickbooks ?? QUICKBOOKS_DEFAULTS;
   return {
     enable_kra_device: Boolean(finance.enable_kra_device),
@@ -209,6 +227,16 @@ export function financeFormFromApi(res) {
       c2b_validation_url: String(mpesa.c2b_validation_url ?? ""),
     },
     mpesa_status: res?.finance?.mpesa_status ?? null,
+    equity: {
+      enable_paybill_reconciliation: Boolean(equity.enable_paybill_reconciliation),
+      auto_apply_order_reference: equity.auto_apply_order_reference !== false,
+      payment_account_hint: String(equity.payment_account_hint ?? "Enter your order number (e.g. S12)"),
+      primary_account_number: String(equity.primary_account_number ?? ""),
+      paybill_number: String(equity.paybill_number ?? ""),
+      account_number: String(equity.account_number ?? ""),
+      callback_url: String(equity.callback_url ?? ""),
+      callback_shared_secret: String(equity.callback_shared_secret ?? ""),
+    },
     quickbooks: {
       client_id: String(quickbooks.client_id ?? ""),
       client_secret: String(quickbooks.client_secret ?? ""),
@@ -236,10 +264,14 @@ export function kraDeviceHealthPayloadFromForm(form) {
 
 export function financePayloadFromForm(form, options = {}) {
   const includeMpesa = options.includeMpesa !== false;
+  const includeEquity = options.includeEquity !== false;
   const includeAccounting = options.includeAccounting !== false;
   const mpesa = { ...form.mpesa };
   if (mpesa.consumer_secret === "********") delete mpesa.consumer_secret;
   if (mpesa.passkey === "********") delete mpesa.passkey;
+
+  const equity = { ...(form.equity ?? {}) };
+  if (equity.callback_shared_secret === "********") delete equity.callback_shared_secret;
 
   const quickbooks = { ...form.quickbooks };
   if (quickbooks.client_secret === "********") delete quickbooks.client_secret;
@@ -298,6 +330,21 @@ export function financePayloadFromForm(form, options = {}) {
       c2b_validation_url: mpesa.c2b_validation_url.trim(),
       ...(mpesa.consumer_secret ? { consumer_secret: mpesa.consumer_secret.trim() } : {}),
       ...(mpesa.passkey ? { passkey: mpesa.passkey.trim() } : {}),
+    };
+  }
+
+  if (includeEquity) {
+    payload.equity = {
+      enable_paybill_reconciliation: Boolean(form.equity?.enable_paybill_reconciliation),
+      auto_apply_order_reference: form.equity?.auto_apply_order_reference !== false,
+      payment_account_hint: String(form.equity?.payment_account_hint ?? "").trim(),
+      primary_account_number: String(form.equity?.primary_account_number ?? "").trim(),
+      paybill_number: String(form.equity?.paybill_number ?? "").trim(),
+      account_number: String(form.equity?.account_number ?? "").trim(),
+      callback_url: String(form.equity?.callback_url ?? "").trim(),
+      ...(equity.callback_shared_secret
+        ? { callback_shared_secret: String(equity.callback_shared_secret).trim() }
+        : {}),
     };
   }
 

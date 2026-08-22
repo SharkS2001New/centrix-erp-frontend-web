@@ -28,6 +28,8 @@ export const EMPTY_ROUTE_FORM = {
   is_active: true,
   receipt_payment_details: null,
   use_route_payment_details: false,
+  mpesa_paybill_account_id: "",
+  equity_bank_account_id: "",
 };
 
 export function routeToForm(route) {
@@ -43,6 +45,14 @@ export function routeToForm(route) {
     is_active: route.is_active !== false,
     receipt_payment_details: details,
     use_route_payment_details: Boolean(details),
+    mpesa_paybill_account_id:
+      route.mpesa_paybill_account_id != null
+        ? String(route.mpesa_paybill_account_id)
+        : "",
+    equity_bank_account_id:
+      route.equity_bank_account_id != null
+        ? String(route.equity_bank_account_id)
+        : "",
   };
 }
 
@@ -57,6 +67,13 @@ export function buildRouteBody(form) {
   if (form.branch_id) {
     body.branch_id = Number(form.branch_id);
   }
+
+  body.mpesa_paybill_account_id = form.mpesa_paybill_account_id
+    ? Number(form.mpesa_paybill_account_id)
+    : null;
+  body.equity_bank_account_id = form.equity_bank_account_id
+    ? Number(form.equity_bank_account_id)
+    : null;
 
   if (form.use_route_payment_details && form.receipt_payment_details) {
     // Preserve multi-method blocks (paybill / till / bank) for receipt print.
@@ -98,6 +115,8 @@ export function RouteFormFields({
   onChange,
   onPatch,
   branches = [],
+  paybillAccounts = [],
+  equityAccounts = [],
   showBranchSelect = false,
   branchesLoading = false,
 }) {
@@ -193,6 +212,48 @@ export function RouteFormFields({
       </div>
 
       <div className="md:col-span-2">
+        <Field label="M-Pesa paybill for this route">
+          <SearchableSelect
+            value={form.mpesa_paybill_account_id ?? ""}
+            onChange={(v) => onChange("mpesa_paybill_account_id", v)}
+            options={[
+              { value: "", label: "Use shop / organization default" },
+              ...paybillAccounts.map((row) => ({
+                value: String(row.id),
+                label: `${row.name} (${row.primary_short_code})`,
+              })),
+            ]}
+            placeholder="Select paybill"
+          />
+        </Field>
+        <p className="mt-1 text-xs text-slate-500">
+          C2B payments to this paybill only reconcile to orders on this route. Configure paybills under
+          Admin → Finance → M-Pesa.
+        </p>
+      </div>
+
+      <div className="md:col-span-2">
+        <Field label="Equity Bank account for this route">
+          <SearchableSelect
+            value={form.equity_bank_account_id ?? ""}
+            onChange={(v) => onChange("equity_bank_account_id", v)}
+            options={[
+              { value: "", label: "Use shop / organization default" },
+              ...equityAccounts.map((row) => ({
+                value: String(row.id),
+                label: `${row.name} (${row.primary_account_number})`,
+              })),
+            ]}
+            placeholder="Select Equity account"
+          />
+        </Field>
+        <p className="mt-1 text-xs text-slate-500">
+          Equity callbacks to this account only reconcile to orders on this route. Configure accounts under
+          Admin → Equity Bank accounts.
+        </p>
+      </div>
+
+      <div className="md:col-span-2">
         <label className="mb-2 flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
           <input
             type="checkbox"
@@ -250,6 +311,8 @@ export function RouteFormFields({
 export function useRouteFormResources() {
   const { user, isOrgWide } = useAuth();
   const [branches, setBranches] = useState([]);
+  const [paybillAccounts, setPaybillAccounts] = useState([]);
+  const [equityAccounts, setEquityAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
@@ -263,6 +326,19 @@ export function useRouteFormResources() {
         scoped = scoped.filter((branch) => Number(branch.id) === Number(user.branch_id));
       }
       setBranches(scoped);
+      const { apiRequest } = await import("@/lib/api");
+      try {
+        const res = await apiRequest("/mpesa-paybill-accounts", { loading: false });
+        setPaybillAccounts(Array.isArray(res?.data) ? res.data : []);
+      } catch {
+        setPaybillAccounts([]);
+      }
+      try {
+        const res = await apiRequest("/equity-bank-accounts", { loading: false });
+        setEquityAccounts(Array.isArray(res?.data) ? res.data : []);
+      } catch {
+        setEquityAccounts([]);
+      }
     } catch (e) {
       setBranches([]);
       setLoadError(e instanceof Error ? e.message : "Could not load branches");
@@ -285,7 +361,16 @@ export function useRouteFormResources() {
     [user, branches],
   );
 
-  return { user, branches, loading, loadError, showBranchSelect, defaultBranch };
+  return {
+    user,
+    branches,
+    paybillAccounts,
+    equityAccounts,
+    loading,
+    loadError,
+    showBranchSelect,
+    defaultBranch,
+  };
 }
 
 export function RouteFormCard({ children, onSubmit, actions }) {

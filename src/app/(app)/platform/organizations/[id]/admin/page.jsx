@@ -32,7 +32,7 @@ export default function PlatformOrganizationAdminPage() {
         >
           <p className="theme-heading text-sm font-medium">Organization settings</p>
           <p className="theme-subtext mt-1 text-xs">
-            Sales, finance, distribution, notifications, and other operational preferences.
+            Sales, AI, WhatsApp, finance integrations, and other operational preferences.
           </p>
         </Link>
       </div>

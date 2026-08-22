@@ -223,6 +223,7 @@ export function TillManagementScreen() {
   const [tills, setTills] = useState([]);
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
+  const [paybillAccounts, setPaybillAccounts] = useState([]);
   const [openSessions, setOpenSessions] = useState([]);
   const [sessionReports, setSessionReports] = useState(() => new Map());
   const sessionReportsRef = useRef(sessionReports);
@@ -285,7 +286,7 @@ export function TillManagementScreen() {
     setMetaLoading(true);
     setPageError(null);
     try {
-      const [tillRes, branchesData, usersData, sessionRes] = await Promise.all([
+      const [tillRes, branchesData, usersData, sessionRes, paybillRes] = await Promise.all([
         apiRequest("/tills", { searchParams: { per_page: 200 } }),
         fetchBranchesCached(organizationId),
         fetchUsersCached(organizationId),
@@ -296,10 +297,12 @@ export function TillManagementScreen() {
             "filter[session_date]": todayKey,
           },
         }).catch(() => ({ data: [] })),
+        apiRequest("/mpesa-paybill-accounts", { loading: false }).catch(() => ({ data: [] })),
       ]);
       setTills(tillRes.data ?? []);
       setBranches(filterByOrganization(branchesData, organizationId));
       setUsers(filterByOrganization(usersData, organizationId));
+      setPaybillAccounts(Array.isArray(paybillRes?.data) ? paybillRes.data : []);
       const sessions = sessionRes.data ?? [];
       setOpenSessions(sessions);
       // X-reports load lazily on float expand/select — avoid N+1 on list load.
@@ -1190,6 +1193,7 @@ export function TillManagementScreen() {
         branches={branches}
         existingTills={tills}
         users={users}
+        paybillAccounts={paybillAccounts}
       />
     </>
   );
