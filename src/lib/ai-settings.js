@@ -185,10 +185,14 @@ export function aiFormFromApi(res) {
     gemini_model: settings.gemini_model ?? res?.gemini_model ?? "",
     gemini_api_key_set: Boolean(settings.gemini_api_key_set),
     gemini_api_key_hint: settings.gemini_api_key_hint ?? "",
+    free_ai_provider: settings.free_ai_provider ?? res?.free_ai_provider ?? "gemini",
     use_platform_gemini: Boolean(
-      settings.use_platform_gemini ?? res?.use_platform_gemini,
+      settings.use_platform_gemini ?? res?.use_platform_gemini ?? res?.use_platform_ai,
     ),
     platform_gemini_configured: Boolean(res?.platform_gemini_configured ?? res?.gemini_available),
+    platform_free_ai_configured: Boolean(
+      res?.platform_free_ai_configured ?? res?.free_ai_configured ?? res?.platform_gemini_configured,
+    ),
     has_org_api_key: Boolean(res?.has_org_api_key ?? settings.api_key_set),
     credential_source: res?.credential_source ?? null,
     available: Boolean(res?.available),
@@ -218,6 +222,9 @@ export function aiPayloadFromForm(form, options = {}) {
       payload.gemini_api_key = form.gemini_api_key;
     }
     payload.gemini_model = form.gemini_model || null;
+    if (form.free_ai_provider === "openai" || form.free_ai_provider === "gemini") {
+      payload.free_ai_provider = form.free_ai_provider;
+    }
   }
   if (includeInsights && form.insights) {
     payload.insights = insightsPayloadFromForm(form.insights);

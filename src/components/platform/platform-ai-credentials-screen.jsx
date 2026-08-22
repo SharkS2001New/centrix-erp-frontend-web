@@ -47,19 +47,47 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     }
   }
 
+  const freeProvider = aiForm.free_ai_provider === "openai" ? "openai" : "gemini";
+
   const body = (
     <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
       <p className="mt-1 text-sm theme-subtext">
-        OpenAI powers platform-admin tools (email drafting, training console). Gemini is the free shared key
-        offered to selected tenant organizations from Platform → Organization → Sales behaviour (“Offer free
-        platform Gemini”). Tenants may still add their own API key to override.
+        Choose which provider to offer free to selected tenant organizations. OpenAI also powers platform-admin
+        tools (email drafting, training console). Tenants may still add their own API key to override.
       </p>
 
       {loading ? (
         <p className="mt-4 text-sm theme-subtext">Loading…</p>
       ) : (
         <div className="mt-5 space-y-6">
+          <div className="rounded-lg border px-4 py-3 theme-panel">
+            <p className="text-sm font-medium theme-heading">Free AI for selected organizations</p>
+            <p className="mt-0.5 text-xs theme-subtext">
+              Used when an org has &quot;Offer free platform AI&quot; enabled and no tenant API key of its own.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm theme-heading">
+                <input
+                  type="radio"
+                  name="free_ai_provider"
+                  checked={freeProvider === "gemini"}
+                  onChange={() => setAiForm((f) => ({ ...f, free_ai_provider: "gemini" }))}
+                />
+                Gemini (default)
+              </label>
+              <label className="flex items-center gap-2 text-sm theme-heading">
+                <input
+                  type="radio"
+                  name="free_ai_provider"
+                  checked={freeProvider === "openai"}
+                  onChange={() => setAiForm((f) => ({ ...f, free_ai_provider: "openai" }))}
+                />
+                OpenAI
+              </label>
+            </div>
+          </div>
+
           <label className="flex items-start gap-3 rounded-lg border px-4 py-3 theme-panel">
             <input
               type="checkbox"
@@ -70,12 +98,13 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
             <span>
               <span className="block text-sm font-medium theme-heading">Enable platform OpenAI tools</span>
               <span className="mt-0.5 block text-xs theme-subtext">
-                Required for email assist and the AI training test console. Separate from Gemini for tenants.
+                Required for email assist and the AI training test console
+                {freeProvider === "openai" ? ", and for free tenant OpenAI" : ""}.
               </span>
             </span>
           </label>
 
-          {aiForm.enabled ? (
+          {aiForm.enabled || freeProvider === "openai" ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <Field label="OpenAI API key">
@@ -115,10 +144,11 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
           ) : null}
 
           <div className="border-t pt-5">
-            <h3 className="text-sm font-semibold theme-heading">Gemini for tenant organizations</h3>
+            <h3 className="text-sm font-semibold theme-heading">Gemini credentials</h3>
             <p className="mt-1 text-xs theme-subtext">
-              Set one Gemini key here, then enable &quot;Use platform Gemini&quot; on chosen organizations.
-              Those orgs do not need their own API key.
+              {freeProvider === "gemini"
+                ? "Required for free tenant Gemini. Set the key, then enable “Offer free platform AI” on chosen organizations."
+                : "Optional while free AI is set to OpenAI. Keep a Gemini key if you plan to switch later."}
             </p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -165,7 +195,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   return (
     <CatalogPageShell
       title="AI credentials"
-      subtitle="OpenAI for platform tools; Gemini key shared with selected tenant organizations."
+      subtitle="Choose free Gemini or OpenAI for selected tenants; configure keys for platform tools."
     >
       <AdminBreadcrumb
         items={[

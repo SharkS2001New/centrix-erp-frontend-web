@@ -100,14 +100,16 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
               <p className="font-medium">
                 {form.credential_source === "org"
                   ? "Using your organization API key"
-                  : "Using free platform Gemini"}
+                  : form.credential_source === "platform_openai"
+                    ? "Using free platform OpenAI"
+                    : "Using free platform Gemini"}
               </p>
               <p className="mt-1 text-xs text-emerald-800">
                 {form.credential_source === "org"
-                  ? "Your organization API key is active. Remove it from settings (or ask platform support to clear it) to fall back to free platform Gemini."
-                  : form.platform_gemini_configured || form.available
+                  ? "Your organization API key is active. Remove it from settings (or ask platform support to clear it) to fall back to free platform AI."
+                  : form.platform_free_ai_configured || form.platform_gemini_configured || form.available
                     ? "No organization key is required. Optionally add your own key below to use your own provider instead."
-                    : "Platform Gemini is selected for this org, but the platform Gemini API key is not configured yet."}
+                    : "Free platform AI is selected for this org, but the platform API key for that provider is not configured yet."}
               </p>
             </div>
           ) : null}
@@ -116,7 +118,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
             checked={form.enabled || form.use_platform_gemini}
             onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
             label="Enable AI assistant"
-            description="When on, users with permission can use the floating assistant. Platform Gemini keeps AI available even without an organization key."
+            description="When on, users with permission can use the floating assistant. Free platform AI keeps the assistant available even without an organization key."
             disabled={form.use_platform_gemini && !form.has_org_api_key}
           />
 

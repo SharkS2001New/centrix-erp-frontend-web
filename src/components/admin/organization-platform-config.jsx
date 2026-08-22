@@ -869,8 +869,8 @@ export function OrganizationPlatformSalesSettings({
             }
           />
           <Toggle
-            label="Offer free platform Gemini"
-            description="Selected orgs use the Gemini API key from Platform → Settings → AI credentials. No tenant key required. The org can still add its own OpenAI/Gemini key to override."
+            label="Offer free platform AI"
+            description="Selected orgs use the free provider chosen under Platform → Settings → AI credentials (Gemini by default, or OpenAI). No tenant key required; the org can still add its own key to override."
             checked={Boolean(salesPlatform?.use_platform_gemini)}
             onChange={(v) =>
               patch(
