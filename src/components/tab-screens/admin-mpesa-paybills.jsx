@@ -29,7 +29,7 @@ export function AdminMpesaPaybillsScreen({
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
         title="M-Pesa Paybills"
-        subtitle="Paybill and till shortcodes for routes and shops. Shortcodes are unique across organizations."
+        subtitle="Saved paybills appear in the list below. Select one to edit shortcodes, route/till mapping, and optional Daraja keys."
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

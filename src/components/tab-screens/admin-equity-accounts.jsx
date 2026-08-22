@@ -29,7 +29,7 @@ export function AdminEquityAccountsScreen({
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
         title="Equity Bank accounts"
-        subtitle="Equity paybill / collection accounts for routes and shops. Map each route to an account so callbacks reconcile correctly."
+        subtitle="Organization Equity defaults and saved accounts. Select an account to set its own callback URL and shared secret."
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

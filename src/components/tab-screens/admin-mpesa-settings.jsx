@@ -29,7 +29,7 @@ export function AdminMpesaSettingsScreen({
     <SettingsApiProvider apiPrefix={apiPrefix}>
       <CatalogPageShell
         title="M-Pesa settings"
-        subtitle="Safaricom Daraja credentials, STK push, and C2B reconciliation for this organization."
+        subtitle="Organization Daraja defaults, STK/C2B toggles, and saved paybills. Select a paybill to set its own consumer keys and callback URLs."
         banner={
           showBreadcrumb && !embedded ? (
             <AdminBreadcrumb

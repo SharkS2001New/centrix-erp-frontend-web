@@ -88,6 +88,7 @@ export function FinanceSettingsPanel({
   const [paybillBranches, setPaybillBranches] = useState([]);
   const [paybillRoutes, setPaybillRoutes] = useState([]);
   const [paybillTills, setPaybillTills] = useState([]);
+  const [accountsRefreshKey, setAccountsRefreshKey] = useState(0);
 
   const needsFinanceForm = mode !== "paybills";
   const needsPaybillRefs = mode === "all" || mode === "mpesa" || mode === "paybills" || mode === "equity";
@@ -247,13 +248,14 @@ export function FinanceSettingsPanel({
       });
 
       if (afterSave) await afterSave();
+      setAccountsRefreshKey((k) => k + 1);
       const successLabel =
         mode === "kra"
           ? "KRA settings saved."
           : mode === "mpesa"
-            ? "M-Pesa settings saved."
+            ? "M-Pesa settings saved. Open a paybill below to set per-paybill Daraja keys."
             : mode === "equity"
-              ? "Equity settings saved."
+              ? "Equity settings saved. Open an account below to set per-account callback details."
               : "Finance settings saved.";
       notifySuccess(successLabel);
       setMessage?.(successLabel);
@@ -509,6 +511,11 @@ export function FinanceSettingsPanel({
               </div>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
+                  <strong>Organization default Daraja app.</strong> These credentials apply to every paybill
+                  that does not set its own keys. To use a different Safaricom app per paybill, select that
+                  paybill in <em>Saved paybills</em> below and fill its Daraja section.
+                </div>
                 <Field label="Environment">
                   <SearchableSelect
                     className={inputClassName()}
@@ -546,21 +553,21 @@ export function FinanceSettingsPanel({
                     placeholder="Leave blank to keep existing"
                   />
                 </Field>
-                <Field label="Paybill shortcode (STK)">
+                <Field label="Default paybill shortcode (STK)">
                   <input
                     className={inputClassName()}
                     value={mpesa.shortcode ?? ""}
                     onChange={(e) => setMpesa("shortcode", e.target.value)}
                   />
                 </Field>
-                <Field label="Till number (PartyB)">
+                <Field label="Default till number (PartyB)">
                   <input
                     className={inputClassName()}
                     value={mpesa.till_number ?? ""}
                     onChange={(e) => setMpesa("till_number", e.target.value)}
                   />
                 </Field>
-                <Field label="C2B paybill / till shortcode">
+                <Field label="Default C2B paybill / till shortcode">
                   <input
                     className={inputClassName()}
                     value={mpesa.child_storecode ?? ""}
@@ -572,19 +579,19 @@ export function FinanceSettingsPanel({
 
               <div className="mt-4 space-y-3">
                 <UrlField
-                  label="C2B confirmation URL (register on Daraja)"
+                  label="Default C2B confirmation URL (register on Daraja)"
                   value={mpesa.c2b_confirmation_url ?? ""}
                   onChange={(v) => setMpesa("c2b_confirmation_url", v)}
                   placeholder="https://your-api.example.com/api/v1/payments/c2b/confirmation"
                 />
                 <UrlField
-                  label="C2B validation URL (register on Daraja)"
+                  label="Default C2B validation URL (register on Daraja)"
                   value={mpesa.c2b_validation_url ?? ""}
                   onChange={(v) => setMpesa("c2b_validation_url", v)}
                   placeholder="https://your-api.example.com/api/v1/payments/c2b/validation"
                 />
                 <UrlField
-                  label="STK push callback URL"
+                  label="Default STK push callback URL"
                   value={mpesa.stk_callback_url ?? ""}
                   onChange={(v) => setMpesa("stk_callback_url", v)}
                   placeholder="https://your-api.example.com/api/v1/payments/stk/callback"
@@ -602,20 +609,20 @@ export function FinanceSettingsPanel({
               {renderPaybillsInline ? (
                 <>
                   <p className="mt-3 text-xs text-slate-500">
-                    Shared Daraja consumer key / passkey apply to all paybills below. Each paybill shortcode is unique
-                    across organizations. Assign paybills to routes or shops so callbacks and reconciliation match only
-                    those orders.
+                    Saved paybills appear in the list below. Select one to set its own Daraja consumer key and
+                    callback URLs, or leave those blank to use the organization defaults above.
                   </p>
                   <MpesaPaybillAccountsPanel
                     branches={paybillBranches}
                     routes={paybillRoutes}
                     tills={paybillTills}
                     setError={setError}
+                    refreshKey={accountsRefreshKey}
                   />
                 </>
               ) : mode === "mpesa" ? (
                 <p className="mt-3 text-xs text-slate-500">
-                  Manage route and shop paybill shortcodes under{" "}
+                  Manage route and shop paybills (including per-paybill Daraja keys) under{" "}
                   <a href="/admin/mpesa-paybills" className="font-medium text-[var(--theme-primary)] underline">
                     M-Pesa Paybills
                   </a>
@@ -628,11 +635,11 @@ export function FinanceSettingsPanel({
           {mode === "paybills" && showPaybills ? (
             <div>
               <p className="theme-subtext text-sm">
-                Assign Safaricom paybill / till shortcodes to routes or shops. Shared Daraja credentials live under{" "}
+                Saved paybills are listed below after you add them. Organization-wide Daraja defaults live under{" "}
                 <a href="/admin/mpesa-settings" className="font-medium text-[var(--theme-primary)] underline">
                   M-Pesa settings
                 </a>
-                .
+                ; select a paybill here to override keys and callback URLs for that shortcode only.
               </p>
               <div className="mt-4">
                 <MpesaPaybillAccountsPanel
@@ -640,6 +647,7 @@ export function FinanceSettingsPanel({
                   routes={paybillRoutes}
                   tills={paybillTills}
                   setError={setError}
+                  refreshKey={accountsRefreshKey}
                 />
               </div>
             </div>
@@ -672,6 +680,10 @@ export function FinanceSettingsPanel({
                 </>
               ) : null}
               <div className="grid gap-3 md:grid-cols-2">
+                <div className="md:col-span-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs text-sky-950">
+                  <strong>Organization default Equity callback.</strong> Per-account callback URL / secret are
+                  set by selecting an account in <em>Saved Equity accounts</em> below.
+                </div>
                 <Field label="Default primary account / paybill">
                   <input
                     className={inputClassName()}
@@ -694,12 +706,12 @@ export function FinanceSettingsPanel({
                   />
                 </Field>
                 <UrlField
-                  label="Callback URL (documented for Equity)"
+                  label="Default callback URL (documented for Equity)"
                   value={equity.callback_url ?? ""}
                   onChange={(v) => setEquity("callback_url", v)}
                   placeholder="https://…/api/v1/payments/equity/confirmation"
                 />
-                <Field label="Callback shared secret (optional)">
+                <Field label="Default callback shared secret (optional)">
                   <input
                     className={inputClassName()}
                     type="password"
@@ -713,6 +725,7 @@ export function FinanceSettingsPanel({
                 branches={paybillBranches}
                 routes={paybillRoutes}
                 setError={setError}
+                refreshKey={accountsRefreshKey}
               />
             </div>
           ) : null}
