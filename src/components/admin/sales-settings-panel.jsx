@@ -12,7 +12,7 @@ import {
 } from "@/lib/sales-settings";
 import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-configured-summary";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import {
   isPlatformMpesaStkEnabled,
   isPlatformWhatsappEnabled,
@@ -585,7 +585,7 @@ export function SalesSettingsPanel({
     [hasPosSales],
   );
 
-  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+  const onSectionChange = useSettingsSectionUrl(activeTab, setActiveTab, visibleTabs);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -657,7 +657,7 @@ export function SalesSettingsPanel({
                 </div>
               </section>
             ) : null}
-            <SalesSettingsTabBar tabs={visibleTabs} activeTab={activeTab} onTabChange={setActiveTab} />
+            <SalesSettingsTabBar tabs={visibleTabs} activeTab={activeTab} onTabChange={onSectionChange} />
 
             {activeTab === "checkout" ? (
               <CheckoutPricingTab

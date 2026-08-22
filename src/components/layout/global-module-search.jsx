@@ -17,6 +17,10 @@ import {
   workspaceSearchPlaceholder,
 } from "@/lib/module-entity-search";
 import {
+  adminSettingsToNavEntries,
+  searchAdminSettings,
+} from "@/lib/admin-settings-catalog";
+import {
   buildWorkspaceNavSections,
   flattenNavSearchEntries,
   searchNavEntries,
@@ -89,6 +93,31 @@ export function GlobalModuleSearch() {
 
   const navResults = useMemo(() => searchNavEntries(searchIndex, query, { limit: 6 }), [query, searchIndex]);
 
+  const settingsResults = useMemo(() => {
+    if (workspaceId !== "admin") return [];
+    return adminSettingsToNavEntries(
+      searchAdminSettings(query, {
+        capabilities,
+        hasPermission,
+        navContext,
+        limit: 8,
+      }),
+    );
+  }, [capabilities, hasPermission, navContext, query, workspaceId]);
+
+  const pageResults = useMemo(() => {
+    if (settingsResults.length === 0) return navResults;
+    const seen = new Set(settingsResults.map((entry) => entry.href));
+    const merged = [...settingsResults];
+    for (const entry of navResults) {
+      if (seen.has(entry.href)) continue;
+      seen.add(entry.href);
+      merged.push(entry);
+      if (merged.length >= 10) break;
+    }
+    return merged;
+  }, [navResults, settingsResults]);
+
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed.length < 2 || entityConfigs.length === 0) {
@@ -126,8 +155,11 @@ export function GlobalModuleSearch() {
   }, [adminPath, entityConfigs, query, workspaceId, organization?.id, user?.organization_id]);
 
   const rows = useMemo(
-    () => buildModuleSearchRows(navResults, entityGroups, query),
-    [entityGroups, navResults, query],
+    () =>
+      buildModuleSearchRows(pageResults, entityGroups, query, {
+        pagesHeading: workspaceId === "admin" ? "Settings & pages" : "Pages",
+      }),
+    [entityGroups, pageResults, query, workspaceId],
   );
 
   const selectableRows = useMemo(() => selectableSearchRows(rows), [rows]);

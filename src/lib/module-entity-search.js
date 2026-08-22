@@ -216,6 +216,9 @@ export function filterEntityConfigsByAccess(configs, hasPermission) {
 }
 
 export function workspaceSearchPlaceholder(workspaceId, workspaceLabel) {
+  if (workspaceId === "admin") {
+    return "Search settings, users, pages…";
+  }
   const configs = entitySearchConfigsForWorkspace(workspaceId);
   if (configs.length === 0) {
     return `Search ${workspaceLabel} pages…`;
@@ -286,13 +289,20 @@ export async function searchWorkspaceEntities(apiRequest, configs, query, option
  * @param {Awaited<ReturnType<typeof searchWorkspaceEntities>>} entityGroups
  * @param {string} query
  */
-export function buildModuleSearchRows(navResults, entityGroups, query) {
+/**
+ * @param {Array<{ label: string, href: string, section?: string|null, group?: string|null }>} navResults
+ * @param {Array<{ type: string, label: string, listHref: string, items: Array<{ id: string, label: string, subtitle?: string, href: string }> }>} entityGroups
+ * @param {string} query
+ * @param {{ pagesHeading?: string }} [options]
+ */
+export function buildModuleSearchRows(navResults, entityGroups, query, options = {}) {
   /** @type {Array<Record<string, unknown>>} */
   const rows = [];
   const trimmed = query.trim();
+  const pagesHeading = options.pagesHeading ?? "Pages";
 
   if (navResults.length > 0) {
-    rows.push({ kind: "heading", id: "heading:pages", label: "Pages" });
+    rows.push({ kind: "heading", id: "heading:pages", label: pagesHeading });
     for (const entry of navResults) {
       rows.push({
         kind: "nav",

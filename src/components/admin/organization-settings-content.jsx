@@ -129,6 +129,7 @@ export function OrganizationSettingsContent({
     setTab(nextTab);
     const params = new URLSearchParams(searchParams?.toString() ?? "");
     params.set("tab", nextTab);
+    params.delete("section");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
@@ -152,7 +153,7 @@ export function OrganizationSettingsContent({
           <p className="font-medium text-slate-900">Your organization preferences</p>
           <p className="mt-1 text-xs text-slate-600">
             Configure sales, inventory, HR, and other module preferences for your company. KRA, M-Pesa, and
-            Paybills are under Finance & tax in the sidebar. {ORG_SETTINGS_PLATFORM_MESSAGE}
+            Paybills are under Finance in the sidebar. {ORG_SETTINGS_PLATFORM_MESSAGE}
           </p>
         </div>
       ) : null}

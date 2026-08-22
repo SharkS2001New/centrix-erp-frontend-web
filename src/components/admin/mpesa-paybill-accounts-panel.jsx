@@ -34,7 +34,10 @@ export function MpesaPaybillAccountsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest("/mpesa-paybill-accounts", { loading: false });
+      const res = await apiRequest("/mpesa-paybill-accounts", {
+        loading: false,
+        reportIssues: false,
+      });
       setRows(Array.isArray(res?.data) ? res.data : []);
     } catch (e) {
       setError?.(e instanceof ApiError ? e.message : "Failed to load paybill accounts");
@@ -73,6 +76,11 @@ export function MpesaPaybillAccountsPanel({
     setSaving(true);
     setError?.(null);
     try {
+      if (form.route_id && form.pos_till_id) {
+        setError?.("Link a paybill to a route or a POS till, not both.");
+        setSaving(false);
+        return;
+      }
       const body = {
         name: form.name.trim(),
         primary_short_code: form.primary_short_code.trim(),
@@ -135,9 +143,9 @@ export function MpesaPaybillAccountsPanel({
     <div className="mt-6 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-4">
       <h4 className="theme-heading text-sm font-semibold">Paybills for routes, shops &amp; tills</h4>
       <p className="theme-subtext mt-1 text-xs">
-        Assign a different Safaricom paybill or buy-goods till to each route, shop, or POS till (e.g. Till01).
-        Enable STK push per paybill so only those tills can send Lipa na M-Pesa prompts. Shortcodes stay unique
-        across organizations.
+        Assign a Safaricom paybill or buy-goods till to a route, shop, or POS till (e.g. Till01). A paybill can
+        link to a route or a POS till — not both. Enable STK push per paybill so only those tills can send Lipa
+        na M-Pesa prompts. Shortcodes stay unique across organizations.
       </p>
 
       {loading ? (
@@ -250,17 +258,32 @@ export function MpesaPaybillAccountsPanel({
         <Field label="Route (optional)">
           <SearchableSelect
             value={form.route_id}
-            onChange={(v) => setForm((f) => ({ ...f, route_id: v }))}
+            onChange={(v) =>
+              setForm((f) => ({
+                ...f,
+                route_id: v,
+                // Route and POS till are mutually exclusive.
+                ...(v ? { pos_till_id: "" } : null),
+              }))
+            }
             options={[{ value: "", label: "Any / org-wide" }, ...routeOptions]}
             placeholder="Link to a route"
+            disabled={Boolean(form.pos_till_id)}
           />
         </Field>
         <Field label="POS till (optional)">
           <SearchableSelect
             value={form.pos_till_id}
-            onChange={(v) => setForm((f) => ({ ...f, pos_till_id: v }))}
+            onChange={(v) =>
+              setForm((f) => ({
+                ...f,
+                pos_till_id: v,
+                ...(v ? { route_id: "" } : null),
+              }))
+            }
             options={[{ value: "", label: "Not linked to a POS till" }, ...tillOptions]}
             placeholder="e.g. Till01"
+            disabled={Boolean(form.route_id)}
           />
         </Field>
       </div>

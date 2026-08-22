@@ -4,7 +4,7 @@ export const ORG_SETTINGS_PLATFORM_MESSAGE =
 
 /** Hint for tenant-managed organization settings. */
 export const TENANT_ORG_SETTINGS_SUBTITLE =
-  "Operational preferences for your enabled modules. KRA, M-Pesa, and Paybills live under Finance & tax. AI and WhatsApp remain platform-managed.";
+  "Operational preferences for your enabled modules. KRA lives under Tax; M-Pesa and Paybills live under Finance. AI and WhatsApp remain platform-managed.";
 
 /** Redirect map for tabs promoted out of tenant Organization settings. */
 export const TENANT_ORG_SETTINGS_TAB_REDIRECTS = {

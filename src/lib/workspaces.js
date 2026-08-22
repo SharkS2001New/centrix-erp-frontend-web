@@ -47,7 +47,7 @@ export const WORKSPACE_SECTION_IDS = {
     "hospitality_purchasing",
     "reports",
   ],
-  admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax"],
+  admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance", "admin_tax"],
   accounting: ["accounting", "expenses", "reports"],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
@@ -89,7 +89,8 @@ export const WORKSPACE_NAV_ZONES = {
         "admin_dashboard",
         "admin_organization",
         "admin_users",
-        "admin_finance_tax",
+        "admin_finance",
+        "admin_tax",
       ],
     },
   ],
@@ -233,7 +234,7 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
   }
 
   if (workspaceId === "admin") {
-    return item.href?.startsWith("/admin") || item.href === "/vats";
+    return item.href?.startsWith("/admin");
   }
 
   if (item.href?.startsWith("/reports") || item.reportKey) {
@@ -346,10 +347,6 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
   if (workspaceId === "admin") {
     const prefixes = WORKSPACE_PATH_PREFIXES.admin ?? [];
     if (prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
-      return true;
-    }
-    // VAT rates are linked from Admin → Finance & tax as well as Backoffice.
-    if (pathname === "/vats" || pathname.startsWith("/vats/")) {
       return true;
     }
     return false;

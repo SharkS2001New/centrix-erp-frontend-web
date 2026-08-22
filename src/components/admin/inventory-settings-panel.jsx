@@ -9,7 +9,7 @@ import {
   inventoryPayloadFromForm,
 } from "@/lib/inventory-settings";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { useAuth } from "@/contexts/auth-context";
 import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
@@ -59,7 +59,7 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
     ];
   }, [hospitality]);
 
-  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+  const onSectionChange = useSettingsSectionUrl(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,7 +140,7 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
             <SettingsSubTabBar
               tabs={visibleTabs}
               activeTab={activeTab}
-              onTabChange={setActiveTab}
+              onTabChange={onSectionChange}
               ariaLabel="Inventory settings"
             />
 

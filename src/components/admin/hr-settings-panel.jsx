@@ -8,7 +8,7 @@ import { AttendanceClockDevicesSettings } from "@/components/hr/attendance-clock
 import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-devices-panel";
 import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 
@@ -52,7 +52,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
     [],
   );
 
-  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+  const onSectionChange = useSettingsSectionUrl(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +104,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage, onAft
           <SettingsSubTabBar
             tabs={visibleTabs}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={onSectionChange}
             ariaLabel="HR settings"
           />
 

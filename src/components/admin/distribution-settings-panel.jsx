@@ -11,7 +11,7 @@ import {
 } from "@/lib/distribution-settings";
 import { Field, PrimaryButton, SearchableSelect, inputClassName } from "@/components/catalog/catalog-shared";
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -54,7 +54,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
     [],
   );
 
-  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+  const onSectionChange = useSettingsSectionUrl(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +109,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
             <SettingsSubTabBar
               tabs={visibleTabs}
               activeTab={activeTab}
-              onTabChange={setActiveTab}
+              onTabChange={onSectionChange}
               ariaLabel="Distribution settings"
             />
             <Toggle

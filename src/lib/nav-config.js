@@ -1280,8 +1280,8 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
-    id: "admin_finance_tax",
-    label: "Finance & tax",
+    id: "admin_finance",
+    label: "Finance",
     icon: "💳",
     collapsible: true,
     items: [
@@ -1290,21 +1290,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Payment methods",
         module: "admin",
         permission: P.admin.payment_methods.view,
-        orgAdminOnly: true,
-      },
-      {
-        href: "/vats",
-        label: "VAT / tax rates",
-        module: "admin",
-        permission: P.admin.vat_rates.view,
-        orgAdminOnly: true,
-      },
-      {
-        href: "/admin/kra-settings",
-        label: "KRA settings",
-        module: "payments",
-        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
-        requirePlatformKra: true,
         orgAdminOnly: true,
       },
       {
@@ -1328,6 +1313,22 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Equity Bank accounts",
         module: "payments",
         permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        orgAdminOnly: true,
+      },
+    ],
+  },
+  {
+    id: "admin_tax",
+    label: "Tax",
+    icon: "🧾",
+    collapsible: true,
+    items: [
+      {
+        href: "/admin/kra-settings",
+        label: "KRA settings",
+        module: "payments",
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
+        requirePlatformKra: true,
         orgAdminOnly: true,
       },
       {

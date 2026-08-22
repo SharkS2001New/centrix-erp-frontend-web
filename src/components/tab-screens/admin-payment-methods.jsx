@@ -122,7 +122,10 @@ export function AdminPaymentMethodsScreen() {
   );
 
   return (
-    <CatalogPageShell title="Payment methods" subtitle="Tender types used at checkout, expenses, and supplier payments">
+    <CatalogPageShell
+      title="Payment methods"
+      subtitle="Active methods appear on POS checkout, Hotel collect payment, expenses, and supplier payments. Deactivate a code to hide it from cashiers."
+    >
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Payment methods" }]} />
 
       <div className="mb-4 flex flex-wrap items-center justify-end gap-2">

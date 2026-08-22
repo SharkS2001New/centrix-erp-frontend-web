@@ -12,7 +12,7 @@ import {
   salesCustomerAlertsPayloadFromForm,
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import {
   DistributionDeliveryAlerts,
@@ -68,7 +68,7 @@ export function NotificationsSettingsPanel({
     return tabs;
   }, []);
 
-  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+  const onSectionChange = useSettingsSectionUrl(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +130,7 @@ export function NotificationsSettingsPanel({
             <SettingsSubTabBar
               tabs={visibleTabs}
               activeTab={activeTab}
-              onTabChange={setActiveTab}
+              onTabChange={onSectionChange}
               ariaLabel="Messaging settings"
             />
 

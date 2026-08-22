@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 export const SETTINGS_SUB_TAB_BTN =
   "rounded-md px-3 py-1.5 text-sm font-medium transition whitespace-nowrap";
@@ -51,4 +52,37 @@ export function useSettingsSubTab(activeTab, setActiveTab, visibleTabs) {
       setActiveTab(visibleTabs[0].id);
     }
   }, [activeTab, setActiveTab, visibleTabs]);
+}
+
+/**
+ * Sync SettingsSubTabBar with `?section=` so Admin settings search can deep-link.
+ * @returns {(nextId: string) => void} onTabChange that updates state + URL
+ */
+export function useSettingsSectionUrl(activeTab, setActiveTab, visibleTabs, { param = "section" } = {}) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const sectionFromUrl = String(searchParams?.get(param) ?? "").trim();
+
+  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+
+  useEffect(() => {
+    if (!sectionFromUrl || visibleTabs.length === 0) return;
+    if (!visibleTabs.some((tab) => tab.id === sectionFromUrl)) return;
+    if (sectionFromUrl !== activeTab) {
+      setActiveTab(sectionFromUrl);
+    }
+  }, [sectionFromUrl, visibleTabs, activeTab, setActiveTab]);
+
+  return useCallback(
+    (nextId) => {
+      setActiveTab(nextId);
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      if (nextId) params.set(param, nextId);
+      else params.delete(param);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [param, pathname, router, searchParams, setActiveTab],
+  );
 }

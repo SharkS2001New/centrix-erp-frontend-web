@@ -121,7 +121,7 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
       return moduleEnabled(capabilities, "customers_suppliers");
 
     case "finance":
-      // Tenant Admins use Finance & tax sidebar pages (KRA / M-Pesa / Paybills).
+      // Tenant Admins use Finance / Tax sidebar pages (KRA / M-Pesa / Paybills).
       // Platform org settings still expose the combined Finance tab.
       if (tenantSelfService) {
         return false;

@@ -8,7 +8,7 @@ import {
   validateSecurityForm,
 } from "@/lib/security-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar, useSettingsSectionUrl } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi, useSettingsAfterSave, useSettingsGet } from "@/contexts/settings-api-context";
 import { useAuth } from "@/contexts/auth-context";
 import { isHospitalityIndustry } from "@/lib/org-settings-tabs";
@@ -46,7 +46,7 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
     [hotelPinEnabled],
   );
 
-  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+  const onSectionChange = useSettingsSectionUrl(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     if (!hotelPinEnabled && activeTab === "sessions") {
@@ -114,7 +114,7 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
             <SettingsSubTabBar
               tabs={visibleTabs}
               activeTab={activeTab}
-              onTabChange={setActiveTab}
+              onTabChange={onSectionChange}
               ariaLabel="Security settings"
             />
 

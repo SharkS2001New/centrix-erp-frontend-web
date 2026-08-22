@@ -16,12 +16,10 @@ export const ORG_ADMIN_SETTINGS_PATH_PREFIXES = [
   "/admin/audit",
   "/admin/attendance-clock",
   "/admin/payment-methods",
-  "/admin/kra-responses",
   "/admin/kra-settings",
   "/admin/mpesa-settings",
   "/admin/mpesa-paybills",
   "/admin/equity-accounts",
-  "/vats",
 ];
 
 export function isPlatformOrganization(organization) {
