@@ -74,3 +74,84 @@ export function reportBuilderColumnCatalog(schema, selectedSources) {
   }
   return rows;
 }
+
+/** Reorder selected report columns (clamped). Returns a new array. */
+export function moveReportBuilderColumn(columns, fromIndex, delta) {
+  const list = Array.isArray(columns) ? [...columns] : [];
+  if (list.length < 2) return list;
+  const from = Number(fromIndex);
+  if (!Number.isInteger(from) || from < 0 || from >= list.length) return list;
+  const to = Math.max(0, Math.min(list.length - 1, from + Number(delta || 0)));
+  if (to === from) return list;
+  const [item] = list.splice(from, 1);
+  list.splice(to, 0, item);
+  return list;
+}
+
+/**
+ * Prefer `spec.columns` order when choosing preview/export keys.
+ * Matches backend aliases when possible, then falls back to remaining row keys.
+ */
+export function orderedReportBuilderPreviewKeys(specColumns, rowKeys = [], filterKeys = (keys) => keys) {
+  const columns = Array.isArray(specColumns) ? specColumns : [];
+  const preferred = columns.map((col) => {
+    if (col?.alias) return String(col.alias);
+    const field = String(col?.field ?? "");
+    const source = String(col?.source ?? "");
+    const aggregate = col?.aggregate ? String(col.aggregate) : "";
+    if (aggregate) {
+      return source ? `${source}_${field}_${aggregate}` : `${field}_${aggregate}`;
+    }
+    return source && columns.some((c) => c.source && c.source !== source)
+      ? `${source}_${field}`
+      : field;
+  });
+
+  const available = filterKeys(
+    Array.isArray(rowKeys) && rowKeys.length
+      ? rowKeys
+      : preferred.filter(Boolean),
+  );
+
+  if (!available.length) return [];
+
+  const used = new Set();
+  const ordered = [];
+
+  for (let i = 0; i < columns.length; i += 1) {
+    const col = columns[i];
+    const field = String(col?.field ?? "");
+    const source = String(col?.source ?? "");
+    const aggregate = col?.aggregate ? String(col.aggregate) : "";
+    const candidates = [
+      preferred[i],
+      col?.alias,
+      aggregate ? `${field}_${aggregate}` : null,
+      aggregate && source ? `${source}_${field}_${aggregate}` : null,
+      source ? `${source}_${field}` : null,
+      field,
+    ].filter(Boolean);
+
+    let match = candidates.find((key) => available.includes(key) && !used.has(key));
+    if (!match && field) {
+      match = available.find(
+        (key) =>
+          !used.has(key) &&
+          (key === field ||
+            key.endsWith(`_${field}`) ||
+            key.startsWith(`${field}_`) ||
+            (source && key.startsWith(`${source}_${field}`))),
+      );
+    }
+    if (match) {
+      ordered.push(match);
+      used.add(match);
+    }
+  }
+
+  for (const key of available) {
+    if (!used.has(key)) ordered.push(key);
+  }
+
+  return ordered;
+}

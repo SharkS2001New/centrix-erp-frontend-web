@@ -11,9 +11,13 @@ import { WORKSPACE_BUILDER_LABEL } from "@/lib/workspace-reports";
 import { CatalogPageShell, Field, PrimaryButton, inputClassName, SearchableSelect } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { ReportBuilderAiSuggest } from "@/components/reports/report-builder-ai-suggest";
+import { applyReportBuilderSuggestion } from "@/lib/reports/report-builder-ai-suggest";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
 import {
   REPORT_BUILDER_MASTER_FIELDS,
+  moveReportBuilderColumn,
+  orderedReportBuilderPreviewKeys,
   reportBuilderColumnCatalog,
   reportBuilderVisibleFields,
 } from "@/lib/reports/report-builder-columns";
@@ -435,14 +439,27 @@ export function ReportBuilderScreen() {
     }
   }
 
+  function applyAiSuggestion(suggestion) {
+    const applied = applyReportBuilderSuggestion(suggestion, { name, description, spec });
+    if (applied.name) setName(applied.name);
+    if (applied.description != null) setDescription(applied.description);
+    if (applied.spec) setSpec(applied.spec);
+    setPreviewRows([]);
+    setPreviewFeedback(null);
+    setError(null);
+  }
+
   const previewKeys = useMemo(() => {
-    if (previewRows[0]) {
-      return filterReportColumnKeys(Object.keys(previewRows[0]));
-    }
-    return spec.columns
-      .map((c) => c.alias ?? c.field)
-      .filter((key) => key !== "product_code" || !spec.columns.some((c) => (c.alias ?? c.field) === "product_name"));
+    const rowKeys = previewRows[0] ? Object.keys(previewRows[0]) : [];
+    return orderedReportBuilderPreviewKeys(spec.columns, rowKeys, filterReportColumnKeys);
   }, [previewRows, spec.columns]);
+
+  function moveSelectedColumn(fromIndex, delta) {
+    setSpec((prev) => ({
+      ...prev,
+      columns: moveReportBuilderColumn(prev.columns, fromIndex, delta),
+    }));
+  }
 
   const previewExportColumns = useMemo(() => {
     if (!previewRows[0]) return [];
@@ -497,7 +514,7 @@ export function ReportBuilderScreen() {
   return (
     <CatalogPageShell
       title="Report builder"
-      subtitle={`Pick a data source, choose the columns you need, then preview. Built from ${workspaceLabel.toLowerCase()}.`}
+      subtitle={`Describe what you need or pick sources and columns, then preview. Built from ${workspaceLabel.toLowerCase()}.`}
     >
       <AdminBreadcrumb items={[{ label: "Reports", href: "/reports" }, { label: "Report builder" }]} />
 
@@ -507,6 +524,8 @@ export function ReportBuilderScreen() {
 
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-1">
+          <ReportBuilderAiSuggest workspaceId={workspaceId} onApply={applyAiSuggestion} />
+
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">1. Start with a data source</h2>
             <p className="mt-1 text-xs text-slate-500">
@@ -639,6 +658,61 @@ export function ReportBuilderScreen() {
                 </>
               )}
             </div>
+            {spec.columns.length > 0 ? (
+              <div className="mt-4 border-t border-slate-200 pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected columns</p>
+                <p className="mt-1 text-xs text-slate-500">Reorder with up/down — preview and exports follow this order.</p>
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {spec.columns.map((col, index) => {
+                    const sourceLabel = findSourceSchema(schema, col.source)?.label ?? col.source;
+                    return (
+                      <li
+                        key={`${col.source}:${col.field}:${index}`}
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-slate-800">
+                          <span className="font-medium">{col.label ?? col.field}</span>
+                          {isMultiSource ? (
+                            <span className="ml-1 text-xs text-slate-400">· {sourceLabel}</span>
+                          ) : null}
+                          {col.aggregate ? (
+                            <span className="ml-1 text-xs uppercase text-slate-400">{col.aggregate}</span>
+                          ) : null}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <button
+                            type="button"
+                            className="rounded px-1.5 py-0.5 text-xs font-medium text-slate-600 hover:bg-white disabled:opacity-40"
+                            disabled={index === 0}
+                            aria-label="Move column up"
+                            onClick={() => moveSelectedColumn(index, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded px-1.5 py-0.5 text-xs font-medium text-slate-600 hover:bg-white disabled:opacity-40"
+                            disabled={index === spec.columns.length - 1}
+                            aria-label="Move column down"
+                            onClick={() => moveSelectedColumn(index, 1)}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded px-1.5 py-0.5 text-xs font-medium text-red-600 hover:bg-white"
+                            aria-label="Remove column"
+                            onClick={() => toggleColumn(col.source, col.field)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
           </section>
 
           {!isBlendMode && selectedSources.length > 0 ? (
