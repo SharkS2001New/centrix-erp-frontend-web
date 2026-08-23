@@ -154,8 +154,8 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   {form.api_key_set && !form.api_key
                     ? `Leave blank to keep the current key (${form.api_key_hint}).`
                     : form.use_platform_gemini
-                      ? "Optional. When set, this key is used instead of free platform Gemini."
-                      : "Required unless the platform has enabled free Gemini for this organization."}
+                      ? "Optional. When set, this key is used instead of free platform AI."
+                      : "Required unless the platform has enabled free AI for this organization."}
                 </p>
               </Field>
 
@@ -187,12 +187,14 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                 }`}
               >
                 {form.available
-                  ? form.credential_source === "platform_gemini"
-                    ? "AI is available via free platform Gemini."
-                    : "AI is available using this organization’s API key."
-                  : form.use_platform_gemini && !form.platform_gemini_configured
-                    ? "Waiting for the platform Gemini key under Platform → Settings → AI credentials."
-                    : "Add an organization API key, or ask the platform to enable free Gemini for this org."}
+                  ? form.credential_source === "platform_openai"
+                    ? "AI is available via free platform OpenAI."
+                    : form.credential_source === "platform_gemini"
+                      ? "AI is available via free platform Gemini."
+                      : "AI is available using this organization’s API key."
+                  : form.use_platform_gemini && !(form.platform_free_ai_configured || form.platform_gemini_configured)
+                    ? "Waiting for the platform free-AI key under Platform → Settings → AI credentials."
+                    : "Add an organization API key, or ask the platform to enable free AI for this org."}
               </div>
             </>
           ) : null}
