@@ -174,7 +174,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                   className={inputClassName()}
                   value={aiForm.gemini_model}
                   onChange={(e) => setAiForm((f) => ({ ...f, gemini_model: e.target.value }))}
-                  placeholder="gemini-3.7-flash"
+                  placeholder="gemini-3.6-flash"
                 />
               </Field>
             </div>

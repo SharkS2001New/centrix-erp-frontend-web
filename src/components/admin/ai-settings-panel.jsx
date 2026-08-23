@@ -164,7 +164,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   className={inputClassName()}
                   value={form.model}
                   onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-                  placeholder={form.provider === "gemini" ? "gemini-2.0-flash" : "gpt-4o-mini"}
+                  placeholder={form.provider === "gemini" ? "gemini-3.6-flash" : "gpt-4o-mini"}
                 />
               </Field>
 
