@@ -247,8 +247,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
         ? `${workspaceLabel} · expanded view`
         : `${workspaceLabel} only · switch workspace for other modules`
       : orgEnabled
-        ? "Finish AI setup under Admin → Settings → AI (API key required)."
-        : "Not configured — enable under Admin → Settings → AI.";
+        ? "Finish AI setup under Admin → Settings → AI (choose platform AI or add your API key)."
+        : "AI is not enabled for this organization — contact your platform administrator.";
 
   return (
     <>

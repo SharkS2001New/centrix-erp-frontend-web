@@ -173,9 +173,19 @@ export function canAskAiFromSearch({ capabilities, hasPermission }) {
 
 export function aiFormFromApi(res) {
   const settings = res?.settings ?? res?.ai ?? {};
+  const platformOffersFree = Boolean(
+    res?.platform_offers_free_ai ?? res?.use_platform_gemini ?? settings.use_platform_gemini,
+  );
+  const hasOrgKey = Boolean(res?.has_org_api_key ?? settings.api_key_set);
+  const usePlatformAi = Boolean(
+    res?.use_platform_ai ??
+      settings.use_platform_ai ??
+      (platformOffersFree && !hasOrgKey),
+  );
+
   return {
-    enabled: Boolean(settings.enabled),
-    provider: settings.provider ?? "openai",
+    use_platform_ai: usePlatformAi,
+    provider: settings.provider ?? res?.free_ai_provider ?? "openai",
     model: settings.model ?? "",
     api_key: "",
     base_url: settings.base_url ?? "",
@@ -186,19 +196,33 @@ export function aiFormFromApi(res) {
     gemini_api_key_set: Boolean(settings.gemini_api_key_set),
     gemini_api_key_hint: settings.gemini_api_key_hint ?? "",
     free_ai_provider: settings.free_ai_provider ?? res?.free_ai_provider ?? "gemini",
-    use_platform_gemini: Boolean(
-      settings.use_platform_gemini ?? res?.use_platform_gemini ?? res?.use_platform_ai,
-    ),
+    use_platform_gemini: platformOffersFree,
+    platform_offers_free_ai: platformOffersFree,
     platform_gemini_configured: Boolean(res?.platform_gemini_configured ?? res?.gemini_available),
     platform_free_ai_configured: Boolean(
       res?.platform_free_ai_configured ?? res?.free_ai_configured ?? res?.platform_gemini_configured,
     ),
-    has_org_api_key: Boolean(res?.has_org_api_key ?? settings.api_key_set),
+    has_org_api_key: hasOrgKey,
     credential_source: res?.credential_source ?? null,
     available: Boolean(res?.available),
     platform_enabled: res?.platform_enabled !== false,
     insights: insightsFormFromApi(settings.insights),
   };
+}
+
+/** Org admin payload — cannot enable/disable AI for the organization. */
+export function aiOrgPayloadFromForm(form) {
+  const payload = {
+    use_platform_ai: Boolean(form.use_platform_ai),
+    provider: form.provider,
+    model: form.model || null,
+    base_url: form.base_url || null,
+    insights: insightsPayloadFromForm(form.insights),
+  };
+  if (form.api_key && !form.api_key.startsWith("••••")) {
+    payload.api_key = form.api_key;
+  }
+  return payload;
 }
 
 /**
