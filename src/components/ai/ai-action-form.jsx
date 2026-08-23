@@ -17,6 +17,16 @@ export function buildInitialFormValues(formSpec) {
   return out;
 }
 
+function dedupeSelectOptions(options) {
+  const seen = new Set();
+  return options.filter((opt) => {
+    const key = String(opt.value);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function AiField({ label, required, children }) {
   return (
     <Field label={label} required={required}>
@@ -71,7 +81,10 @@ export function AiActionForm({ formSpec, values, onChange, onSubmit, onCancel, l
                   required={required}
                   placeholder="Select…"
                   onChange={(next) => onChange(name, next === "" ? "" : next)}
-                  options={field.options.map((opt) => ({ value: opt.value, label: opt.label }))}
+                  options={dedupeSelectOptions(field.options).map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
                 />
                 {field.hint ? <p className="mt-1 text-xs theme-text-muted">{field.hint}</p> : null}
               </AiField>

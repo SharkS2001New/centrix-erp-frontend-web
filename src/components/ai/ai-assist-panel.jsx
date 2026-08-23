@@ -17,6 +17,7 @@ import { AI_ASSISTANT_TITLE } from "@/lib/branding";
 import { defaultWorkspaceId } from "@/lib/workspace-navigation";
 import { subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
+import { AiMessageContent } from "@/components/ai/ai-message-content";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -127,8 +128,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
 
       if (res.pending_action) {
         setPendingAction(res.pending_action);
-      } else if (res.action_result) {
-        clearActionState();
+      } else {
+        setPendingAction(null);
       }
 
       if (res.form_spec?.fields?.length) {
@@ -138,12 +139,16 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
           ...prev,
           ...(res.pending_action?.params ?? {}),
         }));
-      } else if (!res.pending_action) {
+      } else {
         setFormSpec(null);
+        if (!res.pending_action) {
+          setFormValues({});
+        }
       }
 
       if (res.action_result?.result) {
         setActionResult(res.action_result.result);
+        clearActionState();
       }
       if (res.declined_off_topic) {
         clearActionState();
@@ -168,6 +173,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       setError(null);
       setLastFailedMessage(null);
       setActionResult(null);
+      if (!confirm) {
+        clearActionState();
+      }
       setLoading(true);
       if (!confirm) {
         setMessages((prev) => [...prev, { role: "user", content: message }]);
@@ -184,8 +192,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
             message,
             conversation_id: conversationId || undefined,
             history,
-            pending_action: pendingAction ?? undefined,
-            form_values: Object.keys(formValuesOverride ?? formValues).length
+            pending_action: confirm && pendingAction ? pendingAction : undefined,
+            form_values: confirm && Object.keys(formValuesOverride ?? formValues).length
               ? formValuesOverride ?? formValues
               : undefined,
             confirm_action: confirm,
@@ -206,6 +214,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
       pendingAction,
       formValues,
       applyChatResponse,
+      clearActionState,
       workspaceId,
       pathname,
       conversationId,
@@ -360,7 +369,10 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
                         : "mr-4 bg-slate-100 text-slate-800"
                   }`}
                 >
-                  {m.content}
+                  <AiMessageContent
+                    content={m.content}
+                    onNavigate={() => closePanel(setOpen, setExpanded)}
+                  />
                 </div>
               ))}
 
