@@ -84,9 +84,12 @@ function patchInsights(setForm, patch) {
 function credentialSourceLabel(form) {
   if (form.credential_source === "platform_openai") return "Using free platform OpenAI";
   if (form.credential_source === "platform_gemini") return "Using free platform Gemini";
+  if (form.credential_source === "platform_ollama") return "Using free platform Ollama";
   if (form.credential_source === "org") return "Using your organization API key";
   if (form.use_platform_ai && form.platform_offers_free_ai) {
-    return form.free_ai_provider === "openai" ? "Using free platform OpenAI" : "Using free platform Gemini";
+    if (form.free_ai_provider === "openai") return "Using free platform OpenAI";
+    if (form.free_ai_provider === "ollama") return "Using free platform Ollama";
+    return "Using free platform Gemini";
   }
   if (form.has_org_api_key) return "Using your organization API key";
   return "AI credentials not configured";
@@ -269,9 +272,11 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                 >
                   <option value="openai">OpenAI / ChatGPT</option>
                   <option value="gemini">Google Gemini</option>
+                  <option value="ollama">Ollama (self-hosted, free)</option>
                 </select>
               </Field>
 
+              {form.provider === "ollama" ? null : (
               <SavedKeyField
                 label="Organization API key"
                 value={form.api_key}
@@ -283,13 +288,20 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   setForm((f) => ({ ...f, api_key: e.target.value }));
                 }}
               />
+              )}
 
               <Field label="Model (optional)">
                 <input
                   className={inputClassName()}
                   value={form.model}
                   onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-                  placeholder={form.provider === "gemini" ? "gemini-3.6-flash" : "gpt-4o-mini"}
+                  placeholder={
+                    form.provider === "gemini"
+                      ? "gemini-3.6-flash"
+                      : form.provider === "ollama"
+                        ? "llama3.2"
+                        : "gpt-4o-mini"
+                  }
                 />
               </Field>
 
@@ -301,7 +313,9 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAft
                   placeholder={
                     form.provider === "gemini"
                       ? "https://generativelanguage.googleapis.com/v1beta"
-                      : "https://api.openai.com/v1"
+                      : form.provider === "ollama"
+                        ? "http://centrix-erp-ollama:11434"
+                        : "https://api.openai.com/v1"
                   }
                 />
               </Field>

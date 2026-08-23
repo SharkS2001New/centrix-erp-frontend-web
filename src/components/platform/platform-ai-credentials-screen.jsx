@@ -65,6 +65,9 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   const [testResult, setTestResult] = useState(null);
   /** When OpenAI is the free provider, optionally also show/edit Gemini credentials. */
   const [useBoth, setUseBoth] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState([]);
+  const [loadingOllamaModels, setLoadingOllamaModels] = useState(false);
+  const [ollamaModelsMessage, setOllamaModelsMessage] = useState("");
 
   const loadAiSettings = useCallback(async () => {
     setLoading(true);
@@ -86,6 +89,54 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   useEffect(() => {
     loadAiSettings();
   }, [loadAiSettings]);
+
+  const freeProvider =
+    aiForm.free_ai_provider === "openai"
+      ? "openai"
+      : aiForm.free_ai_provider === "ollama"
+        ? "ollama"
+        : "gemini";
+
+  const loadOllamaModels = useCallback(async () => {
+    setLoadingOllamaModels(true);
+    setOllamaModelsMessage("");
+    try {
+      const qs = aiForm.ollama_base_url
+        ? `?ollama_base_url=${encodeURIComponent(aiForm.ollama_base_url)}`
+        : "";
+      const res = await apiRequest(`${apiBase}/ollama/models${qs}`);
+      const models = Array.isArray(res?.models) ? res.models : [];
+      setOllamaModels(models);
+      setOllamaModelsMessage(res?.message || "");
+      if (models.length > 0) {
+        setAiForm((f) => {
+          const selected = f.ollama_model || "";
+          const names = models.map((m) => m.name);
+          const match =
+            selected !== "" &&
+            (names.includes(selected) ||
+              names.some(
+                (n) => n === selected || n.startsWith(`${selected}:`) || selected.startsWith(n.split(":")[0]),
+              ));
+          if (match) {
+            return f;
+          }
+          return { ...f, ollama_model: models[0].name };
+        });
+      }
+    } catch (err) {
+      setOllamaModels([]);
+      setOllamaModelsMessage(err instanceof ApiError ? err.message : "Could not list Ollama models.");
+    } finally {
+      setLoadingOllamaModels(false);
+    }
+  }, [apiBase, aiForm.ollama_base_url]);
+
+  useEffect(() => {
+    if (freeProvider === "ollama" && !loading) {
+      void loadOllamaModels();
+    }
+  }, [freeProvider, loading, loadOllamaModels]);
 
   async function saveAiSettings() {
     setSaving(true);
@@ -123,6 +174,13 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
       }
       if (aiForm.gemini_model) {
         body.gemini_model = aiForm.gemini_model;
+      }
+    } else if (provider === "ollama") {
+      if (aiForm.ollama_base_url) {
+        body.ollama_base_url = aiForm.ollama_base_url;
+      }
+      if (aiForm.ollama_model) {
+        body.ollama_model = aiForm.ollama_model;
       }
     } else {
       if (aiForm.api_key && !aiForm.api_key.startsWith("••••")) {
@@ -165,16 +223,17 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
     }
   }
 
-  const freeProvider = aiForm.free_ai_provider === "openai" ? "openai" : "gemini";
   const showGemini = freeProvider === "gemini" || useBoth;
   const showOpenAi = freeProvider === "openai" || useBoth;
-  const busy = saving || testingProvider !== null;
+  const showOllama = freeProvider === "ollama";
+  const busy = saving || testingProvider !== null || loadingOllamaModels;
   const canTestGemini = Boolean(
     aiForm.gemini_api_key_set || (aiForm.gemini_api_key && !aiForm.gemini_api_key.startsWith("••••")),
   );
   const canTestOpenAi = Boolean(
     aiForm.api_key_set || (aiForm.api_key && !aiForm.api_key.startsWith("••••")),
   );
+  const canTestOllama = true;
 
   const body = (
     <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
@@ -221,6 +280,19 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 />
                 OpenAI
               </label>
+              <label className="flex items-center gap-2 text-sm theme-heading">
+                <input
+                  type="radio"
+                  name="free_ai_provider"
+                  checked={freeProvider === "ollama"}
+                  onChange={() => {
+                    setAiForm((f) => ({ ...f, free_ai_provider: "ollama" }));
+                    setUseBoth(false);
+                    setTestResult(null);
+                  }}
+                />
+                Ollama (self-hosted, free)
+              </label>
             </div>
           </div>
 
@@ -238,7 +310,9 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
               <span className="mt-0.5 block text-xs theme-subtext">
                 {freeProvider === "gemini"
                   ? "Uses the Gemini key below — no OpenAI key required."
-                  : "Uses the OpenAI key below for email assist and the AI training console."}
+                  : freeProvider === "ollama"
+                    ? "Uses your Ollama pod below — completely free, no cloud key."
+                    : "Uses the OpenAI key below for email assist and the AI training console."}
               </span>
             </span>
           </label>
@@ -353,6 +427,72 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
             </div>
           ) : null}
 
+          {showOllama ? (
+            <div className="border-t pt-5">
+              <h3 className="text-sm font-semibold theme-heading">Ollama (self-hosted, free)</h3>
+              <p className="mt-1 text-xs theme-subtext">
+                Point Centrix at your Ollama pod. Pick a pulled model, then test. Creates (products, suppliers,
+                customers, etc.) use the same assistant flows as Gemini/OpenAI.
+              </p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Field label="Ollama base URL">
+                    <input
+                      className={inputClassName()}
+                      value={aiForm.ollama_base_url}
+                      onChange={(e) => setAiForm((f) => ({ ...f, ollama_base_url: e.target.value }))}
+                      placeholder="http://centrix-erp-ollama:11434"
+                    />
+                    <p className="mt-1 text-xs theme-subtext">
+                      In Kubernetes use the service DNS. Locally: http://127.0.0.1:11434
+                    </p>
+                  </Field>
+                </div>
+                <div className="sm:col-span-2">
+                  <Field label="Ollama model">
+                    <div className="flex flex-wrap gap-2">
+                      {ollamaModels.length > 0 ? (
+                        <select
+                          className={inputClassName()}
+                          value={
+                            ollamaModels.some((m) => m.name === aiForm.ollama_model)
+                              ? aiForm.ollama_model
+                              : ollamaModels[0]?.name || ""
+                          }
+                          onChange={(e) => setAiForm((f) => ({ ...f, ollama_model: e.target.value }))}
+                        >
+                          {ollamaModels.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className={inputClassName()}
+                          value={aiForm.ollama_model}
+                          onChange={(e) => setAiForm((f) => ({ ...f, ollama_model: e.target.value }))}
+                          placeholder="llama3.2"
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void loadOllamaModels()}
+                        disabled={busy}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {loadingOllamaModels ? "Loading…" : "Refresh models"}
+                      </button>
+                    </div>
+                    {ollamaModelsMessage ? (
+                      <p className="mt-1 text-xs theme-subtext">{ollamaModelsMessage}</p>
+                    ) : null}
+                  </Field>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {testResult ? (
             <div
               className={`rounded-lg border px-4 py-3 text-sm ${
@@ -397,6 +537,16 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
                 {testingProvider === "openai" ? "Testing OpenAI…" : "Test OpenAI connection"}
               </button>
             ) : null}
+            {showOllama ? (
+              <button
+                type="button"
+                onClick={() => testCredentials("ollama")}
+                disabled={busy || !canTestOllama}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testingProvider === "ollama" ? "Testing Ollama…" : "Test Ollama connection"}
+              </button>
+            ) : null}
           </div>
         </div>
       )}
@@ -410,7 +560,7 @@ export function PlatformAiCredentialsScreen({ embedded = false } = {}) {
   return (
     <CatalogPageShell
       title="AI credentials"
-      subtitle="Choose free Gemini or OpenAI for selected tenants; enable platform email/training with the same provider."
+      subtitle="Choose free Gemini, OpenAI, or self-hosted Ollama for selected tenants; enable platform email/training with the same provider."
     >
       <AdminBreadcrumb
         items={[

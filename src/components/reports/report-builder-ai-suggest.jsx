@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { suggestReportBuilderWithAi } from "@/lib/reports/report-builder-ai-suggest";
-import { SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
+import { SECONDARY_BTN_CLASS, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
 const MAX_WORDS = 100;
 
@@ -17,13 +17,58 @@ function wordCount(text) {
 
 /**
  * Natural-language report draft — works with keyword matching; uses org AI when connected.
+ * When product names are ambiguous, prompts the user to pick close matches.
  */
 export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" }) {
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(null);
+  const [selectedCodes, setSelectedCodes] = useState(() => new Set());
   const words = wordCount(instruction);
 
-  async function run() {
+  const candidateRows = useMemo(() => {
+    const groups = pending?.product_resolution?.queries ?? [];
+    return groups.flatMap((group) =>
+      (group.matches ?? []).map((match) => ({
+        ...match,
+        query: group.query,
+        autoSelected: Boolean(group.auto_selected),
+      })),
+    );
+  }, [pending]);
+
+  function toggleCode(code) {
+    setSelectedCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+
+  function applyResult(result) {
+    onApply?.(result);
+    const filterBits = [];
+    if (result?.filters?.from_date) {
+      filterBits.push(
+        result.filters.from_date === result.filters.to_date
+          ? `date ${result.filters.from_date}`
+          : `dates ${result.filters.from_date} → ${result.filters.to_date}`,
+      );
+    }
+    if (result?.filters?.product_codes?.length) {
+      filterBits.push(`${result.filters.product_codes.length} product(s)`);
+    }
+    notifySuccess(
+      result.mode === "ai"
+        ? `Suggestions applied${filterBits.length ? ` (${filterBits.join(", ")})` : ""} — review then Preview / Save.`
+        : `Suggestions applied${filterBits.length ? ` (${filterBits.join(", ")})` : ""} — review then Preview / Save.`,
+    );
+    setPending(null);
+    setSelectedCodes(new Set());
+  }
+
+  async function run(extra = {}) {
     const text = instruction.trim();
     if (!text) {
       notifyError("Describe the report you need first.");
@@ -38,24 +83,50 @@ export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" })
       const result = await suggestReportBuilderWithAi({
         instruction: text,
         workspaceId,
+        selectedProductCodes: extra.selectedProductCodes,
       });
       if (!result?.spec?.columns?.length) {
         notifyError("No matching columns found. Try a clearer description.");
         return;
       }
-      onApply?.(result);
-      notifySuccess(
-        result.mode === "ai"
-          ? result.provider === "gemini"
-            ? "Gemini suggestions applied — review then Preview / Save."
-            : "AI suggestions applied — review then Preview / Save."
-          : "Suggestions applied — review then Preview / Save.",
-      );
+
+      if (result.needs_product_selection) {
+        const preselected = new Set([
+          ...(result.product_resolution?.matched_codes ?? []),
+          ...((result.product_resolution?.queries ?? [])
+            .filter((g) => g.auto_selected && g.matches?.[0]?.product_code)
+            .map((g) => g.matches[0].product_code)),
+        ]);
+        // Pre-check first match for each ambiguous group to speed picking.
+        for (const group of result.product_resolution?.queries ?? []) {
+          if (!group.auto_selected && group.matches?.[0]?.product_code) {
+            preselected.add(group.matches[0].product_code);
+          }
+        }
+        setPending(result);
+        setSelectedCodes(preselected);
+        notifySuccess(result.message || "Pick the products that match your request.");
+        return;
+      }
+
+      if (result.product_resolution?.status === "unmatched") {
+        notifyError(result.message || "No products matched those names. Try clearer product names.");
+      }
+
+      applyResult(result);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Suggest failed. Try a shorter, clearer description.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function applyWithSelectedProducts() {
+    if (selectedCodes.size === 0) {
+      notifyError("Select at least one product.");
+      return;
+    }
+    await run({ selectedProductCodes: [...selectedCodes] });
   }
 
   return (
@@ -66,8 +137,8 @@ export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" })
         Describe the report you need
       </h2>
       <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-        Plain English, under {MAX_WORDS} words. Centrix picks sources and columns. When organization AI is enabled
-        (Gemini or OpenAI), that provider is used first.
+        Plain English, under {MAX_WORDS} words. Name products and dates (e.g. yesterday). Centrix picks sources,
+        columns, and close product matches when needed.
       </p>
       <label className="mt-3 block text-sm">
         <span className="sr-only">Report description</span>
@@ -75,8 +146,11 @@ export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" })
           className={`${inputClassName()} resize-y bg-white dark:bg-slate-900`}
           rows={3}
           value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder="e.g. Daily sales by product with unpaid totals&#10;Stock on hand by branch for low items"
+          onChange={(e) => {
+            setInstruction(e.target.value);
+            setPending(null);
+          }}
+          placeholder={"e.g. Yesterday's sales for Al Eman, Sugar and Polished\nDaily sales by product with unpaid totals"}
           disabled={busy}
           maxLength={800}
         />
@@ -94,6 +168,58 @@ export function ReportBuilderAiSuggest({ workspaceId, onApply, className = "" })
           {busy ? "Suggesting…" : "Suggest report"}
         </button>
       </div>
+
+      {pending?.needs_product_selection ? (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+          <p className="font-medium">Pick products close to your description</p>
+          <p className="mt-1 text-xs text-amber-800">
+            {pending.message || "Select the products to include, then apply the suggestion."}
+          </p>
+          {(pending.product_resolution?.unmatched ?? []).length > 0 ? (
+            <p className="mt-2 text-xs text-amber-800">
+              No catalog match for: {(pending.product_resolution.unmatched ?? []).join(", ")}
+            </p>
+          ) : null}
+          <ul className="mt-3 max-h-56 space-y-2 overflow-y-auto">
+            {candidateRows.map((row) => (
+              <li key={`${row.query}-${row.product_code}`}>
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-100 bg-white/80 px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={selectedCodes.has(row.product_code)}
+                    onChange={() => toggleCode(row.product_code)}
+                    disabled={busy}
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium text-slate-900">{row.product_name}</span>
+                    <span className="block text-xs text-slate-500">
+                      {row.product_code}
+                      {row.query ? ` · matched “${row.query}”` : ""}
+                    </span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <PrimaryButton type="button" disabled={busy || selectedCodes.size === 0} onClick={() => void applyWithSelectedProducts()}>
+              {busy ? "Applying…" : `Apply with ${selectedCodes.size} product(s)`}
+            </PrimaryButton>
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={busy}
+              onClick={() => {
+                setPending(null);
+                setSelectedCodes(new Set());
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -195,6 +195,8 @@ export function aiFormFromApi(res) {
     gemini_model: settings.gemini_model ?? res?.gemini_model ?? "",
     gemini_api_key_set: Boolean(settings.gemini_api_key_set),
     gemini_api_key_hint: settings.gemini_api_key_hint ?? "",
+    ollama_base_url: settings.ollama_base_url ?? res?.ollama_base_url ?? "",
+    ollama_model: settings.ollama_model ?? res?.ollama_model ?? "",
     free_ai_provider: settings.free_ai_provider ?? res?.free_ai_provider ?? "gemini",
     use_platform_gemini: platformOffersFree,
     platform_offers_free_ai: platformOffersFree,
@@ -246,7 +248,9 @@ export function aiPayloadFromForm(form, options = {}) {
       payload.gemini_api_key = form.gemini_api_key;
     }
     payload.gemini_model = form.gemini_model || null;
-    if (form.free_ai_provider === "openai" || form.free_ai_provider === "gemini") {
+    payload.ollama_base_url = form.ollama_base_url || null;
+    payload.ollama_model = form.ollama_model || null;
+    if (["openai", "gemini", "ollama"].includes(form.free_ai_provider)) {
       payload.free_ai_provider = form.free_ai_provider;
     }
   }

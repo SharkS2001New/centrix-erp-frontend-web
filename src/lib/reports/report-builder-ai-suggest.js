@@ -2,15 +2,22 @@ import { apiRequest } from "@/lib/api";
 
 /**
  * Ask org AI to draft a report builder name + spec from a natural-language instruction.
- * @param {{ instruction: string, workspaceId?: string | null }} params
- * @returns {Promise<{ name: string, description: string | null, spec: object }>}
+ * @param {{ instruction: string, workspaceId?: string | null, selectedProductCodes?: string[] }} params
+ * @returns {Promise<object>}
  */
-export async function suggestReportBuilderWithAi({ instruction, workspaceId = null } = {}) {
+export async function suggestReportBuilderWithAi({
+  instruction,
+  workspaceId = null,
+  selectedProductCodes = null,
+} = {}) {
   const body = {
     instruction: String(instruction ?? "").trim(),
   };
   if (workspaceId) {
     body.workspace_id = workspaceId;
+  }
+  if (Array.isArray(selectedProductCodes) && selectedProductCodes.length > 0) {
+    body.selected_product_codes = selectedProductCodes;
   }
 
   return apiRequest("/reports/builder/suggest", {

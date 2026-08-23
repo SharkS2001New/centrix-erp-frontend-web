@@ -127,6 +127,7 @@ export function ReportBuilderScreen() {
   const [previewRows, setPreviewRows] = useState([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewFeedback, setPreviewFeedback] = useState(null);
+  const [previewFilters, setPreviewFilters] = useState({});
   const [sourceQuery, setSourceQuery] = useState("");
   const [columnQuery, setColumnQuery] = useState("");
 
@@ -380,6 +381,7 @@ export function ReportBuilderScreen() {
           queueReportBuilderPreview(spec, {
             per_page: 200,
             workspace_id: workspaceId,
+            ...previewFilters,
           }),
         {
           label: "Building report preview",
@@ -444,6 +446,13 @@ export function ReportBuilderScreen() {
     if (applied.name) setName(applied.name);
     if (applied.description != null) setDescription(applied.description);
     if (applied.spec) setSpec(applied.spec);
+    const nextFilters = {};
+    if (suggestion?.filters?.from_date) nextFilters.from_date = suggestion.filters.from_date;
+    if (suggestion?.filters?.to_date) nextFilters.to_date = suggestion.filters.to_date;
+    if (Array.isArray(suggestion?.filters?.product_codes) && suggestion.filters.product_codes.length) {
+      nextFilters.product_codes = suggestion.filters.product_codes;
+    }
+    setPreviewFilters(nextFilters);
     setPreviewRows([]);
     setPreviewFeedback(null);
     setError(null);
@@ -805,6 +814,14 @@ export function ReportBuilderScreen() {
                   {selectedSources.length} source(s) · {spec.columns.length} column(s)
                   {normalizedGroupBy.length ? ` · grouped by ${normalizedGroupBy.length}` : ""}
                   {isBlendMode && blendLabel ? ` · side-by-side by ${blendLabel.toLowerCase()}` : ""}
+                  {previewFilters.from_date
+                    ? previewFilters.from_date === previewFilters.to_date
+                      ? ` · ${previewFilters.from_date}`
+                      : ` · ${previewFilters.from_date} → ${previewFilters.to_date}`
+                    : ""}
+                  {previewFilters.product_codes?.length
+                    ? ` · ${previewFilters.product_codes.length} product filter(s)`
+                    : ""}
                 </p>
               </div>
               {previewRows.length > 0 ? (
